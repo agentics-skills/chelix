@@ -15,8 +15,8 @@ use {
         ReadTerminalOutputResponse, ToolsServiceTerminalInfo,
     },
     rmux_core::{
-        KEYC_META, Screen, TerminalScreen, key_code_to_bytes, key_string_lookup_key,
-        key_string_lookup_string,
+        KEYC_META, Screen, TerminalScreen, input::mode::MODE_BRACKETPASTE, key_code_to_bytes,
+        key_string_lookup_key, key_string_lookup_string,
     },
     rmux_pty::{ChildCommand, PtyChild, PtyIo, PtyMaster, Signal, TerminalSize},
     sha2::{Digest, Sha256},
@@ -719,42 +719,44 @@ fn build_command_input(request: &ExecuteCommandRequest) -> Result<Vec<u8>> {
         },
         None => request.command.clone(),
     };
-    let mut input = Vec::with_capacity(command.len().saturating_mul(2).saturating_add(1));
-    for byte in command.bytes() {
-        if byte < 0x20 || byte == 0x7f {
-            input.push(0x16);
-        }
-        input.push(byte);
-    }
-    input.push(b'\r');
-    Ok(input)
+    Ok(command.into_bytes())
 }
 
 async fn write_command(terminal: &ManagedTerminal, command: &[u8]) -> Result<()> {
     let mut start = 0;
-    while start < command.len() {
-        let relative_end = command[start..]
-            .windows(2)
-            .position(|bytes| bytes == b"\x16\n")
-            .unwrap_or_else(|| command.len().saturating_sub(start).saturating_sub(1));
-        let line_end = start + relative_end;
-        let mut line = Vec::with_capacity(line_end.saturating_sub(start).saturating_add(1));
-        line.extend_from_slice(&command[start..line_end]);
-        line.push(b'\r');
-        lock(&terminal.writer)
-            .write_all(&line)
-            .context("writing command to RMUX terminal")?;
-        start = if command.get(line_end..line_end.saturating_add(2)) == Some(b"\x16\n") {
-            line_end + 2
-        } else {
-            command.len()
-        };
-        if start == command.len() || command.get(start..) == Some(&[b'\r'][..]) {
+    loop {
+        let line_end = command[start..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(command.len(), |offset| start + offset);
+        let bracketed_paste =
+            lock(&terminal.output).screen.screen().mode() & MODE_BRACKETPASTE != 0;
+        {
+            let writer = lock(&terminal.writer);
+            if bracketed_paste {
+                let line = &command[start..line_end];
+                let mut paste = Vec::with_capacity(line.len().saturating_add(12));
+                paste.extend_from_slice(b"\x1b[200~");
+                paste.extend_from_slice(line);
+                paste.extend_from_slice(b"\x1b[201~");
+                writer
+                    .write_all(&paste)
+                    .context("pasting command line to RMUX terminal")?;
+            } else {
+                writer
+                    .write_all(&command[start..line_end])
+                    .context("pasting command line to RMUX terminal")?;
+            }
+            writer
+                .write_all(b"\r")
+                .context("sending Enter to RMUX terminal")?;
+        }
+        if line_end == command.len() || line_end + 1 == command.len() {
             return Ok(());
         }
+        start = line_end + 1;
         tokio::time::sleep(MULTILINE_COMMAND_LINE_DELAY).await;
     }
-    Ok(())
 }
 
 fn record_terminal_input(terminal: &ManagedTerminal, bytes: &[u8]) {
