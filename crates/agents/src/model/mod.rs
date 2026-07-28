@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn convert_skips_orphan_tool_result() {
-        // Orphan tool_result (e.g. from /sh) with no matching assistant tool_calls
+        // Orphan tool_result with no matching assistant tool_calls
         let values = vec![
             serde_json::json!({"role": "user", "content": "run ls"}),
             serde_json::json!({

@@ -952,27 +952,6 @@ impl ChatService for LiveChatService {
             "image": effective_image,
             "containerName": container_name,
         });
-        let host_is_root = detect_host_root_user().await;
-        // Sandbox containers currently run as root by default.
-        let command_is_root = if sandbox_enabled {
-            Some(true)
-        } else {
-            host_is_root
-        };
-        let command_prompt_symbol = command_is_root.map(|is_root| {
-            if is_root {
-                "#"
-            } else {
-                "$"
-            }
-        });
-        let execution_info = serde_json::json!({
-            "mode": if sandbox_enabled { "sandbox" } else { "host" },
-            "hostIsRoot": host_is_root,
-            "isRoot": command_is_root,
-            "promptSymbol": command_prompt_symbol,
-        });
-
         // Discover enabled skills/plugins (only if provider supports tools and
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if supports_tools {
@@ -1011,7 +990,6 @@ impl ChatService for LiveChatService {
             "mcpServers": mcp_servers,
             "mcpDisabled": mcp_disabled,
             "sandbox": sandbox_info,
-            "execution": execution_info,
             "promptMemory": prompt_persona.memory_status,
             "supportsTools": supports_tools,
             "tokenUsage": {

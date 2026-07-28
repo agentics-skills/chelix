@@ -543,7 +543,6 @@ test.describe("Chat input and slash commands", () => {
 			"/mode",
 			"/new",
 			"/reset",
-			"/sh",
 		]);
 	});
 
@@ -737,24 +736,6 @@ test.describe("Chat input and slash commands", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("/sh toggles command mode UI", async ({ page }) => {
-		const chatInput = page.locator("#chatInput");
-		const prompt = page.locator("#chatCommandPrompt");
-		const tokenBar = page.locator("#tokenBar");
-
-		await chatInput.fill("/sh");
-		await chatInput.press("Enter");
-		await expect(prompt).toBeVisible();
-		await expect(chatInput).toHaveAttribute("placeholder", "Run shell command…");
-		await expect(tokenBar).toContainText("/sh mode");
-
-		await chatInput.fill("/sh off");
-		await chatInput.press("Enter");
-		await expect(prompt).toBeHidden();
-		await expect(chatInput).toHaveAttribute("placeholder", "Type a message...");
-		await expect(tokenBar).not.toContainText("/sh mode");
-	});
-
 	test("/mode switches the active session mode", async ({ page }) => {
 		const chatInput = page.locator("#chatInput");
 		try {
@@ -799,42 +780,6 @@ test.describe("Chat input and slash commands", () => {
 			_tool_policy: { deny: ["*"] },
 		});
 		expect(pageErrors).toEqual([]);
-	});
-
-	test("command mode prefixes outgoing user message with /sh", async ({ page }) => {
-		await page.evaluate(() => {
-			window.__chatSendPayloads = [];
-			if (window.__chatWsSpyInstalled) return;
-			var originalSend = WebSocket.prototype.send;
-			WebSocket.prototype.send = function (data) {
-				try {
-					var parsed = JSON.parse(data);
-					if (parsed?.method === "chat.send") {
-						window.__chatSendPayloads.push(parsed.params || {});
-					}
-				} catch {
-					// ignore non-JSON payloads
-				}
-				return originalSend.call(this, data);
-			};
-			window.__chatWsSpyInstalled = true;
-		});
-		const chatInput = page.locator("#chatInput");
-		await chatInput.fill("/sh");
-		await chatInput.press("Enter");
-		await chatInput.fill("echo hello");
-		await chatInput.press("Enter");
-		await expect
-			.poll(
-				async () =>
-					await page.evaluate(() => {
-						var payloads = window.__chatSendPayloads || [];
-						var last = payloads[payloads.length - 1];
-						return last?.text || "";
-					}),
-				{ timeout: 5_000 },
-			)
-			.toBe("/sh echo hello");
 	});
 
 	test("attaches arbitrary files with metadata", async ({ page }) => {
@@ -943,18 +888,14 @@ test.describe("Chat input and slash commands", () => {
 				state.setSessionCurrentContextTokens(0);
 				state.setSessionContextWindow(0);
 				state.setSessionToolsEnabled(true);
-				state.setSessionCommandMode("host");
-				state.setSessionCommandPromptSymbol("$");
-				state.setCommandModeEnabled(false);
 				chatUi.updateTokenBar();
 				var bar = document.querySelector("#tokenBar");
-				if (!bar) return { visible: false, text: "", hasExec: false, hasCommandMode: false };
+				if (!bar) return { visible: false, text: "", hasExec: false };
 				var text = bar.textContent || "";
 				return {
 					visible: window.getComputedStyle(bar).display !== "none",
 					text,
 					hasExec: text.includes("Execute:"),
-					hasCommandMode: text.includes("/sh mode"),
 				};
 			});
 		}
@@ -963,7 +904,6 @@ test.describe("Chat input and slash commands", () => {
 			visible: true,
 			text: "0",
 			hasExec: false,
-			hasCommandMode: false,
 		});
 		expect(pageErrors).toEqual([]);
 	});
@@ -983,7 +923,6 @@ test.describe("Chat input and slash commands", () => {
 			state.setSessionCurrentContextTokens(0);
 			state.setSessionContextWindow(200000);
 			state.setSessionToolsEnabled(true);
-			state.setCommandModeEnabled(false);
 			chatUi.updateTokenBar();
 		});
 

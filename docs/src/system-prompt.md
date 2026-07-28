@@ -213,7 +213,7 @@ calling:
 The final section contains:
 
 - Tool usage guidelines (conversation first, when to use
-  execute_command/browser, `/sh` explicit shell prefix)
+  execute_command/browser)
 - A reminder not to parrot raw tool output
 - **Silent reply protocol**: when tool output speaks for itself, the LLM should
   return an empty response rather than acknowledging it

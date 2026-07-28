@@ -478,46 +478,6 @@ pub(in crate::channel_events) async fn handle_sandbox(
     ))
 }
 
-pub(in crate::channel_events) async fn handle_sh(
-    state: &Arc<GatewayState>,
-    session_key: &str,
-    args: &str,
-) -> ChannelResult<String> {
-    let route = if state.sandbox_router.enabled() {
-        "sandboxed"
-    } else {
-        "host"
-    };
-
-    match args {
-        "" | "on" => {
-            state.set_channel_command_mode(session_key, true).await;
-            Ok(format!(
-                "Command mode enabled ({route}). Send commands as plain messages. Use /sh off (or /sh exit) to leave."
-            ))
-        },
-        "off" | "exit" => {
-            state.set_channel_command_mode(session_key, false).await;
-            Ok("Command mode disabled. Back to normal chat mode.".to_string())
-        },
-        "status" => {
-            let enabled = state.is_channel_command_mode_enabled(session_key).await;
-            if enabled {
-                Ok(format!(
-                    "Command mode is enabled ({route}). Use /sh off (or /sh exit) to leave."
-                ))
-            } else {
-                Ok(format!(
-                    "Command mode is disabled ({route}). Use /sh to enable."
-                ))
-            }
-        },
-        _ => Err(ChannelError::invalid_input(
-            "usage: /sh [on|off|exit|status]",
-        )),
-    }
-}
-
 pub(in crate::channel_events) async fn handle_stop(
     state: &Arc<GatewayState>,
     session_key: &str,

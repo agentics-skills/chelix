@@ -1,6 +1,6 @@
 // ── Slash command UI ─────────────────────────────────────────
 
-import { chatAddMsg, updateCommandInputUI } from "../../chat-ui";
+import { chatAddMsg } from "../../chat-ui";
 import { renderMarkdown, sendRpc } from "../../helpers";
 import { clearActiveSession, fetchSessions, switchSession } from "../../sessions";
 import * as S from "../../state";
@@ -19,8 +19,7 @@ type SlashCommandName =
 	| "insights"
 	| "mode"
 	| "new"
-	| "reset"
-	| "sh";
+	| "reset";
 
 export interface SlashCommand {
 	name: SlashCommandName;
@@ -83,7 +82,6 @@ export const slashCommands: SlashCommand[] = [
 	{ name: "mode", description: "Switch session mode (/mode none to clear)" },
 	{ name: "new", description: "Start a new session" },
 	{ name: "reset", description: "Clear conversation history" },
-	{ name: "sh", description: "Enter command mode (/sh off or Esc to exit)" },
 ];
 
 let slashMenuEl: HTMLDivElement | null = null;
@@ -244,26 +242,8 @@ export function parseSlashCommand(text: string): ParsedSlash | null {
 	};
 }
 
-function isShLocalToggle(args: string): boolean {
-	if (!args) return true;
-	const normalized = args.toLowerCase();
-	return normalized === "on" || normalized === "off" || normalized === "exit";
-}
-
-export function shouldHandleSlashLocally(cmdName: string, args: string): boolean {
-	if (cmdName === "sh") return isShLocalToggle(args);
+export function shouldHandleSlashLocally(cmdName: string): boolean {
 	return slashCommands.some((c) => c.name === cmdName);
-}
-
-function commandModeSummary(): string {
-	const commandModeLabel = S.sessionCommandMode === "sandbox" ? "sandboxed" : "host";
-	const promptSymbol = S.sessionCommandPromptSymbol || "$";
-	return `${commandModeLabel}, prompt ${promptSymbol}`;
-}
-
-function setCommandMode(enabled: boolean): void {
-	S.setCommandModeEnabled(!!enabled);
-	updateCommandInputUI();
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -386,21 +366,6 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 			if (res.ok) switchSession(S.activeSessionKey);
 			else chatAddMsg("error", res.error?.message || "Reset failed");
 		});
-	},
-
-	sh: (args) => {
-		const normalized = (args || "").toLowerCase();
-		if (normalized === "off" || normalized === "exit") {
-			setCommandMode(false);
-			chatAddMsg("system", renderMarkdown("**Command:** mode disabled"), true);
-			return;
-		}
-		setCommandMode(true);
-		chatAddMsg(
-			"system",
-			renderMarkdown(`**Command:** mode enabled (${commandModeSummary()}) \u00b7 exit with /sh off or Esc`),
-			true,
-		);
 	},
 
 	insights: (args) => {

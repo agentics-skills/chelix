@@ -725,27 +725,6 @@
    2. status strip — model · reasoning · token usage      (~20px)
    No outer margins, no rounding, 1px separators between controls. */
 
-.chat-command-prompt {
-  align-self: stretch;
-  min-width: 18px;
-  border: 0;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-}
-
-.chat-command-prompt-hidden {
-  display: none;
-}
-
 .chat-input-row {
   border-top: 0;
   background: var(--bg);
@@ -934,10 +913,6 @@
 .chat-composer-send-btn:disabled {
   cursor: default;
   opacity: 0.4;
-}
-
-.chat-input-row.command-mode #chatInput {
-  font-family: var(--font-mono);
 }
 
 .msg-model-footer {

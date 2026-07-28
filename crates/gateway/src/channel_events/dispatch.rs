@@ -16,12 +16,6 @@ pub(in crate::channel_events) async fn dispatch_to_chat(
         } else {
             default_channel_session_key(&reply_to)
         };
-        let effective_text = if state.is_channel_command_mode_enabled(&session_key).await {
-            rewrite_for_shell_mode(text).unwrap_or_else(|| text.to_string())
-        } else {
-            text.to_string()
-        };
-
         // Broadcast a "chat" event so the web UI shows the user message
         // in real-time (like typing from the UI).
         //
@@ -125,7 +119,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat(
 
         let chat = state.chat();
         let mut params = serde_json::json!({
-            "text": effective_text,
+            "text": text,
             "channel": &meta,
             "_session_key": &session_key,
             // Defer reply-target registration until chat.send() actually

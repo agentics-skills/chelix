@@ -58,53 +58,6 @@ async fn resolve_channel_session(
     default_channel_session_key(target)
 }
 
-fn slash_command_name(text: &str) -> Option<&str> {
-    let rest = text.trim_start().strip_prefix('/')?;
-    let cmd = rest.split_whitespace().next().unwrap_or("");
-    if cmd.is_empty() {
-        None
-    } else {
-        Some(cmd)
-    }
-}
-
-fn is_channel_control_command_name(cmd: &str) -> bool {
-    matches!(
-        cmd,
-        "new"
-            | "clear"
-            | "compact"
-            | "context"
-            | "model"
-            | "sandbox"
-            | "sessions"
-            | "attach"
-            | "approvals"
-            | "approve"
-            | "deny"
-            | "agent"
-            | "help"
-            | "sh"
-            | "peek"
-            | "stop"
-    )
-}
-
-fn rewrite_for_shell_mode(text: &str) -> Option<String> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    if let Some(cmd) = slash_command_name(trimmed)
-        && is_channel_control_command_name(cmd)
-    {
-        return None;
-    }
-
-    Some(format!("/sh {trimmed}"))
-}
-
 fn parse_numbered_selection(arg: &str, command_name: &str) -> ChannelResult<usize> {
     arg.parse()
         .map_err(|_| ChannelError::invalid_input(format!("usage: /{command_name} [number]")))

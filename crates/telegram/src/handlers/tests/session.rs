@@ -12,21 +12,6 @@ fn session_key_group() {
     assert_eq!(key, "telegram:bot1:group:-100999");
 }
 
-#[test]
-fn intercepts_shell_mode_control_commands_only() {
-    assert!(should_intercept_slash_command("sh", "sh"));
-    assert!(should_intercept_slash_command("sh", "sh on"));
-    assert!(should_intercept_slash_command("sh", "sh off"));
-    assert!(should_intercept_slash_command("sh", "sh exit"));
-    assert!(should_intercept_slash_command("sh", "sh status"));
-}
-
-#[test]
-fn shell_command_payloads_are_not_intercepted() {
-    assert!(!should_intercept_slash_command("sh", "sh uname -a"));
-    assert!(!should_intercept_slash_command("sh", "sh ls -la"));
-}
-
 /// Security: the OTP challenge message sent to the Telegram user must
 /// NEVER contain the verification code.  The code should only be visible
 /// to the admin in the web UI.  If this test fails, unauthenticated users

@@ -22,9 +22,7 @@ use crate::{
     response_sanitizer::{clean_response, recover_tool_calls_from_content},
     tool_arg_validator::validate_tool_args,
     tool_loop_detector::ToolCallFingerprint,
-    tool_parsing::{
-        looks_like_failed_tool_call, new_synthetic_tool_call_id, parse_tool_calls_from_text,
-    },
+    tool_parsing::{looks_like_failed_tool_call, parse_tool_calls_from_text},
     tool_registry::ToolRegistry,
 };
 
@@ -34,9 +32,9 @@ use super::{
     apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
     channel_binding_from_tool_context, dispatch_after_llm_call_hook,
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, enrich_tool_arguments,
-    explicit_shell_command_from_user_content, fallback_final_text_source,
-    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
-    log_tool_argument_diagnostic, public_tool_arguments, record_answer_text, resolve_tool_lookup,
+    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
+    is_substantive_answer_text, log_tool_argument_diagnostic, public_tool_arguments,
+    record_answer_text, resolve_tool_lookup,
     retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms, resolve_agent_max_iterations},
     sanitize_tool_name, streaming_tool_call_message_content,
     tool_result::persist_and_truncate,
@@ -169,8 +167,6 @@ pub async fn run_agent_loop_streaming_with_limits(
             matches!(message, ChatMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty())
         })
         .count();
-    let explicit_shell_command = explicit_shell_command_from_user_content(user_content);
-
     // Extract session key once for hook payloads.
     let session_key_for_hooks = tool_context
         .as_ref()
@@ -576,28 +572,6 @@ pub async fn run_agent_loop_streaming_with_limits(
                 accumulated_text = cleaned;
                 tool_calls = recovered;
             }
-        }
-
-        // Final fallback: if the user turn is an explicit `/sh ...` command and
-        // the model returned plain text, force one execute_command tool call so this path
-        // is deterministic in the UI.
-        if tool_calls.is_empty()
-            && iterations == 1
-            && total_tool_calls == 0
-            && let Some(command) = explicit_shell_command.as_ref()
-            && tools.get("execute_command").is_some()
-        {
-            info!(command = %command, "forcing execute_command tool call from explicit /sh command");
-            // Preserve streamed reasoning/planning text on the assistant tool
-            // message so providers that validate thinking history accept the
-            // next iteration.
-            tool_calls = vec![ToolCall {
-                id: new_synthetic_tool_call_id("forced"),
-                name: "execute_command".to_string(),
-                arguments: serde_json::json!({ "command": command }),
-                argument_diagnostic: None,
-                metadata: None,
-            }];
         }
 
         if let Some(tc) = find_empty_tool_name_call(&tool_calls) {

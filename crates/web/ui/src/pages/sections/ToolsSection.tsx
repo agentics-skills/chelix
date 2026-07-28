@@ -17,7 +17,6 @@ interface ToolGroup {
 
 interface ToolsContextData {
 	session?: { model?: string; provider?: string; label?: string };
-	execution?: { mode?: string; promptSymbol?: string };
 	sandbox?: { enabled?: boolean; backend?: string };
 	tools?: ToolEntry[];
 	supportsTools?: boolean;
@@ -88,11 +87,10 @@ export function ToolsSection(): VNode {
 
 	const data = toolData || ({} as ToolsContextData);
 	const session = data.session || {};
-	const execution = data.execution || {};
 	const sandbox = data.sandbox || {};
 	const tools: ToolEntry[] = Array.isArray(data.tools) ? data.tools : [];
 	const toolGroups = groupToolsForOverview(tools);
-	const executionMode = execution.mode === "sandbox" ? "Sandbox" : "Host";
+	const executionMode = sandbox.enabled ? "Sandbox" : "Host";
 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
@@ -150,7 +148,6 @@ export function ToolsSection(): VNode {
 					<div className="mt-2 text-sm font-medium text-[var(--text)]">{executionMode}</div>
 					<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
 						{sandbox.enabled ? `Sandbox backend: ${sandbox.backend || "configured"}. ` : ""}
-						{execution.promptSymbol ? `Prompt symbol: ${execution.promptSymbol}. ` : ""}
 						The <code className="text-[var(--text)]">execute_command</code> tool runs through the managed tools service.
 					</div>
 				</div>

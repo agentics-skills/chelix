@@ -20,5 +20,4 @@ export const chatAddMsg = (...args) => chatUi().chatAddMsg?.(...args);
 export const chatAddMsgWithImages = (...args) => chatUi().chatAddMsgWithImages?.(...args);
 export const updateTokenBar = (...args) => chatUi().updateTokenBar?.(...args);
 export const renderApprovalCard = (...args) => chatUi().renderApprovalCard?.(...args);
-export const updateCommandInputUI = (...args) => chatUi().updateCommandInputUI?.(...args);
 export const smartScrollToBottom = (...args) => chatUi().smartScrollToBottom?.(...args);

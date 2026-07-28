@@ -276,45 +276,6 @@ pub(crate) fn build_persisted_tool_call(
     }
 }
 
-/// Build the assistant protocol frame for direct tool execution paths that do
-/// not stream an assistant text segment (for example `/sh`).
-pub(crate) fn build_tool_call_assistant_message(
-    tool_call_id: impl Into<String>,
-    tool_name: impl Into<String>,
-    arguments: Option<Value>,
-    metadata: Option<serde_json::Map<String, Value>>,
-    seq: Option<u64>,
-    run_id: Option<&str>,
-) -> PersistedMessage {
-    PersistedMessage::Assistant {
-        content: String::new(),
-        created_at: Some(now_ms()),
-        model: None,
-        provider: None,
-        reasoning_effort: None,
-        input_tokens: None,
-        output_tokens: None,
-        cache_read_tokens: None,
-        cache_write_tokens: None,
-        duration_ms: None,
-        request_input_tokens: None,
-        request_output_tokens: None,
-        request_cache_read_tokens: None,
-        request_cache_write_tokens: None,
-        tool_calls: Some(vec![build_persisted_tool_call(
-            tool_call_id,
-            tool_name,
-            arguments,
-            metadata,
-        )]),
-        reasoning: None,
-        llm_api_response: None,
-        audio: None,
-        seq,
-        run_id: run_id.map(str::to_string),
-    }
-}
-
 pub(crate) fn build_persisted_assistant_message(
     assistant_output: AssistantTurnOutput,
     model: Option<String>,
@@ -437,34 +398,6 @@ pub(crate) fn latest_tool_segment_index(
     tool_segment_indices: &HashMap<String, usize>,
 ) -> Option<usize> {
     tool_segment_indices.values().copied().max()
-}
-
-pub(crate) async fn persist_tool_history_pair(
-    session_store: &Arc<SessionStore>,
-    session_key: &str,
-    assistant_tool_call_msg: PersistedMessage,
-    tool_result_msg: PersistedMessage,
-    assistant_warn_context: &str,
-    tool_result_warn_context: &str,
-) {
-    if let Err(e) = session_store
-        .append(session_key, &assistant_tool_call_msg.to_value())
-        .await
-    {
-        warn!("{assistant_warn_context}: {e}");
-        warn!(
-            session = %session_key,
-            "skipping tool result persistence to avoid orphaned tool history"
-        );
-        return;
-    }
-
-    if let Err(e) = session_store
-        .append(session_key, &tool_result_msg.to_value())
-        .await
-    {
-        warn!("{tool_result_warn_context}: {e}");
-    }
 }
 
 pub struct LiveChatService {
@@ -964,9 +897,9 @@ mod tests {
         super::{
             ActiveAssistantDraft, ActiveToolCall, append_assistant_delta,
             build_persisted_assistant_message, build_persisted_tool_call,
-            build_tool_call_assistant_message, finalize_aborted_tool_segment,
-            finalize_persisted_assistant_message, latest_tool_segment_index,
-            persist_active_assistant_draft, persist_final_assistant_segment,
+            finalize_aborted_tool_segment, finalize_persisted_assistant_message,
+            latest_tool_segment_index, persist_active_assistant_draft,
+            persist_final_assistant_segment,
         },
         crate::types::AssistantTurnOutput,
         chelix_agents::model::Usage,
@@ -1062,36 +995,6 @@ mod tests {
                 assert_eq!(request_cache_write_tokens, None);
                 assert_eq!(seq, Some(7));
                 assert_eq!(run_id.as_deref(), Some("run-1"));
-            },
-            _ => panic!("expected assistant message"),
-        }
-    }
-
-    #[test]
-    fn tool_call_assistant_message_omits_cache_usage_fields() {
-        let message = build_tool_call_assistant_message(
-            "tool-1",
-            "execute_command",
-            Some(serde_json::json!({"cmd": "ls"})),
-            None,
-            Some(3),
-            Some("run-1"),
-        );
-
-        match message {
-            PersistedMessage::Assistant {
-                cache_read_tokens,
-                cache_write_tokens,
-                request_cache_read_tokens,
-                request_cache_write_tokens,
-                tool_calls,
-                ..
-            } => {
-                assert_eq!(cache_read_tokens, None);
-                assert_eq!(cache_write_tokens, None);
-                assert_eq!(request_cache_read_tokens, None);
-                assert_eq!(request_cache_write_tokens, None);
-                assert_eq!(tool_calls.as_ref().map(Vec::len), Some(1));
             },
             _ => panic!("expected assistant message"),
         }

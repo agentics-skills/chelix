@@ -10,7 +10,6 @@ import {
 	scrollChatToBottom,
 	stripChannelPrefix,
 	syncChatFollowStateFromPosition,
-	updateCommandInputUI,
 	updateTokenBar,
 } from "../chat-ui";
 import { getA2uiToolArgumentsError, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
@@ -142,18 +141,10 @@ interface TokenUsage {
 	currentTotal?: number;
 }
 
-/** Execution environment info returned by chat.context RPC. */
-interface ExecutionInfo {
-	mode?: string;
-	isRoot?: boolean;
-	hostIsRoot?: boolean;
-}
-
 /** Payload returned by the chat.context RPC. */
 interface ChatContextPayload {
 	tokenUsage?: TokenUsage;
 	supportsTools?: boolean;
-	execution?: ExecutionInfo;
 }
 
 // ── Multimodal parsing ───────────────────────────────────────
@@ -402,18 +393,7 @@ export function postHistoryLoadActions(
 				S.setSessionCurrentContextTokens(tu.currentTotal || tu.estimatedNextInputTokens || tu.currentInputTokens || 0);
 			}
 			S.setSessionToolsEnabled(p.supportsTools !== false);
-			const execution = p.execution || {};
-			const mode = execution.mode === "sandbox" ? "sandbox" : "host";
-			const hostIsRoot = execution.hostIsRoot === true;
-			let isRoot = execution.isRoot;
-			if (typeof isRoot !== "boolean") {
-				isRoot = mode === "sandbox" ? true : hostIsRoot;
-			}
-			S.setHostCommandIsRoot(hostIsRoot);
-			S.setSessionCommandMode(mode);
-			S.setSessionCommandPromptSymbol(isRoot ? "#" : "$");
 		}
-		updateCommandInputUI();
 		updateTokenBar();
 	});
 	updateTokenBar();

@@ -127,7 +127,7 @@ pub async fn handle_event(
 
     if let Some(cmd_text) = text.strip_prefix('/') {
         let cmd_name = cmd_text.split_whitespace().next().unwrap_or("");
-        if is_channel_command(cmd_name, cmd_text) {
+        if is_channel_command(cmd_name) {
             let response = if cmd_name == "help" {
                 Ok(help_text())
             } else {

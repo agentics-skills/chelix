@@ -85,37 +85,6 @@ fn channel_event_serialization_nulls() {
     assert_eq!(json["access_granted"], false);
 }
 
-#[test]
-fn shell_mode_rewrite_plain_text() {
-    assert_eq!(
-        rewrite_for_shell_mode("uname -a").as_deref(),
-        Some("/sh uname -a")
-    );
-}
-
-#[test]
-fn shell_mode_rewrite_skips_control_commands() {
-    assert!(rewrite_for_shell_mode("/context").is_none());
-    assert!(rewrite_for_shell_mode("/attach").is_none());
-    assert!(rewrite_for_shell_mode("/sh uname -a").is_none());
-}
-
-#[test]
-fn peek_and_stop_are_control_commands() {
-    assert!(is_channel_control_command_name("peek"));
-    assert!(is_channel_control_command_name("stop"));
-    assert!(is_channel_control_command_name("attach"));
-    assert!(is_channel_control_command_name("approvals"));
-    assert!(is_channel_control_command_name("approve"));
-    assert!(is_channel_control_command_name("deny"));
-}
-
-#[test]
-fn shell_mode_rewrite_skips_peek_and_stop() {
-    assert!(rewrite_for_shell_mode("/peek").is_none());
-    assert!(rewrite_for_shell_mode("/stop").is_none());
-}
-
 // ── unique_providers ───────────────────────────────────────────
 
 /// Regression test for GitHub issue #637: providers must be deduplicated

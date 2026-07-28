@@ -545,51 +545,6 @@ pub(crate) fn extract_preview_from_value(msg: &Value) -> Option<String> {
     message_text(msg).map(|t| truncate_preview(&t, 200))
 }
 
-pub(crate) fn shell_reply_text_from_command_result(result: &Value) -> String {
-    let stdout = result
-        .get("stdout")
-        .and_then(Value::as_str)
-        .map(str::trim_end)
-        .unwrap_or("");
-    if !stdout.is_empty() {
-        return stdout.to_string();
-    }
-
-    let output = result
-        .get("output")
-        .and_then(Value::as_str)
-        .map(str::trim_end)
-        .unwrap_or("");
-    if !output.is_empty() {
-        return output.to_string();
-    }
-
-    let stderr = result
-        .get("stderr")
-        .and_then(Value::as_str)
-        .map(str::trim_end)
-        .unwrap_or("");
-    if !stderr.is_empty() {
-        return stderr.to_string();
-    }
-
-    let exit_code = result
-        .get("exit_code")
-        .or_else(|| result.get("exitCode"))
-        .and_then(Value::as_i64)
-        .or_else(|| {
-            result
-                .get("exit_code")
-                .or_else(|| result.get("exitCode"))
-                .and_then(Value::as_u64)
-                .and_then(|code| i64::try_from(code).ok())
-        });
-    match exit_code {
-        Some(code) if code != 0 => format!("Command failed (exit {code})."),
-        _ => String::new(),
-    }
-}
-
 pub fn normalize_model_key(value: &str) -> String {
     let mut normalized = String::with_capacity(value.len());
     let mut last_was_separator = true;
@@ -717,21 +672,6 @@ pub(crate) fn sanitize_user_document_display_name(name: &str) -> Option<String> 
     }
 }
 
-pub(crate) fn parse_explicit_shell_command(text: &str) -> Option<&str> {
-    let trimmed = text.trim_start();
-    let rest = trimmed.strip_prefix("/sh")?;
-    let first = rest.chars().next()?;
-    if !first.is_whitespace() {
-        return None;
-    }
-    let command = &rest[first.len_utf8()..];
-    if command.trim().is_empty() {
-        None
-    } else {
-        Some(command)
-    }
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PromptMemoryStatus {
@@ -848,44 +788,6 @@ pub(crate) async fn detect_host_sudo_access() -> (Option<bool>, Option<String>) 
             },
             Err(_) => (None, Some("unknown".to_string())),
         }
-    }
-}
-
-pub(crate) async fn detect_host_root_user() -> Option<bool> {
-    #[cfg(not(unix))]
-    {
-        return None;
-    }
-
-    #[cfg(unix)]
-    {
-        use std::process::Stdio;
-        if let Some(uid) = std::env::var("EUID")
-            .ok()
-            .or_else(|| std::env::var("UID").ok())
-            .and_then(|raw| raw.trim().parse::<u32>().ok())
-        {
-            return Some(uid == 0);
-        }
-        if let Ok(user) = std::env::var("USER") {
-            let trimmed = user.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed == "root");
-            }
-        }
-        let output = tokio::process::Command::new("id")
-            .arg("-u")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .await
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let uid_text = String::from_utf8_lossy(&output.stdout);
-        uid_text.trim().parse::<u32>().ok().map(|uid| uid == 0)
     }
 }
 

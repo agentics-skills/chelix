@@ -557,7 +557,7 @@ pub async fn handle_message_direct(
         if body.starts_with('/') {
             let cmd_text = body.trim_start_matches('/');
             let cmd = cmd_text.split_whitespace().next().unwrap_or("");
-            if should_intercept_slash_command(cmd, cmd_text) {
+            if chelix_channels::commands::is_channel_command(cmd) {
                 // For /context, send a formatted card with inline keyboard.
                 if cmd == "context" {
                     let context_result = sink
@@ -667,7 +667,7 @@ pub async fn handle_message_direct(
                     return Ok(());
                 }
 
-                // For bare commands with fixed choices (e.g. /sh, /fast),
+                // For bare commands with fixed choices (e.g. /fast),
                 // show an inline keyboard derived from CommandDef.choices.
                 // Commands with custom keyboard handlers (model, agent, etc.)
                 // are handled above and won't reach this point.
@@ -761,11 +761,6 @@ pub async fn handle_message_direct(
 
     Ok(())
 }
-
-fn should_intercept_slash_command(cmd: &str, cmd_text: &str) -> bool {
-    chelix_channels::commands::is_channel_command(cmd, cmd_text)
-}
-
 /// Handle an edited message — only processes live location updates.
 ///
 /// Telegram sends live location updates as `EditedMessage` with `MediaKind::Location`.

@@ -318,7 +318,7 @@ async fn handle_event(
 
     if let Some(cmd_text) = text.strip_prefix('/') {
         let cmd_name = cmd_text.split_whitespace().next().unwrap_or("");
-        if chelix_channels::commands::is_channel_command(cmd_name, cmd_text) {
+        if chelix_channels::commands::is_channel_command(cmd_name) {
             let response = if cmd_name == "help" {
                 Ok(chelix_channels::commands::help_text())
             } else {

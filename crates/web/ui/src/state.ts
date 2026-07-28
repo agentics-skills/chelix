@@ -65,10 +65,6 @@ export let sessionSwitchInProgress = false;
 export let lastHistoryIndex = -1;
 export let sessionContextWindow = 0;
 export let sessionToolsEnabled = true;
-export let sessionCommandMode = "host";
-export let sessionCommandPromptSymbol = "$";
-export let hostCommandIsRoot = false;
-export let commandModeEnabled = false;
 
 // Provider/channel page refresh callbacks
 export let refreshProvidersPage: (() => void) | null = null;
@@ -229,18 +225,6 @@ export function setSessionContextWindow(v: number): void {
 }
 export function setSessionToolsEnabled(v: boolean): void {
 	sessionToolsEnabled = v;
-}
-export function setSessionCommandMode(v: string): void {
-	sessionCommandMode = v;
-}
-export function setSessionCommandPromptSymbol(v: string): void {
-	sessionCommandPromptSymbol = v;
-}
-export function setHostCommandIsRoot(v: boolean): void {
-	hostCommandIsRoot = !!v;
-}
-export function setCommandModeEnabled(v: boolean): void {
-	commandModeEnabled = !!v;
 }
 export function setRefreshProvidersPage(v: (() => void) | null): void {
 	refreshProvidersPage = v;

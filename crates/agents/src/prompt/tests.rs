@@ -684,8 +684,6 @@ fn test_silent_replies_section_in_tool_prompt() {
     assert!(prompt.contains("## Silent Replies"));
     assert!(prompt.contains("empty response"));
     assert!(prompt.contains("Do not call tools for greetings"));
-    assert!(prompt.contains("`/sh `"));
-    assert!(prompt.contains("run it with `execute_command` exactly as written"));
     assert!(prompt.contains("Do not express surprise about sandbox vs host execution"));
     assert!(!prompt.contains("__SILENT__"));
 }

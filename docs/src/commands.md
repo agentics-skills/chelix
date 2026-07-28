@@ -39,7 +39,6 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 | `/mode [N\|name\|none]`       | Switch session mode                       |
 | `/model [N]`                  | Switch provider/model                     |
 | `/sandbox [on\|off\|image N]` | Toggle sandbox and choose image           |
-| `/sh [on\|off]`               | Enter command mode (passthrough to shell) |
 | `/stop`                       | Abort the current running agent           |
 | `/peek`                       | Show current thinking/tool status         |
 | `/update [version]`           | Update chelix (owner-only)                |

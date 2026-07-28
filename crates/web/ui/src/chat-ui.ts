@@ -457,28 +457,6 @@ export function chatAutoResize(): void {
 	S.chatInput.style.height = `${Math.min(S.chatInput.scrollHeight, 120)}px`;
 }
 
-export function updateCommandInputUI(): void {
-	if (!S.chatInput) return;
-	const row = S.chatInput.closest(".chat-input-row");
-	if (row) {
-		row.classList.toggle("command-mode", S.commandModeEnabled);
-	}
-	const prompt = S.$("chatCommandPrompt");
-	if (prompt) {
-		prompt.textContent = S.sessionCommandPromptSymbol || "$";
-		prompt.classList.toggle("chat-command-prompt-hidden", !S.commandModeEnabled);
-		prompt.setAttribute("aria-hidden", S.commandModeEnabled ? "false" : "true");
-	}
-	if (S.commandModeEnabled) {
-		(S.chatInput as HTMLTextAreaElement).placeholder = "Run shell command\u2026";
-		S.chatInput.setAttribute("aria-label", "Command input");
-	} else {
-		(S.chatInput as HTMLTextAreaElement).placeholder = "Type a message...";
-		S.chatInput.setAttribute("aria-label", "Chat input");
-	}
-	updateTokenBar();
-}
-
 export function setComposerStopButton(active: boolean, sessionKey: string = S.activeSessionKey): void {
 	const btn = S.$<HTMLButtonElement>("sendBtn");
 	if (!btn) return;
@@ -520,9 +498,6 @@ function tokenBarUsageText(total: number): string {
 	}
 	if (!S.sessionToolsEnabled) {
 		text += `${text ? " \u00b7 " : ""}Tools: disabled`;
-	}
-	if (S.commandModeEnabled) {
-		text += `${text ? " \u00b7 " : ""}/sh mode`;
 	}
 	return text;
 }

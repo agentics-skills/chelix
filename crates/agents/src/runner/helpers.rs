@@ -12,7 +12,7 @@ use {
 use crate::{
     model::{
         ChatMessage, ToolCall, ToolCallArgumentDiagnostic, ToolCallArgumentSource, Usage,
-        UserContent, provider_values_to_chat_messages,
+        provider_values_to_chat_messages,
     },
     response_sanitizer::clean_response,
     tool_loop_detector::{
@@ -547,50 +547,6 @@ pub(crate) fn resolve_tool_lookup<'a>(
     Cow<'a, str>,
 ) {
     (tools.get(name), Cow::Borrowed(name))
-}
-
-/// Detect an explicit shell command in the latest user turn.
-///
-/// Only `/sh ...` commands are treated as explicit shell execution requests.
-/// This keeps normal chat turns (`hey`, `hello`, etc.) out of the forced-command path.
-///
-/// Supported forms:
-/// - `/sh pwd`
-/// - `/sh@mybot uname -a`
-pub(crate) fn explicit_shell_command_from_user_content(
-    user_content: &UserContent,
-) -> Option<String> {
-    let text = match user_content {
-        UserContent::Text(text) => text.trim(),
-        UserContent::Multimodal(_) => return None,
-    };
-
-    if text.is_empty() || text.len() > 4096 || text.contains('\n') || text.contains('\r') {
-        return None;
-    }
-
-    let rest = text.strip_prefix('/')?;
-    let split_idx = rest.find(char::is_whitespace)?;
-    let head = &rest[..split_idx];
-    let command = rest[split_idx..].trim_start();
-    if command.is_empty() {
-        return None;
-    }
-
-    let head_lower = head.to_ascii_lowercase();
-    let is_sh_prefix = if head_lower == "sh" {
-        true
-    } else {
-        head_lower
-            .strip_prefix("sh@")
-            .is_some_and(|mention| !mention.is_empty())
-    };
-
-    if !is_sh_prefix {
-        return None;
-    }
-
-    Some(command.to_string())
 }
 
 /// Returns `true` if `text` (trimmed) is long enough to be considered a real

@@ -383,13 +383,12 @@ pub async fn handle_room_message(
         }
 
         // Intercept known slash commands before dispatching to LLM.
-        // Unknown commands (e.g. /foo) and /sh with arbitrary args
-        // (e.g. /sh ls -la) fall through to the LLM.
+        // Unknown commands fall through to the LLM.
         if matches!(kind, ChannelMessageKind::Text)
             && let Some(cmd_text) = body.strip_prefix('/')
         {
             let cmd_name = cmd_text.split_whitespace().next().unwrap_or("");
-            if chelix_channels::commands::is_channel_command(cmd_name, cmd_text) {
+            if chelix_channels::commands::is_channel_command(cmd_name) {
                 let response = if cmd_name == "help" {
                     Ok(channel_help_text())
                 } else {

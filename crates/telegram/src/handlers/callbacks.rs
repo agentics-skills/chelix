@@ -233,8 +233,8 @@ pub(super) async fn send_model_keyboard(bot: &Bot, to: &str, text: &str) {
 
 /// Render a command's fixed choices as an inline keyboard.
 ///
-/// Used for commands like `/sh` and `/fast` that have a small set of known
-/// values. The callback data format is `{cmd}_choice:{value}`, handled by
+/// Used for commands like `/fast` that have a small set of known values. The
+/// callback data format is `{cmd}_choice:{value}`, handled by
 /// `handle_callback_query` in `implementation.rs`.
 pub(super) async fn send_choices_keyboard(
     bot: &Bot,

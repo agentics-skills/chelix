@@ -94,11 +94,6 @@ mod tests {
     #[test]
     fn manifest_snippet_includes_usage_hints() {
         let snippet = generate_manifest_snippet("https://example.com");
-        // /sh has choices, so usage_hint should list them.
-        assert!(
-            snippet.contains("usage_hint: \"[on | off | exit | status]\""),
-            "manifest should include /sh choices in usage_hint"
-        );
         // /fast also has choices.
         assert!(
             snippet.contains("usage_hint: \"[on | off]\""),

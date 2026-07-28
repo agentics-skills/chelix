@@ -98,7 +98,7 @@ function chatAutoResize(): void {
 export function tryHandleLocalSlashCommand(text: string, hasAttachments: boolean): boolean {
 	if (text.charAt(0) !== "/" || hasAttachments) return false;
 	const slash = parseSlashCommand(text);
-	if (!(slash && shouldHandleSlashLocally(slash.name, slash.args))) return false;
+	if (!(slash && shouldHandleSlashLocally(slash.name))) return false;
 	(S.chatInput as HTMLTextAreaElement).value = "";
 	chatAutoResize();
 	slashHideMenu();
@@ -147,13 +147,6 @@ export function resetComposerAfterSend(): void {
 	if (window.innerWidth < 768) S.chatInput?.blur();
 }
 
-export function normalizeOutgoingText(text: string, hasAttachments: boolean): string {
-	if (!(S.commandModeEnabled && text && !hasAttachments)) return text;
-	const parsed = parseSlashCommand(text);
-	if (parsed && parsed.name === "sh") return text;
-	return `/sh ${text}`;
-}
-
 export function applySelectedModelToChatParams(chatParams: ChatSendParams): void {
 	const modelId = modelStore.selectedModelId.value;
 	if (!modelId) return;
@@ -180,9 +173,7 @@ export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, use
 export async function buildChatMessage(
 	text: string,
 	seq: number,
-	displayText?: string,
 ): Promise<{ params: ChatSendParams; el: HTMLElement | null; enableDeleteAction: () => void }> {
-	const userText = displayText !== undefined ? displayText : text;
 	const attachments = hasPendingAttachments() ? getPendingAttachments() : [];
 	const images = attachments.filter((attachment): attachment is PendingImageAttachment => Boolean(attachment.dataUrl));
 	const documents = attachments.filter((attachment) => !attachment.dataUrl);
@@ -195,11 +186,11 @@ export async function buildChatMessage(
 		for (const img of images) if (img.dataUrl) content.push({ type: "image_url", image_url: { url: img.dataUrl } });
 		const params: ChatSendParams = content.length > 0 ? { content, _seq: seq } : { text, _seq: seq };
 		if (uploadedDocuments.length > 0) params._document_files = uploadedDocuments;
-		const el = chatAddMsgWithAttachments("user", userText ? renderMarkdown(userText) : "", images, uploadedDocuments);
+		const el = chatAddMsgWithAttachments("user", text ? renderMarkdown(text) : "", images, uploadedDocuments);
 		appendUserMessageActions({
 			messageEl: el,
 			sessionKey: S.activeSessionKey,
-			text: userText,
+			text,
 			seq,
 			deleteEnabled: false,
 			onDeleted: (payload) => handleUserMessageDeleted(el, payload),
@@ -212,17 +203,17 @@ export async function buildChatMessage(
 				appendUserMessageActions({
 					messageEl: el,
 					sessionKey: S.activeSessionKey,
-					text: userText,
+					text,
 					seq,
 					onDeleted: (payload) => handleUserMessageDeleted(el, payload),
 				}),
 		};
 	}
-	const el = chatAddMsg("user", renderMarkdown(userText), true);
+	const el = chatAddMsg("user", renderMarkdown(text), true);
 	appendUserMessageActions({
 		messageEl: el,
 		sessionKey: S.activeSessionKey,
-		text: userText,
+		text,
 		seq,
 		deleteEnabled: false,
 		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
@@ -234,7 +225,7 @@ export async function buildChatMessage(
 			appendUserMessageActions({
 				messageEl: el,
 				sessionKey: S.activeSessionKey,
-				text: userText,
+				text,
 				seq,
 				onDeleted: (payload) => handleUserMessageDeleted(el, payload),
 			}),
@@ -371,10 +362,9 @@ async function sendChatAsync(): Promise<void> {
 	warmAudioPlayback();
 	try {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
-		const outgoingText = normalizeOutgoingText(text, hasAttachments);
 		const previousChatSeq = S.chatSeq;
 		S.setChatSeq(previousChatSeq + 1);
-		const msg = await buildChatMessage(outgoingText, S.chatSeq, text);
+		const msg = await buildChatMessage(text, S.chatSeq);
 		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
@@ -384,7 +374,7 @@ async function sendChatAsync(): Promise<void> {
 		applySelectedModelToChatParams(chatParams);
 		bumpSessionCount(S.activeSessionKey, 1);
 		cacheOutgoingUserMessage(S.activeSessionKey, chatParams);
-		seedSessionPreviewFromUserText(S.activeSessionKey, text || outgoingText);
+		seedSessionPreviewFromUserText(S.activeSessionKey, text);
 		setSessionReplying(S.activeSessionKey, true);
 		setComposerStopButton(true, S.activeSessionKey);
 		try {

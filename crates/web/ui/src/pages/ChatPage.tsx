@@ -631,11 +631,6 @@ function bindChatComposer(): void {
 	});
 	chatInput.addEventListener("keydown", (e: KeyboardEvent) => {
 		if (slashHandleKeydown(e)) return;
-		if (e.key === "Escape" && S.commandModeEnabled && !chatInput.value.trim()) {
-			e.preventDefault();
-			S.setCommandModeEnabled(false);
-			return;
-		}
 		if (e.key === "Enter" && !e.shiftKey && !(e as any).isComposing) {
 			e.preventDefault();
 			sendChat();
@@ -797,11 +792,9 @@ const chatPageHTML =
 	'<div id="chatTerminalModal" class="provider-modal-backdrop hidden"><div class="provider-modal chat-terminal-modal"><div class="provider-modal-header chat-terminal-modal-header"><div class="provider-item-name">Terminal</div><button id="chatTerminalModalCloseBtn" type="button" class="provider-btn provider-btn-secondary provider-btn-sm">Close</button></div><div class="provider-modal-body chat-terminal-modal-body"><div id="chatTerminalMount" class="chat-terminal-mount"></div></div></div></div>' +
 	'<div class="p-4 flex flex-col gap-2" id="messages" style="grid-row:3;overflow-y:auto;min-height:0;min-width:0"></div>' +
 	'<div id="queuedMessages" class="queued-tray hidden" style="grid-row:4;"></div>' +
-	'<div class="chat-input-row bg-[var(--bg)]" style="grid-row:5;"><div id="chatComposer" class="chat-composer"><div class="chat-composer-input-line"><input id="attachInput" class="hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple /><button id="attachBtn" type="button" title="Attach images" class="chat-composer-icon-btn"><span class="icon icon-md icon-paperclip"></span></button><span id="chatCommandPrompt" class="chat-command-prompt chat-command-prompt-hidden" title="Command prompt symbol" aria-hidden="true">$</span><textarea id="chatInput" placeholder="Type a message..." rows="1" enterkeyhint="send" class="chat-composer-textarea"></textarea><button id="micBtn" disabled title="Click to start recording" class="mic-btn chat-composer-icon-btn"><span class="icon icon-md icon-microphone"></span></button><button id="vadBtn" disabled title="Conversation mode (VAD)" class="vad-btn chat-composer-icon-btn"><span class="icon icon-md icon-waveform"></span></button><button id="sendBtn" disabled aria-label="Send" title="Send" class="chat-composer-send-btn"><span class="icon icon-md icon-arrow-up"></span></button></div><div class="chat-composer-status"><div id="modelCombo" class="model-combo"><button id="modelComboBtn" class="model-combo-btn" type="button"><span id="modelComboLabel">loading\u2026</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="modelDropdown" class="model-dropdown hidden"><input id="modelSearchInput" type="text" placeholder="Search models\u2026" class="model-search-input" autocomplete="off" /><div id="modelDropdownList" class="model-dropdown-list"></div></div></div><div id="reasoningCombo" class="model-combo hidden"><button id="reasoningComboBtn" class="model-combo-btn" type="button" title="Reasoning effort"><span class="icon icon-sm icon-brain" style="flex-shrink:0;"></span><span id="reasoningComboLabel">Off</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="reasoningDropdown" class="model-dropdown hidden"><div id="reasoningDropdownList" class="model-dropdown-list"></div></div></div><div id="tokenBar" class="token-bar"></div></div></div></div></div>';
+	'<div class="chat-input-row bg-[var(--bg)]" style="grid-row:5;"><div id="chatComposer" class="chat-composer"><div class="chat-composer-input-line"><input id="attachInput" class="hidden" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple /><button id="attachBtn" type="button" title="Attach images" class="chat-composer-icon-btn"><span class="icon icon-md icon-paperclip"></span></button><textarea id="chatInput" placeholder="Type a message..." aria-label="Chat input" rows="1" enterkeyhint="send" class="chat-composer-textarea"></textarea><button id="micBtn" disabled title="Click to start recording" class="mic-btn chat-composer-icon-btn"><span class="icon icon-md icon-microphone"></span></button><button id="vadBtn" disabled title="Conversation mode (VAD)" class="vad-btn chat-composer-icon-btn"><span class="icon icon-md icon-waveform"></span></button><button id="sendBtn" disabled aria-label="Send" title="Send" class="chat-composer-send-btn"><span class="icon icon-md icon-arrow-up"></span></button></div><div class="chat-composer-status"><div id="modelCombo" class="model-combo"><button id="modelComboBtn" class="model-combo-btn" type="button"><span id="modelComboLabel">loading\u2026</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="modelDropdown" class="model-dropdown hidden"><input id="modelSearchInput" type="text" placeholder="Search models\u2026" class="model-search-input" autocomplete="off" /><div id="modelDropdownList" class="model-dropdown-list"></div></div></div><div id="reasoningCombo" class="model-combo hidden"><button id="reasoningComboBtn" class="model-combo-btn" type="button" title="Reasoning effort"><span class="icon icon-sm icon-brain" style="flex-shrink:0;"></span><span id="reasoningComboLabel">Off</span><span class="icon icon-sm icon-chevron-down model-combo-chevron"></span></button><div id="reasoningDropdown" class="model-dropdown hidden"><div id="reasoningDropdownList" class="model-dropdown-list"></div></div></div><div id="tokenBar" class="token-bar"></div></div></div></div></div>';
 
 // ── Page registration ────────────────────────────────────────
-
-import { updateCommandInputUI } from "../chat-ui";
 
 let chatScrollHandler: (() => void) | null = null;
 
@@ -818,7 +811,6 @@ registerPrefix(
 		S.setChatSendBtn(S.$("sendBtn"));
 		S.$("attachInput")?.removeAttribute("accept");
 		S.$("attachBtn")?.setAttribute("title", "Attach files");
-		updateCommandInputUI();
 		initializeChatControls();
 
 		// Wire sub-module callbacks

@@ -162,21 +162,6 @@ pub fn all_commands() -> &'static [CommandDef] {
             arg: None,
         },
         CommandDef {
-            name: "sh",
-            description: "Enable command mode (/sh off to exit)",
-            arg: Some(CommandArg {
-                name: "action",
-                description: "Command mode action",
-                choices: &[
-                    ("On", "on"),
-                    ("Off", "off"),
-                    ("Exit", "exit"),
-                    ("Status", "status"),
-                ],
-                required: false,
-            }),
-        },
-        CommandDef {
             name: "stop",
             description: "Abort the current running agent",
             arg: None,
@@ -257,16 +242,7 @@ pub fn all_commands() -> &'static [CommandDef] {
 }
 
 /// Whether a given command name is a known channel command.
-///
-/// Handles the `/sh` special case: only intercepts toggle sub-commands
-/// (empty, `"on"`, `"off"`, `"exit"`, `"status"`), not arbitrary shell input
-/// like `/sh ls -la`.
-pub fn is_channel_command(cmd: &str, full_text: &str) -> bool {
-    if cmd == "sh" {
-        let args = full_text.strip_prefix("sh").unwrap_or("").trim();
-        return args.is_empty() || matches!(args, "on" | "off" | "exit" | "status");
-    }
-
+pub fn is_channel_command(cmd: &str) -> bool {
     all_commands().iter().any(|c| c.name == cmd)
 }
 
@@ -308,25 +284,12 @@ mod tests {
 
     #[test]
     fn is_channel_command_basic() {
-        assert!(is_channel_command("new", "new"));
-        assert!(is_channel_command("stop", "stop"));
-        assert!(is_channel_command("peek", "peek"));
-        assert!(is_channel_command("help", "help"));
-        assert!(is_channel_command("model", "model gpt-4"));
-        assert!(!is_channel_command("unknown", "unknown"));
-    }
-
-    #[test]
-    fn is_channel_command_sh_special_case() {
-        // Toggle sub-commands should be intercepted.
-        assert!(is_channel_command("sh", "sh"));
-        assert!(is_channel_command("sh", "sh on"));
-        assert!(is_channel_command("sh", "sh off"));
-        assert!(is_channel_command("sh", "sh exit"));
-        assert!(is_channel_command("sh", "sh status"));
-        // Arbitrary shell input should NOT be intercepted.
-        assert!(!is_channel_command("sh", "sh ls -la"));
-        assert!(!is_channel_command("sh", "sh echo hello"));
+        assert!(is_channel_command("new"));
+        assert!(is_channel_command("stop"));
+        assert!(is_channel_command("peek"));
+        assert!(is_channel_command("help"));
+        assert!(is_channel_command("model"));
+        assert!(!is_channel_command("unknown"));
     }
 
     #[test]
@@ -360,7 +323,6 @@ mod tests {
             "mode",
             "model",
             "sandbox",
-            "sh",
             "stop",
             "peek",
             "update",

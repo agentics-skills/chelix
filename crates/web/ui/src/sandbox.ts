@@ -1,6 +1,6 @@
 // ── Global sandbox status indicator ─────────────────────────
 
-import { updateCommandInputUI, updateTokenBar } from "./chat-ui";
+import { updateTokenBar } from "./chat-ui";
 import * as S from "./state";
 
 /** Synchronize read-only UI state from the canonical global sandbox mode. */
@@ -15,10 +15,6 @@ export function updateSandboxUI(): void {
 		return;
 	}
 
-	const enabled = mode === "On";
-	S.setSessionCommandMode(enabled ? "sandbox" : "host");
-	S.setSessionCommandPromptSymbol(enabled || S.hostCommandIsRoot ? "#" : "$");
-	updateCommandInputUI();
 	updateTokenBar();
 
 	indicator?.classList.remove("hidden");

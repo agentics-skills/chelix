@@ -36,11 +36,6 @@ export interface SandboxData {
 	containerName?: string;
 }
 
-export interface ExecutionData {
-	mode?: string;
-	promptSymbol?: string;
-}
-
 export interface TokenUsageData {
 	inputTokens?: number;
 	outputTokens?: number;
@@ -95,7 +90,6 @@ export interface ContextData {
 	mcpServers?: Array<{ name: string; state?: string; tool_count?: number }>;
 	mcpDisabled?: boolean;
 	sandbox?: SandboxData;
-	execution?: ExecutionData;
 	tokenUsage?: TokenUsageData;
 	promptMemory?: PromptMemoryData | null;
 	supportsTools?: boolean;
@@ -323,12 +317,8 @@ export function renderContextMcpSection(card: HTMLElement, data: ContextData): v
 
 export function renderContextSandboxSection(card: HTMLElement, data: ContextData): void {
 	const sb = data.sandbox ?? {};
-	const command = data.execution ?? {};
 	const sec = ctxSection("Sandbox");
 	sec.appendChild(ctxRow("Enabled", sb.enabled ? "yes" : "no", true));
-	let commandLabel = command.mode ? (command.mode === "sandbox" ? "sandboxed" : "host") : "";
-	if (commandLabel && command.promptSymbol) commandLabel += ` (${command.promptSymbol})`;
-	if (commandLabel) sec.appendChild(ctxRow("Command route", commandLabel, true));
 	for (const [label, value, mono] of [
 		["Backend", sb.backend, false],
 		["Mode", sb.mode, false],

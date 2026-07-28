@@ -100,8 +100,7 @@ fn values_to_chat_messages_inner(
     let mut messages = Vec::with_capacity(ordered_values.len());
     // Track tool_call IDs emitted by assistant messages so we only include
     // tool/tool_result messages that have a matching assistant tool_call.
-    // Orphan tool results (e.g. from explicit /sh commands) would cause
-    // provider API errors.
+    // Orphan tool results would cause provider API errors.
     let mut pending_tool_call_ids: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for (i, val) in ordered_values.into_iter().enumerate() {
