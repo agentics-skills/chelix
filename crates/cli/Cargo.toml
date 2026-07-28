@@ -100,7 +100,6 @@ full = [
   "matrix",
   "mdns",
   "metrics",
-  "nostr",
   "prometheus",
   "provider-openai-codex",
   "push-notifications",
@@ -149,7 +148,6 @@ local-embeddings      = ["chelix-gateway/local-embeddings"]
 matrix                = ["chelix-httpd/matrix"]
 mdns                  = ["chelix-gateway/mdns"]
 metrics               = ["chelix-httpd/metrics", "chelix-web?/metrics"]
-nostr                 = ["chelix-httpd/nostr"]
 prometheus            = ["chelix-httpd/prometheus"]
 provider-openai-codex = ["chelix-gateway/provider-openai-codex"]
 push-notifications    = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]

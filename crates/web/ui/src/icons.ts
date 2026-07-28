@@ -23,12 +23,6 @@ export function makeMatrixIcon(): HTMLSpanElement {
 	return el;
 }
 
-export function makeNostrIcon(): HTMLSpanElement {
-	const el = document.createElement("span");
-	el.className = "icon icon-nostr";
-	return el;
-}
-
 export function makeCronIcon(): HTMLSpanElement {
 	const el = document.createElement("span");
 	el.className = "icon icon-cron";

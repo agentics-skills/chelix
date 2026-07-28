@@ -1,6 +1,6 @@
 //! Centralized channel command registry.
 //!
-//! Every channel (Telegram, Discord, Slack, Matrix, Nostr, etc.) derives its
+//! Every channel (Telegram, Discord, Slack, Matrix, etc.) derives its
 //! command interception, help text, and platform registration from this single
 //! source of truth. Adding a command here automatically propagates to all
 //! channels.

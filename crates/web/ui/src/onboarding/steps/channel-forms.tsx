@@ -1,6 +1,6 @@
 // ── Channel form sub-components for onboarding ───────────────
 //
-// Shared helpers and simple channel forms (Telegram, Discord, Nostr).
+// Shared helpers and simple channel forms (Telegram, Discord).
 // Complex forms (Matrix, WhatsApp, Slack) live in ChannelStep.tsx.
 
 import type { VNode } from "preact";
@@ -77,7 +77,6 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 			["discord", "icon-discord", "Discord"],
 			["slack", "icon-slack", "Slack"],
 			["matrix", "icon-matrix", "Matrix"],
-			["nostr", "icon-nostr", "Nostr"],
 			["signal", "icon-signal", "Signal"],
 		] as [string, string, string][]
 	).filter(([type]) => offered.has(type));
@@ -106,7 +105,6 @@ export function channelDisplayLabel(type: string): string {
 	if (type === "slack") return "Slack";
 	if (type === "whatsapp") return "WhatsApp";
 	if (type === "matrix") return "Matrix";
-	if (type === "nostr") return "Nostr";
 	if (type === "signal") return "Signal";
 	return "Telegram";
 }
@@ -480,146 +478,6 @@ export function DiscordForm({ onConnected, error, setError }: ChannelFormProps):
 			{error && <ErrorPanel message={error} />}
 			<button type="submit" className="provider-btn" disabled={saving}>
 				{saving ? "Connecting\u2026" : "Connect Bot"}
-			</button>
-		</form>
-	);
-}
-
-// ── Nostr form ──────────────────────────────────────────────
-
-export function NostrForm({ onConnected, error, setError }: ChannelFormProps): VNode {
-	const [accountId, setAccountId] = useState("");
-	const [secretKey, setSecretKey] = useState("");
-	const [relays, setRelays] = useState("wss://relay.damus.io, wss://relay.nostr.band, wss://nos.lol");
-	const [dmPolicy, setDmPolicy] = useState("allowlist");
-	const [allowlist, setAllowlist] = useState("");
-	const [advancedConfig, setAdvancedConfig] = useState("");
-	const [saving, setSaving] = useState(false);
-
-	function onSubmit(e: Event): void {
-		e.preventDefault();
-		if (!accountId.trim()) {
-			setError("Account ID is required.");
-			return;
-		}
-		if (!secretKey.trim()) {
-			setError("Secret key is required.");
-			return;
-		}
-		const advancedPatch = parseChannelConfigPatch(advancedConfig);
-		if (!advancedPatch.ok) {
-			setError(advancedPatch.error);
-			return;
-		}
-		setError(null);
-		setSaving(true);
-		const relayList = relays
-			.split(",")
-			.map((r) => r.trim())
-			.filter(Boolean);
-		const allowlistEntries = allowlist
-			.trim()
-			.split(/\n/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		const config: Record<string, unknown> = {
-			secret_key: secretKey.trim(),
-			relays: relayList,
-			dm_policy: dmPolicy,
-			allowed_pubkeys: allowlistEntries,
-		};
-		Object.assign(config, advancedPatch.value);
-		(
-			addChannel("nostr", accountId.trim(), config) as Promise<{
-				ok?: boolean;
-				error?: { message?: string; detail?: string };
-			}>
-		).then((res) => {
-			setSaving(false);
-			if (res?.ok) {
-				onConnected(accountId.trim(), "nostr");
-			} else {
-				setError((res?.error && (res.error.message || res.error.detail)) || "Failed to connect channel.");
-			}
-		});
-	}
-
-	return (
-		<form onSubmit={onSubmit} className="flex flex-col gap-3">
-			<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 text-xs text-[var(--muted)] flex flex-col gap-1">
-				<span className="font-medium text-[var(--text-strong)]">How to set up Nostr DMs</span>
-				<span>1. Generate or use an existing Nostr secret key (nsec1... or hex)</span>
-				<span>2. Configure relay URLs (defaults are provided)</span>
-				<span>3. Add allowed public keys (npub1... or hex) to the allowlist</span>
-				<span>4. Send a DM to the bot's public key from any Nostr client</span>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Account ID</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={accountId}
-					onInput={(e) => setAccountId(targetValue(e))}
-					placeholder="e.g. my-nostr-bot"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="nostr_account_id"
-					autoFocus
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Secret Key</label>
-				<input
-					type="password"
-					className="provider-key-input w-full"
-					value={secretKey}
-					onInput={(e) => setSecretKey(targetValue(e))}
-					placeholder="nsec1... or 64-char hex"
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="nostr_secret_key"
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Relays (comma-separated)</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={relays}
-					onInput={(e) => setRelays(targetValue(e))}
-					placeholder="wss://relay.damus.io, wss://nos.lol"
-					name="nostr_relays"
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select className="channel-select w-full" value={dmPolicy} onChange={(e) => setDmPolicy(targetValue(e))}>
-					<option value="allowlist">Allowlist only</option>
-					<option value="open">Open (anyone)</option>
-					<option value="disabled">Disabled</option>
-				</select>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">
-					Allowed Public Keys (one per line, npub1 or hex)
-				</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={3}
-					value={allowlist}
-					onInput={(e) => setAllowlist(targetValue(e))}
-					placeholder={"npub1abc123...\nnpub1def456..."}
-					name="nostr_allowed_pubkeys"
-				/>
-			</div>
-			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />
-			{error && <div className="text-xs text-[var(--error)]">{error}</div>}
-			<button type="submit" className="provider-btn self-start" disabled={saving}>
-				{saving ? "Connecting\u2026" : "Connect Nostr"}
 			</button>
 		</form>
 	);

@@ -35,7 +35,6 @@
   - [Slack](slack.md)
   - [Matrix](matrix.md)
   - [WhatsApp](whatsapp.md)
-  - [Nostr](nostr.md)
   - [Signal](signal.md)
   - [Telephony (Phone Calls)](channels/telephony.md)
 - [Browser Automation](browser-automation.md)

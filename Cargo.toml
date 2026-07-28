@@ -31,7 +31,6 @@ default-members = [
   "crates/media",
   "crates/memory",
   "crates/metrics",
-  "crates/nostr",
   "crates/oauth",
   "crates/onboarding",
   "crates/plugins",
@@ -90,7 +89,6 @@ members = [
   "crates/media",
   "crates/memory",
   "crates/metrics",
-  "crates/nostr",
   "crates/oauth",
   "crates/onboarding",
   "crates/plugins",
@@ -216,7 +214,6 @@ jsonwebtoken       = { features = ["aws_lc_rs"], version = "10" }
 llama-cpp-2        = "0.1"
 matrix-sdk         = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
 mockito            = "1.7"
-nostr-sdk          = { features = ["nip04", "nip44", "nip59"], version = "0.44" }
 open               = "5.3"
 rand               = "0.10"
 regex              = "1"
@@ -358,7 +355,6 @@ chelix-mcp-agent-bridge  = { path = "crates/mcp-agent-bridge" }
 chelix-media             = { path = "crates/media" }
 chelix-memory            = { path = "crates/memory" }
 chelix-metrics           = { path = "crates/metrics" }
-chelix-nostr             = { path = "crates/nostr" }
 chelix-oauth             = { path = "crates/oauth" }
 chelix-onboarding        = { path = "crates/onboarding" }
 chelix-plugins           = { path = "crates/plugins" }

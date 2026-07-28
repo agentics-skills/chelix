@@ -411,7 +411,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ("discord", Map(Box::new(channel_account()))),
                     ("slack", Map(Box::new(channel_account()))),
                     ("matrix", Map(Box::new(channel_account()))),
-                    ("nostr", Map(Box::new(channel_account()))),
                     ("signal", Map(Box::new(channel_account()))),
                     ("telephony", Map(Box::new(channel_account()))),
                 ]),

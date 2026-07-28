@@ -97,18 +97,6 @@ pub(crate) async fn init_channels(
             .await;
     }
 
-    #[cfg(feature = "nostr")]
-    {
-        let nostr_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_nostr::NostrPlugin::new()
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        registry
-            .register(nostr_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-
     #[cfg(feature = "signal")]
     {
         let signal_plugin = Arc::new(tokio::sync::RwLock::new(

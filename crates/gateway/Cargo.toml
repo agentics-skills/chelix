@@ -31,7 +31,6 @@ chelix-mcp-agent-bridge = { workspace = true }
 chelix-media            = { workspace = true }
 chelix-memory           = { workspace = true }
 chelix-metrics          = { optional = true, workspace = true }
-chelix-nostr            = { optional = true, workspace = true }
 chelix-oauth            = { workspace = true }
 chelix-onboarding       = { workspace = true }
 chelix-plugins          = { workspace = true }
@@ -120,7 +119,6 @@ default = [
   "matrix",
   "mdns",
   "metrics",
-  "nostr",
   "prometheus",
   "provider-openai-codex",
   "push-notifications",
@@ -152,11 +150,9 @@ metrics = [
   "chelix-discord?/metrics",
   "chelix-matrix/metrics",
   "chelix-metrics/sqlite",
-  "chelix-nostr?/metrics",
   "chelix-signal?/metrics",
   "dep:chelix-metrics",
 ]
-nostr = ["dep:chelix-nostr"]
 prometheus = ["chelix-metrics/prometheus", "metrics"]
 provider-openai-codex = [
   "chelix-providers/provider-openai-codex",

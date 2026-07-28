@@ -12,7 +12,6 @@ export type ChannelType =
 	| "discord"
 	| "slack"
 	| "matrix"
-	| "nostr"
 	| "signal"
 	| "telephony";
 
@@ -26,7 +25,6 @@ export const ChannelType = {
 	Discord: "discord" as const,
 	Slack: "slack" as const,
 	Matrix: "matrix" as const,
-	Nostr: "nostr" as const,
 	Signal: "signal" as const,
 	Telephony: "telephony" as const,
 } satisfies Record<string, ChannelType>;

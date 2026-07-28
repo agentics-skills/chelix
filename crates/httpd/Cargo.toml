@@ -69,7 +69,6 @@ default = [
   "matrix",
   "mdns",
   "metrics",
-  "nostr",
   "prometheus",
   "push-notifications",
   "signal",
@@ -90,7 +89,6 @@ graphql = [
 matrix = ["chelix-gateway/matrix", "dep:chelix-matrix"]
 mdns = ["chelix-gateway/mdns"]
 metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
-nostr = ["chelix-gateway/nostr"]
 prometheus = ["chelix-gateway/prometheus", "metrics"]
 push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]
 signal = ["chelix-gateway/signal"]

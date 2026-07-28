@@ -810,57 +810,6 @@ test.describe("Onboarding wizard", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("onboarding channel selector styles render a 3-column grid and the nostr icon", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await page.goto("/onboarding");
-		await page.waitForLoadState("networkidle");
-
-		await page.setViewportSize({ width: 1280, height: 900 });
-		await page.evaluate(() => {
-			const existing = document.getElementById("channel-selector-probe");
-			if (existing) existing.remove();
-
-			const selector = document.createElement("div");
-			selector.id = "channel-selector-probe";
-			selector.className = "grid grid-cols-2 gap-3 md:grid-cols-3";
-			const button = document.createElement("button");
-			button.type = "button";
-			button.className = "backend-card w-full min-h-[120px] items-center justify-center gap-4 px-4 py-8 text-center";
-			const icon = document.createElement("span");
-			icon.className = "icon icon-xl icon-nostr";
-			const label = document.createElement("span");
-			label.textContent = "Nostr";
-			button.append(icon, label);
-			selector.append(button);
-			document.body.append(selector);
-		});
-
-		const selector = page.locator("#channel-selector-probe");
-		await expect(selector).toBeVisible();
-
-		await expect
-			.poll(() =>
-				selector.evaluate((node) => {
-					const columns = window.getComputedStyle(node).gridTemplateColumns;
-					return columns.split(" ").filter(Boolean).length;
-				}),
-			)
-			.toBe(3);
-
-		const icon = selector.locator(".icon.icon-nostr");
-		await expect(icon).toBeVisible();
-		await expect
-			.poll(() =>
-				icon.evaluate((node) => {
-					const style = window.getComputedStyle(node);
-					return style.maskImage || style.webkitMaskImage || "";
-				}),
-			)
-			.not.toBe("none");
-
-		expect(pageErrors).toEqual([]);
-	});
-
 	test("matrix onboarding exposes advanced config patch and storage note", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/onboarding");

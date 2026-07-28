@@ -235,7 +235,6 @@ pub const KNOWN_CHANNEL_TYPES: &[&str] = &[
     "discord",
     "slack",
     "matrix",
-    "nostr",
     "signal",
     "telephony",
 ];
@@ -281,7 +280,7 @@ pub struct ChannelToolPolicyOverride {
 #[serde(default)]
 pub struct ChannelsConfig {
     /// Which channel types are offered in the web UI (onboarding + channels page).
-    /// Defaults to `["telegram", "whatsapp", "discord", "slack", "matrix", "nostr", "signal"]`.
+    /// Defaults to `["telegram", "whatsapp", "discord", "slack", "matrix", "signal"]`.
     #[serde(
         default = "default_channels_offered",
         skip_serializing_if = "Vec::is_empty"
@@ -299,9 +298,6 @@ pub struct ChannelsConfig {
     /// Slack bot accounts, keyed by account ID.
     #[serde(default)]
     pub slack: HashMap<String, serde_json::Value>,
-    /// Nostr DM accounts, keyed by account ID.
-    #[serde(default)]
-    pub nostr: HashMap<String, serde_json::Value>,
     /// Signal accounts backed by signal-cli, keyed by account ID.
     #[serde(default)]
     pub signal: HashMap<String, serde_json::Value>,
@@ -321,13 +317,12 @@ impl ChannelsConfig {
     ///
     /// This is the single source of truth for the set of named channel types.
     /// Keep in sync with the struct fields.
-    fn named_fields(&self) -> [(&str, &HashMap<String, serde_json::Value>); 7] {
+    fn named_fields(&self) -> [(&str, &HashMap<String, serde_json::Value>); 6] {
         [
             ("telegram", &self.telegram),
             ("whatsapp", &self.whatsapp),
             ("discord", &self.discord),
             ("slack", &self.slack),
-            ("nostr", &self.nostr),
             ("signal", &self.signal),
             ("telephony", &self.telephony),
         ]
@@ -370,7 +365,6 @@ fn default_channels_offered() -> Vec<String> {
         "discord".into(),
         "slack".into(),
         "matrix".into(),
-        "nostr".into(),
         "signal".into(),
     ]
 }
@@ -383,7 +377,6 @@ impl Default for ChannelsConfig {
             whatsapp: HashMap::new(),
             discord: HashMap::new(),
             slack: HashMap::new(),
-            nostr: HashMap::new(),
             signal: HashMap::new(),
             telephony: HashMap::new(),
             extra: HashMap::new(),

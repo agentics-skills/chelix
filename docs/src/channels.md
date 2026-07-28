@@ -13,7 +13,6 @@ capabilities that control what features are available.
 | Matrix          | Gateway (sync loop)          | No                  | Streaming, voice ingest, interactive polls, threads, reactions, OTP, location, encrypted chats, device verification, ownership bootstrap |
 | WhatsApp        | Gateway (WebSocket)          | No                  | Streaming, voice ingest, OTP, pairing, location                                                                                          |
 | Slack           | Socket Mode                  | No                  | Streaming, interactive messages, threads, reactions                                                                                      |
-| Nostr           | Gateway (relay subscription) | No                  | OTP, encrypted DMs (NIP-04)                                                                                                              |
 | Signal          | Gateway (signal-cli SSE)     | No                  | OTP, DMs, groups, outbound text                                                                                                          |
 
 ## Inbound Modes
@@ -120,8 +119,7 @@ http_url = "http://127.0.0.1:8080"
 
 For detailed configuration, see the per-channel pages: [Telegram](telegram.md),
 [Discord](discord.md), [Slack](slack.md), [Matrix](matrix.md),
-[WhatsApp](whatsapp.md), [Nostr](nostr.md),
-[Signal](signal.md).
+[WhatsApp](whatsapp.md), [Signal](signal.md).
 
 You can also use the web UI's **Channels** tab for guided setup with each
 platform. Web-added channels do not get written back into `chelix.toml`.

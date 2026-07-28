@@ -20,7 +20,6 @@ pub enum ChannelType {
     Discord,
     Slack,
     Matrix,
-    Nostr,
     Signal,
     Telephony,
 }
@@ -34,7 +33,6 @@ impl ChannelType {
             Self::Discord => "discord",
             Self::Slack => "slack",
             Self::Matrix => "matrix",
-            Self::Nostr => "nostr",
             Self::Signal => "signal",
             Self::Telephony => "telephony",
         }
@@ -48,7 +46,6 @@ impl ChannelType {
             Self::Discord => "Discord",
             Self::Slack => "Slack",
             Self::Matrix => "Matrix",
-            Self::Nostr => "Nostr",
             Self::Signal => "Signal",
             Self::Telephony => "Phone Call",
         }
@@ -74,7 +71,6 @@ impl ChannelType {
                     Some("direct".to_string())
                 }
             },
-            Self::Nostr => Some("dm".to_string()),
             Self::Telephony => Some("call".to_string()),
             _ => None,
         }
@@ -88,7 +84,6 @@ impl ChannelType {
             Self::Discord => &["token"],
             Self::Slack => &["bot_token", "app_token", "signing_secret"],
             Self::Matrix => &["access_token", "password"],
-            Self::Nostr => &["secret_key"],
             Self::Signal => &[],
             Self::Telephony => &["auth_token"],
         }
@@ -111,7 +106,6 @@ impl std::str::FromStr for ChannelType {
             "discord" => Ok(Self::Discord),
             "slack" => Ok(Self::Slack),
             "matrix" | "element" => Ok(Self::Matrix),
-            "nostr" => Ok(Self::Nostr),
             "signal" => Ok(Self::Signal),
             "telephony" | "phone" | "voice_call" | "voicecall" => Ok(Self::Telephony),
             other => Err(Error::invalid_input(format!(
@@ -129,7 +123,6 @@ impl ChannelType {
         Self::Discord,
         Self::Slack,
         Self::Matrix,
-        Self::Nostr,
         Self::Signal,
         Self::Telephony,
     ];
@@ -216,22 +209,6 @@ impl ChannelType {
                     supports_otp: true,
                     supports_reactions: true,
                     supports_location: true,
-                },
-            },
-            Self::Nostr => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "Nostr",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::GatewayLoop,
-                    supports_outbound: true,
-                    supports_streaming: false,
-                    supports_interactive: false,
-                    supports_threads: false,
-                    supports_voice_ingest: false,
-                    supports_pairing: false,
-                    supports_otp: true,
-                    supports_reactions: false,
-                    supports_location: false,
                 },
             },
             Self::Signal => ChannelDescriptor {
@@ -1327,7 +1304,7 @@ mod tests {
     #[test]
     fn all_covers_every_variant() {
         // If a new variant is added to ChannelType, this test forces updating ALL.
-        assert_eq!(ChannelType::ALL.len(), 8);
+        assert_eq!(ChannelType::ALL.len(), 7);
         for ct in ChannelType::ALL {
             // descriptor() must not panic
             let desc = ct.descriptor();
@@ -1342,7 +1319,6 @@ mod tests {
         assert_eq!(ChannelType::Discord.descriptor().display_name, "Discord");
         assert_eq!(ChannelType::Slack.descriptor().display_name, "Slack");
         assert_eq!(ChannelType::Matrix.descriptor().display_name, "Matrix");
-        assert_eq!(ChannelType::Nostr.descriptor().display_name, "Nostr");
     }
 
     #[test]

@@ -63,7 +63,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 
 | Category | Crates | Combined LoC |
 |----------|--------|-------------|
-| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-matrix`, `chelix-slack`, `chelix-nostr`, `chelix-channels` | 41.4K |
+| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-matrix`, `chelix-slack`, `chelix-channels` | 39.3K |
 | Web and APIs | `chelix-web`, `chelix-graphql`, `chelix-webhooks` | 10.8K |
 | Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins` | 11.5K |
 | Memory and context | `chelix-memory`, `chelix-qmd`, `chelix-code-index`, `chelix-projects` | 11.7K |

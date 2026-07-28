@@ -85,7 +85,6 @@ export function EditChannelModal(): VNode | null {
 	const isWhatsApp = chType === ChannelType.WhatsApp;
 	const isTelegram = chType === ChannelType.Telegram;
 	const isMatrix = chType === ChannelType.Matrix;
-	const isNostr = chType === ChannelType.Nostr;
 	const isSignal = chType === ChannelType.Signal;
 
 	function addModelToConfig(config: ChannelConfig): void {
@@ -104,13 +103,6 @@ export function EditChannelModal(): VNode | null {
 			config.token = editCredential.value || cfg.token || "";
 		} else if (isTelegram) {
 			config.token = cfg.token || "";
-		} else if (isNostr) {
-			config.secret_key = editCredential.value || cfg.secret_key || "";
-			const relaysVal = (form.querySelector("[data-field=relays]") as HTMLInputElement)?.value || "";
-			config.relays = relaysVal
-				.split(",")
-				.map((r) => r.trim())
-				.filter(Boolean);
 		} else if (isSignal) {
 			config.account = editSignalAccount.value.trim();
 			config.http_url = editSignalHttpUrl.value.trim() || "http://127.0.0.1:8080";
@@ -149,12 +141,6 @@ export function EditChannelModal(): VNode | null {
 			updateConfig.otp_self_approval = editMatrixOtpSelfApproval.value;
 			updateConfig.otp_cooldown_secs = normalizeMatrixOtpCooldown(editMatrixOtpCooldown.value);
 		}
-		if (isNostr) {
-			updateConfig.allowed_pubkeys = allowlistItems.value;
-			// Preserve OTP settings that have no dedicated UI fields yet.
-			updateConfig.otp_self_approval = cfg.otp_self_approval !== false;
-			updateConfig.otp_cooldown_secs = cfg.otp_cooldown_secs ?? 300;
-		}
 		if (isSignal) {
 			updateConfig.group_policy =
 				(form.querySelector("[data-field=groupPolicy]") as HTMLSelectElement)?.value || cfg.group_policy || "disabled";
@@ -165,7 +151,7 @@ export function EditChannelModal(): VNode | null {
 			updateConfig.text_chunk_limit = (cfg.text_chunk_limit as number) || 4000;
 			if (cfg.account_uuid) updateConfig.account_uuid = cfg.account_uuid as string;
 		}
-		if (!(isWhatsApp || isNostr)) {
+		if (!isWhatsApp) {
 			updateConfig.mention_mode =
 				(form.querySelector("[data-field=mentionMode]") as HTMLSelectElement)?.value || "mention";
 		}
@@ -272,31 +258,6 @@ export function EditChannelModal(): VNode | null {
 						/>
 						<div className="text-xs text-[var(--muted)] -mt-1">
 							Only respond in channels under these Discord categories. Combined with name patterns via OR.
-						</div>
-					</>
-				)}
-				{isNostr && (
-					<>
-						<div className="flex flex-col gap-1">
-							<label className="text-xs text-[var(--muted)]">Secret Key (optional: leave blank to keep existing)</label>
-							<input
-								type="password"
-								className="channel-input w-full"
-								value={editCredential.value}
-								onInput={(e) => {
-									editCredential.value = targetValue(e);
-								}}
-								autoComplete="new-password"
-							/>
-						</div>
-						<div className="flex flex-col gap-1">
-							<label className="text-xs text-[var(--muted)]">Relays (comma-separated)</label>
-							<input
-								data-field="relays"
-								type="text"
-								className="channel-input w-full"
-								defaultValue={((cfg.relays as string[]) || []).join(", ")}
-							/>
 						</div>
 					</>
 				)}

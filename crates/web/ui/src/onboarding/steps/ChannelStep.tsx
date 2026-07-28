@@ -1,7 +1,7 @@
 // ── Channel step (channel selection, complex forms) ───────────
 //
 // ChannelStep orchestrates channel type selection and delegates to
-// per-channel form components. Simpler forms (Telegram, Discord, Nostr)
+// per-channel form components. Simpler forms (Telegram, Discord)
 // live in channel-forms.tsx; complex forms below.
 
 import type { VNode } from "preact";
@@ -36,7 +36,6 @@ import {
 	ChannelSuccess,
 	ChannelTypeSelector,
 	DiscordForm,
-	NostrForm,
 	SignalForm,
 	TelegramForm,
 } from "./channel-forms";
@@ -851,9 +850,6 @@ export function ChannelStep({ onNext, onBack }: { onNext: () => void; onBack: ()
 			)}
 			{phase === "form" && selectedType === "matrix" && (
 				<MatrixForm onConnected={onConnected} error={channelError} setError={setChannelError} />
-			)}
-			{phase === "form" && selectedType === "nostr" && (
-				<NostrForm onConnected={onConnected} error={channelError} setError={setChannelError} />
 			)}
 			{phase === "form" && selectedType === "signal" && (
 				<SignalForm onConnected={onConnected} error={channelError} setError={setChannelError} />

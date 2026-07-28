@@ -132,7 +132,6 @@ web UI. Each channel has its own setup flow:
 | Discord  | Bot token from the [Developer Portal](https://discord.com/developers) |
 | Slack    | Bot + App tokens from [api.slack.com](https://api.slack.com/apps)     |
 | Matrix   | Homeserver URL + credentials                                          |
-| Nostr    | Secret key (nsec) + relay URLs                                        |
 
 See the individual [channel docs](channels.md) for detailed setup instructions.
 
