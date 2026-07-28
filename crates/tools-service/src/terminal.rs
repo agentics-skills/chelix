@@ -28,6 +28,7 @@ const DEFAULT_COLS: u16 = 220;
 const DEFAULT_ROWS: u16 = 56;
 const MAX_COMMAND_BYTES: usize = 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
+const MULTILINE_COMMAND_LINE_DELAY: Duration = Duration::from_millis(25);
 const PROMPT_COMMAND: &str = r#"__chelix_status=$?; printf '\033]633;D;%s\007' "$__chelix_status"; trap 'trap - DEBUG; printf "\033]633;C\007"' DEBUG"#;
 
 pub(crate) struct TerminalManager {
@@ -147,7 +148,7 @@ impl TerminalManager {
             submission_line
         };
 
-        if let Err(error) = write_command(&terminal, &command) {
+        if let Err(error) = write_command(&terminal, &command).await {
             let mut output = lock(&terminal.output);
             output.active_run = None;
             output.at_prompt = true;
@@ -625,7 +626,7 @@ async fn wait_for_terminal_ready(terminal: &ManagedTerminal, timeout: Duration) 
             let notified = terminal.output_notify.notified();
             {
                 let output = lock(&terminal.output);
-                if output.ready {
+                if output.ready && current_line_has_shell_prompt(output.screen.screen()) {
                     return Ok(());
                 }
                 if output.closed {
@@ -641,6 +642,20 @@ async fn wait_for_terminal_ready(terminal: &ManagedTerminal, timeout: Duration) 
     tokio::time::timeout(timeout, wait)
         .await
         .map_err(|_| anyhow!("terminal {} shell startup timed out", terminal.id))?
+}
+
+fn current_line_has_shell_prompt(screen: &Screen) -> bool {
+    screen
+        .absolute_line_view(screen.cursor_absolute_y())
+        .is_some_and(|line| {
+            line.cells()
+                .iter()
+                .rev()
+                .filter(|cell| !cell.is_padding())
+                .map(|cell| cell.text().trim())
+                .find(|text| !text.is_empty())
+                .is_some_and(|text| text.ends_with('#') || text.ends_with('$'))
+        })
 }
 
 fn response_for_run(
@@ -715,10 +730,31 @@ fn build_command_input(request: &ExecuteCommandRequest) -> Result<Vec<u8>> {
     Ok(input)
 }
 
-fn write_command(terminal: &ManagedTerminal, command: &[u8]) -> Result<()> {
-    lock(&terminal.writer)
-        .write_all(command)
-        .context("writing command to RMUX terminal")
+async fn write_command(terminal: &ManagedTerminal, command: &[u8]) -> Result<()> {
+    let mut start = 0;
+    while start < command.len() {
+        let relative_end = command[start..]
+            .windows(2)
+            .position(|bytes| bytes == b"\x16\n")
+            .unwrap_or_else(|| command.len().saturating_sub(start).saturating_sub(1));
+        let line_end = start + relative_end;
+        let mut line = Vec::with_capacity(line_end.saturating_sub(start).saturating_add(1));
+        line.extend_from_slice(&command[start..line_end]);
+        line.push(b'\r');
+        lock(&terminal.writer)
+            .write_all(&line)
+            .context("writing command to RMUX terminal")?;
+        start = if command.get(line_end..line_end.saturating_add(2)) == Some(b"\x16\n") {
+            line_end + 2
+        } else {
+            command.len()
+        };
+        if start == command.len() || command.get(start..) == Some(&[b'\r'][..]) {
+            return Ok(());
+        }
+        tokio::time::sleep(MULTILINE_COMMAND_LINE_DELAY).await;
+    }
+    Ok(())
 }
 
 fn record_terminal_input(terminal: &ManagedTerminal, bytes: &[u8]) {
