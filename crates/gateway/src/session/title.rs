@@ -91,41 +91,28 @@ pub(crate) async fn generate_title_for_session(
         },
     };
 
-    // Resolve a provider — prefer auxiliary.title_generation, fall back to session model.
-    let session_model = session_metadata
-        .get(session_key)
-        .await
-        .and_then(|e| e.model);
     let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
         let inner = state.inner.read().await;
         let Some(ref registry) = inner.llm_providers else {
-            debug!("auto-title: no provider registry available");
-            return Ok(None);
+            anyhow::bail!("auto-title provider registry is unavailable");
         };
         let reg = registry.read().await;
 
-        // Try auxiliary title_generation model first.
-        let auxiliary_model = state.config.auxiliary.title_generation.as_deref();
-        let from_auxiliary = auxiliary_model.and_then(|id| reg.get(id));
-        if auxiliary_model.is_some() && from_auxiliary.is_none() {
+        let Some(auxiliary_model) = state.config.auxiliary.title_generation.as_deref() else {
+            anyhow::bail!("auto-title auxiliary.title_generation is not configured");
+        };
+        let Some(provider) = reg.get(auxiliary_model) else {
             let available: Vec<_> = reg.list_models().iter().map(|m| m.id.as_str()).collect();
             warn!(
-                requested = auxiliary_model.unwrap_or_default(),
+                requested = auxiliary_model,
                 available = ?available,
                 "auto-title: configured auxiliary title_generation model is unavailable"
             );
-        }
-
-        // Fall back to the session's own model.
-        let from_session = session_model.as_deref().and_then(|id| reg.get(id));
-
-        match from_auxiliary.or(from_session).or_else(|| reg.first()) {
-            Some(p) => p,
-            None => {
-                debug!("auto-title: no provider available, skipping");
-                return Ok(None);
-            },
-        }
+            anyhow::bail!(
+                "auto-title auxiliary.title_generation model `{auxiliary_model}` is unavailable"
+            );
+        };
+        provider
     };
 
     let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);

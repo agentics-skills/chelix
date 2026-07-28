@@ -251,7 +251,7 @@ port = {port}                           # Port number (auto-generated for this i
 # AUXILIARY MODELS
 # ══════════════════════════════════════════════════════════════════════════════
 # Route side tasks to cheaper/faster models while keeping the main session on a
-# more capable model. Falls back to the session's primary provider when unset.
+# more capable model.
 #
 # [auxiliary]
 # title_generation = "openrouter/google/gemini-2.5-flash"  # Model for session titles
