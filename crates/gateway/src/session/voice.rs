@@ -4,7 +4,7 @@ impl LiveSessionService {
     pub(super) async fn voice_generate_impl(&self, params: Value) -> ServiceResult {
         let p: VoiceGenerateParams = parse_params(params)?;
         let key = &p.key;
-        let target = p.target().map_err(ServiceError::message)?;
+        let target_index = p.message_index;
 
         let tts = self
             .tts_service
@@ -16,16 +16,6 @@ impl LiveSessionService {
             return Err(format!("session '{key}' has no messages").into());
         }
 
-        let target_index = match &target {
-            VoiceTarget::ByRunId(id) => history
-                .iter()
-                .rposition(|msg| {
-                    msg.get("role").and_then(|v| v.as_str()) == Some("assistant")
-                        && msg.get("run_id").and_then(|v| v.as_str()) == Some(id)
-                })
-                .ok_or_else(|| "target assistant message not found".to_string())?,
-            VoiceTarget::ByMessageIndex(idx) => *idx,
-        };
         let target_msg = history
             .get(target_index)
             .ok_or_else(|| format!("message index {target_index} is out of range"))?;

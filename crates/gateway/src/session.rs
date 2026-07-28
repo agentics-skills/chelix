@@ -29,9 +29,7 @@ use {
 use crate::{
     agent_persona::AgentPersonaStore,
     services::{ServiceError, ServiceResult, SessionService, TtsService},
-    session_types::{
-        PatchParams, TruncateTailParams, VoiceGenerateParams, VoiceTarget, parse_params,
-    },
+    session_types::{PatchParams, TruncateTailParams, VoiceGenerateParams, parse_params},
     share_store::{
         ShareSnapshot, ShareStore, ShareVisibility, SharedImageAsset, SharedImageSet,
         SharedMapLinks, SharedMessage, SharedMessageRole,

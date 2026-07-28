@@ -29,7 +29,10 @@ use crate::{
     types::*,
 };
 
-use {super::*, crate::service::build_persisted_assistant_message};
+use {
+    super::*,
+    crate::service::{build_persisted_assistant_message, persist_active_assistant_draft},
+};
 
 use {crate::memory_tools::AgentScopedMemoryWriter, chelix_agents::model::values_to_chat_messages};
 
@@ -581,7 +584,7 @@ impl LiveChatService {
             .session_store
             .read(&session_key)
             .await
-            .unwrap_or_default();
+            .map_err(ServiceError::message)?;
         info!(
             session = %session_key,
             history_len = history.len(),
@@ -950,13 +953,10 @@ impl LiveChatService {
 
         // Persist the user message now that we know it won't be queued.
         // (Queued messages skip this; they are persisted when replayed.)
-        if let Err(e) = self
-            .session_store
-            .append(&session_key, &user_msg.to_value())
+        self.session_store
+            .append_at_index(&session_key, &user_msg.to_value(), user_message_index)
             .await
-        {
-            warn!("failed to persist user message: {e}");
-        }
+            .map_err(ServiceError::message)?;
 
         // Broadcast a user_message event so that other connected clients
         // (e.g. the web UI when the message was sent via the GraphQL API)
@@ -1120,8 +1120,23 @@ impl LiveChatService {
                             timeout_secs = outer_agent_timeout_secs,
                             "agent run timed out"
                         );
-                        let detail =
+                        let timeout_detail =
                             format!("Agent run timed out after {outer_agent_timeout_secs}s");
+                        let (detail, partial) = match persist_active_assistant_draft(
+                            &session_store,
+                            &active_partial_assistant,
+                            &session_key_clone,
+                        )
+                        .await
+                        {
+                            Ok(partial) => (timeout_detail, partial),
+                            Err(error) => (
+                                format!(
+                                    "{timeout_detail}; partial assistant persistence failed: {error}"
+                                ),
+                                None,
+                            ),
+                        };
                         let error_obj = serde_json::json!({
                             "type": "timeout",
                             "title": "Timed out",
@@ -1130,18 +1145,17 @@ impl LiveChatService {
                         state.set_run_error(&run_id_clone, detail.clone()).await;
                         deliver_channel_error(&state, &session_key_clone, &error_obj).await;
                         terminal_runs.write().await.insert(run_id_clone.clone());
-                        broadcast(
-                            &state,
-                            "chat",
-                            serde_json::json!({
-                                "runId": run_id_clone,
-                                "sessionKey": session_key_clone,
-                                "state": "error",
-                                "error": error_obj,
-                            }),
-                            BroadcastOpts::default(),
-                        )
-                        .await;
+                        let mut payload = serde_json::json!({
+                            "runId": run_id_clone,
+                            "sessionKey": session_key_clone,
+                            "state": "error",
+                            "error": error_obj,
+                        });
+                        if let Some((partial_message, message_index)) = partial {
+                            payload["partialMessage"] = partial_message;
+                            payload["messageIndex"] = serde_json::json!(message_index);
+                        }
+                        broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
                         None
                     },
                 }
@@ -1149,9 +1163,7 @@ impl LiveChatService {
                 agent_fut.await
             };
 
-            if assistant_text.is_some()
-                && let Ok(count) = session_store.count(&session_key_clone).await
-            {
+            if let Ok(count) = session_store.count(&session_key_clone).await {
                 session_metadata.touch(&session_key_clone, count).await;
 
                 // ── Periodic background memory extraction ──────────────
@@ -1162,7 +1174,8 @@ impl LiveChatService {
                 let write_mode = extraction_write_mode;
                 // A "turn" = user + assistant = 2 messages.
                 let turn_number = count / 2;
-                if interval > 0
+                if assistant_text.is_some()
+                    && interval > 0
                     && turn_number > 0
                     && turn_number % interval == 0
                     && !stream_only

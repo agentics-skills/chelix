@@ -51,6 +51,31 @@ struct GatewayAcpPermissionHandler {
     approval_manager: Arc<ApprovalManager>,
 }
 
+async fn broadcast_external_agent_error(
+    state: &Arc<GatewayState>,
+    run_id: &str,
+    session_key: &str,
+    error: &str,
+    seq: Option<u64>,
+    partial: Option<(Value, usize)>,
+) {
+    let mut payload = serde_json::json!({
+        "runId": run_id,
+        "sessionKey": session_key,
+        "state": "error",
+        "error": {
+            "title": "External agent error",
+            "detail": error,
+        },
+        "seq": seq,
+    });
+    if let Some((partial_message, message_index)) = partial {
+        payload["partialMessage"] = partial_message;
+        payload["messageIndex"] = serde_json::json!(message_index);
+    }
+    crate::broadcast::broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+}
+
 impl GatewayAcpPermissionHandler {
     fn new(approval_manager: Arc<ApprovalManager>) -> Self {
         Self { approval_manager }
@@ -486,7 +511,7 @@ impl ExternalAgentChatService {
             .session_store
             .read(&session_key)
             .await
-            .unwrap_or_default();
+            .map_err(ServiceError::message)?;
         let user_msg = PersistedMessage::User {
             content: MessageContent::Text(text.clone()),
             created_at: Some(created_at),
@@ -496,10 +521,14 @@ impl ExternalAgentChatService {
             seq,
             run_id: Some(run_id.clone()),
         };
-        self.session_store
-            .append(&session_key, &user_msg.to_value())
+        let user_message_index = self
+            .session_store
+            .append_with_index(&session_key, &user_msg.to_value())
             .await
             .map_err(|error| error.to_string())?;
+        let assistant_message_index = user_message_index
+            .checked_add(1)
+            .ok_or_else(|| ServiceError::message("assistant message index overflow"))?;
         history.push(user_msg.to_value());
         self.session_metadata
             .touch(&session_key, history.len() as u32)
@@ -540,12 +569,22 @@ impl ExternalAgentChatService {
                 let error = error.to_string();
                 drop(session);
                 self.external_agents.shutdown_binding(&session_key).await;
+                broadcast_external_agent_error(
+                    &self.state,
+                    &run_id,
+                    &session_key,
+                    &error,
+                    seq,
+                    None,
+                )
+                .await;
                 return Err(error.into());
             },
         };
         let mut assistant_text = String::new();
         let mut token_usage = None;
         let mut external_error = None;
+        let mut completed = false;
         while let Some(event) = events.next().await {
             match event {
                 ExternalAgentEvent::TextDelta(delta) => {
@@ -558,6 +597,7 @@ impl ExternalAgentChatService {
                             "sessionKey": session_key,
                             "state": "delta",
                             "text": delta,
+                            "messageIndex": assistant_message_index,
                             "seq": seq,
                         }),
                         BroadcastOpts::default(),
@@ -585,6 +625,7 @@ impl ExternalAgentChatService {
                 },
                 ExternalAgentEvent::Done { usage } => {
                     token_usage = usage;
+                    completed = true;
                 },
                 ExternalAgentEvent::ToolCallStart { .. }
                 | ExternalAgentEvent::ToolCallEnd { .. } => {},
@@ -596,9 +637,9 @@ impl ExternalAgentChatService {
                 .await;
         }
         drop(session);
-        if let Some(error) = external_error {
-            self.external_agents.shutdown_binding(&session_key).await;
-            return Err(error.into());
+        if external_error.is_none() && !completed {
+            external_error =
+                Some("The external agent stream ended without a terminal event.".to_string());
         }
         let duration_ms = start.elapsed().as_millis() as u64;
         let assistant_msg = PersistedMessage::Assistant {
@@ -623,13 +664,69 @@ impl ExternalAgentChatService {
             seq,
             run_id: Some(run_id.clone()),
         };
-        self.session_store
-            .append(&session_key, &assistant_msg.to_value())
+        if let Some(error) = external_error {
+            self.external_agents.shutdown_binding(&session_key).await;
+            let mut terminal_error = error;
+            let partial_message = if assistant_text.trim().is_empty() {
+                None
+            } else {
+                match self
+                    .session_store
+                    .append_at_index(
+                        &session_key,
+                        &assistant_msg.to_value(),
+                        assistant_message_index,
+                    )
+                    .await
+                {
+                    Ok(_) => Some(assistant_msg.to_value()),
+                    Err(error) => {
+                        terminal_error = format!(
+                            "{terminal_error}; partial assistant persistence failed: {error}"
+                        );
+                        None
+                    },
+                }
+            };
+            let message_count = self
+                .session_store
+                .count(&session_key)
+                .await
+                .map_err(ServiceError::message)?;
+            self.session_metadata
+                .touch(&session_key, message_count)
+                .await;
+            broadcast_external_agent_error(
+                &self.state,
+                &run_id,
+                &session_key,
+                &terminal_error,
+                seq,
+                partial_message.map(|message| (message, assistant_message_index)),
+            )
+            .await;
+            return Err(terminal_error.into());
+        }
+        if let Err(error) = self
+            .session_store
+            .append_at_index(
+                &session_key,
+                &assistant_msg.to_value(),
+                assistant_message_index,
+            )
             .await
-            .map_err(|error| error.to_string())?;
-        let message_count = history.len() + 1;
+        {
+            let error = format!("failed to persist final external-agent response: {error}");
+            broadcast_external_agent_error(&self.state, &run_id, &session_key, &error, seq, None)
+                .await;
+            return Err(error.into());
+        }
+        let message_count = u32::try_from(assistant_message_index)
+            .ok()
+            .and_then(|index| index.checked_add(1))
+            .ok_or_else(|| ServiceError::message("session message count overflow"))?;
         self.session_metadata
-            .touch(&session_key, message_count as u32)
+            .touch(&session_key, message_count)
             .await;
         crate::broadcast::broadcast(
             &self.state,
@@ -644,7 +741,7 @@ impl ExternalAgentChatService {
                 "inputTokens": token_usage.as_ref().map(|usage| usage.input_tokens).unwrap_or(0),
                 "outputTokens": token_usage.as_ref().map(|usage| usage.output_tokens).unwrap_or(0),
                 "durationMs": duration_ms,
-                "messageIndex": message_count - 1,
+                "messageIndex": assistant_message_index,
                 "replyMedium": "text",
                 "seq": seq,
             }),
@@ -913,6 +1010,12 @@ mod tests {
                 return Ok(Box::pin(stream::iter([ExternalAgentEvent::Error(
                     "fake event failure".to_string(),
                 )])));
+            }
+            if prompt == "partial-error" {
+                return Ok(Box::pin(stream::iter([
+                    ExternalAgentEvent::TextDelta("partial reply".to_string()),
+                    ExternalAgentEvent::Error("fake partial failure".to_string()),
+                ])));
             }
             self.state
                 .prompts
@@ -1358,6 +1461,37 @@ mod tests {
             .await
             .expect("send after event-error eviction");
         assert_eq!(agent_state.starts.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn error_event_persists_visible_partial_at_reserved_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
+        external_agents
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .expect("bind external agent");
+        let chat = test_chat_service(
+            Arc::clone(&external_agents),
+            Arc::clone(&metadata),
+            Arc::clone(&session_store),
+        )
+        .await;
+
+        let error = chat
+            .send(serde_json::json!({ "sessionKey": "main", "text": "partial-error" }))
+            .await
+            .expect_err("partial stream error should fail chat send");
+
+        assert_eq!(error.to_string(), "fake partial failure");
+        let history = session_store.read("main").await.expect("read history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0]["role"], "user");
+        assert_eq!(history[1]["role"], "assistant");
+        assert_eq!(history[1]["content"], "partial reply");
     }
 
     #[tokio::test]

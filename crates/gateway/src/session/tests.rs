@@ -671,7 +671,7 @@ mod tests {
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
         let result = service
-            .voice_generate(serde_json::json!({ "key": "main", "runId": "run-generate" }))
+            .voice_generate(serde_json::json!({ "key": "main", "messageIndex": 1 }))
             .await
             .expect("voice generate");
 
@@ -739,7 +739,7 @@ mod tests {
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
         let result = service
-            .voice_generate(serde_json::json!({ "key": "main", "runId": "run-generate" }))
+            .voice_generate(serde_json::json!({ "key": "main", "messageIndex": 1 }))
             .await
             .expect("voice generate");
 
@@ -786,7 +786,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn voice_generate_prefers_run_id_over_non_assistant_message_index() {
+    async fn voice_generate_rejects_obsolete_run_id_target() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
@@ -830,16 +830,14 @@ mod tests {
         let service = LiveSessionService::new(Arc::clone(&store), metadata)
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
-        let result = service
+        let error = service
             .voice_generate(
                 serde_json::json!({ "key": "main", "runId": "run-target", "messageIndex": 1 }),
             )
             .await
-            .expect("voice generate");
+            .expect_err("obsolete runId must be rejected");
 
-        assert_eq!(result["reused"], true);
-        assert_eq!(result["messageIndex"], 2);
-        assert_eq!(result["audio"].as_str(), Some("media/main/voice-msg-2.ogg"));
+        assert!(error.to_string().contains("unknown field"));
         assert_eq!(mock_tts.convert_calls.load(Ordering::SeqCst), 0);
     }
 

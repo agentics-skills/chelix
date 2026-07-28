@@ -304,14 +304,13 @@ function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
 			appendReasoningDisclosure(el, msg.reasoning);
 		}
 	}
-	if (el && msg.model && isTerminal) {
+	if (el) {
 		upsertTtsProviderFooter(el, msg.tts_provider);
 		appendMessageActions({
 			messageEl: el,
 			sessionKey: S.activeSessionKey,
 			messageIndex: msg.historyIndex,
 			text: msg.content || "",
-			runId: msg.run_id || undefined,
 			hasAudio: !!msg.audio,
 		});
 	}

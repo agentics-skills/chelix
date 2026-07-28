@@ -132,6 +132,27 @@ impl SessionStore {
     /// The existing line count and append share one exclusive file lock, so
     /// the returned index always identifies the record written by this call.
     pub async fn append_with_index(&self, key: &str, message: &serde_json::Value) -> Result<usize> {
+        self.append_with_expected_index(key, message, None).await
+    }
+
+    /// Append a message only when its expected zero-based physical index still
+    /// matches the session tail. The check and write share one exclusive lock.
+    pub async fn append_at_index(
+        &self,
+        key: &str,
+        message: &serde_json::Value,
+        expected_index: usize,
+    ) -> Result<usize> {
+        self.append_with_expected_index(key, message, Some(expected_index))
+            .await
+    }
+
+    async fn append_with_expected_index(
+        &self,
+        key: &str,
+        message: &serde_json::Value,
+        expected_index: Option<usize>,
+    ) -> Result<usize> {
         let path = self.path_for(key);
         let line = serde_json::to_string(message)?;
 
@@ -154,6 +175,13 @@ impl SessionStore {
                 .into_iter()
                 .filter(|line| !line.trim().is_empty())
                 .count();
+            if let Some(expected_index) = expected_index
+                && message_index != expected_index
+            {
+                return Err(Error::message(format!(
+                    "expected message index {expected_index}, found session tail {message_index}"
+                )));
+            }
             writeln!(*guard, "{line}")?;
             Ok(message_index)
         })
@@ -1254,6 +1282,28 @@ mod tests {
         let history = store.read("main").await.unwrap();
         assert_eq!(history.len(), 3);
         assert_eq!(history[index]["content"], "final");
+    }
+
+    #[tokio::test]
+    async fn test_append_at_index_mismatch_refuses_without_writing() {
+        let (store, _dir) = temp_store();
+        store
+            .append("main", &json!({ "role": "user", "content": "before" }))
+            .await
+            .unwrap();
+
+        let result = store
+            .append_at_index(
+                "main",
+                &json!({ "role": "assistant", "content": "must not persist" }),
+                2,
+            )
+            .await;
+
+        assert!(result.is_err());
+        let history = store.read("main").await.unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0]["content"], "before");
     }
 
     #[tokio::test]

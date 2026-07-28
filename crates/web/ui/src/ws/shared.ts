@@ -66,10 +66,13 @@ export function moveFirstQueuedToChat(): void {
  */
 export function setSafeMarkdownHtml(el: HTMLElement, text: string): void {
 	const rendered = renderMarkdown(text);
+	const actionBar = Array.from(el.children).find((child) => child.classList.contains("msg-action-bar"));
+	if (actionBar) actionBar.remove();
 	el.textContent = "";
 	const wrapper = document.createElement("span");
 	wrapper.insertAdjacentHTML("afterbegin", rendered);
 	while (wrapper.firstChild) el.appendChild(wrapper.firstChild);
+	if (actionBar) el.appendChild(actionBar);
 }
 
 export function hasNonWhitespaceContent(text: string | null | undefined): boolean {

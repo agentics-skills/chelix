@@ -11,6 +11,7 @@ import {
 	stripChannelPrefix,
 } from "../chat-ui";
 import { renderAudioPlayer, renderMarkdown } from "../helpers";
+import { appendMessageActions } from "../message-actions";
 import { navigate } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
@@ -213,6 +214,7 @@ function extractThinkingText(): string | null {
 export function closeLiveAssistantSegment(
 	assistantMessage: ChatPayload["assistantMessage"],
 	assistantHistoryIndex: number | undefined,
+	sessionKey: string,
 ): void {
 	const canonicalText = assistantMessage?.content || "";
 	const canonicalReasoning = assistantMessage?.reasoning || "";
@@ -229,6 +231,13 @@ export function closeLiveAssistantSegment(
 			if (canonicalReasoning && !isReasoningAlreadyShown(canonicalReasoning)) {
 				appendReasoningDisclosure(S.streamEl, canonicalReasoning);
 			}
+			appendMessageActions({
+				messageEl: S.streamEl,
+				sessionKey,
+				messageIndex: assistantHistoryIndex,
+				text: canonicalText || S.streamText,
+				hasAudio: !!assistantMessage?.audio,
+			});
 		} else {
 			S.streamEl.remove();
 		}
@@ -249,13 +258,22 @@ export function closeLiveAssistantSegment(
 	if (segment && canonicalReasoning && !isReasoningAlreadyShown(canonicalReasoning)) {
 		appendReasoningDisclosure(segment, canonicalReasoning);
 	}
+	if (segment) {
+		appendMessageActions({
+			messageEl: segment,
+			sessionKey,
+			messageIndex: assistantHistoryIndex,
+			text: canonicalText,
+			hasAudio: !!assistantMessage?.audio,
+		});
+	}
 }
 
 export function handleToolCallStartDom(p: ChatPayload, eventSession: string): void {
 	const thinkingText = extractThinkingText();
 	removeThinking();
 	const canonicalReasoning = p.assistantMessage?.reasoning || "";
-	closeLiveAssistantSegment(p.assistantMessage, p.messageIndex);
+	closeLiveAssistantSegment(p.assistantMessage, p.messageIndex, eventSession);
 	const cardId = toolCallCardId(p);
 	const existingCard = document.getElementById(cardId) as HTMLElement | null;
 	if (existingCard) {
@@ -433,6 +451,13 @@ export function renderAbortedPartialInDom(p: ChatPayload, partialState: AbortedP
 		appendReasoningDisclosure(partialEl, partialState.partialReasoning);
 	}
 	if (!partialEl) return;
+	appendMessageActions({
+		messageEl: partialEl,
+		sessionKey: p.sessionKey || S.activeSessionKey,
+		messageIndex: p.messageIndex,
+		text: partialState.partialText,
+		hasAudio: !!partial?.audio,
+	});
 	const toolBatchEnd = partialState.hasTerminalToolBatch ? resolveToolBatchEnd(toolCallIds(partial?.tool_calls)) : null;
 	appendTerminalMetadataForPartial(p, partial, toolBatchEnd || partialEl);
 	smartScrollToBottom();

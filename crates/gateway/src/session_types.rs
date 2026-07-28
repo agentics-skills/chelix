@@ -56,31 +56,10 @@ where
 
 /// Params for `session.voice_generate`.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VoiceGenerateParams {
     pub key: String,
-    #[serde(default)]
-    pub run_id: Option<String>,
-    #[serde(default)]
-    pub message_index: Option<usize>,
-    #[serde(default)]
-    pub history_index: Option<usize>,
-}
-
-impl VoiceGenerateParams {
-    /// Resolve the target specification. `run_id` takes precedence.
-    pub fn target(&self) -> Result<VoiceTarget, &'static str> {
-        if let Some(ref id) = self.run_id {
-            let trimmed = id.trim();
-            if !trimmed.is_empty() {
-                return Ok(VoiceTarget::ByRunId(trimmed.to_string()));
-            }
-        }
-        if let Some(idx) = self.message_index.or(self.history_index) {
-            return Ok(VoiceTarget::ByMessageIndex(idx));
-        }
-        Err("missing 'messageIndex' or 'runId' parameter")
-    }
+    pub message_index: usize,
 }
 
 /// Params for `sessions.truncate_tail`.
@@ -117,15 +96,6 @@ impl TruncateTailParams {
         }
         Err("missing 'messageIndex' or 'seq' parameter")
     }
-}
-
-/// How to locate the target assistant message for voice generation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VoiceTarget {
-    /// Locate by agent run ID (stable across inserted tool_result messages).
-    ByRunId(String),
-    /// Locate by raw message index in the history array.
-    ByMessageIndex(usize),
 }
 
 /// Parse a `serde_json::Value` into a typed param struct, mapping
@@ -219,51 +189,37 @@ mod tests {
     }
 
     #[test]
-    fn voice_generate_run_id_precedence() {
-        let p: VoiceGenerateParams = serde_json::from_value(json!({
-            "key": "main",
-            "runId": "run-abc",
-            "messageIndex": 5,
-        }))
-        .unwrap();
-        assert_eq!(p.target().unwrap(), VoiceTarget::ByRunId("run-abc".into()));
-    }
-
-    #[test]
-    fn voice_generate_index_fallback() {
+    fn voice_generate_requires_message_index() {
         let p: VoiceGenerateParams = serde_json::from_value(json!({
             "key": "main",
             "messageIndex": 3,
         }))
         .unwrap();
-        assert_eq!(p.target().unwrap(), VoiceTarget::ByMessageIndex(3));
+        assert_eq!(p.message_index, 3);
     }
 
     #[test]
-    fn voice_generate_history_index_fallback() {
-        let p: VoiceGenerateParams = serde_json::from_value(json!({
+    fn voice_generate_rejects_obsolete_targets() {
+        for target in [
+            json!({
+                "key": "main",
+                "runId": "run-abc",
+            }),
+            json!({
+                "key": "main",
+                "historyIndex": 7,
+            }),
+        ] {
+            assert!(serde_json::from_value::<VoiceGenerateParams>(target).is_err());
+        }
+    }
+
+    #[test]
+    fn voice_generate_rejects_missing_message_index() {
+        let result = serde_json::from_value::<VoiceGenerateParams>(json!({
             "key": "main",
-            "historyIndex": 7,
-        }))
-        .unwrap();
-        assert_eq!(p.target().unwrap(), VoiceTarget::ByMessageIndex(7));
-    }
-
-    #[test]
-    fn voice_generate_no_target() {
-        let p: VoiceGenerateParams = serde_json::from_value(json!({"key": "main"})).unwrap();
-        assert!(p.target().is_err());
-    }
-
-    #[test]
-    fn voice_generate_blank_run_id_falls_back_to_index() {
-        let p: VoiceGenerateParams = serde_json::from_value(json!({
-            "key": "main",
-            "runId": "  ",
-            "messageIndex": 2,
-        }))
-        .unwrap();
-        assert_eq!(p.target().unwrap(), VoiceTarget::ByMessageIndex(2));
+        }));
+        assert!(result.is_err());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 // ── Message action bar (copy, voice, retry, fork) ────────────
 //
-// Appended below each finalized assistant message footer.
+// Mounted when an assistant message first appears and updated as it streams.
 // The retry button opens a popover with "Try again", "Add details",
 // and "More concise" options.
 // Icons use CSS mask-image classes (icon-*) backed by SVG files on disk.
@@ -44,10 +44,18 @@ export interface MessageActionContext {
 	sessionKey: string;
 	messageIndex?: number;
 	text: string;
-	runId?: string;
 	hasAudio?: boolean;
 	audioWarning?: string;
 }
+
+interface MessageActionState {
+	sessionKey: string;
+	messageIndex?: number;
+	text: string;
+	hasAudio: boolean;
+}
+
+const messageActionStates = new WeakMap<HTMLElement, MessageActionState>();
 
 export interface UserMessageActionContext {
 	messageEl: HTMLElement | null;
@@ -124,6 +132,22 @@ function buildUserDeleteButton(ctx: UserMessageActionContext): HTMLButtonElement
 export function appendMessageActions(ctx: MessageActionContext): void {
 	const { messageEl, sessionKey } = ctx;
 	const shouldKeepBottomAnchored = isChatAtBottom();
+	let state = messageActionStates.get(messageEl);
+	if (!state) {
+		state = {
+			sessionKey,
+			messageIndex: ctx.messageIndex,
+			text: ctx.text,
+			hasAudio: ctx.hasAudio === true,
+		};
+		messageActionStates.set(messageEl, state);
+	} else {
+		state.sessionKey = sessionKey;
+		state.text = ctx.text;
+		if (ctx.messageIndex !== undefined) state.messageIndex = ctx.messageIndex;
+		if (ctx.hasAudio !== undefined) state.hasAudio = ctx.hasAudio;
+	}
+	let domChanged = false;
 
 	// Surface server-side audio warnings inline on the message.
 	if (ctx.audioWarning) {
@@ -132,17 +156,33 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 			warningEl = document.createElement("div");
 			warningEl.className = "voice-error-result msg-voice-warning";
 			messageEl.appendChild(warningEl);
+			domChanged = true;
 		}
 		warningEl.textContent = ctx.audioWarning;
 	}
 
+	let bar = messageEl.querySelector(":scope > .msg-action-bar") as HTMLDivElement | null;
+	if (!bar) {
+		bar = buildMessageActionBar(state);
+		messageEl.appendChild(bar);
+		domChanged = true;
+	}
+	if (syncVoiceButton(bar, messageEl, state)) domChanged = true;
+	if (bar.nextElementSibling) {
+		messageEl.appendChild(bar);
+		domChanged = true;
+	}
+	if (shouldKeepBottomAnchored && domChanged) scrollChatToBottom(true);
+}
+
+function buildMessageActionBar(state: MessageActionState): HTMLDivElement {
 	const bar = document.createElement("div");
 	bar.className = "msg-action-bar";
 
 	// ── Copy button ──────────────────────────────────────────
 	const copyBtn = actionButton("icon-copy", "Copy");
 	copyBtn.addEventListener("click", () => {
-		copyTextWithButtonFeedback(copyBtn, ctx.text);
+		copyTextWithButtonFeedback(copyBtn, state.text);
 	});
 	bar.appendChild(copyBtn);
 
@@ -155,7 +195,7 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 			return;
 		}
 		dismissActivePopover();
-		const popover = buildRetryPopover(sessionKey);
+		const popover = buildRetryPopover(state.sessionKey);
 		bar.appendChild(popover);
 		activePopover = popover;
 		requestAnimationFrame(() => {
@@ -164,50 +204,17 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 	});
 	bar.appendChild(retryBtn);
 
-	// ── Voice button ─────────────────────────────────────────
-	if (ctx.text && !ctx.hasAudio && gon.get("tts_enabled") !== false) {
-		const voiceBtn = actionButton("icon-microphone", "Voice it");
-		voiceBtn.addEventListener("click", async () => {
-			const params: Record<string, unknown> = { key: sessionKey };
-			if (ctx.runId) params.runId = ctx.runId;
-			if (Number.isInteger(ctx.messageIndex) && (ctx.messageIndex as number) >= 0) {
-				params.messageIndex = ctx.messageIndex;
-			}
-			if (!(params.runId || Number.isInteger(params.messageIndex))) {
-				showToast("Cannot generate voice for this message", "error");
-				return;
-			}
-			voiceBtn.classList.add("msg-action-btn-active");
-			voiceBtn.title = "Generating voice...";
-			const result = await sendRpc("sessions.voice.generate", params);
-			voiceBtn.classList.remove("msg-action-btn-active");
-			const payload = result?.payload as Record<string, unknown> | undefined;
-			if (result?.ok && payload?.audio) {
-				renderPersistedAudio(
-					messageEl,
-					sessionKey,
-					payload.audio as string,
-					true,
-					payload.ttsProvider as string | undefined,
-				);
-				voiceBtn.replaceChildren(iconSpan("icon-checkmark"));
-				voiceBtn.title = "Voice generated";
-			} else {
-				voiceBtn.title = "Voice it";
-				const errorMsg = (result?.error as Record<string, unknown> | undefined)?.message as string | undefined;
-				showToast(errorMsg || "Voice generation failed", "error");
-			}
-		});
-		bar.appendChild(voiceBtn);
-	}
-
 	// ── Fork button ──────────────────────────────────────────
 	const forkBtn = actionButton("icon-git-fork", "Fork into new session");
+	forkBtn.classList.add("msg-fork-btn");
 	forkBtn.addEventListener("click", () => {
-		const forkPoint = Number.isInteger(ctx.messageIndex) ? (ctx.messageIndex as number) + 1 : undefined;
+		if (!(Number.isInteger(state.messageIndex) && (state.messageIndex as number) >= 0)) {
+			showToast("Cannot fork from an unpersisted message", "error");
+			return;
+		}
 		sendRpc("sessions.fork", {
-			key: sessionKey,
-			...(forkPoint !== undefined ? { forkPoint } : {}),
+			key: state.sessionKey,
+			forkPoint: (state.messageIndex as number) + 1,
 		}).then((res) => {
 			if (res.ok) {
 				showToast("Forked into new session", "success");
@@ -217,9 +224,57 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 		});
 	});
 	bar.appendChild(forkBtn);
+	return bar;
+}
 
-	messageEl.appendChild(bar);
-	if (shouldKeepBottomAnchored) scrollChatToBottom(true);
+function syncVoiceButton(bar: HTMLDivElement, messageEl: HTMLElement, state: MessageActionState): boolean {
+	const existing = bar.querySelector(".msg-voice-btn") as HTMLButtonElement | null;
+	const shouldShow = Boolean(state.text && !state.hasAudio && gon.get("tts_enabled") !== false);
+	if (!shouldShow) {
+		if (!existing) return false;
+		existing.remove();
+		return true;
+	}
+	if (existing) return false;
+	const voiceBtn = buildVoiceButton(messageEl, state);
+	bar.insertBefore(voiceBtn, bar.querySelector(".msg-fork-btn"));
+	return true;
+}
+
+function buildVoiceButton(messageEl: HTMLElement, state: MessageActionState): HTMLButtonElement {
+	const voiceBtn = actionButton("icon-microphone", "Voice it");
+	voiceBtn.classList.add("msg-voice-btn");
+	voiceBtn.addEventListener("click", async () => {
+		if (!(Number.isInteger(state.messageIndex) && (state.messageIndex as number) >= 0)) {
+			showToast("Cannot generate voice for an unpersisted message", "error");
+			return;
+		}
+		voiceBtn.classList.add("msg-action-btn-active");
+		voiceBtn.title = "Generating voice...";
+		const result = await sendRpc("sessions.voice.generate", {
+			key: state.sessionKey,
+			messageIndex: state.messageIndex,
+		});
+		voiceBtn.classList.remove("msg-action-btn-active");
+		const payload = result?.payload as Record<string, unknown> | undefined;
+		if (result?.ok && payload?.audio) {
+			state.hasAudio = true;
+			renderPersistedAudio(
+				messageEl,
+				state.sessionKey,
+				payload.audio as string,
+				true,
+				payload.ttsProvider as string | undefined,
+			);
+			voiceBtn.replaceChildren(iconSpan("icon-checkmark"));
+			voiceBtn.title = "Voice generated";
+		} else {
+			voiceBtn.title = "Voice it";
+			const errorMsg = (result?.error as Record<string, unknown> | undefined)?.message as string | undefined;
+			showToast(errorMsg || "Voice generation failed", "error");
+		}
+	});
+	return voiceBtn;
 }
 
 // ── Button factory ───────────────────────────────────────────

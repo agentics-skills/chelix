@@ -104,7 +104,6 @@ interface AttachMessageVoiceControlOptions {
 	footerEl?: HTMLElement | null;
 	sessionKey?: string;
 	text?: string;
-	runId?: string;
 	messageIndex?: number;
 	audioPath?: string;
 	ttsProvider?: string;
@@ -120,7 +119,6 @@ export async function attachMessageVoiceControl(options: AttachMessageVoiceContr
 
 	const sessionKey = options?.sessionKey;
 	const text = String(options?.text || "").trim();
-	const runId = options?.runId;
 	const messageIndex = options?.messageIndex;
 	const audioPath = options?.audioPath;
 	const ttsProvider = options?.ttsProvider;
@@ -150,19 +148,17 @@ export async function attachMessageVoiceControl(options: AttachMessageVoiceContr
 			return;
 		}
 
-		const params: Record<string, unknown> = { key: sessionKey };
-		if (runId) params.runId = runId;
-		if (Number.isInteger(messageIndex) && (messageIndex as number) >= 0) {
-			params.messageIndex = messageIndex;
-		}
-		if (!(params.runId || Number.isInteger(params.messageIndex))) {
+		if (!(Number.isInteger(messageIndex) && (messageIndex as number) >= 0)) {
 			upsertVoiceWarning(messageEl, "Cannot generate voice for this message.");
 			return;
 		}
 
 		actionBtn!.disabled = true;
 		actionBtn!.textContent = "Voicing...";
-		const result = (await sendRpc("sessions.voice.generate", params)) as unknown as Record<string, unknown>;
+		const result = (await sendRpc("sessions.voice.generate", {
+			key: sessionKey,
+			messageIndex,
+		})) as unknown as Record<string, unknown>;
 		if (!(result?.ok && (result.payload as Record<string, unknown> | undefined)?.audio)) {
 			actionBtn!.disabled = false;
 			actionBtn!.textContent = "Retry voice";

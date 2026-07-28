@@ -33,7 +33,10 @@ use crate::{
     models::DisabledModelsStore,
     prompt::prompt_build_limits_from_config,
     runtime::ChatRuntime,
-    service::{ActiveAssistantDraft, append_final_assistant_segment},
+    service::{
+        ActiveAssistantDraft, append_assistant_delta, persist_active_assistant_draft,
+        persist_final_assistant_segment, reserve_assistant_message_index,
+    },
     types::*,
 };
 
@@ -108,6 +111,29 @@ fn next_stream_retry_delay_ms(
     }
 
     None
+}
+
+async fn persist_streaming_partial(
+    session_store: Option<&Arc<SessionStore>>,
+    active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
+    session_key: &str,
+) -> crate::error::Result<Option<(Value, usize)>> {
+    match (session_store, active_partial_assistant) {
+        (Some(store), Some(drafts)) => {
+            persist_active_assistant_draft(store, drafts, session_key).await
+        },
+        (None, None) => Ok(None),
+        _ => Err(crate::error::Error::message(
+            "assistant persistence dependencies are inconsistent",
+        )),
+    }
+}
+
+fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, usize)>) {
+    if let Some((partial_message, message_index)) = partial {
+        payload["partialMessage"] = partial_message;
+        payload["messageIndex"] = serde_json::json!(message_index);
+    }
 }
 
 pub(crate) async fn run_streaming(
@@ -234,26 +260,48 @@ pub(crate) async fn run_streaming(
             match event {
                 StreamEvent::Delta(delta) => {
                     accumulated.push_str(&delta);
-                    if let Some(ref map) = active_partial_assistant
-                        && let Some(draft) = map.write().await.get_mut(session_key)
+                    let message_index = if let (Some(store), Some(drafts)) =
+                        (session_store, active_partial_assistant.as_ref())
                     {
-                        draft.append_text(&delta);
-                    }
+                        match append_assistant_delta(store, drafts, session_key, &delta).await {
+                            Ok(message_index) => message_index,
+                            Err(error) => {
+                                let error = error.to_string();
+                                warn!(run_id, %error, "failed to persist streaming assistant segment");
+                                state.set_run_error(run_id, error.clone()).await;
+                                let error_obj = parse_chat_error(&error, Some(provider_name));
+                                deliver_channel_error(state, session_key, &error_obj).await;
+                                let error_payload = ChatErrorBroadcast {
+                                    run_id: run_id.to_string(),
+                                    session_key: session_key.to_string(),
+                                    state: "error",
+                                    error: error_obj,
+                                    seq: client_seq,
+                                };
+                                #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                                let payload_val = serde_json::to_value(&error_payload).unwrap();
+                                terminal_runs.write().await.insert(run_id.to_string());
+                                broadcast(state, "chat", payload_val, BroadcastOpts::default())
+                                    .await;
+                                return None;
+                            },
+                        }
+                    } else {
+                        None
+                    };
                     if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                         dispatcher.send_delta(&delta).await;
                     }
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "delta",
-                            "text": delta,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
+                    let mut payload = serde_json::json!({
+                        "runId": run_id,
+                        "sessionKey": session_key,
+                        "state": "delta",
+                        "text": delta,
+                    });
+                    if let Some(message_index) = message_index {
+                        payload["messageIndex"] = serde_json::json!(message_index);
+                    }
+                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
                 },
                 StreamEvent::ReasoningDelta(delta) => {
                     accumulated_reasoning.push_str(&delta);
@@ -352,10 +400,24 @@ pub(crate) async fn run_streaming(
                             run_id,
                             "empty stream with zero tokens — treating as provider error"
                         );
-                        let error_obj = parse_chat_error(
-                            "The provider returned an empty response (possible network error). Please try again.",
-                            Some(provider_name),
-                        );
+                        let provider_error = "The provider returned an empty response (possible network error). Please try again.";
+                        let (terminal_error, partial) = match persist_streaming_partial(
+                            session_store,
+                            active_partial_assistant.as_ref(),
+                            session_key,
+                        )
+                        .await
+                        {
+                            Ok(partial) => (provider_error.to_string(), partial),
+                            Err(error) => (
+                                format!(
+                                    "{provider_error} Partial assistant persistence failed: {error}"
+                                ),
+                                None,
+                            ),
+                        };
+                        state.set_run_error(run_id, terminal_error.clone()).await;
+                        let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                         deliver_channel_error(state, session_key, &error_obj).await;
                         let error_payload = ChatErrorBroadcast {
                             run_id: run_id.to_string(),
@@ -365,7 +427,8 @@ pub(crate) async fn run_streaming(
                             seq: client_seq,
                         };
                         #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                        let payload_val = serde_json::to_value(&error_payload).unwrap();
+                        let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+                        attach_partial_to_error_payload(&mut payload_val, partial);
                         terminal_runs.write().await.insert(run_id.to_string());
                         broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                         return None;
@@ -420,8 +483,39 @@ pub(crate) async fn run_streaming(
                         reasoning.clone(),
                         llm_api_response,
                     );
-                    if let Some(store) = session_store {
-                        assistant_output.persisted_message_index = append_final_assistant_segment(
+                    if let (Some(store), Some(drafts)) =
+                        (session_store, active_partial_assistant.as_ref())
+                    {
+                        let message_index = match reserve_assistant_message_index(
+                            store,
+                            drafts,
+                            session_key,
+                        )
+                        .await
+                        {
+                            Ok(message_index) => message_index,
+                            Err(error) => {
+                                let error = error.to_string();
+                                warn!(run_id, %error, "failed to reserve final assistant message index");
+                                state.set_run_error(run_id, error.clone()).await;
+                                let error_obj = parse_chat_error(&error, Some(provider_name));
+                                deliver_channel_error(state, session_key, &error_obj).await;
+                                let error_payload = ChatErrorBroadcast {
+                                    run_id: run_id.to_string(),
+                                    session_key: session_key.to_string(),
+                                    state: "error",
+                                    error: error_obj,
+                                    seq: client_seq,
+                                };
+                                #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                                let payload_val = serde_json::to_value(&error_payload).unwrap();
+                                terminal_runs.write().await.insert(run_id.to_string());
+                                broadcast(state, "chat", payload_val, BroadcastOpts::default())
+                                    .await;
+                                return None;
+                            },
+                        };
+                        match persist_final_assistant_segment(
                             store,
                             session_key,
                             &assistant_output,
@@ -430,8 +524,51 @@ pub(crate) async fn run_streaming(
                             session_reasoning_effort.clone(),
                             client_seq,
                             run_id,
+                            message_index,
                         )
-                        .await;
+                        .await
+                        {
+                            Ok(message_index) => {
+                                assistant_output.persisted_message_index = Some(message_index);
+                            },
+                            Err(error) => {
+                                let persistence_error = error.to_string();
+                                let (terminal_error, partial) = match persist_streaming_partial(
+                                    session_store,
+                                    active_partial_assistant.as_ref(),
+                                    session_key,
+                                )
+                                .await
+                                {
+                                    Ok(partial) => (persistence_error, partial),
+                                    Err(error) => (
+                                        format!(
+                                            "{persistence_error}; partial assistant persistence failed: {error}"
+                                        ),
+                                        None,
+                                    ),
+                                };
+                                warn!(run_id, error = %terminal_error, "failed to finalize streaming assistant segment");
+                                state.set_run_error(run_id, terminal_error.clone()).await;
+                                let error_obj =
+                                    parse_chat_error(&terminal_error, Some(provider_name));
+                                deliver_channel_error(state, session_key, &error_obj).await;
+                                let error_payload = ChatErrorBroadcast {
+                                    run_id: run_id.to_string(),
+                                    session_key: session_key.to_string(),
+                                    state: "error",
+                                    error: error_obj,
+                                    seq: client_seq,
+                                };
+                                #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                                let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+                                attach_partial_to_error_payload(&mut payload_val, partial);
+                                terminal_runs.write().await.insert(run_id.to_string());
+                                broadcast(state, "chat", payload_val, BroadcastOpts::default())
+                                    .await;
+                                return None;
+                            },
+                        }
                     }
 
                     let final_payload = build_chat_final_broadcast(
@@ -476,14 +613,14 @@ pub(crate) async fn run_streaming(
                     return Some(assistant_output);
                 },
                 StreamEvent::Error(msg) => {
-                    let error_obj = parse_chat_error(&msg, Some(provider_name));
+                    let provider_error_obj = parse_chat_error(&msg, Some(provider_name));
                     let has_no_streamed_content = accumulated.trim().is_empty()
                         && accumulated_reasoning.trim().is_empty()
                         && raw_llm_responses.is_empty();
                     if has_no_streamed_content
                         && let Some(delay_ms) = next_stream_retry_delay_ms(
                             &msg,
-                            &error_obj,
+                            &provider_error_obj,
                             &mut server_retries_remaining,
                             &mut rate_limit_retries_remaining,
                             &mut rate_limit_backoff_ms,
@@ -497,13 +634,13 @@ pub(crate) async fn run_streaming(
                             rate_limit_retries_remaining,
                             "chat stream transient error, retrying after delay"
                         );
-                        if error_obj.get("type").and_then(Value::as_str)
+                        if provider_error_obj.get("type").and_then(Value::as_str)
                             == Some("rate_limit_exceeded")
                         {
                             send_retry_status_to_channels(
                                 state,
                                 session_key,
-                                &error_obj,
+                                &provider_error_obj,
                                 Duration::from_millis(delay_ms),
                             )
                             .await;
@@ -515,7 +652,7 @@ pub(crate) async fn run_streaming(
                                 "runId": run_id,
                                 "sessionKey": session_key,
                                 "state": "retrying",
-                                "error": error_obj,
+                                "error": provider_error_obj,
                                 "retryAfterMs": delay_ms,
                                 "seq": client_seq,
                             }),
@@ -526,13 +663,33 @@ pub(crate) async fn run_streaming(
                         continue 'attempts;
                     }
 
-                    warn!(run_id, error = %msg, "chat stream error");
+                    let (terminal_error, partial) = match persist_streaming_partial(
+                        session_store,
+                        active_partial_assistant.as_ref(),
+                        session_key,
+                    )
+                    .await
+                    {
+                        Ok(partial) => (msg, partial),
+                        Err(error) => (
+                            format!("{msg}; partial assistant persistence failed: {error}"),
+                            None,
+                        ),
+                    };
+                    warn!(run_id, error = %terminal_error, "chat stream error");
                     if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                         dispatcher.finish().await;
                     }
-                    state.set_run_error(run_id, msg.clone()).await;
-                    mark_unsupported_model(state, model_store, model_id, provider_name, &error_obj)
-                        .await;
+                    state.set_run_error(run_id, terminal_error.clone()).await;
+                    mark_unsupported_model(
+                        state,
+                        model_store,
+                        model_id,
+                        provider_name,
+                        &provider_error_obj,
+                    )
+                    .await;
+                    let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                     deliver_channel_error(state, session_key, &error_obj).await;
                     let error_payload = ChatErrorBroadcast {
                         run_id: run_id.to_string(),
@@ -542,7 +699,8 @@ pub(crate) async fn run_streaming(
                         seq: client_seq,
                     };
                     #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                    let payload_val = serde_json::to_value(&error_payload).unwrap();
+                    let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+                    attach_partial_to_error_payload(&mut payload_val, partial);
                     terminal_runs.write().await.insert(run_id.to_string());
                     broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                     return None;
@@ -555,6 +713,39 @@ pub(crate) async fn run_streaming(
         }
 
         // Stream ended unexpectedly without Done/Error.
+        let stream_error = "The provider stream ended without a terminal event.";
+        let (terminal_error, partial) = match persist_streaming_partial(
+            session_store,
+            active_partial_assistant.as_ref(),
+            session_key,
+        )
+        .await
+        {
+            Ok(partial) => (stream_error.to_string(), partial),
+            Err(error) => (
+                format!("{stream_error} Partial assistant persistence failed: {error}"),
+                None,
+            ),
+        };
+        warn!(run_id, error = %terminal_error, "chat stream ended unexpectedly");
+        if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
+            dispatcher.finish().await;
+        }
+        state.set_run_error(run_id, terminal_error.clone()).await;
+        let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
+        deliver_channel_error(state, session_key, &error_obj).await;
+        let error_payload = ChatErrorBroadcast {
+            run_id: run_id.to_string(),
+            session_key: session_key.to_string(),
+            state: "error",
+            error: error_obj,
+            seq: client_seq,
+        };
+        #[allow(clippy::unwrap_used)] // serializing known-valid struct
+        let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+        attach_partial_to_error_payload(&mut payload_val, partial);
+        terminal_runs.write().await.insert(run_id.to_string());
+        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
         return None;
     }
 }

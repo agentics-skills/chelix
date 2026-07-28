@@ -53,8 +53,10 @@ use crate::{
     },
     runtime::ChatRuntime,
     service::{
-        ActiveAssistantDraft, EventForwarderResult, append_final_assistant_segment,
+        ActiveAssistantDraft, EventForwarderResult, append_assistant_delta,
         build_persisted_tool_call, finalize_persisted_assistant_message,
+        persist_active_assistant_draft, persist_final_assistant_segment,
+        reserve_assistant_message_index,
     },
     types::*,
 };
@@ -80,14 +82,31 @@ async fn persist_tool_segment(
     iteration_usage: &chelix_agents::model::Usage,
     batch_key: &str,
     persisted_tool_batches: &mut HashMap<String, (usize, Value)>,
-) -> Option<(usize, Value)> {
+) -> crate::error::Result<Option<(usize, Value)>> {
     if let Some((index, message)) = persisted_tool_batches.get(batch_key) {
-        return Some((*index, message.clone()));
+        return Ok(Some((*index, message.clone())));
     }
 
-    let store = session_store?;
-    let drafts = active_partial_assistant?;
-    let current_draft = drafts.read().await.get(session_key).cloned()?;
+    let (store, drafts) = match (session_store, active_partial_assistant) {
+        (Some(store), Some(drafts)) => (store, drafts),
+        (None, None) => return Ok(None),
+        _ => {
+            return Err(crate::error::Error::message(
+                "assistant persistence dependencies are inconsistent",
+            ));
+        },
+    };
+    let message_index = reserve_assistant_message_index(store, drafts, session_key).await?;
+    let current_draft = drafts
+        .read()
+        .await
+        .get(session_key)
+        .cloned()
+        .ok_or_else(|| {
+            crate::error::Error::message(format!(
+                "active assistant draft is unavailable for session '{session_key}'"
+            ))
+        })?;
     let tool_calls = iteration_tool_calls
         .iter()
         .map(|tool_call| {
@@ -102,13 +121,12 @@ async fn persist_tool_segment(
     let segment_value = current_draft
         .to_persisted_message(Some(tool_calls), Some(iteration_usage))
         .to_value();
-    let index = match store.append_with_index(session_key, &segment_value).await {
-        Ok(index) => index,
-        Err(error) => {
-            warn!(session = %session_key, error = %error, "failed to persist assistant tool segment");
-            return None;
-        },
-    };
+    let index = store
+        .append_at_index(session_key, &segment_value, message_index)
+        .await
+        .map_err(|source| {
+            crate::error::Error::external("failed to persist assistant tool segment", source)
+        })?;
 
     drafts
         .write()
@@ -117,7 +135,30 @@ async fn persist_tool_segment(
     for tool_call in iteration_tool_calls {
         persisted_tool_batches.insert(tool_call.id.clone(), (index, segment_value.clone()));
     }
-    Some((index, segment_value))
+    Ok(Some((index, segment_value)))
+}
+
+async fn persist_tool_loop_partial(
+    session_store: Option<&Arc<SessionStore>>,
+    active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
+    session_key: &str,
+) -> crate::error::Result<Option<(Value, usize)>> {
+    match (session_store, active_partial_assistant) {
+        (Some(store), Some(drafts)) => {
+            persist_active_assistant_draft(store, drafts, session_key).await
+        },
+        (None, None) => Ok(None),
+        _ => Err(crate::error::Error::message(
+            "assistant persistence dependencies are inconsistent",
+        )),
+    }
+}
+
+fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, usize)>) {
+    if let Some((partial_message, message_index)) = partial {
+        payload["partialMessage"] = partial_message;
+        payload["messageIndex"] = serde_json::json!(message_index);
+    }
 }
 
 pub(crate) async fn run_with_tools(
@@ -336,6 +377,7 @@ pub(crate) async fn run_with_tools(
         let mut tool_reasoning_map: HashMap<String, String> = HashMap::new();
         let mut latest_reasoning = String::new();
         let mut persisted_tool_batches: HashMap<String, (usize, Value)> = HashMap::new();
+        let mut forwarder_error = None;
         while let Some(event) = event_rx.recv().await {
             let _processed = event_barrier_for_forwarder.processed_guard();
             let state = Arc::clone(&state_for_events);
@@ -380,7 +422,7 @@ pub(crate) async fn run_with_tools(
                     // The runner invokes each iteration start callback before
                     // the first tool future awaits. The first call ID is the
                     // canonical full-frame carrier for this tool batch.
-                    let persisted_segment = persist_tool_segment(
+                    let persisted_segment = match persist_tool_segment(
                         store.as_ref(),
                         active_partial_for_events.as_ref(),
                         &sk,
@@ -389,7 +431,14 @@ pub(crate) async fn run_with_tools(
                         &batch_key,
                         &mut persisted_tool_batches,
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(persisted_segment) => persisted_segment,
+                        Err(error) => {
+                            forwarder_error = Some(error.to_string());
+                            break;
+                        },
+                    };
 
                     // The runner launches every iteration batch concurrently
                     // before it emits the individual start events. Record the
@@ -709,18 +758,19 @@ pub(crate) async fn run_with_tools(
                             created_at: Some(now_ms()),
                             run_id: Some(run_id.clone()),
                         };
-                        let tool_result_index = match store.count(&sk).await {
-                            Ok(count) => count as usize,
+                        let tool_result_index = match store
+                            .append_with_index(&sk, &tool_result_msg.to_value())
+                            .await
+                        {
+                            Ok(message_index) => message_index,
                             Err(error) => {
-                                warn!(session = %sk, error = %error, "failed to count history before tool result persistence");
-                                continue;
+                                forwarder_error = Some(format!(
+                                    "failed to persist tool result for session '{sk}': {error}"
+                                ));
+                                break;
                             },
                         };
-                        if let Err(error) = store.append(&sk, &tool_result_msg.to_value()).await {
-                            warn!(session = %sk, error = %error, "failed to persist tool result");
-                        } else {
-                            payload["messageIndex"] = serde_json::json!(tool_result_index);
-                        }
+                        payload["messageIndex"] = serde_json::json!(tool_result_index);
                     }
 
                     payload
@@ -744,18 +794,35 @@ pub(crate) async fn run_with_tools(
                     })
                 },
                 RunnerEvent::TextDelta(text) => {
-                    if let Some(ref map) = active_partial_for_events
-                        && let Some(draft) = map.write().await.get_mut(&sk)
-                    {
-                        draft.append_text(&text);
-                    }
-                    serde_json::json!({
+                    let message_index = match (store.as_ref(), active_partial_for_events.as_ref()) {
+                        (Some(store), Some(drafts)) => {
+                            match append_assistant_delta(store, drafts, &sk, &text).await {
+                                Ok(message_index) => message_index,
+                                Err(error) => {
+                                    forwarder_error = Some(error.to_string());
+                                    break;
+                                },
+                            }
+                        },
+                        (None, None) => None,
+                        _ => {
+                            forwarder_error = Some(
+                                "assistant persistence dependencies are inconsistent".to_string(),
+                            );
+                            break;
+                        },
+                    };
+                    let mut payload = serde_json::json!({
                         "runId": run_id,
                         "sessionKey": sk,
                         "state": "delta",
                         "text": text,
                         "seq": seq,
-                    })
+                    });
+                    if let Some(message_index) = message_index {
+                        payload["messageIndex"] = serde_json::json!(message_index);
+                    }
+                    payload
                 },
                 RunnerEvent::ProgressText(text) => {
                     if let Some(ref dispatcher) = channel_stream_for_events {
@@ -872,7 +939,7 @@ pub(crate) async fn run_with_tools(
                         .first()
                         .map(|tool_call| tool_call.id.clone())
                         .unwrap_or_else(|| id.clone());
-                    let persisted_segment = persist_tool_segment(
+                    let persisted_segment = match persist_tool_segment(
                         store.as_ref(),
                         active_partial_for_events.as_ref(),
                         &sk,
@@ -881,7 +948,14 @@ pub(crate) async fn run_with_tools(
                         &batch_key,
                         &mut persisted_tool_batches,
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(persisted_segment) => persisted_segment,
+                        Err(error) => {
+                            forwarder_error = Some(error.to_string());
+                            break;
+                        },
+                    };
                     let parsed_error = parse_chat_error(&error, None);
                     let mut payload = serde_json::json!({
                         "runId": run_id,
@@ -917,20 +991,19 @@ pub(crate) async fn run_with_tools(
                             created_at: Some(now_ms()),
                             run_id: Some(run_id.clone()),
                         };
-                        match store.count(&sk).await {
-                            Ok(count) => {
-                                if let Err(error) =
-                                    store.append(&sk, &tool_result_msg.to_value()).await
-                                {
-                                    warn!(session = %sk, error = %error, "failed to persist rejected tool call");
-                                } else {
-                                    payload["messageIndex"] = serde_json::json!(count as usize);
-                                }
-                            },
+                        let tool_result_index = match store
+                            .append_with_index(&sk, &tool_result_msg.to_value())
+                            .await
+                        {
+                            Ok(message_index) => message_index,
                             Err(error) => {
-                                warn!(session = %sk, error = %error, "failed to count history before rejected tool call persistence");
+                                forwarder_error = Some(format!(
+                                    "failed to persist rejected tool call for session '{sk}': {error}"
+                                ));
+                                break;
                             },
-                        }
+                        };
+                        payload["messageIndex"] = serde_json::json!(tool_result_index);
                     }
                     tool_args_map.remove(&id);
                     payload
@@ -960,6 +1033,7 @@ pub(crate) async fn run_with_tools(
                 .into_iter()
                 .map(|(tool_call_id, (index, _))| (tool_call_id, index))
                 .collect(),
+            error: forwarder_error,
         }
     });
     active_event_forwarders
@@ -1199,7 +1273,15 @@ pub(crate) async fn run_with_tools(
     drop(on_event);
     let event_result =
         LiveChatService::wait_for_event_forwarder(active_event_forwarders, session_key).await;
-    let reasoning_text = event_result.reasoning;
+    let EventForwarderResult {
+        reasoning: reasoning_text,
+        tool_segment_indices,
+        error: forwarder_error,
+    } = event_result;
+    let result = match forwarder_error {
+        Some(error) => Err(AgentRunError::Other(anyhow::anyhow!(error))),
+        None => result,
+    };
     let reasoning = {
         let trimmed = reasoning_text.trim();
         (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -1243,10 +1325,22 @@ pub(crate) async fn run_with_tools(
                     run_id,
                     "empty response with zero tokens — treating as provider error"
                 );
-                let error_obj = parse_chat_error(
-                    "The provider returned an empty response (possible network error). Please try again.",
-                    Some(provider_name),
-                );
+                let provider_error = "The provider returned an empty response (possible network error). Please try again.";
+                let (terminal_error, partial) = match persist_tool_loop_partial(
+                    session_store,
+                    active_partial_assistant.as_ref(),
+                    session_key,
+                )
+                .await
+                {
+                    Ok(partial) => (provider_error.to_string(), partial),
+                    Err(error) => (
+                        format!("{provider_error} Partial assistant persistence failed: {error}"),
+                        None,
+                    ),
+                };
+                state.set_run_error(run_id, terminal_error.clone()).await;
+                let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                 deliver_channel_error(state, session_key, &error_obj).await;
                 let error_payload = ChatErrorBroadcast {
                     run_id: run_id.to_string(),
@@ -1256,7 +1350,8 @@ pub(crate) async fn run_with_tools(
                     seq: client_seq,
                 };
                 #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                let payload_val = serde_json::to_value(&error_payload).unwrap();
+                let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+                attach_partial_to_error_payload(&mut payload_val, partial);
                 terminal_runs.write().await.insert(run_id.to_string());
                 broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                 return None;
@@ -1264,14 +1359,45 @@ pub(crate) async fn run_with_tools(
 
             let canonical_tool_segment_index = match &result.final_text_source {
                 chelix_agents::runner::FinalTextSource::ToolCallSegment { tool_call_id } => {
-                    event_result.tool_segment_indices.get(tool_call_id).copied().or_else(|| {
-                        warn!(
-                            session = %session_key,
-                            tool_call_id,
-                            "canonical tool segment was unavailable; persisting terminal text as a new assistant segment"
+                    let Some(message_index) = tool_segment_indices.get(tool_call_id).copied()
+                    else {
+                        let canonical_error = format!(
+                            "canonical assistant tool segment '{tool_call_id}' is unavailable"
                         );
-                        None
-                    })
+                        let (terminal_error, partial) = match persist_tool_loop_partial(
+                            session_store,
+                            active_partial_assistant.as_ref(),
+                            session_key,
+                        )
+                        .await
+                        {
+                            Ok(partial) => (canonical_error, partial),
+                            Err(error) => (
+                                format!(
+                                    "{canonical_error}; partial assistant persistence failed: {error}"
+                                ),
+                                None,
+                            ),
+                        };
+                        warn!(session = %session_key, error = %terminal_error);
+                        state.set_run_error(run_id, terminal_error.clone()).await;
+                        let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
+                        deliver_channel_error(state, session_key, &error_obj).await;
+                        let error_payload = ChatErrorBroadcast {
+                            run_id: run_id.to_string(),
+                            session_key: session_key.to_string(),
+                            state: "error",
+                            error: error_obj,
+                            seq: client_seq,
+                        };
+                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                        let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+                        attach_partial_to_error_payload(&mut payload_val, partial);
+                        terminal_runs.write().await.insert(run_id.to_string());
+                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
+                        return None;
+                    };
+                    Some(message_index)
                 },
                 chelix_agents::runner::FinalTextSource::NewSegment => None,
             };
@@ -1322,53 +1448,68 @@ pub(crate) async fn run_with_tools(
                 llm_api_response,
             );
             if let Some(store) = session_store {
-                let persisted_message_index = if let Some(message_index) =
-                    canonical_tool_segment_index
-                {
-                    let output = assistant_output.clone();
-                    match store
-                        .update_typed_at(session_key, message_index, move |existing| {
-                            finalize_persisted_assistant_message(output, existing)
-                        })
-                        .await
-                    {
-                        Ok(PersistedMessage::Assistant { .. }) => Some(message_index),
-                        result => {
-                            match result {
-                                Ok(_) => {
-                                    warn!(session = %session_key, message_index, "canonical tool segment is not an assistant message")
-                                },
-                                Err(error) => {
-                                    warn!(session = %session_key, error = %error, "failed to finalize canonical assistant tool segment")
-                                },
-                            }
-                            append_final_assistant_segment(
-                                store,
-                                session_key,
-                                &assistant_output,
-                                provider_ref.id(),
-                                provider_name,
-                                session_reasoning_effort.clone(),
-                                client_seq,
-                                run_id,
-                            )
+                let persisted_message_index =
+                    if let Some(message_index) = canonical_tool_segment_index {
+                        let output = assistant_output.clone();
+                        match store
+                            .update_typed_at(session_key, message_index, move |existing| {
+                                finalize_persisted_assistant_message(output, existing)
+                            })
                             .await
-                        },
-                    }
-                } else {
-                    append_final_assistant_segment(
-                        store,
-                        session_key,
-                        &assistant_output,
-                        provider_ref.id(),
-                        provider_name,
-                        session_reasoning_effort.clone(),
-                        client_seq,
-                        run_id,
-                    )
-                    .await
-                };
-                assistant_output.persisted_message_index = persisted_message_index;
+                        {
+                            Ok(PersistedMessage::Assistant { .. }) => Ok(message_index),
+                            Ok(_) => Err(crate::error::Error::message(format!(
+                                "message index {message_index} is not an assistant tool segment"
+                            ))),
+                            Err(source) => Err(crate::error::Error::external(
+                                "failed to finalize canonical assistant tool segment",
+                                source,
+                            )),
+                        }
+                    } else {
+                        let drafts = active_partial_assistant.as_ref()?;
+                        match reserve_assistant_message_index(store, drafts, session_key).await {
+                            Ok(message_index) => {
+                                persist_final_assistant_segment(
+                                    store,
+                                    session_key,
+                                    &assistant_output,
+                                    provider_ref.id(),
+                                    provider_name,
+                                    session_reasoning_effort.clone(),
+                                    client_seq,
+                                    run_id,
+                                    message_index,
+                                )
+                                .await
+                            },
+                            Err(error) => Err(error),
+                        }
+                    };
+                match persisted_message_index {
+                    Ok(message_index) => {
+                        assistant_output.persisted_message_index = Some(message_index);
+                    },
+                    Err(error) => {
+                        let error = error.to_string();
+                        warn!(run_id, %error, "failed to finalize agent assistant segment");
+                        state.set_run_error(run_id, error.clone()).await;
+                        let error_obj = parse_chat_error(&error, Some(provider_name));
+                        deliver_channel_error(state, session_key, &error_obj).await;
+                        let error_payload = ChatErrorBroadcast {
+                            run_id: run_id.to_string(),
+                            session_key: session_key.to_string(),
+                            state: "error",
+                            error: error_obj,
+                            seq: client_seq,
+                        };
+                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                        let payload_val = serde_json::to_value(&error_payload).unwrap();
+                        terminal_runs.write().await.insert(run_id.to_string());
+                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
+                        return None;
+                    },
+                }
             }
 
             let final_payload = build_chat_final_broadcast(
@@ -1413,7 +1554,20 @@ pub(crate) async fn run_with_tools(
             Some(assistant_output)
         },
         Err(e) => {
-            let error_str = e.to_string();
+            let runner_error = e.to_string();
+            let (error_str, partial) = match persist_tool_loop_partial(
+                session_store,
+                active_partial_assistant.as_ref(),
+                session_key,
+            )
+            .await
+            {
+                Ok(partial) => (runner_error, partial),
+                Err(error) => (
+                    format!("{runner_error}; partial assistant persistence failed: {error}"),
+                    None,
+                ),
+            };
             warn!(run_id, error = %error_str, "agent run error");
             state.set_run_error(run_id, error_str.clone()).await;
             let error_obj = parse_chat_error(&error_str, Some(provider_name));
@@ -1427,7 +1581,8 @@ pub(crate) async fn run_with_tools(
                 seq: client_seq,
             };
             #[allow(clippy::unwrap_used)] // serializing known-valid struct
-            let payload_val = serde_json::to_value(&error_payload).unwrap();
+            let mut payload_val = serde_json::to_value(&error_payload).unwrap();
+            attach_partial_to_error_payload(&mut payload_val, partial);
             terminal_runs.write().await.insert(run_id.to_string());
             broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
             None

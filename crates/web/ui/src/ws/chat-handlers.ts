@@ -13,6 +13,7 @@ import {
 import { highlightCodeBlocks } from "../code-highlight";
 import { localizeStructuredError, renderAudioPlayer, renderMarkdown } from "../helpers";
 import { t } from "../i18n";
+import { appendMessageActions } from "../message-actions";
 import { maybeRefreshFullContext } from "../pages/ChatPage";
 import { renderCheckpointCard } from "../pages/chat/context-card";
 import { currentPrefix } from "../router";
@@ -215,7 +216,7 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 	// above it — the rejection only appears in the right place after a reload.
 	if (p.rejected === true) {
 		removeThinking();
-		closeLiveAssistantSegment(p.assistantMessage, p.assistantMessageIndex);
+		closeLiveAssistantSegment(p.assistantMessage, p.assistantMessageIndex, eventSession);
 	}
 	const toolCard =
 		(document.getElementById(toolCallCardId(p)) as HTMLElement | null) || createToolCallCardForPayload(p);
@@ -316,6 +317,15 @@ function handleChatDelta(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	}
 	S.setStreamText(S.streamText + p.text);
 	setSafeMarkdownHtml(S.streamEl!, S.streamText);
+	if (Number.isInteger(p.messageIndex)) {
+		S.streamEl!.dataset.historyIndex = String(p.messageIndex);
+	}
+	appendMessageActions({
+		messageEl: S.streamEl!,
+		sessionKey: eventSession,
+		messageIndex: p.messageIndex,
+		text: S.streamText,
+	});
 	smartScrollToBottom();
 }
 
@@ -436,6 +446,15 @@ function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 			}
 		}
 		terminalMessageEl = resolvedEl;
+	}
+	if (terminalMessageEl) {
+		appendMessageActions({
+			messageEl: terminalMessageEl,
+			sessionKey: eventSession,
+			messageIndex: p.messageIndex,
+			text: finalText,
+			hasAudio: !!p.audio,
+		});
 	}
 	if (p.inputTokens || p.outputTokens) {
 		S.sessionTokens.input += p.inputTokens || 0;
@@ -605,9 +624,13 @@ function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	clearPendingToolCallEndsForSession(eventSession);
 	setSessionReplying(eventSession, false);
 	setSessionActiveRunId(eventSession, null);
-	// Reset per-session stream state
+	const partialState = getAbortedPartialState(p);
 	const errSession = sessionStore.getByKey(eventSession);
+	cacheAbortedPartial(eventSession, p, errSession, partialState);
 	if (errSession) errSession.resetStreamState();
+	if ((partialState.hasVisiblePartial || partialState.hasTerminalToolBatch) && !isActive) {
+		setSessionUnread(eventSession, true);
+	}
 	if (!(isActive && isChatPage)) {
 		S.setVoicePending(false);
 		return;
@@ -615,6 +638,7 @@ function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	setComposerStopButton(false);
 	removeThinking();
 	clearStaleRunningToolCards();
+	renderAbortedPartialInDom(p, partialState);
 	if (p.error?.title) {
 		chatAddErrorCard(localizeStructuredError(p.error) as Parameters<typeof chatAddErrorCard>[0]);
 	} else {

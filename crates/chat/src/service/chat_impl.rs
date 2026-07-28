@@ -34,7 +34,7 @@ use {
 
 use crate::{
     agent_loop::effective_tool_mode,
-    channels::notify_channels_of_compaction,
+    channels::{deliver_channel_error, notify_channels_of_compaction},
     compaction,
     message::{
         infer_reply_medium, user_audio_path_from_params, user_documents_for_persistence,
@@ -160,13 +160,10 @@ impl ChatService for LiveChatService {
             run_id: None,
         };
         if !ephemeral {
-            if let Err(e) = self
-                .session_store
+            self.session_store
                 .append(&session_key, &user_msg.to_value())
                 .await
-            {
-                warn!("send_sync: failed to persist user message: {e}");
-            }
+                .map_err(ServiceError::message)?;
 
             // Ensure this session appears in the sessions list.
             let _ = self.session_metadata.upsert(&session_key, None).await;
@@ -234,7 +231,7 @@ impl ChatService for LiveChatService {
             .session_store
             .read(&session_key)
             .await
-            .unwrap_or_default();
+            .map_err(ServiceError::message)?;
         if !ephemeral && !history.is_empty() {
             history.pop();
         }
@@ -472,23 +469,32 @@ impl ChatService for LiveChatService {
                 .unwrap_or_default();
             let event_result =
                 Self::wait_for_event_forwarder(&self.active_event_forwarders, key).await;
-            let partial = self.persist_partial_assistant_on_abort(key).await;
+            let mut terminal_errors = event_result.error.into_iter().collect::<Vec<_>>();
+            let partial = match self.persist_partial_assistant_on_abort(key).await {
+                Ok(partial) => partial,
+                Err(error) => {
+                    terminal_errors.push(error.to_string());
+                    None
+                },
+            };
             let finalized_tool_segment = if partial.is_none() {
-                self.finalize_active_tool_segment_on_abort(key, &event_result.tool_segment_indices)
+                match self
+                    .finalize_active_tool_segment_on_abort(key, &event_result.tool_segment_indices)
                     .await
+                {
+                    Ok(segment) => segment,
+                    Err(error) => {
+                        terminal_errors.push(error.to_string());
+                        None
+                    },
+                }
             } else {
                 None
             };
+            let terminal_partial = partial.or(finalized_tool_segment);
             self.active_thinking_text.write().await.remove(key);
             self.active_reply_medium.write().await.remove(key);
             for tool_call in interrupted_tool_calls {
-                let tool_result_index = match self.session_store.count(key).await {
-                    Ok(count) => count as usize,
-                    Err(error) => {
-                        warn!(session = %key, error = %error, "failed to count history before persisting stopped tool call");
-                        continue;
-                    },
-                };
                 let tool_result = PersistedMessage::ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     tool_name: tool_call.name.clone(),
@@ -502,14 +508,20 @@ impl ChatService for LiveChatService {
                     created_at: Some(now_ms()),
                     run_id: Some(tool_call.run_id.clone()),
                 };
-                if let Err(error) = self
+                let tool_result_index = match self
                     .session_store
-                    .append(key, &tool_result.to_value())
+                    .append_with_index(key, &tool_result.to_value())
                     .await
                 {
-                    warn!(session = %key, error = %error, "failed to persist stopped tool call");
-                    continue;
-                }
+                    Ok(message_index) => message_index,
+                    Err(error) => {
+                        terminal_errors.push(format!(
+                            "failed to persist stopped tool call '{}' for session '{key}': {error}",
+                            tool_call.id
+                        ));
+                        continue;
+                    },
+                };
                 broadcast(
                     &self.state,
                     "chat",
@@ -528,23 +540,45 @@ impl ChatService for LiveChatService {
                 )
                 .await;
             }
-            if let Ok(count) = self.session_store.count(key).await {
-                self.session_metadata.touch(key, count).await;
+            match self.session_store.count(key).await {
+                Ok(count) => self.session_metadata.touch(key, count).await,
+                Err(error) => terminal_errors.push(format!(
+                    "failed to count session '{key}' after abort persistence: {error}"
+                )),
             }
-            let mut payload = serde_json::json!({
-                "state": "aborted",
-                "runId": resolved_run_id,
-                "sessionKey": key,
-            });
-            if let Some((partial_message, message_index)) = partial.or(finalized_tool_segment) {
-                payload["partialMessage"] = partial_message;
-                if let Some(index) = message_index {
-                    payload["messageIndex"] = serde_json::json!(index);
-                }
-            }
-            broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
             if let Some(run_id) = resolved_run_id.as_deref() {
                 self.terminal_runs.write().await.remove(run_id);
+            }
+            if terminal_errors.is_empty() {
+                let mut payload = serde_json::json!({
+                    "state": "aborted",
+                    "runId": resolved_run_id,
+                    "sessionKey": key,
+                });
+                if let Some((partial_message, message_index)) = terminal_partial {
+                    payload["partialMessage"] = partial_message;
+                    payload["messageIndex"] = serde_json::json!(message_index);
+                }
+                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
+            } else {
+                let error = terminal_errors.join("; ");
+                let error_obj = serde_json::json!({
+                    "title": "Failed to stop assistant cleanly",
+                    "detail": error,
+                });
+                deliver_channel_error(&self.state, key, &error_obj).await;
+                let mut payload = serde_json::json!({
+                    "state": "error",
+                    "runId": resolved_run_id,
+                    "sessionKey": key,
+                    "error": error_obj,
+                });
+                if let Some((partial_message, message_index)) = terminal_partial {
+                    payload["partialMessage"] = partial_message;
+                    payload["messageIndex"] = serde_json::json!(message_index);
+                }
+                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
+                return Err(ServiceError::message(error));
             }
         }
 
