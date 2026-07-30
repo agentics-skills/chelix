@@ -1077,7 +1077,6 @@ pub async fn prepare_gateway_core(
     warn_on_workspace_prompt_file_truncation(&config);
     super::hooks::seed_example_skill();
     super::hooks::seed_example_hook();
-    super::hooks::seed_dcg_guard_hook().await;
     let persisted_disabled = crate::methods::load_disabled_hooks();
     let (hook_registry, discovered_hooks_info) =
         crate::server::discover_and_build_hooks(&persisted_disabled, Some(&session_store)).await?;

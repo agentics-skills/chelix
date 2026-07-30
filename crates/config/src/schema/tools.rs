@@ -303,7 +303,6 @@ impl Default for BrowserConfig {
 #[serde(rename_all = "kebab-case")]
 pub enum ApprovalMode {
     Always,
-    OnMiss,
     #[default]
     Never,
 }
@@ -315,8 +314,6 @@ pub struct ExecuteCommandConfig {
     pub default_timeout_secs: u64,
     pub rewrite_timeout_secs: Option<u64>,
     pub approval_mode: ApprovalMode,
-    pub security_level: String,
-    pub allowlist: Vec<String>,
 }
 
 impl Default for ExecuteCommandConfig {
@@ -325,8 +322,6 @@ impl Default for ExecuteCommandConfig {
             default_timeout_secs: 30,
             rewrite_timeout_secs: None,
             approval_mode: ApprovalMode::default(),
-            security_level: "allowlist".into(),
-            allowlist: Vec::new(),
         }
     }
 }
@@ -358,7 +353,6 @@ mod approval_mode_tests {
     fn approval_mode_accepts_only_canonical_values() {
         for (value, expected) in [
             ("always", ApprovalMode::Always),
-            ("on-miss", ApprovalMode::OnMiss),
             ("never", ApprovalMode::Never),
         ] {
             let document: ApprovalModeDocument =
@@ -366,7 +360,7 @@ mod approval_mode_tests {
             assert_eq!(document.approval_mode, expected);
         }
 
-        for value in ["off", "smart", "on_miss", "unknown"] {
+        for value in ["off", "smart", "unknown"] {
             let result =
                 toml::from_str::<ApprovalModeDocument>(&format!("approval_mode = \"{value}\""));
             assert!(result.is_err(), "unexpectedly accepted {value}");

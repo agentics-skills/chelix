@@ -34,10 +34,7 @@ impl LiveCommandApprovalService {
 #[async_trait]
 impl CommandApprovalService for LiveCommandApprovalService {
     async fn get(&self) -> ServiceResult {
-        Ok(serde_json::json!({
-            "mode": self.manager.mode,
-            "securityLevel": self.manager.security_level,
-        }))
+        Ok(serde_json::json!({ "mode": self.manager.mode }))
     }
 
     async fn set(&self, _params: Value) -> ServiceResult {
@@ -87,10 +84,8 @@ impl CommandApprovalService for LiveCommandApprovalService {
             _ => return Err(format!("invalid decision: {decision_str}").into()),
         };
 
-        let command = params.get("command").and_then(|v| v.as_str());
-
         info!(id, ?decision, "resolving approval request");
-        self.manager.resolve(id, decision, command).await;
+        self.manager.resolve(id, decision).await;
 
         Ok(serde_json::json!({ "ok": true }))
     }
@@ -195,11 +190,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_service_resolve() {
-        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Never));
+        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Always));
         let svc = LiveCommandApprovalService::new(Arc::clone(&mgr));
 
         // Create a pending request.
-        let (id, mut rx) = mgr.create_request("rm -rf /", Some("session:test")).await;
+        let (id, mut rx) = mgr.create_request("echo hi", Some("session:test")).await;
 
         // Resolve via the service.
         let result = svc
@@ -225,7 +220,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_service_request_filters_by_session() {
-        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Never));
+        let mgr = Arc::new(ApprovalManager::new(ApprovalMode::Always));
         let svc = LiveCommandApprovalService::new(Arc::clone(&mgr));
         let _ = mgr.create_request("echo one", Some("session:a")).await;
         let _ = mgr.create_request("echo two", Some("session:b")).await;

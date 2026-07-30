@@ -132,8 +132,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("default_timeout_secs", Leaf),
             ("rewrite_timeout_secs", Leaf),
             ("approval_mode", Leaf),
-            ("security_level", Leaf),
-            ("allowlist", Leaf),
         ]))
     };
 

@@ -714,8 +714,6 @@ pub struct HookInfo {
 pub struct CommandApprovalConfig {
     #[serde(default)]
     pub mode: Option<String>,
-    #[serde(default)]
-    pub security_level: Option<String>,
 }
 
 // ── Agents ──────────────────────────────────────────────────────────────────

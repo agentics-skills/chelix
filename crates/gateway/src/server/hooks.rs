@@ -1,12 +1,10 @@
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use tracing::{info, warn};
 
 use chelix_sessions::store::SessionStore;
 
-use super::seed_content::{
-    DCG_GUARD_HANDLER_SH, DCG_GUARD_HOOK_MD, EXAMPLE_HOOK_MD, EXAMPLE_SKILL_MD, TMUX_SKILL_MD,
-};
+use super::seed_content::{EXAMPLE_HOOK_MD, EXAMPLE_SKILL_MD, TMUX_SKILL_MD};
 
 // ── Hook seeding helpers ─────────────────────────────────────────────────────
 
@@ -24,141 +22,6 @@ pub(crate) fn seed_example_hook() {
     if let Err(e) = std::fs::write(&hook_md, EXAMPLE_HOOK_MD) {
         tracing::debug!("could not write example HOOK.md: {e}");
     }
-}
-
-/// Marker string that must be present in an up-to-date seeded `handler.sh`.
-pub(crate) const DCG_GUARD_HANDLER_FINGERPRINT: &str = "export PATH=";
-
-/// Marker string that must be present in an up-to-date seeded `HOOK.md`.
-pub(crate) const DCG_GUARD_HOOK_MD_FINGERPRINT: &str = "uv tool install destructive-command-guard";
-
-/// Seed the `dcg-guard` hook into `~/.chelix/hooks/dcg-guard/` on first run,
-/// and refresh on-disk files that predate the PATH-fix in #626.
-pub(crate) async fn seed_dcg_guard_hook() {
-    let hook_dir = chelix_config::data_dir().join("hooks/dcg-guard");
-    let hook_md = hook_dir.join("HOOK.md");
-    let handler = hook_dir.join("handler.sh");
-
-    let dir_ok = match std::fs::create_dir_all(&hook_dir) {
-        Ok(()) => true,
-        Err(e) => {
-            tracing::debug!("could not create dcg-guard hook dir: {e}");
-            false
-        },
-    };
-
-    if dir_ok {
-        let hook_md_needs_write = match std::fs::read_to_string(&hook_md) {
-            Ok(existing) => !existing.contains(DCG_GUARD_HOOK_MD_FINGERPRINT),
-            Err(_) => true,
-        };
-        if hook_md_needs_write && let Err(e) = std::fs::write(&hook_md, DCG_GUARD_HOOK_MD) {
-            tracing::debug!("could not write dcg-guard HOOK.md: {e}");
-        }
-
-        let handler_needs_write = match std::fs::read_to_string(&handler) {
-            Ok(existing) => !existing.contains(DCG_GUARD_HANDLER_FINGERPRINT),
-            Err(_) => true,
-        };
-        if handler_needs_write {
-            if let Err(e) = std::fs::write(&handler, DCG_GUARD_HANDLER_SH) {
-                tracing::debug!("could not write dcg-guard handler.sh: {e}");
-            }
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&handler, std::fs::Permissions::from_mode(0o755));
-            }
-            if !hook_md_needs_write {
-                tracing::info!(
-                    "dcg-guard: refreshed stale handler.sh to apply PATH augmentation fix"
-                );
-            }
-        }
-    }
-
-    log_dcg_guard_status().await;
-}
-
-/// PATH augmentation prepended by the dcg-guard handler script.
-pub(crate) const DCG_GUARD_EXTRA_PATH_DIRS: &[&str] =
-    &[".local/bin", "/usr/local/bin", "/opt/homebrew/bin"];
-
-/// Fallback `$HOME` used by `resolve_dcg_binary`.
-pub(crate) const DCG_GUARD_HOME_FALLBACK: &str = "/root";
-
-/// Resolve `dcg` using the same augmented `PATH` as the handler script.
-fn resolve_dcg_binary() -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-
-    let home_path = std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DCG_GUARD_HOME_FALLBACK));
-    for rel in DCG_GUARD_EXTRA_PATH_DIRS {
-        if rel.starts_with('/') {
-            dirs.push(PathBuf::from(rel));
-        } else {
-            dirs.push(home_path.join(rel));
-        }
-    }
-
-    let existing = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string());
-    for entry in existing.split(':').filter(|s| !s.is_empty()) {
-        dirs.push(PathBuf::from(entry));
-    }
-
-    for dir in dirs {
-        let candidate = dir.join("dcg");
-        if candidate.is_file() {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Ok(meta) = std::fs::metadata(&candidate)
-                    && meta.permissions().mode() & 0o111 != 0
-                {
-                    return Some(candidate);
-                }
-                continue;
-            }
-            #[cfg(not(unix))]
-            {
-                return Some(candidate);
-            }
-        }
-    }
-
-    None
-}
-
-/// Emit a single startup log line describing whether the dcg-guard is active.
-async fn log_dcg_guard_status() {
-    let Some(path) = resolve_dcg_binary() else {
-        tracing::warn!(
-            "dcg-guard: 'dcg' not found on PATH; destructive command guard is INACTIVE. \
-             Install dcg from https://github.com/Dicklesworthstone/destructive_command_guard"
-        );
-        return;
-    };
-
-    let version = tokio::process::Command::new(&path)
-        .arg("--version")
-        .output()
-        .await
-        .ok()
-        .and_then(|out| {
-            if out.status.success() {
-                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
-            } else {
-                None
-            }
-        })
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "unknown version".to_string());
-
-    tracing::info!(
-        dcg_path = %path.display(),
-        "dcg-guard: dcg {version} detected, guard active"
-    );
 }
 
 /// Seed built-in personal skills into `~/.chelix/skills/`.

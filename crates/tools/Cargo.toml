@@ -29,13 +29,11 @@ chelix-sessions       = { workspace = true }
 chelix-skills         = { workspace = true }
 futures               = { workspace = true }
 image                 = { workspace = true }
-regex                 = { workspace = true }
 reqwest               = { workspace = true }
 secrecy               = { workspace = true }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
 sha2                  = { workspace = true }
-shell-words           = { workspace = true }
 sqlx                  = { workspace = true }
 tempfile              = { workspace = true }
 thiserror             = { workspace = true }

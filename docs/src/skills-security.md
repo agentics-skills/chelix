@@ -81,7 +81,7 @@ source drift detection.
 ## Recommended Production Policy
 
 1. Keep sandbox enabled (`sandbox.mode = "On"`).
-2. Keep approval mode at least `on-miss`.
+2. Keep approval mode set to `always`.
 3. Review SKILL.md and linked scripts before trust.
 4. Prefer pinned, known repos over ad-hoc installs.
 5. Monitor `security-audit.jsonl` for unusual events.

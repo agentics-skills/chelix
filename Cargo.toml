@@ -128,8 +128,9 @@ sqlx-core   = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c
 sqlx-sqlite = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c7962c6450faf31591c4e0782c23" }
 
 [workspace.lints.rust]
-unsafe_code           = "deny"
-unused_qualifications = "deny"
+unsafe_code               = "deny"
+unused_crate_dependencies = "deny"
+unused_qualifications     = "deny"
 
 [workspace.lints.clippy]
 expect_used = "deny"

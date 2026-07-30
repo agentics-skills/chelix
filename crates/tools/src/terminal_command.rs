@@ -14,7 +14,7 @@ use {
 
 use crate::{
     Result,
-    approval::{ApprovalAction, ApprovalDecision, ApprovalManager},
+    approval::{ApprovalDecision, ApprovalManager},
     command::{CommandCompletionEvent, CommandCompletionFn, EnvVarProvider, redact_secret_values},
     error::Error,
     params::without_null_params,
@@ -116,7 +116,7 @@ impl ExecuteCommandTool {
         let Some(manager) = self.approval_manager.as_ref() else {
             return Ok(());
         };
-        if manager.check_command(command).await? != ApprovalAction::NeedsApproval {
+        if !manager.needs_approval() {
             return Ok(());
         }
 

@@ -352,10 +352,10 @@ export function renderApprovalCard(requestId: string, command: string): void {
 	const allowBtn = card.querySelector(".approval-allow") as HTMLButtonElement;
 	const denyBtn = card.querySelector(".approval-deny") as HTMLButtonElement;
 	allowBtn.onclick = () => {
-		resolveApproval(requestId, "approved", command, card);
+		resolveApproval(requestId, "approved", card);
 	};
 	denyBtn.onclick = () => {
-		resolveApproval(requestId, "denied", null, card);
+		resolveApproval(requestId, "denied", card);
 	};
 
 	const countdown = card.querySelector(".approval-countdown") as HTMLElement;
@@ -377,10 +377,8 @@ export function renderApprovalCard(requestId: string, command: string): void {
 	smartScrollToBottom();
 }
 
-export function resolveApproval(requestId: string, decision: string, command: string | null, card: HTMLElement): void {
-	const params: Record<string, string> = { requestId, decision };
-	if (command) params.command = command;
-	sendRpc("command.approval.resolve", params).then(() => {
+export function resolveApproval(requestId: string, decision: string, card: HTMLElement): void {
+	sendRpc("command.approval.resolve", { requestId, decision }).then(() => {
 		card.classList.add("approval-resolved");
 		card.querySelectorAll<HTMLButtonElement>(".approval-btn").forEach((b) => {
 			b.disabled = true;

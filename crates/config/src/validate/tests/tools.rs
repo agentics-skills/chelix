@@ -191,23 +191,6 @@ shared_home_dir = "/"
 }
 
 #[test]
-fn unknown_security_level_warned() {
-    let toml = r#"
-[tools.execute_command]
-security_level = "paranoid"
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "tools.execute_command.security_level");
-    assert!(
-        warning.is_some(),
-        "expected warning for unknown security level"
-    );
-}
-
-#[test]
 fn execute_command_rewrite_timeout_is_accepted() {
     let toml = r#"
 [tools.execute_command]

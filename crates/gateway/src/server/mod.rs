@@ -6,7 +6,7 @@
 // - startup:        warmup, WebAuthn sync, feature stubs
 // - prepared:       PreparedGatewayCore struct definition
 // - prepare_core:   prepare_gateway_core entry point
-// - hooks:          hook discovery, DCG guard, seeding
+// - hooks:          hook discovery and seeding
 // - seed_content:   large const strings for seed files
 // - workspace:      workspace file seeding, persona sync
 // - init_channels:    channel store/registry/plugin setup

@@ -9,7 +9,7 @@ deployments.
 Chelix runs AI agents that can execute code and interact with external systems.
 This power requires multiple layers of protection:
 
-1. **Human-in-the-loop approval** for dangerous commands
+1. **Human-in-the-loop approval** for command execution
 2. **Sandbox isolation** for command execution
 3. **Channel authorization** for external integrations
 4. **Rate limiting** to prevent resource abuse
@@ -21,15 +21,14 @@ drift re-trust, self-contained skill requirements, kill switch, audit log), see
 
 ## Command Execution Approval
 
-By default, Chelix requires explicit user approval before executing potentially
-dangerous commands. This "human-in-the-loop" design ensures the AI cannot take
-destructive actions without consent.
+Chelix can require explicit user approval before executing a command. This
+"human-in-the-loop" design ensures the AI cannot act without consent.
 
 ### How It Works
 
 When the agent wants to run a command:
 
-1. The command is analyzed against approval policies
+1. The configured approval mode decides whether approval is required
 2. If approval is required, the user sees a prompt in the UI. Channel-backed
    sessions also receive a notification in the originating channel so the run
    does not stall silently.
@@ -47,37 +46,14 @@ Configure approval behavior in `chelix.toml`:
 ```toml
 [tools.execute_command]
 approval_mode = "never"    # default: do not request operator approval
-# approval_mode = "on-miss" # request approval for commands outside the safe list
 # approval_mode = "always"  # request approval for every command
 ```
 
-The accepted values are exactly `"always"`, `"on-miss"`, and `"never"`.
+The accepted values are exactly `"always"` and `"never"`.
 Unknown values cause configuration loading to fail.
 
-### Built-in Dangerous Command Blocklist
-
-Chelix maintains a safety floor: a hardcoded set of regex patterns for the most
-critical destructive commands (e.g. `rm -rf /`, `git reset --hard`,
-`DROP TABLE`, `mkfs`, `terraform destroy`). With `approval_mode = "on-miss"` or
-`"always"`, matching commands require approval. With `approval_mode = "never"`,
-matching commands are denied because no approval flow is enabled.
-
-Users can override specific patterns by adding matching entries to their
-`allowlist` in `chelix.toml`. Approval policy is evaluated before a command is
-routed to its configured tools service.
-
-### Destructive Command Guard (dcg)
-
-For broader coverage beyond the built-in blocklist, install the
-[Destructive Command Guard](https://github.com/Dicklesworthstone/destructive_command_guard)
-(dcg) as a hook. dcg adds 49+ pattern categories including heredoc/inline-script
-scanning, database, cloud, and infrastructure patterns.
-
-See
-[Hooks: Destructive Command Guard](hooks.md#recommended-destructive-command-guard-dcg)
-for setup instructions.
-
-dcg complements (does not replace) sandbox isolation and the approval system.
+Approval policy is evaluated before a command is routed to its configured tools
+service.
 
 ## Sandbox Isolation
 

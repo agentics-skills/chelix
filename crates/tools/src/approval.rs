@@ -1,14 +1,7 @@
-use std::{
-    borrow::Cow,
-    collections::{HashSet, VecDeque},
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use {
-    crate::error::Error,
     chelix_config::ApprovalMode,
-    regex::RegexSet,
     serde::{Deserialize, Serialize},
     tokio::sync::{RwLock, oneshot},
     tracing::{debug, warn},
@@ -36,433 +29,6 @@ pub enum ApprovalDecision {
     Timeout,
 }
 
-/// Security level for shell commands.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[derive(Default)]
-pub enum SecurityLevel {
-    Deny,
-    #[default]
-    Allowlist,
-    Full,
-}
-
-impl SecurityLevel {
-    /// Parse security level from config value.
-    ///
-    /// Accepts canonical values plus schema aliases:
-    /// - `allowlist` -> `Allowlist`
-    /// - `permissive` / `full` -> `Full`
-    /// - `strict` / `deny` -> `Deny`
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "allowlist" => Some(Self::Allowlist),
-            "permissive" | "full" => Some(Self::Full),
-            "strict" | "deny" => Some(Self::Deny),
-            _ => None,
-        }
-    }
-}
-
-/// Well-known safe binaries that don't need approval.
-pub const SAFE_BINS: &[&str] = &[
-    "cat",
-    "echo",
-    "printf",
-    "head",
-    "tail",
-    "wc",
-    "sort",
-    "uniq",
-    "cut",
-    "tr",
-    "grep",
-    "egrep",
-    "fgrep",
-    "awk",
-    "sed",
-    "jq",
-    "yq",
-    "date",
-    "cal",
-    "ls",
-    "pwd",
-    "whoami",
-    "hostname",
-    "uname",
-    "env",
-    "printenv",
-    "basename",
-    "dirname",
-    "realpath",
-    "readlink",
-    "diff",
-    "comm",
-    "paste",
-    "tee",
-    "xargs",
-    "true",
-    "false",
-    "test",
-    "[",
-    "seq",
-    "yes",
-    "rev",
-    "fold",
-    "expand",
-    "unexpand",
-    "md5sum",
-    "sha256sum",
-    "sha1sum",
-    "b2sum",
-    "file",
-    "stat",
-    "du",
-    "df",
-    "free",
-    "which",
-    "type",
-    "command",
-];
-
-/// Environment variable names that can hijack process execution.
-///
-/// Used by both `DANGEROUS_PATTERN_DEFS` (regex layer) and `extract_first_bin`
-/// (semantic layer) for defense-in-depth against env-var prefix injection
-/// (agentics-skills/chelix#814).
-const DANGEROUS_ENV_VARS: &[&str] = &[
-    // Linux dynamic linker (LD_DEBUG excluded — diagnostic only, no code injection)
-    "LD_PRELOAD",
-    "LD_LIBRARY_PATH",
-    "LD_AUDIT",
-    "LD_CONFIG",
-    // macOS dynamic linker
-    "DYLD_INSERT_LIBRARIES",
-    "DYLD_LIBRARY_PATH",
-    "DYLD_FRAMEWORK_PATH",
-    // PATH override
-    "PATH",
-    // Language runtimes
-    "PYTHONPATH",
-    "PYTHONSTARTUP",
-    "NODE_OPTIONS",
-    "NODE_PATH",
-    "JAVA_TOOL_OPTIONS",
-    "_JAVA_OPTIONS",
-    "JDK_JAVA_OPTIONS",
-    "PERL5OPT",
-    "PERL5LIB",
-    "RUBYOPT",
-    "RUBYLIB",
-    "CLASSPATH",
-    // Shell startup (bare ENV excluded — only dangerous for sh/bash interactive
-    // startup, too noisy for general use: ENV=test, ENV=production, etc.)
-    "BASH_ENV",
-    "ZDOTDIR",
-];
-
-/// Dangerous command patterns that force approval unless `approval_mode` is
-/// `never`, in which case they are denied. Each entry: `(regex_pattern, description)`.
-static DANGEROUS_PATTERN_DEFS: &[(&str, &str)] = &[
-    // Filesystem destruction
-    (
-        r"rm\s+(-\S*[rR]\S*\s+)*/(\s|$|\*)",
-        "rm -r on filesystem root",
-    ),
-    (
-        r"rm\s+(-\S*[rR]\S*\s+)+(~|\$HOME)",
-        "rm -r on home directory",
-    ),
-    (r"\bmkfs\b", "make filesystem"),
-    (
-        r"\bdd\b.*\bif=/dev/(zero|urandom)\b",
-        "disk overwrite with dd",
-    ),
-    (r":\(\)\s*\{.*\|.*&\s*\}\s*;", "fork bomb"),
-    // Git destructive operations
-    (r"git\s+reset\s+--hard", "git reset --hard"),
-    (
-        r"git\s+push\s+.*(-\S*f\S*|--force\b|--force-with-lease\b)",
-        "git force push",
-    ),
-    (r"git\s+clean\s+(-\S*f)", "git clean with force"),
-    (r"git\s+stash\s+(drop|clear)\b", "git stash drop/clear"),
-    // Database destruction
-    (
-        r"(?i)\bDROP\s+(TABLE|DATABASE|SCHEMA)\b",
-        "DROP TABLE/DATABASE",
-    ),
-    (r"(?i)\bTRUNCATE\b", "TRUNCATE"),
-    // Container / infrastructure destruction
-    (r"docker\s+system\s+prune", "docker system prune"),
-    (r"kubectl\s+delete\s+namespace", "kubectl delete namespace"),
-    (r"terraform\s+destroy", "terraform destroy"),
-    // System-level danger
-    (
-        r"chmod\s+(-\S*R\S*\s+)*777\s+/",
-        "recursive chmod 777 on root",
-    ),
-    // Inline environment variable injection (agentics-skills/chelix#814).
-    //
-    // Anchored with `(?:^|[;&|]\s*)` so patterns only fire at command-start
-    // positions (start of string, after `;`, `&`, `|`), not inside grep/sed
-    // arguments like `grep PATH=/usr/bin .env`. Requires `=\S` (non-empty
-    // value) to further reduce false positives.
-    //
-    // Chained assignments (`FOO=bar PATH=/evil cat`) are NOT caught here
-    // because there is no separator between them — Layer 2 in
-    // `extract_first_bin` handles that case instead. Subshell injection
-    // (`sh -c "LD_PRELOAD=..."`) is covered by `sh`/`bash` not being safe
-    // bins and requiring approval separately.
-    (
-        r"(?i)(?:^|[;&|]\s*)(LD_PRELOAD|LD_LIBRARY_PATH|LD_AUDIT|LD_CONFIG)=\S",
-        "dangerous dynamic linker env var",
-    ),
-    (
-        r"(?i)(?:^|[;&|]\s*)(DYLD_INSERT_LIBRARIES|DYLD_LIBRARY_PATH|DYLD_FRAMEWORK_PATH)=\S",
-        "dangerous macOS dynamic linker env var",
-    ),
-    (r"(?i)(?:^|[;&|]\s*)PATH=\S", "PATH override"),
-    (
-        r"(?i)(?:^|[;&|]\s*)(PYTHONPATH|PYTHONSTARTUP|NODE_OPTIONS|NODE_PATH|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|JDK_JAVA_OPTIONS)=\S",
-        "dangerous language runtime env var",
-    ),
-    (
-        r"(?i)(?:^|[;&|]\s*)(PERL5OPT|PERL5LIB|RUBYOPT|RUBYLIB|CLASSPATH)=\S",
-        "dangerous language runtime env var",
-    ),
-    (
-        r"(?i)(?:^|[;&|]\s*)(BASH_ENV|ZDOTDIR)=\S",
-        "dangerous shell startup env var",
-    ),
-];
-
-static DANGEROUS_SET: std::sync::LazyLock<RegexSet> = std::sync::LazyLock::new(|| {
-    RegexSet::new(DANGEROUS_PATTERN_DEFS.iter().map(|(p, _)| *p))
-        .unwrap_or_else(|e| panic!("built-in dangerous patterns must be valid regex: {e}"))
-});
-
-/// Check if a command matches any dangerous pattern.
-/// Returns the description of the first matching pattern.
-pub fn check_dangerous(command: &str) -> Option<&'static str> {
-    let scan_command = strip_heredoc_bodies(command);
-    DANGEROUS_SET
-        .matches(scan_command.as_ref())
-        .iter()
-        .next()
-        .map(|i| DANGEROUS_PATTERN_DEFS[i].1)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct HeredocDelimiter {
-    marker: String,
-    strip_tabs: bool,
-}
-
-fn strip_heredoc_bodies(command: &str) -> Cow<'_, str> {
-    let mut stripped = String::new();
-    let mut changed = false;
-    let mut pending: VecDeque<HeredocDelimiter> = VecDeque::new();
-    let mut omitted = String::new();
-
-    for line in command.split_inclusive('\n') {
-        let line_without_newline = line.trim_end_matches('\n');
-
-        if let Some(delimiter) = pending.front() {
-            let candidate = if delimiter.strip_tabs {
-                line_without_newline.trim_start_matches('\t')
-            } else {
-                line_without_newline
-            };
-            if candidate == delimiter.marker {
-                pending.pop_front();
-                if pending.is_empty() {
-                    omitted.clear();
-                }
-            } else {
-                omitted.push_str(line);
-            }
-            changed = true;
-            continue;
-        }
-
-        stripped.push_str(line);
-        let mut delimiters = heredoc_delimiters(line_without_newline);
-        if !delimiters.is_empty() {
-            changed = true;
-            pending.extend(delimiters.drain(..));
-        }
-    }
-
-    if !pending.is_empty() {
-        stripped.push_str(&omitted);
-    }
-
-    if changed {
-        Cow::Owned(stripped)
-    } else {
-        Cow::Borrowed(command)
-    }
-}
-
-fn heredoc_delimiters(line: &str) -> Vec<HeredocDelimiter> {
-    let chars: Vec<char> = line.chars().collect();
-    let mut delimiters = Vec::new();
-    let mut i = 0;
-    let mut in_single = false;
-    let mut in_double = false;
-
-    while i < chars.len() {
-        match chars[i] {
-            '\'' if !in_double => {
-                in_single = !in_single;
-                i += 1;
-            },
-            '"' if !in_single => {
-                in_double = !in_double;
-                i += 1;
-            },
-            '\\' if !in_single => {
-                i = (i + 2).min(chars.len());
-            },
-            '<' if !in_single && !in_double && chars.get(i + 1) == Some(&'<') => {
-                if chars.get(i + 2) == Some(&'<') {
-                    i += 3;
-                    continue;
-                }
-
-                i += 2;
-                let strip_tabs = chars.get(i) == Some(&'-');
-                if strip_tabs {
-                    i += 1;
-                }
-                while chars.get(i).is_some_and(|c| c.is_whitespace()) {
-                    i += 1;
-                }
-                if let Some(marker) = parse_heredoc_marker(&chars, &mut i) {
-                    delimiters.push(HeredocDelimiter { marker, strip_tabs });
-                }
-            },
-            _ => {
-                i += 1;
-            },
-        }
-    }
-
-    delimiters
-}
-
-fn parse_heredoc_marker(chars: &[char], i: &mut usize) -> Option<String> {
-    let mut marker = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-
-    while let Some(&c) = chars.get(*i) {
-        if !in_single && !in_double && (c.is_whitespace() || matches!(c, ';' | '&' | '|')) {
-            break;
-        }
-
-        match c {
-            '\'' if !in_double => {
-                in_single = !in_single;
-                *i += 1;
-            },
-            '"' if !in_single => {
-                in_double = !in_double;
-                *i += 1;
-            },
-            '\\' if !in_single => {
-                *i += 1;
-                if let Some(&escaped) = chars.get(*i) {
-                    marker.push(escaped);
-                    *i += 1;
-                }
-            },
-            _ => {
-                marker.push(c);
-                *i += 1;
-            },
-        }
-    }
-
-    if marker.is_empty() {
-        None
-    } else {
-        Some(marker)
-    }
-}
-
-/// Extract the first command/binary from a shell command string.
-///
-/// Returns `None` when the command is empty **or** when a leading env-var
-/// assignment uses a dangerous variable name (see [`DANGEROUS_ENV_VARS`]).
-/// This prevents attackers from smuggling `LD_PRELOAD=… cat /file` through the
-/// safe-bin / allowlist path (agentics-skills/chelix#814).
-///
-/// **Limitation:** Quoted tokens like `"LD_PRELOAD=/evil.so" cat /file` will
-/// not be caught here because `split_once('=')` sees key `"LD_PRELOAD` (with
-/// a leading `"`). The anchored regex layer (Layer 1) also does not match
-/// this case. In practice this is not exploitable: shells treat the quoted
-/// string as a command name, not an assignment. Subshell wrappers like
-/// `sh -c "LD_PRELOAD=..."` are covered by `sh` not being a safe bin.
-fn extract_first_bin(command: &str) -> Option<&str> {
-    let trimmed = command.trim();
-    // Skip env var assignments at the start (e.g. `FOO=bar cmd`).
-    let mut parts = trimmed.split_whitespace();
-    for part in parts.by_ref() {
-        if let Some((key, _)) = part.split_once('=') {
-            // Dangerous env-var prefix — refuse to extract a binary so the
-            // caller falls through to the approval / denial path.
-            if DANGEROUS_ENV_VARS
-                .iter()
-                .any(|d| d.eq_ignore_ascii_case(key))
-            {
-                return None;
-            }
-        } else {
-            // Strip path prefix (e.g. `/usr/bin/jq` → `jq`).
-            return Some(part.rsplit('/').next().unwrap_or(part));
-        }
-    }
-    None
-}
-
-/// Check if a command is on the safe bins list.
-pub fn is_safe_command(command: &str) -> bool {
-    if let Some(bin) = extract_first_bin(command) {
-        SAFE_BINS.contains(&bin)
-    } else {
-        false
-    }
-}
-
-/// Check if a command matches any pattern in an allowlist.
-pub fn matches_allowlist(command: &str, allowlist: &[String]) -> bool {
-    let bin = extract_first_bin(command);
-    let bin_name = bin.unwrap_or("");
-    for pattern in allowlist {
-        if pattern == "*" {
-            return true;
-        }
-        if pattern == bin_name {
-            return true;
-        }
-        // Prefix match with wildcard.
-        if pattern.ends_with('*') {
-            let prefix = &pattern[..pattern.len() - 1];
-            // Only match against the raw command string when we extracted a
-            // valid binary. When extract_first_bin returned None (dangerous
-            // env-var prefix), raw-string matching would let chained
-            // assignments like `MY_APP=1 LD_PRELOAD=/evil.so cat` bypass
-            // the env-var protection (agentics-skills/chelix#814).
-            if bin_name.starts_with(prefix) || (bin.is_some() && command.starts_with(prefix)) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 /// Pending approval request waiting for gateway resolution.
 struct PendingApproval {
     command: String,
@@ -479,14 +45,11 @@ pub struct PendingApprovalView {
     pub session_key: Option<String>,
 }
 
-/// The approval manager handles approval flow for shell commands.
+/// The approval manager handles the operator approval flow for shell commands.
 pub struct ApprovalManager {
     pub mode: ApprovalMode,
-    pub security_level: SecurityLevel,
-    pub allowlist: Vec<String>,
     pub timeout: Duration,
     pending: Arc<RwLock<std::collections::HashMap<String, PendingApproval>>>,
-    approved_commands: Arc<RwLock<HashSet<String>>>,
 }
 
 impl ApprovalManager {
@@ -494,122 +57,17 @@ impl ApprovalManager {
     pub fn new(mode: ApprovalMode) -> Self {
         Self {
             mode,
-            security_level: SecurityLevel::Allowlist,
-            allowlist: Vec::new(),
             timeout: Duration::from_secs(120),
             pending: Arc::new(RwLock::new(std::collections::HashMap::new())),
-            approved_commands: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
-    /// Decide whether a command needs approval.
-    /// Returns Ok(()) if the command can proceed, Err if denied.
-    pub async fn check_command(&self, command: &str) -> Result<ApprovalAction> {
-        // Safety floor: dangerous patterns are blocked unless explicitly
-        // allowlisted. In OnMiss/Always mode we escalate to NeedsApproval so a
-        // human can gate. In Never mode there is no human approver to wait on,
-        // so the only safe outcome is to deny — otherwise the agent would hang
-        // on `NeedsApproval` forever in headless deployments (agentics-skills/chelix#654).
-        if let Some(desc) = check_dangerous(command) {
-            if !matches_allowlist(command, &self.allowlist) {
-                if self.mode == ApprovalMode::Never {
-                    warn!(
-                        command,
-                        pattern = %desc,
-                        "dangerous command denied in approval_mode=never",
-                    );
-                    return Err(Error::message(format!(
-                        "command denied: dangerous command pattern '{desc}' (approval_mode=never): \
-                         {command}"
-                    )));
-                }
-                warn!(command, pattern = %desc, "dangerous command detected, forcing approval");
-                return Ok(ApprovalAction::NeedsApproval);
-            }
-            debug!(command, pattern = %desc, "dangerous command allowed by explicit allowlist");
-        }
-
-        // Safety floor layer 2: catch dangerous env-var prefixes that the
-        // anchored regex missed (e.g. chained assignments like
-        // `FOO=bar LD_PRELOAD=/evil.so cat`). Same deny/escalate logic as
-        // the regex layer above (agentics-skills/chelix#814).
-        if !command.trim().is_empty() && extract_first_bin(command).is_none() {
-            if !matches_allowlist(command, &self.allowlist) {
-                if self.mode == ApprovalMode::Never {
-                    warn!(
-                        command,
-                        "dangerous env-var prefix denied in approval_mode=never",
-                    );
-                    return Err(Error::message(format!(
-                        "command denied: dangerous env-var prefix (approval_mode=never): {command}"
-                    )));
-                }
-                warn!(
-                    command,
-                    "dangerous env-var prefix detected, forcing approval"
-                );
-                return Ok(ApprovalAction::NeedsApproval);
-            }
-            debug!(
-                command,
-                "dangerous env-var prefix allowed by explicit allowlist"
-            );
-        }
-
-        match self.security_level {
-            SecurityLevel::Deny => {
-                return Err(Error::message("command denied: security level is 'deny'"));
-            },
-            SecurityLevel::Full => return Ok(ApprovalAction::Proceed),
-            SecurityLevel::Allowlist => {},
-        }
-
+    /// Whether a command must be approved by an operator before it runs.
+    #[must_use]
+    pub fn needs_approval(&self) -> bool {
         match self.mode {
-            ApprovalMode::Never => {
-                // With an empty allowlist, Never mode is unrestricted (preserves
-                // historical behavior for deployments that never configured a list).
-                // With a non-empty allowlist, the list is authoritative: the user
-                // explicitly asked for enforcement, and there is no human to prompt
-                // in headless deployments — non-matches must be denied, not silently
-                // proceeded (agentics-skills/chelix#654).
-                if self.allowlist.is_empty() {
-                    return Ok(ApprovalAction::Proceed);
-                }
-                if matches_allowlist(command, &self.allowlist) {
-                    return Ok(ApprovalAction::Proceed);
-                }
-                if is_safe_command(command) {
-                    // Safe bins bypass the explicit allowlist so operators don't
-                    // have to enumerate common read-only utilities. Emit a warn
-                    // so strict-posture operators can detect the gap at runtime
-                    // (they can `grep safe-bin` their logs to audit, or file a
-                    // follow-up for an opt-in strict mode that gates safe bins).
-                    warn!(
-                        command,
-                        "command safe-bin bypassed non-empty allowlist in approval_mode=never",
-                    );
-                    return Ok(ApprovalAction::Proceed);
-                }
-                Err(Error::message(format!(
-                    "command denied: command not in allowlist (approval_mode=never): {command}"
-                )))
-            },
-            ApprovalMode::Always => Ok(ApprovalAction::NeedsApproval),
-            ApprovalMode::OnMiss => {
-                // Check safe bins.
-                if is_safe_command(command) {
-                    return Ok(ApprovalAction::Proceed);
-                }
-                // Check custom allowlist.
-                if matches_allowlist(command, &self.allowlist) {
-                    return Ok(ApprovalAction::Proceed);
-                }
-                // Check previously approved.
-                if self.approved_commands.read().await.contains(command) {
-                    return Ok(ApprovalAction::Proceed);
-                }
-                Ok(ApprovalAction::NeedsApproval)
-            },
+            ApprovalMode::Always => true,
+            ApprovalMode::Never => false,
         }
     }
 
@@ -634,13 +92,8 @@ impl ApprovalManager {
     }
 
     /// Resolve a pending approval request.
-    pub async fn resolve(&self, id: &str, decision: ApprovalDecision, command: Option<&str>) {
+    pub async fn resolve(&self, id: &str, decision: ApprovalDecision) {
         if let Some(pending) = self.pending.write().await.remove(id) {
-            if decision == ApprovalDecision::Approved
-                && let Some(cmd) = command
-            {
-                self.approved_commands.write().await.insert(cmd.to_string());
-            }
             let _ = pending.tx.send(decision);
             debug!(id, "approval resolved");
         } else {
@@ -703,386 +156,89 @@ impl ApprovalManager {
     }
 }
 
-/// Action to take after checking approval.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ApprovalAction {
-    Proceed,
-    NeedsApproval,
-}
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_extract_first_bin() {
-        assert_eq!(extract_first_bin("echo hello"), Some("echo"));
-        assert_eq!(extract_first_bin("/usr/bin/jq ."), Some("jq"));
-        assert_eq!(extract_first_bin("FOO=bar echo hi"), Some("echo"));
-        assert_eq!(extract_first_bin("  ls -la"), Some("ls"));
+    fn never_mode_does_not_require_approval() {
+        let manager = ApprovalManager::new(ApprovalMode::Never);
+        assert!(!manager.needs_approval());
     }
 
     #[test]
-    fn test_is_safe_command() {
-        assert!(is_safe_command("echo hello"));
-        assert!(is_safe_command("jq '.key'"));
-        assert!(is_safe_command("/usr/bin/grep pattern"));
-        assert!(!is_safe_command("rm -rf /"));
-        assert!(!is_safe_command("curl https://evil.com"));
+    fn always_mode_requires_approval() {
+        let manager = ApprovalManager::new(ApprovalMode::Always);
+        assert!(manager.needs_approval());
     }
 
-    #[test]
-    fn test_allowlist_matching() {
-        let list = vec!["git".into(), "cargo*".into(), "npm".into()];
-        assert!(matches_allowlist("git status", &list));
-        assert!(matches_allowlist("cargo build", &list));
-        assert!(matches_allowlist("cargo-clippy", &list));
-        assert!(!matches_allowlist("rm -rf /", &list));
-    }
+    #[tokio::test]
+    async fn resolve_delivers_decision_to_waiter() {
+        let manager = ApprovalManager::new(ApprovalMode::Always);
+        let (id, rx) = manager.create_request("echo hi", Some("session:a")).await;
 
-    #[test]
-    fn test_parse_security_level_aliases() {
+        manager.resolve(&id, ApprovalDecision::Approved).await;
+
         assert_eq!(
-            SecurityLevel::parse("allowlist"),
-            Some(SecurityLevel::Allowlist)
+            manager.wait_for_decision(rx).await,
+            ApprovalDecision::Approved
         );
+        assert!(manager.pending_ids().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resolve_unknown_request_is_a_noop() {
+        let manager = ApprovalManager::new(ApprovalMode::Always);
+        manager.resolve("missing", ApprovalDecision::Approved).await;
+        assert!(manager.pending_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn wait_for_decision_times_out() {
+        let mut manager = ApprovalManager::new(ApprovalMode::Always);
+        manager.timeout = Duration::from_millis(10);
+        let (_id, rx) = manager.create_request("echo hi", None).await;
+
         assert_eq!(
-            SecurityLevel::parse("permissive"),
-            Some(SecurityLevel::Full)
-        );
-        assert_eq!(SecurityLevel::parse("full"), Some(SecurityLevel::Full));
-        assert_eq!(SecurityLevel::parse("strict"), Some(SecurityLevel::Deny));
-        assert_eq!(SecurityLevel::parse("deny"), Some(SecurityLevel::Deny));
-        assert_eq!(SecurityLevel::parse("bogus"), None);
-    }
-
-    #[tokio::test]
-    async fn test_approval_never_mode() {
-        let mgr = ApprovalManager::new(ApprovalMode::Never);
-        // Non-dangerous commands proceed when mode is never and allowlist is empty.
-        let action = mgr.check_command("curl https://example.com").await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
-
-    #[tokio::test]
-    async fn test_approval_never_with_allowlist_match() {
-        // Regression test for agentics-skills/chelix#654: non-empty allowlist must be
-        // enforced even when approval_mode is never (headless deployments).
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.allowlist = vec!["git *".into()];
-        let action = mgr.check_command("git status").await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
-
-    #[tokio::test]
-    async fn test_approval_never_with_allowlist_miss_denies() {
-        // Regression test for agentics-skills/chelix#654: commands outside the
-        // configured allowlist must be denied in Never mode, not silently proceeded.
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.allowlist = vec!["git *".into()];
-        let err = mgr
-            .check_command("curl https://evil.example.com")
-            .await
-            .expect_err("expected denial for non-allowlisted command in never mode");
-        assert!(
-            err.to_string().contains("not in allowlist"),
-            "unexpected error message: {err}"
+            manager.wait_for_decision(rx).await,
+            ApprovalDecision::Timeout
         );
     }
 
     #[tokio::test]
-    async fn test_approval_never_with_allowlist_safe_bin() {
-        // Safe bins are still allowed in Never mode so operators don't have to
-        // enumerate them in every allowlist.
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.allowlist = vec!["git *".into()];
-        let action = mgr.check_command("echo hi").await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
+    async fn wait_for_decision_denies_when_channel_closes() {
+        let manager = ApprovalManager::new(ApprovalMode::Always);
+        let (tx, rx) = oneshot::channel();
+        drop(tx);
 
-    #[tokio::test]
-    async fn test_approval_never_empty_allowlist_unrestricted() {
-        // Explicit contract lock: Never mode with an empty allowlist preserves
-        // historical unrestricted semantics.
-        let mgr = ApprovalManager::new(ApprovalMode::Never);
-        let action = mgr
-            .check_command(r#"python3 -c "print('hi')""#)
-            .await
-            .unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
-
-    #[tokio::test]
-    async fn test_approval_never_full_security_bypasses_allowlist() {
-        // SecurityLevel::Full short-circuits before the mode match, so even an
-        // explicit allowlist has no effect.
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.security_level = SecurityLevel::Full;
-        mgr.allowlist = vec!["git *".into()];
-        let action = mgr.check_command("curl https://example.com").await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
-
-    #[tokio::test]
-    async fn test_approval_always_mode() {
-        let mgr = ApprovalManager::new(ApprovalMode::Always);
-        let action = mgr.check_command("echo hi").await.unwrap();
-        assert_eq!(action, ApprovalAction::NeedsApproval);
-    }
-
-    #[tokio::test]
-    async fn test_approval_on_miss_safe() {
-        let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
-        let action = mgr.check_command("echo hi").await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
-
-    #[tokio::test]
-    async fn test_approval_on_miss_unsafe() {
-        let mgr = ApprovalManager::new(ApprovalMode::OnMiss);
-        let action = mgr.check_command("rm -rf /").await.unwrap();
-        assert_eq!(action, ApprovalAction::NeedsApproval);
-    }
-
-    #[tokio::test]
-    async fn test_deny_security_level() {
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.security_level = SecurityLevel::Deny;
-        assert!(mgr.check_command("echo hi").await.is_err());
-    }
-
-    // --- Dangerous pattern detection ---
-
-    #[test]
-    fn test_dangerous_rm_rf_root() {
         assert_eq!(
-            check_dangerous("rm -rf /"),
-            Some("rm -r on filesystem root")
-        );
-        assert_eq!(
-            check_dangerous("rm -rf /*"),
-            Some("rm -r on filesystem root")
-        );
-        assert_eq!(check_dangerous("rm -r /"), Some("rm -r on filesystem root"));
-    }
-
-    #[test]
-    fn test_heredoc_body_not_flagged_as_dangerous() {
-        let command = "cat > /tmp/safety-test.md << 'EOF'\n\
-WARNING: never run rm -rf / on a production server\n\
-EOF\n";
-
-        assert!(check_dangerous(command).is_none());
-    }
-
-    #[test]
-    fn test_heredoc_executable_lines_still_flagged_as_dangerous() {
-        let command = "cat <<EOF\n\
-plain text only\n\
-EOF\n\
-rm -rf /\n";
-
-        assert_eq!(check_dangerous(command), Some("rm -r on filesystem root"));
-    }
-
-    #[test]
-    fn test_unterminated_heredoc_body_still_scanned_as_dangerous() {
-        let command = "cat <<EOF\n\
-rm -rf /\n";
-
-        assert_eq!(check_dangerous(command), Some("rm -r on filesystem root"));
-    }
-
-    #[test]
-    fn test_strip_tabs_heredoc_body_not_flagged_as_dangerous() {
-        let command = "cat <<-EOF\n\
-\tWARNING: never run rm -rf / on a production server\n\
-\tEOF\n";
-
-        assert!(check_dangerous(command).is_none());
-    }
-
-    #[test]
-    fn test_dangerous_rm_rf_home() {
-        assert_eq!(check_dangerous("rm -rf ~"), Some("rm -r on home directory"));
-        assert_eq!(
-            check_dangerous("rm -rf $HOME"),
-            Some("rm -r on home directory")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_git_reset_hard() {
-        assert_eq!(
-            check_dangerous("git reset --hard"),
-            Some("git reset --hard")
-        );
-        assert_eq!(
-            check_dangerous("git reset --hard HEAD~1"),
-            Some("git reset --hard")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_git_force_push() {
-        assert_eq!(
-            check_dangerous("git push --force origin main"),
-            Some("git force push")
-        );
-        assert_eq!(
-            check_dangerous("git push -f origin main"),
-            Some("git force push")
-        );
-        assert_eq!(
-            check_dangerous("git push --force-with-lease origin main"),
-            Some("git force push")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_drop_table() {
-        assert_eq!(
-            check_dangerous(r#"psql -c "DROP TABLE users""#),
-            Some("DROP TABLE/DATABASE")
-        );
-        assert_eq!(
-            check_dangerous("DROP DATABASE production"),
-            Some("DROP TABLE/DATABASE")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_mkfs() {
-        assert_eq!(
-            check_dangerous("mkfs.ext4 /dev/sda1"),
-            Some("make filesystem")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_docker_prune() {
-        assert_eq!(
-            check_dangerous("docker system prune"),
-            Some("docker system prune")
-        );
-        assert_eq!(
-            check_dangerous("docker system prune -a --volumes"),
-            Some("docker system prune")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_truncate() {
-        assert_eq!(check_dangerous("TRUNCATE TABLE sessions"), Some("TRUNCATE"));
-    }
-
-    #[test]
-    fn test_dangerous_terraform_destroy() {
-        assert_eq!(
-            check_dangerous("terraform destroy -auto-approve"),
-            Some("terraform destroy")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_git_clean_force() {
-        assert_eq!(
-            check_dangerous("git clean -fd"),
-            Some("git clean with force")
-        );
-    }
-
-    #[test]
-    fn test_dangerous_git_stash_drop() {
-        assert_eq!(
-            check_dangerous("git stash drop"),
-            Some("git stash drop/clear")
-        );
-        assert_eq!(
-            check_dangerous("git stash clear"),
-            Some("git stash drop/clear")
-        );
-    }
-
-    #[test]
-    fn test_safe_commands_not_flagged() {
-        assert!(check_dangerous("git status").is_none());
-        assert!(check_dangerous("ls -la").is_none());
-        assert!(check_dangerous("cargo build").is_none());
-        assert!(check_dangerous("echo hello").is_none());
-        assert!(check_dangerous("git push origin main").is_none());
-        assert!(check_dangerous("rm file.txt").is_none());
-        assert!(check_dangerous("docker ps").is_none());
-    }
-
-    #[tokio::test]
-    async fn test_dangerous_overridden_by_allowlist() {
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.allowlist = vec!["rm*".into()];
-        let action = mgr.check_command("rm -rf /").await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
-    }
-
-    #[tokio::test]
-    async fn test_dangerous_denied_when_mode_never() {
-        // In Never mode dangerous commands must be denied (not NeedsApproval),
-        // otherwise headless agents hang waiting for an approver that never
-        // arrives (agentics-skills/chelix#654).
-        let mgr = ApprovalManager::new(ApprovalMode::Never);
-        let err = mgr
-            .check_command("rm -rf /")
-            .await
-            .expect_err("expected denial for dangerous command in never mode");
-        assert!(
-            err.to_string().contains("dangerous command pattern"),
-            "unexpected error message: {err}"
+            manager.wait_for_decision(rx).await,
+            ApprovalDecision::Denied
         );
     }
 
     #[tokio::test]
-    async fn test_heredoc_body_allowed_when_mode_never() {
-        let mgr = ApprovalManager::new(ApprovalMode::Never);
-        let command = "cat > /tmp/safety-test.md << 'EOF'\n\
-WARNING: never run rm -rf / on a production server\n\
-EOF\n";
+    async fn pending_ids_are_sorted() {
+        let manager = ApprovalManager::new(ApprovalMode::Always);
+        let (first, _rx1) = manager.create_request("echo one", None).await;
+        let (second, _rx2) = manager.create_request("echo two", None).await;
 
-        let action = mgr.check_command(command).await.unwrap();
-        assert_eq!(action, ApprovalAction::Proceed);
+        let mut expected = vec![first, second];
+        expected.sort();
+        assert_eq!(manager.pending_ids().await, expected);
     }
 
     #[tokio::test]
-    async fn test_dangerous_denied_when_mode_never_full_security() {
-        // Full security level does not change the safety floor: dangerous
-        // commands are still denied in Never mode.
-        let mut mgr = ApprovalManager::new(ApprovalMode::Never);
-        mgr.security_level = SecurityLevel::Full;
-        let err = mgr
-            .check_command("git reset --hard")
-            .await
-            .expect_err("expected denial for dangerous command in never+full");
-        assert!(
-            err.to_string().contains("dangerous command pattern"),
-            "unexpected error message: {err}"
-        );
-    }
+    async fn pending_requests_for_session_filters_other_sessions() {
+        let manager = ApprovalManager::new(ApprovalMode::Always);
+        let _ = manager.create_request("echo one", Some("session:a")).await;
+        let _ = manager.create_request("echo two", Some("session:b")).await;
+        let _ = manager
+            .create_request("echo three", Some("session:a"))
+            .await;
 
-    #[tokio::test]
-    async fn test_dangerous_forces_approval_when_full() {
-        let mut mgr = ApprovalManager::new(ApprovalMode::OnMiss);
-        mgr.security_level = SecurityLevel::Full;
-        let action = mgr.check_command("git reset --hard").await.unwrap();
-        assert_eq!(action, ApprovalAction::NeedsApproval);
-    }
-
-    #[tokio::test]
-    async fn test_pending_requests_for_session_filters_other_sessions() {
-        let mgr = ApprovalManager::new(ApprovalMode::Never);
-        let _ = mgr.create_request("echo one", Some("session:a")).await;
-        let _ = mgr.create_request("echo two", Some("session:b")).await;
-        let _ = mgr.create_request("echo three", Some("session:a")).await;
-
-        let pending = mgr.pending_requests_for_session("session:a").await;
+        let pending = manager.pending_requests_for_session("session:a").await;
         assert_eq!(pending.len(), 2);
         assert!(
             pending
@@ -1090,6 +246,4 @@ EOF\n";
                 .all(|request| request.session_key.as_deref() == Some("session:a"))
         );
     }
-
-    mod env_prefix;
 }

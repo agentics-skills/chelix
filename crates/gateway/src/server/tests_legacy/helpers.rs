@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::Path as FsPath};
 
-use {chelix_config::ApprovalMode, chelix_tools::approval::SecurityLevel};
+use chelix_config::ApprovalMode;
 
 #[cfg(feature = "qmd")]
 #[test]
@@ -52,23 +52,19 @@ fn summarize_model_ids_for_logs_truncates_to_head_and_tail() {
 fn approval_manager_uses_config_values() {
     let mut cfg = chelix_config::ChelixConfig::default();
     cfg.tools.execute_command.approval_mode = ApprovalMode::Always;
-    cfg.tools.execute_command.security_level = "strict".into();
-    cfg.tools.execute_command.allowlist = vec!["git*".into()];
 
     let manager = crate::server::helpers::approval_manager_from_config(&cfg);
     assert_eq!(manager.mode, ApprovalMode::Always);
-    assert_eq!(manager.security_level, SecurityLevel::Deny);
-    assert_eq!(manager.allowlist, vec!["git*".to_string()]);
+    assert!(manager.needs_approval());
 }
 
 #[test]
-fn approval_manager_falls_back_for_invalid_security_level() {
-    let mut cfg = chelix_config::ChelixConfig::default();
-    cfg.tools.execute_command.security_level = "bogus".into();
+fn approval_manager_defaults_to_no_approval() {
+    let cfg = chelix_config::ChelixConfig::default();
 
     let manager = crate::server::helpers::approval_manager_from_config(&cfg);
     assert_eq!(manager.mode, ApprovalMode::Never);
-    assert_eq!(manager.security_level, SecurityLevel::Allowlist);
+    assert!(!manager.needs_approval());
 }
 
 #[test]

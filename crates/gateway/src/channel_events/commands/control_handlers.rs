@@ -110,18 +110,14 @@ pub(in crate::channel_events) async fn handle_approve_deny(
     } else {
         "denied"
     };
-    let mut params = serde_json::json!({
-        "requestId": &request.id,
-        "decision": decision,
-    });
-    if cmd == "approve" {
-        params["command"] = serde_json::json!(&request.command);
-    }
 
     state
         .services
         .command_approval
-        .resolve(params)
+        .resolve(serde_json::json!({
+            "requestId": &request.id,
+            "decision": decision,
+        }))
         .await
         .map_err(ChannelError::unavailable)?;
 

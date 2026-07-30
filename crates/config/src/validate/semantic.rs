@@ -595,21 +595,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Unknown command security level
-    let valid_security_levels = ["allowlist", "permissive", "strict"];
-    if !valid_security_levels.contains(&config.tools.execute_command.security_level.as_str()) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "tools.execute_command.security_level".into(),
-            message: format!(
-                "unknown security level \"{}\"; expected one of: {}",
-                config.tools.execute_command.security_level,
-                valid_security_levels.join(", ")
-            ),
-        });
-    }
-
     // Unknown voice TTS providers list values
     let valid_voice_tts_providers = [
         "elevenlabs",
