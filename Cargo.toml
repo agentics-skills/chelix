@@ -142,7 +142,7 @@ unwrap_used = "deny"
 edition      = "2024"
 license      = "MIT"
 repository   = "https://github.com/agentics-skills/chelix"
-rust-version = "1.91"
+rust-version = "1.95"
 version      = "0.1.0"
 
 [workspace.dependencies]

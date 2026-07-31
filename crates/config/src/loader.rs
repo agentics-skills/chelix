@@ -27,7 +27,7 @@ fn next_fallback_port() -> u16 {
     static FALLBACK_PORT: AtomicU16 = AtomicU16::new(18789);
 
     FALLBACK_PORT
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |port| {
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |port| {
             Some(if port == u16::MAX {
                 1024
             } else {
