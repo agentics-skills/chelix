@@ -33,7 +33,6 @@ anyhow                = { workspace = true }
 async-trait           = { workspace = true }
 bytemuck              = { workspace = true }
 chelix-agents         = { workspace = true }
-chelix-common         = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 chelix-protocol       = { optional = true, workspace = true }
 chelix-splitter       = { workspace = true }

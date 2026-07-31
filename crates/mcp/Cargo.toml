@@ -28,3 +28,6 @@ uuid           = { workspace = true }
 mockito    = { workspace = true }
 tempfile   = { workspace = true }
 tokio-test = { workspace = true }
+
+[lints]
+workspace = true

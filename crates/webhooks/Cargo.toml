@@ -7,8 +7,6 @@ version.workspace = true
 anyhow         = { workspace = true }
 async-trait    = { workspace = true }
 axum           = { workspace = true }
-chelix-common  = { workspace = true }
-chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
 hex            = { workspace = true }
 hmac           = { workspace = true }
@@ -22,7 +20,6 @@ thiserror      = { workspace = true }
 time           = { workspace = true }
 tokio          = { workspace = true }
 tracing        = { workspace = true }
-uuid           = { workspace = true }
 
 [features]
 default = []
@@ -30,9 +27,7 @@ metrics = ["dep:chelix-metrics"]
 tracing = []
 
 [dev-dependencies]
-ipnet    = { workspace = true }
-rstest   = { workspace = true }
-tempfile = { workspace = true }
+ipnet = { workspace = true }
 
 [lints]
 workspace = true

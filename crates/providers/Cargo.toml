@@ -5,8 +5,7 @@ repository.workspace = true
 version.workspace    = true
 
 [features]
-default                 = ["metrics", "provider-async-openai", "provider-genai"]
-metrics                 = ["dep:chelix-metrics"]
+default                 = ["provider-async-openai", "provider-genai"]
 provider-async-openai   = ["dep:async-openai"]
 provider-genai          = ["dep:genai"]
 provider-github-copilot = ["dep:chelix-oauth"]
@@ -34,17 +33,15 @@ tokio-tungstenite = { workspace = true }
 tracing           = { workspace = true }
 
 # Optional LLM provider crates
-async-openai   = { optional = true, workspace = true }
-base64         = { optional = true, workspace = true }
-chelix-metrics = { optional = true, workspace = true }
-chelix-oauth   = { optional = true, workspace = true }
-genai          = { optional = true, workspace = true }
+async-openai = { optional = true, workspace = true }
+base64       = { optional = true, workspace = true }
+chelix-oauth = { optional = true, workspace = true }
+genai        = { optional = true, workspace = true }
 
 [dev-dependencies]
-axum     = { workspace = true }
-http     = { workspace = true }
-tempfile = { workspace = true }
-toml     = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+toml = { workspace = true }
 
 [lints]
 workspace = true

@@ -5,9 +5,15 @@ fn main() {
     match path {
         Some(p) => {
             if let Some(parent) = std::path::Path::new(&p).parent() {
-                std::fs::create_dir_all(parent).expect("failed to create parent directories");
+                if let Err(error) = std::fs::create_dir_all(parent) {
+                    eprintln!("failed to create parent directories of {p}: {error}");
+                    std::process::exit(1);
+                }
             }
-            std::fs::write(&p, sdl).expect("failed to write schema file");
+            if let Err(error) = std::fs::write(&p, sdl) {
+                eprintln!("failed to write schema file {p}: {error}");
+                std::process::exit(1);
+            }
             eprintln!("Wrote GraphQL schema to {p}");
         },
         None => print!("{sdl}"),

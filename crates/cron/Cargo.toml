@@ -5,8 +5,6 @@ version.workspace = true
 
 [dependencies]
 async-trait    = { workspace = true }
-chelix-agents  = { workspace = true }
-chelix-common  = { workspace = true }
 chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
 chrono         = { workspace = true }

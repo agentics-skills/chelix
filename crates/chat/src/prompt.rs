@@ -779,7 +779,7 @@ mod tests {
             None,
             &history,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("run registry preparation succeeds: {error}"));
 
         assert_eq!(registry.list_names(), vec![
             "execute_command".to_string(),

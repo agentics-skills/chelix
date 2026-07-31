@@ -128,9 +128,11 @@ sqlx-core   = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c
 sqlx-sqlite = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c7962c6450faf31591c4e0782c23" }
 
 [workspace.lints.rust]
-unsafe_code               = "deny"
-unused_crate_dependencies = "deny"
-unused_qualifications     = "deny"
+unsafe_code           = "deny"
+unused_qualifications = "deny"
+
+[workspace.lints.cargo]
+unused_dependencies = "deny"
 
 [workspace.lints.clippy]
 expect_used = "deny"
@@ -160,15 +162,9 @@ serde_json = { features = ["preserve_order"], version = "1" }
 # Error handling
 anyhow    = "1"
 thiserror = "2"
-# OpenSSL (vendored for cross-compilation)
-openssl = { features = ["vendored"], version = "0.10" }
 # Logging
-opentelemetry         = { version = "0.29" }
-opentelemetry-otlp    = { features = ["tonic"], version = "0.29" }
-opentelemetry_sdk     = { features = ["rt-tokio"], version = "0.29" }
-tracing               = "0.1"
-tracing-opentelemetry = "0.30"
-tracing-subscriber    = { features = ["env-filter", "json"], version = "0.3" }
+tracing            = "0.1"
+tracing-subscriber = { features = ["env-filter", "json"], version = "0.3" }
 # CLI
 clap = { features = ["derive", "env"], version = "4" }
 # Database
@@ -194,30 +190,25 @@ serde_yaml        = "0.9"
 tokio-tungstenite = "0.26"
 toml              = "0.8"
 toml_edit         = "0.22"
-zip               = { default-features = false, features = ["deflate"], version = "2" }
 # LLM provider crates (optional, behind feature flags)
-async-openai  = { features = ["chat-completion"], version = "0.32" }
-base64        = "0.22"
-bytemuck      = { features = ["derive"], version = "1" }
-bytes         = "1"
-ed25519-dalek = "2.2"
-encoding_rs   = "0.8"
-fd-lock       = "4"
-genai         = "0.5"
-jsonschema    = { default-features = false, version = "0.49" }
+async-openai = { features = ["chat-completion"], version = "0.32" }
+base64       = "0.22"
+bytemuck     = { features = ["derive"], version = "1" }
+bytes        = "1"
+fd-lock      = "4"
+genai        = "0.5"
+jsonschema   = { default-features = false, version = "0.49" }
 # GraphQL
 async-graphql      = "7"
 async-graphql-axum = "7"
 gix                = "0.83"
 hex                = "0.4"
 hmac               = "0.12"
-jsonwebtoken       = { features = ["aws_lc_rs"], version = "10" }
 llama-cpp-2        = "0.1"
 matrix-sdk         = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
 mockito            = "1.7"
 open               = "5.3"
 rand               = "0.10"
-regex              = "1"
 ring               = "0.17"
 secrecy            = { features = ["serde"], version = "0.8" }
 serenity           = { features = ["cache", "client", "gateway", "model", "rustls_backend"], version = "0.12" }
@@ -238,25 +229,21 @@ whatsapp-rust-ureq-http-client = "0.5"
 # QR code rendering
 qrcode = "0.14"
 # TLS / certificate generation
-axum-server    = { features = ["tls-rustls"], version = "0.7" }
 rcgen          = "0.13"
 rustls         = { features = ["ring"], version = "0.23" }
 rustls-pemfile = "2"
 time           = { features = ["serde-human-readable"], version = "0.3" }
 tokio-rustls   = "0.26"
 # Cryptography / authentication
-argon2            = "0.5"
-chacha20poly1305  = { features = ["std"], version = "0.10" }
-p256              = "0.13"
-password-hash     = "0.5"
-subtle            = "2"
-webauthn-rs       = "0.5"
-webauthn-rs-proto = "0.5"
+argon2           = "0.5"
+chacha20poly1305 = { features = ["std"], version = "0.10" }
+p256             = "0.13"
+subtle           = "2"
+webauthn-rs      = "0.5"
 # Web / HTTP utilities
 dashmap     = "6"
 hostname    = "0.4"
 http        = "1"
-hyper       = { features = ["client", "http1", "http2", "server"], version = "1" }
 hyper-util  = { features = ["client-legacy", "http1", "http2", "server-auto", "service", "tokio"], version = "0.1" }
 tower       = "0.5"
 tower-http  = "0.6"
@@ -299,91 +286,77 @@ chrono-tz             = { features = ["serde"], version = "0.10" }
 cron                  = "0.13"
 dirs-next             = "2"
 flate2                = "1"
-globset               = "0.4"
 grep-regex            = "0.1"
 grep-searcher         = "0.1"
-ignore                = "0.4"
 include_dir           = "0.7"
-json5                 = "0.4"
 notify-debouncer-full = "0.7"
 pdf-extract           = "0.10"
-portable-pty          = "0.9"
 rmux-core             = "0.9"
 rmux-pty              = "0.9"
 rstest                = "0.25"
 serial_test           = "3"
-shell-words           = "1"
 tar                   = "0.4"
 tempfile              = "3"
-vte                   = "0.15"
 walkdir               = "2"
 which                 = "8"
 wiremock              = "0.6"
 # CalDAV / iCalendar
-hyper-rustls  = { features = ["http1", "native-tokio", "ring", "tls12"], version = "0.27" }
-icalendar     = "0.17"
-libdav        = "0.10"
-tower-service = "0.3"
-zeroize       = { features = ["derive"], version = "1" }
+hyper-rustls = { features = ["http1", "native-tokio", "ring", "tls12"], version = "0.27" }
+icalendar    = "0.17"
+libdav       = "0.10"
+zeroize      = { features = ["derive"], version = "1" }
 
 # Workspace crates
-chelix                   = { path = "crates/cli" }
-chelix-agents            = { path = "crates/agents" }
-chelix-auth              = { path = "crates/auth" }
-chelix-auto-reply        = { path = "crates/auto-reply" }
-chelix-browser           = { path = "crates/browser" }
-chelix-caldav            = { path = "crates/caldav" }
-chelix-canvas            = { path = "crates/canvas" }
-chelix-channels          = { path = "crates/channels" }
-chelix-chat              = { path = "crates/chat" }
-chelix-claude-import     = { path = "crates/claude-import" }
-chelix-code-index        = { path = "crates/code-index" }
-chelix-codex-import      = { path = "crates/codex-import" }
-chelix-common            = { path = "crates/common" }
-chelix-config            = { path = "crates/config" }
-chelix-cron              = { path = "crates/cron" }
-chelix-discord           = { path = "crates/discord" }
-chelix-embedding-service = { path = "crates/embedding-service" }
-chelix-external-agents   = { path = "crates/external-agents" }
-chelix-gateway           = { default-features = false, path = "crates/gateway" }
-chelix-graphql           = { path = "crates/graphql" }
-chelix-home-assistant    = { path = "crates/home-assistant" }
-chelix-httpd             = { default-features = false, path = "crates/httpd" }
-chelix-import-core       = { path = "crates/import-core" }
-chelix-matrix            = { path = "crates/matrix" }
-chelix-mcp               = { path = "crates/mcp" }
-chelix-mcp-agent-bridge  = { path = "crates/mcp-agent-bridge" }
-chelix-media             = { path = "crates/media" }
-chelix-memory            = { path = "crates/memory" }
-chelix-metrics           = { path = "crates/metrics" }
-chelix-oauth             = { path = "crates/oauth" }
-chelix-onboarding        = { path = "crates/onboarding" }
-chelix-plugins           = { path = "crates/plugins" }
-chelix-portable          = { path = "crates/portable" }
-chelix-projects          = { path = "crates/projects" }
-chelix-protocol          = { path = "crates/protocol" }
-chelix-provider-setup    = { path = "crates/provider-setup" }
-chelix-providers         = { features = ["provider-github-copilot", "provider-kimi-code", "provider-openai-codex"], path = "crates/providers" }
-chelix-qmd               = { path = "crates/qmd" }
-chelix-routing           = { path = "crates/routing" }
-chelix-schema-export     = { path = "crates/schema-export" }
-chelix-secret-store      = { default-features = false, path = "crates/secret-store" }
-chelix-service-traits    = { path = "crates/service-traits" }
-chelix-sessions          = { path = "crates/sessions" }
-chelix-signal            = { path = "crates/signal" }
-chelix-skills            = { path = "crates/skills" }
-chelix-slack             = { path = "crates/slack" }
-chelix-splitter          = { path = "crates/splitter" }
-chelix-telegram          = { path = "crates/telegram" }
-chelix-telephony         = { path = "crates/telephony" }
-chelix-tls               = { path = "crates/tls" }
-chelix-tools             = { path = "crates/tools" }
-chelix-tools-service     = { path = "crates/tools-service" }
-chelix-vault             = { path = "crates/vault" }
-chelix-voice             = { path = "crates/voice" }
-chelix-web               = { default-features = false, path = "crates/web" }
-chelix-webhooks          = { path = "crates/webhooks" }
-chelix-whatsapp          = { path = "crates/whatsapp" }
+chelix-agents           = { path = "crates/agents" }
+chelix-auth             = { path = "crates/auth" }
+chelix-browser          = { path = "crates/browser" }
+chelix-caldav           = { path = "crates/caldav" }
+chelix-channels         = { path = "crates/channels" }
+chelix-chat             = { path = "crates/chat" }
+chelix-claude-import    = { path = "crates/claude-import" }
+chelix-code-index       = { path = "crates/code-index" }
+chelix-codex-import     = { path = "crates/codex-import" }
+chelix-common           = { path = "crates/common" }
+chelix-config           = { path = "crates/config" }
+chelix-cron             = { path = "crates/cron" }
+chelix-discord          = { path = "crates/discord" }
+chelix-external-agents  = { path = "crates/external-agents" }
+chelix-gateway          = { default-features = false, path = "crates/gateway" }
+chelix-graphql          = { path = "crates/graphql" }
+chelix-home-assistant   = { path = "crates/home-assistant" }
+chelix-httpd            = { default-features = false, path = "crates/httpd" }
+chelix-import-core      = { path = "crates/import-core" }
+chelix-matrix           = { path = "crates/matrix" }
+chelix-mcp              = { path = "crates/mcp" }
+chelix-mcp-agent-bridge = { path = "crates/mcp-agent-bridge" }
+chelix-media            = { path = "crates/media" }
+chelix-memory           = { path = "crates/memory" }
+chelix-metrics          = { path = "crates/metrics" }
+chelix-oauth            = { path = "crates/oauth" }
+chelix-onboarding       = { path = "crates/onboarding" }
+chelix-plugins          = { path = "crates/plugins" }
+chelix-portable         = { path = "crates/portable" }
+chelix-projects         = { path = "crates/projects" }
+chelix-protocol         = { path = "crates/protocol" }
+chelix-provider-setup   = { path = "crates/provider-setup" }
+chelix-providers        = { features = ["provider-github-copilot", "provider-kimi-code", "provider-openai-codex"], path = "crates/providers" }
+chelix-qmd              = { path = "crates/qmd" }
+chelix-secret-store     = { default-features = false, path = "crates/secret-store" }
+chelix-service-traits   = { path = "crates/service-traits" }
+chelix-sessions         = { path = "crates/sessions" }
+chelix-signal           = { path = "crates/signal" }
+chelix-skills           = { path = "crates/skills" }
+chelix-slack            = { path = "crates/slack" }
+chelix-splitter         = { path = "crates/splitter" }
+chelix-telegram         = { path = "crates/telegram" }
+chelix-telephony        = { path = "crates/telephony" }
+chelix-tls              = { path = "crates/tls" }
+chelix-tools            = { path = "crates/tools" }
+chelix-vault            = { path = "crates/vault" }
+chelix-voice            = { path = "crates/voice" }
+chelix-web              = { default-features = false, path = "crates/web" }
+chelix-webhooks         = { path = "crates/webhooks" }
+chelix-whatsapp         = { path = "crates/whatsapp" }
 
 [profile.release]
 codegen-units = 1

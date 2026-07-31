@@ -214,7 +214,8 @@ mod tests {
     #[test]
     fn test_jsonrpc_request_serialization() {
         let req = JsonRpcRequest::new(1, "initialize", Some(serde_json::json!({"key": "val"})));
-        let json = serde_json::to_string(&req).unwrap();
+        let json = serde_json::to_string(&req)
+            .unwrap_or_else(|error| panic!("request serializes: {error}"));
         assert!(json.contains("\"jsonrpc\":\"2.0\""));
         assert!(json.contains("\"method\":\"initialize\""));
         assert!(json.contains("\"id\":1"));
@@ -223,7 +224,8 @@ mod tests {
     #[test]
     fn test_jsonrpc_response_with_result() {
         let json = r#"{"jsonrpc":"2.0","id":1,"result":{"ok":true}}"#;
-        let resp: JsonRpcResponse = serde_json::from_str(json).unwrap();
+        let resp: JsonRpcResponse = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("response deserializes: {error}"));
         assert!(resp.result.is_some());
         assert!(resp.error.is_none());
     }
@@ -232,15 +234,20 @@ mod tests {
     fn test_jsonrpc_response_with_error() {
         let json =
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
-        let resp: JsonRpcResponse = serde_json::from_str(json).unwrap();
+        let resp: JsonRpcResponse = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("error response deserializes: {error}"));
         assert!(resp.result.is_none());
-        assert_eq!(resp.error.unwrap().code, -32600);
+        let error = resp
+            .error
+            .unwrap_or_else(|| panic!("error response carries an error object"));
+        assert_eq!(error.code, -32600);
     }
 
     #[test]
     fn test_mcp_tool_def_deserialization() {
         let json = r#"{"name":"read_file","description":"Read a file","inputSchema":{"type":"object","properties":{"path":{"type":"string"}}}}"#;
-        let tool: McpToolDef = serde_json::from_str(json).unwrap();
+        let tool: McpToolDef = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("tool definition deserializes: {error}"));
         assert_eq!(tool.name, "read_file");
         assert_eq!(tool.description.as_deref(), Some("Read a file"));
     }
@@ -248,7 +255,8 @@ mod tests {
     #[test]
     fn test_tools_call_result_deserialization() {
         let json = r#"{"content":[{"type":"text","text":"hello"}],"isError":false}"#;
-        let result: ToolsCallResult = serde_json::from_str(json).unwrap();
+        let result: ToolsCallResult = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("tools call result deserializes: {error}"));
         assert_eq!(result.content.len(), 1);
         assert!(!result.is_error);
         match &result.content[0] {
@@ -267,7 +275,8 @@ mod tests {
                 version: "0.1.0".into(),
             },
         };
-        let json = serde_json::to_value(&params).unwrap();
+        let json = serde_json::to_value(&params)
+            .unwrap_or_else(|error| panic!("initialize params serialize: {error}"));
         assert_eq!(json["protocolVersion"], PROTOCOL_VERSION);
         assert_eq!(json["clientInfo"]["name"], "chelix");
     }

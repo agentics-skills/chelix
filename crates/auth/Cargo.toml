@@ -9,33 +9,26 @@ default = []
 vault   = ["dep:chelix-vault"]
 
 [dependencies]
-argon2            = { workspace = true }
-async-trait       = { workspace = true }
-axum              = { workspace = true }
-base64            = { workspace = true }
-chelix-config     = { workspace = true }
-chelix-tools      = { workspace = true }
-chelix-vault      = { optional = true, workspace = true }
-dashmap           = { workspace = true }
-hmac              = { workspace = true }
-password-hash     = { workspace = true }
-rand              = { workspace = true }
-secrecy           = { workspace = true }
-serde             = { workspace = true }
-serde_json        = { workspace = true }
-sha2              = { workspace = true }
-sqlx              = { workspace = true }
-thiserror         = { workspace = true }
-tokio             = { workspace = true }
-tracing           = { workspace = true }
-webauthn-rs       = { features = ["danger-allow-state-serialisation"], workspace = true }
-webauthn-rs-proto = { workspace = true }
-# Required by webauthn-rs
-openssl = { workspace = true }
+argon2        = { workspace = true }
+axum          = { workspace = true }
+base64        = { workspace = true }
+chelix-config = { workspace = true }
+chelix-vault  = { optional = true, workspace = true }
+dashmap       = { workspace = true }
+hmac          = { workspace = true }
+rand          = { workspace = true }
+secrecy       = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+sha2          = { workspace = true }
+sqlx          = { workspace = true }
+thiserror     = { workspace = true }
+tracing       = { workspace = true }
+webauthn-rs   = { features = ["danger-allow-state-serialisation"], workspace = true }
 
 [dev-dependencies]
 chelix-vault = { workspace = true }
-tempfile     = { workspace = true }
+tokio        = { workspace = true }
 
 [lints]
 workspace = true

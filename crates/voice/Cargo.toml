@@ -10,13 +10,11 @@ base64        = { workspace = true }
 bytes         = { workspace = true }
 chelix-config = { workspace = true }
 dirs          = "6"
-futures       = { workspace = true }
 reqwest       = { features = ["multipart"], workspace = true }
 secrecy       = { workspace = true }
 serde         = { workspace = true }
 serde_json    = { workspace = true }
 tempfile      = "3"
-thiserror     = { workspace = true }
 tokio         = { features = ["process"], workspace = true }
 tracing       = { workspace = true }
 urlencoding   = "2"

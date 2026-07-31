@@ -439,8 +439,11 @@ mod tests {
     use super::*;
 
     fn unused_local_url() -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap_or_else(|error| panic!("ephemeral port binds: {error}"));
+        let addr = listener
+            .local_addr()
+            .unwrap_or_else(|error| panic!("local address is available: {error}"));
         drop(listener);
         format!("http://{addr}/sse")
     }
@@ -459,13 +462,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_legacy_sse_transport_is_alive_unreachable() {
-        let transport = LegacySseTransport::new(&unused_local_url()).unwrap();
+        let transport = LegacySseTransport::new(&unused_local_url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(!transport.is_alive().await);
     }
 
     #[tokio::test]
     async fn test_legacy_sse_transport_request_unreachable() {
-        let transport = LegacySseTransport::new(&unused_local_url()).unwrap();
+        let transport = LegacySseTransport::new(&unused_local_url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         let result = transport.request("test", None).await;
         assert!(result.is_err());
     }
@@ -475,14 +480,16 @@ mod tests {
     #[test]
     fn test_parse_endpoint_event_relative_path() {
         let body = "event: endpoint\ndata: /message?sessionId=abc-123\n\n";
-        let result = parse_endpoint_event(body, "http://localhost:3001/").unwrap();
+        let result = parse_endpoint_event(body, "http://localhost:3001/")
+            .unwrap_or_else(|error| panic!("endpoint event parses: {error}"));
         assert_eq!(result, "http://localhost:3001/message?sessionId=abc-123");
     }
 
     #[test]
     fn test_parse_endpoint_event_query_only() {
         let body = "event: endpoint\ndata: ?sessionId=f7e39497-f3c7-416c-9a3a-a48559a2bf5c\n\n";
-        let result = parse_endpoint_event(body, "http://localhost:3001/").unwrap();
+        let result = parse_endpoint_event(body, "http://localhost:3001/")
+            .unwrap_or_else(|error| panic!("endpoint event parses: {error}"));
         assert_eq!(
             result,
             "http://localhost:3001/?sessionId=f7e39497-f3c7-416c-9a3a-a48559a2bf5c"
@@ -492,15 +499,16 @@ mod tests {
     #[test]
     fn test_parse_endpoint_event_absolute_url() {
         let body = "event: endpoint\ndata: http://other-host:4000/mcp/msg?sid=xyz\n\n";
-        let result = parse_endpoint_event(body, "http://localhost:3001/sse").unwrap();
+        let result = parse_endpoint_event(body, "http://localhost:3001/sse")
+            .unwrap_or_else(|error| panic!("endpoint event parses: {error}"));
         assert_eq!(result, "http://other-host:4000/mcp/msg?sid=xyz");
     }
 
     #[test]
     fn test_parse_endpoint_event_relative_path_with_base_path() {
         let body = "event: endpoint\ndata: /mcp/message?sessionId=test-session\n\n";
-        let result =
-            parse_endpoint_event(body, "https://baserow.example.com/mcp/xxxx/sse").unwrap();
+        let result = parse_endpoint_event(body, "https://baserow.example.com/mcp/xxxx/sse")
+            .unwrap_or_else(|error| panic!("endpoint event parses: {error}"));
         assert_eq!(
             result,
             "https://baserow.example.com/mcp/message?sessionId=test-session"
@@ -526,7 +534,8 @@ mod tests {
     fn test_parse_endpoint_event_ignores_non_endpoint_events() {
         // Other event types with path-like data must not be mistaken for endpoints
         let body = "event: message\ndata: /error/occurred\n\nevent: endpoint\ndata: /message?sessionId=real\n\n";
-        let result = parse_endpoint_event(body, "http://localhost:3001/").unwrap();
+        let result = parse_endpoint_event(body, "http://localhost:3001/")
+            .unwrap_or_else(|error| panic!("endpoint event parses: {error}"));
         assert_eq!(result, "http://localhost:3001/message?sessionId=real");
     }
 
@@ -557,7 +566,8 @@ mod tests {
             .await;
 
         let url = format!("{}/sse", server.url());
-        let transport = LegacySseTransport::new(&url).unwrap();
+        let transport = LegacySseTransport::new(&url)
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
 
         let resp = transport
             .request(
@@ -569,7 +579,7 @@ mod tests {
                 })),
             )
             .await
-            .unwrap();
+            .unwrap_or_else(|error| panic!("request succeeds: {error}"));
 
         assert!(resp.result.is_some());
         sse_mock.assert_async().await;
@@ -603,7 +613,8 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = LegacySseTransport::new(&server.url()).unwrap();
+        let transport = LegacySseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
 
         let resp = transport
             .request(
@@ -615,7 +626,7 @@ mod tests {
                 })),
             )
             .await
-            .unwrap();
+            .unwrap_or_else(|error| panic!("request succeeds: {error}"));
 
         assert!(resp.result.is_some());
         sse_mock.assert_async().await;
@@ -647,12 +658,19 @@ mod tests {
             .await;
 
         let url = format!("{}/sse", server.url());
-        let transport = LegacySseTransport::new(&url).unwrap();
+        let transport = LegacySseTransport::new(&url)
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
 
         // First request triggers discovery
-        transport.request("initialize", None).await.unwrap();
+        transport
+            .request("initialize", None)
+            .await
+            .unwrap_or_else(|error| panic!("initialize succeeds: {error}"));
         // Second request uses cached endpoint
-        transport.request("tools/list", None).await.unwrap();
+        transport
+            .request("tools/list", None)
+            .await
+            .unwrap_or_else(|error| panic!("tools/list succeeds: {error}"));
 
         sse_mock.assert_async().await;
         msg_mock.assert_async().await;
@@ -671,14 +689,16 @@ mod tests {
             .await;
 
         let url = format!("{}/sse", server.url());
-        let transport = LegacySseTransport::new(&url).unwrap();
+        let transport = LegacySseTransport::new(&url)
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
 
-        let result = transport.request("initialize", None).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
+        let err = match transport.request("initialize", None).await {
+            Ok(response) => panic!("401 discovery must fail, got {response:?}"),
+            Err(error) => error,
+        };
         assert!(matches!(
             err,
-            crate::Error::Transport(McpTransportError::Unauthorized { .. })
+            Error::Transport(McpTransportError::Unauthorized { .. })
         ));
     }
 }

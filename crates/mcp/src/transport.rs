@@ -250,11 +250,11 @@ mod tests {
         // Spawn a simple process that reads stdin (cat will echo back).
         let transport = StdioTransport::spawn("cat", &[], &HashMap::new())
             .await
-            .unwrap();
+            .unwrap_or_else(|error| panic!("cat transport spawns: {error}"));
         assert!(transport.is_alive().await);
         transport.kill().await;
         // After kill, process should be dead.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(!transport.is_alive().await);
     }
 
@@ -275,9 +275,12 @@ mod tests {
             Duration::from_secs(1),
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|error| panic!("sh transport spawns: {error}"));
 
-        let err = transport.request("tools/list", None).await.unwrap_err();
+        let err = match transport.request("tools/list", None).await {
+            Ok(value) => panic!("request must time out, got {value:?}"),
+            Err(error) => error,
+        };
         assert!(err.to_string().contains("timed out after 1s"));
 
         transport.kill().await;

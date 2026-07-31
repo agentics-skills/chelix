@@ -723,7 +723,10 @@ mod tests {
             "action": "snapshot",
             "sandbox": false
         }));
-        let error = result.unwrap_err().to_string();
+        let error = match result {
+            Ok(request) => panic!("sandbox override should be rejected, got {request:?}"),
+            Err(error) => error.to_string(),
+        };
         assert!(error.contains("sandbox override"));
     }
 

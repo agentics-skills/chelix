@@ -1,7 +1,6 @@
 [package]
 description       = "Personal AI gateway"
 edition.workspace = true
-homepage          = "https://github.com/agentics-skills/chelix"
 license           = "MIT"
 name              = "chelix"
 repository        = "https://github.com/agentics-skills/chelix"
@@ -36,7 +35,6 @@ chelix-web           = { optional = true, workspace = true }
 clap                 = { workspace = true }
 dotenvy              = { workspace = true }
 open                 = { workspace = true }
-rand                 = { workspace = true }
 reqwest              = { workspace = true }
 secrecy              = { workspace = true }
 serde_json           = { workspace = true }
@@ -45,7 +43,6 @@ time                 = { workspace = true }
 tokio                = { workspace = true }
 tracing              = { workspace = true }
 tracing-subscriber   = { workspace = true }
-uuid                 = { workspace = true }
 which                = { workspace = true }
 
 [target.'cfg(all(not(target_os = "windows"), not(all(target_os = "linux", target_arch = "aarch64"))))'.dependencies]

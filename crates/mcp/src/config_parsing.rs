@@ -258,7 +258,7 @@ mod tests {
             }),
             None,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
         assert_eq!(cfg.transport, TransportType::Sse);
         assert_eq!(
             cfg.url.as_ref().map(|u| u.expose_secret().as_str()),
@@ -268,25 +268,29 @@ mod tests {
 
     #[test]
     fn parse_server_config_requires_command_for_stdio() {
-        let err = parse_server_config(
+        let err = match parse_server_config(
             &serde_json::json!({
                 "transport": "stdio"
             }),
             None,
-        )
-        .unwrap_err();
+        ) {
+            Ok(config) => panic!("stdio without command must fail, got {config:?}"),
+            Err(error) => error,
+        };
         assert!(err.to_string().contains("missing 'command'"));
     }
 
     #[test]
     fn parse_server_config_requires_url_for_sse() {
-        let err = parse_server_config(
+        let err = match parse_server_config(
             &serde_json::json!({
                 "transport": "sse"
             }),
             None,
-        )
-        .unwrap_err();
+        ) {
+            Ok(config) => panic!("sse without url must fail, got {config:?}"),
+            Err(error) => error,
+        };
         assert!(err.to_string().contains("missing 'url'"));
     }
 
@@ -299,7 +303,7 @@ mod tests {
             }),
             None,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
         assert_eq!(cfg.transport, TransportType::StreamableHttp);
         assert_eq!(
             cfg.url.as_ref().map(|u| u.expose_secret().as_str()),
@@ -309,13 +313,15 @@ mod tests {
 
     #[test]
     fn parse_server_config_requires_url_for_streamable_http() {
-        let err = parse_server_config(
+        let err = match parse_server_config(
             &serde_json::json!({
                 "transport": "streamable-http"
             }),
             None,
-        )
-        .unwrap_err();
+        ) {
+            Ok(config) => panic!("streamable-http without url must fail, got {config:?}"),
+            Err(error) => error,
+        };
         assert!(err.to_string().contains("missing 'url'"));
     }
 
@@ -348,7 +354,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
         assert_eq!(cfg.display_name, Some("Updated Server".to_string()));
         assert_eq!(
@@ -390,9 +396,12 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
-        let oauth = cfg.oauth.as_ref().unwrap();
+        let oauth = cfg
+            .oauth
+            .as_ref()
+            .unwrap_or_else(|| panic!("oauth config is present"));
         assert_eq!(oauth.client_id, "test-client");
         assert_eq!(
             oauth
@@ -420,9 +429,12 @@ mod tests {
             }),
             None,
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
-        let oauth = cfg.oauth.as_ref().unwrap();
+        let oauth = cfg
+            .oauth
+            .as_ref()
+            .unwrap_or_else(|| panic!("oauth config is present"));
         assert_eq!(oauth.client_id, "test-client");
         assert_eq!(
             oauth
@@ -463,7 +475,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
         assert_eq!(
             cfg.headers
@@ -503,7 +515,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
         assert!(cfg.headers.is_empty());
     }
@@ -524,9 +536,24 @@ mod tests {
             ("EMPTY_VAL".to_string(), "".to_string()),
         ]);
 
-        assert_eq!(merged.get("API_KEY").unwrap(), "from-config"); // base wins
-        assert_eq!(merged.get("NEW_VAR").unwrap(), "from-db"); // new from additional
-        assert_eq!(merged.get("MODEL").unwrap(), "from-config"); // unchanged
+        assert_eq!(
+            merged
+                .get("API_KEY")
+                .unwrap_or_else(|| panic!("API_KEY is merged")),
+            "from-config"
+        ); // base wins
+        assert_eq!(
+            merged
+                .get("NEW_VAR")
+                .unwrap_or_else(|| panic!("NEW_VAR is merged")),
+            "from-db"
+        ); // new from additional
+        assert_eq!(
+            merged
+                .get("MODEL")
+                .unwrap_or_else(|| panic!("MODEL is merged")),
+            "from-config"
+        ); // unchanged
         assert!(!merged.contains_key("")); // empty key skipped
         assert!(!merged.contains_key("EMPTY_VAL")); // empty val skipped
     }
@@ -553,7 +580,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
         assert_eq!(cfg.request_timeout_secs, Some(60));
 
         // Explicit null — should clear
@@ -563,7 +590,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
         assert_eq!(cfg.request_timeout_secs, None);
 
         // New value
@@ -573,7 +600,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
         assert_eq!(cfg.request_timeout_secs, Some(120));
     }
 
@@ -606,7 +633,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
         assert_eq!(
             cfg.env
@@ -645,7 +672,7 @@ mod tests {
             }),
             Some(&existing),
         )
-        .unwrap();
+        .unwrap_or_else(|error| panic!("server config parses: {error}"));
 
         assert!(cfg.env.is_empty());
     }

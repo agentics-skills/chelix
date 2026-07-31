@@ -911,7 +911,7 @@ mod tests {
             Some("mcp-servers")
         );
 
-        let config = chelix_config::discover_and_load().expect("load updated config");
+        let config = chelix_config::discover_and_load()?;
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "mcp-servers".to_string()
@@ -945,7 +945,7 @@ mod tests {
             Some(true)
         );
 
-        let config = chelix_config::discover_and_load().expect("load updated config");
+        let config = chelix_config::discover_and_load()?;
         assert!(config.skills.disabled_bundled_categories.is_empty());
         assert_eq!(config.skills.disabled_bundled_skills, vec![
             "mcp-servers".to_string()

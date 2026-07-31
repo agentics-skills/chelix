@@ -143,10 +143,13 @@ mod tests {
 
     #[tokio::test]
     async fn execute_rejects_missing_path() {
-        let error = ListDirectoryTool::new(client("http://127.0.0.1:1".into(), "unused"))
+        let error = match ListDirectoryTool::new(client("http://127.0.0.1:1".into(), "unused"))
             .execute(json!({}))
             .await
-            .unwrap_err();
+        {
+            Ok(value) => panic!("missing path must fail, got {value:?}"),
+            Err(error) => error,
+        };
 
         assert!(
             error
@@ -166,10 +169,13 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let error = ListDirectoryTool::new(client(server.url(), "test-token"))
+        let error = match ListDirectoryTool::new(client(server.url(), "test-token"))
             .execute(json!({ "path": "/workspace" }))
             .await
-            .unwrap_err();
+        {
+            Ok(value) => panic!("service failure must propagate, got {value:?}"),
+            Err(error) => error,
+        };
 
         assert!(
             error

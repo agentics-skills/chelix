@@ -4,6 +4,13 @@
 linker    = "x86_64-linux-musl-gcc"
 rustflags = ["-C", "target-feature=+crt-static"]
 
+# Enables the `[lints.cargo]` table, which carries the workspace's
+# `unused_dependencies` lint. Setting it here rather than passing `-Z
+# cargo-lints` on the command line is required for `cargo clippy`: clippy is an
+# external subcommand that re-invokes Cargo without forwarding `-Z` flags.
+[unstable]
+cargo-lints = true
+
 # Native C/C++ build tooling for any `cc`/`cmake`-based crates (e.g. aws-lc-rs).
 [env]
 AR_x86_64_unknown_linux_musl  = "x86_64-linux-musl-ar"

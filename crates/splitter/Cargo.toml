@@ -5,9 +5,7 @@ name              = "chelix-splitter"
 version.workspace = true
 
 [features]
-default = ["code-splitter", "tracing"]
-metrics = ["dep:metrics"]
-tracing = ["dep:tracing"]
+default = ["code-splitter"]
 # Core code-splitting with common languages.
 code-splitter = ["code-splitter-base", "lang-go", "lang-javascript", "lang-python", "lang-rust"]
 # Internal base feature — enables text-splitter dep.
@@ -30,9 +28,7 @@ lang-toml       = ["code-splitter-base", "dep:tree-sitter-toml-ng"]
 lang-typescript = ["code-splitter-base", "dep:tree-sitter-typescript"]
 
 [dependencies]
-metrics                = { optional = true, workspace = true }
 text-splitter          = { optional = true, workspace = true }
-tracing                = { optional = true, workspace = true }
 tree-sitter-bash       = { optional = true, workspace = true }
 tree-sitter-c          = { optional = true, workspace = true }
 tree-sitter-cpp        = { optional = true, workspace = true }

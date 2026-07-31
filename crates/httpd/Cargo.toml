@@ -10,9 +10,6 @@ async-graphql         = { optional = true, workspace = true }
 async-graphql-axum    = { optional = true, workspace = true }
 async-trait           = { workspace = true }
 axum                  = { workspace = true }
-axum-extra            = { features = ["cookie"], workspace = true }
-base64                = { workspace = true }
-bytes                 = { workspace = true }
 chelix-agents         = { workspace = true }
 chelix-auth           = { workspace = true }
 chelix-browser        = { workspace = true }
@@ -22,14 +19,12 @@ chelix-config         = { workspace = true }
 chelix-cron           = { workspace = true }
 chelix-gateway        = { workspace = true }
 chelix-graphql        = { optional = true, workspace = true }
-chelix-matrix         = { optional = true, workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 chelix-portable       = { workspace = true }
 chelix-protocol       = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-sessions       = { workspace = true }
 chelix-skills         = { workspace = true }
-chelix-slack          = { optional = true, workspace = true }
 chelix-telephony      = { optional = true, workspace = true }
 chelix-tls            = { optional = true, workspace = true }
 chelix-tools          = { workspace = true }
@@ -39,9 +34,8 @@ chrono                = { features = ["serde"], optional = true, workspace = tru
 chrono-tz             = { workspace = true }
 dashmap               = { workspace = true }
 futures               = { workspace = true }
-hostname              = { workspace = true }
+hostname              = { optional = true, workspace = true }
 ipnet                 = { workspace = true }
-rand                  = { workspace = true }
 reqwest               = { workspace = true }
 rustls                = { optional = true, workspace = true }
 secrecy               = { workspace = true }
@@ -52,7 +46,6 @@ tempfile              = { workspace = true }
 thiserror             = { workspace = true }
 time                  = { workspace = true }
 tokio                 = { workspace = true }
-tokio-tungstenite     = { workspace = true }
 tokio-util            = { workspace = true }
 toml                  = { workspace = true }
 tower-http            = { features = ["catch-panic", "compression-gzip", "compression-zstd", "cors", "limit", "request-id", "sensitive-headers", "set-header", "trace"], workspace = true }
@@ -86,13 +79,13 @@ graphql = [
   "dep:async-graphql-axum",
   "dep:chelix-graphql",
 ]
-matrix = ["chelix-gateway/matrix", "dep:chelix-matrix"]
-mdns = ["chelix-gateway/mdns"]
+matrix = ["chelix-gateway/matrix"]
+mdns = ["chelix-gateway/mdns", "dep:hostname"]
 metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
 prometheus = ["chelix-gateway/prometheus", "metrics"]
 push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]
 signal = ["chelix-gateway/signal"]
-slack = ["chelix-gateway/slack", "dep:chelix-slack"]
+slack = ["chelix-gateway/slack"]
 telephony = ["chelix-gateway/telephony", "dep:chelix-telephony"]
 tls = ["chelix-gateway/tls", "dep:chelix-tls", "dep:rustls"]
 vault = ["chelix-gateway/vault", "dep:chelix-vault"]
@@ -100,11 +93,11 @@ voice = ["chelix-gateway/voice"]
 web-ui = ["chelix-gateway/web-ui"]
 
 [dev-dependencies]
-chelix-code-index.workspace = true
-chelix-providers            = { workspace = true }
-chelix-web                  = { workspace = true }
-serial_test                 = { workspace = true }
-sqlx                        = { workspace = true }
+chelix-code-index = { workspace = true }
+chelix-providers  = { workspace = true }
+chelix-web        = { workspace = true }
+sqlx              = { workspace = true }
+tokio-tungstenite = { workspace = true }
 
 [lints]
 workspace = true

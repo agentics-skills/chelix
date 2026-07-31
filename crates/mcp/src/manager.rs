@@ -41,7 +41,7 @@ pub struct ServerStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_timeout_secs: Option<u64>,
     pub configured_request_timeout_secs: u64,
-    pub transport: crate::registry::TransportType,
+    pub transport: TransportType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -879,7 +879,8 @@ mod tests {
         assert_eq!(statuses.len(), 1);
         assert_eq!(statuses[0].env_names, vec!["API_TOKEN".to_string()]);
 
-        let serialized = serde_json::to_string(&statuses).unwrap();
+        let serialized = serde_json::to_string(&statuses)
+            .unwrap_or_else(|error| panic!("statuses serialize: {error}"));
         assert!(serialized.contains("API_TOKEN"));
         assert!(!serialized.contains("super-secret-token"));
     }
@@ -987,10 +988,13 @@ mod tests {
             ..Default::default()
         });
         let mgr = McpManager::new(reg);
-        let err = mgr
+        let err = match mgr
             .oauth_start_server("stdio", "https://example.com/auth/callback")
             .await
-            .expect_err("expected oauth start to fail for stdio transport");
+        {
+            Ok(value) => panic!("oauth start must fail for stdio transport, got {value:?}"),
+            Err(error) => error,
+        };
         assert!(matches!(
             err,
             Error::Manager(McpManagerError::NotRemoteTransport { .. })
@@ -1000,10 +1004,10 @@ mod tests {
     #[tokio::test]
     async fn test_oauth_complete_callback_unknown_state() {
         let mgr = McpManager::new(McpRegistry::new());
-        let err = mgr
-            .oauth_complete_callback("unknown-state", "code")
-            .await
-            .expect_err("expected unknown state to fail");
+        let err = match mgr.oauth_complete_callback("unknown-state", "code").await {
+            Ok(value) => panic!("unknown state must fail, got {value:?}"),
+            Err(error) => error,
+        };
         assert!(matches!(
             err,
             Error::Manager(McpManagerError::OAuthStateNotFound)

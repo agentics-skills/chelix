@@ -49,14 +49,16 @@ summary = "detailed"
 include = ["reasoning.encrypted_content"]
 "#,
     )
-    .expect("production custom-provider config should deserialize");
+    .unwrap_or_else(|error| {
+        panic!("production custom-provider config should deserialize: {error}")
+    });
 
     let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
-    let listed = registry
-        .list_models()
+    let models = registry.list_models();
+    let listed = models
         .iter()
         .find(|model| model.id == MODEL_ID)
-        .expect("configured model should be listed");
+        .unwrap_or_else(|| panic!("configured model should be listed"));
     assert_eq!(
         listed
             .metadata
@@ -70,10 +72,10 @@ include = ["reasoning.encrypted_content"]
 
     let provider = registry
         .get(MODEL_ID)
-        .expect("configured model should have a runtime provider");
+        .unwrap_or_else(|| panic!("configured model should have a runtime provider"));
     let configured = provider
         .with_reasoning_effort(ReasoningEffort::from("max"))
-        .expect("runtime provider should accept configured max effort");
+        .unwrap_or_else(|| panic!("runtime provider should accept configured max effort"));
     assert_eq!(configured.context_window(), Some(400_000));
     assert_eq!(configured.max_input_tokens(), Some(272_000));
     assert_eq!(configured.max_output_tokens(), Some(128_000));

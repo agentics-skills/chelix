@@ -13,7 +13,6 @@ chelix-agents           = { workspace = true }
 chelix-auth             = { workspace = true }
 chelix-browser          = { workspace = true }
 chelix-caldav           = { optional = true, workspace = true }
-chelix-canvas           = { workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
 chelix-claude-import    = { optional = true, workspace = true }
@@ -39,7 +38,6 @@ chelix-protocol         = { workspace = true }
 chelix-provider-setup   = { workspace = true }
 chelix-providers        = { workspace = true }
 chelix-qmd              = { optional = true, workspace = true }
-chelix-routing          = { workspace = true }
 chelix-secret-store     = { workspace = true }
 chelix-service-traits   = { workspace = true }
 chelix-sessions         = { workspace = true }
@@ -54,18 +52,14 @@ chelix-voice            = { optional = true, workspace = true }
 chelix-webhooks         = { workspace = true }
 chelix-whatsapp         = { optional = true, workspace = true }
 chrono                  = { features = ["serde"], optional = true, workspace = true }
-chrono-tz               = { workspace = true }
 dashmap                 = { workspace = true }
-ed25519-dalek           = { workspace = true }
 flate2                  = { workspace = true }
 futures                 = { workspace = true }
 gix                     = { workspace = true }
 hostname                = { workspace = true }
 http                    = { workspace = true }
-include_dir             = { optional = true, workspace = true }
 mdns-sd                 = { optional = true, workspace = true }
 p256                    = { features = ["ecdsa"], optional = true, workspace = true }
-portable-pty            = { optional = true, workspace = true }
 pulldown-cmark          = { features = ["html"], workspace = true }
 qrcode                  = { optional = true, workspace = true }
 rand                    = { workspace = true }
@@ -81,17 +75,13 @@ tempfile                = { workspace = true }
 thiserror               = { workspace = true }
 time                    = { workspace = true }
 tokio                   = { workspace = true }
-tokio-stream            = { workspace = true }
-tokio-util              = { workspace = true }
 toml                    = { workspace = true }
 tracing                 = { workspace = true }
 tracing-subscriber      = { workspace = true }
 url                     = { workspace = true }
-urlencoding             = { workspace = true }
 uuid                    = { workspace = true }
 web-push                = { optional = true, workspace = true }
 webauthn-rs             = { features = ["danger-allow-state-serialisation"], workspace = true }
-which                   = { optional = true, workspace = true }
 
 [features]
 agent = []
@@ -172,11 +162,12 @@ vault = [
   "dep:chelix-vault",
 ]
 voice = ["dep:chelix-voice"]
-web-ui = ["chelix-chat/web-ui", "dep:include_dir", "dep:portable-pty", "dep:which"]
+web-ui = ["chelix-chat/web-ui"]
 whatsapp = ["chelix-whatsapp/metrics", "dep:chelix-whatsapp", "dep:qrcode"]
 
 [dev-dependencies]
-serial_test = { workspace = true }
+serial_test  = { workspace = true }
+tokio-stream = { workspace = true }
 
 [lints]
 workspace = true

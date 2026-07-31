@@ -8,6 +8,9 @@ fn main() {
     let schema = chelix_graphql::build_schema(services, tx);
     let sdl = schema.sdl();
 
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-    fs::write(out_dir.join("schema.graphqls"), sdl).expect("failed to write schema.graphqls");
+    let out_dir = PathBuf::from(
+        env::var("OUT_DIR").unwrap_or_else(|error| panic!("OUT_DIR not set: {error}")),
+    );
+    fs::write(out_dir.join("schema.graphqls"), sdl)
+        .unwrap_or_else(|error| panic!("failed to write schema.graphqls: {error}"));
 }

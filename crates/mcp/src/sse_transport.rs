@@ -461,7 +461,7 @@ impl McpTransport for SseTransport {
         let mut req = self
             .client
             .get(self.request_url.expose_secret())
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(Duration::from_secs(5))
             .header("Accept", STREAMABLE_ACCEPT_HEADER)
             .header(MCP_PROTOCOL_VERSION_HEADER, PROTOCOL_VERSION);
 
@@ -506,7 +506,7 @@ impl McpTransport for SseTransport {
         let mut req = self
             .client
             .delete(self.request_url.expose_secret())
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(Duration::from_secs(5))
             .header(MCP_PROTOCOL_VERSION_HEADER, PROTOCOL_VERSION)
             .header(MCP_SESSION_ID_HEADER, session_id);
 
@@ -534,8 +534,11 @@ mod tests {
     use super::*;
 
     fn unused_local_url() -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap_or_else(|error| panic!("ephemeral port binds: {error}"));
+        let addr = listener
+            .local_addr()
+            .unwrap_or_else(|error| panic!("local address is available: {error}"));
         drop(listener);
         format!("http://{addr}/mcp")
     }
@@ -554,20 +557,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_sse_transport_is_alive_unreachable() {
-        let transport = SseTransport::new(&unused_local_url()).unwrap();
+        let transport = SseTransport::new(&unused_local_url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(!transport.is_alive().await);
     }
 
     #[tokio::test]
     async fn test_sse_transport_request_unreachable() {
-        let transport = SseTransport::new(&unused_local_url()).unwrap();
+        let transport = SseTransport::new(&unused_local_url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         let result = transport.request("test", None).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_sse_transport_kill() {
-        let transport = SseTransport::new("http://localhost:8080/mcp").unwrap();
+        let transport = SseTransport::new("http://localhost:8080/mcp")
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         transport.kill().await;
         // Should not panic
     }
@@ -589,14 +595,15 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
-        let result = transport.request("test", None).await;
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let err = match transport.request("test", None).await {
+            Ok(response) => panic!("401 without auth must fail, got {response:?}"),
+            Err(error) => error,
+        };
         assert!(matches!(
             err,
-            crate::Error::Transport(McpTransportError::Unauthorized { .. })
+            Error::Transport(McpTransportError::Unauthorized { .. })
         ));
     }
 
@@ -611,15 +618,16 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
-        let resp = transport.request("test", None).await.unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let resp = transport
+            .request("test", None)
+            .await
+            .unwrap_or_else(|error| panic!("request succeeds: {error}"));
         assert!(resp.result.is_some());
     }
 
-    fn remote_with_headers(
-        url: &str,
-        headers: &[(&str, &str)],
-    ) -> crate::remote::ResolvedRemoteConfig {
+    fn remote_with_headers(url: &str, headers: &[(&str, &str)]) -> ResolvedRemoteConfig {
         let config = crate::registry::McpServerConfig {
             transport: crate::registry::TransportType::Sse,
             url: Some(Secret::new(url.to_string())),
@@ -629,11 +637,8 @@ mod tests {
                 .collect(),
             ..Default::default()
         };
-        crate::remote::ResolvedRemoteConfig::from_server_config(
-            &config,
-            &std::collections::HashMap::new(),
-        )
-        .unwrap()
+        ResolvedRemoteConfig::from_server_config(&config, &std::collections::HashMap::new())
+            .unwrap_or_else(|error| panic!("remote config resolves: {error}"))
     }
 
     #[tokio::test]
@@ -653,8 +658,12 @@ mod tests {
             ("x-api-key", "secret-header"),
             ("authorization", "ApiKey raw-secret"),
         ]);
-        let transport = SseTransport::new_with_remote(remote, Duration::from_secs(60)).unwrap();
-        let resp = transport.request("test", None).await.unwrap();
+        let transport = SseTransport::new_with_remote(remote, Duration::from_secs(60))
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let resp = transport
+            .request("test", None)
+            .await
+            .unwrap_or_else(|error| panic!("request succeeds: {error}"));
         assert!(resp.result.is_some());
         mock.assert_async().await;
     }
@@ -708,8 +717,12 @@ mod tests {
             .await;
 
         let auth: SharedAuthProvider = Arc::new(FixedTokenProvider);
-        let transport = SseTransport::with_auth(&server.url(), auth).unwrap();
-        let resp = transport.request("test", None).await.unwrap();
+        let transport = SseTransport::with_auth(&server.url(), auth)
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let resp = transport
+            .request("test", None)
+            .await
+            .unwrap_or_else(|error| panic!("request succeeds: {error}"));
         assert!(resp.result.is_some());
         mock.assert_async().await;
     }
@@ -767,9 +780,12 @@ mod tests {
             ("authorization", "ApiKey raw-secret"),
         ]);
         let auth: SharedAuthProvider = Arc::new(FixedTokenProvider);
-        let transport =
-            SseTransport::with_auth_remote(remote, auth, Duration::from_secs(60)).unwrap();
-        let resp = transport.request("test", None).await.unwrap();
+        let transport = SseTransport::with_auth_remote(remote, auth, Duration::from_secs(60))
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let resp = transport
+            .request("test", None)
+            .await
+            .unwrap_or_else(|error| panic!("request succeeds: {error}"));
         assert!(resp.result.is_some());
         mock.assert_async().await;
     }
@@ -796,9 +812,16 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
-        transport.request("initialize", None).await.unwrap();
-        transport.request("tools/list", None).await.unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        transport
+            .request("initialize", None)
+            .await
+            .unwrap_or_else(|error| panic!("initialize succeeds: {error}"));
+        transport
+            .request("tools/list", None)
+            .await
+            .unwrap_or_else(|error| panic!("tools/list succeeds: {error}"));
 
         first.assert_async().await;
         second.assert_async().await;
@@ -874,8 +897,12 @@ mod tests {
         });
         let auth_shared: SharedAuthProvider = auth.clone();
 
-        let transport = SseTransport::with_auth(&server.url(), auth_shared).unwrap();
-        let resp = transport.request("initialize", None).await.unwrap();
+        let transport = SseTransport::with_auth(&server.url(), auth_shared)
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let resp = transport
+            .request("initialize", None)
+            .await
+            .unwrap_or_else(|error| panic!("initialize succeeds: {error}"));
         assert!(resp.result.is_some());
         assert_eq!(auth.reauth_calls.load(Ordering::SeqCst), 0);
 
@@ -896,8 +923,12 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
-        let resp = transport.request("initialize", None).await.unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        let resp = transport
+            .request("initialize", None)
+            .await
+            .unwrap_or_else(|error| panic!("initialize succeeds: {error}"));
         assert!(resp.result.is_some());
     }
 
@@ -914,7 +945,8 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(transport.is_alive().await);
     }
 
@@ -928,7 +960,8 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(transport.is_alive().await);
     }
 
@@ -944,7 +977,8 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(transport.is_alive().await);
     }
 
@@ -959,7 +993,8 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(transport.is_alive().await);
     }
 
@@ -974,7 +1009,8 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
         assert!(transport.is_alive().await);
     }
 
@@ -996,8 +1032,12 @@ mod tests {
             .create_async()
             .await;
 
-        let transport = SseTransport::new(&server.url()).unwrap();
-        transport.request("initialize", None).await.unwrap();
+        let transport = SseTransport::new(&server.url())
+            .unwrap_or_else(|error| panic!("transport builds: {error}"));
+        transport
+            .request("initialize", None)
+            .await
+            .unwrap_or_else(|error| panic!("initialize succeeds: {error}"));
         transport.kill().await;
 
         init.assert_async().await;

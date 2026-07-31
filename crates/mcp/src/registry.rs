@@ -252,7 +252,8 @@ mod tests {
     #[test]
     fn test_transport_type_deserialization() {
         let json = r#"["stdio", "sse", "streamable-http", "streamable_http", "http"]"#;
-        let transports: Vec<TransportType> = serde_json::from_str(json).unwrap();
+        let transports: Vec<TransportType> = serde_json::from_str(json)
+            .unwrap_or_else(|error| panic!("transport list deserializes: {error}"));
         assert_eq!(transports, vec![
             TransportType::Stdio,
             TransportType::Sse,
@@ -286,7 +287,10 @@ mod tests {
 
         assert_eq!(reg.enabled_servers().len(), 1);
 
-        reg.servers.get_mut("srv").unwrap().enabled = false;
+        reg.servers
+            .get_mut("srv")
+            .unwrap_or_else(|| panic!("registered server is present"))
+            .enabled = false;
         assert_eq!(reg.enabled_servers().len(), 0);
     }
 
@@ -300,8 +304,10 @@ mod tests {
             ..Default::default()
         });
 
-        let json = serde_json::to_string(&reg).unwrap();
-        let parsed: McpRegistry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&reg)
+            .unwrap_or_else(|error| panic!("registry serializes: {error}"));
+        let parsed: McpRegistry = serde_json::from_str(&json)
+            .unwrap_or_else(|error| panic!("registry deserializes: {error}"));
         assert_eq!(parsed.servers.len(), 1);
         assert_eq!(parsed.servers["fs"].command, "mcp-server-filesystem");
         assert_eq!(parsed.servers["fs"].args, vec!["/tmp"]);
@@ -310,25 +316,30 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_returns_empty() {
-        let reg = McpRegistry::load(Path::new("/nonexistent/path/mcp.json")).unwrap();
+        let reg = McpRegistry::load(Path::new("/nonexistent/path/mcp.json"))
+            .unwrap_or_else(|error| panic!("missing registry loads as empty: {error}"));
         assert!(reg.servers.is_empty());
     }
 
     #[test]
     fn test_load_and_save_roundtrip() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary registry directory: {error}"));
         let path = dir.path().join("mcp.json");
 
-        let mut reg = McpRegistry::load(&path).unwrap();
+        let mut reg = McpRegistry::load(&path)
+            .unwrap_or_else(|error| panic!("empty registry loads: {error}"));
         reg.servers.insert("test".into(), McpServerConfig {
             command: "echo".into(),
             args: vec!["hello".into()],
             env: HashMap::from([("FOO".into(), Secret::new("bar".into()))]),
             ..Default::default()
         });
-        reg.save().unwrap();
+        reg.save()
+            .unwrap_or_else(|error| panic!("registry saves: {error}"));
 
-        let loaded = McpRegistry::load(&path).unwrap();
+        let loaded = McpRegistry::load(&path)
+            .unwrap_or_else(|error| panic!("saved registry loads: {error}"));
         assert_eq!(loaded.servers.len(), 1);
         assert_eq!(loaded.servers["test"].env["FOO"].expose_secret(), "bar");
     }
@@ -348,8 +359,10 @@ mod tests {
             ..Default::default()
         });
 
-        let json = serde_json::to_string(&reg).unwrap();
-        let parsed: McpRegistry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&reg)
+            .unwrap_or_else(|error| panic!("registry serializes: {error}"));
+        let parsed: McpRegistry = serde_json::from_str(&json)
+            .unwrap_or_else(|error| panic!("registry deserializes: {error}"));
         let server = &parsed.servers["remote"];
         assert_eq!(
             server
@@ -376,8 +389,10 @@ mod tests {
             ..Default::default()
         });
 
-        let json = serde_json::to_string(&reg).unwrap();
-        let parsed: McpRegistry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&reg)
+            .unwrap_or_else(|error| panic!("registry serializes: {error}"));
+        let parsed: McpRegistry = serde_json::from_str(&json)
+            .unwrap_or_else(|error| panic!("registry deserializes: {error}"));
         let secret = parsed.servers["remote"]
             .oauth
             .as_ref()

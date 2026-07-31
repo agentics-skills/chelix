@@ -1001,7 +1001,11 @@ mod tests {
                 "newString must differ from oldString.",
             ),
         ] {
-            assert_eq!(request.validate().unwrap_err().to_string(), expected_error);
+            let error = match request.validate() {
+                Ok(()) => panic!("expected validation failure: {expected_error}"),
+                Err(error) => error,
+            };
+            assert_eq!(error.to_string(), expected_error);
         }
     }
 
@@ -1141,7 +1145,11 @@ mod tests {
                 "edits[1].newString must differ from oldString.",
             ),
         ] {
-            assert_eq!(request.validate().unwrap_err().to_string(), expected_error);
+            let error = match request.validate() {
+                Ok(()) => panic!("expected validation failure: {expected_error}"),
+                Err(error) => error,
+            };
+            assert_eq!(error.to_string(), expected_error);
         }
     }
 
@@ -1199,10 +1207,11 @@ mod tests {
             "content": "value"
         }))
         .unwrap_or_else(|error| panic!("overwrite file request decode failed: {error}"));
-        assert_eq!(
-            request.validate().unwrap_err().to_string(),
-            "filePath must be a non-empty string."
-        );
+        let error = match request.validate() {
+            Ok(()) => panic!("expected blank filePath to fail validation"),
+            Err(error) => error,
+        };
+        assert_eq!(error.to_string(), "filePath must be a non-empty string.");
     }
 
     #[test]

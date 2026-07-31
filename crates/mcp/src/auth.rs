@@ -1129,7 +1129,8 @@ mod tests {
             .expect("start_web_oauth_flow should succeed");
 
         // The authorization URL must encode the rewritten HTTP redirect URI.
-        let parsed = url::Url::parse(&auth_url).unwrap();
+        let parsed = Url::parse(&auth_url)
+            .unwrap_or_else(|error| panic!("authorization URL parses: {error}"));
         let encoded_redirect = parsed
             .query_pairs()
             .find(|(k, _)| k == "redirect_uri")

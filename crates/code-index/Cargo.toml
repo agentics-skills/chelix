@@ -30,7 +30,6 @@ sha2                  = { workspace = true }
 sqlx                  = { optional = true, workspace = true }
 tempfile              = { workspace = true }
 thiserror             = { workspace = true }
-time                  = { workspace = true }
 tokio                 = { features = ["sync"], optional = true, workspace = true }
 tokio-util            = { optional = true, workspace = true }
 tracing               = { optional = true, workspace = true }

@@ -729,7 +729,8 @@ mod tests {
         assert_eq!(payload["session_export"], "off");
         assert_eq!(payload["prompt_memory_mode"], "frozen-at-session-start");
 
-        let config = chelix_config::discover_and_load().expect("load updated config");
+        let config = chelix_config::discover_and_load()
+            .unwrap_or_else(|error| panic!("load updated config: {error}"));
         assert_eq!(config.memory.style, chelix_config::MemoryStyle::PromptOnly);
         assert_eq!(
             config.memory.agent_write_mode,

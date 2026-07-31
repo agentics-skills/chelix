@@ -254,7 +254,7 @@ mod tests {
     async fn run_shell_command_captures_stdout() {
         let result = run_shell_command("echo hello", &CommandOptions::default())
             .await
-            .unwrap();
+            .unwrap_or_else(|error| panic!("echo should succeed: {error}"));
         assert_eq!(result.stdout.trim(), "hello");
         assert_eq!(result.exit_code, 0);
     }
@@ -263,7 +263,7 @@ mod tests {
     async fn run_shell_command_captures_stderr() {
         let result = run_shell_command("echo err >&2", &CommandOptions::default())
             .await
-            .unwrap();
+            .unwrap_or_else(|error| panic!("echo to stderr should succeed: {error}"));
         assert_eq!(result.stderr.trim(), "err");
     }
 
@@ -271,7 +271,7 @@ mod tests {
     async fn run_shell_command_returns_exit_code() {
         let result = run_shell_command("exit 42", &CommandOptions::default())
             .await
-            .unwrap();
+            .unwrap_or_else(|error| panic!("exit 42 should run: {error}"));
         assert_eq!(result.exit_code, 42);
     }
 
@@ -299,7 +299,10 @@ mod tests {
             working_dir: Some(PathBuf::from("/definitely/not/a/real/path")),
             ..Default::default()
         };
-        let err = run_shell_command("echo hello", &opts).await.unwrap_err();
+        let err = match run_shell_command("echo hello", &opts).await {
+            Ok(result) => panic!("missing working directory should fail, got {result:?}"),
+            Err(error) => error,
+        };
         assert!(err.to_string().contains("working directory"));
     }
 

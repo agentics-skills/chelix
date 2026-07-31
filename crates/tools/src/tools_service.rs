@@ -1352,10 +1352,10 @@ mod tests {
         })
         .unwrap_or_else(|error| panic!("test service failed: {error}"));
 
-        let error = service
-            .create_terminal("missing", "agent:explicit")
-            .await
-            .expect_err("unknown instance must fail");
+        let error = match service.create_terminal("missing", "agent:explicit").await {
+            Ok(terminal) => panic!("unknown instance must fail, got {terminal:?}"),
+            Err(error) => error,
+        };
 
         assert!(
             error

@@ -919,7 +919,8 @@ mod tests {
             started_at: 42,
         };
 
-        let value = serde_json::to_value(call).expect("active tool call serializes");
+        let value = serde_json::to_value(call)
+            .unwrap_or_else(|error| panic!("active tool call serializes: {error}"));
 
         assert_eq!(value.get("runId").and_then(|v| v.as_str()), Some("run-1"));
         assert_eq!(
@@ -950,7 +951,8 @@ mod tests {
             started_at: 42,
         };
 
-        let value = serde_json::to_value(call).expect("active tool call serializes");
+        let value = serde_json::to_value(call)
+            .unwrap_or_else(|error| panic!("active tool call serializes: {error}"));
 
         assert!(value.get("executionMode").is_none());
     }
@@ -1045,7 +1047,8 @@ mod tests {
 
     #[tokio::test]
     async fn assistant_deltas_reserve_one_stable_message_index() {
-        let directory = tempfile::tempdir().expect("temporary session directory");
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
@@ -1053,7 +1056,7 @@ mod tests {
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
-            .expect("user message persists");
+            .unwrap_or_else(|error| panic!("user message persists: {error}"));
         let drafts = Arc::new(RwLock::new(HashMap::from([(
             "main".to_string(),
             ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7)),
@@ -1061,20 +1064,26 @@ mod tests {
 
         let first_index = append_assistant_delta(&store, &drafts, "main", "first")
             .await
-            .expect("first delta reserves an index");
+            .unwrap_or_else(|error| panic!("first delta reserves an index: {error}"));
         let second_index = append_assistant_delta(&store, &drafts, "main", " second")
             .await
-            .expect("second delta reuses the index");
+            .unwrap_or_else(|error| panic!("second delta reuses the index: {error}"));
 
         assert_eq!(first_index, Some(1));
         assert_eq!(second_index, first_index);
-        assert_eq!(store.count("main").await.expect("history count"), 1);
-        let message = drafts
-            .read()
-            .await
+        assert_eq!(
+            store
+                .count("main")
+                .await
+                .unwrap_or_else(|error| panic!("history count: {error}")),
+            1
+        );
+        let drafts_guard = drafts.read().await;
+        let message = drafts_guard
             .get("main")
-            .expect("active draft remains")
+            .unwrap_or_else(|| panic!("active draft remains"))
             .to_persisted_message(None, None);
+        drop(drafts_guard);
         assert!(matches!(
             message,
             PersistedMessage::Assistant { content, .. } if content == "first second"
@@ -1083,7 +1092,8 @@ mod tests {
 
     #[tokio::test]
     async fn active_partial_persists_at_its_reserved_message_index() {
-        let directory = tempfile::tempdir().expect("temporary session directory");
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
@@ -1091,32 +1101,36 @@ mod tests {
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
-            .expect("user message persists");
+            .unwrap_or_else(|error| panic!("user message persists: {error}"));
         let drafts = Arc::new(RwLock::new(HashMap::from([(
             "main".to_string(),
             ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7)),
         )])));
         let reserved_index = append_assistant_delta(&store, &drafts, "main", "partial")
             .await
-            .expect("delta reserves an index");
+            .unwrap_or_else(|error| panic!("delta reserves an index: {error}"));
 
         let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "main")
             .await
-            .expect("partial persistence succeeds")
-            .expect("visible partial is persisted");
+            .unwrap_or_else(|error| panic!("partial persistence succeeds: {error}"))
+            .unwrap_or_else(|| panic!("visible partial is persisted"));
 
         assert_eq!(reserved_index, Some(1));
         assert_eq!(persisted_index, 1);
         assert_eq!(partial["content"], "partial");
         assert!(!drafts.read().await.contains_key("main"));
-        let history = store.read("main").await.expect("session history reads");
+        let history = store
+            .read("main")
+            .await
+            .unwrap_or_else(|error| panic!("session history reads: {error}"));
         assert_eq!(history.len(), 2);
         assert_eq!(history[persisted_index]["content"], "partial");
     }
 
     #[tokio::test]
     async fn persist_final_assistant_segment_returns_its_physical_history_index() {
-        let directory = tempfile::tempdir().expect("temporary session directory");
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
@@ -1124,7 +1138,7 @@ mod tests {
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
-            .expect("user message persists");
+            .unwrap_or_else(|error| panic!("user message persists: {error}"));
         let assistant_output = AssistantTurnOutput {
             text: "streamed response".to_string(),
             persisted_message_index: None,
@@ -1154,10 +1168,13 @@ mod tests {
             1,
         )
         .await
-        .expect("assistant segment persists at reserved index");
+        .unwrap_or_else(|error| panic!("assistant segment persists at reserved index: {error}"));
 
         assert_eq!(message_index, 1);
-        let history = store.read("main").await.expect("session history reads");
+        let history = store
+            .read("main")
+            .await
+            .unwrap_or_else(|error| panic!("session history reads: {error}"));
         assert_eq!(history.len(), 2);
         assert_eq!(history[1]["role"], "assistant");
         assert_eq!(history[1]["content"], "streamed response");
@@ -1180,7 +1197,13 @@ mod tests {
         )
         .await;
         assert!(duplicate.is_err());
-        assert_eq!(store.count("main").await.expect("history count"), 2);
+        assert_eq!(
+            store
+                .count("main")
+                .await
+                .unwrap_or_else(|error| panic!("history count: {error}")),
+            2
+        );
     }
 
     #[test]

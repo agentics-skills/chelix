@@ -7,7 +7,6 @@ version.workspace = true
 async-trait    = { workspace = true }
 bytes          = { workspace = true }
 chelix-common  = { workspace = true }
-chelix-config  = { workspace = true }
 chelix-metrics = { optional = true, workspace = true }
 http           = { workspace = true }
 rand           = { workspace = true }

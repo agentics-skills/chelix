@@ -1437,7 +1437,7 @@ mod tests {
             .get("activeToolCalls")
             .and_then(|v| v.as_array())
             .and_then(|calls| calls.first())
-            .expect("active tool call is included");
+            .unwrap_or_else(|| panic!("active tool call is included"));
         assert_eq!(
             tool_call.get("toolName").and_then(|v| v.as_str()),
             Some("execute_command")

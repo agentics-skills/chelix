@@ -268,8 +268,14 @@ mod tests {
         let result = bridge.execute(params).await;
         assert!(result.is_ok());
 
-        let forwarded = received.lock().await.take().expect("call_tool was called");
-        let map = forwarded.as_object().expect("args should be an object");
+        let forwarded = received
+            .lock()
+            .await
+            .take()
+            .unwrap_or_else(|| panic!("call_tool was called"));
+        let map = forwarded
+            .as_object()
+            .unwrap_or_else(|| panic!("args should be an object"));
 
         // Real parameters are forwarded.
         assert_eq!(
@@ -303,7 +309,11 @@ mod tests {
         let result = bridge.execute(params).await;
         assert!(result.is_ok());
 
-        let forwarded = received.lock().await.take().expect("call_tool was called");
+        let forwarded = received
+            .lock()
+            .await
+            .take()
+            .unwrap_or_else(|| panic!("call_tool was called"));
         assert_eq!(forwarded, serde_json::json!("hello"));
     }
 
@@ -335,8 +345,14 @@ mod tests {
         let result = bridge.execute(params).await;
         assert!(result.is_ok());
 
-        let forwarded = received.lock().await.take().expect("call_tool was called");
-        let map = forwarded.as_object().expect("args should be an object");
+        let forwarded = received
+            .lock()
+            .await
+            .take()
+            .unwrap_or_else(|| panic!("call_tool was called"));
+        let map = forwarded
+            .as_object()
+            .unwrap_or_else(|| panic!("args should be an object"));
 
         // Real values are forwarded.
         assert_eq!(
@@ -387,7 +403,11 @@ mod tests {
         let result = bridge.execute(params).await;
         assert!(result.is_ok());
 
-        let forwarded = received.lock().await.take().expect("call_tool was called");
+        let forwarded = received
+            .lock()
+            .await
+            .take()
+            .unwrap_or_else(|| panic!("call_tool was called"));
 
         // Array item nulls stripped
         let task = &forwarded["tasks"][0];

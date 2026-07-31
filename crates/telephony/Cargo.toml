@@ -12,7 +12,6 @@ chelix-agents   = { workspace = true }
 chelix-channels = { workspace = true }
 chelix-common   = { workspace = true }
 chelix-metrics  = { optional = true, workspace = true }
-chelix-voice    = { workspace = true }
 dashmap         = { workspace = true }
 hex             = { workspace = true }
 hmac            = { workspace = true }

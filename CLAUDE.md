@@ -246,11 +246,11 @@ or retry-count workarounds to hide flakiness.
 
 ## Code Quality
 
-- Never run `cargo fmt` on stable in this repo. Always select the pinned nightly explicitly with `cargo +nightly-2025-12-27 fmt --all` (add `-- --check` for check-only validation).
+- Never run `cargo fmt` on stable in this repo. Always select the pinned nightly explicitly with `cargo +nightly-2026-07-30 fmt --all` (add `-- --check` for check-only validation).
 
 ```bash
-cargo +nightly-2025-12-27 fmt --all              # Format Rust
-cargo +nightly-2025-12-27 fmt --all -- --check   # Check Rust formatting
+cargo +nightly-2026-07-30 fmt --all              # Format Rust
+cargo +nightly-2026-07-30 fmt --all -- --check   # Check Rust formatting
 just release-preflight   # fmt + clippy gates
 cargo check              # Fast compile check
 taplo fmt                # Format TOML files
@@ -365,11 +365,11 @@ Conventional commits: `feat|fix|docs|style|refactor|test|chore(scope): descripti
 
 For incremental local edits before full validation:
 - TS/TSX changed: run `npx biome check --write` and `cd crates/web/ui && npm run build`.
-- Rust changed: run `cargo +nightly-2025-12-27 fmt --all -- --check`.
+- Rust changed: run `cargo +nightly-2026-07-30 fmt --all -- --check`.
 - Both changed: run all three.
 
 Exact commands (must match `local-validate.sh`):
-- Fmt: `cargo +nightly-2025-12-27 fmt --all -- --check`
+- Fmt: `cargo +nightly-2026-07-30 fmt --all -- --check`
 - Clippy: `just lint` (OS-aware: on macOS excludes CUDA features, on Linux uses `--all-features`)
 - Tests: `just test` (OS-aware: on macOS uses nextest without CUDA features, on Linux uses `--all-features`)
 

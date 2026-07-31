@@ -460,7 +460,10 @@ mod tests {
             tools: Vec::new(),
         };
 
-        let tools = client.list_tools().await.unwrap();
+        let tools = client
+            .list_tools()
+            .await
+            .unwrap_or_else(|error| panic!("tool listing succeeds: {error}"));
         let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
         assert_eq!(names, vec!["alpha", "mu", "zeta"]);
     }

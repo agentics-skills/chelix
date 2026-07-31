@@ -15,14 +15,12 @@ sha2       = { workspace = true }
 sqlx       = { workspace = true }
 tar        = { workspace = true }
 time       = { workspace = true }
-tokio      = { workspace = true }
 tracing    = { workspace = true }
 walkdir    = { workspace = true }
 
-chelix-config = { workspace = true }
-
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio    = { workspace = true }
 
 [lints]
 workspace = true

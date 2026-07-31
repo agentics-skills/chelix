@@ -24,10 +24,9 @@ tracing           = { workspace = true }
 urlencoding       = { workspace = true }
 
 [dev-dependencies]
-dotenvy    = { workspace = true }
+
 secrecy    = { workspace = true }
 serde_json = { workspace = true }
-time       = { workspace = true }
 tokio      = { features = ["macros", "rt-multi-thread", "test-util", "time"], workspace = true }
 wiremock   = { workspace = true }
 

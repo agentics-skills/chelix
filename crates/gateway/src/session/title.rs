@@ -208,13 +208,39 @@ mod tests {
         let services = GatewayServices::noop()
             .with_session_store(Arc::clone(&session_store))
             .with_session_metadata(Arc::clone(&session_metadata));
-        let state = GatewayState::new(
+        let mut config = chelix_config::ChelixConfig::default();
+        config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
+        // Title generation refuses service without an explicit auxiliary model,
+        // so the tests must configure the one registered below.
+        config.auxiliary.title_generation = Some("mock-title".to_string());
+        let state = GatewayState::with_options(
             ResolvedAuth {
                 mode: AuthMode::Token,
                 token: None,
                 password: None,
             },
             services,
+            config,
+            Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+            None,
+            false,
+            false,
+            false,
+            None,
+            None,
+            Arc::new(chelix_code_index::CodeIndex::config_only(
+                chelix_code_index::CodeIndexConfig::default(),
+            )),
+            18789,
+            false,
+            None,
+            None,
+            #[cfg(feature = "metrics")]
+            None,
+            #[cfg(feature = "metrics")]
+            None,
+            #[cfg(feature = "vault")]
+            None,
         );
 
         let mut registry = ProviderRegistry::empty();
