@@ -126,6 +126,9 @@ resolver = "2"
 # Remove once sqlx ≥ 0.9 ships stable.
 sqlx-core   = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c7962c6450faf31591c4e0782c23" }
 sqlx-sqlite = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c7962c6450faf31591c4e0782c23" }
+# Track https://github.com/GnomedDev/proc-macro-error-2/issues/13 and remove this
+# patch once the issue is closed and its future-incompatibility fix is released.
+proc-macro-error2 = { git = "https://github.com/GnomedDev/proc-macro-error-2", rev = "53ff94b61c678593158db1a3d50269c6f0de0db7" }
 
 [workspace.lints.rust]
 unsafe_code           = "deny"
