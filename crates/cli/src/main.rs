@@ -37,6 +37,13 @@ mod sandbox_commands;
 mod service_commands;
 mod voicecall_commands;
 
+// Not called from Rust code. The dependency exists to unify the `vendored`
+// feature on the `openssl` crate that `native-tls`, `ece`/`web-push` and
+// `webauthn-attestation-ca` pull in transitively, so OpenSSL is built from
+// source. Without it the static musl Linux cross-build fails: `openssl-sys`
+// looks for a system OpenSSL that does not exist for that target.
+use openssl as _;
+
 use {
     anyhow::anyhow,
     chelix_gateway::logs::{EnabledLogLevels, LogBroadcastLayer, LogBuffer},

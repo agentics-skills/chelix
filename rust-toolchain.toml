@@ -1,3 +1,7 @@
 [toolchain]
 channel    = "nightly-2026-07-30"
 components = ["clippy", "rustfmt"]
+# Cross-compilation target for the static musl Linux binary; the linker and
+# rustflags for it live in `.cargo/config.toml`. Declaring it here makes rustup
+# install it automatically instead of failing the build with E0463.
+targets = ["x86_64-unknown-linux-musl"]

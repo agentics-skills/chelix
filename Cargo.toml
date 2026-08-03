@@ -208,16 +208,21 @@ llama-cpp-2        = "0.1"
 matrix-sdk         = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
 mockito            = "1.7"
 open               = "5.3"
-rand               = "0.10"
-ring               = "0.17"
-secrecy            = { features = ["serde"], version = "0.8" }
-serenity           = { features = ["cache", "client", "gateway", "model", "rustls_backend"], version = "0.12" }
-sha1               = "0.10"
-sha2               = "0.10"
-slack-morphism     = { features = ["axum", "hyper"], version = "2.20" }
-sled               = "0.34"
-sysinfo            = "0.34"
-teloxide           = { features = ["macros"], version = "0.17" }
+# Not called directly: pulled in transitively (native-tls, ece/web-push,
+# webauthn-attestation-ca) and declared here only to unify the `vendored`
+# feature, which builds OpenSSL from source. Required for cross-compiling the
+# static musl Linux binary, where no system OpenSSL exists.
+openssl        = { features = ["vendored"], version = "0.10" }
+rand           = "0.10"
+ring           = "0.17"
+secrecy        = { features = ["serde"], version = "0.8" }
+serenity       = { features = ["cache", "client", "gateway", "model", "rustls_backend"], version = "0.12" }
+sha1           = "0.10"
+sha2           = "0.10"
+slack-morphism = { features = ["axum", "hyper"], version = "2.20" }
+sled           = "0.34"
+sysinfo        = "0.34"
+teloxide       = { features = ["macros"], version = "0.17" }
 # WhatsApp (sqlite-storage disabled to avoid libsqlite3-sys conflict with sqlx;
 # re-enable once sqlx 0.9 stabilises).
 wacore                         = { default-features = false, version = "0.5" }
