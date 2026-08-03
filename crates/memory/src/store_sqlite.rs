@@ -61,8 +61,10 @@ fn blob_as_f32_slice(blob: &[u8]) -> std::borrow::Cow<'_, [f32]> {
         Err(_) => {
             // Alignment or size mismatch — fall back to manual deserialization.
             let vec: Vec<f32> = blob
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|bytes| f32::from_le_bytes(*bytes))
                 .collect();
             std::borrow::Cow::Owned(vec)
         },

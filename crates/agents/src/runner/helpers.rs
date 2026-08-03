@@ -663,11 +663,10 @@ pub(crate) fn evaluate_context_budget(
         tool_schema_tokens,
         available_input_tokens,
         compaction_budget,
-        usage_percent: if compaction_budget == 0 {
-            0
-        } else {
-            prompt_tokens.saturating_mul(100) / compaction_budget
-        },
+        usage_percent: prompt_tokens
+            .saturating_mul(100)
+            .checked_div(compaction_budget)
+            .unwrap_or(0),
         compaction_required: prompt_tokens >= compaction_budget,
     }
 }

@@ -208,7 +208,7 @@ fn generate_launchd_plist(chelix_bin: &Path, opts: &GatewayServiceOpts, log_path
 
     let mut args = vec![
         format!("    <string>{bin}</string>"),
-        format!("    <string>--log-level</string>"),
+        "    <string>--log-level</string>".to_string(),
         format!("    <string>{}</string>", opts.log_level),
     ];
 

@@ -274,7 +274,7 @@ pub(in crate::channel_events) async fn handle_insights(
             lines.push(String::new());
             lines.push("By provider:".to_string());
             let mut providers: Vec<_> = provider_totals.into_iter().collect();
-            providers.sort_by(|a, b| (b.1.0 + b.1.1).cmp(&(a.1.0 + a.1.1)));
+            providers.sort_by_key(|provider| std::cmp::Reverse(provider.1.0 + provider.1.1));
             for (provider, (input, output, completions)) in &providers {
                 lines.push(format!(
                     "  {provider}: {completions} completions, {} tokens ({input} in / {output} out)",
@@ -305,7 +305,7 @@ pub(in crate::channel_events) async fn handle_insights(
 
                 // Top 5 most-used skills by read_count
                 let mut by_reads: Vec<_> = usage.iter().collect();
-                by_reads.sort_by(|a, b| b.1.read_count.cmp(&a.1.read_count));
+                by_reads.sort_by_key(|skill| std::cmp::Reverse(skill.1.read_count));
                 if by_reads.iter().any(|(_, e)| e.read_count > 0) {
                     lines.push("  Most activated:".to_string());
                     for (name, entry) in by_reads.iter().take(5) {

@@ -50,9 +50,11 @@ pub fn pcm_to_mulaw(sample: i16) -> u8 {
 /// Convert a buffer of 16-bit PCM samples (little-endian) to mu-law bytes.
 #[must_use]
 pub fn pcm16_to_mulaw(pcm: &[u8]) -> Vec<u8> {
-    pcm.chunks_exact(2)
-        .map(|chunk| {
-            let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+    pcm.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|bytes| {
+            let sample = i16::from_le_bytes(*bytes);
             pcm_to_mulaw(sample)
         })
         .collect()
@@ -68,8 +70,10 @@ pub fn resample_and_encode_mulaw(pcm: &[u8], src_rate: u32) -> Bytes {
     }
 
     let samples: Vec<i16> = pcm
-        .chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|bytes| i16::from_le_bytes(*bytes))
         .collect();
 
     let ratio = src_rate as f64 / TELEPHONY_SAMPLE_RATE as f64;
