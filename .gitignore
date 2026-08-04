@@ -1,6 +1,6 @@
 /target
 /result
-memory
+/memory/
 prompts
 .envrc
 .env

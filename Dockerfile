@@ -10,58 +10,77 @@
 #
 # See README.md for detailed instructions.
 
-# Build stage — nightly required for wacore-binary (portable_simd)
-FROM rust:bookworm AS builder
+# Rust build software. This stage changes only when the base image or installed
+# system packages change, so source edits do not invalidate it.
+FROM rust:bookworm AS rust-system
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -qq && \
+    apt-get install -yqq --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        git \
+        libclang-dev \
+        pkg-config && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Copy rust-toolchain.toml first so the nightly pin is defined in one place.
+RUN mkdir -p .cargo && \
+    { echo '[unstable]'; echo 'cargo-lints = true'; } > .cargo/config.toml
+
+# The pinned nightly is isolated from source and dependency changes.
+FROM rust-system AS rust-toolchain
+
 COPY rust-toolchain.toml ./
 RUN NIGHTLY="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' rust-toolchain.toml)" \
     && rustup install "$NIGHTLY" && rustup default "$NIGHTLY"
 
-# Copy manifests first for better caching
+# Frontend dependencies are cached solely by the npm manifests.
+FROM node:22-bookworm-slim AS web-dependencies
+
+WORKDIR /build/crates/web/ui
+
+COPY crates/web/ui/package.json crates/web/ui/package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Frontend sources invalidate only the web build branch.
+FROM web-dependencies AS web-builder
+
+COPY crates/web/ui/input.css crates/web/ui/tsconfig.json crates/web/ui/vite.config.ts ./
+COPY crates/web/ui/src ./src
+COPY crates/web/src/assets /build/crates/web/src/assets
+
+RUN npm run build:all
+
+# Rust application build. Toolchains and frontend dependencies are inherited
+# from independently cacheable stages above.
+FROM rust-toolchain AS rust-builder
+
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY apps/courier ./apps/courier
 COPY scripts ./scripts
-COPY wit ./wit
+
 # docs/src is embedded into chelix-agents via include_dir! (crates/agents/src/docs.rs).
 # CHANGELOG.md is the target of the docs/src/changelog.md symlink, so it must be
 # present at the repo root for that symlink to resolve during the embed.
 COPY CHANGELOG.md ./CHANGELOG.md
 COPY docs/src ./docs/src
 
-ENV DEBIAN_FRONTEND=noninteractive
-# Install build dependencies used only by the separately built embedding sidecar
-RUN apt-get update -qq && \
-    apt-get install -yqq --no-install-recommends cmake build-essential libclang-dev pkg-config git && \
-    rm -rf /var/lib/apt/lists/*
+# Replace any generated assets from the build context with the independently
+# built frontend output before include_dir! embeds it in the release binary.
+COPY --from=web-builder /build/crates/web/src/assets ./crates/web/src/assets
 
-# Install Node.js for Vite/esbuild builds (web assets are gitignored)
-RUN apt-get update -qq && \
-    apt-get install -yqq --no-install-recommends ca-certificates curl gnupg && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -yqq --no-install-recommends nodejs && \
-    rm -rf /var/lib/apt/lists/*
-
-# Build all web assets (Vite JS + Tailwind CSS + service worker)
-RUN ARCH=$(uname -m) && \
-    case "$ARCH" in x86_64) TW="tailwindcss-linux-x64";; aarch64) TW="tailwindcss-linux-arm64";; esac && \
-    curl -sLO "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/$TW" && \
-    chmod +x "$TW" && \
-    TAILWINDCSS="./$TW" ./scripts/build-web-assets.sh
-
-# Build release binary with the same portable production feature set used by
-# release/package builds.
 ARG CHELIX_VERSION
 ENV CHELIX_VERSION=${CHELIX_VERSION}
-RUN ./scripts/cargo-build-chelix.sh --release
+RUN CHELIX_BUILD_FEATURES="full,embedded-assets" ./scripts/cargo-build-chelix.sh --release
 
-# Runtime stage
-FROM debian:bookworm-slim
+# Runtime software is independent from all application build stages. The
+# official Node image replaces the repeated NodeSource repository bootstrap.
+FROM node:22-bookworm-slim AS runtime-base
 
-# Install base runtime dependencies
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq && \
     apt-get install -yqq --no-install-recommends \
@@ -73,16 +92,6 @@ RUN apt-get update -qq && \
         ripgrep \
         sudo \
         vim-tiny && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install Node.js 22 LTS via NodeSource (npm/npx bundled) for stdio-based MCP servers
-RUN install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
-        > /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update -qq && \
-    apt-get install -yqq --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI for sandbox execution (talks to mounted socket, no daemon in-container)
@@ -105,11 +114,13 @@ RUN groupadd -f docker && \
     usermod -aG docker chelix && \
     echo "chelix ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/chelix
 
+# Application changes invalidate only this final image assembly stage.
+FROM runtime-base AS runtime
+
 # Copy the core binary and its managed sidecars from builder
-COPY --from=builder /build/target/release/chelix /usr/local/bin/chelix
-COPY --from=builder /build/target/release/chelix-tools-service /usr/local/bin/chelix-tools-service
-COPY --from=builder /build/target/release/chelix-embedding-service /usr/local/bin/chelix-embedding-service
-COPY --from=builder /build/crates/web/src/assets /usr/share/chelix/web
+COPY --from=rust-builder /build/target/release/chelix /usr/local/bin/chelix
+COPY --from=rust-builder /build/target/release/chelix-tools-service /usr/local/bin/chelix-tools-service
+COPY --from=rust-builder /build/target/release/chelix-embedding-service /usr/local/bin/chelix-embedding-service
 
 # Create config and data directories
 RUN mkdir -p /home/chelix/.config/chelix /home/chelix/.chelix /home/chelix/.npm && \

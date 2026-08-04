@@ -1,0 +1,64 @@
+# Multi-stage Dockerfile for running Chelix workspace tests.
+
+# Rust build software. This stage changes only when the base image or installed
+# system packages change, so source edits do not invalidate it.
+FROM rust:bookworm AS rust-system
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -qq && \
+    apt-get install -yqq --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        git \
+        libclang-dev \
+        pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+RUN mkdir -p .cargo && \
+    { echo '[unstable]'; echo 'cargo-lints = true'; } > .cargo/config.toml
+
+# The pinned nightly is isolated from source and dependency changes.
+FROM rust-system AS rust-toolchain
+
+COPY rust-toolchain.toml ./
+RUN NIGHTLY="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' rust-toolchain.toml)" \
+    && rustup install "$NIGHTLY" && rustup default "$NIGHTLY"
+
+# Frontend dependencies are cached solely by the npm manifests.
+FROM node:22-bookworm-slim AS web-dependencies
+
+WORKDIR /build/crates/web/ui
+
+COPY crates/web/ui/package.json crates/web/ui/package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Frontend sources invalidate only the web build branch.
+FROM web-dependencies AS web-builder
+
+COPY crates/web/ui/input.css crates/web/ui/tsconfig.json crates/web/ui/vite.config.ts ./
+COPY crates/web/ui/src ./src
+COPY crates/web/src/assets /build/crates/web/src/assets
+
+RUN npm run build:all
+
+# Rust sources invalidate only the final test stage.
+FROM rust-toolchain AS tests
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY apps/courier ./apps/courier
+COPY scripts ./scripts
+
+RUN cargo +nightly-2026-07-30 fetch --locked
+
+COPY CHANGELOG.md ./CHANGELOG.md
+COPY docs/src ./docs/src
+
+COPY --from=web-builder /build/crates/web/src/assets ./crates/web/src/assets
+
+ARG CHELIX_VERSION
+ENV CHELIX_VERSION=${CHELIX_VERSION}
+RUN cargo +nightly-2026-07-30 test --workspace --no-fail-fast
