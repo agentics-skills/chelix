@@ -36,6 +36,25 @@ FROM rust-system AS rust-toolchain
 COPY rust-toolchain.toml ./
 RUN NIGHTLY="$(sed -nE 's/^channel[[:space:]]*=[[:space:]]*"([^"]+)"/\1/p' rust-toolchain.toml)" \
     && rustup install "$NIGHTLY" && rustup default "$NIGHTLY"
+RUN cargo +nightly-2026-07-30 install cargo-chef --version 0.1.77 --locked
+
+# The recipe contains only Cargo manifests and the lockfile. Source changes may
+# rerun the planner, but they do not change the dependency-layer input.
+FROM rust-toolchain AS cargo-planner
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY apps/courier ./apps/courier
+
+RUN cargo +nightly-2026-07-30 chef prepare --recipe-path recipe.json
+
+# Download locked registry and Git dependencies before application sources are
+# copied into the build stage.
+FROM rust-toolchain AS cargo-dependencies
+
+COPY --from=cargo-planner /build/recipe.json ./recipe.json
+RUN cargo +nightly-2026-07-30 chef cook --recipe-path recipe.json --no-build && \
+    cargo +nightly-2026-07-30 fetch --locked
 
 # Frontend dependencies are cached solely by the npm manifests.
 FROM node:22-bookworm-slim AS web-dependencies
@@ -56,7 +75,7 @@ RUN npm run build:all
 
 # Rust application build. Toolchains and frontend dependencies are inherited
 # from independently cacheable stages above.
-FROM rust-toolchain AS rust-builder
+FROM cargo-dependencies AS rust-builder
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
