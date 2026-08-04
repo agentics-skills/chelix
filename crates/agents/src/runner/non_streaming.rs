@@ -3,7 +3,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use {
-    anyhow::{Context, Result},
+    anyhow::Result,
     tracing::{debug, info, trace, warn},
 };
 
@@ -45,6 +45,7 @@ use crate::tool_loop_detector::ToolLoopDetector;
 pub async fn run_agent_loop(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
+    tools_config: &chelix_config::schema::ToolsConfig,
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
@@ -53,6 +54,7 @@ pub async fn run_agent_loop(
     run_agent_loop_with_context(
         provider,
         tools,
+        tools_config,
         system_prompt,
         user_content,
         on_event,
@@ -69,6 +71,7 @@ pub async fn run_agent_loop(
 pub async fn run_agent_loop_with_context(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
+    tools_config: &chelix_config::schema::ToolsConfig,
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
@@ -80,6 +83,7 @@ pub async fn run_agent_loop_with_context(
     run_agent_loop_with_context_and_limits(
         provider,
         tools,
+        tools_config,
         system_prompt,
         user_content,
         on_event,
@@ -93,14 +97,14 @@ pub async fn run_agent_loop_with_context(
 }
 
 pub(super) fn resolve_agent_loop_max_iterations(
-    config: &chelix_config::ChelixConfig,
+    tools_config: &chelix_config::schema::ToolsConfig,
     max_iterations_override: Option<usize>,
 ) -> usize {
     let configured_max_iterations =
-        max_iterations_override.unwrap_or(config.tools.agent_max_iterations);
+        max_iterations_override.unwrap_or(tools_config.agent_max_iterations);
     let base_max_iterations = resolve_agent_max_iterations(configured_max_iterations);
     // Lazy mode needs extra iterations for get_tool discovery round-trips.
-    if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
+    if tools_config.registry_mode == chelix_config::ToolRegistryMode::Lazy {
         base_max_iterations * 3
     } else {
         base_max_iterations
@@ -110,6 +114,7 @@ pub(super) fn resolve_agent_loop_max_iterations(
 pub async fn run_agent_loop_with_context_and_limits(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
+    tools_config: &chelix_config::schema::ToolsConfig,
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
@@ -120,13 +125,12 @@ pub async fn run_agent_loop_with_context_and_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
-    let config = chelix_config::discover_and_load().context("reload Chelix config")?;
     let max_tool_result_bytes = limits
         .max_tool_result_bytes
-        .unwrap_or(config.tools.max_tool_result_bytes);
-    let max_auto_continues = config.tools.agent_max_auto_continues;
-    let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
-    let max_iterations = resolve_agent_loop_max_iterations(&config, limits.max_iterations);
+        .unwrap_or(tools_config.max_tool_result_bytes);
+    let max_auto_continues = tools_config.agent_max_auto_continues;
+    let auto_continue_min_tool_calls = tools_config.agent_auto_continue_min_tool_calls;
+    let max_iterations = resolve_agent_loop_max_iterations(tools_config, limits.max_iterations);
 
     let is_multimodal = matches!(user_content, UserContent::Multimodal(_));
     info!(
@@ -217,8 +221,8 @@ pub async fn run_agent_loop_with_context_and_limits(
     let mut empty_tool_name_retry_count: u8 = 0;
     let mut auto_continue_count: usize = 0;
     let mut loop_detector = ToolLoopDetector::new(
-        config.tools.agent_loop_detector_window,
-        config.tools.agent_loop_detector_strip_tools_on_second_fire,
+        tools_config.agent_loop_detector_window,
+        tools_config.agent_loop_detector_strip_tools_on_second_fire,
     );
     let mut strip_tools_next_iter = false;
     let tool_controls = AgentToolControls::from_tool_context(tool_context.as_ref());

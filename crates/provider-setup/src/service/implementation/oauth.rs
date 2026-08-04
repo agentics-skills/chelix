@@ -16,12 +16,9 @@ use {
 
 use {
     super::{LiveProviderSetupService, support::PendingOAuthFlow},
-    crate::{
-        config_helpers::set_provider_enabled_in_config,
-        oauth::{
-            build_provider_headers, build_verification_uri_complete, has_oauth_tokens,
-            normalize_loaded_redirect_uri,
-        },
+    crate::oauth::{
+        build_provider_headers, build_verification_uri_complete, has_oauth_tokens,
+        normalize_loaded_redirect_uri,
     },
 };
 
@@ -131,8 +128,7 @@ impl LiveProviderSetupService {
         normalize_loaded_redirect_uri(&mut oauth_config);
 
         // User explicitly initiated OAuth for this provider; ensure it is enabled.
-        set_provider_enabled_in_config(&provider_name, true)?;
-        self.set_provider_enabled_in_memory(&provider_name, true);
+        self.set_provider_enabled(&provider_name, true)?;
 
         // If tokens already exist, skip launching a fresh OAuth flow.
         if has_oauth_tokens(&provider_name, &self.token_store) {
@@ -334,8 +330,7 @@ impl LiveProviderSetupService {
         self.token_store
             .save(&pending.provider_name, &tokens)
             .map_err(ServiceError::message)?;
-        set_provider_enabled_in_config(&pending.provider_name, true)?;
-        self.set_provider_enabled_in_memory(&pending.provider_name, true);
+        self.set_provider_enabled(&pending.provider_name, true)?;
 
         let effective = self.effective_config()?;
         let new_registry = self.build_registry(&effective).await;

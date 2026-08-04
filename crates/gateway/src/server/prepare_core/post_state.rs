@@ -854,6 +854,7 @@ pub(super) async fn complete_startup(
                 Arc::clone(&registry),
                 default_provider,
                 base_tools,
+                chelix_config::ToolsConfigSource::Filesystem,
             )
             .with_on_event(on_spawn_event)
             .with_agents_config(agents_config)
@@ -869,6 +870,7 @@ pub(super) async fn complete_startup(
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),
             config.clone(),
+            chelix_config::ToolsConfigSource::Filesystem,
         )
         .with_session_state_store(Arc::clone(&session_state_store))
         .with_tools(Arc::clone(&shared_tool_registry))

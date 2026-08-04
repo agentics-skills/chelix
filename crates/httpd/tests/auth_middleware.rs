@@ -19,7 +19,7 @@ use async_trait::async_trait;
 
 use {
     chelix_gateway::{
-        auth::{self, CredentialStore},
+        auth::{self, AuthConfigPersistence, CredentialStore},
         auth_webauthn::{SharedWebAuthnRegistry, WebAuthnRegistry, WebAuthnState},
         methods::MethodRegistry,
         services::{GatewayServices, OnboardingService, ServiceResult},
@@ -139,7 +139,7 @@ async fn start_auth_server_impl_with_webauthn(
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     let auth_config = chelix_config::AuthConfig::default();
     let cred_store = Arc::new(
-        CredentialStore::with_config(pool, &auth_config)
+        CredentialStore::with_config(pool, &auth_config, AuthConfigPersistence::MemoryOnly)
             .await
             .unwrap(),
     );
@@ -224,9 +224,14 @@ async fn start_localhost_server_with_vault() -> (
     let auth_config = chelix_config::AuthConfig::default();
     let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
     let cred_store = Arc::new(
-        CredentialStore::with_vault(pool, &auth_config, Some(Arc::clone(&vault)))
-            .await
-            .unwrap(),
+        CredentialStore::with_vault(
+            pool,
+            &auth_config,
+            Some(Arc::clone(&vault)),
+            AuthConfigPersistence::MemoryOnly,
+        )
+        .await
+        .unwrap(),
     );
 
     let resolved_auth = auth::resolve_auth(None, None);
@@ -301,9 +306,14 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     let auth_config = chelix_config::AuthConfig::default();
     let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
     let cred_store = Arc::new(
-        CredentialStore::with_vault(pool, &auth_config, Some(Arc::clone(&vault)))
-            .await
-            .unwrap(),
+        CredentialStore::with_vault(
+            pool,
+            &auth_config,
+            Some(Arc::clone(&vault)),
+            AuthConfigPersistence::MemoryOnly,
+        )
+        .await
+        .unwrap(),
     );
     let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 

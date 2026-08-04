@@ -12,7 +12,8 @@ RUN apt-get update -qq && \
         cmake \
         git \
         libclang-dev \
-        pkg-config && \
+        pkg-config \
+        ripgrep && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -59,6 +60,4 @@ COPY docs/src ./docs/src
 
 COPY --from=web-builder /build/crates/web/src/assets ./crates/web/src/assets
 
-ARG CHELIX_VERSION
-ENV CHELIX_VERSION=${CHELIX_VERSION}
 RUN cargo +nightly-2026-07-30 test --workspace --no-fail-fast

@@ -15,10 +15,11 @@ pub mod migrate;
 pub mod provider_env;
 pub mod schema;
 pub mod template;
+mod tools_config_source;
 pub mod validate;
 pub mod version;
 
-pub use version::VERSION;
+pub use {tools_config_source::ToolsConfigSource, version::VERSION};
 
 pub use {
     error::{Error, Result},

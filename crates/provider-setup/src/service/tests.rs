@@ -14,6 +14,19 @@ use {
     tokio::sync::RwLock,
 };
 
+fn live_provider_setup_service(
+    registry: Arc<RwLock<ProviderRegistry>>,
+    config: ProvidersConfig,
+    deploy_platform: Option<String>,
+) -> LiveProviderSetupService {
+    LiveProviderSetupService::new(
+        registry,
+        config,
+        deploy_platform,
+        ProviderConfigPersistence::MemoryOnly,
+    )
+}
+
 fn complete_model_metadata() -> PartialModelMetadata {
     PartialModelMetadata {
         context_length: Some(128_000),
@@ -71,7 +84,7 @@ async fn remove_key_rejects_unknown_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .remove_key(serde_json::json!({"provider": "nonexistent"}))
         .await;
@@ -84,7 +97,7 @@ async fn remove_key_rejects_missing_params() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     assert!(svc.remove_key(serde_json::json!({})).await.is_err());
 }
 
@@ -94,7 +107,7 @@ async fn disabled_provider_is_not_reported_configured() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let provider = known_providers()
         .into_iter()
         .find(|p| p.name == "openai-codex")
@@ -117,7 +130,7 @@ async fn live_service_lists_providers() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
     assert!(!arr.is_empty());
@@ -139,7 +152,7 @@ async fn available_marks_provider_configured_from_generic_provider_env() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None)
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None)
         .with_env_overrides(HashMap::from([
             ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
             (
@@ -173,7 +186,7 @@ async fn available_hides_unconfigured_providers_not_in_offered_list() {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
     };
-    let svc = LiveProviderSetupService::new(registry, config, None);
+    let svc = live_provider_setup_service(registry, config, None);
 
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
@@ -202,7 +215,7 @@ async fn available_respects_offered_order() {
         offered: vec!["github-copilot".into(), "openai".into(), "anthropic".into()],
         ..ProvidersConfig::default()
     };
-    let svc = LiveProviderSetupService::new(registry, config, None);
+    let svc = live_provider_setup_service(registry, config, None);
     let result = svc.available().await.unwrap();
     let arr = result
         .as_array()
@@ -241,7 +254,7 @@ async fn available_accepts_offered_provider_aliases() {
         offered: vec!["claude".into()],
         ..ProvidersConfig::default()
     };
-    let svc = LiveProviderSetupService::new(registry, config, None);
+    let svc = live_provider_setup_service(registry, config, None);
     let result = svc.available().await.unwrap();
     let arr = result
         .as_array()
@@ -271,7 +284,7 @@ async fn available_hides_configured_provider_outside_offered() {
         api_key: Some(Secret::new("sk-test".into())),
         ..Default::default()
     });
-    let svc = LiveProviderSetupService::new(registry, config, None);
+    let svc = live_provider_setup_service(registry, config, None);
     let result = svc.available().await.unwrap();
     let arr = result
         .as_array()
@@ -317,7 +330,7 @@ async fn available_includes_subscription_provider_with_oauth_token_outside_offer
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let mut svc = LiveProviderSetupService::new(registry, config, None);
+    let mut svc = live_provider_setup_service(registry, config, None);
     svc.token_store = token_store;
     svc.key_store = key_store;
 
@@ -364,7 +377,7 @@ async fn available_includes_configured_custom_provider_outside_offered() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let mut svc = LiveProviderSetupService::new(registry, config, None);
+    let mut svc = live_provider_setup_service(registry, config, None);
     svc.key_store = key_store;
 
     let result = svc.available().await.expect("providers.available");
@@ -443,7 +456,7 @@ async fn available_serializes_config_first_ordered_model_map() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let mut svc = LiveProviderSetupService::new(registry, config, None);
+    let mut svc = live_provider_setup_service(registry, config, None);
     svc.key_store = key_store;
 
     let result = svc.available().await.expect("providers.available");
@@ -493,7 +506,7 @@ async fn available_includes_default_base_urls() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
 
@@ -523,7 +536,7 @@ async fn save_key_rejects_unknown_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .save_key(serde_json::json!({"provider": "nonexistent", "apiKey": "test"}))
         .await;
@@ -536,7 +549,7 @@ async fn save_key_rejects_missing_params() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     assert!(svc.save_key(serde_json::json!({})).await.is_err());
     assert!(
         svc.save_key(serde_json::json!({"provider": "anthropic"}))
@@ -551,7 +564,7 @@ async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let error = svc
         .save_key(serde_json::json!({
@@ -573,7 +586,7 @@ async fn save_key_rejects_invalid_base_url_for_any_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let error = svc
         .save_key(serde_json::json!({
@@ -594,7 +607,7 @@ async fn add_custom_rejects_completion_endpoint_base_url() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let error = svc
         .add_custom(serde_json::json!({
@@ -615,7 +628,7 @@ async fn validate_key_rejects_custom_completion_endpoint_base_url() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let error = svc
         .validate_key(serde_json::json!({
@@ -637,7 +650,7 @@ async fn oauth_start_rejects_unknown_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .oauth_start(serde_json::json!({"provider": "nonexistent"}))
         .await;
@@ -650,7 +663,7 @@ async fn oauth_start_ignores_redirect_uri_override_for_registered_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let result = svc
         .oauth_start(serde_json::json!({
@@ -690,7 +703,7 @@ async fn oauth_start_stores_pending_state_for_registered_redirect_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let result = svc
         .oauth_start(serde_json::json!({
@@ -730,7 +743,7 @@ async fn oauth_complete_accepts_callback_input_parameter() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let result = svc
         .oauth_complete(serde_json::json!({
@@ -751,7 +764,7 @@ async fn oauth_complete_rejects_provider_mismatch_without_consuming_state() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let start_result = match svc
         .oauth_start(serde_json::json!({
@@ -817,7 +830,7 @@ async fn oauth_status_returns_not_authenticated() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .oauth_status(serde_json::json!({"provider": "openai-codex"}))
         .await
@@ -832,7 +845,7 @@ async fn save_key_accepts_new_providers() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let _svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let _svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let providers = known_providers();
     for name in ["openrouter", "moonshot", "zai", "zai-code", "kimi-code"] {
@@ -852,7 +865,7 @@ async fn available_includes_new_providers() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
 
@@ -882,7 +895,7 @@ async fn validate_key_rejects_unknown_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .validate_key(serde_json::json!({"provider": "nonexistent", "apiKey": "sk-test"}))
         .await;
@@ -896,7 +909,7 @@ async fn validate_key_rejects_missing_provider_param() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.validate_key(serde_json::json!({})).await;
     assert!(result.is_err());
     assert!(
@@ -913,7 +926,7 @@ async fn validate_key_rejects_missing_api_key_for_api_key_provider() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .validate_key(serde_json::json!({"provider": "anthropic"}))
         .await;
@@ -949,7 +962,7 @@ async fn validate_key_custom_provider_without_model_returns_discovered_models() 
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .validate_key(serde_json::json!({
             "provider": "custom-test-server",
@@ -1009,7 +1022,7 @@ async fn validate_key_custom_provider_uses_saved_base_url_when_request_omits_it(
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     svc.key_store
         .save_config(
             "custom-test-server",
@@ -1061,7 +1074,7 @@ async fn validate_key_custom_provider_discovery_error_returns_invalid() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .validate_key(serde_json::json!({
             "provider": "custom-test-server",
@@ -1133,7 +1146,7 @@ async fn validate_key_custom_provider_returns_discovered_models_without_probing(
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .validate_key(serde_json::json!({
             "provider": "custom-test-server",
@@ -1168,7 +1181,7 @@ async fn validate_key_custom_provider_connection_refused_returns_error() {
         &ProvidersConfig::default(),
         &HashMap::new(),
     )));
-    let svc = LiveProviderSetupService::new(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .validate_key(serde_json::json!({
             "provider": "custom-test-server",

@@ -20,8 +20,8 @@ use crate::{
     },
     prompt::{
         apply_request_runtime_context, build_prompt_runtime_context, discover_skills_if_enabled,
-        filter_skills_for_agent, load_prompt_persona_for_session, resolve_channel_runtime_context,
-        resolve_prompt_agent_id, resolve_prompt_mode_context,
+        filter_skills_for_agent, resolve_channel_runtime_context, resolve_prompt_agent_id,
+        resolve_prompt_mode_context,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -540,13 +540,10 @@ impl LiveChatService {
             client_seq = ?client_seq,
             "chat.send: loading persona"
         );
-        let persona = load_prompt_persona_for_session(
-            &self.config,
-            &session_key,
-            session_entry.as_ref(),
-            self.session_state_store.as_deref(),
-        )
-        .await;
+        let persona = self
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .await
+            .map_err(ServiceError::message)?;
         let resolved_reasoning_effort = requested_reasoning_effort_override.or_else(|| {
             resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
         });
@@ -709,6 +706,7 @@ impl LiveChatService {
         let state_for_drain = Arc::clone(&self.state);
         let active_event_forwarders = Arc::clone(&self.active_event_forwarders);
         let terminal_runs = Arc::clone(&self.terminal_runs);
+        let tools_config_source = self.tools_config_source.clone();
         let deferred_channel_target = deferred_channel_target.clone();
 
         let handle = tokio::spawn(async move {
@@ -877,7 +875,7 @@ impl LiveChatService {
                 // ── Periodic background memory extraction ──────────────
                 // Every `auto_extract_interval` turns, spawn a background
                 // silent turn to save important recent context to memory.
-                // Uses config values captured before persona was moved.
+                // Uses startup memory settings and reloads `[tools]` for the silent run.
                 let interval = auto_extract_interval;
                 let write_mode = extraction_write_mode;
                 // A "turn" = user + assistant = 2 messages.
@@ -908,11 +906,25 @@ impl LiveChatService {
                         let agent_id = session_agent_id_clone.clone();
                         let mm = Arc::clone(mm);
                         let prov = Arc::clone(&provider_for_extraction);
+                        let extraction_tools_config_source = tools_config_source.clone();
                         tokio::spawn(async move {
+                            let extraction_tools_config = match extraction_tools_config_source
+                                .load()
+                            {
+                                Ok(config) => config,
+                                Err(error) => {
+                                    tracing::warn!(
+                                        error = %error,
+                                        "periodic memory extraction: failed to reload tools config"
+                                    );
+                                    return;
+                                },
+                            };
                             let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
                                 Arc::new(AgentScopedMemoryWriter::new(mm, agent_id, write_mode));
                             match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
                                 prov,
+                                &extraction_tools_config,
                                 &chat_msgs,
                                 writer,
                                 chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,

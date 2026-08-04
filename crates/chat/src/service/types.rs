@@ -434,6 +434,8 @@ pub struct LiveChatService {
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
     /// Startup configuration snapshot for chat hot-path decisions.
     pub(in crate::service) config: chelix_config::ChelixConfig,
+    /// Source used to reload `[tools]` before each new agent run.
+    pub(in crate::service) tools_config_source: chelix_config::ToolsConfigSource,
 }
 
 impl LiveChatService {
@@ -444,6 +446,7 @@ impl LiveChatService {
         session_store: Arc<SessionStore>,
         session_metadata: Arc<SqliteSessionMetadata>,
         config: chelix_config::ChelixConfig,
+        tools_config_source: chelix_config::ToolsConfigSource,
     ) -> Self {
         Self {
             providers,
@@ -466,12 +469,33 @@ impl LiveChatService {
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
             config,
+            tools_config_source,
         }
     }
 
     pub fn with_tools(mut self, registry: Arc<RwLock<ToolRegistry>>) -> Self {
         self.tool_registry = registry;
         self
+    }
+
+    pub(in crate::service) async fn load_prompt_persona_for_agent_run(
+        &self,
+        session_key: &str,
+        session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
+    ) -> error::Result<PromptPersona> {
+        let tools_config = self
+            .tools_config_source
+            .load()
+            .map_err(|error| error::Error::message(format!("reload tools config: {error}")))?;
+        let mut persona = load_prompt_persona_for_session(
+            &self.config,
+            session_key,
+            session_entry,
+            self.session_state_store.as_deref(),
+        )
+        .await;
+        persona.config.tools = tools_config;
+        Ok(persona)
     }
 
     pub fn with_session_mutations(mut self, mutations: Arc<SessionMutationCoordinator>) -> Self {
@@ -786,13 +810,9 @@ impl LiveChatService {
         let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
         let session_entry = self.session_metadata.get(session_key).await;
-        let persona = load_prompt_persona_for_session(
-            &self.config,
-            session_key,
-            session_entry.as_ref(),
-            self.session_state_store.as_deref(),
-        )
-        .await;
+        let persona = self
+            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref())
+            .await?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,

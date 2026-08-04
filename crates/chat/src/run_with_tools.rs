@@ -1119,6 +1119,7 @@ pub(crate) async fn run_with_tools(
         let agent_future = run_agent_loop_streaming_with_limits(
             provider_ref.clone(),
             &filtered_registry,
+            &persona.config.tools,
             &system_prompt,
             &effective_user_content,
             Some(&on_event),

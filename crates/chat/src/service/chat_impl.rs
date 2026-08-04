@@ -195,13 +195,10 @@ impl ChatService for LiveChatService {
                 .ok_or_else(|| format!("model '{model_id}' not found"))?
         };
         let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
-        let persona = load_prompt_persona_for_session(
-            &self.config,
-            &session_key,
-            session_entry.as_ref(),
-            self.session_state_store.as_deref(),
-        )
-        .await;
+        let persona = self
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .await
+            .map_err(ServiceError::message)?;
         let resolved_reasoning_effort = requested_reasoning_effort_override.or_else(|| {
             resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
         });
@@ -1033,13 +1030,10 @@ impl ChatService for LiveChatService {
 
         // Build runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
-        let persona = load_prompt_persona_for_session(
-            &self.config,
-            &session_key,
-            session_entry.as_ref(),
-            self.session_state_store.as_deref(),
-        )
-        .await;
+        let persona = self
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .await
+            .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
@@ -1189,13 +1183,10 @@ impl ChatService for LiveChatService {
 
         // Build runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
-        let persona = load_prompt_persona_for_session(
-            &self.config,
-            &session_key,
-            session_entry.as_ref(),
-            self.session_state_store.as_deref(),
-        )
-        .await;
+        let persona = self
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .await
+            .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,

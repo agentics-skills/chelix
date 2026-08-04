@@ -3,7 +3,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use {
-    anyhow::{Context, Result},
+    anyhow::Result,
     tracing::{debug, info, trace, warn},
 };
 
@@ -54,6 +54,7 @@ use crate::tool_loop_detector::ToolLoopDetector;
 pub async fn run_agent_loop_streaming(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
+    tools_config: &chelix_config::schema::ToolsConfig,
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
@@ -66,6 +67,7 @@ pub async fn run_agent_loop_streaming(
     run_agent_loop_streaming_with_limits(
         provider,
         tools,
+        tools_config,
         system_prompt,
         user_content,
         on_event,
@@ -82,6 +84,7 @@ pub async fn run_agent_loop_streaming(
 pub async fn run_agent_loop_streaming_with_limits(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
+    tools_config: &chelix_config::schema::ToolsConfig,
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
@@ -93,18 +96,17 @@ pub async fn run_agent_loop_streaming_with_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
-    let config = chelix_config::discover_and_load().context("reload Chelix config")?;
     let max_tool_result_bytes = limits
         .max_tool_result_bytes
-        .unwrap_or(config.tools.max_tool_result_bytes);
-    let max_auto_continues = config.tools.agent_max_auto_continues;
-    let auto_continue_min_tool_calls = config.tools.agent_auto_continue_min_tool_calls;
+        .unwrap_or(tools_config.max_tool_result_bytes);
+    let max_auto_continues = tools_config.agent_max_auto_continues;
+    let auto_continue_min_tool_calls = tools_config.agent_auto_continue_min_tool_calls;
     let configured_max_iterations = limits
         .max_iterations
-        .unwrap_or(config.tools.agent_max_iterations);
+        .unwrap_or(tools_config.agent_max_iterations);
     let base_max_iterations = resolve_agent_max_iterations(configured_max_iterations);
     // Lazy mode needs extra iterations for get_tool discovery round-trips.
-    let max_iterations = if config.tools.registry_mode == chelix_config::ToolRegistryMode::Lazy {
+    let max_iterations = if tools_config.registry_mode == chelix_config::ToolRegistryMode::Lazy {
         base_max_iterations * 3
     } else {
         base_max_iterations
@@ -203,8 +205,8 @@ pub async fn run_agent_loop_streaming_with_limits(
     let mut empty_tool_name_retry_count: u8 = 0;
     let mut auto_continue_count: usize = 0;
     let mut loop_detector = ToolLoopDetector::new(
-        config.tools.agent_loop_detector_window,
-        config.tools.agent_loop_detector_strip_tools_on_second_fire,
+        tools_config.agent_loop_detector_window,
+        tools_config.agent_loop_detector_strip_tools_on_second_fire,
     );
     let mut strip_tools_next_iter = false;
     let tool_controls = AgentToolControls::from_tool_context(tool_context.as_ref());

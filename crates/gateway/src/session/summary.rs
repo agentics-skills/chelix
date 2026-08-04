@@ -74,6 +74,13 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
         .and_then(|e| e.agent_id)
         .unwrap_or_else(|| "main".to_string());
 
+    let tools_config = match chelix_config::ToolsConfigSource::Filesystem.load() {
+        Ok(config) => config,
+        Err(error) => {
+            warn!(error = %error, "session summary: failed to reload tools config");
+            return;
+        },
+    };
     let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
     let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> = Arc::new(
         chelix_chat::AgentScopedMemoryWriter::new(Arc::clone(mm), agent_id, write_mode),
@@ -81,6 +88,7 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
 
     match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
         provider,
+        &tools_config,
         &chat_msgs,
         writer,
         chelix_agents::silent_turn::SilentTurnPrompt::SessionSummary,

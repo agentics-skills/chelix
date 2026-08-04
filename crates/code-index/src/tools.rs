@@ -319,18 +319,36 @@ mod tests {
         Arc::new(CodeIndex::config_only(CodeIndexConfig::default()))
     }
 
+    fn make_git_fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("create temporary repository");
+        std::fs::create_dir(dir.path().join("src")).expect("create source directory");
+        std::fs::write(dir.path().join("src/lib.rs"), "pub fn fixture() {}\n")
+            .expect("write tracked source file");
+
+        let init_status = std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(dir.path())
+            .status()
+            .expect("start git init");
+        assert!(init_status.success(), "git init should succeed");
+
+        let add_status = std::process::Command::new("git")
+            .args(["add", "src/lib.rs"])
+            .current_dir(dir.path())
+            .status()
+            .expect("start git add");
+        assert!(add_status.success(), "git add should succeed");
+
+        dir
+    }
+
     #[tokio::test]
     async fn test_peek_lists_indexable_files() {
         let idx = make_config_only_index();
         let tool = CodebasePeekTool::new(Arc::clone(&idx));
 
-        let repo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let repo = make_git_fixture();
+        let repo_dir = repo.path().to_string_lossy().to_string();
 
         let result = tool
             .execute(json!({ "project_dir": repo_dir }))
@@ -338,7 +356,7 @@ mod tests {
             .expect("peek should succeed on chelix repo");
 
         let total = result["total_files"].as_u64().unwrap();
-        assert!(total > 0, "chelix repo has indexable files");
+        assert!(total > 0, "fixture repo has indexable files");
     }
 
     #[tokio::test]

@@ -11,7 +11,6 @@ use chelix_service_traits::{ServiceError, ServiceResult};
 use {
     super::{LiveProviderSetupService, support::ProviderSetupTiming},
     crate::{
-        config_helpers::set_provider_enabled_in_config,
         custom_providers::is_custom_provider,
         key_store::parse_models_param,
         known_providers::{AuthType, known_providers},
@@ -89,8 +88,7 @@ impl LiveProviderSetupService {
             );
             return Err(ServiceError::message(error));
         }
-        set_provider_enabled_in_config(provider_name, true)?;
-        self.set_provider_enabled_in_memory(provider_name, true);
+        self.set_provider_enabled(provider_name, true)?;
 
         // Rebuild the provider registry with saved keys merged into config.
         let effective = self.effective_config()?;
@@ -121,8 +119,7 @@ impl LiveProviderSetupService {
             self.key_store
                 .remove(provider_name)
                 .map_err(ServiceError::message)?;
-            set_provider_enabled_in_config(provider_name, false)?;
-            self.set_provider_enabled_in_memory(provider_name, false);
+            self.set_provider_enabled(provider_name, false)?;
         } else {
             let providers = known_providers();
             let known = providers
@@ -144,8 +141,7 @@ impl LiveProviderSetupService {
 
             // Persist explicit disable so auto-detected/global credentials do not
             // immediately re-enable the provider on next rebuild.
-            set_provider_enabled_in_config(provider_name, false)?;
-            self.set_provider_enabled_in_memory(provider_name, false);
+            self.set_provider_enabled(provider_name, false)?;
         }
 
         // Rebuild the provider registry without the removed provider.

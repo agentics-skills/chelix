@@ -14,7 +14,10 @@ use super::{clear_session_response, localhost_cookie_domain, session_response};
 use crate::login_guard::LoginGuard;
 
 #[cfg(test)]
-use chelix_gateway::{auth::CredentialStore, state::GatewayState};
+use chelix_gateway::{
+    auth::{AuthConfigPersistence, CredentialStore},
+    state::GatewayState,
+};
 
 // ── Vault handlers ──────────────────────────────────────────────────────────
 
@@ -508,7 +511,7 @@ mod vault_unseal_tests {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         let auth_config = chelix_config::AuthConfig::default();
         let cred_store = Arc::new(
-            CredentialStore::with_config(pool, &auth_config)
+            CredentialStore::with_config(pool, &auth_config, AuthConfigPersistence::MemoryOnly)
                 .await
                 .unwrap(),
         );

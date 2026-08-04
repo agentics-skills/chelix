@@ -186,9 +186,10 @@ pub enum SilentTurnPrompt {
 }
 
 /// Run a silent memory turn with a specific prompt variant.
-#[tracing::instrument(skip(provider, conversation, writer), fields(variant))]
+#[tracing::instrument(skip(provider, tools_config, conversation, writer), fields(variant))]
 pub async fn run_silent_memory_turn_with_prompt(
     provider: Arc<dyn LlmProvider>,
+    tools_config: &chelix_config::schema::ToolsConfig,
     conversation: &[ChatMessage],
     writer: Arc<dyn MemoryWriter>,
     prompt_variant: SilentTurnPrompt,
@@ -269,6 +270,7 @@ pub async fn run_silent_memory_turn_with_prompt(
     let result = run_agent_loop(
         provider,
         &tools,
+        tools_config,
         &system_prompt,
         &user_content,
         None, // no event callbacks — silent
@@ -466,8 +468,10 @@ mod tests {
             ChatMessage::assistant("Done! I configured GitHub Actions with lint and test jobs."),
         ];
 
+        let tools_config = chelix_config::schema::ToolsConfig::default();
         let paths = run_silent_memory_turn_with_prompt(
             provider,
+            &tools_config,
             &conversation,
             writer,
             SilentTurnPrompt::PeriodicExtract,
@@ -495,8 +499,10 @@ mod tests {
             ChatMessage::assistant("Added WebAuthn passkey registration and login."),
         ];
 
+        let tools_config = chelix_config::schema::ToolsConfig::default();
         let paths = run_silent_memory_turn_with_prompt(
             provider,
+            &tools_config,
             &conversation,
             writer,
             SilentTurnPrompt::SessionSummary,
@@ -553,8 +559,10 @@ mod tests {
         });
 
         // Should return Ok(empty) instead of propagating the error.
+        let tools_config = chelix_config::schema::ToolsConfig::default();
         let paths = run_silent_memory_turn_with_prompt(
             provider,
+            &tools_config,
             &[ChatMessage::user("test")],
             writer,
             SilentTurnPrompt::PeriodicExtract,

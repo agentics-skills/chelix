@@ -489,7 +489,7 @@ fn test_non_streaming_runner_uses_max_iteration_override() {
     config.tools.registry_mode = chelix_config::ToolRegistryMode::Full;
 
     assert_eq!(
-        super::super::non_streaming::resolve_agent_loop_max_iterations(&config, Some(1)),
+        super::super::non_streaming::resolve_agent_loop_max_iterations(&config.tools, Some(1)),
         1
     );
 }
