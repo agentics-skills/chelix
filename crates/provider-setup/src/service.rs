@@ -6,4 +6,4 @@
 #[path = "service/implementation/mod.rs"]
 mod implementation;
 
-pub use self::implementation::{ErrorParser, LiveProviderSetupService};
+pub use self::implementation::{ErrorParser, LiveProviderSetupService, ProviderConfigPersistence};

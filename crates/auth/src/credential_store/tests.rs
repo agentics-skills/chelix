@@ -2,7 +2,7 @@
 
 use {
     crate::credential_store::{
-        CredentialStore, SshAuthMode,
+        AuthConfigPersistence, CredentialStore, SshAuthMode,
         util::{generate_token, hash_password, is_loopback, sha256_hex, verify_password},
     },
     secrecy::ExposeSecret,
@@ -17,6 +17,15 @@ use chelix_vault::Vault;
 
 fn fixture_secret(_tag: &str) -> String {
     generate_token()
+}
+
+async fn credential_store(pool: SqlitePool) -> crate::Result<CredentialStore> {
+    CredentialStore::with_config(
+        pool,
+        &chelix_config::AuthConfig::default(),
+        AuthConfigPersistence::MemoryOnly,
+    )
+    .await
 }
 
 #[test]
@@ -57,7 +66,7 @@ fn test_sha256_hex() {
 #[tokio::test]
 async fn test_credential_store_password() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
     let initial_password = fixture_secret("credential-store-password-initial");
     let replacement_password = fixture_secret("credential-store-password-replacement");
     let duplicate_password = generate_token();
@@ -97,7 +106,7 @@ async fn test_credential_store_password() {
 #[tokio::test]
 async fn test_credential_store_sessions() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let token = store.create_session().await.unwrap();
     assert!(store.validate_session(&token).await.unwrap());
@@ -110,7 +119,7 @@ async fn test_credential_store_sessions() {
 #[tokio::test]
 async fn test_credential_store_api_keys() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let (id, raw_key) = store.create_api_key("test key", None).await.unwrap();
     assert!(id > 0);
@@ -137,7 +146,7 @@ async fn test_credential_store_api_keys() {
 #[tokio::test]
 async fn test_credential_store_api_keys_with_scopes() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let scopes = vec!["operator.read".to_string(), "operator.write".to_string()];
     let (id, raw_key) = store
@@ -172,7 +181,7 @@ async fn test_credential_store_api_keys_with_scopes() {
 #[tokio::test]
 async fn test_credential_store_reset_all() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
     let initial_password = fixture_secret("credential-store-reset-initial");
     let reset_password = fixture_secret("credential-store-reset-replacement");
 
@@ -201,7 +210,7 @@ async fn test_credential_store_reset_all() {
 #[tokio::test]
 async fn test_reset_all_removes_managed_ssh_material() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let key_id = store
         .create_ssh_key(
@@ -234,7 +243,7 @@ async fn test_reset_all_removes_managed_ssh_material() {
 #[tokio::test]
 async fn test_auth_disabled_persists_across_restart() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool.clone()).await.unwrap();
+    let store = credential_store(pool.clone()).await.unwrap();
     let initial_password = fixture_secret("auth-disabled-persists-initial");
     let replacement_password = fixture_secret("auth-disabled-persists-replacement");
 
@@ -242,7 +251,7 @@ async fn test_auth_disabled_persists_across_restart() {
     store.reset_all().await.unwrap();
     assert!(store.is_auth_disabled());
 
-    let store2 = CredentialStore::new(pool.clone()).await.unwrap();
+    let store2 = credential_store(pool.clone()).await.unwrap();
     assert!(store2.is_auth_disabled());
     assert!(!store2.is_setup_complete());
 
@@ -250,7 +259,7 @@ async fn test_auth_disabled_persists_across_restart() {
         .set_initial_password(&replacement_password)
         .await
         .unwrap();
-    let store3 = CredentialStore::new(pool).await.unwrap();
+    let store3 = credential_store(pool).await.unwrap();
     assert!(!store3.is_auth_disabled());
     assert!(store3.is_setup_complete());
 }
@@ -258,7 +267,7 @@ async fn test_auth_disabled_persists_across_restart() {
 #[tokio::test]
 async fn test_credential_store_env_vars() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     assert!(store.list_env_vars().await.unwrap().is_empty());
 
@@ -316,7 +325,7 @@ async fn test_credential_store_env_vars() {
 #[tokio::test]
 async fn update_env_var_flags_preserves_stored_value() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
     let id = store
         .set_env_var("TOGGLE_ME", "unchanged", true, true)
         .await
@@ -353,7 +362,7 @@ async fn update_env_var_flags_preserves_stored_value() {
 #[tokio::test]
 async fn test_credential_store_ssh_keys_and_targets() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let key_id = store
         .create_ssh_key(
@@ -423,7 +432,7 @@ async fn test_credential_store_ssh_keys_and_targets() {
 #[tokio::test]
 async fn test_first_ssh_target_becomes_default_and_delete_promotes_replacement() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let key_id = store
         .create_ssh_key(
@@ -471,7 +480,7 @@ async fn test_first_ssh_target_becomes_default_and_delete_promotes_replacement()
 #[tokio::test]
 async fn test_delete_ssh_key_rejects_in_use_key() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let key_id = store
         .create_ssh_key(
@@ -506,7 +515,7 @@ async fn test_delete_ssh_key_rejects_in_use_key() {
 #[tokio::test]
 async fn test_update_ssh_target_known_host_round_trips() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let target_id = store
         .create_ssh_target(
@@ -561,6 +570,7 @@ async fn vault_store(password: &str) -> (CredentialStore, Arc<Vault>) {
         pool,
         &chelix_config::AuthConfig::default(),
         Some(vault.clone()),
+        AuthConfigPersistence::MemoryOnly,
     )
     .await
     .unwrap();
@@ -570,7 +580,7 @@ async fn vault_store(password: &str) -> (CredentialStore, Arc<Vault>) {
 #[tokio::test]
 async fn environment_variable_flags_default_to_true() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     sqlx::query("INSERT INTO env_variables (key, value) VALUES (?, ?)")
         .bind("DEFAULT_FLAGS")
@@ -600,6 +610,7 @@ async fn test_ssh_keys_encrypt_when_vault_is_unsealed() {
         pool.clone(),
         &chelix_config::AuthConfig::default(),
         Some(Arc::clone(&vault)),
+        AuthConfigPersistence::MemoryOnly,
     )
     .await
     .unwrap();
@@ -631,7 +642,7 @@ async fn test_ssh_keys_encrypt_when_vault_is_unsealed() {
 #[tokio::test]
 async fn test_credential_store_passkeys() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     assert!(!store.has_passkeys().await.unwrap());
 
@@ -660,7 +671,7 @@ async fn test_credential_store_passkeys() {
 #[tokio::test]
 async fn test_change_password_invalidates_sessions() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
     let initial_password = fixture_secret("change-password-invalidates-initial");
     let replacement_password = fixture_secret("change-password-invalidates-replacement");
 
@@ -686,7 +697,7 @@ async fn test_change_password_invalidates_sessions() {
 #[tokio::test]
 async fn test_add_password_marks_setup_complete_and_reenables_auth() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
     let password = generate_token();
 
     store.reset_all().await.unwrap();
@@ -702,7 +713,7 @@ async fn test_add_password_marks_setup_complete_and_reenables_auth() {
 #[tokio::test]
 async fn test_store_passkey_marks_setup_complete_and_reenables_auth() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     store.reset_all().await.unwrap();
     assert!(store.is_auth_disabled());
@@ -720,7 +731,7 @@ async fn test_store_passkey_marks_setup_complete_and_reenables_auth() {
 #[tokio::test]
 async fn test_mark_setup_complete_with_passkey_only() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     assert!(!store.is_setup_complete());
     assert!(store.mark_setup_complete().await.is_err());
@@ -737,7 +748,7 @@ async fn test_mark_setup_complete_with_passkey_only() {
 #[tokio::test]
 async fn test_setup_complete_persists_with_passkey_only() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool.clone()).await.unwrap();
+    let store = credential_store(pool.clone()).await.unwrap();
 
     store
         .store_passkey(b"cred-1", "My Passkey", b"data")
@@ -746,14 +757,14 @@ async fn test_setup_complete_persists_with_passkey_only() {
     store.mark_setup_complete().await.unwrap();
     assert!(store.is_setup_complete());
 
-    let store2 = CredentialStore::new(pool).await.unwrap();
+    let store2 = credential_store(pool).await.unwrap();
     assert!(store2.is_setup_complete());
 }
 
 #[tokio::test]
 async fn test_removing_last_passkey_clears_setup_complete() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
 
     let id = store
         .store_passkey(b"cred-1", "My Passkey", b"data")
@@ -771,7 +782,7 @@ async fn test_removing_last_passkey_clears_setup_complete() {
 #[tokio::test]
 async fn test_removing_passkey_keeps_setup_when_password_exists() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let store = CredentialStore::new(pool).await.unwrap();
+    let store = credential_store(pool).await.unwrap();
     let password = generate_token();
 
     store.set_initial_password(&password).await.unwrap();

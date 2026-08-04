@@ -29,6 +29,12 @@ pub use {
 #[cfg(feature = "vault")]
 pub use sessions::{PasswordVaultChangeError, VaultInitializeError, VaultInitializeOutcome};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthConfigPersistence {
+    Filesystem,
+    MemoryOnly,
+}
+
 /// Single-user credential store backed by SQLite.
 pub struct CredentialStore {
     pool: SqlitePool,
@@ -36,6 +42,7 @@ pub struct CredentialStore {
     /// When true, auth has been explicitly disabled via "remove all auth".
     /// The middleware and status endpoint treat this as "no auth configured".
     auth_disabled: AtomicBool,
+    config_persistence: AuthConfigPersistence,
     /// Encryption-at-rest vault for environment variables.
     #[cfg(feature = "vault")]
     vault: Option<Arc<Vault>>,

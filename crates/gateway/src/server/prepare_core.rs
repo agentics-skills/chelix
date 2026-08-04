@@ -275,6 +275,7 @@ pub async fn prepare_gateway_core(
         Arc::clone(&registry),
         config.providers.clone(),
         deploy_platform.clone(),
+        crate::provider_setup::ProviderConfigPersistence::Filesystem,
     )
     .with_env_overrides(config_env_overrides.clone())
     .with_error_parser(crate::chat_error::parse_chat_error)
@@ -453,9 +454,14 @@ pub async fn prepare_gateway_core(
 
     #[cfg(feature = "vault")]
     let credential_store = Arc::new(
-        auth::CredentialStore::with_vault(db_pool.clone(), &config.auth, vault.clone())
-            .await
-            .expect("failed to init credential store"),
+        auth::CredentialStore::with_vault(
+            db_pool.clone(),
+            &config.auth,
+            vault.clone(),
+            auth::AuthConfigPersistence::Filesystem,
+        )
+        .await
+        .expect("failed to init credential store"),
     );
     #[cfg(feature = "vault")]
     if auto_unsealed_vault {
@@ -463,9 +469,13 @@ pub async fn prepare_gateway_core(
     }
     #[cfg(not(feature = "vault"))]
     let credential_store = Arc::new(
-        auth::CredentialStore::with_config(db_pool.clone(), &config.auth)
-            .await
-            .expect("failed to init credential store"),
+        auth::CredentialStore::with_config(
+            db_pool.clone(),
+            &config.auth,
+            auth::AuthConfigPersistence::Filesystem,
+        )
+        .await
+        .expect("failed to init credential store"),
     );
 
     let runtime_env_overrides = match credential_store.get_enabled_env_values().await {

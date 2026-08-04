@@ -6,7 +6,6 @@ use std::{
 };
 
 use {
-    anyhow::Context,
     async_trait::async_trait,
     futures::{FutureExt, future::Abortable},
     tracing::info,
@@ -26,8 +25,8 @@ use {
         tool_registry::{AgentTool, ToolRegistry},
     },
     chelix_config::{
-        AgentRuntimeLimits,
-        schema::{AgentPreset, AgentsConfig},
+        AgentRuntimeLimits, ToolsConfigSource,
+        schema::{AgentPreset, AgentsConfig, ToolsConfig},
     },
     chelix_providers::ProviderRegistry,
     chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
@@ -82,6 +81,7 @@ pub struct SpawnAgentTool {
     provider_registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
     default_provider: Arc<dyn LlmProvider>,
     tool_registry: Arc<ToolRegistry>,
+    tools_config_source: ToolsConfigSource,
     agents_config: Option<Arc<tokio::sync::RwLock<AgentsConfig>>>,
     on_event: Option<OnSpawnEvent>,
     session_deps: Option<SessionDeps>,
@@ -93,11 +93,13 @@ impl SpawnAgentTool {
         provider_registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
         default_provider: Arc<dyn LlmProvider>,
         tool_registry: Arc<ToolRegistry>,
+        tools_config_source: ToolsConfigSource,
     ) -> Self {
         Self {
             provider_registry,
             default_provider,
             tool_registry,
+            tools_config_source,
             agents_config: None,
             on_event: None,
             session_deps: None,
@@ -174,6 +176,7 @@ impl SpawnAgentTool {
             provider_registry: Arc::clone(&self.provider_registry),
             default_provider: Arc::clone(&self.default_provider),
             tool_registry: Arc::clone(&self.tool_registry),
+            tools_config_source: self.tools_config_source.clone(),
             agents_config: self.agents_config.clone(),
             on_event: self.on_event.clone(),
             session_deps: self.session_deps.clone(),
@@ -433,9 +436,12 @@ impl AgentTool for SpawnAgentTool {
             .ok_or_else(|| Error::message("missing required parameter: task"))?;
         let context = str_param(&params, "context").unwrap_or("");
         let (preset_name, preset) = self.resolve_preset(&params).await?;
-        let config = chelix_config::discover_and_load().context("reload Chelix config")?;
+        let tools_config = self
+            .tools_config_source
+            .load()
+            .map_err(|error| Error::message(format!("reload tools config: {error}")))?;
         let runtime_limits =
-            AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset.as_ref());
+            AgentRuntimeLimits::resolve_for_spawned_agent(&tools_config, preset.as_ref());
         let explicit_model = str_param(&params, "model").map(String::from);
         let model_id = explicit_model
             .clone()
@@ -615,6 +621,7 @@ impl AgentTool for SpawnAgentTool {
                         task_for_run.clone(),
                         tool_context,
                         runtime_limits,
+                        tools_config,
                     ))
                     .catch_unwind(),
                     abort_registration,
@@ -765,6 +772,7 @@ impl AgentTool for SpawnAgentTool {
             task.to_string(),
             tool_context,
             runtime_limits,
+            tools_config,
         )
         .await;
 
@@ -817,7 +825,7 @@ impl AgentTool for SpawnAgentTool {
     }
 }
 
-#[tracing::instrument(skip(provider, sub_tools, system_prompt, tool_context, runtime_limits), fields(task_len = task.len()))]
+#[tracing::instrument(skip(provider, sub_tools, system_prompt, tool_context, runtime_limits, tools_config), fields(task_len = task.len()))]
 async fn run_spawned_agent(
     provider: Arc<dyn LlmProvider>,
     sub_tools: ToolRegistry,
@@ -825,11 +833,13 @@ async fn run_spawned_agent(
     task: String,
     tool_context: serde_json::Value,
     runtime_limits: AgentRuntimeLimits,
+    tools_config: ToolsConfig,
 ) -> Result<chelix_agents::runner::AgentRunResult, AgentRunError> {
     let user_content = chelix_agents::UserContent::text(&task);
     let agent_future = run_agent_loop_with_context_and_limits(
         provider,
         &sub_tools,
+        &tools_config,
         &system_prompt,
         &user_content,
         None,

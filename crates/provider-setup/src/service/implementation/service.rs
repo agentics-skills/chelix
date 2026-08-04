@@ -31,6 +31,7 @@ use {
         SetupBroadcaster,
         config_helpers::{
             config_with_saved_keys, env_value_with_overrides, home_key_store, home_token_store,
+            set_provider_enabled_in_config,
         },
         key_store::KeyStore,
         known_providers::{AuthType, KnownProvider},
@@ -42,9 +43,16 @@ use chelix_oauth::TokenStore;
 
 // ── LiveProviderSetupService ───────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderConfigPersistence {
+    Filesystem,
+    MemoryOnly,
+}
+
 pub struct LiveProviderSetupService {
     pub(crate) registry: Arc<RwLock<ProviderRegistry>>,
     pub(crate) config: Arc<Mutex<ProvidersConfig>>,
+    config_persistence: ProviderConfigPersistence,
     broadcaster: Arc<OnceCell<Arc<dyn SetupBroadcaster>>>,
     pub(crate) token_store: TokenStore,
     pub(crate) key_store: KeyStore,
@@ -73,10 +81,12 @@ impl LiveProviderSetupService {
         registry: Arc<RwLock<ProviderRegistry>>,
         config: ProvidersConfig,
         deploy_platform: Option<String>,
+        config_persistence: ProviderConfigPersistence,
     ) -> Self {
         Self {
             registry,
             config: Arc::new(Mutex::new(config)),
+            config_persistence,
             broadcaster: Arc::new(OnceCell::new()),
             token_store: TokenStore::new(),
             key_store: KeyStore::new(),
@@ -221,12 +231,16 @@ impl LiveProviderSetupService {
             .clone()
     }
 
-    pub(crate) fn set_provider_enabled_in_memory(&self, provider: &str, enabled: bool) {
+    pub(crate) fn set_provider_enabled(&self, provider: &str, enabled: bool) -> ServiceResult<()> {
+        if self.config_persistence == ProviderConfigPersistence::Filesystem {
+            set_provider_enabled_in_config(provider, enabled)?;
+        }
         let mut cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
         cfg.providers
             .entry(provider.to_string())
             .or_default()
             .enabled = enabled;
+        Ok(())
     }
 
     pub(crate) fn is_provider_configured(

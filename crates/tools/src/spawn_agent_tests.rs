@@ -209,6 +209,19 @@ impl AgentTool for DummyNamedTool {
     }
 }
 
+fn spawn_agent_tool(
+    provider_registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
+    default_provider: Arc<dyn LlmProvider>,
+    tool_registry: Arc<ToolRegistry>,
+) -> SpawnAgentTool {
+    SpawnAgentTool::new(
+        provider_registry,
+        default_provider,
+        tool_registry,
+        ToolsConfigSource::snapshot(ToolsConfig::default()),
+    )
+}
+
 fn registry_with_tools(names: &[&str]) -> Arc<ToolRegistry> {
     let mut registry = ToolRegistry::new();
     for name in names {
@@ -237,7 +250,7 @@ fn agents_config_with_presets(
 async fn test_sub_agent_runs_and_returns_result() {
     let (provider, _) = MockProvider::with_capture("Sub-agent result", "mock-model");
     let tool_registry = Arc::new(ToolRegistry::new());
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         Arc::clone(&provider),
         tool_registry,
@@ -256,7 +269,7 @@ async fn test_sub_agent_runs_and_returns_result() {
 async fn test_depth_limit_rejects() {
     let (provider, _) = MockProvider::with_capture("nope", "mock");
     let tool_registry = Arc::new(ToolRegistry::new());
-    let spawn_tool = SpawnAgentTool::new(make_empty_provider_registry(), provider, tool_registry);
+    let spawn_tool = spawn_agent_tool(make_empty_provider_registry(), provider, tool_registry);
 
     let params = serde_json::json!({
         "task": "do something",
@@ -275,7 +288,7 @@ async fn test_nonblocking_returns_task_handle_before_completion() {
         notify: Arc::clone(&notify),
     });
     let store = Arc::new(SpawnTaskStore::default());
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -332,7 +345,7 @@ async fn test_nonblocking_returns_task_handle_before_completion() {
 async fn test_nonblocking_result_enforces_session_key() {
     let (provider, _) = MockProvider::with_capture("done", "mock");
     let store = Arc::new(SpawnTaskStore::default());
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -364,7 +377,7 @@ async fn test_nonblocking_result_enforces_session_key() {
 async fn test_nonblocking_failure_is_persisted() {
     let provider: Arc<dyn LlmProvider> = Arc::new(FailingProvider);
     let store = Arc::new(SpawnTaskStore::default());
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -406,7 +419,7 @@ async fn test_nonblocking_failure_is_persisted() {
 fn test_nonblocking_and_companion_tool_schemas() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
     let store = Arc::new(SpawnTaskStore::default());
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -496,8 +509,7 @@ async fn test_spawn_agent_excluded_from_sub_registry() {
     assert!(registry.get("spawn_agent").is_some());
 
     // The SpawnAgentTool itself should work with the filtered registry.
-    let spawn_tool =
-        SpawnAgentTool::new(make_empty_provider_registry(), provider, Arc::new(registry));
+    let spawn_tool = spawn_agent_tool(make_empty_provider_registry(), provider, Arc::new(registry));
     let result = spawn_tool
         .execute(serde_json::json!({ "task": "test" }))
         .await
@@ -508,7 +520,7 @@ async fn test_spawn_agent_excluded_from_sub_registry() {
 #[tokio::test]
 async fn test_context_passed_to_sub_agent() {
     let (provider, _) = MockProvider::with_capture("done with context", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -525,7 +537,7 @@ async fn test_context_passed_to_sub_agent() {
 #[tokio::test]
 async fn test_null_optional_array_params_are_treated_as_absent() {
     let (provider, seen_tool_names) = MockProvider::with_capture("done", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         registry_with_tools(&["spawn_agent", "execute_command", "read_file", "task_list"]),
@@ -554,7 +566,7 @@ async fn test_null_optional_array_params_are_treated_as_absent() {
 #[tokio::test]
 async fn test_missing_task_parameter() {
     let (provider, _) = MockProvider::with_capture("nope", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -568,7 +580,7 @@ async fn test_missing_task_parameter() {
 #[tokio::test]
 async fn test_build_sub_tools_applies_allow_and_deny() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         registry_with_tools(&["spawn_agent", "execute_command", "read_file", "task_list"]),
@@ -592,7 +604,7 @@ async fn test_build_sub_tools_applies_allow_and_deny() {
 #[tokio::test]
 async fn test_build_sub_tools_delegate_only_uses_delegate_set() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         registry_with_tools(&[
@@ -627,7 +639,7 @@ async fn test_delegate_only_injects_spawn_agent_with_shared_task_store() {
     let (provider, _) = MockProvider::with_capture("nested result", "mock");
     let store = Arc::new(SpawnTaskStore::default());
     let registry = registry_with_tools(&["spawn_status", "spawn_result", "spawn_list"]);
-    let spawn_tool = SpawnAgentTool::new(make_empty_provider_registry(), provider, registry)
+    let spawn_tool = spawn_agent_tool(make_empty_provider_registry(), provider, registry)
         .with_task_store(Arc::clone(&store));
 
     let filtered = spawn_tool.build_sub_tools(&[], &[], true);
@@ -665,7 +677,7 @@ async fn test_delegate_only_injects_spawn_agent_with_shared_task_store() {
 #[tokio::test]
 async fn test_resolve_preset_uses_explicit_name() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -689,7 +701,7 @@ async fn test_resolve_preset_uses_explicit_name() {
 #[tokio::test]
 async fn test_resolve_preset_uses_default_when_missing() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -722,7 +734,7 @@ async fn test_resolve_preset_uses_default_when_missing() {
 #[tokio::test]
 async fn test_resolve_preset_errors_when_name_missing() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
@@ -868,7 +880,7 @@ async fn test_timeout_cancels_long_running_agent() {
     }
 
     let provider: Arc<dyn LlmProvider> = Arc::new(SlowProvider);
-    let spawn_tool = SpawnAgentTool::new(
+    let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),

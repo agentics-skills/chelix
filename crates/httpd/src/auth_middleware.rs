@@ -22,6 +22,9 @@ use {
     },
 };
 
+#[cfg(test)]
+use chelix_gateway::auth::AuthConfigPersistence;
+
 /// Session cookie name.
 pub const SESSION_COOKIE: &str = "chelix_session";
 #[cfg(feature = "web-ui")]
@@ -468,7 +471,9 @@ mod tests {
             disabled: true,
             ..Default::default()
         };
-        let store = CredentialStore::with_config(pool, &auth_config).await?;
+        let store =
+            CredentialStore::with_config(pool, &auth_config, AuthConfigPersistence::MemoryOnly)
+                .await?;
         let headers = HeaderMap::new();
 
         assert!(matches!(

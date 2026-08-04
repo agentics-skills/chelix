@@ -7,7 +7,6 @@ use chelix_service_traits::{ServiceError, ServiceResult};
 use {
     super::{LiveProviderSetupService, support::ProviderSetupTiming},
     crate::{
-        config_helpers::set_provider_enabled_in_config,
         custom_providers::{
             base_url_to_display_name, derive_provider_name_from_url,
             existing_custom_provider_for_base_url, make_unique_provider_name,
@@ -55,8 +54,7 @@ impl LiveProviderSetupService {
             )
             .map_err(ServiceError::message)?;
 
-        set_provider_enabled_in_config(&provider_name, true)?;
-        self.set_provider_enabled_in_memory(&provider_name, true);
+        self.set_provider_enabled(&provider_name, true)?;
 
         // Rebuild before returning so the just-added custom provider is immediately
         // available for model probing in the same UI flow.
