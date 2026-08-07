@@ -101,15 +101,12 @@ agent_max_iterations = 25       # Max tool call iterations per run
 ## LLM Providers
 
 Configure providers through the web UI or directly in `chelix.toml`. API keys
-can be set via environment variables (e.g. `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`, `GEMINI_API_KEY`) or in the config file.
+can be set via environment variables (e.g. `OPENAI_API_KEY`,
+`GEMINI_API_KEY`) or in the config file.
 
 ```toml
 [providers]
-offered = ["anthropic", "openai", "gemini"]
-
-[providers.anthropic]
-enabled = true
+offered = ["openai", "gemini"]
 
 [providers.openai]
 enabled = true
@@ -486,7 +483,7 @@ agent_timeout_secs = 600
 agent_max_iterations = 25
 
 [providers]
-offered = ["anthropic", "openai", "gemini"]
+offered = ["openai", "gemini"]
 
 [sandbox]
 mode = "On"

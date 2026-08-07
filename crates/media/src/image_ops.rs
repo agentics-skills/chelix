@@ -11,11 +11,10 @@ use {
 };
 
 /// Default maximum dimension (width or height) for images.
-/// Claude API allows 8000px for single images, 2000px for multi-image requests.
-/// We use 1568px as a conservative default that works well with both providers.
+/// We use 1568px as a conservative default for provider compatibility.
 pub const DEFAULT_MAX_DIMENSION: u32 = 1568;
 
-/// Maximum file size for Anthropic API (5MB).
+/// Maximum file size accepted by the image optimization pipeline.
 pub const MAX_FILE_SIZE_BYTES: usize = 5 * 1024 * 1024;
 
 /// JPEG quality for resized images (0-100).

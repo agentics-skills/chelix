@@ -89,7 +89,7 @@ Agent presets (used by `spawn_agent`) can restrict their sub-agent's tools.
 
 ```toml
 [agents.presets.researcher]
-model = "anthropic/claude-haiku-3-5-20241022"
+model = "openai/gpt-5.2"
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```

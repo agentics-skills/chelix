@@ -9,7 +9,6 @@ Configure providers through the web UI or directly in configuration files.
 
 | Provider             | Config Name  | Env Variable         | Features                                                         |
 | -------------------- | ------------ | -------------------- | ---------------------------------------------------------------- |
-| **Anthropic**        | `anthropic`  | `ANTHROPIC_API_KEY`  | Streaming, tools, vision                                         |
 | **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision, model discovery                        |
 | **Google Gemini**    | `gemini`     | `GEMINI_API_KEY`     | Streaming, tools, vision, model discovery                        |
 | **xAI (Grok)**       | `xai`        | `XAI_API_KEY`        | Streaming                                                        |
@@ -109,10 +108,7 @@ Configure providers in `chelix.toml`:
 
 ```toml
 [providers]
-offered = ["anthropic", "openai", "gemini"]
-
-[providers.anthropic]
-enabled = true
+offered = ["openai", "gemini"]
 
 [providers.openai]
 enabled = true
@@ -190,11 +186,6 @@ enabled = true
 
 Gemini supports native tool calling, vision/multimodal inputs, streaming, and
 automatic model discovery.
-
-### Anthropic
-
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com/).
-2. Set `ANTHROPIC_API_KEY` in your environment.
 
 ### OpenAI
 

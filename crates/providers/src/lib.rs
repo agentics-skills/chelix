@@ -1,13 +1,10 @@
 //! LLM provider implementations and registry.
 
-pub mod anthropic;
 pub mod async_openai_provider;
 mod client;
 pub mod config_helpers;
 pub mod discovered_model;
 pub mod error;
-#[cfg(feature = "provider-genai")]
-pub mod genai_provider;
 pub mod http;
 #[cfg(feature = "provider-kimi-code")]
 pub mod kimi_code;

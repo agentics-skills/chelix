@@ -212,7 +212,7 @@ async fn available_respects_offered_order() {
         &HashMap::new(),
     )));
     let config = ProvidersConfig {
-        offered: vec!["openai-codex".into(), "openai".into(), "anthropic".into()],
+        offered: vec!["openai-codex".into(), "openai".into(), "gemini".into()],
         ..ProvidersConfig::default()
     };
     let svc = live_provider_setup_service(registry, config, None);
@@ -233,40 +233,14 @@ async fn available_respects_offered_order() {
         .iter()
         .position(|name| *name == "openai")
         .expect("openai should be present");
-    let anthropic_idx = names
+    let gemini_idx = names
         .iter()
-        .position(|name| *name == "anthropic")
-        .expect("anthropic should be present");
+        .position(|name| *name == "gemini")
+        .expect("gemini should be present");
 
     assert!(
-        openai_codex_idx < openai_idx && openai_idx < anthropic_idx,
+        openai_codex_idx < openai_idx && openai_idx < gemini_idx,
         "offered provider order should be preserved, got: {names:?}"
-    );
-}
-
-#[tokio::test]
-async fn available_accepts_offered_provider_aliases() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let config = ProvidersConfig {
-        offered: vec!["claude".into()],
-        ..ProvidersConfig::default()
-    };
-    let svc = live_provider_setup_service(registry, config, None);
-    let result = svc.available().await.unwrap();
-    let arr = result
-        .as_array()
-        .expect("providers.available should return array");
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .collect();
-
-    assert!(
-        names.contains(&"anthropic"),
-        "anthropic should be visible when offered contains alias 'claude', got: {names:?}"
     );
 }
 
@@ -280,7 +254,7 @@ async fn available_hides_configured_provider_outside_offered() {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
     };
-    config.providers.insert("anthropic".into(), ProviderEntry {
+    config.providers.insert("gemini".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
         ..Default::default()
     });
@@ -300,7 +274,7 @@ async fn available_hides_configured_provider_outside_offered() {
         .expect("openai should be present");
 
     assert!(
-        !names.contains(&"anthropic"),
+        !names.contains(&"gemini"),
         "providers outside offered should be hidden even when configured, got: {names:?}"
     );
     assert_eq!(openai_idx, 0);
@@ -552,7 +526,7 @@ async fn save_key_rejects_missing_params() {
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     assert!(svc.save_key(serde_json::json!({})).await.is_err());
     assert!(
-        svc.save_key(serde_json::json!({"provider": "anthropic"}))
+        svc.save_key(serde_json::json!({"provider": "openai"}))
             .await
             .is_err()
     );
@@ -568,7 +542,7 @@ async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
 
     let error = svc
         .save_key(serde_json::json!({
-            "provider": "anthropic",
+            "provider": "openai",
             "apiKey": "sk-test",
             "baseUrl": "https://api.example.com/v1/chat/completions",
         }))
@@ -590,7 +564,7 @@ async fn save_key_rejects_invalid_base_url_for_any_provider() {
 
     let error = svc
         .save_key(serde_json::json!({
-            "provider": "anthropic",
+            "provider": "openai",
             "apiKey": "sk-test",
             "baseUrl": "api.example.com/v1",
         }))
@@ -921,7 +895,7 @@ async fn validate_key_rejects_missing_api_key_for_api_key_provider() {
     )));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
-        .validate_key(serde_json::json!({"provider": "anthropic"}))
+        .validate_key(serde_json::json!({"provider": "openai"}))
         .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("missing 'apiKey'"));

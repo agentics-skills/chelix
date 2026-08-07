@@ -108,8 +108,8 @@ mention_mode = "mention"
 allowlist = ["123456789", "alice_username"]
 group_allowlist = ["-1001234567890"]
 reply_to_message = true
-model = "claude-sonnet-4-20250514"
-model_provider = "anthropic"
+model = "gemini-2.5-pro"
+model_provider = "gemini"
 agent_id = "research"
 otp_self_approval = true
 stream_mode = "edit_in_place"
@@ -123,8 +123,8 @@ You can override the model or agent for specific users or group chats:
 ```toml
 [channels.telegram.my-bot]
 token = "..."
-model = "claude-sonnet-4-20250514"
-model_provider = "anthropic"
+model = "gemini-2.5-pro"
+model_provider = "gemini"
 
 [channels.telegram.my-bot.channel_overrides."-1001234567890"]
 model = "gpt-4o"
@@ -132,8 +132,8 @@ model_provider = "openai"
 agent_id = "triage"
 
 [channels.telegram.my-bot.user_overrides."123456789"]
-model = "claude-opus-4-20250514"
-model_provider = "anthropic"
+model = "gemini-2.5-pro"
+model_provider = "gemini"
 agent_id = "research"
 ```
 

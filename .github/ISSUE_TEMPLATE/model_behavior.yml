@@ -86,7 +86,7 @@ body:
     attributes:
       label: LLM provider and model
       description: Which provider and model were you using?
-      placeholder: "e.g., Anthropic / claude-sonnet-4-5-20250929"
+      placeholder: "e.g., OpenAI / gpt-5.2"
     validations:
       required: true
 

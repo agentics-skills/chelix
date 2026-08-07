@@ -20,7 +20,6 @@ use {
 /// missing from this list.
 pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     // Built-in providers (always available)
-    "anthropic",
     "openai",
     // OpenAI-compatible providers (table-driven)
     "alibaba-coding",
@@ -33,7 +32,7 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     // Feature-gated providers
     "kimi-code",
     "openai-codex",
-    // Providers registered via genai/async-openai backends
+    // Providers registered via async-openai backends
     "xai",
 ];
 
@@ -106,19 +105,19 @@ pub enum WireApi {
     Responses,
 }
 
-/// Prompt cache retention policy for providers that support client-controlled
-/// caching (Anthropic direct, Anthropic via OpenRouter/Bedrock).
+/// Prompt cache retention policy for OpenRouter models that support
+/// client-controlled caching.
 ///
 /// - `none`: disable prompt caching (no `cache_control` breakpoints sent).
-/// - `short` (default for Anthropic): 5-minute ephemeral cache.
-/// - `long`: same as `short` today (Anthropic only supports ephemeral), but
-///   signals intent for longer retention when providers add TTL tiers.
+/// - `short`: use ephemeral caching.
+/// - `long`: currently equivalent to `short`, but signals intent for longer
+///   retention when upstream providers add TTL tiers.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CacheRetention {
     /// No prompt caching — skip `cache_control` breakpoints entirely.
     None,
-    /// Short-lived ephemeral cache (5 min TTL on Anthropic). Default for Anthropic.
+    /// Short-lived ephemeral cache.
     #[default]
     Short,
     /// Long-lived cache. Currently equivalent to `short` (ephemeral), but
@@ -187,7 +186,7 @@ pub struct ProviderEntry {
     ///
     /// When set, this alias is used in metrics labels instead of the provider name.
     /// Useful when configuring multiple instances of the same provider type
-    /// (e.g., "anthropic-work", "anthropic-personal").
+    /// (e.g., "openai-work", "openai-personal").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alias: Option<String>,
 
@@ -204,12 +203,11 @@ pub struct ProviderEntry {
     /// Prompt cache retention policy.
     ///
     /// - `none`: disable prompt caching entirely.
-    /// - `short` (default): ephemeral 5-minute cache (Anthropic).
+    /// - `short` (default): ephemeral caching.
     /// - `long`: same as `short` today, reserved for future extended TTL.
     ///
-    /// Only affects providers that support client-controlled caching
-    /// (Anthropic direct, Anthropic via OpenRouter). Has no effect on
-    /// providers with automatic server-side caching (OpenAI).
+    /// Only affects OpenRouter models that support client-controlled caching.
+    /// Has no effect on providers with automatic server-side caching.
     #[serde(default, skip_serializing_if = "is_default_cache_retention")]
     pub cache_retention: CacheRetention,
 

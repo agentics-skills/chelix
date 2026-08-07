@@ -766,7 +766,7 @@ mod tests {
                 let override_config = req
                     .model_override
                     .ok_or_else(|| std::io::Error::other("missing model override"))?;
-                assert_eq!(override_config.model, "anthropic::claude-opus-4-5-20251101");
+                assert_eq!(override_config.model, "openai::gpt-5.2");
                 assert_eq!(override_config.reasoning_effort.as_str(), "high");
                 Ok(serde_json::json!({ "ok": true }))
             })
@@ -777,7 +777,7 @@ mod tests {
             "key": "session:target",
             "message": "Do work",
             "model_override": {
-                "model": "anthropic::claude-opus-4-5-20251101",
+                "model": "openai::gpt-5.2",
                 "reasoning_effort": "high"
             }
         }))

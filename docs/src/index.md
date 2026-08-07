@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 
 ## Key Features
 
-- **Multiple LLM Providers** — Anthropic, OpenAI, Google Gemini, xAI,
+- **Multiple LLM Providers** — OpenAI, Google Gemini, xAI,
   OpenRouter, Moonshot, Z.AI, and more
 - **Streaming-First** — Responses appear as tokens arrive, not after completion
 - **Generative UI** — Agents can render trusted A2UI v0.9.1 controls in web
@@ -99,7 +99,7 @@ Authentication is only required when accessing Chelix from a non-localhost addre
         │        │                      │
         │   ┌────▼────────────────┐     │
         │   │  Provider Registry  │     │
-        │   │ Anthropic·OpenAI·Gemini… │   │
+        │   │ OpenAI·Gemini·OpenRouter │   │
         │   └─────────────────────┘     │
         └───────────┬───────────────────┘
                     │

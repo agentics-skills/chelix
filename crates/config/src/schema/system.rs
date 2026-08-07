@@ -134,7 +134,7 @@ pub struct HeartbeatConfig {
     pub enabled: bool,
     /// Interval between heartbeats (e.g. "30m", "1h"). Defaults to "30m".
     pub every: String,
-    /// Provider/model override for heartbeat turns (e.g. "anthropic/claude-sonnet-4-20250514").
+    /// Provider/model override for heartbeat turns (e.g. "openai/gpt-5.2").
     pub model: Option<String>,
     /// Agent ID override for heartbeat turns.
     pub agent_id: Option<String>,

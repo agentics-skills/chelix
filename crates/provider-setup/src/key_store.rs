@@ -368,16 +368,16 @@ mod tests {
     fn key_store_save_and_load() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        assert!(store.load("anthropic").is_none());
-        store.save("anthropic", "sk-test-123").unwrap();
-        assert_eq!(store.load("anthropic").unwrap(), "sk-test-123");
+        assert!(store.load("gemini").is_none());
+        store.save("gemini", "test-123").unwrap();
+        assert_eq!(store.load("gemini").unwrap(), "test-123");
         // Overwrite
-        store.save("anthropic", "sk-new").unwrap();
-        assert_eq!(store.load("anthropic").unwrap(), "sk-new");
+        store.save("gemini", "new-key").unwrap();
+        assert_eq!(store.load("gemini").unwrap(), "new-key");
         // Multiple providers
         store.save("openai", "sk-openai").unwrap();
         assert_eq!(store.load("openai").unwrap(), "sk-openai");
-        assert_eq!(store.load("anthropic").unwrap(), "sk-new");
+        assert_eq!(store.load("gemini").unwrap(), "new-key");
         let all = store.load_all();
         assert_eq!(all.len(), 2);
     }
@@ -404,11 +404,11 @@ mod tests {
     fn key_store_remove() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("anthropic", "sk-test").unwrap();
+        store.save("gemini", "test-key").unwrap();
         store.save("openai", "sk-openai").unwrap();
-        assert!(store.load("anthropic").is_some());
-        store.remove("anthropic").unwrap();
-        assert!(store.load("anthropic").is_none());
+        assert!(store.load("gemini").is_some());
+        store.remove("gemini").unwrap();
+        assert!(store.load("gemini").is_none());
         // Other keys unaffected
         assert_eq!(store.load("openai").unwrap(), "sk-openai");
         // Removing non-existent key is fine
@@ -481,10 +481,10 @@ mod tests {
 
         store
             .save_config(
-                "anthropic",
-                Some("sk-anthropic".into()),
-                Some("https://api.anthropic.com".into()),
-                Some(model_map(&["claude-sonnet-4"])),
+                "gemini",
+                Some("gemini-key".into()),
+                Some("https://generativelanguage.googleapis.com/v1beta/openai".into()),
+                Some(model_map(&["gemini-2.5-pro"])),
             )
             .unwrap();
 
@@ -497,18 +497,18 @@ mod tests {
             )
             .unwrap();
 
-        // Update only OpenAI models, Anthropic should remain unchanged.
+        // Update only OpenAI models; Gemini should remain unchanged.
         store
             .save_config("openai", None, None, Some(model_map(&["gpt-5"])))
             .unwrap();
 
-        let anthropic = store.load_config("anthropic").unwrap();
-        assert_eq!(anthropic.api_key.as_deref(), Some("sk-anthropic"));
+        let gemini = store.load_config("gemini").unwrap();
+        assert_eq!(gemini.api_key.as_deref(), Some("gemini-key"));
         assert_eq!(
-            anthropic.base_url.as_deref(),
-            Some("https://api.anthropic.com")
+            gemini.base_url.as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta/openai")
         );
-        assert_eq!(model_ids(&anthropic.models), vec!["claude-sonnet-4"]);
+        assert_eq!(model_ids(&gemini.models), vec!["gemini-2.5-pro"]);
 
         let openai = store.load_config("openai").unwrap();
         assert_eq!(openai.api_key.as_deref(), Some("sk-openai"));
@@ -527,7 +527,7 @@ mod tests {
         let mut handles = Vec::new();
         for (provider, key, models) in [
             ("openai", "sk-openai", model_map(&["gpt-5"])),
-            ("anthropic", "sk-anthropic", model_map(&["claude-sonnet-4"])),
+            ("gemini", "gemini-key", model_map(&["gemini-2.5-pro"])),
         ] {
             let store = store.clone();
             handles.push(std::thread::spawn(move || {
@@ -545,7 +545,7 @@ mod tests {
 
         let all = store.load_all_configs();
         assert!(all.contains_key("openai"));
-        assert!(all.contains_key("anthropic"));
+        assert!(all.contains_key("gemini"));
     }
 
     #[test]
@@ -580,7 +580,7 @@ mod tests {
         let path = dir.path().join("keys.json");
 
         let old_data = serde_json::json!({
-            "anthropic": "sk-old-key",
+            "gemini": "old-key",
             "openai": "sk-openai-old"
         });
         std::fs::write(&path, serde_json::to_string(&old_data).unwrap()).unwrap();
@@ -617,13 +617,10 @@ mod tests {
 
     #[test]
     fn models_param_requires_canonical_object_and_preserves_order() {
-        let models = model_map(&["gpt-5.2", "anthropic/claude-sonnet-4-5"]);
+        let models = model_map(&["gpt-5.2", "gemini-2.5-pro"]);
         let params = serde_json::json!({ "models": models });
         let parsed = parse_models_param(&params).unwrap().unwrap();
-        assert_eq!(model_ids(&parsed), vec![
-            "gpt-5.2",
-            "anthropic/claude-sonnet-4-5"
-        ]);
+        assert_eq!(model_ids(&parsed), vec!["gpt-5.2", "gemini-2.5-pro"]);
 
         let legacy = serde_json::json!({ "models": ["gpt-5.2"] });
         assert!(parse_models_param(&legacy).is_err());

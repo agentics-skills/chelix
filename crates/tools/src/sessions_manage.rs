@@ -457,7 +457,7 @@ mod tests {
         tool.execute(serde_json::json!({
             "agent_id": "main",
             "model_override": {
-                "model": "anthropic::claude-opus-4-5-20251101",
+                "model": "openai::gpt-5.2",
                 "reasoning_effort": "ultra"
             }
         }))
@@ -468,7 +468,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner())
             .clone()
             .ok_or_else(|| std::io::Error::other("callback did not receive model_override"))?;
-        assert_eq!(model_override.model, "anthropic::claude-opus-4-5-20251101");
+        assert_eq!(model_override.model, "openai::gpt-5.2");
         assert_eq!(model_override.reasoning_effort.as_str(), "ultra");
         Ok(())
     }

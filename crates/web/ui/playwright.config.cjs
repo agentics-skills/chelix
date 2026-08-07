@@ -60,7 +60,6 @@ function defaultSpecFiles() {
 		/onboarding\.spec\.js$/,
 		/onboarding-openai\.spec\.js$/,
 		/onboarding-auth\.spec\.js$/,
-		/onboarding-anthropic\.spec\.js$/,
 		/openai-live\.spec\.js$/,
 		/oauth\.spec\.js$/,
 		/remote-sandbox-live\.spec\.js$/,
@@ -140,9 +139,6 @@ const onboardingAuthBaseURL = `http://127.0.0.1:${onboardingAuthPort}`;
 
 const oauthPort = resolvePort("CHELIX_E2E_OAUTH_PORT", usedPorts);
 const oauthBaseURL = `http://127.0.0.1:${oauthPort}`;
-const onboardingAnthropicPort = resolvePort("CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT", usedPorts);
-const onboardingAnthropicBaseURL =
-	process.env.CHELIX_E2E_ONBOARDING_ANTHROPIC_BASE_URL || `http://127.0.0.1:${onboardingAnthropicPort}`;
 const openaiLivePort = resolvePort("CHELIX_E2E_OPENAI_LIVE_PORT", usedPorts);
 const openaiLiveBaseURL = process.env.CHELIX_E2E_OPENAI_LIVE_BASE_URL || `http://127.0.0.1:${openaiLivePort}`;
 const openAiLiveKey = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
@@ -157,7 +153,6 @@ const defaultProjectIgnore = [
 	/onboarding\.spec/,
 	/onboarding-openai\.spec/,
 	/onboarding-auth\.spec/,
-	/onboarding-anthropic\.spec/,
 	/openai-live\.spec/,
 	/oauth\.spec/,
 	/remote-sandbox-live\.spec/,
@@ -242,15 +237,6 @@ const projects = defaultProjects.concat(
 					testMatch: /oauth\.spec/,
 					use: {
 						baseURL: oauthBaseURL,
-					},
-				}
-			: null,
-		includeProject("onboarding-anthropic")
-			? {
-					name: "onboarding-anthropic",
-					testMatch: /onboarding-anthropic\.spec/,
-					use: {
-						baseURL: onboardingAnthropicBaseURL,
 					},
 				}
 			: null,
@@ -358,19 +344,6 @@ const webServer = defaultWebServers.concat(
 					env: {
 						...process.env,
 						CHELIX_E2E_OAUTH_PORT: oauthPort,
-					},
-				}
-			: null,
-		includeProject("onboarding-anthropic")
-			? {
-					command: "./e2e/start-gateway-onboarding-anthropic.sh",
-					cwd: __dirname,
-					url: `${onboardingAnthropicBaseURL}/health`,
-					reuseExistingServer: reuseExistingServer,
-					timeout: 60_000,
-					env: {
-						...process.env,
-						CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT: onboardingAnthropicPort,
 					},
 				}
 			: null,

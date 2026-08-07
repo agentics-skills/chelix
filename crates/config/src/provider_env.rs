@@ -122,7 +122,6 @@ pub fn normalize_provider_name(value: &str) -> Option<String> {
     }
 
     let canonical = match normalized.as_str() {
-        "claude" => "anthropic",
         "google" | "google-gemini" => "gemini",
         "grok" => "xai",
         "z-ai" | "z.ai" | "zhipu" | "zhipu-ai" => "zai",
@@ -155,7 +154,7 @@ mod tests {
     #[test]
     fn generic_provider_env_prefers_namespaced_keys() {
         let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "anthropic".to_string()),
+            ("PROVIDER".to_string(), "gemini".to_string()),
             ("API_KEY".to_string(), "fallback-key".to_string()),
             ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
             ("CHELIX_API_KEY".to_string(), "primary-key".to_string()),
@@ -244,24 +243,20 @@ mod tests {
                 .map(|value| value.as_str()),
             Some("sk-test")
         );
-        assert!(
-            generic_provider_api_key_from_source("anthropic", &env_overrides, |_| None).is_none()
-        );
+        assert!(generic_provider_api_key_from_source("gemini", &env_overrides, |_| None).is_none());
     }
 
     #[test]
     fn generic_provider_source_reports_actual_env_keys() {
         let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "anthropic".to_string()),
+            ("PROVIDER".to_string(), "gemini".to_string()),
             ("API_KEY".to_string(), "sk-test".to_string()),
         ]);
 
         assert_eq!(
-            generic_provider_env_source_for_provider_from_source(
-                "anthropic",
-                &env_overrides,
-                |_| None,
-            )
+            generic_provider_env_source_for_provider_from_source("gemini", &env_overrides, |_| {
+                None
+            },)
             .as_deref(),
             Some("env:PROVIDER+API_KEY")
         );
@@ -274,7 +269,6 @@ mod tests {
         use crate::schema::KNOWN_PROVIDER_NAMES;
 
         let aliases = [
-            "claude",
             "google",
             "google-gemini",
             "grok",

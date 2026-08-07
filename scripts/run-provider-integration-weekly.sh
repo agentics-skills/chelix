@@ -85,7 +85,6 @@ run_openai_live_e2e() {
 echo "Running full provider integration workflow locally..."
 
 run_provider_test moonshot moonshot_integration MOONSHOT_API_KEY
-run_provider_test anthropic anthropic_integration ANTHROPIC_API_KEY
 run_provider_test openai openai_integration OPENAI_API_KEY
 run_provider_test openrouter openrouter_integration OPENROUTER_API_KEY
 run_provider_test kimi-code kimi_code_integration KIMI_API_KEY

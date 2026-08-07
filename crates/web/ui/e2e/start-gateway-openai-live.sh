@@ -60,7 +60,6 @@ if [ -z "${CARGO_HOME:-}" ] && [ -n "${ORIGINAL_HOME}" ]; then
 fi
 export HOME="${HOME_DIR}"
 
-unset ANTHROPIC_API_KEY
 unset GEMINI_API_KEY
 unset XAI_API_KEY
 unset OPENROUTER_API_KEY

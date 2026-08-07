@@ -19,10 +19,6 @@ export interface ApiKeyHelp {
 }
 
 const KEY_SOURCE_BY_PROVIDER: Record<string, KeySource> = {
-	anthropic: {
-		url: "https://console.anthropic.com/settings/keys",
-		label: "Anthropic Console",
-	},
 	openai: {
 		url: "https://platform.openai.com/api-keys",
 		label: "OpenAI Platform",

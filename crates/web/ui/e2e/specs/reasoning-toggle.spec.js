@@ -5,9 +5,9 @@ const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "
 
 function reasoningModel() {
 	return modelRecord({
-		id: "anthropic::claude-opus-4-5",
-		displayName: "Claude Opus 4.5",
-		provider: "anthropic",
+		id: "openai::gpt-5.2",
+		displayName: "GPT-5.2",
+		provider: "openai",
 		supportedEfforts: REASONING_EFFORTS,
 		reasoningSummary: "detailed",
 		reasoningInclude: ["reasoning.encrypted_content"],
@@ -56,11 +56,7 @@ test.describe("reasoning effort toggle", () => {
 	test("reasoning combo is hidden when model does not support reasoning", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[nonReasoningModel()],
-			"openai::gpt-4o",
-		);
+		await setMockModels(page, [nonReasoningModel()], "openai::gpt-4o");
 
 		const reasoningCombo = page.locator("#reasoningCombo");
 		await expect(reasoningCombo).toBeHidden();
@@ -70,11 +66,7 @@ test.describe("reasoning effort toggle", () => {
 	test("reasoning combo appears when model supports reasoning", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[reasoningModel()],
-			"anthropic::claude-opus-4-5",
-		);
+		await setMockModels(page, [reasoningModel()], "openai::gpt-5.2");
 
 		const reasoningCombo = page.locator("#reasoningCombo");
 		await expect(reasoningCombo).toBeVisible();
@@ -84,11 +76,7 @@ test.describe("reasoning effort toggle", () => {
 	test("clicking toggle shows exactly the registry-supported efforts", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[reasoningModel()],
-			"anthropic::claude-opus-4-5",
-		);
+		await setMockModels(page, [reasoningModel()], "openai::gpt-5.2");
 
 		const comboBtn = page.locator("#reasoningComboBtn");
 		await expect(comboBtn).toBeVisible();
@@ -114,11 +102,7 @@ test.describe("reasoning effort toggle", () => {
 	test("selecting effort level updates label and closes dropdown", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[reasoningModel()],
-			"anthropic::claude-opus-4-5",
-		);
+		await setMockModels(page, [reasoningModel()], "openai::gpt-5.2");
 
 		const comboBtn = page.locator("#reasoningComboBtn");
 		await expect(comboBtn).toBeVisible();
@@ -141,11 +125,7 @@ test.describe("reasoning effort toggle", () => {
 	test("session restore honors explicit reasoningEffort when model has no suffix", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[reasoningModel()],
-			"anthropic::claude-opus-4-5",
-		);
+		await setMockModels(page, [reasoningModel()], "openai::gpt-5.2");
 
 		await page.evaluate(async (model) => {
 			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
@@ -155,7 +135,7 @@ test.describe("reasoning effort toggle", () => {
 			switchModule.restoreSessionState({
 				id: 0,
 				key: "main",
-				model: "anthropic::claude-opus-4-5",
+				model: "openai::gpt-5.2",
 				reasoningEffort: "high",
 			});
 		});
@@ -198,12 +178,7 @@ test.describe("reasoning effort toggle", () => {
 		});
 
 		// Set up a reasoning model and select high effort
-		await setMockModels(
-			page,
-			[reasoningModel()],
-			"anthropic::claude-opus-4-5",
-			"high",
-		);
+		await setMockModels(page, [reasoningModel()], "openai::gpt-5.2", "high");
 
 		const chatInput = page.locator("#chatInput");
 		await chatInput.fill("hello");
@@ -211,7 +186,7 @@ test.describe("reasoning effort toggle", () => {
 
 		const payloads = await page.evaluate(() => window.__chatSendPayloads);
 		expect(payloads.length).toBeGreaterThan(0);
-		expect(payloads[0].model).toBe("anthropic::claude-opus-4-5");
+		expect(payloads[0].model).toBe("openai::gpt-5.2");
 		expect(payloads[0].reasoningEffort).toBe("high");
 
 		expect(pageErrors).toEqual([]);
@@ -220,18 +195,14 @@ test.describe("reasoning effort toggle", () => {
 	test("model dropdown shows registered models once", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[reasoningModel()],
-			"anthropic::claude-opus-4-5",
-		);
+		await setMockModels(page, [reasoningModel()], "openai::gpt-5.2");
 
 		const modelBtn = page.locator("#modelComboBtn");
 		await modelBtn.click();
 
 		const items = page.locator("#modelDropdownList .model-dropdown-item");
 		await expect(items).toHaveCount(1);
-		await expect(items.first()).toContainText("Claude Opus 4.5");
+		await expect(items.first()).toContainText("GPT-5.2");
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -239,12 +210,7 @@ test.describe("reasoning effort toggle", () => {
 	test("switching to non-reasoning model resets effort to Off", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 
-		await setMockModels(
-			page,
-			[reasoningModel(), nonReasoningModel()],
-			"anthropic::claude-opus-4-5",
-			"high",
-		);
+		await setMockModels(page, [reasoningModel(), nonReasoningModel()], "openai::gpt-5.2", "high");
 
 		// Verify reasoning is High
 		const label = page.locator("#reasoningComboLabel");
@@ -295,7 +261,7 @@ test.describe("reasoning effort toggle", () => {
 			// Simulate the boot race: sessions.switch restores the reasoning
 			// effort while the model list is still empty (model unresolved),
 			// then the model list arrives afterwards.
-			store.select("anthropic::claude-opus-4-5");
+			store.select("openai::gpt-5.2");
 			store.models.value = [];
 			store.setReasoningEffort("high");
 			store.models.value = [model];

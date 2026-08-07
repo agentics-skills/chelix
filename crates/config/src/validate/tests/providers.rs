@@ -3,17 +3,17 @@ use super::*;
 #[test]
 fn unknown_field_inside_provider_entry() {
     let toml = r#"
-[providers.anthropic]
+[providers.openai]
 api_ky = "sk-test"
 "#;
     let result = validate_toml_str(toml);
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "providers.anthropic.api_ky");
+        .find(|d| d.category == "unknown-field" && d.path == "providers.openai.api_ky");
     assert!(
         unknown.is_some(),
-        "expected unknown-field for 'providers.anthropic.api_ky', got: {:?}",
+        "expected unknown-field for 'providers.openai.api_ky', got: {:?}",
         result.diagnostics
     );
     assert!(unknown.unwrap().message.contains("api_key"));
@@ -22,22 +22,22 @@ api_ky = "sk-test"
 #[test]
 fn misspelled_provider_name_rejected_with_suggestion() {
     let toml = r#"
-[providers.anthrpic]
+[providers.opnai]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
     let diagnostic = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-provider" && d.path == "providers.anthrpic");
+        .find(|d| d.category == "unknown-provider" && d.path == "providers.opnai");
     assert!(
         diagnostic.is_some(),
-        "expected unknown-provider for 'anthrpic', got: {:?}",
+        "expected unknown-provider for 'opnai', got: {:?}",
         result.diagnostics
     );
     let d = diagnostic.unwrap();
     assert_eq!(d.severity, Severity::Error);
-    assert!(d.message.contains("anthropic"));
+    assert!(d.message.contains("openai"));
 }
 
 #[test]
@@ -117,7 +117,7 @@ enabled = true
 #[test]
 fn valid_known_providers_are_accepted() {
     let toml = r#"
-[providers.anthropic]
+[providers.gemini]
 enabled = true
 
 [providers.openai]
@@ -211,7 +211,7 @@ enabled = true
 #[test]
 fn non_custom_unknown_provider_is_rejected() {
     let toml = r#"
-[providers.typo-anthropc]
+[providers.typo-provider]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
@@ -266,7 +266,7 @@ fn tool_mode_all_values_parse_correctly() {
     for mode in ["auto", "native", "text", "off"] {
         let toml = format!(
             r#"
-[providers.anthropic]
+[providers.openai]
 tool_mode = "{mode}"
 "#
         );
@@ -286,7 +286,7 @@ tool_mode = "{mode}"
 #[test]
 fn cache_retention_field_accepted_in_provider_entry() {
     let toml = r#"
-[providers.anthropic]
+[providers.openrouter]
 enabled = true
 cache_retention = "short"
 "#;
@@ -307,7 +307,7 @@ fn cache_retention_all_values_parse_correctly() {
     for mode in ["none", "short", "long"] {
         let toml = format!(
             r#"
-[providers.anthropic]
+[providers.openrouter]
 cache_retention = "{mode}"
 "#
         );

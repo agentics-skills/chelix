@@ -92,15 +92,12 @@ fn check_providers_with_config_key() {
         api_key: Some(secrecy::Secret::new("sk-test-fake".to_string())),
         ..Default::default()
     };
-    config.providers.providers.insert("anthropic".into(), entry);
+    config.providers.providers.insert("openai".into(), entry);
 
     let section = check_providers(&config);
-    let anthropic_item = section
-        .items
-        .iter()
-        .find(|i| i.message.contains("anthropic"));
-    assert!(anthropic_item.is_some());
-    assert_eq!(anthropic_item.unwrap().status, Status::Ok);
+    let openai_item = section.items.iter().find(|i| i.message.contains("openai"));
+    assert!(openai_item.is_some());
+    assert_eq!(openai_item.unwrap().status, Status::Ok);
 }
 
 #[test]
@@ -371,7 +368,7 @@ fn check_security_api_keys_in_config_warns() {
         api_key: Some(secrecy::Secret::new("sk-test".to_string())),
         ..Default::default()
     };
-    config.providers.providers.insert("anthropic".into(), entry);
+    config.providers.providers.insert("openai".into(), entry);
 
     let temp = tempfile::TempDir::new().unwrap();
     let section = check_security(Some(&config), Some(temp.path()), temp.path());

@@ -59,26 +59,7 @@ the default implementation, which ignores the tools parameter.
 The trait also exposes `supports_tools()`, `reasoning_effort()`, and
 `with_reasoning_effort()` for provider capability discovery.
 
-### 3. Anthropic Provider (`crates/agents/src/providers/anthropic.rs`)
-
-The Anthropic provider implements streaming by:
-
-1. Making a POST request to `/v1/messages` with `"stream": true`
-2. Reading Server-Sent Events (SSE) from the response
-3. Parsing events and yielding appropriate `StreamEvent` variants:
-
-| SSE Event Type                           | StreamEvent                          |
-| ---------------------------------------- | ------------------------------------ |
-| `content_block_start` (text)             | (none, just tracking)                |
-| `content_block_start` (tool_use)         | `ToolCallStart`                      |
-| `content_block_delta` (text_delta)       | `Delta`                              |
-| `content_block_delta` (input_json_delta) | `ToolCallArgumentsDelta`             |
-| `content_block_stop`                     | `ToolCallComplete` (for tool blocks) |
-| `message_delta`                          | (usage tracking)                     |
-| `message_stop`                           | `Done`                               |
-| `error`                                  | `Error`                              |
-
-### 4. Agent Runner (`crates/agents/src/runner/streaming.rs`)
+### 3. Agent Runner (`crates/agents/src/runner/streaming.rs`)
 
 The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 
@@ -111,7 +92,7 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 5. Chat Service (`crates/chat/src/run_with_tools.rs`)
+### 4. Chat Service (`crates/chat/src/run_with_tools.rs`)
 
 The chat service's `run_with_tools()` function:
 
@@ -145,14 +126,14 @@ underscore-prefixed fields are removed from caller-visible tool events. The
 waiting [A2UI](a2ui.md) tool uses this ID with the trusted session and run IDs
 to route a browser action to one active invocation.
 
-### 6. Web Crate (`crates/web/`)
+### 5. Web Crate (`crates/web/`)
 
 The `chelix-web` crate owns the browser-facing layer: HTML templates, static
 assets (JS, CSS, icons), and the axum routes that serve them. It injects its
 routes into the gateway via the `RouteEnhancer` composition pattern, keeping web
 UI concerns separate from API and agent logic in the gateway.
 
-### 7. Frontend (`crates/web/ui/src/`)
+### 6. Frontend (`crates/web/ui/src/`)
 
 The TypeScript frontend handles streaming via WebSocket:
 
@@ -182,8 +163,8 @@ function handleChatDelta(p, isActive, isChatPage) {
 
 ```
 ┌──────────────┐     SSE      ┌──────────────┐   StreamEvent   ┌──────────────┐
-│   Anthropic  │─────────────▶│   Provider   │────────────────▶│    Runner    │
-│     API      │              │              │                 │              │
+│   LLM API    │─────────────▶│   Provider   │────────────────▶│    Runner    │
+│              │              │              │                 │              │
 └──────────────┘              └──────────────┘                 └──────┬───────┘
                                                                       │
                                                                RunnerEvent

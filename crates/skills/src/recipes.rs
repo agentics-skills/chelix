@@ -120,17 +120,16 @@ GBrain gives the agent a persistent knowledge graph with hybrid search \
    bun install -g gbrain
    ```
 
-2. **Reuse Chelix provider keys.** GBrain needs an OpenAI API key for \
-embeddings and optionally an Anthropic key for enrichment. Check which keys \
-Chelix already has:
+2. **Reuse the Chelix OpenAI provider key.** GBrain needs an OpenAI API key for \
+embeddings. Check whether Chelix already has one:
    ```json
    // RPC: providers.available
    ```
-   If `openai` and/or `anthropic` keys are configured, pass them in the \
-`env` block when registering the MCP server (step 3). This avoids asking \
-the user to enter the same keys twice.
+   If an `openai` key is configured, pass it in the `env` block when \
+registering the MCP server (step 3). This avoids asking the user to enter \
+the same key twice.
 
-3. **Register the MCP server** using `mcp.add`, injecting existing provider keys:
+3. **Register the MCP server** using `mcp.add`, injecting the existing provider key:
    ```json
    // RPC: mcp.add
    {
@@ -138,8 +137,7 @@ the user to enter the same keys twice.
      \"command\": \"gbrain\",
      \"args\": [\"serve\", \"--mcp\"],
      \"env\": {
-       \"OPENAI_API_KEY\": \"<from providers.available openai key>\",
-       \"ANTHROPIC_API_KEY\": \"<from providers.available anthropic key, if present>\"
+       \"OPENAI_API_KEY\": \"<from providers.available openai key>\"
      },
      \"display_name\": \"GBrain Knowledge Base\"
    }
@@ -168,7 +166,7 @@ For advanced setup (remote Postgres, custom config), the user can run \
                 command: Some("gbrain".into()),
                 args: vec!["serve".into(), "--mcp".into()],
                 url: None,
-                env_keys: vec!["OPENAI_API_KEY".into(), "ANTHROPIC_API_KEY".into()],
+                env_keys: vec!["OPENAI_API_KEY".into()],
                 display_name: Some("GBrain Knowledge Base".into()),
                 hint: Some(
                     "Persistent knowledge graph with hybrid search for agent long-term memory"

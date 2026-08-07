@@ -772,7 +772,7 @@ fn validate_token_limit(value: Option<u32>, path: &str, diagnostics: &mut Vec<Di
 
 /// Warn about literal (non-env-var) API keys stored directly in the config.
 ///
-/// API keys should be supplied via environment variables (e.g. `${{ANTHROPIC_API_KEY}}`)
+/// API keys should be supplied via environment variables (e.g. `${{OPENAI_API_KEY}}`)
 /// or stored in the credential store (`provider_keys.json`), not hard-coded in
 /// `chelix.toml`.  The config file may be backed up, synced, or accidentally
 /// committed to version control.

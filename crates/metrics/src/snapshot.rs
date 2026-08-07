@@ -407,7 +407,7 @@ mod tests {
 # TYPE chelix_http_requests_total counter
 chelix_http_requests_total{method="GET"} 100
 chelix_http_requests_total{method="POST"} 50
-chelix_llm_completions_total{provider="anthropic",model="claude-3"} 25
+chelix_llm_completions_total{provider="openai",model="gpt-5.2"} 25
 "#;
 
         let snapshot = MetricsSnapshot::from_prometheus_text(text);

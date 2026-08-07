@@ -7,7 +7,6 @@ by Chelix so you can pick the best fit for your use case.
 
 | Goal                       | Provider      | Why                                                                                   |
 | -------------------------- | ------------- | ------------------------------------------------------------------------------------- |
-| **Best overall quality**   | Anthropic     | Claude Sonnet 4 and Opus 4 excel at tool use, long context, and instruction following |
 | **Widest model range**     | OpenAI        | GPT-5.5, GPT-4.1, o3/o4-mini reasoning models, image generation                       |
 | **Best membership option** | OpenAI        | GPT-5.5 is a top-quality model and can be available through memberships               |
 | **Largest context window** | Google Gemini | Up to 1M tokens with Gemini 2.5 Pro                                                   |
@@ -17,7 +16,6 @@ by Chelix so you can pick the best fit for your use case.
 
 | Provider           | Top Models                    | Tool Use | Streaming | Context | Price Tier        | Speed  | Notes                                               |
 | ------------------ | ----------------------------- | -------- | --------- | ------- | ----------------- | ------ | --------------------------------------------------- |
-| **Anthropic**      | Claude Sonnet 4, Opus 4       | Full     | Yes       | 200K    | $$                | Fast   | Best tool-use reliability                           |
 | **OpenAI**         | GPT-5.5, GPT-4.1, o3, o4-mini | Full     | Yes       | 128K-1M | $$ / Subscription | Fast   | Widest ecosystem, GPT-5.5 quality, reasoning models |
 | **Google Gemini**  | Gemini 2.5 Pro, 2.5 Flash     | Full     | Yes       | 1M      | $                 | Fast   | Largest context, competitive pricing                |
 | **xAI**            | Grok 3, Grok 3 Mini           | Yes      | Yes       | 128K    | $$                | Fast   | Strong reasoning capabilities                       |
@@ -42,15 +40,13 @@ by Chelix so you can pick the best fit for your use case.
 ### For personal projects or experimentation
 
 Start with **Google Gemini** for a large context window, or use an existing
-OpenAI, Anthropic, or OpenAI Codex account.
+OpenAI or OpenAI Codex account.
 
 ### For production agent workflows
 
-**Anthropic** and **OpenAI** are the most battle-tested for tool use and complex
-multi-step tasks. Anthropic's Claude models tend to follow instructions
-precisely; OpenAI offers a broader model range including GPT-5.5 and reasoning
-models (o3, o4-mini). GPT-5.5 is especially strong when you want high overall
-quality and can use membership-based access.
+**OpenAI** offers a broad model range including GPT-5.5 and reasoning models
+(o3, o4-mini). GPT-5.5 is especially strong when you want high overall quality
+and can use membership-based access.
 
 ### For access to many models
 

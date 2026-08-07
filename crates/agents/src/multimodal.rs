@@ -5,10 +5,7 @@
 //! instead of raw JSON prevents missing fields at compile time and documents the
 //! expected API formats.
 //!
-//! References:
-//! - OpenAI: <https://platform.openai.com/docs/guides/vision>
-//! - Anthropic: <https://docs.anthropic.com/claude/docs/vision>
-//! - Gemini: <https://ai.google.dev/gemini-api/docs/vision>
+//! Reference: <https://platform.openai.com/docs/guides/vision>
 
 use serde::{Deserialize, Serialize};
 
@@ -76,62 +73,6 @@ impl OpenAiContent {
 }
 
 // ============================================================================
-// Anthropic Multimodal Types (Messages API)
-// ============================================================================
-
-/// Content block for Anthropic multimodal messages.
-///
-/// Anthropic uses a discriminated union with `type` field:
-/// ```json
-/// { "type": "text", "text": "..." }
-/// { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "..." } }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AnthropicContent {
-    /// Text content block.
-    Text {
-        /// The text content.
-        text: String,
-    },
-    /// Image content block.
-    Image {
-        /// The image source.
-        source: AnthropicImageSource,
-    },
-}
-
-/// Image source for Anthropic vision.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AnthropicImageSource {
-    /// Base64-encoded image data.
-    Base64 {
-        /// MIME type: "image/png", "image/jpeg", "image/gif", "image/webp".
-        media_type: String,
-        /// Base64-encoded image data (without the data URI prefix).
-        data: String,
-    },
-}
-
-impl AnthropicContent {
-    /// Create a text content block.
-    pub fn text(text: impl Into<String>) -> Self {
-        Self::Text { text: text.into() }
-    }
-
-    /// Create an image content block from base64 data.
-    pub fn image_base64(media_type: impl Into<String>, data: impl Into<String>) -> Self {
-        Self::Image {
-            source: AnthropicImageSource::Base64 {
-                media_type: media_type.into(),
-                data: data.into(),
-            },
-        }
-    }
-}
-
-// ============================================================================
 // Tool Result Content Types
 // ============================================================================
 
@@ -149,8 +90,6 @@ pub enum ToolResultContent {
     Text(String),
     /// OpenAI-style multimodal content array.
     OpenAiMultimodal(Vec<OpenAiContent>),
-    /// Anthropic-style multimodal content array.
-    AnthropicMultimodal(Vec<AnthropicContent>),
 }
 
 impl ToolResultContent {
@@ -162,11 +101,6 @@ impl ToolResultContent {
     /// Create an OpenAI-style multimodal tool result.
     pub fn openai_multimodal(blocks: Vec<OpenAiContent>) -> Self {
         Self::OpenAiMultimodal(blocks)
-    }
-
-    /// Create an Anthropic-style multimodal tool result.
-    pub fn anthropic_multimodal(blocks: Vec<AnthropicContent>) -> Self {
-        Self::AnthropicMultimodal(blocks)
     }
 }
 
@@ -275,80 +209,6 @@ mod tests {
         assert_eq!(message["content"][1]["type"], "image_url");
     }
 
-    // ── Anthropic Content Tests ────────────────────────────────────────
-
-    #[test]
-    fn anthropic_text_content_serializes_correctly() {
-        let content = AnthropicContent::text("Hello, world!");
-        let json = serde_json::to_value(&content).unwrap();
-
-        assert_eq!(json["type"], "text");
-        assert_eq!(json["text"], "Hello, world!");
-    }
-
-    #[test]
-    fn anthropic_image_content_serializes_correctly() {
-        let content = AnthropicContent::image_base64("image/png", "iVBORw0KGgo");
-        let json = serde_json::to_value(&content).unwrap();
-
-        assert_eq!(json["type"], "image");
-        assert_eq!(json["source"]["type"], "base64");
-        assert_eq!(json["source"]["media_type"], "image/png");
-        assert_eq!(json["source"]["data"], "iVBORw0KGgo");
-    }
-
-    #[test]
-    fn anthropic_content_deserializes_text() {
-        let json = serde_json::json!({
-            "type": "text",
-            "text": "Hello"
-        });
-        let content: AnthropicContent = serde_json::from_value(json).unwrap();
-        assert!(matches!(content, AnthropicContent::Text { text } if text == "Hello"));
-    }
-
-    #[test]
-    fn anthropic_content_deserializes_image() {
-        let json = serde_json::json!({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/jpeg",
-                "data": "ABC123"
-            }
-        });
-        let content: AnthropicContent = serde_json::from_value(json).unwrap();
-        match content {
-            AnthropicContent::Image { source } => match source {
-                AnthropicImageSource::Base64 { media_type, data } => {
-                    assert_eq!(media_type, "image/jpeg");
-                    assert_eq!(data, "ABC123");
-                },
-            },
-            _ => panic!("expected image content"),
-        }
-    }
-
-    #[test]
-    fn anthropic_multimodal_message_format() {
-        // Test the expected format for a multimodal user message
-        let content = vec![
-            AnthropicContent::text("What is in this image?"),
-            AnthropicContent::image_base64("image/png", "iVBORw0KGgo"),
-        ];
-        let message = serde_json::json!({
-            "role": "user",
-            "content": content,
-        });
-
-        assert_eq!(message["role"], "user");
-        assert!(message["content"].is_array());
-        assert_eq!(message["content"].as_array().unwrap().len(), 2);
-        assert_eq!(message["content"][0]["type"], "text");
-        assert_eq!(message["content"][1]["type"], "image");
-        assert_eq!(message["content"][1]["source"]["type"], "base64");
-    }
-
     // ── Tool Result Content Tests ──────────────────────────────────────
 
     #[test]
@@ -365,18 +225,6 @@ mod tests {
         let result = ToolResultContent::openai_multimodal(vec![
             OpenAiContent::text("Screenshot captured"),
             OpenAiContent::image_data_uri("data:image/png;base64,ABC"),
-        ]);
-        let json = serde_json::to_value(&result).unwrap();
-
-        assert!(json.is_array());
-        assert_eq!(json.as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn tool_result_anthropic_multimodal_serializes_as_array() {
-        let result = ToolResultContent::anthropic_multimodal(vec![
-            AnthropicContent::text("Screenshot captured"),
-            AnthropicContent::image_base64("image/png", "ABC"),
         ]);
         let json = serde_json::to_value(&result).unwrap();
 
@@ -457,46 +305,12 @@ mod tests {
         assert_eq!(arr[1]["image_url"]["detail"], "high");
     }
 
-    #[test]
-    fn anthropic_format_matches_api_spec() {
-        // Verify our types match the Anthropic API specification for vision
-        // https://docs.anthropic.com/claude/docs/vision
-        let content = vec![
-            AnthropicContent::text("What's in this image?"),
-            AnthropicContent::Image {
-                source: AnthropicImageSource::Base64 {
-                    media_type: "image/png".into(),
-                    data: "iVBORw0KGgo".into(),
-                },
-            },
-        ];
-
-        let json = serde_json::to_value(&content).unwrap();
-        let arr = json.as_array().unwrap();
-
-        // First element: text
-        assert_eq!(arr[0]["type"], "text");
-        assert!(arr[0]["text"].is_string());
-
-        // Second element: image
-        assert_eq!(arr[1]["type"], "image");
-        assert!(arr[1]["source"].is_object());
-        assert_eq!(arr[1]["source"]["type"], "base64");
-        assert_eq!(arr[1]["source"]["media_type"], "image/png");
-        assert!(arr[1]["source"]["data"].is_string());
-    }
-
     // ── Edge Case Tests ────────────────────────────────────────────────
 
     #[test]
     fn empty_multimodal_content_arrays() {
         let empty_openai: Vec<OpenAiContent> = vec![];
         let json = serde_json::to_value(&empty_openai).unwrap();
-        assert!(json.is_array());
-        assert!(json.as_array().unwrap().is_empty());
-
-        let empty_anthropic: Vec<AnthropicContent> = vec![];
-        let json = serde_json::to_value(&empty_anthropic).unwrap();
         assert!(json.is_array());
         assert!(json.as_array().unwrap().is_empty());
     }

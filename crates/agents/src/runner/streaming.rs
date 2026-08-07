@@ -354,7 +354,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         let mut tool_call_args: std::collections::HashMap<usize, String> =
             std::collections::HashMap::new();
         // Map streaming index -> position in the `tool_calls` vec.
-        // The streaming index may not start at 0. Anthropic uses the
+        // The streaming index may not start at 0. Some providers use the
         // content-block index, so a text block at index 0 pushes the tool_use
         // to index 1.
         let mut stream_idx_to_vec_pos: std::collections::HashMap<usize, usize> =
