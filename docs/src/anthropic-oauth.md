@@ -1,8 +1,8 @@
 # Why Chelix Doesn't Support Anthropic OAuth
 
-A common request is browser-based OAuth login for Anthropic, similar to what
-Chelix offers for OpenAI Codex and GitHub Copilot. This page explains why that
-isn't possible and what to do instead.
+A common request is browser-based OAuth login for Anthropic, similar to OpenAI
+Codex authentication in Chelix. This page explains why that isn't possible and
+what to do instead.
 
 ## TL;DR
 

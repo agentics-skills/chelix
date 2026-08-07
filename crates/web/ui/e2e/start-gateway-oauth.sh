@@ -92,7 +92,7 @@ export CHELIX_OAUTH_OPENAI_CODEX_TOKEN_URL="http://127.0.0.1:${MOCK_PORT}/token"
 export CHELIX_OAUTH_OPENAI_CODEX_CLIENT_ID="test-client-id"
 export CHELIX_OAUTH_OPENAI_CODEX_REDIRECT_URI=""
 # Ensure the Add LLM picker shows the OpenAI Codex provider in this e2e project.
-export CHELIX_PROVIDERS__OFFERED='["openai-codex","openai","github-copilot"]'
+export CHELIX_PROVIDERS__OFFERED='["openai-codex","openai"]'
 
 # Prefer a pre-built binary to avoid recompiling every test run.
 BINARY="${CHELIX_BINARY:-}"

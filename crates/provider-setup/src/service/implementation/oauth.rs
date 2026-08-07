@@ -23,7 +23,7 @@ use {
 };
 
 impl LiveProviderSetupService {
-    /// Start a device-flow OAuth for providers like GitHub Copilot.
+    /// Start a device-flow OAuth for providers that support it.
     /// Returns `{ "userCode": "...", "verificationUri": "..." }` for the UI to display.
     async fn oauth_start_device_flow(
         &self,

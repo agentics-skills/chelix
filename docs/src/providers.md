@@ -20,10 +20,9 @@ Configure providers through the web UI or directly in configuration files.
 
 ### OAuth Providers
 
-| Provider           | Config Name      | Notes                                |
-| ------------------ | ---------------- | ------------------------------------ |
-| **OpenAI Codex**   | `openai-codex`   | OAuth flow via web UI                |
-| **GitHub Copilot** | `github-copilot` | Requires active Copilot subscription |
+| Provider         | Config Name    | Notes                 |
+| ---------------- | -------------- | --------------------- |
+| **OpenAI Codex** | `openai-codex` | OAuth flow via web UI |
 
 ### Custom OpenAI-Compatible
 
@@ -235,28 +234,6 @@ Once OpenAI Codex OAuth is connected, agents can use the built-in
 `OPENAI_API_KEY`. Generated images are delivered through the same channel media
 path as screenshots, so supported chat channels receive the image as a native
 attachment.
-
-### GitHub Copilot
-
-GitHub Copilot uses OAuth authentication.
-
-1. Go to **Settings** → **Providers** → **GitHub Copilot**.
-2. Click **Connect**.
-3. Complete the GitHub OAuth flow.
-
-```admonish note title="Docker and cloud deployments"
-GitHub Copilot uses device-flow authentication (a code you enter on github.com),
-so it works from the web UI without extra port configuration. If you prefer the
-CLI:
-
-~~~bash
-docker exec -it chelix chelix auth login --provider github-copilot
-~~~
-```
-
-```admonish info
-Requires an active GitHub Copilot subscription.
-```
 
 ## Switching Models
 

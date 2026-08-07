@@ -544,10 +544,10 @@ mod tests {
 
     #[test]
     fn test_status_equals_429_format() {
-        let raw = "github-copilot API error status=429 Too Many Requests body=quota exceeded";
-        let result = parse_chat_error(raw, Some("github-copilot"));
+        let raw = "openai API error status=429 Too Many Requests body=quota exceeded";
+        let result = parse_chat_error(raw, Some("openai"));
         assert_eq!(result["type"], "rate_limit_exceeded");
-        assert_eq!(result["provider"], "github-copilot");
+        assert_eq!(result["provider"], "openai");
     }
 
     #[test]

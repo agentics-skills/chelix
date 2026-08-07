@@ -136,13 +136,13 @@ port = {port}                           # Port number (auto-generated for this i
 # tables, every discovered model with complete metadata is accepted.
 
 # [providers]
-# offered = ["github-copilot", "openai-codex", "openai", "anthropic", "openrouter", "moonshot", "zai"]
+# offered = ["openai-codex", "openai", "anthropic", "openrouter", "moonshot", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
 #   "anthropic", "openai", "gemini", "xai", "deepinfra",
 #   "openrouter", "moonshot", "zai", "zai-code", "alibaba-coding",
-#   "openai-codex", "github-copilot", "kimi-code"
+#   "openai-codex", "kimi-code"
 
 # ── Anthropic (Claude) ────────────────────────────────────────
 # [providers.anthropic]

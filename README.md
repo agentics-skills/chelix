@@ -91,7 +91,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 
 ## Features
 
-- **AI Gateway** — Multi-provider LLM support (OpenAI Codex, GitHub Copilot, Local), streaming responses, agent loop with sub-agent delegation, session modes, parallel tool execution
+- **AI Gateway** — Multi-provider LLM support, streaming responses, agent loop with sub-agent delegation, session modes, parallel tool execution
 - **Communication** — Web UI, Telegram, Signal, Discord, API access, voice I/O (8 TTS + 7 STT providers), mobile PWA with push notifications
 - **Generative UI** — A2UI v0.9.1 basic-catalog interfaces rendered in web chat with standard event actions returned to the waiting agent tool
 - **Memory & Recall** — Per-agent memory workspaces, embeddings-powered long-term memory, hybrid vector + full-text search, session persistence with auto-compaction, cross-session recall, Cursor-compatible project context, context-file safety scanning
@@ -128,7 +128,7 @@ or sandbox endpoint.
         │  ┌─────▼─────────────────────┐  │
         │  │    Provider Registry      │  │
         │  │  Multiple providers       │  │
-        │  │  (Codex · Copilot · Local)│  │
+        │  │      (Codex · Local)      │  │
         │  └───────────────────────────┘  │
         ├─────────────────────────────────┤
         │  Sessions  │ Memory  │  Hooks   │

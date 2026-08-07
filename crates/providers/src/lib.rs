@@ -8,8 +8,6 @@ pub mod discovered_model;
 pub mod error;
 #[cfg(feature = "provider-genai")]
 pub mod genai_provider;
-#[cfg(feature = "provider-github-copilot")]
-pub mod github_copilot;
 pub mod http;
 #[cfg(feature = "provider-kimi-code")]
 pub mod kimi_code;

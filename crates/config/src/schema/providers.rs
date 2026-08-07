@@ -31,7 +31,6 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     "zai",
     "zai-code",
     // Feature-gated providers
-    "github-copilot",
     "kimi-code",
     "openai-codex",
     // Providers registered via genai/async-openai backends
@@ -273,19 +272,41 @@ impl Default for ProviderEntry {
 }
 
 impl ProvidersConfig {
-    fn normalize_provider_name(value: &str) -> String {
-        value.trim().to_ascii_lowercase()
+    pub(crate) fn is_supported_name(name: &str) -> bool {
+        name.starts_with("custom-") || KNOWN_PROVIDER_NAMES.contains(&name)
+    }
+
+    fn canonical_offered_name(value: &str) -> Option<String> {
+        let normalized = value.trim().to_ascii_lowercase();
+        Self::is_supported_name(&normalized).then_some(normalized)
+    }
+
+    pub(crate) fn invalid_provider_names(&self) -> Vec<(String, String)> {
+        let invalid_sections = self
+            .providers
+            .keys()
+            .filter(|name| !Self::is_supported_name(name))
+            .map(|name| (format!("providers.{name}"), name.clone()));
+        let invalid_offered = self
+            .offered
+            .iter()
+            .enumerate()
+            .filter(|(_, name)| Self::canonical_offered_name(name).is_none())
+            .map(|(index, name)| (format!("providers.offered[{index}]"), name.clone()));
+        invalid_sections.chain(invalid_offered).collect()
     }
 
     fn is_offered(&self, name: &str) -> bool {
         if self.offered.is_empty() {
             return true;
         }
-        let normalized = Self::normalize_provider_name(name);
-        self.offered.iter().any(|entry| {
-            let offered = Self::normalize_provider_name(entry);
-            offered == normalized
-        })
+        let Some(normalized) = Self::canonical_offered_name(name) else {
+            return false;
+        };
+        self.offered
+            .iter()
+            .filter_map(|entry| Self::canonical_offered_name(entry))
+            .any(|offered| offered == normalized)
     }
 
     fn provider_entry(&self, name: &str) -> Option<&ProviderEntry> {

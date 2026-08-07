@@ -25,7 +25,6 @@ by Chelix so you can pick the best fit for your use case.
 | **Z.AI (Zhipu)**   | GLM-4, GLM-4 Air              | Full     | Yes       | 128K    | $                 | Fast   | GLM-4 series, competitive quality                   |
 | **Z.AI Coding**    | CodeGeeX, GLM-4 Code          | Full     | Yes       | 128K    | $                 | Fast   | Optimized for code tasks                            |
 | **Moonshot**       | Kimi                          | Full     | Yes       | 200K    | $                 | Medium | Long context, Chinese/English                       |
-| **GitHub Copilot** | GPT-4o, Claude (via Copilot)  | Full     | Yes       | Varies  | Subscription      | Fast   | Uses existing Copilot subscription                  |
 | **OpenAI Codex**   | Codex models                  | Full     | Yes       | Varies  | $$                | Fast   | OAuth-based, code-focused                           |
 
 ### Price Tier Legend
@@ -43,7 +42,7 @@ by Chelix so you can pick the best fit for your use case.
 ### For personal projects or experimentation
 
 Start with **Google Gemini** for a large context window, or use an existing
-OpenAI, Anthropic, GitHub Copilot, or OpenAI Codex account.
+OpenAI, Anthropic, or OpenAI Codex account.
 
 ### For production agent workflows
 

@@ -145,7 +145,7 @@ impl ChatMessage {
     /// Convert to OpenAI-compatible JSON format.
     ///
     /// Used by providers that speak the OpenAI Chat Completions API:
-    /// OpenAI, OpenRouter, Copilot, Kimi, etc.
+    /// OpenAI, OpenRouter, Kimi, etc.
     #[must_use]
     pub fn to_openai_value(&self) -> serde_json::Value {
         match self {

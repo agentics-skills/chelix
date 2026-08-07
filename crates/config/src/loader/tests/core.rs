@@ -26,8 +26,8 @@ fn parse_env_value_string() {
 #[test]
 fn parse_env_value_json_array() {
     assert_eq!(
-        parse_env_value("[\"openai\",\"github-copilot\"]"),
-        serde_json::json!(["openai", "github-copilot"])
+        parse_env_value("[\"openai\",\"openai-codex\"]"),
+        serde_json::json!(["openai", "openai-codex"])
     );
 }
 
@@ -134,10 +134,64 @@ fn apply_env_overrides_mcp_request_timeout() {
 fn apply_env_overrides_providers_offered_array() {
     let vars = vec![(
         "CHELIX_PROVIDERS__OFFERED".into(),
-        "[\"openai\",\"github-copilot\"]".into(),
+        "[\"openai\",\"openai-codex\"]".into(),
     )];
     let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
-    assert_eq!(config.providers.offered, vec!["openai", "github-copilot"]);
+    assert_eq!(config.providers.offered, vec!["openai", "openai-codex"]);
+}
+
+#[test]
+fn apply_env_overrides_rejects_unknown_offered_provider() {
+    let vars = vec![(
+        "CHELIX_PROVIDERS__OFFERED".into(),
+        "[\"openai\",\"unsupported-provider\"]".into(),
+    )];
+    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
+        .expect_err("unknown offered provider must fail");
+    assert!(
+        error.to_string().contains("providers.offered[1]"),
+        "error should identify the unsupported provider: {error}"
+    );
+}
+
+#[test]
+fn apply_env_overrides_rejects_noncanonical_offered_provider_names() {
+    for name in ["claude", "google", "alibaba", "openai_codex"] {
+        let vars = vec![("CHELIX_PROVIDERS__OFFERED".into(), format!("[\"{name}\"]"))];
+        let error =
+            apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
+                .expect_err("noncanonical offered provider must fail");
+        assert!(
+            error.to_string().contains("providers.offered[0]"),
+            "error should identify noncanonical provider {name:?}: {error}"
+        );
+    }
+}
+
+#[test]
+fn parse_config_rejects_unknown_provider_section() {
+    let error = parse_config(
+        "[providers.unsupported-provider]\nenabled = true\n",
+        std::path::Path::new("chelix.toml"),
+    )
+    .expect_err("unknown provider section must fail");
+    assert!(
+        error.to_string().contains("providers.unsupported-provider"),
+        "error should identify the unsupported provider: {error}"
+    );
+}
+
+#[test]
+fn parse_config_rejects_noncanonical_offered_provider_names() {
+    for name in ["claude", "google", "alibaba", "openai_codex"] {
+        let raw = format!("[providers]\noffered = [\"{name}\"]\n");
+        let error = parse_config(&raw, std::path::Path::new("chelix.toml"))
+            .expect_err("noncanonical offered provider must fail");
+        assert!(
+            error.to_string().contains("providers.offered[0]"),
+            "error should identify noncanonical provider {name:?}: {error}"
+        );
+    }
 }
 
 #[test]
