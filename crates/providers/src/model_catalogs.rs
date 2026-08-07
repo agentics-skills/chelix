@@ -186,7 +186,7 @@ mod tests {
         // provider registration in `registry/registration.rs` (e.g. a new
         // `register_*_providers` method gated behind a cargo feature), add its
         // config name here too.
-        provider_names.extend_from_slice(&["github-copilot", "kimi-code", "openai-codex", "xai"]);
+        provider_names.extend_from_slice(&["kimi-code", "openai-codex", "xai"]);
 
         for name in &provider_names {
             assert!(

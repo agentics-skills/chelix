@@ -20,23 +20,23 @@ api_ky = "sk-test"
 }
 
 #[test]
-fn misspelled_provider_name_warned_with_suggestion() {
+fn misspelled_provider_name_rejected_with_suggestion() {
     let toml = r#"
 [providers.anthrpic]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
-    let warning = result
+    let diagnostic = result
         .diagnostics
         .iter()
         .find(|d| d.category == "unknown-provider" && d.path == "providers.anthrpic");
     assert!(
-        warning.is_some(),
+        diagnostic.is_some(),
         "expected unknown-provider for 'anthrpic', got: {:?}",
         result.diagnostics
     );
-    let d = warning.unwrap();
-    assert_eq!(d.severity, Severity::Warning);
+    let d = diagnostic.unwrap();
+    assert_eq!(d.severity, Severity::Error);
     assert!(d.message.contains("anthropic"));
 }
 
@@ -44,7 +44,7 @@ enabled = true
 fn providers_offered_key_not_treated_as_provider_name() {
     let toml = r#"
 [providers]
-offered = ["openai", "github-copilot"]
+offered = ["openai", "openai-codex"]
 "#;
     let result = validate_toml_str(toml);
     let offered_warning = result
@@ -59,24 +59,63 @@ offered = ["openai", "github-copilot"]
 }
 
 #[test]
-fn custom_provider_name_warned_without_close_match() {
+fn unknown_offered_provider_is_rejected() {
+    let toml = r#"
+[providers]
+offered = ["openai", "unsupported-provider"]
+"#;
+    let result = validate_toml_str(toml);
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|d| d.category == "unknown-provider" && d.path == "providers.offered[1]")
+        .expect("unsupported offered provider should be rejected");
+    assert_eq!(diagnostic.severity, Severity::Error);
+}
+
+#[test]
+fn noncanonical_offered_provider_names_are_rejected() {
+    for name in ["claude", "google", "alibaba", "openai_codex"] {
+        let toml = format!(
+            r#"
+[providers]
+offered = ["{name}"]
+"#
+        );
+        let result = validate_toml_str(&toml);
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|d| d.category == "unknown-provider" && d.path == "providers.offered[0]")
+            .unwrap_or_else(|| {
+                panic!(
+                    "noncanonical provider {name:?} should be rejected: {:?}",
+                    result.diagnostics
+                )
+            });
+        assert_eq!(diagnostic.severity, Severity::Error);
+    }
+}
+
+#[test]
+fn provider_without_custom_prefix_is_rejected() {
     let toml = r#"
 [providers.my_custom_llm]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
-    let warning = result
+    let diagnostic = result
         .diagnostics
         .iter()
         .find(|d| d.category == "unknown-provider");
-    assert!(warning.is_some());
-    let d = warning.unwrap();
-    assert_eq!(d.severity, Severity::Warning);
-    assert!(d.message.contains("custom providers are valid"));
+    assert!(diagnostic.is_some());
+    let d = diagnostic.unwrap();
+    assert_eq!(d.severity, Severity::Error);
+    assert!(d.message.contains("custom-"));
 }
 
 #[test]
-fn valid_known_providers_not_warned() {
+fn valid_known_providers_are_accepted() {
     let toml = r#"
 [providers.anthropic]
 enabled = true
@@ -100,7 +139,7 @@ enabled = true
 }
 
 #[test]
-fn all_canonical_providers_accepted_without_warning() {
+fn all_canonical_providers_are_accepted() {
     use crate::schema::KNOWN_PROVIDER_NAMES;
     for name in KNOWN_PROVIDER_NAMES {
         let toml = format!(
@@ -152,7 +191,7 @@ CUSTOM_VAR = "some-value"
 }
 
 #[test]
-fn custom_provider_prefix_suppresses_unknown_provider_warning() {
+fn custom_provider_prefix_is_accepted() {
     let toml = r#"
 [providers.custom-together-ai]
 enabled = true
@@ -170,21 +209,18 @@ enabled = true
 }
 
 #[test]
-fn non_custom_unknown_provider_still_warns() {
+fn non_custom_unknown_provider_is_rejected() {
     let toml = r#"
 [providers.typo-anthropc]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
-    let unknown_providers: Vec<_> = result
+    let unknown_provider = result
         .diagnostics
         .iter()
-        .filter(|d| d.category == "unknown-provider")
-        .collect();
-    assert!(
-        !unknown_providers.is_empty(),
-        "misspelled provider should trigger unknown-provider warning"
-    );
+        .find(|d| d.category == "unknown-provider")
+        .expect("misspelled provider should trigger unknown-provider error");
+    assert_eq!(unknown_provider.severity, Severity::Error);
 }
 
 #[test]

@@ -141,17 +141,17 @@ fn check_providers_disabled_skipped() {
 fn check_providers_oauth_skipped() {
     let mut config = ChelixConfig::default();
     config.providers.providers.insert(
-        "github-copilot".to_string(),
+        "openai-codex".to_string(),
         chelix_config::schema::ProviderEntry::default(),
     );
 
     let section = check_providers(&config);
-    let gh_item = section
+    let codex_item = section
         .items
         .iter()
-        .find(|i| i.message.contains("github-copilot"));
-    assert!(gh_item.is_some());
-    assert_eq!(gh_item.unwrap().status, Status::Skip);
+        .find(|i| i.message.contains("openai-codex"));
+    assert!(codex_item.is_some());
+    assert_eq!(codex_item.unwrap().status, Status::Skip);
 }
 
 #[test]

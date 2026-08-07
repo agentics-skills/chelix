@@ -212,7 +212,7 @@ async fn available_respects_offered_order() {
         &HashMap::new(),
     )));
     let config = ProvidersConfig {
-        offered: vec!["github-copilot".into(), "openai".into(), "anthropic".into()],
+        offered: vec!["openai-codex".into(), "openai".into(), "anthropic".into()],
         ..ProvidersConfig::default()
     };
     let svc = live_provider_setup_service(registry, config, None);
@@ -225,10 +225,10 @@ async fn available_respects_offered_order() {
         .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
         .collect();
 
-    let github_copilot_idx = names
+    let openai_codex_idx = names
         .iter()
-        .position(|name| *name == "github-copilot")
-        .expect("github-copilot should be present");
+        .position(|name| *name == "openai-codex")
+        .expect("openai-codex should be present");
     let openai_idx = names
         .iter()
         .position(|name| *name == "openai")
@@ -239,7 +239,7 @@ async fn available_respects_offered_order() {
         .expect("anthropic should be present");
 
     assert!(
-        github_copilot_idx < openai_idx && openai_idx < anthropic_idx,
+        openai_codex_idx < openai_idx && openai_idx < anthropic_idx,
         "offered provider order should be preserved, got: {names:?}"
     );
 }
@@ -803,7 +803,7 @@ async fn oauth_complete_rejects_provider_mismatch_without_consuming_state() {
 
     let mismatch_result = svc
         .oauth_complete(serde_json::json!({
-            "provider": "github-copilot",
+            "provider": "kimi-code",
             "callback": format!("http://localhost:1455/auth/callback?code=fake&state={state}"),
         }))
         .await;
@@ -874,14 +874,7 @@ async fn available_includes_new_providers() {
         .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
         .collect();
 
-    for expected in [
-        "openrouter",
-        "moonshot",
-        "zai",
-        "zai-code",
-        "kimi-code",
-        "github-copilot",
-    ] {
+    for expected in ["openrouter", "moonshot", "zai", "zai-code", "kimi-code"] {
         assert!(
             names.contains(&expected),
             "{expected} not found in available providers: {names:?}"

@@ -483,6 +483,32 @@ fn providers_config_offered_controls_enablement() {
 }
 
 #[test]
+fn providers_config_offered_matches_canonical_names_case_insensitively() {
+    let config = ProvidersConfig {
+        offered: vec![" OpenAI-Codex ".into()],
+        ..ProvidersConfig::default()
+    };
+    assert!(config.is_enabled("openai-codex"));
+    assert!(!config.is_enabled("openai_codex"));
+}
+
+#[test]
+fn providers_config_invalid_names_match_runtime_behavior() {
+    let config = ProvidersConfig {
+        offered: vec!["claude".into(), "openai_codex".into()],
+        ..ProvidersConfig::default()
+    };
+    assert_eq!(config.invalid_provider_names(), vec![
+        ("providers.offered[0]".into(), "claude".into()),
+        ("providers.offered[1]".into(), "openai_codex".into()),
+    ]);
+    assert!(!config.is_enabled("claude"));
+    assert!(!config.is_enabled("anthropic"));
+    assert!(!config.is_enabled("openai_codex"));
+    assert!(!config.is_enabled("openai-codex"));
+}
+
+#[test]
 fn providers_config_enabled_flag_still_applies_with_offered_allowlist() {
     let mut config = ProvidersConfig {
         offered: vec!["openai".into()],

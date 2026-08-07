@@ -146,30 +146,23 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
     // 3. Deprecation warnings on raw TOML keys
     let conflicting_replacements = semantic::check_deprecated_fields(&toml_value, &mut diagnostics);
 
-    // 4. Provider name hints
-    if let Some(providers) = toml_value.get("providers").and_then(|v| v.as_table()) {
-        semantic::check_provider_names(providers, &mut diagnostics);
-    }
-
-    // 5. Type check - attempt full deserialization
-    if let Err(e) = toml::from_str::<ChelixConfig>(toml_str) {
-        let message = format!("type error: {e}");
-        if !semantic::should_suppress_deprecated_conflict_type_error(
-            &message,
-            &conflicting_replacements,
-        ) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                category: "type-error",
-                path: String::new(),
-                message,
-            });
-        }
-    }
-
-    // 6. Semantic warnings on parsed config (only if it parses)
-    if let Ok(config) = toml::from_str::<ChelixConfig>(toml_str) {
-        semantic::check_semantic_warnings(&config, &mut diagnostics);
+    // 4. Type check and semantic checks on the parsed config
+    match toml::from_str::<ChelixConfig>(toml_str) {
+        Ok(config) => semantic::check_semantic_warnings(&config, &mut diagnostics),
+        Err(error) => {
+            let message = format!("type error: {error}");
+            if !semantic::should_suppress_deprecated_conflict_type_error(
+                &message,
+                &conflicting_replacements,
+            ) {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    category: "type-error",
+                    path: String::new(),
+                    message,
+                });
+            }
+        },
     }
 
     ValidationResult {

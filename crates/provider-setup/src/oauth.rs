@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn provider_headers_are_none_for_non_kimi() {
-        assert!(build_provider_headers("github-copilot").is_none());
+        assert!(build_provider_headers("openai-codex").is_none());
     }
 
     #[test]
@@ -328,12 +328,12 @@ mod tests {
         let home = TokenStore::with_path(temp.path().join("home-oauth.json"));
 
         assert!(!has_oauth_tokens_for_provider(
-            "github-copilot",
+            "kimi-code",
             &primary,
             Some(&home)
         ));
 
-        home.save("github-copilot", &OAuthTokens {
+        home.save("kimi-code", &OAuthTokens {
             access_token: Secret::new("home-token".to_string()),
             refresh_token: None,
             id_token: None,
@@ -343,7 +343,7 @@ mod tests {
         .expect("save home token");
 
         assert!(has_oauth_tokens_for_provider(
-            "github-copilot",
+            "kimi-code",
             &primary,
             Some(&home)
         ));

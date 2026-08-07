@@ -5,20 +5,6 @@ use crate::{config_dir::chelix_config_dir, types::OAuthConfig};
 /// Default OAuth configurations for known providers.
 fn builtin_defaults() -> HashMap<String, OAuthConfig> {
     let mut m = HashMap::new();
-    // GitHub Copilot uses device flow (handled by the provider itself),
-    // but we store a config entry so `load_oauth_config` returns Some
-    // and the gateway recognises it as an OAuth provider.
-    m.insert("github-copilot".into(), OAuthConfig {
-        client_id: "Iv1.b507a08c87ecfe98".into(),
-        client_secret: None,
-        auth_url: "https://github.com/login/device/code".into(),
-        token_url: "https://github.com/login/oauth/access_token".into(),
-        redirect_uri: String::new(),
-        resource: None,
-        scopes: vec![],
-        extra_auth_params: vec![],
-        device_flow: true,
-    });
     m.insert("kimi-code".into(), OAuthConfig {
         client_id: "17e5f671-d194-4dfb-9706-5516cb48c098".into(),
         client_secret: None,
@@ -110,19 +96,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn load_github_copilot_config() {
-        let config = load_oauth_config("github-copilot").expect("should have github-copilot");
-        assert_eq!(config.client_id, "Iv1.b507a08c87ecfe98");
-        assert!(config.device_flow);
-        assert!(config.redirect_uri.is_empty());
-        assert_eq!(config.auth_url, "https://github.com/login/device/code");
-        assert_eq!(
-            config.token_url,
-            "https://github.com/login/oauth/access_token"
-        );
-    }
-
-    #[test]
     fn load_openai_codex_config() {
         let config = load_oauth_config("openai-codex").expect("should have openai-codex");
         assert!(!config.device_flow);
@@ -148,15 +121,15 @@ mod tests {
     }
 
     #[test]
-    fn callback_port_empty_redirect_uri() {
-        let config = load_oauth_config("github-copilot").unwrap();
-        // Empty redirect_uri should return default port
+    fn callback_port_with_redirect_uri() {
+        let config = load_oauth_config("openai-codex").unwrap();
         assert_eq!(callback_port(&config), 1455);
     }
 
     #[test]
-    fn callback_port_with_redirect_uri() {
-        let config = load_oauth_config("openai-codex").unwrap();
+    fn callback_port_empty_redirect_uri_uses_default() {
+        let config = load_oauth_config("kimi-code").unwrap();
+        assert!(config.redirect_uri.is_empty());
         assert_eq!(callback_port(&config), 1455);
     }
 }

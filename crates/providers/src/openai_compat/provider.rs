@@ -1,7 +1,7 @@
 //! Shared helpers for OpenAI-compatible streaming with tools.
 //!
 //! This module provides reusable functions for parsing OpenAI-style SSE streams
-//! that include tool calls. Used by openai.rs, github_copilot.rs, and kimi_code.rs.
+//! that include tool calls. Used by openai.rs and kimi_code.rs.
 
 use std::collections::{HashMap, HashSet};
 
@@ -821,7 +821,6 @@ fn longest_tag_suffix(text: &str, tag: &str) -> usize {
 ///
 /// This handles the common OpenAI streaming format used by:
 /// - OpenAI API
-/// - GitHub Copilot API
 /// - Kimi Code API
 /// - Any other OpenAI-compatible API
 ///
@@ -951,7 +950,7 @@ pub fn finalize_stream(state: &mut StreamingToolState) -> Vec<StreamEvent> {
 }
 
 // ============================================================================
-// Responses API helpers (shared by openai.rs and github_copilot.rs)
+// Responses API helpers
 // ============================================================================
 
 /// Split system messages into `instructions` and convert the rest to Responses

@@ -39,10 +39,10 @@ You need an LLM provider configured to chat. The fastest options:
 
 Or configure via the web UI: **Settings** → **Providers** → enter your API key.
 
-### Option B: OAuth (Codex / Copilot)
+### Option B: OpenAI Codex OAuth
 
 1. In Chelix, go to **Settings** → **Providers**
-2. Click **OpenAI Codex** or **GitHub Copilot** → **Connect**
+2. Click **OpenAI Codex** → **Connect**
 3. Complete the OAuth flow
 
 See [Providers](providers.md) for the full list of supported providers.

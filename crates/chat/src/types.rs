@@ -571,7 +571,7 @@ pub(crate) fn normalize_provider_key(value: &str) -> String {
 
 pub(crate) fn subscription_provider_rank(provider_name: &str) -> usize {
     match normalize_provider_key(provider_name).as_str() {
-        "openai-codex" | "github-copilot" => 0,
+        "openai-codex" => 0,
         _ => 1,
     }
 }

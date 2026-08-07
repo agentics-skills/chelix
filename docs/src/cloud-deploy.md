@@ -40,11 +40,11 @@ Set this to a non-empty label for your deployment target when Chelix runs on a
 remote container platform. When set, Chelix hides local-only provider entries
 from the provider setup page since they cannot run on cloud VMs.
 
-## OAuth Providers (OpenAI Codex, GitHub Copilot)
+## OpenAI Codex OAuth
 
-OAuth providers that redirect to `localhost` (like OpenAI Codex) cannot complete
-the browser flow when Chelix runs on a remote server — `localhost` on the user's
-browser points to their own machine, not the cloud instance.
+OpenAI Codex redirects to `localhost` and cannot complete the browser flow when
+Chelix runs on a remote server — `localhost` on the user's browser points to
+their own machine, not the cloud instance.
 
 **Use the CLI to authenticate instead:**
 
@@ -58,11 +58,6 @@ callback capture fails, Chelix prompts you to paste the callback URL (or
 `code#state`) directly in the terminal. After you log in, tokens are saved to
 the config volume and the running gateway picks them up automatically — no
 restart needed.
-
-```admonish tip
-GitHub Copilot uses device-flow authentication (a code you enter on
-github.com), so it works from the web UI without this workaround.
-```
 
 ## Authentication
 

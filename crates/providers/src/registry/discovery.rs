@@ -229,18 +229,6 @@ fn push_oauth_discoveries(
         ));
     }
 
-    #[cfg(feature = "provider-github-copilot")]
-    if filter_matches("github-copilot")
-        && oauth_discovery_enabled(config, "github-copilot")
-        && should_fetch_models(config, "github-copilot")
-        && crate::github_copilot::has_stored_tokens()
-    {
-        tasks.push((
-            "github-copilot".into(),
-            Box::pin(crate::github_copilot::fetch_models()),
-        ));
-    }
-
     let _ = tasks;
     let _ = config;
     let _ = filter_matches;

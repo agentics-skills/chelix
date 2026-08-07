@@ -68,16 +68,6 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "github-copilot",
-            display_name: "GitHub Copilot",
-            auth_type: AuthType::Oauth,
-            env_key: None,
-            default_base_url: None,
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
             name: "anthropic",
             display_name: "Anthropic",
             auth_type: AuthType::ApiKey,
@@ -247,19 +237,6 @@ mod tests {
         assert!(names.contains(&"zai"), "missing zai");
         assert!(names.contains(&"zai-code"), "missing zai-code");
         assert!(names.contains(&"kimi-code"), "missing kimi-code");
-        // OAuth providers
-        assert!(names.contains(&"github-copilot"), "missing github-copilot");
-    }
-
-    #[test]
-    fn github_copilot_is_oauth_provider() {
-        let providers = known_providers();
-        let copilot = providers
-            .iter()
-            .find(|p| p.name == "github-copilot")
-            .expect("github-copilot not in known_providers");
-        assert_eq!(copilot.auth_type, AuthType::Oauth);
-        assert!(copilot.env_key.is_none());
     }
 
     #[test]

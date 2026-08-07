@@ -67,9 +67,8 @@ pub fn upstream_proxy_url() -> Option<&'static str> {
 /// Supports `http://`, `https://`, `socks5://`, and `socks5h://` schemes.
 pub fn build_http_client(proxy_url: Option<&str>) -> reqwest::Client {
     let mut builder = reqwest::Client::builder();
-    // Set default User-Agent header. Per-request overrides (e.g., GitHub
-    // Copilot's spoofed VS Code UA) will take precedence because
-    // `default_headers` has lower priority than headers set on individual requests.
+    // Set the default User-Agent header. Per-request overrides take precedence
+    // because `default_headers` has lower priority than request headers.
     builder = builder.default_headers(build_default_headers());
     if let Some(url) = proxy_url {
         match reqwest::Proxy::all(url) {

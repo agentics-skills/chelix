@@ -426,8 +426,8 @@ When using the Telegram channel, screenshots are automatically sent to the chat:
 
 ## Handling Model Errors
 
-Some models (particularly Claude via GitHub Copilot) occasionally send malformed
-tool calls with missing required fields. Chelix handles this gracefully:
+Some models occasionally send malformed tool calls with missing required
+fields. Chelix handles this gracefully:
 
 - **Default action**: If `url` is provided but `action` is missing, defaults to
   `navigate`

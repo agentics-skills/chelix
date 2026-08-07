@@ -2,15 +2,11 @@ use {
     super::*,
     crate::{
         container_mounts::sandbox_mount_validation,
-        schema::{
-            ChelixConfig, KNOWN_PROVIDER_NAMES, PartialModelMetadata, SandboxMode, ToolChoice,
-        },
+        schema::{ChelixConfig, PartialModelMetadata, SandboxMode, ToolChoice},
     },
     secrecy::ExposeSecret,
     std::path::Path,
 };
-
-const PROVIDERS_META_KEYS: &[&str] = &["offered", "show_legacy_models"];
 
 pub(super) fn check_deprecated_fields(
     toml_value: &toml::Value,
@@ -98,38 +94,23 @@ fn check_deprecated_ignored_memory_field(
     }
 }
 
-/// Check provider names under `[providers]` and warn about unknown ones.
-pub(super) fn check_provider_names(
-    providers: &toml::map::Map<String, toml::Value>,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    for name in providers.keys() {
-        if PROVIDERS_META_KEYS.contains(&name.as_str()) {
-            continue;
-        }
-        // Custom providers (user-added OpenAI-compatible endpoints) are valid.
-        if name.starts_with("custom-") {
-            continue;
-        }
-        if !KNOWN_PROVIDER_NAMES.contains(&name.as_str()) {
-            let suggestion = suggest(name, KNOWN_PROVIDER_NAMES, 3);
-            let msg = if let Some(s) = suggestion {
-                format!("unknown provider name (did you mean \"{s}\"?)")
-            } else {
-                "unknown provider name (custom providers are valid, but check for typos)".into()
-            };
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "unknown-provider",
-                path: format!("providers.{name}"),
-                message: msg,
-            });
-        }
-    }
-}
-
 /// Run semantic checks on a successfully parsed config.
 pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut Vec<Diagnostic>) {
+    for (path, name) in config.providers.invalid_provider_names() {
+        let suggestion = suggest(&name, crate::schema::KNOWN_PROVIDER_NAMES, 3);
+        let message = if let Some(suggestion) = suggestion {
+            format!("unknown provider name (did you mean \"{suggestion}\"?)")
+        } else {
+            "unknown provider name (custom providers must use the \"custom-\" prefix)".into()
+        };
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "unknown-provider",
+            path,
+            message,
+        });
+    }
+
     let is_localhost = config.server.bind == "127.0.0.1"
         || config.server.bind == "localhost"
         || config.server.bind == "::1";

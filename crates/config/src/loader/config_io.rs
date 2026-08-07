@@ -797,8 +797,10 @@ pub(super) fn apply_env_overrides_with_options(
     }
 
     validate_config_shape(&root, "environment overrides")?;
-    serde_json::from_value(root)
-        .map_err(|source| crate::Error::external("failed to apply env overrides", source))
+    let config: ChelixConfig = serde_json::from_value(root)
+        .map_err(|source| crate::Error::external("failed to apply env overrides", source))?;
+    validate_provider_names(&config.providers, "environment overrides")?;
+    Ok(config)
 }
 
 /// Re-resolve `${VAR}` placeholders in a loaded config using additional overrides.
@@ -850,7 +852,7 @@ pub(super) fn parse_env_value(val: &str) -> serde_json::Value {
     let trimmed = val.trim();
 
     // Support JSON arrays/objects for list-like env overrides, e.g.
-    // CHELIX_PROVIDERS__OFFERED='["openai","github-copilot"]' or '[]'.
+    // CHELIX_PROVIDERS__OFFERED='["openai","openai-codex"]' or '[]'.
     if ((trimmed.starts_with('[') && trimmed.ends_with(']'))
         || (trimmed.starts_with('{') && trimmed.ends_with('}')))
         && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed)
@@ -912,9 +914,29 @@ pub(super) fn set_nested(root: &mut serde_json::Value, path: &[String], val: ser
 pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig> {
     let value = parse_config_value(raw, path)?;
     validate_config_shape(&value, &format!("config {}", path.display()))?;
-    serde_json::from_value(value).map_err(|source| {
+    let config: ChelixConfig = serde_json::from_value(value).map_err(|source| {
         crate::Error::external(format!("invalid config {}", path.display()), source)
-    })
+    })?;
+    validate_provider_names(&config.providers, &format!("config {}", path.display()))?;
+    Ok(config)
+}
+
+fn validate_provider_names(
+    providers: &crate::schema::ProvidersConfig,
+    context: &str,
+) -> crate::Result<()> {
+    let invalid = providers.invalid_provider_names();
+    if invalid.is_empty() {
+        return Ok(());
+    }
+    let paths = invalid
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect::<Vec<_>>();
+    Err(crate::Error::message(format!(
+        "invalid {context}: unknown provider at {}",
+        paths.join(", ")
+    )))
 }
 
 fn validate_config_shape(value: &serde_json::Value, context: &str) -> crate::Result<()> {

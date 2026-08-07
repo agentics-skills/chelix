@@ -102,7 +102,6 @@ impl ProviderRegistry {
         registry.register_openai_compatible(config, env_overrides, discovery);
         registry.register_custom(config, discovery);
         registry.register_openai_codex(config, discovery);
-        registry.register_github_copilot(config, discovery);
         registry.register_kimi_code(config, env_overrides, discovery);
         registry
     }
@@ -148,12 +147,6 @@ impl ProviderRegistry {
             self.remove_provider(&provider_label(config, "openai-codex"));
             self.register_openai_codex(config, discovery);
         }
-        #[cfg(feature = "provider-github-copilot")]
-        if discovery.models.contains_key("github-copilot") {
-            self.remove_provider(&provider_label(config, "github-copilot"));
-            self.register_github_copilot(config, discovery);
-        }
-
         self.models
             .iter()
             .filter(|model| !previous_ids.contains(&model.id))
@@ -402,40 +395,6 @@ impl ProviderRegistry {
 
     #[cfg(not(feature = "provider-openai-codex"))]
     fn register_openai_codex(
-        &mut self,
-        _config: &ProvidersConfig,
-        _discovery: &DiscoveryResult,
-    ) -> usize {
-        0
-    }
-
-    #[cfg(feature = "provider-github-copilot")]
-    fn register_github_copilot(
-        &mut self,
-        config: &ProvidersConfig,
-        discovery: &DiscoveryResult,
-    ) -> usize {
-        if !oauth_discovery_enabled(config, "github-copilot")
-            || !crate::github_copilot::has_stored_tokens()
-        {
-            return 0;
-        }
-        let provider_name = provider_label(config, "github-copilot");
-        let wire_api = config
-            .get("github-copilot")
-            .map(|entry| entry.wire_api)
-            .unwrap_or_default();
-        let models = resolved_models(config, discovery, "github-copilot");
-        self.register_resolved(&provider_name, models, move |model_id| {
-            Arc::new(crate::github_copilot::GitHubCopilotProvider::new(
-                model_id.to_string(),
-                wire_api,
-            ))
-        })
-    }
-
-    #[cfg(not(feature = "provider-github-copilot"))]
-    fn register_github_copilot(
         &mut self,
         _config: &ProvidersConfig,
         _discovery: &DiscoveryResult,

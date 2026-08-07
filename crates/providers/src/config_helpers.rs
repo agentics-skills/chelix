@@ -61,17 +61,14 @@ pub(crate) fn should_fetch_models(config: &ProvidersConfig, provider: &str) -> b
 }
 
 pub(crate) fn subscription_preference_rank(provider_name: &str) -> usize {
-    if matches!(provider_name, "openai-codex" | "github-copilot") {
+    if provider_name == "openai-codex" {
         0
     } else {
         1
     }
 }
 
-#[cfg_attr(
-    not(any(feature = "provider-openai-codex", feature = "provider-github-copilot")),
-    allow(dead_code)
-)]
+#[cfg_attr(not(feature = "provider-openai-codex"), allow(dead_code))]
 pub(crate) fn oauth_discovery_enabled(config: &ProvidersConfig, provider_name: &str) -> bool {
     config.get(provider_name).is_none_or(|entry| entry.enabled)
 }
@@ -88,7 +85,6 @@ mod tests {
             ..ProvidersConfig::default()
         };
         assert!(oauth_discovery_enabled(&config, "openai-codex"));
-        assert!(oauth_discovery_enabled(&config, "github-copilot"));
     }
 
     #[test]
@@ -104,14 +100,6 @@ mod tests {
                 ..Default::default()
             },
         );
-        config.providers.insert(
-            "github-copilot".into(),
-            chelix_config::schema::ProviderEntry {
-                enabled: false,
-                ..Default::default()
-            },
-        );
         assert!(!oauth_discovery_enabled(&config, "openai-codex"));
-        assert!(!oauth_discovery_enabled(&config, "github-copilot"));
     }
 }
