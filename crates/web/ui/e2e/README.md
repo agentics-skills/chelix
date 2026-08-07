@@ -58,7 +58,6 @@ single-project processes so each one starts only its own web server.
 | `auth` | Local: same as `default`; CI: random free port (`CHELIX_E2E_AUTH_PORT`) | `auth.spec.js` | CI uses isolated runtime state |
 | `onboarding` | Random free port (`CHELIX_E2E_ONBOARDING_PORT`) | `onboarding.spec.js` | Separate server without seeded identity |
 | `onboarding-auth` | Random free port (`CHELIX_E2E_ONBOARDING_AUTH_PORT`) | `onboarding-auth.spec.js` | Separate server with remote-auth simulation |
-| `onboarding-anthropic` | Random free port (`CHELIX_E2E_ONBOARDING_ANTHROPIC_PORT`) | `onboarding-anthropic.spec.js` | Separate server proving first-run Anthropic onboarding with zero providers at startup |
 | `openai-live` | Random free port (`CHELIX_E2E_OPENAI_LIVE_PORT`) | `openai-live.spec.js` | Separate server that preserves only the existing OpenAI env and proves a real OpenAI chat turn works |
 
 ## Spec Files
@@ -81,7 +80,6 @@ single-project processes so each one starts only its own web server.
 | `auth.spec.js` | 6 | Password setup, login, wrong password, Bearer auth |
 | `onboarding.spec.js` | 5 | Onboarding redirect, steps, skip, identity input |
 | `onboarding-auth.spec.js` | 1 | Remote onboarding auth flow with setup code and identity save |
-| `onboarding-anthropic.spec.js` | 1 | Anthropic onboarding from empty startup, model discovery, model selection |
 | `openai-live.spec.js` | 1 | Live OpenAI provider smoke test using the existing env and a real chat turn |
 
 ## Shared Helpers

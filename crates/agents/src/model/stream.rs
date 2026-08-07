@@ -48,12 +48,12 @@ pub enum StreamEvent {
     Error(String),
 }
 
-/// LLM provider trait (Anthropic, OpenAI, Google, etc.).
+/// LLM provider trait (OpenAI, Google, and other supported backends).
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     fn name(&self) -> &str;
 
-    /// Model identifier (e.g. "claude-sonnet-4-20250514", "gpt-4o").
+    /// Model identifier (e.g. "gpt-5.2", "gemini-2.5-pro").
     fn id(&self) -> &str;
 
     async fn complete(
@@ -151,7 +151,7 @@ pub trait LlmProvider: Send + Sync {
 
     /// Configured reasoning effort for this provider instance, if any.
     ///
-    /// Providers that support extended thinking (Anthropic, OpenAI o-series)
+    /// Providers that support extended thinking or reasoning
     /// use this value when building API requests.
     fn reasoning_effort(&self) -> Option<ReasoningEffort> {
         None

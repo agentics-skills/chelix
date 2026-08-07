@@ -25,12 +25,11 @@ You'll see output like:
 
 You need an LLM provider configured to chat. The fastest options:
 
-### Option A: API Key (Anthropic, OpenAI, Gemini, etc.)
+### Option A: API Key (OpenAI, Gemini, etc.)
 
 1. Set an API key as an environment variable and restart Chelix:
 
    ```bash
-   export ANTHROPIC_API_KEY="sk-ant-..."   # Anthropic
    export OPENAI_API_KEY="sk-..."          # OpenAI
    export GEMINI_API_KEY="..."             # Google Gemini
    ```

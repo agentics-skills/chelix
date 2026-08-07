@@ -226,14 +226,14 @@ external_url = "http://chelix.local:8080"
 #[test]
 fn plaintext_provider_api_key_warned() {
     let toml = r#"
-[providers.anthropic]
-api_key = "sk-ant-real-key-here"
+[providers.openai]
+api_key = "sk-real-key-here"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "security" && d.path == "providers.anthropic.api_key");
+        .find(|d| d.category == "security" && d.path == "providers.openai.api_key");
     assert!(
         warning.is_some(),
         "expected security warning for plaintext API key, got: {:?}",
@@ -244,14 +244,14 @@ api_key = "sk-ant-real-key-here"
 #[test]
 fn env_var_provider_api_key_not_warned() {
     let toml = r#"
-[providers.anthropic]
-api_key = "${ANTHROPIC_API_KEY}"
+[providers.openai]
+api_key = "${OPENAI_API_KEY}"
 "#;
     let result = validate_toml_str(toml);
     let warning = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "security" && d.path == "providers.anthropic.api_key");
+        .find(|d| d.category == "security" && d.path == "providers.openai.api_key");
     assert!(
         warning.is_none(),
         "env var substitution should not trigger plaintext warning, got: {:?}",

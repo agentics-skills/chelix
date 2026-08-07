@@ -479,7 +479,7 @@ fn providers_config_offered_controls_enablement() {
         ..ProvidersConfig::default()
     };
     assert!(config.is_enabled("openai"));
-    assert!(!config.is_enabled("anthropic"));
+    assert!(!config.is_enabled("gemini"));
 }
 
 #[test]
@@ -495,15 +495,17 @@ fn providers_config_offered_matches_canonical_names_case_insensitively() {
 #[test]
 fn providers_config_invalid_names_match_runtime_behavior() {
     let config = ProvidersConfig {
-        offered: vec!["claude".into(), "openai_codex".into()],
+        offered: vec!["claude".into(), "unsupported".into(), "openai_codex".into()],
         ..ProvidersConfig::default()
     };
     assert_eq!(config.invalid_provider_names(), vec![
         ("providers.offered[0]".into(), "claude".into()),
-        ("providers.offered[1]".into(), "openai_codex".into()),
+        ("providers.offered[1]".into(), "unsupported".into()),
+        ("providers.offered[2]".into(), "openai_codex".into()),
     ]);
     assert!(!config.is_enabled("claude"));
-    assert!(!config.is_enabled("anthropic"));
+    assert!(!config.is_enabled("unsupported"));
+    assert!(!config.is_enabled("gemini"));
     assert!(!config.is_enabled("openai_codex"));
     assert!(!config.is_enabled("openai-codex"));
 }
@@ -811,7 +813,7 @@ fn full_config_with_tool_mode() {
 enabled = true
 tool_mode = "text"
 
-[providers.anthropic]
+[providers.gemini]
 enabled = true
 tool_mode = "native"
 "#;
@@ -821,7 +823,7 @@ tool_mode = "native"
         ToolMode::Text
     );
     assert_eq!(
-        config.providers.get("anthropic").unwrap().tool_mode,
+        config.providers.get("gemini").unwrap().tool_mode,
         ToolMode::Native
     );
 }

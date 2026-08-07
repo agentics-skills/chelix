@@ -22,7 +22,7 @@ fn levenshtein_single_edit() {
 #[test]
 fn levenshtein_substitution() {
     assert_eq!(levenshtein("cat", "car"), 1);
-    assert_eq!(levenshtein("anthropic", "anthrpic"), 1);
+    assert_eq!(levenshtein("openai", "opnai"), 1);
 }
 
 #[test]
@@ -104,15 +104,15 @@ fn full_valid_config_no_diagnostics() {
 bind = "127.0.0.1"
 port = 8080
 
-[providers.anthropic]
+[providers.openai]
 enabled = true
 
-[providers.anthropic.models."claude-sonnet-4-20250514"]
-context_length = 200000
-max_input_tokens = 180000
-max_output_tokens = 20000
+[providers.openai.models."gpt-5.2"]
+context_length = 400000
+max_input_tokens = 272000
+max_output_tokens = 128000
 
-[providers.anthropic.models."claude-sonnet-4-20250514".reasoning]
+[providers.openai.models."gpt-5.2".reasoning]
 supported_efforts = []
 
 [auth]

@@ -374,8 +374,8 @@ services:
       CHELIX_API_KEY: "sk-..."
 ```
 
-`CHELIX_PROVIDER` must be a Chelix provider name such as `openai`, `anthropic`,
-`gemini`, `openrouter`, or `moonshot`. The shorter aliases `PROVIDER` and
+`CHELIX_PROVIDER` must be a Chelix provider name such as `openai`, `gemini`,
+`openrouter`, or `moonshot`. The shorter aliases `PROVIDER` and
 `API_KEY` also work, but the `CHELIX_*` names are preferred because they are
 less likely to collide with other containers.
 

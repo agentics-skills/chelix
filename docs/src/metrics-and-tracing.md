@@ -61,7 +61,7 @@ chelix_http_requests_total{method="GET",status="200",endpoint="/api/chat"} 42
 
 # HELP chelix_llm_completion_duration_seconds Duration of LLM completion requests
 # TYPE chelix_llm_completion_duration_seconds histogram
-chelix_llm_completion_duration_seconds_bucket{provider="anthropic",model="claude-3-opus",le="1.0"} 5
+chelix_llm_completion_duration_seconds_bucket{provider="openai",model="gpt-5.2",le="1.0"} 5
 ```
 
 ### Grafana Integration
@@ -204,9 +204,9 @@ keys for work and personal use), you can use the `alias` configuration option to
 differentiate them in metrics:
 
 ```toml
-[providers.anthropic]
+[providers.openai]
 api_key = "sk-work-..."
-alias = "anthropic-work"
+alias = "openai-work"
 
 # Note: You would need separate config sections for multiple instances
 # of the same provider. This is a placeholder for future functionality.
@@ -215,8 +215,8 @@ alias = "anthropic-work"
 The alias appears in the `provider` label of all LLM metrics:
 
 ```
-chelix_llm_input_tokens_total{provider="anthropic-work", model="claude-3-opus"} 5000
-chelix_llm_input_tokens_total{provider="anthropic-personal", model="claude-3-opus"} 3000
+chelix_llm_input_tokens_total{provider="openai-work", model="gpt-5.2"} 5000
+chelix_llm_input_tokens_total{provider="openai-personal", model="gpt-5.2"} 3000
 ```
 
 This allows you to:

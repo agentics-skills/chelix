@@ -27,7 +27,7 @@ pub fn default_config_template(port: u16) -> String {
 #     settings you intentionally want to control.
 #
 # Environment variable substitution is supported: ${{ENV_VAR}}
-# Example: api_key = "${{ANTHROPIC_API_KEY}}"
+# Example: api_key = "${{OPENAI_API_KEY}}"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SERVER
@@ -119,7 +119,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Each provider supports:
 #   enabled   - Whether to use this provider (default: true)
-#   api_key   - API key (or use env var like ANTHROPIC_API_KEY)
+#   api_key   - API key (or use env var like OPENAI_API_KEY)
 #   base_url  - Override API endpoint
 #   models.<model_id> - Ordered allowlist entry with per-model metadata (optional)
 #   fetch_models - Discover models from provider API when available (default: true)
@@ -136,25 +136,13 @@ port = {port}                           # Port number (auto-generated for this i
 # tables, every discovered model with complete metadata is accepted.
 
 # [providers]
-# offered = ["openai-codex", "openai", "anthropic", "openrouter", "moonshot", "zai"]
+# offered = ["openai-codex", "openai", "openrouter", "moonshot", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
-#   "anthropic", "openai", "gemini", "xai", "deepinfra",
+#   "openai", "gemini", "xai", "deepinfra",
 #   "openrouter", "moonshot", "zai", "zai-code", "alibaba-coding",
 #   "openai-codex", "kimi-code"
-
-# ── Anthropic (Claude) ────────────────────────────────────────
-# [providers.anthropic]
-# enabled = true
-# api_key = "sk-ant-..."                      # Or set ANTHROPIC_API_KEY env var
-# fetch_models = true                          # Set false to skip remote discovery
-# base_url = "https://api.anthropic.com"     # API endpoint
-# alias = "anthropic"                         # Custom name for metrics
-# cache_retention = "short"                    # Prompt caching: "none" | "short" | "long"
-# policy.deny = ["execute_command"]            # Deny specific tools when using this provider
-# policy.allow = []                            # Restrict to only these tools (empty = all allowed)
-# [providers.anthropic.models."claude-sonnet-4-5-20250929"]
 
 # ── OpenAI ────────────────────────────────────────────────────
 # [providers.openai]
@@ -245,7 +233,7 @@ port = {port}                           # Port number (auto-generated for this i
                                       #   "live-reload"            - Re-read MEMORY.md before each turn
                                       #   "frozen-at-session-start" - Freeze the first MEMORY.md snapshot per session
 # workspace_file_max_chars = 32000  # Optional: per-file prompt cap for AGENTS.md / TOOLS.md before truncation.
-# priority_models = ["claude-opus-4-5", "gpt-5.2", "gemini-3-flash"]  # Optional cross-provider selector order
+# priority_models = ["gpt-5.2", "gemini-2.5-pro"]  # Optional cross-provider selector order
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
@@ -299,7 +287,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Example: restricted agent for kids (no MCP, no network, limited skills):
 # [agents.presets.kids]
-# model = "anthropic/claude-haiku-4-5-20251001"
+# model = "openai/gpt-5.2"
 # [agents.presets.kids.mcp]
 # allow_servers = []                # No MCP tools at all
 # [agents.presets.kids.skills]
@@ -579,9 +567,6 @@ port = {port}                           # Port number (auto-generated for this i
 # working_dir = "."                 # Override working directory
 # timeout_secs = 300                # Session timeout
 # use_tmux = false                  # Force tmux backend (vs direct PTY)
-# [external_agents.agents.claude-code.env]
-# ANTHROPIC_API_KEY = "sk-..."      # Extra env vars for this agent
-
 # [external_agents.agents.codex]
 # binary = "codex"
 # args = ["app-server"]

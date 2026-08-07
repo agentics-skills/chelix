@@ -171,7 +171,7 @@ mod tests {
         use chelix_config::schema::KNOWN_PROVIDER_NAMES;
 
         // Built-in providers
-        let mut provider_names: Vec<&str> = vec!["anthropic", "openai"];
+        let mut provider_names: Vec<&str> = vec!["openai"];
 
         // OpenAI-compatible table-driven providers
         for def in OPENAI_COMPAT_PROVIDERS {

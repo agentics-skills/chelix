@@ -20,7 +20,6 @@
 
 - [LLM Providers](providers.md)
   - [Choosing a Provider](choosing-a-provider.md)
-  - [Anthropic OAuth (FAQ)](anthropic-oauth.md)
 - [Generative UI with A2UI](a2ui.md)
 - [MCP Servers](mcp.md)
 - [External Agents](external-agents.md)

@@ -391,7 +391,7 @@ mod tests {
                 "!room:example.com": { "model": "gpt-4.1" }
             },
             "user_overrides": {
-                "@alice:example.com": { "model": "claude-sonnet" }
+                "@alice:example.com": { "model": "gemini-2.5-pro" }
             },
             "reply_to_message": true,
             "ack_reaction": "\u{1f440}",
@@ -416,7 +416,7 @@ mod tests {
         assert_eq!(cfg.edit_throttle_ms, 750);
         assert_eq!(cfg.stream_min_initial_chars, 45);
         assert_eq!(cfg.channel_model("!room:example.com"), Some("gpt-4.1"));
-        assert_eq!(cfg.user_model("@alice:example.com"), Some("claude-sonnet"));
+        assert_eq!(cfg.user_model("@alice:example.com"), Some("gemini-2.5-pro"));
 
         let value =
             serde_json::to_value(&cfg).unwrap_or_else(|error| panic!("serialize failed: {error}"));
@@ -486,7 +486,7 @@ mod tests {
         cfg.user_overrides
             .insert("@alice:example.com".into(), UserOverride {
                 model: Some("user-model".into()),
-                model_provider: Some("anthropic".into()),
+                model_provider: Some("gemini".into()),
             });
 
         assert_eq!(

@@ -95,13 +95,13 @@ fn channel_event_serialization_nulls() {
 fn unique_providers_dedups_non_adjacent() {
     let models = vec![
         serde_json::json!({"id": "gpt-4o", "provider": "openai"}),
-        serde_json::json!({"id": "claude-3.5", "provider": "anthropic"}),
+        serde_json::json!({"id": "gemini-2.5-pro", "provider": "gemini"}),
         serde_json::json!({"id": "gpt-4o-mini", "provider": "openai"}),
-        serde_json::json!({"id": "gemini-pro", "provider": "google"}),
-        serde_json::json!({"id": "claude-3.7", "provider": "anthropic"}),
+        serde_json::json!({"id": "openrouter-model", "provider": "openrouter"}),
+        serde_json::json!({"id": "gemini-2.5-flash", "provider": "gemini"}),
     ];
     let providers = unique_providers(&models);
-    assert_eq!(providers, vec!["anthropic", "google", "openai"]);
+    assert_eq!(providers, vec!["gemini", "openai", "openrouter"]);
 }
 
 #[test]

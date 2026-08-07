@@ -609,8 +609,8 @@ mod tests {
     #[test]
     fn test_provider_included() {
         let raw = "Connection timed out";
-        let result = parse_chat_error(raw, Some("anthropic"));
-        assert_eq!(result["provider"], "anthropic");
+        let result = parse_chat_error(raw, Some("gemini"));
+        assert_eq!(result["provider"], "gemini");
     }
 
     #[test]
@@ -681,21 +681,21 @@ mod tests {
     #[test]
     fn test_agent_run_timeout() {
         let raw = "agent run timed out after 600s";
-        let result = parse_chat_error(raw, Some("anthropic"));
+        let result = parse_chat_error(raw, Some("openrouter"));
         assert_eq!(result["type"], "timeout");
         assert_eq!(result["title"], "Timed out");
         assert_eq!(result["detail"], raw);
-        assert_eq!(result["provider"], "anthropic");
+        assert_eq!(result["provider"], "openrouter");
         assert!(result.get("title_key").is_none());
     }
 
     #[test]
     fn test_max_iterations_reached_custom_limit() {
         let raw = "agent loop exceeded max iterations (10)";
-        let result = parse_chat_error(raw, Some("anthropic"));
+        let result = parse_chat_error(raw, Some("openrouter"));
         assert_eq!(result["type"], "max_iterations_reached");
         assert_eq!(result["detail_params"]["limit"], 10u64);
-        assert_eq!(result["provider"], "anthropic");
+        assert_eq!(result["provider"], "openrouter");
     }
 
     #[test]

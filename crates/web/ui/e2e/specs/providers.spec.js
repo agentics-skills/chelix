@@ -144,7 +144,7 @@ test.describe("Provider setup page", () => {
 		const providerNames = page.locator("#providerModalBody .provider-item .provider-item-name");
 		await expect(providerNames.first()).toBeVisible();
 		const names = await providerNames.allTextContents();
-		const preferredOrder = ["OpenAI Codex", "Anthropic", "OpenAI"];
+		const preferredOrder = ["OpenAI Codex", "OpenAI", "Google Gemini"];
 		const expectedVisible = preferredOrder.filter((name) => names.includes(name));
 		const actualVisible = names.filter((name) => expectedVisible.includes(name));
 		expect(actualVisible).toEqual(expectedVisible);
@@ -246,14 +246,16 @@ test.describe("Provider setup page", () => {
 
 		const record = page.getByTestId("provider-model-record-openai::gpt-5");
 		await expect(record).toBeVisible();
-		const renderedFields = await record.locator(":scope > div").evaluateAll((rows) =>
-			Object.fromEntries(
-				rows.map((row) => [
-					(row.querySelector("dt")?.textContent || "").replace(/:$/, ""),
-					row.querySelector("dd")?.textContent || "",
-				]),
-			),
-		);
+		const renderedFields = await record
+			.locator(":scope > div")
+			.evaluateAll((rows) =>
+				Object.fromEntries(
+					rows.map((row) => [
+						(row.querySelector("dt")?.textContent || "").replace(/:$/, ""),
+						row.querySelector("dd")?.textContent || "",
+					]),
+				),
+			);
 		expect(renderedFields).toEqual({
 			id: "openai::gpt-5",
 			provider: "openai",
@@ -279,10 +281,7 @@ test.describe("Provider setup page", () => {
 			"reasoning.include": '["reasoning.encrypted_content"]',
 		});
 
-		await page
-			.locator("#provider-openai")
-			.getByRole("button", { name: "Preferred Models", exact: true })
-			.click();
+		await page.locator("#provider-openai").getByRole("button", { name: "Preferred Models", exact: true }).click();
 		await expect(page.locator("#providerModal")).toBeVisible();
 		const cards = page.locator("#providerModalBody .model-card");
 		await cards.filter({ hasText: "O3 Pro Registry Record" }).click();

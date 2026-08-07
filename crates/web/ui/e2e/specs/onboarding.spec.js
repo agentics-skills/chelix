@@ -930,7 +930,6 @@ test.describe("Onboarding wizard", () => {
 		const candidates = [
 			{ providerName: "OpenAI", linkName: "OpenAI Platform" },
 			{ providerName: "Kimi Code", linkName: "Kimi Code Console" },
-			{ providerName: "Anthropic", linkName: "Anthropic Console" },
 			{ providerName: "Google Gemini", linkName: "Google AI Studio" },
 			{ providerName: "xAI (Grok)", linkName: "xAI Console" },
 			{ providerName: "OpenRouter", linkName: "OpenRouter Settings" },

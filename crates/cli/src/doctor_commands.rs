@@ -111,7 +111,6 @@ fn print_report(sections: &[Section]) -> (usize, usize) {
 
 /// (provider_name, env_var, is_key_optional)
 const PROVIDER_ENV_MAP: &[(&str, &str, bool)] = &[
-    ("anthropic", "ANTHROPIC_API_KEY", false),
     ("openai", "OPENAI_API_KEY", false),
     ("gemini", "GEMINI_API_KEY", false),
     ("xai", "XAI_API_KEY", false),

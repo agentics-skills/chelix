@@ -68,16 +68,6 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "anthropic",
-            display_name: "Anthropic",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("ANTHROPIC_API_KEY"),
-            default_base_url: Some("https://api.anthropic.com"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
             name: "openai",
             display_name: "OpenAI",
             auth_type: AuthType::ApiKey,

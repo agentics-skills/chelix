@@ -5,7 +5,7 @@ use std::{collections::HashMap, future::Future, pin::Pin};
 use {chelix_config::schema::ProvidersConfig, futures::future::join_all, secrecy::ExposeSecret};
 
 use crate::{
-    DiscoveredModel, anthropic,
+    DiscoveredModel,
     config_helpers::{
         configured_models_for_provider, env_value, oauth_discovery_enabled, resolve_api_key,
         should_fetch_models,
@@ -50,7 +50,6 @@ pub async fn discover_models(
     let mut tasks: Vec<(String, DiscoveryFuture)> = Vec::new();
 
     push_openai_discovery(&mut tasks, config, env_overrides, &filter_matches);
-    push_anthropic_discovery(&mut tasks, config, env_overrides, &filter_matches);
     push_openai_compatible_discoveries(&mut tasks, config, env_overrides, &filter_matches);
     push_custom_discoveries(&mut tasks, config, &filter_matches);
     push_oauth_discoveries(&mut tasks, config, &filter_matches);
@@ -108,33 +107,6 @@ fn push_openai_discovery(
     tasks.push((
         "openai".into(),
         Box::pin(openai::fetch_models_from_api(key, base_url)),
-    ));
-}
-
-fn push_anthropic_discovery(
-    tasks: &mut Vec<(String, DiscoveryFuture)>,
-    config: &ProvidersConfig,
-    env_overrides: &HashMap<String, String>,
-    filter_matches: &impl Fn(&str) -> bool,
-) {
-    if !filter_matches("anthropic")
-        || !config.is_enabled("anthropic")
-        || cfg!(test)
-        || !should_fetch_models(config, "anthropic")
-    {
-        return;
-    }
-    let Some(key) = resolve_api_key(config, "anthropic", "ANTHROPIC_API_KEY", env_overrides) else {
-        return;
-    };
-    let base_url = config
-        .get("anthropic")
-        .and_then(|entry| entry.base_url.clone())
-        .or_else(|| env_value(env_overrides, "ANTHROPIC_BASE_URL"))
-        .unwrap_or_else(|| "https://api.anthropic.com".into());
-    tasks.push((
-        "anthropic".into(),
-        Box::pin(anthropic::fetch_models_from_api(key, base_url)),
     ));
 }
 

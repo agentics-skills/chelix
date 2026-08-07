@@ -10,7 +10,6 @@ use {
 };
 
 use crate::{
-    anthropic,
     config_helpers::{env_value, oauth_discovery_enabled, resolve_api_key},
     discovered_model::{ResolvedModel, resolve_models},
     model_capabilities::ModelInfo,
@@ -97,7 +96,6 @@ impl ProviderRegistry {
         discovery: &DiscoveryResult,
     ) -> Self {
         let mut registry = Self::empty();
-        registry.register_anthropic(config, env_overrides, discovery);
         registry.register_openai(config, env_overrides, discovery);
         registry.register_openai_compatible(config, env_overrides, discovery);
         registry.register_custom(config, discovery);
@@ -118,10 +116,6 @@ impl ProviderRegistry {
         let previous_ids: std::collections::HashSet<String> =
             self.models.iter().map(|model| model.id.clone()).collect();
 
-        if discovery.models.contains_key("anthropic") {
-            self.remove_provider(&provider_label(config, "anthropic"));
-            self.register_anthropic(config, env_overrides, discovery);
-        }
         if discovery.models.contains_key("openai") {
             self.remove_provider(&provider_label(config, "openai"));
             self.register_openai(config, env_overrides, discovery);
@@ -182,47 +176,6 @@ impl ProviderRegistry {
             );
         });
         count
-    }
-
-    fn register_anthropic(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
-    ) -> usize {
-        if !config.is_enabled("anthropic") {
-            return 0;
-        }
-        let Some(key) = resolve_api_key(config, "anthropic", "ANTHROPIC_API_KEY", env_overrides)
-        else {
-            return 0;
-        };
-        let base_url = config
-            .get("anthropic")
-            .and_then(|entry| entry.base_url.clone())
-            .or_else(|| env_value(env_overrides, "ANTHROPIC_BASE_URL"))
-            .unwrap_or_else(|| "https://api.anthropic.com".into());
-        let alias = config
-            .get("anthropic")
-            .and_then(|entry| entry.alias.clone());
-        let provider_name = alias.clone().unwrap_or_else(|| "anthropic".into());
-        let cache_retention = config
-            .get("anthropic")
-            .map(|entry| entry.cache_retention)
-            .unwrap_or_default();
-        let models = resolved_models(config, discovery, "anthropic");
-
-        self.register_resolved(&provider_name, models, move |model_id| {
-            Arc::new(
-                anthropic::AnthropicProvider::with_alias(
-                    key.clone(),
-                    model_id.to_string(),
-                    base_url.clone(),
-                    alias.clone(),
-                )
-                .with_cache_retention(cache_retention),
-            )
-        })
     }
 
     fn register_openai(

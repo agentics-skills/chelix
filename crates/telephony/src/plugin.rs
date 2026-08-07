@@ -478,7 +478,7 @@ mod tests {
             account_id.to_string(),
             TelephonyAccountConfig {
                 from_number: "+15550000002".to_string(),
-                model: Some("anthropic/claude-test".to_string()),
+                model: Some("openai/gpt-5.2".to_string()),
                 agent_id: Some("phone-agent".to_string()),
                 ..TelephonyAccountConfig::default()
             },
@@ -502,10 +502,7 @@ mod tests {
             captured.meta.message_kind,
             Some(chelix_channels::ChannelMessageKind::Voice)
         ));
-        assert_eq!(
-            captured.meta.model.as_deref(),
-            Some("anthropic/claude-test")
-        );
+        assert_eq!(captured.meta.model.as_deref(), Some("openai/gpt-5.2"));
         assert_eq!(captured.meta.agent_id.as_deref(), Some("phone-agent"));
     }
 }

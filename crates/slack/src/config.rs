@@ -311,8 +311,8 @@ mod tests {
             "mention_mode": "always",
             "allowlist": ["U123", "U456"],
             "channel_allowlist": ["C789"],
-            "model": "claude-sonnet-4-20250514",
-            "model_provider": "anthropic",
+            "model": "gemini-2.5-pro",
+            "model_provider": "gemini",
             "stream_mode": "edit_in_place",
             "edit_throttle_ms": 300,
             "thread_replies": false,
@@ -325,7 +325,7 @@ mod tests {
         assert_eq!(cfg.mention_mode, MentionMode::Always);
         assert_eq!(cfg.allowlist, vec!["U123", "U456"]);
         assert_eq!(cfg.channel_allowlist, vec!["C789"]);
-        assert_eq!(cfg.model.as_deref(), Some("claude-sonnet-4-20250514"));
+        assert_eq!(cfg.model.as_deref(), Some("gemini-2.5-pro"));
         assert_eq!(cfg.stream_mode, StreamMode::EditInPlace);
         assert_eq!(cfg.edit_throttle_ms, 300);
         assert!(!cfg.thread_replies);
@@ -483,19 +483,19 @@ mod tests {
                 "C123": { "model": "gpt-4" }
             },
             "user_overrides": {
-                "U456": { "model": "claude-sonnet", "model_provider": "anthropic" }
+                "U456": { "model": "gemini-2.5-pro", "model_provider": "gemini" }
             }
         });
         let cfg: SlackAccountConfig = serde_json::from_value(json).unwrap();
         assert_eq!(cfg.channel_model("C123"), Some("gpt-4"));
         assert!(cfg.channel_model_provider("C123").is_none());
-        assert_eq!(cfg.user_model("U456"), Some("claude-sonnet"));
-        assert_eq!(cfg.user_model_provider("U456"), Some("anthropic"));
+        assert_eq!(cfg.user_model("U456"), Some("gemini-2.5-pro"));
+        assert_eq!(cfg.user_model_provider("U456"), Some("gemini"));
 
         // Round-trip preserves overrides
         let value = serde_json::to_value(&cfg).unwrap();
         let cfg2: SlackAccountConfig = serde_json::from_value(value).unwrap();
         assert_eq!(cfg2.channel_model("C123"), Some("gpt-4"));
-        assert_eq!(cfg2.user_model("U456"), Some("claude-sonnet"));
+        assert_eq!(cfg2.user_model("U456"), Some("gemini-2.5-pro"));
     }
 }

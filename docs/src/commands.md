@@ -68,8 +68,8 @@ The response appears inline and is discarded after display.
 ### /fast
 
 Toggle fast/priority mode for the current session. When enabled, uses
-provider-specific priority processing where supported (Anthropic prompt caching
-priority, OpenAI priority processing).
+provider-specific priority processing where supported (OpenAI priority
+processing).
 
 ```
 /fast          # toggle

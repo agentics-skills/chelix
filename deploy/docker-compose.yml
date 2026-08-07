@@ -12,8 +12,8 @@ services:
       # Set your initial password (required on first run):
       - CHELIX_PASSWORD=${CHELIX_PASSWORD:-changeme}
       # Uncomment and set these for headless provider setup:
-      # - CHELIX_PROVIDER=anthropic
-      # - CHELIX_API_KEY=sk-ant-...
+      # - CHELIX_PROVIDER=openai
+      # - CHELIX_API_KEY=sk-...
     ports:
       - "13131:13131"   # Gateway (HTTPS) — web UI, API, WebSocket
       - "13132:13132"   # HTTP — CA certificate download

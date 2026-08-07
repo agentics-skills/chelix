@@ -33,7 +33,7 @@ task-list tools.
 identity.name = "scout"
 identity.emoji = "🔍"
 identity.theme = "thorough and methodical"
-model = "anthropic/claude-haiku-3-5-20241022"
+model = "openai/gpt-5.2"
 tools.allow = ["read_file", "list_directory", "ripgrep"]
 tools.deny = ["execute_command", "overwrite_file"]
 tools.preload = ["read_file", "list_directory", "ripgrep"]

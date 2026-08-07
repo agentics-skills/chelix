@@ -51,7 +51,7 @@ separate session fields, for example:
 {
   "agent_id": "researcher",
   "model_override": {
-    "model": "anthropic::claude-opus-4-5-20251101",
+    "model": "openai::gpt-5.2",
     "reasoning_effort": "high"
   }
 }
@@ -123,7 +123,7 @@ Send a message to another session, optionally waiting for reply.
   "wait_for_reply": true,
   "context": "coordinator",
   "model_override": {
-    "model": "anthropic::claude-opus-4-5-20251101",
+    "model": "openai::gpt-5.2",
     "reasoning_effort": "high"
   }
 }
@@ -175,8 +175,8 @@ available on agent presets, `spawn_agent`, and `cron` `agentTurn` payloads.
   - `none` — no tools sent; forces text-only output.
   - `tool` + `name` — model must call the named tool.
 
-Supported on Anthropic, OpenAI (Responses and Chat Completions), and
-OpenAI-compatible providers.
+Supported on OpenAI (Responses and Chat Completions) and OpenAI-compatible
+providers.
 
 **Classify-then-generate pattern** — use two `spawn_agent` calls, each with its
 own tool controls:

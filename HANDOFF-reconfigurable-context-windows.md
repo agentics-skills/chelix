@@ -136,7 +136,6 @@ These are all the places that read the context window value and would need consi
 | Recency-preserving compaction | `crates/chat/src/compaction_run/recency_preserving.rs` | passed as parameter |
 | Structured compaction | `crates/chat/src/compaction_run/structured.rs` | passed as parameter |
 | OpenAI provider trait impl | `crates/providers/src/openai/provider/mod.rs` | calls `context_window_for_model()` |
-| Anthropic provider trait impl | `crates/providers/src/anthropic.rs` | calls `context_window_for_model()` |
 | Model metadata fetch | `crates/providers/src/openai/provider/mod.rs` | reads API JSON, falls back to heuristic |
 | LlmProvider trait default | `crates/agents/src/model.rs` | returns `200_000` |
 | Benchmarks | `crates/benchmarks/benches/boot.rs` | calls `context_window_for_model()` |
@@ -218,7 +217,6 @@ Current hardcoded values for implementation and test updates:
 | `crates/agents/src/model.rs` | Consider adding config-aware `context_window()` on trait or provider impl |
 | `crates/chat/src/compaction_run/mod.rs` | May need to accept config-aware context window |
 | `crates/providers/src/openai/provider/mod.rs` | Integrate config override with API metadata fallback |
-| `crates/providers/src/anthropic.rs` | Integrate config override |
 | `docs/src/configuration-reference.md` | Document new config keys |
 | `crates/providers/src/model_capabilities.rs` (tests) | Update tests for new behavior |
 | Config loading code (find where chelix.toml is parsed) | Parse new `[models.*]` and `[providers.*.models.*]` sections |
