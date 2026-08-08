@@ -42,7 +42,6 @@ import {
 
 // ── Matrix form ─────────────────────────────────────────────
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Matrix form has many fields for all auth/policy/encryption combinations
 function MatrixForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 	const [homeserver, setHomeserver] = useState(MATRIX_DEFAULT_HOMESERVER);
 	const [authMode, setAuthMode] = useState("password");
@@ -146,31 +145,34 @@ function MatrixForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 				<span>{MATRIX_ENCRYPTION_GUIDANCE}</span>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Homeserver URL</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={homeserver}
-					onInput={(e) => setHomeserver(targetValue(e))}
-					placeholder={MATRIX_DEFAULT_HOMESERVER}
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="matrix_homeserver"
-					autoFocus
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Homeserver URL</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={homeserver}
+						onInput={(e) => setHomeserver(targetValue(e))}
+						placeholder={MATRIX_DEFAULT_HOMESERVER}
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="matrix_homeserver"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Authentication</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={authMode}
-					onChange={(e) => setAuthMode(normalizeMatrixAuthMode(targetValue(e)))}
-				>
-					<option value="password">Password</option>
-					<option value="access_token">Access token</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Authentication</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={authMode}
+						onChange={(e) => setAuthMode(normalizeMatrixAuthMode(targetValue(e)))}
+					>
+						<option value="password">Password</option>
+						<option value="access_token">Access token</option>
+					</select>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">{matrixAuthModeGuidance(authMode)}</div>
 			</div>
 			{authMode === "password" ? (
@@ -190,36 +192,40 @@ function MatrixForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 				<div className="text-xs text-[var(--muted)]">{matrixOwnershipModeGuidance(authMode, "user_managed")}</div>
 			)}
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">
-					Matrix User ID{authMode === "password" ? " (required)" : " (optional)"}
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">
+						Matrix User ID{authMode === "password" ? " (required)" : " (optional)"}
+					</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={userId}
+						onInput={(e) => setUserId(targetValue(e))}
+						placeholder="@bot:example.com"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="matrix_user_id"
+					/>
 				</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={userId}
-					onInput={(e) => setUserId(targetValue(e))}
-					placeholder="@bot:example.com"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="matrix_user_id"
-				/>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">{matrixCredentialLabel(authMode)}</label>
-				<input
-					type="password"
-					className="provider-key-input w-full"
-					value={credential}
-					onInput={(e) => setCredential(targetValue(e))}
-					placeholder={matrixCredentialPlaceholder(authMode)}
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="matrix_credential"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">{matrixCredentialLabel(authMode)}</span>
+					<input
+						type="password"
+						className="provider-key-input w-full"
+						value={credential}
+						onInput={(e) => setCredential(targetValue(e))}
+						placeholder={matrixCredentialPlaceholder(authMode)}
+						autoComplete="new-password"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="matrix_credential"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">
 					{authMode === "password" ? (
 						<>
@@ -240,115 +246,133 @@ function MatrixForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 				</div>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Device Display Name (optional)</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={deviceDisplayName}
-					onInput={(e) => setDeviceDisplayName(targetValue(e))}
-					placeholder="Chelix Matrix Bot"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="matrix_device_display_name"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Device Display Name (optional)</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={deviceDisplayName}
+						onInput={(e) => setDeviceDisplayName(targetValue(e))}
+						placeholder="Chelix Matrix Bot"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="matrix_device_display_name"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={dmPolicy}
-					onChange={(e) => setDmPolicy(targetValue(e))}
-				>
-					<option value="allowlist">Allowlist only (recommended)</option>
-					<option value="open">Open (anyone)</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={dmPolicy}
+						onChange={(e) => setDmPolicy(targetValue(e))}
+					>
+						<option value="allowlist">Allowlist only (recommended)</option>
+						<option value="open">Open (anyone)</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Room Policy</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={roomPolicy}
-					onChange={(e) => setRoomPolicy(targetValue(e))}
-				>
-					<option value="allowlist">Room allowlist only (recommended)</option>
-					<option value="open">Open (any joined room)</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Room Policy</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={roomPolicy}
+						onChange={(e) => setRoomPolicy(targetValue(e))}
+					>
+						<option value="allowlist">Room allowlist only (recommended)</option>
+						<option value="open">Open (any joined room)</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Room Mention Mode</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={mentionMode}
-					onChange={(e) => setMentionMode(targetValue(e))}
-				>
-					<option value="mention">Must mention bot</option>
-					<option value="always">Always respond</option>
-					<option value="none">Never respond in rooms</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Room Mention Mode</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={mentionMode}
+						onChange={(e) => setMentionMode(targetValue(e))}
+					>
+						<option value="mention">Must mention bot</option>
+						<option value="always">Always respond</option>
+						<option value="none">Never respond in rooms</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Invite Auto-Join</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={autoJoin}
-					onChange={(e) => setAutoJoin(targetValue(e))}
-				>
-					<option value="always">Always join invites</option>
-					<option value="allowlist">Only when inviter or room is allowlisted</option>
-					<option value="off">Do not auto-join</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Invite Auto-Join</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={autoJoin}
+						onChange={(e) => setAutoJoin(targetValue(e))}
+					>
+						<option value="always">Always join invites</option>
+						<option value="allowlist">Only when inviter or room is allowlisted</option>
+						<option value="off">Do not auto-join</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Unknown DM Approval</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={otpSelfApproval ? "on" : "off"}
-					onChange={(e) => setOtpSelfApproval(targetValue(e) !== "off")}
-				>
-					<option value="on">PIN challenge enabled (recommended)</option>
-					<option value="off">Reject unknown DMs without a PIN</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Unknown DM Approval</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={otpSelfApproval ? "on" : "off"}
+						onChange={(e) => setOtpSelfApproval(targetValue(e) !== "off")}
+					>
+						<option value="on">PIN challenge enabled (recommended)</option>
+						<option value="off">Reject unknown DMs without a PIN</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">PIN Cooldown Seconds</label>
-				<input
-					type="number"
-					min="1"
-					step="1"
-					className="provider-key-input w-full"
-					value={otpCooldown}
-					onInput={(e) => setOtpCooldown(targetValue(e))}
-					name="matrix_otp_cooldown_secs"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">PIN Cooldown Seconds</span>
+					<input
+						type="number"
+						min="1"
+						step="1"
+						className="provider-key-input w-full"
+						value={otpCooldown}
+						onInput={(e) => setOtpCooldown(targetValue(e))}
+						name="matrix_otp_cooldown_secs"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">
 					With DM policy on allowlist, unknown users get a 6-digit PIN challenge by default.
 				</div>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Allowlist (Matrix user IDs)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={userAllowlist}
-					onInput={(e) => setUserAllowlist(targetValue(e))}
-					placeholder="@alice:example.com"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Allowlist (Matrix user IDs)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={userAllowlist}
+						onInput={(e) => setUserAllowlist(targetValue(e))}
+						placeholder="@alice:example.com"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Room Allowlist (room IDs or aliases)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={roomAllowlist}
-					onInput={(e) => setRoomAllowlist(targetValue(e))}
-					placeholder="!room:example.com"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Room Allowlist (room IDs or aliases)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={roomAllowlist}
+						onInput={(e) => setRoomAllowlist(targetValue(e))}
+						placeholder="!room:example.com"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 			</div>
 			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />
 			{error && <ErrorPanel message={error} />}
@@ -361,7 +385,41 @@ function MatrixForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 
 // ── WhatsApp form ───────────────────────────────────────────
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: WhatsApp pairing handles QR lifecycle, event subscriptions, and polling
+interface WhatsAppStatusChannel {
+	type: string;
+	account_id: string;
+	status: string;
+	extra?: { qr_data?: string; qr_svg?: string };
+}
+
+interface WhatsAppPairingPollContext {
+	accountId: string;
+	hadQr: boolean;
+	onConnected: () => void;
+	onQr: (data: string, svg?: string) => void;
+}
+
+async function pollWhatsAppPairing(context: WhatsAppPairingPollContext): Promise<void> {
+	try {
+		const response = (await sendRpc("channels.status", {})) as {
+			ok?: boolean;
+			payload?: { channels?: WhatsAppStatusChannel[] };
+		};
+		if (!response?.ok) return;
+		const channel = (response.payload?.channels || []).find(
+			(candidate) => candidate.type === "whatsapp" && candidate.account_id === context.accountId,
+		);
+		if (!channel) return;
+		if (channel.status === "connected" || (context.hadQr && !channel.extra?.qr_data)) {
+			context.onConnected();
+			return;
+		}
+		if (channel.extra?.qr_data) context.onQr(channel.extra.qr_data, channel.extra.qr_svg);
+	} catch {
+		// Polling retries transient status errors on the next interval.
+	}
+}
+
 function WhatsAppForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 	const [accountId, setAccountId] = useState("");
 	const [dmPolicy, setDmPolicy] = useState("allowlist");
@@ -385,38 +443,17 @@ function WhatsAppForm({ onConnected, error, setError }: ChannelFormProps): VNode
 	useEffect(() => {
 		if (!pairingStarted) return undefined;
 		const id = accountId.trim() || "main";
-		const timer = setInterval(async () => {
-			try {
-				const res = (await sendRpc("channels.status", {})) as {
-					ok?: boolean;
-					payload?: {
-						channels?: Array<{
-							type: string;
-							account_id: string;
-							status: string;
-							extra?: { qr_data?: string; qr_svg?: string };
-						}>;
-					};
-				};
-				if (!res?.ok) return;
-				const ch = (res.payload?.channels || []).find((c) => c.type === "whatsapp" && c.account_id === id);
-				if (!ch) return;
-				if (ch.status === "connected") {
-					onConnected(id, "whatsapp");
-					return;
-				}
-				if (hadQrRef.current && !ch.extra?.qr_data) {
-					onConnected(id, "whatsapp");
-					return;
-				}
-				if (ch.extra?.qr_data) {
+		const timer = setInterval(() => {
+			void pollWhatsAppPairing({
+				accountId: id,
+				hadQr: hadQrRef.current,
+				onConnected: () => onConnected(id, "whatsapp"),
+				onQr: (data, svg) => {
 					hadQrRef.current = true;
-					setQrData(ch.extra.qr_data);
-					if (ch.extra.qr_svg) setQrSvg(ch.extra.qr_svg);
-				}
-			} catch (_e) {
-				/* ignore */
-			}
+					setQrData(data);
+					if (svg) setQrSvg(svg);
+				},
+			});
 		}, 2000);
 		return () => clearInterval(timer);
 	}, [pairingStarted]);
@@ -529,42 +566,48 @@ function WhatsAppForm({ onConnected, error, setError }: ChannelFormProps): VNode
 				</span>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Account ID (optional)</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={accountId}
-					onInput={(e) => setAccountId(targetValue(e))}
-					placeholder="main"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="whatsapp_account_id"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Account ID (optional)</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={accountId}
+						onInput={(e) => setAccountId(targetValue(e))}
+						placeholder="main"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="whatsapp_account_id"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={dmPolicy}
-					onChange={(e) => setDmPolicy(targetValue(e))}
-				>
-					<option value="open">Open (anyone)</option>
-					<option value="allowlist">Allowlist only</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={dmPolicy}
+						onChange={(e) => setDmPolicy(targetValue(e))}
+					>
+						<option value="open">Open (anyone)</option>
+						<option value="allowlist">Allowlist only</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Allowlist (optional)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={allowlist}
-					onInput={(e) => setAllowlist(targetValue(e))}
-					placeholder="phone number or identifier"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Allowlist (optional)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={allowlist}
+						onInput={(e) => setAllowlist(targetValue(e))}
+						placeholder="phone number or identifier"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">
 					One per line. Only needed if DM policy is "Allowlist only".
 				</div>
@@ -580,6 +623,48 @@ function WhatsAppForm({ onConnected, error, setError }: ChannelFormProps): VNode
 
 // ── Slack form ──────────────────────────────────────────────
 
+interface SlackCredentials {
+	accountId: string;
+	botToken: string;
+	connectionMode: string;
+	appToken: string;
+	signingSecret: string;
+}
+
+function slackCredentialsError(credentials: SlackCredentials): string | null {
+	if (!credentials.accountId.trim()) return "Account ID is required.";
+	if (!credentials.botToken.trim()) return "Bot Token is required.";
+	if (credentials.connectionMode === "socket_mode" && !credentials.appToken.trim()) {
+		return "App Token is required for Socket Mode.";
+	}
+	if (credentials.connectionMode === "events_api" && !credentials.signingSecret.trim()) {
+		return "Signing Secret is required for Events API mode.";
+	}
+	return null;
+}
+
+function buildSlackConfig(
+	credentials: SlackCredentials,
+	dmPolicy: string,
+	allowlist: string,
+	advancedPatch: Record<string, unknown>,
+): Record<string, unknown> {
+	const config: Record<string, unknown> = {
+		bot_token: credentials.botToken.trim(),
+		connection_mode: credentials.connectionMode,
+		dm_policy: dmPolicy,
+		mention_mode: "mention",
+		allowlist: allowlist
+			.trim()
+			.split(/\n/)
+			.map((value) => value.trim())
+			.filter(Boolean),
+	};
+	if (credentials.connectionMode === "socket_mode") config.app_token = credentials.appToken.trim();
+	if (credentials.connectionMode === "events_api") config.signing_secret = credentials.signingSecret.trim();
+	return Object.assign(config, advancedPatch);
+}
+
 function SlackForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 	const [accountId, setAccountId] = useState("");
 	const [botToken, setBotToken] = useState("");
@@ -593,20 +678,10 @@ function SlackForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 
 	function onSubmit(e: Event): void {
 		e.preventDefault();
-		if (!accountId.trim()) {
-			setError("Account ID is required.");
-			return;
-		}
-		if (!botToken.trim()) {
-			setError("Bot Token is required.");
-			return;
-		}
-		if (connectionMode === "socket_mode" && !appToken.trim()) {
-			setError("App Token is required for Socket Mode.");
-			return;
-		}
-		if (connectionMode === "events_api" && !signingSecret.trim()) {
-			setError("Signing Secret is required for Events API mode.");
+		const credentials = { accountId, botToken, connectionMode, appToken, signingSecret };
+		const credentialsError = slackCredentialsError(credentials);
+		if (credentialsError) {
+			setError(credentialsError);
 			return;
 		}
 		const advancedPatch = parseChannelConfigPatch(advancedConfig);
@@ -616,21 +691,7 @@ function SlackForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 		}
 		setError(null);
 		setSaving(true);
-		const allowlistEntries = allowlist
-			.trim()
-			.split(/\n/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		const config: Record<string, unknown> = {
-			bot_token: botToken.trim(),
-			connection_mode: connectionMode,
-			dm_policy: dmPolicy,
-			mention_mode: "mention",
-			allowlist: allowlistEntries,
-		};
-		if (connectionMode === "socket_mode") config.app_token = appToken.trim();
-		if (connectionMode === "events_api") config.signing_secret = signingSecret.trim();
-		Object.assign(config, advancedPatch.value);
+		const config = buildSlackConfig(credentials, dmPolicy, allowlist, advancedPatch.value);
 		(
 			addChannel("slack", accountId.trim(), config) as Promise<{
 				ok?: boolean;
@@ -676,103 +737,116 @@ function SlackForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 				<span>5. For Events API: set the Request URL to your server&rsquo;s webhook endpoint</span>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Account ID</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={accountId}
-					onInput={(e) => setAccountId(targetValue(e))}
-					placeholder="e.g. my-slack-bot"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="slack_account_id"
-					autoFocus
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Account ID</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={accountId}
+						onInput={(e) => setAccountId(targetValue(e))}
+						placeholder="e.g. my-slack-bot"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="slack_account_id"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Bot Token (xoxb-...)</label>
-				<input
-					type="password"
-					className="provider-key-input w-full"
-					value={botToken}
-					onInput={(e) => setBotToken(targetValue(e))}
-					placeholder="xoxb-..."
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="slack_bot_token"
-				/>
-			</div>
-			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Connection Mode</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={connectionMode}
-					onChange={(e) => setConnectionMode(targetValue(e))}
-				>
-					<option value="socket_mode">Socket Mode (recommended)</option>
-					<option value="events_api">Events API (HTTP webhook)</option>
-				</select>
-			</div>
-			{connectionMode === "socket_mode" && (
-				<div>
-					<label className="text-xs text-[var(--muted)] mb-1 block">App Token (xapp-...)</label>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Bot Token (xoxb-...)</span>
 					<input
 						type="password"
 						className="provider-key-input w-full"
-						value={appToken}
-						onInput={(e) => setAppToken(targetValue(e))}
-						placeholder="xapp-..."
+						value={botToken}
+						onInput={(e) => setBotToken(targetValue(e))}
+						placeholder="xoxb-..."
 						autoComplete="new-password"
 						autoCapitalize="none"
 						autoCorrect="off"
 						spellcheck={false}
-						name="slack_app_token"
+						name="slack_bot_token"
 					/>
+				</label>
+			</div>
+			<div>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Connection Mode</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={connectionMode}
+						onChange={(e) => setConnectionMode(targetValue(e))}
+					>
+						<option value="socket_mode">Socket Mode (recommended)</option>
+						<option value="events_api">Events API (HTTP webhook)</option>
+					</select>
+				</label>
+			</div>
+			{connectionMode === "socket_mode" && (
+				<div>
+					<label>
+						<span className="text-xs text-[var(--muted)] mb-1 block">App Token (xapp-...)</span>
+						<input
+							type="password"
+							className="provider-key-input w-full"
+							value={appToken}
+							onInput={(e) => setAppToken(targetValue(e))}
+							placeholder="xapp-..."
+							autoComplete="new-password"
+							autoCapitalize="none"
+							autoCorrect="off"
+							spellcheck={false}
+							name="slack_app_token"
+						/>
+					</label>
 				</div>
 			)}
 			{connectionMode === "events_api" && (
 				<div>
-					<label className="text-xs text-[var(--muted)] mb-1 block">Signing Secret</label>
-					<input
-						type="password"
-						className="provider-key-input w-full"
-						value={signingSecret}
-						onInput={(e) => setSigningSecret(targetValue(e))}
-						placeholder="Signing secret from Basic Information"
-						autoComplete="new-password"
-						autoCapitalize="none"
-						autoCorrect="off"
-						spellcheck={false}
-						name="slack_signing_secret"
-					/>
+					<label>
+						<span className="text-xs text-[var(--muted)] mb-1 block">Signing Secret</span>
+						<input
+							type="password"
+							className="provider-key-input w-full"
+							value={signingSecret}
+							onInput={(e) => setSigningSecret(targetValue(e))}
+							placeholder="Signing secret from Basic Information"
+							autoComplete="new-password"
+							autoCapitalize="none"
+							autoCorrect="off"
+							spellcheck={false}
+							name="slack_signing_secret"
+						/>
+					</label>
 				</div>
 			)}
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={dmPolicy}
-					onChange={(e) => setDmPolicy(targetValue(e))}
-				>
-					<option value="allowlist">Allowlist only (recommended)</option>
-					<option value="open">Open (anyone)</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={dmPolicy}
+						onChange={(e) => setDmPolicy(targetValue(e))}
+					>
+						<option value="allowlist">Allowlist only (recommended)</option>
+						<option value="open">Open (anyone)</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Allowed Slack user(s)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={allowlist}
-					onInput={(e) => setAllowlist(targetValue(e))}
-					placeholder="slack_username"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Allowed Slack user(s)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={allowlist}
+						onInput={(e) => setAllowlist(targetValue(e))}
+						placeholder="slack_username"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">One per line. These users can DM your bot.</div>
 			</div>
 			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />

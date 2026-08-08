@@ -3,7 +3,7 @@
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { sendRpc } from "../../helpers";
-import type { RpcResponse } from "./_shared";
+import type { ChatContextPayload } from "../../types/chat";
 
 interface ToolEntry {
 	name?: string;
@@ -13,14 +13,6 @@ interface ToolEntry {
 interface ToolGroup {
 	label: string;
 	tools: ToolEntry[];
-}
-
-interface ToolsContextData {
-	session?: { model?: string; provider?: string; label?: string };
-	sandbox?: { enabled?: boolean; backend?: string };
-	tools?: ToolEntry[];
-	supportsTools?: boolean;
-	mcpDisabled?: boolean;
 }
 
 export function toolsOverviewCategory(name: string | undefined): string {
@@ -58,21 +50,137 @@ export function groupToolsForOverview(tools: ToolEntry[]): ToolGroup[] {
 		}));
 }
 
+interface ToolCallingSummaryProps {
+	supportsTools: boolean;
+	toolCount: number;
+}
+
+function ToolCallingSummary({ supportsTools, toolCount }: ToolCallingSummaryProps): VNode {
+	return (
+		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
+			<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Tool Calling</div>
+			<div className="mt-2 flex items-center gap-2 flex-wrap">
+				<span className={`provider-item-badge ${supportsTools ? "configured" : "warning"}`}>
+					{supportsTools ? "Enabled" : "Disabled"}
+				</span>
+				<span className="text-sm font-medium text-[var(--text)]">
+					{toolCount} registered tool{toolCount === 1 ? "" : "s"}
+				</span>
+			</div>
+			<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
+				{supportsTools
+					? "Built-in, MCP, and runtime-routed tools available to the active model."
+					: "The current model is chat-only, so the agent cannot call tools in this session."}
+			</div>
+		</div>
+	);
+}
+
+function ActiveModelSummary({ session }: { session: NonNullable<ChatContextPayload["session"]> }): VNode {
+	const providerText = session.provider ? `Provider: ${session.provider}` : "Provider selected automatically.";
+	const sessionText = session.label ? ` Session: ${session.label}.` : "";
+	return (
+		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
+			<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Active Model</div>
+			<div className="mt-2 text-sm font-medium text-[var(--text)] break-words">
+				{session.model || "Default model selection"}
+			</div>
+			<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
+				{providerText}
+				{sessionText}
+			</div>
+		</div>
+	);
+}
+
+function ExecutionRuntimeSummary({ sandbox }: { sandbox: NonNullable<ChatContextPayload["sandbox"]> }): VNode {
+	return (
+		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
+			<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Execution Runtime</div>
+			<div className="mt-2 text-sm font-medium text-[var(--text)]">{sandbox.enabled ? "Sandbox" : "Host"}</div>
+			<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
+				{sandbox.enabled ? `Sandbox backend: ${sandbox.backend || "configured"}. ` : ""}
+				The <code className="text-[var(--text)]">execute_command</code> tool runs through the managed tools service.
+			</div>
+		</div>
+	);
+}
+
+function ToolCallingWarning({ supportsTools }: { supportsTools: boolean }): VNode | null {
+	if (supportsTools) return null;
+	return (
+		<div className="rounded border border-[var(--warn)] bg-[var(--surface2)] p-3 max-w-[1100px]">
+			<div className="text-xs text-[var(--muted)] leading-relaxed">
+				Tools are unavailable because the current model does not support tool calling. Switch to a tool-capable model in{" "}
+				<strong className="text-[var(--text)]">Settings {"\u2192"} LLMs</strong> and refresh this page.
+			</div>
+		</div>
+	);
+}
+
+function ToolOverviewCard({ tool }: { tool: ToolEntry }): VNode {
+	return (
+		<div className="rounded border border-[var(--border)] bg-[var(--surface2)] p-3">
+			<div className="flex items-center justify-between gap-2 flex-wrap">
+				<div className="text-xs font-medium text-[var(--text)] break-words">{tool.name}</div>
+				{tool.name?.startsWith("mcp__") ? <span className="provider-item-badge configured">MCP</span> : null}
+			</div>
+			<div className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
+				{tool.description || "No description provided."}
+			</div>
+		</div>
+	);
+}
+
+function ToolGroupOverview({ group }: { group: ToolGroup }): VNode {
+	return (
+		<div>
+			<div className="text-xs uppercase tracking-wide text-[var(--muted)] mb-2">
+				{group.label} {"\u00b7"} {group.tools.length}
+			</div>
+			<div className="flex flex-col gap-2">
+				{group.tools.map((tool) => (
+					<ToolOverviewCard key={tool.name} tool={tool} />
+				))}
+			</div>
+		</div>
+	);
+}
+
+function RegisteredTools({ groups, toolCount }: { groups: ToolGroup[]; toolCount: number }): VNode {
+	return (
+		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4 max-w-[1100px]">
+			<div className="flex items-center justify-between gap-2 flex-wrap">
+				<h3 className="text-sm font-medium text-[var(--text-strong)] m-0">Registered Tools</h3>
+				<span className="provider-item-badge muted">{toolCount}</span>
+			</div>
+			{groups.length > 0 ? (
+				<div className="mt-3 flex flex-col gap-3">
+					{groups.map((group) => (
+						<ToolGroupOverview key={group.label} group={group} />
+					))}
+				</div>
+			) : (
+				<div className="text-xs text-[var(--muted)] mt-3">No tools are currently exposed to this session.</div>
+			)}
+		</div>
+	);
+}
+
 export function ToolsSection(): VNode {
 	const [loadingTools, setLoadingTools] = useState(true);
-	const [toolData, setToolData] = useState<ToolsContextData | null>(null);
+	const [toolData, setToolData] = useState<ChatContextPayload | null>(null);
 	const [toolsErr, setToolsErr] = useState<string | null>(null);
 
 	function loadToolsOverview(): void {
 		setLoadingTools(true);
 		setToolsErr(null);
 		sendRpc("chat.context", {})
-			.then((result) => {
-				const response = result as RpcResponse;
+			.then((response) => {
 				if (!response?.ok) {
 					throw new Error(response?.error?.message || "Failed to load tools overview.");
 				}
-				setToolData((response.payload || {}) as ToolsContextData);
+				setToolData(response.payload || {});
 				setLoadingTools(false);
 			})
 			.catch((error: Error) => {
@@ -85,12 +193,12 @@ export function ToolsSection(): VNode {
 		loadToolsOverview();
 	}, []);
 
-	const data = toolData || ({} as ToolsContextData);
+	const data: ChatContextPayload = toolData || {};
 	const session = data.session || {};
 	const sandbox = data.sandbox || {};
 	const tools: ToolEntry[] = Array.isArray(data.tools) ? data.tools : [];
 	const toolGroups = groupToolsForOverview(tools);
-	const executionMode = sandbox.enabled ? "Sandbox" : "Host";
+	const supportsTools = data.supportsTools !== false;
 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
@@ -98,8 +206,8 @@ export function ToolsSection(): VNode {
 				<div className="min-w-0">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Tools</h2>
 					<p className="text-xs text-[var(--muted)] mt-1 max-w-[900px] leading-relaxed">
-						This page shows the effective tool inventory for the active session and model. Change the current LLM,
-						or disable MCP for a session, and the inventory here will change with it.
+						This page shows the effective tool inventory for the active session and model. Change the current LLM, or
+						disable MCP for a session, and the inventory here will change with it.
 					</p>
 				</div>
 				<button
@@ -115,87 +223,13 @@ export function ToolsSection(): VNode {
 			{toolsErr ? <div className="text-xs text-[var(--error)] max-w-[1100px]">{toolsErr}</div> : null}
 
 			<div className="grid gap-4 md:grid-cols-2 max-w-[1100px]">
-				<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
-					<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Tool Calling</div>
-					<div className="mt-2 flex items-center gap-2 flex-wrap">
-						<span className={`provider-item-badge ${data.supportsTools === false ? "warning" : "configured"}`}>
-							{data.supportsTools === false ? "Disabled" : "Enabled"}
-						</span>
-						<span className="text-sm font-medium text-[var(--text)]">
-							{tools.length} registered tool{tools.length === 1 ? "" : "s"}
-						</span>
-					</div>
-					<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
-						{data.supportsTools === false
-							? "The current model is chat-only, so the agent cannot call tools in this session."
-							: "Built-in, MCP, and runtime-routed tools available to the active model."}
-					</div>
-				</div>
-
-				<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
-					<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Active Model</div>
-					<div className="mt-2 text-sm font-medium text-[var(--text)] break-words">
-						{session.model || "Default model selection"}
-					</div>
-					<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
-						{session.provider ? `Provider: ${session.provider}` : "Provider selected automatically."}
-						{session.label ? ` Session: ${session.label}.` : ""}
-					</div>
-				</div>
-
-				<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
-					<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Execution Runtime</div>
-					<div className="mt-2 text-sm font-medium text-[var(--text)]">{executionMode}</div>
-					<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
-						{sandbox.enabled ? `Sandbox backend: ${sandbox.backend || "configured"}. ` : ""}
-						The <code className="text-[var(--text)]">execute_command</code> tool runs through the managed tools service.
-					</div>
-				</div>
+				<ToolCallingSummary supportsTools={supportsTools} toolCount={tools.length} />
+				<ActiveModelSummary session={session} />
+				<ExecutionRuntimeSummary sandbox={sandbox} />
 			</div>
 
-			{data.supportsTools === false ? (
-				<div className="rounded border border-[var(--warn)] bg-[var(--surface2)] p-3 max-w-[1100px]">
-					<div className="text-xs text-[var(--muted)] leading-relaxed">
-						Tools are unavailable because the current model does not support tool calling. Switch to a tool-capable
-						model in <strong className="text-[var(--text)]">Settings {"\u2192"} LLMs</strong> and refresh this page.
-					</div>
-				</div>
-			) : null}
-
-			<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4 max-w-[1100px]">
-				<div className="flex items-center justify-between gap-2 flex-wrap">
-					<h3 className="text-sm font-medium text-[var(--text-strong)] m-0">Registered Tools</h3>
-					<span className="provider-item-badge muted">{tools.length}</span>
-				</div>
-				{toolGroups.length > 0 ? (
-					<div className="mt-3 flex flex-col gap-3">
-						{toolGroups.map((group) => (
-							<div key={group.label}>
-								<div className="text-xs uppercase tracking-wide text-[var(--muted)] mb-2">
-									{group.label} {"\u00b7"} {group.tools.length}
-								</div>
-								<div className="flex flex-col gap-2">
-									{group.tools.map((tool) => (
-										<div key={tool.name} className="rounded border border-[var(--border)] bg-[var(--surface2)] p-3">
-											<div className="flex items-center justify-between gap-2 flex-wrap">
-												<div className="text-xs font-medium text-[var(--text)] break-words">{tool.name}</div>
-												{tool.name?.startsWith("mcp__") ? (
-													<span className="provider-item-badge configured">MCP</span>
-												) : null}
-											</div>
-											<div className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-												{tool.description || "No description provided."}
-											</div>
-										</div>
-									))}
-								</div>
-							</div>
-						))}
-					</div>
-				) : (
-					<div className="text-xs text-[var(--muted)] mt-3">No tools are currently exposed to this session.</div>
-				)}
-			</div>
+			<ToolCallingWarning supportsTools={supportsTools} />
+			<RegisteredTools groups={toolGroups} toolCount={tools.length} />
 		</div>
 	);
 }

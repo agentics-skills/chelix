@@ -6,7 +6,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { SectionHeading, StatusMessage, SubHeading } from "../../components/forms";
+import { SectionHeading, StatusMessage, SubHeading } from "../../components/forms/SectionLayout";
 import * as gon from "../../gon";
 import { refresh as refreshGon } from "../../gon";
 import { setLocale } from "../../i18n";

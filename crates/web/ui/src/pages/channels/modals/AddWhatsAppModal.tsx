@@ -8,7 +8,7 @@ import { addChannel, parseChannelConfigPatch } from "../../../channel-utils";
 import { sendRpc } from "../../../helpers";
 import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
-import { ChannelType } from "../../../types";
+import { ChannelType } from "../../../types/channel";
 import { Modal, ModelSelect, showToast } from "../../../ui";
 import {
 	type Channel,
@@ -102,6 +102,47 @@ export function AddWhatsAppModal(): VNode {
 	const advancedConfigPatch = useSignal("");
 	const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+	function finishPairing(qrPoll: ReturnType<typeof setInterval>): void {
+		clearInterval(qrPoll);
+		qrPollRef.current = null;
+		showToast("WhatsApp connected!");
+		showAddWhatsApp.value = false;
+		waPairingAccountId.value = null;
+		waQrData.value = null;
+		waQrSvg.value = null;
+		loadChannels();
+	}
+
+	function findWhatsAppChannel(channels: Channel[], accountId: string): Channel | undefined {
+		return channels.find((channel) => channel.type === ChannelType.WhatsApp && channel.account_id === accountId);
+	}
+
+	function pairingConnected(channel: Channel): boolean {
+		return channel.status === "connected" || Boolean(waQrData.value && !channel.extra?.qr_data);
+	}
+
+	function applyQrPayload(channel: Channel): void {
+		if (!channel.extra?.qr_data) return;
+		waQrData.value = channel.extra.qr_data;
+		if (channel.extra.qr_svg) waQrSvg.value = channel.extra.qr_svg;
+	}
+
+	async function pollWhatsAppStatus(qrPoll: ReturnType<typeof setInterval>, accountId: string): Promise<void> {
+		try {
+			const response = await sendRpc<{ channels?: Channel[] }>("channels.status", {});
+			if (qrPollRef.current !== qrPoll || !response?.ok) return;
+			const channel = findWhatsAppChannel(response.payload?.channels || [], accountId);
+			if (!channel) return;
+			if (pairingConnected(channel)) {
+				finishPairing(qrPoll);
+				return;
+			}
+			applyQrPayload(channel);
+		} catch (_error) {
+			// Polling retries on the next interval tick.
+		}
+	}
+
 	function onStartPairing(e: Event): void {
 		e.preventDefault();
 		const accountId = accountDraft.value.trim() || "main";
@@ -135,33 +176,10 @@ export function AddWhatsAppModal(): VNode {
 				pairingStarted.value = true;
 				// Poll channels.status as fallback for QR display and connection detection.
 				if (qrPollRef.current) clearInterval(qrPollRef.current);
-				qrPollRef.current = setInterval(async () => {
-					try {
-						const st = await sendRpc<{ channels?: Channel[] }>("channels.status", {});
-						if (!st?.ok) return;
-						const ch = (st.payload?.channels || []).find(
-							(c) => c.type === ChannelType.WhatsApp && c.account_id === accountId,
-						);
-						if (!ch) return;
-						if (ch.status === "connected" || (waQrData.value && !ch.extra?.qr_data)) {
-							clearInterval(qrPollRef.current!);
-							qrPollRef.current = null;
-							showToast("WhatsApp connected!");
-							showAddWhatsApp.value = false;
-							waPairingAccountId.value = null;
-							waQrData.value = null;
-							waQrSvg.value = null;
-							loadChannels();
-							return;
-						}
-						if (ch.extra?.qr_data) {
-							waQrData.value = ch.extra.qr_data;
-							if (ch.extra.qr_svg) waQrSvg.value = ch.extra.qr_svg;
-						}
-					} catch (_e) {
-						/* ignore */
-					}
+				const qrPoll = setInterval(() => {
+					void pollWhatsAppStatus(qrPoll, accountId);
 				}, 2000);
+				qrPollRef.current = qrPoll;
 			} else {
 				error.value = r?.error?.message || r?.error?.detail || "Failed to start pairing.";
 			}
@@ -222,25 +240,30 @@ export function AddWhatsAppModal(): VNode {
 							</div>
 						</div>
 						<ConnectionModeHint type={ChannelType.WhatsApp} />
-						<label className="text-xs text-[var(--muted)]">Account ID</label>
-						<input
-							data-field="accountId"
-							type="text"
-							placeholder="main"
-							className="channel-input"
-							value={accountDraft.value}
-							onInput={(e) => {
-								accountDraft.value = targetValue(e);
-							}}
-						/>
-						<label className="text-xs text-[var(--muted)]">DM Policy</label>
-						<select data-field="dmPolicy" className="channel-select">
-							<option value="open">Open (anyone)</option>
-							<option value="allowlist">Allowlist only</option>
-							<option value="disabled">Disabled</option>
-						</select>
-						<label className="text-xs text-[var(--muted)]">Default Model</label>
+						<label>
+							<span className="text-xs text-[var(--muted)]">Account ID</span>
+							<input
+								data-field="accountId"
+								type="text"
+								placeholder="main"
+								className="channel-input"
+								value={accountDraft.value}
+								onInput={(e) => {
+									accountDraft.value = targetValue(e);
+								}}
+							/>
+						</label>
+						<label>
+							<span className="text-xs text-[var(--muted)]">DM Policy</span>
+							<select data-field="dmPolicy" className="channel-select">
+								<option value="open">Open (anyone)</option>
+								<option value="allowlist">Allowlist only</option>
+								<option value="disabled">Disabled</option>
+							</select>
+						</label>
+						<span className="text-xs text-[var(--muted)]">Default Model</span>
 						<ModelSelect
+							ariaLabel="Default Model"
 							models={modelsSig.value}
 							value={addModel.value}
 							onChange={(v: string) => {
@@ -248,8 +271,9 @@ export function AddWhatsAppModal(): VNode {
 							}}
 							placeholder={defaultPlaceholder}
 						/>
-						<label className="text-xs text-[var(--muted)]">DM Allowlist</label>
+						<span className="text-xs text-[var(--muted)]">DM Allowlist</span>
 						<AllowlistInput
+							ariaLabel="DM Allowlist"
 							value={allowlistItems.value}
 							onChange={(v) => {
 								allowlistItems.value = v;
@@ -262,7 +286,7 @@ export function AddWhatsAppModal(): VNode {
 							}}
 						/>
 						{error.value && <div className="text-xs text-[var(--error)] py-1">{error.value}</div>}
-						<button className="provider-btn" onClick={onStartPairing} disabled={saving.value}>
+						<button type="button" className="provider-btn" onClick={onStartPairing} disabled={saving.value}>
 							{saving.value ? "Starting\u2026" : "Start Pairing"}
 						</button>
 					</>

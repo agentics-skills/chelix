@@ -10,6 +10,33 @@ import { targetValue } from "../../typed-events";
 import { detectBrowserTimezone, ErrorPanel } from "../shared";
 import type { IdentityInfo } from "../types";
 
+type StringStateSetter = (value: string | ((previous: string) => string)) => void;
+
+function applyRefreshedValue(
+	value: string | undefined,
+	setter: StringStateSetter,
+	merge: (previous: string, refreshed: string) => string,
+): void {
+	if (value) setter((previous) => merge(previous, value));
+}
+
+function hydrateIdentityState(
+	refreshed: IdentityInfo,
+	setUserName: StringStateSetter,
+	setName: StringStateSetter,
+	setEmoji: StringStateSetter,
+	setTheme: StringStateSetter,
+): void {
+	applyRefreshedValue(refreshed.user_name, setUserName, (previous, value) => previous || value);
+	applyRefreshedValue(refreshed.name, setName, (previous, value) =>
+		previous && previous !== "Chelix" ? previous : value,
+	);
+	applyRefreshedValue(refreshed.emoji, setEmoji, (previous, value) =>
+		previous && previous !== "\u{1f916}" ? previous : value,
+	);
+	applyRefreshedValue(refreshed.theme, setTheme, (previous, value) => previous || value);
+}
+
 export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
 	const identityData = (getGon("identity") as IdentityInfo) || {};
 	const [userName, setUserName] = useState(identityData.user_name || "");
@@ -24,10 +51,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		refreshGon().then(() => {
 			if (cancelled) return;
 			const refreshed = (getGon("identity") as IdentityInfo) || {};
-			if (refreshed.user_name) setUserName((prev: string) => prev || refreshed.user_name || "");
-			if (refreshed.name) setName((prev: string) => (prev && prev !== "Chelix" ? prev : refreshed.name || ""));
-			if (refreshed.emoji) setEmoji((prev: string) => (prev && prev !== "\u{1f916}" ? prev : refreshed.emoji || ""));
-			if (refreshed.theme) setTheme((prev: string) => prev || refreshed.theme || "");
+			hydrateIdentityState(refreshed, setUserName, setName, setEmoji, setTheme);
 		});
 		return () => {
 			cancelled = true;

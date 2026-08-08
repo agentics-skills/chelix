@@ -1,7 +1,7 @@
 // ── Tool call utilities ───────────────────────────────────────
 
-import type { ChannelFooterInfo } from "../chat-ui";
 import { completeA2uiToolCard, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
+import type { ChannelFooterInfo } from "../chat-ui";
 import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
@@ -125,48 +125,64 @@ function isToolValidationErrorPayload(p: ChatPayload): boolean {
 	);
 }
 
+function setCompletedToolStatus(toolCard: HTMLElement, success: boolean | undefined, validationError: boolean): void {
+	setToolCardStatus(toolCard, validationError ? "retry" : success ? "success" : "error");
+}
+
+function renderCompletedToolResult(
+	toolCard: HTMLElement,
+	payload: ChatPayload,
+	eventSession: string,
+	validationError: boolean,
+): void {
+	if (payload.result) {
+		appendToolResult(toolCard, payload.result, eventSession);
+		if (!payload.success && payload.error) appendToolCardError(toolCard, payload.error, validationError);
+		return;
+	}
+	if (payload.success) {
+		renderToolCardResult(toolCard, {}, { sessionKey: eventSession || S.activeSessionKey || "main" });
+		return;
+	}
+	if (payload.error) renderToolCardError(toolCard, payload.error, validationError);
+}
+
+function completeToolA2ui(toolCard: HTMLElement, payload: ChatPayload): void {
+	if (!isA2uiTool(payload.toolName) || payload.rejected === true) return;
+	completeA2uiToolCard(
+		toolCard,
+		payload.success === true,
+		payload.result,
+		payload.error?.detail || payload.error?.message,
+	);
+}
+
+function appendSkillChangeHint(toolCard: HTMLElement, payload: ChatPayload): void {
+	if (!payload.success || (payload.toolName !== "create_skill" && payload.toolName !== "update_skill")) return;
+	const hint = document.createElement("div");
+	hint.className = "skill-hint";
+	const verb = payload.toolName === "create_skill" ? "created" : "updated";
+	const link = document.createElement("a");
+	link.href = "/skills";
+	link.textContent = "personal skills";
+	link.addEventListener("click", (event: MouseEvent) => {
+		event.preventDefault();
+		navigate("/skills");
+	});
+	hint.append(`Skill ${verb} \u2014 available in your `, link);
+	getToolCardDetailsContainer(toolCard).appendChild(hint);
+}
+
 export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSession: string): void {
 	const validationError = isToolValidationErrorPayload(p);
-	// Use muted "retry" style for validation errors, normal styles otherwise.
-	if (validationError) {
-		setToolCardStatus(toolCard, "retry");
-	} else {
-		setToolCardStatus(toolCard, p.success ? "success" : "error");
-	}
-
-	if (p.success && p.result) {
-		appendToolResult(toolCard, p.result, eventSession);
-	} else if (!p.success && p.result) {
-		appendToolResult(toolCard, p.result, eventSession);
-		if (p.error) appendToolCardError(toolCard, p.error, validationError);
-	} else if (p.success) {
-		renderToolCardResult(toolCard, {}, { sessionKey: eventSession || S.activeSessionKey || "main" });
-	} else if (p.error) {
-		renderToolCardError(toolCard, p.error, validationError);
-	}
+	setCompletedToolStatus(toolCard, p.success, validationError);
+	renderCompletedToolResult(toolCard, p, eventSession, validationError);
 	appendToolCardContextBudget(toolCard, p.contextBudget);
 	// The A2UI surface lives beside the standard Parameters/Result/Context
 	// budget disclosures, so it is refreshed after they are rendered.
-	if (isA2uiTool(p.toolName) && p.rejected !== true) {
-		completeA2uiToolCard(toolCard, p.success === true, p.result, p.error?.detail || p.error?.message);
-	}
+	completeToolA2ui(toolCard, p);
 	setToolCardExpanded(toolCard, validationError || isCommandToolName(p.toolName) || isA2uiTool(p.toolName));
-
-	// Show a hint below the card when a skill is created or updated.
-	if (p.success && (p.toolName === "create_skill" || p.toolName === "update_skill")) {
-		const hint = document.createElement("div");
-		hint.className = "skill-hint";
-		const verb = p.toolName === "create_skill" ? "created" : "updated";
-		const link = document.createElement("a");
-		link.href = "/skills";
-		link.textContent = "personal skills";
-		link.addEventListener("click", (e: MouseEvent) => {
-			e.preventDefault();
-			navigate("/skills");
-		});
-		hint.append(`Skill ${verb} \u2014 available in your `, link);
-		getToolCardDetailsContainer(toolCard).appendChild(hint);
-	}
+	appendSkillChangeHint(toolCard, p);
 }
 
 export function clearStaleRunningToolCards(): void {
@@ -211,6 +227,50 @@ function extractThinkingText(): string | null {
  * start carries it in `messageIndex`, while a rejected call reports it
  * separately because its `messageIndex` addresses the tool-result record.
  */
+function assistantSegmentByHistoryIndex(historyIndex: number | undefined): HTMLElement | null {
+	if (!Number.isInteger(historyIndex)) return null;
+	return S.chatMsgBox?.querySelector(`.msg.assistant[data-history-index="${historyIndex}"]`) as HTMLElement | null;
+}
+
+function applyCanonicalAssistantSegment(
+	segment: HTMLElement,
+	assistantMessage: ChatPayload["assistantMessage"],
+	historyIndex: number | undefined,
+	sessionKey: string,
+	fallbackText = "",
+): void {
+	const text = assistantMessage?.content || "";
+	const reasoning = assistantMessage?.reasoning || "";
+	if (hasNonWhitespaceContent(text)) setSafeMarkdownHtml(segment, text);
+	if (Number.isInteger(historyIndex)) segment.dataset.historyIndex = String(historyIndex);
+	if (reasoning && !isReasoningAlreadyShown(reasoning)) appendReasoningDisclosure(segment, reasoning);
+	appendMessageActions({
+		messageEl: segment,
+		sessionKey,
+		messageIndex: historyIndex,
+		text: text || fallbackText,
+		hasAudio: Boolean(assistantMessage?.audio),
+	});
+}
+
+function closeCurrentStreamSegment(
+	assistantMessage: ChatPayload["assistantMessage"],
+	historyIndex: number | undefined,
+	sessionKey: string,
+	hasCanonicalContent: boolean,
+): boolean {
+	const streamElement = S.streamEl;
+	if (!streamElement) return false;
+	if (hasCanonicalContent) {
+		applyCanonicalAssistantSegment(streamElement, assistantMessage, historyIndex, sessionKey, S.streamText);
+	} else {
+		streamElement.remove();
+	}
+	S.setStreamEl(null);
+	S.setStreamText("");
+	return true;
+}
+
 export function closeLiveAssistantSegment(
 	assistantMessage: ChatPayload["assistantMessage"],
 	assistantHistoryIndex: number | undefined,
@@ -218,55 +278,13 @@ export function closeLiveAssistantSegment(
 ): void {
 	const canonicalText = assistantMessage?.content || "";
 	const canonicalReasoning = assistantMessage?.reasoning || "";
-	const hasCanonicalContent =
-		hasNonWhitespaceContent(canonicalText) || hasNonWhitespaceContent(canonicalReasoning);
-	if (S.streamEl) {
-		if (hasCanonicalContent) {
-			if (hasNonWhitespaceContent(canonicalText)) {
-				setSafeMarkdownHtml(S.streamEl, canonicalText);
-			}
-			if (Number.isInteger(assistantHistoryIndex)) {
-				S.streamEl.dataset.historyIndex = String(assistantHistoryIndex);
-			}
-			if (canonicalReasoning && !isReasoningAlreadyShown(canonicalReasoning)) {
-				appendReasoningDisclosure(S.streamEl, canonicalReasoning);
-			}
-			appendMessageActions({
-				messageEl: S.streamEl,
-				sessionKey,
-				messageIndex: assistantHistoryIndex,
-				text: canonicalText || S.streamText,
-				hasAudio: !!assistantMessage?.audio,
-			});
-		} else {
-			S.streamEl.remove();
-		}
-		S.setStreamEl(null);
-		S.setStreamText("");
-		return;
-	}
+	const hasCanonicalContent = hasNonWhitespaceContent(canonicalText) || hasNonWhitespaceContent(canonicalReasoning);
+	if (closeCurrentStreamSegment(assistantMessage, assistantHistoryIndex, sessionKey, hasCanonicalContent)) return;
 	if (!hasCanonicalContent) return;
-	const existingSegment = Number.isInteger(assistantHistoryIndex)
-		? (S.chatMsgBox?.querySelector(
-				`.msg.assistant[data-history-index="${assistantHistoryIndex}"]`,
-			) as HTMLElement | null)
-		: null;
-	const segment = existingSegment || chatAddMsg("assistant", renderMarkdown(canonicalText), true);
-	if (segment && Number.isInteger(assistantHistoryIndex)) {
-		segment.dataset.historyIndex = String(assistantHistoryIndex);
-	}
-	if (segment && canonicalReasoning && !isReasoningAlreadyShown(canonicalReasoning)) {
-		appendReasoningDisclosure(segment, canonicalReasoning);
-	}
-	if (segment) {
-		appendMessageActions({
-			messageEl: segment,
-			sessionKey,
-			messageIndex: assistantHistoryIndex,
-			text: canonicalText,
-			hasAudio: !!assistantMessage?.audio,
-		});
-	}
+	const segment =
+		assistantSegmentByHistoryIndex(assistantHistoryIndex) ||
+		chatAddMsg("assistant", renderMarkdown(canonicalText), true);
+	if (segment) applyCanonicalAssistantSegment(segment, assistantMessage, assistantHistoryIndex, sessionKey);
 }
 
 export function handleToolCallStartDom(p: ChatPayload, eventSession: string): void {
@@ -375,30 +393,34 @@ function isPureToolOutputEcho(finalText: string, toolOutput: string): boolean {
 	return finalComparable === toolComparable;
 }
 
+function removeStreamElement(): void {
+	S.streamEl?.remove();
+}
+
+function persistedAssistantMessage(historyIndex: number | undefined): HTMLElement | null {
+	if (!Number.isInteger(historyIndex)) return null;
+	return S.chatMsgBox?.querySelector(`.msg.assistant[data-history-index="${historyIndex}"]`) as HTMLElement | null;
+}
+
+function renderFinalText(finalText: string, historyIndex: number | undefined): HTMLElement | null {
+	if (S.streamEl) {
+		setSafeMarkdownHtml(S.streamEl, finalText);
+		return S.streamEl;
+	}
+	return persistedAssistantMessage(historyIndex) || chatAddMsg("assistant", renderMarkdown(finalText), true);
+}
+
 export function resolveFinalMessageEl(p: ChatPayload): HTMLElement | null {
 	const finalText = String(p.text || "");
-	const hasFinalText = hasNonWhitespaceContent(finalText);
-	const isEcho = hasFinalText && isPureToolOutputEcho(finalText, S.lastToolOutput);
-	if (!isEcho) {
-		if (hasFinalText && S.streamEl) {
-			setSafeMarkdownHtml(S.streamEl, finalText);
-			return S.streamEl;
-		}
-		if (hasFinalText) {
-			if (Number.isInteger(p.messageIndex)) {
-				const persisted = S.chatMsgBox?.querySelector(
-					`.msg.assistant[data-history-index="${p.messageIndex}"]`,
-				) as HTMLElement | null;
-				if (persisted) return persisted;
-			}
-			return chatAddMsg("assistant", renderMarkdown(finalText), true);
-		}
-		// No text (silent reply) -- remove any leftover stream element.
-		if (S.streamEl) S.streamEl.remove();
+	if (!hasNonWhitespaceContent(finalText)) {
+		removeStreamElement();
 		return null;
 	}
-	if (S.streamEl) S.streamEl.remove();
-	return null;
+	if (isPureToolOutputEcho(finalText, S.lastToolOutput)) {
+		removeStreamElement();
+		return null;
+	}
+	return renderFinalText(finalText, p.messageIndex);
 }
 
 // ── Terminal metadata ─────────────────────────────────────────
@@ -421,44 +443,53 @@ export function appendTerminalMetadataForPartial(
 }
 
 // ── Aborted partial rendering ─────────────────────────────────
-export function renderAbortedPartialInDom(p: ChatPayload, partialState: AbortedPartialState): void {
-	const partial = partialState.partial;
-	if (!partialState.hasVisiblePartial) {
-		const toolBatchEnd = partialState.hasTerminalToolBatch
-			? resolveToolBatchEnd(toolCallIds(partial?.tool_calls))
-			: null;
-		if (toolBatchEnd && appendTerminalMetadataForPartial(p, partial, toolBatchEnd)) {
-			smartScrollToBottom();
-		}
-		return;
-	}
-	let partialEl = Number.isInteger(p.messageIndex)
-		? (S.chatMsgBox?.querySelector(`.msg.assistant[data-history-index="${p.messageIndex}"]`) as HTMLElement | null)
-		: null;
+function abortedToolBatchEnd(partialState: AbortedPartialState): HTMLElement | null {
+	return partialState.hasTerminalToolBatch ? resolveToolBatchEnd(toolCallIds(partialState.partial?.tool_calls)) : null;
+}
+
+function renderMetadataOnlyPartial(p: ChatPayload, partialState: AbortedPartialState): void {
+	const toolBatchEnd = abortedToolBatchEnd(partialState);
+	if (toolBatchEnd && appendTerminalMetadataForPartial(p, partialState.partial, toolBatchEnd)) smartScrollToBottom();
+}
+
+function assignPartialHistoryIndex(element: HTMLElement | null, historyIndex: number | undefined): void {
+	if (element && Number.isInteger(historyIndex)) element.dataset.historyIndex = String(historyIndex);
+}
+
+function ensureAbortedPartialElement(p: ChatPayload, partialState: AbortedPartialState): HTMLElement | null {
+	let element = persistedAssistantMessage(p.messageIndex);
 	if (hasNonWhitespaceContent(partialState.partialText)) {
-		partialEl ||= S.streamEl || chatAddMsg("assistant", renderMarkdown(partialState.partialText), true);
-		if (partialEl && S.streamEl) setSafeMarkdownHtml(partialEl, partialState.partialText);
-		if (partialEl && Number.isInteger(p.messageIndex)) {
-			partialEl.dataset.historyIndex = String(p.messageIndex);
-		}
-	} else if (hasNonWhitespaceContent(partialState.partialReasoning)) {
-		partialEl ||= chatAddMsg("assistant", "", false);
-		if (partialEl && Number.isInteger(p.messageIndex)) {
-			partialEl.dataset.historyIndex = String(p.messageIndex);
-		}
+		element ||= S.streamEl || chatAddMsg("assistant", renderMarkdown(partialState.partialText), true);
+		if (element && S.streamEl) setSafeMarkdownHtml(element, partialState.partialText);
+		assignPartialHistoryIndex(element, p.messageIndex);
+		return element;
 	}
-	if (partialEl && partialState.partialReasoning && !isReasoningAlreadyShown(partialState.partialReasoning)) {
-		appendReasoningDisclosure(partialEl, partialState.partialReasoning);
+	if (!hasNonWhitespaceContent(partialState.partialReasoning)) return element;
+	element ||= chatAddMsg("assistant", "", false);
+	assignPartialHistoryIndex(element, p.messageIndex);
+	return element;
+}
+
+function finalizeAbortedPartial(p: ChatPayload, partialState: AbortedPartialState, partialElement: HTMLElement): void {
+	if (partialState.partialReasoning && !isReasoningAlreadyShown(partialState.partialReasoning)) {
+		appendReasoningDisclosure(partialElement, partialState.partialReasoning);
 	}
-	if (!partialEl) return;
 	appendMessageActions({
-		messageEl: partialEl,
+		messageEl: partialElement,
 		sessionKey: p.sessionKey || S.activeSessionKey,
 		messageIndex: p.messageIndex,
 		text: partialState.partialText,
-		hasAudio: !!partial?.audio,
+		hasAudio: Boolean(partialState.partial?.audio),
 	});
-	const toolBatchEnd = partialState.hasTerminalToolBatch ? resolveToolBatchEnd(toolCallIds(partial?.tool_calls)) : null;
-	appendTerminalMetadataForPartial(p, partial, toolBatchEnd || partialEl);
+	appendTerminalMetadataForPartial(p, partialState.partial, abortedToolBatchEnd(partialState) || partialElement);
 	smartScrollToBottom();
+}
+
+export function renderAbortedPartialInDom(p: ChatPayload, partialState: AbortedPartialState): void {
+	if (!partialState.hasVisiblePartial) {
+		renderMetadataOnlyPartial(p, partialState);
+		return;
+	}
+	const partialElement = ensureAbortedPartialElement(p, partialState);
+	if (partialElement) finalizeAbortedPartial(p, partialState, partialElement);
 }

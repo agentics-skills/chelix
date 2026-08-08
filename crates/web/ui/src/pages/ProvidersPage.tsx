@@ -10,10 +10,11 @@ import { t } from "../i18n";
 import { fetchModels } from "../models";
 import { updateNavCount } from "../nav-counts";
 import { testModel } from "../provider-validation";
-import { openModelSelectorForProvider, openProviderModal } from "../providers";
+import { openModelSelectorForProvider } from "../providers/auth-flow";
+import { openProviderModal } from "../providers/shared";
 import { connected } from "../signals";
 import * as S from "../state";
-import type { ModelInfo, ProviderInfo } from "../types";
+import type { ModelInfo, ProviderInfo } from "../types/model";
 import { ConfirmDialog, requestConfirm } from "../ui";
 
 // ── Types ───────────────────────────────────────────────────
@@ -220,9 +221,9 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 	result.sort((a, b) => {
 		const aOrder = metaMap?.get(a.provider)?.uiOrder;
 		const bOrder = metaMap?.get(b.provider)?.uiOrder;
-		const hasAOrder = Number.isFinite(aOrder);
-		const hasBOrder = Number.isFinite(bOrder);
-		if (hasAOrder && hasBOrder && aOrder !== bOrder) return aOrder! - bOrder!;
+		const hasAOrder = typeof aOrder === "number" && Number.isFinite(aOrder);
+		const hasBOrder = typeof bOrder === "number" && Number.isFinite(bOrder);
+		if (hasAOrder && hasBOrder && aOrder !== bOrder) return aOrder - bOrder;
 		if (hasAOrder && !hasBOrder) return -1;
 		if (!hasAOrder && hasBOrder) return 1;
 		return a.providerDisplayName.localeCompare(b.providerDisplayName);
@@ -274,6 +275,157 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 				</div>
 			))}
 		</dl>
+	);
+}
+
+interface ProviderAuthBadgeProps {
+	authType: string;
+}
+
+function providerAuthLabel(authType: string): string {
+	if (authType === "oauth") return t("providers:oauth");
+	if (authType === "local") return t("providers:local");
+	return t("providers:apiKey");
+}
+
+function ProviderAuthBadge({ authType }: ProviderAuthBadgeProps): VNode {
+	return <span className={`provider-item-badge ${authType}`}>{providerAuthLabel(authType)}</span>;
+}
+
+interface ProviderActionsProps {
+	hasModels: boolean;
+	isTesting: boolean;
+	isDeleting: boolean;
+	onTest: () => void;
+	onSelectModels: () => void;
+	onDelete: () => void;
+}
+
+function ProviderActions({
+	hasModels,
+	isTesting,
+	isDeleting,
+	onTest,
+	onSelectModels,
+	onDelete,
+}: ProviderActionsProps): VNode {
+	return (
+		<div className="flex gap-2 shrink-0">
+			{hasModels ? (
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary provider-btn-sm"
+					disabled={isTesting}
+					onClick={onTest}
+				>
+					{isTesting ? t("providers:testing") : t("providers:test")}
+				</button>
+			) : null}
+			{hasModels ? (
+				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onSelectModels}>
+					{t("providers:preferredModels.button")}
+				</button>
+			) : null}
+			<button
+				type="button"
+				className="provider-btn provider-btn-danger provider-btn-sm"
+				disabled={isDeleting}
+				onClick={onDelete}
+			>
+				{isDeleting ? t("common:status.deleting") : t("common:actions.delete")}
+			</button>
+		</div>
+	);
+}
+
+function ProviderTestStatus({ result }: { result: TestResult | null }): VNode | null {
+	if (!result) return null;
+	const className = result.ok ? "text-[var(--success,#22c55e)]" : "text-[var(--danger,#ef4444)]";
+	return <div className={`mt-1 text-xs ${className}`}>{result.ok ? t("providers:testSuccess") : result.error}</div>;
+}
+
+function ProviderModelBadges({ model }: { model: ModelInfo }): VNode {
+	return (
+		<>
+			{model.preferred ? <span className="recommended-badge">{t("providers:preferred")}</span> : null}
+			{model.unsupported ? (
+				<span
+					className="provider-item-badge warning"
+					title={model.unsupported_reason || t("providers:modelNotSupported")}
+				>
+					{t("providers:unsupported")}
+				</span>
+			) : null}
+			{model.tool_calling ? null : <span className="provider-item-badge warning">{t("providers:chatOnly")}</span>}
+			{model.disabled ? <span className="provider-item-badge muted">{t("providers:disabled")}</span> : null}
+		</>
+	);
+}
+
+interface ProviderModelRowProps {
+	model: ModelInfo;
+	onToggle: (model: ModelInfo) => void;
+}
+
+function ProviderModelRow({ model, onToggle }: ProviderModelRowProps): VNode {
+	return (
+		<div className="flex items-start justify-between gap-3 py-1">
+			<div className="min-w-0 flex-1">
+				<div className="flex items-center gap-2 min-w-0">
+					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.display_name}</div>
+					<ProviderModelBadges model={model} />
+				</div>
+				{model.unsupported && model.unsupported_reason ? (
+					<div className="mt-0.5 text-xs font-medium text-[var(--danger,#ef4444)]">{model.unsupported_reason}</div>
+				) : null}
+				<ModelRecord model={model} />
+			</div>
+			<button
+				type="button"
+				className="provider-btn provider-btn-secondary provider-btn-sm"
+				onClick={() => onToggle(model)}
+			>
+				{model.disabled ? t("common:actions.enable") : t("common:actions.disable")}
+			</button>
+		</div>
+	);
+}
+
+interface ProviderModelListProps {
+	models: ModelInfo[];
+	hasMore: boolean;
+	expanded: boolean;
+	hiddenCount: number;
+	onToggleModel: (model: ModelInfo) => void;
+	onToggleExpanded: () => void;
+}
+
+function ProviderModelList({
+	models,
+	hasMore,
+	expanded,
+	hiddenCount,
+	onToggleModel,
+	onToggleExpanded,
+}: ProviderModelListProps): VNode {
+	if (models.length === 0) {
+		return <div className="mt-2 text-xs text-[var(--muted)]">{t("providers:noActiveModels")}</div>;
+	}
+	return (
+		<div className="mt-2 flex flex-col gap-2">
+			{models.map((model) => (
+				<ProviderModelRow key={model.id} model={model} onToggle={onToggleModel} />
+			))}
+			{hasMore ? (
+				<button
+					type="button"
+					className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none py-1 text-left hover:underline"
+					onClick={onToggleExpanded}
+				>
+					{expanded ? t("providers:showFewerModels") : t("providers:showAllModels", { count: hiddenCount })}
+				</button>
+			) : null}
+		</div>
 	);
 }
 
@@ -359,6 +511,7 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 	}
 
 	const isTesting = testingProvider.value === group.provider;
+	const isDeleting = deletingProvider.value === group.provider;
 	const providerTestResult = testResult.value?.provider === group.provider ? testResult.value : null;
 
 	return (
@@ -366,94 +519,27 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 			<div className="flex items-center justify-between gap-3">
 				<div className="flex items-center gap-2 min-w-0">
 					<h3 className="text-base font-semibold text-[var(--text-strong)] truncate">{group.providerDisplayName}</h3>
-					<span className={`provider-item-badge ${group.authType}`}>
-						{group.authType === "oauth"
-							? t("providers:oauth")
-							: group.authType === "local"
-								? t("providers:local")
-								: t("providers:apiKey")}
-					</span>
+					<ProviderAuthBadge authType={group.authType} />
 				</div>
-				<div className="flex gap-2 shrink-0">
-					{group.models.length > 0 ? (
-						<button
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							disabled={isTesting}
-							onClick={onTestProvider}
-						>
-							{isTesting ? t("providers:testing") : t("providers:test")}
-						</button>
-					) : null}
-					{group.models.length > 0 ? (
-						<button className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onSelectModels}>
-							{t("providers:preferredModels.button")}
-						</button>
-					) : null}
-					<button
-						className="provider-btn provider-btn-danger provider-btn-sm"
-						disabled={deletingProvider.value === group.provider}
-						onClick={onDeleteProvider}
-					>
-						{deletingProvider.value === group.provider ? t("common:status.deleting") : t("common:actions.delete")}
-					</button>
-				</div>
+				<ProviderActions
+					hasModels={group.models.length > 0}
+					isTesting={isTesting}
+					isDeleting={isDeleting}
+					onTest={onTestProvider}
+					onSelectModels={onSelectModels}
+					onDelete={onDeleteProvider}
+				/>
 			</div>
-			{providerTestResult ? (
-				<div
-					className={`mt-1 text-xs ${providerTestResult.ok ? "text-[var(--success,#22c55e)]" : "text-[var(--danger,#ef4444)]"}`}
-				>
-					{providerTestResult.ok ? t("providers:testSuccess") : providerTestResult.error}
-				</div>
-			) : null}
+			<ProviderTestStatus result={providerTestResult} />
 			<div className="mt-2 border-b border-[var(--border)]" />
-			{group.models.length === 0 ? (
-				<div className="mt-2 text-xs text-[var(--muted)]">{t("providers:noActiveModels")}</div>
-			) : (
-				<div className="mt-2 flex flex-col gap-2">
-					{visibleModels.map((model) => (
-						<div key={model.id} className="flex items-start justify-between gap-3 py-1">
-							<div className="min-w-0 flex-1">
-								<div className="flex items-center gap-2 min-w-0">
-									<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.display_name}</div>
-									{model.preferred ? <span className="recommended-badge">{t("providers:preferred")}</span> : null}
-									{model.unsupported ? (
-										<span
-											className="provider-item-badge warning"
-											title={model.unsupported_reason || t("providers:modelNotSupported")}
-										>
-											{t("providers:unsupported")}
-										</span>
-									) : null}
-									{model.tool_calling ? null : (
-										<span className="provider-item-badge warning">{t("providers:chatOnly")}</span>
-									)}
-									{model.disabled ? <span className="provider-item-badge muted">{t("providers:disabled")}</span> : null}
-								</div>
-								{model.unsupported && model.unsupported_reason ? (
-									<div className="mt-0.5 text-xs font-medium text-[var(--danger,#ef4444)]">
-										{model.unsupported_reason}
-									</div>
-								) : null}
-								<ModelRecord model={model} />
-							</div>
-							<button
-								className="provider-btn provider-btn-secondary provider-btn-sm"
-								onClick={() => onToggleModel(model)}
-							>
-								{model.disabled ? t("common:actions.enable") : t("common:actions.disable")}
-							</button>
-						</div>
-					))}
-					{hasMore ? (
-						<button
-							className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none py-1 text-left hover:underline"
-							onClick={() => setExpanded(!expanded)}
-						>
-							{expanded ? t("providers:showFewerModels") : t("providers:showAllModels", { count: hiddenCount })}
-						</button>
-					) : null}
-				</div>
-			)}
+			<ProviderModelList
+				models={visibleModels}
+				hasMore={hasMore}
+				expanded={expanded}
+				hiddenCount={hiddenCount}
+				onToggleModel={onToggleModel}
+				onToggleExpanded={() => setExpanded(!expanded)}
+			/>
 		</div>
 	);
 }
@@ -481,6 +567,7 @@ function ProvidersPageComponent(): VNode {
 						{t("providers:title")}
 					</h2>
 					<button
+						type="button"
 						id="providersAddLlmBtn"
 						data-testid="providers-add-llm"
 						className="provider-btn"
@@ -491,6 +578,7 @@ function ProvidersPageComponent(): VNode {
 						{t("providers:addLlm")}
 					</button>
 					<button
+						type="button"
 						id="providersDetectModelsBtn"
 						data-testid="providers-detect-models"
 						className="provider-btn provider-btn-secondary"
@@ -517,7 +605,11 @@ function ProvidersPageComponent(): VNode {
 									style={{ width: `${progressPercent}%` }}
 								/>
 							</div>
-							<button className="provider-btn provider-btn-danger provider-btn-sm" onClick={cancelDetection}>
+							<button
+								type="button"
+								className="provider-btn provider-btn-danger provider-btn-sm"
+								onClick={cancelDetection}
+							>
 								{t("providers:stopDetection")}
 							</button>
 						</div>
@@ -566,6 +658,7 @@ function ProvidersPageComponent(): VNode {
 								<div className="flex flex-wrap gap-1 mb-3">
 									{groups.map((g) => (
 										<button
+											type="button"
 											key={g.provider}
 											className="text-xs px-2 py-1 rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)] cursor-pointer"
 											onClick={() => {

@@ -1,8 +1,9 @@
 // ── Shared mutable state ────────────────────────────────────
 
 import * as sig from "./signals";
-import type { RpcResponse, SessionTokens } from "./types";
 import type { SandboxGonInfo } from "./types/gon";
+import type { RpcResponse } from "./types/rpc";
+import type { SessionTokens } from "./types/session";
 
 export let ws: WebSocket | null = null;
 export let reqId = 0;
@@ -92,6 +93,19 @@ export let projectFilterId: string = localStorage.getItem("chelix-project-filter
 // DOM shorthand
 export function $<T extends HTMLElement = HTMLElement>(id: string): T | null {
 	return document.getElementById(id) as T | null;
+}
+
+export function requireElement<T extends HTMLElement = HTMLElement>(id: string): T {
+	const element = $<T>(id);
+	if (!element) throw new Error(`Missing required DOM element #${id}.`);
+	return element;
+}
+
+export function cloneRequiredTemplateRoot<T extends Element = HTMLElement>(id: string): T {
+	const template = requireElement<HTMLTemplateElement>(id);
+	const root = template.content.firstElementChild;
+	if (!root) throw new Error(`Required DOM template #${id} has no root element.`);
+	return root.cloneNode(true) as T;
 }
 
 // ── Setters ──────────────────────────────────────────────────

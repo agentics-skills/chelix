@@ -4,7 +4,7 @@
 // Centralizes signals previously local to page-providers.js.
 
 import { signal } from "@preact/signals";
-import type { ConfiguredModel, DetectProgress, DetectSummary, ProviderMeta } from "../types";
+import type { ConfiguredModel, DetectProgress, DetectSummary, ProviderMeta } from "../types/model";
 
 // ── Signals ──────────────────────────────────────────────────
 export const configuredModels = signal<ConfiguredModel[]>([]);

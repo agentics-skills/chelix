@@ -4,7 +4,7 @@
 // immediately. Histories are patched incrementally from websocket events and
 // refreshed authoritatively from sessions.switch responses.
 
-import type { HistoryMessage } from "../types";
+import type { HistoryMessage } from "../types/session";
 
 const historyByKey = new Map<string, HistoryMessage[]>();
 const revisionByKey = new Map<string, number>();
@@ -97,20 +97,22 @@ function trimSessionHistoryInPlace(list: HistoryMessage[]): number {
 	return bytes;
 }
 
+function oldestHistoryKey(preferredKey: string): string | null {
+	let victim: string | null = null;
+	let oldest = Number.POSITIVE_INFINITY;
+	for (const [key, ts] of lastAccessByKey.entries()) {
+		if (key === preferredKey && historyByKey.size > 1) continue;
+		if (ts < oldest) {
+			oldest = ts;
+			victim = key;
+		}
+	}
+	return victim ?? historyByKey.keys().next().value ?? null;
+}
+
 function evictGlobalHistoryBudget(preferredKey: string): void {
 	while (totalBytes > MAX_TOTAL_HISTORY_BYTES && historyByKey.size > 0) {
-		let victim: string | null = null;
-		let oldest = Number.POSITIVE_INFINITY;
-		for (const [key, ts] of lastAccessByKey.entries()) {
-			if (key === preferredKey && historyByKey.size > 1) continue;
-			if (ts < oldest) {
-				oldest = ts;
-				victim = key;
-			}
-		}
-		if (!victim) {
-			victim = historyByKey.keys().next().value ?? null;
-		}
+		const victim = oldestHistoryKey(preferredKey);
 		if (!victim) break;
 		dropHistoryKey(victim);
 	}

@@ -1,5 +1,5 @@
 import { sendRpc } from "./helpers";
-import type { RpcResponse } from "./types";
+import type { RpcResponse } from "./types/rpc";
 
 interface OAuthStartPayload {
 	alreadyAuthenticated?: boolean;

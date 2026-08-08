@@ -6,14 +6,7 @@
  * Channel type identifier.
  * Serialised as lowercase via `#[serde(rename_all = "lowercase")]`.
  */
-export type ChannelType =
-	| "telegram"
-	| "whatsapp"
-	| "discord"
-	| "slack"
-	| "matrix"
-	| "signal"
-	| "telephony";
+export type ChannelType = "telegram" | "whatsapp" | "discord" | "slack" | "matrix" | "signal" | "telephony";
 
 /**
  * Runtime constants for `ChannelType` values.
@@ -81,5 +74,21 @@ export interface ChannelReplyTarget {
 export interface ChannelBinding {
 	type: string;
 	account_id?: string;
+	[key: string]: unknown;
+}
+
+/** Channel data as returned by the channels.status RPC. */
+export interface ChannelInfo {
+	type: string;
+	account_id?: string;
+	config?: Record<string, unknown>;
+	enabled?: boolean;
+	[key: string]: unknown;
+}
+
+/** Sender data as returned by the server. */
+export interface SenderInfo {
+	id?: string;
+	name?: string;
 	[key: string]: unknown;
 }

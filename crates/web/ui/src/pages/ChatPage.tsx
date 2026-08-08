@@ -30,6 +30,7 @@ import { updateSandboxUI } from "../sandbox";
 import { switchSession } from "../sessions";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
+import type { ChatContextMessage, ChatFullContextPayload, PromptMemoryData } from "../types/chat";
 import { copyToClipboard } from "../ui";
 import { initVadButton, initVoiceInput, teardownVoiceInput } from "../voice-input";
 import {
@@ -42,7 +43,6 @@ import {
 import {
 	buildPromptMemorySummary,
 	ctxEl,
-	type PromptMemoryData,
 	promptMemoryDetailParts,
 	renderContextMcpSection,
 	renderContextProjectSection,
@@ -53,7 +53,6 @@ import {
 	renderContextTokensSection,
 	renderContextToolsSection,
 } from "./chat/context-card";
-import { initChatTerminal, teardownChatTerminal } from "./TerminalPage";
 // ── Sub-module imports ──────────────────────────────────────
 import {
 	setSendChatFn,
@@ -62,6 +61,7 @@ import {
 	slashHideMenu,
 	slashInjectStyles,
 } from "./chat/slash-commands";
+import { initChatTerminal, teardownChatTerminal } from "./TerminalPage";
 
 // ── Module state ─────────────────────────────────────────────
 let promptMemoryToolbarRequestId = 0;
@@ -117,7 +117,7 @@ function refreshPromptMemoryToolbar(): Promise<PromptMemoryData | null> {
 	}
 	const requestId = ++promptMemoryToolbarRequestId;
 	setPromptMemoryToolbarState(null, true, false);
-	return sendRpc("chat.context", {}).then((res: any) => {
+	return sendRpc("chat.context", {}).then((res) => {
 		if (requestId !== promptMemoryToolbarRequestId) return null;
 		if (res?.ok && res.payload) {
 			const pm = res.payload.promptMemory || null;
@@ -132,31 +132,22 @@ function refreshPromptMemoryToolbar(): Promise<PromptMemoryData | null> {
 function refreshPromptMemoryToolbarSnapshot(): Promise<PromptMemoryData | null> {
 	setPromptMemoryToolbarState(null, false, true);
 	return sendRpc("chat.prompt_memory.refresh", {})
-		.then((res: any) => {
+		.then((res) => {
 			if (!(res?.ok && res.payload)) throw new Error(res?.error?.message || "Failed to refresh prompt memory");
 			const pm = res.payload.promptMemory || null;
 			refreshPromptMemoryToolbarFromPayload(pm);
 			maybeRefreshFullContext();
 			return pm;
 		})
-		.catch((error: any) => {
+		.catch((error: unknown) => {
 			refreshPromptMemoryToolbar();
-			chatAddMsg("error", error?.message || "Failed to refresh prompt memory");
+			const message = error instanceof Error ? error.message : "Failed to refresh prompt memory";
+			chatAddMsg("error", message);
 			return null;
 		});
 }
 
 // ── Debug / full context panels ──────────────────────────────
-
-interface ContextMessage {
-	role?: string;
-	content?: unknown;
-	tool_calls?: Array<{
-		id?: string;
-		function?: { name?: string; arguments?: string };
-	}>;
-	tool_call_id?: string;
-}
 
 function setDebugModalOpen(open: boolean): void {
 	const modal = S.$("debugModal") as HTMLElement | null;
@@ -206,7 +197,7 @@ function refreshDebugPanel(): void {
 	if (!panel) return;
 	panel.textContent = "";
 	panel.appendChild(ctxEl("div", "text-xs text-[var(--muted)]", "Loading context\u2026"));
-	sendRpc("chat.context", {}).then((res: any) => {
+	sendRpc("chat.context", {}).then((res) => {
 		panel.textContent = "";
 		if (!(res?.ok && res.payload)) {
 			panel.appendChild(ctxEl("div", "text-xs text-[var(--error)]", "Failed to load context"));
@@ -254,7 +245,7 @@ function ctxMsgBadge(role: string): HTMLElement {
 	return badge;
 }
 
-function ctxMsgMeta(msg: ContextMessage, contentStr: string): string {
+function ctxMsgMeta(msg: ChatContextMessage, contentStr: string): string {
 	const parts: string[] = [];
 	const chars = contentStr ? contentStr.length : 0;
 	if (chars > 0) parts.push(`${chars.toLocaleString()} chars`);
@@ -264,7 +255,7 @@ function ctxMsgMeta(msg: ContextMessage, contentStr: string): string {
 	return parts.join(" \u00b7 ");
 }
 
-function ctxMsgToolCall(tc: NonNullable<ContextMessage["tool_calls"]>[number]): HTMLElement {
+function ctxMsgToolCall(tc: NonNullable<ChatContextMessage["tool_calls"]>[number]): HTMLElement {
 	const div = ctxEl("div", "mt-1 border border-[var(--border)] rounded-md p-2 bg-[var(--surface)]");
 	const hdr = ctxEl("div", "text-xs font-semibold text-[var(--text)] mb-1");
 	hdr.textContent = `\ud83d\udee0 ${tc.function?.name || "unknown"}`;
@@ -282,7 +273,7 @@ function ctxMsgToolCall(tc: NonNullable<ContextMessage["tool_calls"]>[number]): 
 	return div;
 }
 
-function renderContextMessage(msg: ContextMessage, index: number): HTMLElement {
+function renderContextMessage(msg: ChatContextMessage, index: number): HTMLElement {
 	const wrapper = ctxEl("div", "mb-2");
 	const contentStr = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content, null, 2);
 	const hdr = ctxEl("div", "flex items-center gap-2 cursor-pointer select-none");
@@ -329,26 +320,25 @@ function buildFullContextPromptMemoryBox(pm: PromptMemoryData | null): HTMLEleme
 	return box;
 }
 
-function appendFullContextWorkspaceWarnings(panel: HTMLElement, payload: any): void {
-	const wf: any[] = Array.isArray(payload.workspaceFiles) ? payload.workspaceFiles : [];
-	if (!payload.truncated || wf.length === 0) return;
-	const tf = wf.filter((f: any) => f?.truncated);
-	if (tf.length === 0) return;
+function appendFullContextWorkspaceWarnings(panel: HTMLElement, payload: ChatFullContextPayload): void {
+	if (!payload.truncated || payload.workspaceFiles.length === 0) return;
+	const truncatedFiles = payload.workspaceFiles.filter((file) => file.truncated);
+	if (truncatedFiles.length === 0) return;
 	const warning = ctxEl(
 		"div",
 		"text-xs mb-3 rounded-md border border-[var(--border)] bg-[var(--surface)] p-2 text-[var(--text)]",
 	);
-	warning.textContent = tf
-		.map((f: any) => {
-			const name = typeof f.name === "string" ? f.name : "workspace file";
-			return `${name}: ${Number(f.original_chars || 0).toLocaleString()} chars, limit ${Number(f.limit_chars || 0).toLocaleString()}, truncated by ${Number(f.truncated_chars || 0).toLocaleString()}`;
+	warning.textContent = truncatedFiles
+		.map((file) => {
+			const name = typeof file.name === "string" ? file.name : "workspace file";
+			return `${name}: ${Number(file.original_chars || 0).toLocaleString()} chars, limit ${Number(file.limit_chars || 0).toLocaleString()}, truncated by ${Number(file.truncated_chars || 0).toLocaleString()}`;
 		})
 		.join(" | ");
 	panel.appendChild(warning);
 }
 
 function buildFullContextHeaderRow(
-	payload: any,
+	payload: ChatFullContextPayload,
 	onRefresh: (btn: HTMLButtonElement) => void,
 ): { headerRow: HTMLElement; copyBtn: HTMLElement; downloadBtn: HTMLElement; llmOutputBtn: HTMLElement } {
 	const headerRow = ctxEl("div", "flex items-center gap-3 mb-3");
@@ -376,8 +366,8 @@ function buildFullContextHeaderRow(
 
 function wireFullContextCopyButton(
 	copyBtn: HTMLElement,
-	messages: ContextMessage[],
-	llmOutputs: any[],
+	messages: ChatContextMessage[],
+	llmOutputs: unknown[],
 	llmOutputPanel: HTMLElement,
 ): void {
 	copyBtn.addEventListener("click", () => {
@@ -402,7 +392,7 @@ function wireFullContextCopyButton(
 	});
 }
 
-function wireFullContextDownloadButton(downloadBtn: HTMLElement, messages: ContextMessage[]): void {
+function wireFullContextDownloadButton(downloadBtn: HTMLElement, messages: ChatContextMessage[]): void {
 	downloadBtn.addEventListener("click", () => {
 		const lines = messages.map((m) => JSON.stringify(m));
 		const blob = new Blob([`${lines.join("\n")}\n`], { type: "application/x-jsonlines" });
@@ -415,7 +405,7 @@ function wireFullContextDownloadButton(downloadBtn: HTMLElement, messages: Conte
 	});
 }
 
-function buildFullContextLlmOutputPanel(llmOutputs: any[]): HTMLElement {
+function buildFullContextLlmOutputPanel(llmOutputs: unknown[]): HTMLElement {
 	const panel = ctxEl("div", "hidden mb-3");
 	panel.appendChild(
 		ctxEl(
@@ -456,7 +446,7 @@ function refreshFullContextPanel(): void {
 	if (!panel) return;
 	panel.textContent = "";
 	panel.appendChild(ctxEl("div", "text-xs text-[var(--muted)]", "Building full context\u2026"));
-	sendRpc("chat.full_context", {}).then((res: any) => {
+	sendRpc("chat.full_context", {}).then((res) => {
 		panel.textContent = "";
 		if (!(res?.ok && res.payload)) {
 			panel.appendChild(ctxEl("div", "text-xs text-[var(--error)]", "Failed to build context"));
@@ -467,7 +457,7 @@ function refreshFullContextPanel(): void {
 		const pmBox = buildFullContextPromptMemoryBox(pm);
 		if (pmBox) panel.appendChild(pmBox);
 		appendFullContextWorkspaceWarnings(panel, res.payload);
-		const messages: ContextMessage[] = res.payload.messages || [];
+		const messages: ChatContextMessage[] = res.payload.messages || [];
 		const llmOutputs = res.payload.llmOutputs || [];
 		const llmOutputPanel = buildFullContextLlmOutputPanel(llmOutputs);
 		const header = buildFullContextHeaderRow(res.payload, refreshFullContextMemory);
@@ -520,7 +510,7 @@ function toggleMcp(): void {
 	const label = S.$("mcpToggleLabel") as HTMLElement | null;
 	const isEnabled = label && label.textContent === "MCP";
 	const newDisabled = isEnabled;
-	sendRpc("sessions.patch", { key: S.activeSessionKey, mcpDisabled: newDisabled }).then((res: any) => {
+	sendRpc("sessions.patch", { key: S.activeSessionKey, mcpDisabled: newDisabled }).then((res) => {
 		if (res?.ok) updateMcpToggleUI(!newDisabled);
 	});
 }
@@ -631,7 +621,7 @@ function bindChatComposer(): void {
 	});
 	chatInput.addEventListener("keydown", (e: KeyboardEvent) => {
 		if (slashHandleKeydown(e)) return;
-		if (e.key === "Enter" && !e.shiftKey && !(e as any).isComposing) {
+		if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
 			e.preventDefault();
 			sendChat();
 			return;
@@ -769,8 +759,11 @@ function startInitialChatSession(sessionKey: string): void {
 }
 
 function initializeChatMediaDrop(): void {
-	const inputArea = S.chatInput?.closest(".chat-input-row");
-	initMediaDrop(S.chatMsgBox!, inputArea as HTMLElement);
+	const chatMsgBox = S.requireElement("messages");
+	const chatInput = S.requireElement("chatInput");
+	const inputArea = chatInput.closest<HTMLElement>(".chat-input-row");
+	if (!inputArea) throw new Error("Missing required chat input row.");
+	initMediaDrop(chatMsgBox, inputArea);
 }
 
 // Safe: static hardcoded HTML template string — no user input is interpolated.
@@ -799,7 +792,7 @@ const chatPageHTML =
 let chatScrollHandler: (() => void) | null = null;
 
 registerPrefix(
-	routes.chats!,
+	routes.chats,
 	function initChat(container: HTMLElement, sessionKeyFromUrl?: string | null) {
 		container.style.cssText = "position:relative";
 		// Safe: chatPageHTML is a static hardcoded template with no user input.

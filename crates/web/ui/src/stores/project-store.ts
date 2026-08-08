@@ -4,7 +4,8 @@
 
 import { signal } from "@preact/signals";
 import { sendRpc } from "../helpers";
-import type { ProjectInfo, RpcResponse } from "../types";
+import type { ProjectInfo } from "../types/project";
+import type { RpcResponse } from "../types/rpc";
 
 // ── Signals ──────────────────────────────────────────────────
 export const projects = signal<ProjectInfo[]>([]);

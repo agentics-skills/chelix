@@ -6,9 +6,11 @@
 import * as gon from "./gon";
 import type { SpaRoutes } from "./types/gon";
 
-const r: Partial<SpaRoutes> = gon.get("routes") || {};
-export const routes: Partial<SpaRoutes> = r;
+const injectedRoutes = gon.get("routes");
+if (!injectedRoutes) throw new Error("Missing required server-injected SPA routes.");
+
+export const routes: SpaRoutes = injectedRoutes;
 
 export function settingsPath(id: string): string {
-	return `${r.settings}/${id}`;
+	return `${routes.settings}/${id}`;
 }

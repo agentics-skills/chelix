@@ -156,97 +156,289 @@ interface SummaryData {
 	skills: SummarySkills | null;
 }
 
+interface SummarySkillsCategory {
+	name: string;
+	count: number;
+	enabled: boolean;
+}
+
+interface SummaryLoadResponses {
+	providers: { ok?: boolean; payload?: SummaryProvider[] } | null;
+	channels: { ok?: boolean; payload?: { channels?: SummaryChannel[] } } | null;
+	voice: { ok?: boolean; payload?: SummaryVoice } | null;
+	bootstrap: { sandbox?: SandboxGonInfo } | null;
+	skills: {
+		ok?: boolean;
+		payload?: { categories?: SummarySkillsCategory[]; total_skills?: number };
+	} | null;
+}
+
+function summarySkills(response: SummaryLoadResponses["skills"]): SummarySkills | null {
+	const categories = response?.ok ? response.payload?.categories || [] : [];
+	if (!categories.length) return null;
+	const enabled = categories.filter((category) => category.enabled);
+	return {
+		enabledCategories: enabled.length,
+		totalCategories: categories.length,
+		enabledSkills: enabled.reduce((sum, category) => sum + category.count, 0),
+		totalSkills: response?.payload?.total_skills || 0,
+	};
+}
+
+async function fetchSummaryResponses(voiceEnabled: boolean): Promise<SummaryLoadResponses> {
+	const [providers, channels, voice, bootstrap, skills] = await Promise.all([
+		(sendRpc("providers.available", {}) as Promise<SummaryLoadResponses["providers"]>).catch(() => null),
+		(fetchChannelStatus() as Promise<SummaryLoadResponses["channels"]>).catch(() => null),
+		voiceEnabled
+			? (fetchVoiceProviders() as Promise<SummaryLoadResponses["voice"]>).catch(() => null)
+			: Promise.resolve(null),
+		fetch(
+			"/api/bootstrap?include_channels=false&include_sessions=false&include_models=false&include_projects=false&include_counts=false&include_identity=false",
+		)
+			.then((response) => (response.ok ? (response.json() as Promise<SummaryLoadResponses["bootstrap"]>) : null))
+			.catch(() => null),
+		(sendRpc("skills.bundled.categories", {}) as Promise<SummaryLoadResponses["skills"]>).catch(() => null),
+	]);
+	return { providers, channels, voice, bootstrap, skills };
+}
+
+async function fetchSummaryData(): Promise<SummaryData> {
+	await refreshGon();
+	const voiceEnabled = getGon("voice_enabled") === true;
+	const responses = await fetchSummaryResponses(voiceEnabled);
+	return {
+		identity: getGon("identity") as IdentityInfo | null,
+		mem: getGon("mem") as { total?: number; available?: number } | null,
+		update: getGon("update") as SummaryData["update"],
+		voiceEnabled,
+		providers: responses.providers?.ok ? responses.providers.payload || [] : [],
+		channels: responses.channels?.ok ? responses.channels.payload?.channels || [] : [],
+		voice: responses.voice?.ok ? responses.voice.payload || { tts: [], stt: [] } : null,
+		sandbox: responses.bootstrap?.sandbox || null,
+		skills: summarySkills(responses.skills),
+	};
+}
+
+function IdentitySummary({ identity }: { identity: IdentityInfo | null }): VNode {
+	const configured = !!(identity?.user_name && identity.name);
+	return (
+		<SummaryRow icon={configured ? <CheckIcon /> : <WarnIcon />} label="Identity">
+			{configured ? (
+				<>
+					You: <span className="font-medium text-[var(--text)]">{identity.user_name}</span> Agent:{" "}
+					<span className="font-medium text-[var(--text)]">
+						{identity.emoji || ""} {identity.name}
+					</span>
+				</>
+			) : (
+				<span className="text-[var(--warn)]">Identity not fully configured</span>
+			)}
+		</SummaryRow>
+	);
+}
+
+function ProvidersSummary({
+	providers,
+	activeModel,
+}: {
+	providers: SummaryProvider[];
+	activeModel: string | null;
+}): VNode {
+	const configured = providers.filter((provider) => provider.configured);
+	return (
+		<SummaryRow icon={configured.length ? <CheckIcon /> : <ErrorIcon />} label="LLMs">
+			{configured.length ? (
+				<div className="flex flex-col gap-1">
+					<div className="flex flex-wrap gap-1">
+						{configured.map((provider) => (
+							<span key={provider.name} className="provider-item-badge configured">
+								{provider.displayName}
+							</span>
+						))}
+					</div>
+					{activeModel && (
+						<div>
+							Active model: <span className="font-mono font-medium text-[var(--text)]">{activeModel}</span>
+						</div>
+					)}
+				</div>
+			) : (
+				<span className="text-[var(--error)]">No LLM providers configured</span>
+			)}
+		</SummaryRow>
+	);
+}
+
+function channelSummaryIcon(channels: SummaryChannel[]): VNode {
+	if (!channels.length) return <InfoIcon />;
+	if (channels.some((channel) => channel.status === "error")) return <ErrorIcon />;
+	if (channels.some((channel) => channel.status === "disconnected")) return <WarnIcon />;
+	return <CheckIcon />;
+}
+
+function channelStatusColor(status: string): string {
+	if (status === "connected") return "var(--ok)";
+	return status === "error" ? "var(--error)" : "var(--warn)";
+}
+
+function ChannelsSummary({ channels }: { channels: SummaryChannel[] }): VNode {
+	return (
+		<SummaryRow icon={channelSummaryIcon(channels)} label="Channels">
+			{channels.length ? (
+				<div className="flex flex-col gap-1">
+					{channels.map((channel) => (
+						<div key={channel.account_id} className="flex items-center gap-1">
+							<span style={`color:${channelStatusColor(channel.status)}`}>{"\u25CF"}</span>
+							<span className="font-medium text-[var(--text)]">{channel.type}</span>:{" "}
+							{channel.name || channel.account_id}
+							<span>({channel.status})</span>
+						</div>
+					))}
+				</div>
+			) : (
+				<>No channels configured</>
+			)}
+		</SummaryRow>
+	);
+}
+
+function SkillsSummary({ skills }: { skills: SummarySkills | null }): VNode | null {
+	if (!skills) return null;
+	return (
+		<SummaryRow icon={skills.enabledCategories > 0 ? <CheckIcon /> : <InfoIcon />} label="Skills">
+			<span className="font-medium text-[var(--text)]">{skills.enabledSkills}</span> skills enabled across{" "}
+			<span className="font-medium text-[var(--text)]">
+				{skills.enabledCategories}/{skills.totalCategories}
+			</span>{" "}
+			categories
+		</SummaryRow>
+	);
+}
+
+function MemorySummary({ memory }: { memory: SummaryData["mem"] }): VNode {
+	const lowMemory = !!(memory?.total && memory.total < LOW_MEMORY_THRESHOLD);
+	return (
+		<SummaryRow icon={lowMemory ? <WarnIcon /> : <CheckIcon />} label="System Memory">
+			{memory ? (
+				<>
+					Total: <span className="font-medium text-[var(--text)]">{formatMemBytes(memory.total)}</span> Available:{" "}
+					<span className="font-medium text-[var(--text)]">{formatMemBytes(memory.available)}</span>
+					{lowMemory && (
+						<div className="text-[var(--warn)] mt-1">
+							Low memory detected. Consider upgrading to an instance with more RAM.
+						</div>
+					)}
+				</>
+			) : (
+				<>Memory info unavailable</>
+			)}
+		</SummaryRow>
+	);
+}
+
+function SandboxSummary({ sandbox }: { sandbox: SandboxGonInfo | null }): VNode {
+	const enabled = sandbox?.mode === "On";
+	return (
+		<SummaryRow icon={enabled ? <CheckIcon /> : <InfoIcon />} label="Sandbox">
+			{enabled ? (
+				<>
+					Backend: <span className="font-medium text-[var(--text)]">{sandbox.backend}</span>
+				</>
+			) : (
+				<>Mode: Off — commands execute directly on the host</>
+			)}
+		</SummaryRow>
+	);
+}
+
+function VersionSummary({ update }: { update: SummaryData["update"] }): VNode {
+	return (
+		<SummaryRow icon={update?.available ? <WarnIcon /> : <CheckIcon />} label="Version">
+			{update?.available ? (
+				<>
+					Update available:{" "}
+					<a
+						href={update.release_url || "#"}
+						target="_blank"
+						rel="noopener"
+						className="text-[var(--accent)] underline font-medium"
+					>
+						{update.latest_version}
+					</a>
+				</>
+			) : (
+				<>You are running the latest version.</>
+			)}
+		</SummaryRow>
+	);
+}
+
+function VoiceSummary({ enabled, voice }: { enabled: boolean; voice: SummaryVoice | null }): VNode | null {
+	if (!enabled) return null;
+	const enabledStt = voice?.stt.filter((provider) => provider.enabled).map((provider) => provider.name) || [];
+	const enabledTts = voice?.tts.filter((provider) => provider.enabled).map((provider) => provider.name) || [];
+	const anyEnabled = enabledStt.length > 0 || enabledTts.length > 0;
+	return (
+		<SummaryRow icon={anyEnabled ? <CheckIcon /> : <InfoIcon />} label="Voice">
+			{voice ? (
+				anyEnabled ? (
+					<div className="flex flex-col gap-0.5">
+						{enabledStt.length > 0 && (
+							<div>
+								STT: <span className="font-medium text-[var(--text)]">{enabledStt.join(", ")}</span>
+							</div>
+						)}
+						{enabledTts.length > 0 && (
+							<div>
+								TTS: <span className="font-medium text-[var(--text)]">{enabledTts.join(", ")}</span>
+							</div>
+						)}
+					</div>
+				) : (
+					<>No voice providers enabled</>
+				)
+			) : (
+				<>Voice providers unavailable</>
+			)}
+		</SummaryRow>
+	);
+}
+
+function SummaryActions({
+	data,
+	onBack,
+	onFinish,
+}: {
+	data: SummaryData;
+	onBack: () => void;
+	onFinish: () => void;
+}): VNode {
+	return (
+		<div className="flex flex-wrap items-center gap-3 mt-1">
+			<button type="button" className="provider-btn provider-btn-secondary" onClick={onBack}>
+				{t("common:actions.back")}
+			</button>
+			<div className="flex-1" />
+			<button type="button" className="provider-btn" onClick={onFinish}>
+				{data.identity?.emoji || ""} {data.identity?.name || "Your agent"}, reporting for duty
+			</button>
+		</div>
+	);
+}
+
 // ── SummaryStep ─────────────────────────────────────────────
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: summary step fetches multiple data sources and renders conditional sections
 function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () => void }): VNode {
 	const [loading, setLoading] = useState(true);
 	const [data, setData] = useState<SummaryData | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-
-		// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parallel data fetches and conditional gon reads
-		async function load(): Promise<void> {
-			await refreshGon();
-
-			const identity = getGon("identity") as IdentityInfo | null;
-			const mem = getGon("mem") as { total?: number; available?: number } | null;
-			const update = getGon("update") as {
-				available?: boolean;
-				latest_version?: string;
-				release_url?: string;
-			} | null;
-			const voiceEnabled = getGon("voice_enabled") === true;
-
-			const [providersRes, channelsRes, voiceRes, bootstrapRes, skillsRes] = await Promise.all([
-				(
-					sendRpc("providers.available", {}) as Promise<{
-						ok?: boolean;
-						payload?: SummaryProvider[];
-					}>
-				).catch(() => null),
-				(
-					fetchChannelStatus() as Promise<{
-						ok?: boolean;
-						payload?: { channels?: SummaryChannel[] };
-					}>
-				).catch(() => null),
-				voiceEnabled
-					? (
-							fetchVoiceProviders() as Promise<{
-								ok?: boolean;
-								payload?: SummaryVoice;
-							}>
-						).catch(() => null)
-					: Promise.resolve(null),
-				fetch(
-					"/api/bootstrap?include_channels=false&include_sessions=false&include_models=false&include_projects=false&include_counts=false&include_identity=false",
-				)
-					.then((r) =>
-						r.ok
-							? (r.json() as Promise<{
-									sandbox?: SandboxGonInfo;
-								}>)
-							: null,
-					)
-					.catch(() => null),
-				(
-					sendRpc("skills.bundled.categories", {}) as Promise<{
-						ok?: boolean;
-						payload?: { categories?: { name: string; count: number; enabled: boolean }[]; total_skills?: number };
-					}>
-				).catch(() => null),
-			]);
-
+		fetchSummaryData().then((summary) => {
 			if (cancelled) return;
-
-			const skillsCats = skillsRes?.ok ? skillsRes.payload?.categories || [] : [];
-			const skillsTotal = skillsRes?.ok ? skillsRes.payload?.total_skills || 0 : 0;
-			const skillsEnabledCats = skillsCats.filter((c) => c.enabled);
-
-			setData({
-				identity,
-				mem,
-				update,
-				voiceEnabled,
-				providers: providersRes?.ok ? providersRes.payload || [] : [],
-				channels: channelsRes?.ok ? channelsRes.payload?.channels || [] : [],
-				voice: voiceRes?.ok ? voiceRes.payload || { tts: [], stt: [] } : null,
-				sandbox: bootstrapRes?.sandbox || null,
-				skills: skillsCats.length
-					? {
-							enabledCategories: skillsEnabledCats.length,
-							totalCategories: skillsCats.length,
-							enabledSkills: skillsEnabledCats.reduce((sum, c) => sum + c.count, 0),
-							totalSkills: skillsTotal,
-						}
-					: null,
-			});
+			setData(summary);
 			setLoading(false);
-		}
-
-		load();
+		});
 		return () => {
 			cancelled = true;
 		};
@@ -261,257 +453,190 @@ function SummaryStep({ onBack, onFinish }: { onBack: () => void; onFinish: () =>
 		);
 	}
 
-	const activeModel = localStorage.getItem("chelix-model");
-	const configuredProviders = data.providers.filter((p) => p.configured);
-
 	return (
 		<div className="flex flex-col gap-4">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">{t("onboarding:summary.title")}</h2>
 			<p className="text-xs text-[var(--muted)] leading-relaxed">
 				Overview of your configuration. You can change any of these later in Settings.
 			</p>
-
 			<div className="flex flex-col gap-2">
-				{/* Identity */}
-				<SummaryRow
-					icon={data.identity?.user_name && data.identity?.name ? <CheckIcon /> : <WarnIcon />}
-					label="Identity"
-				>
-					{data.identity?.user_name && data.identity?.name ? (
-						<>
-							You: <span className="font-medium text-[var(--text)]">{data.identity.user_name}</span> Agent:{" "}
-							<span className="font-medium text-[var(--text)]">
-								{data.identity.emoji || ""} {data.identity.name}
-							</span>
-						</>
-					) : (
-						<span className="text-[var(--warn)]">Identity not fully configured</span>
-					)}
-				</SummaryRow>
-
-				{/* LLMs */}
-				<SummaryRow icon={configuredProviders.length > 0 ? <CheckIcon /> : <ErrorIcon />} label="LLMs">
-					{configuredProviders.length > 0 ? (
-						<div className="flex flex-col gap-1">
-							<div className="flex flex-wrap gap-1">
-								{configuredProviders.map((p) => (
-									<span key={p.name} className="provider-item-badge configured">
-										{p.displayName}
-									</span>
-								))}
-							</div>
-							{activeModel ? (
-								<div>
-									Active model: <span className="font-mono font-medium text-[var(--text)]">{activeModel}</span>
-								</div>
-							) : null}
-						</div>
-					) : (
-						<span className="text-[var(--error)]">No LLM providers configured</span>
-					)}
-				</SummaryRow>
-
-				{/* Channels */}
-				<SummaryRow
-					icon={
-						data.channels.length > 0 ? (
-							data.channels.some((c) => c.status === "error") ? (
-								<ErrorIcon />
-							) : data.channels.some((c) => c.status === "disconnected") ? (
-								<WarnIcon />
-							) : (
-								<CheckIcon />
-							)
-						) : (
-							<InfoIcon />
-						)
-					}
-					label="Channels"
-				>
-					{data.channels.length > 0 ? (
-						<div className="flex flex-col gap-1">
-							{data.channels.map((ch) => {
-								const statusColor =
-									ch.status === "connected" ? "var(--ok)" : ch.status === "error" ? "var(--error)" : "var(--warn)";
-								return (
-									<div key={ch.account_id} className="flex items-center gap-1">
-										<span style={`color:${statusColor}`}>{"\u25CF"}</span>
-										<span className="font-medium text-[var(--text)]">{ch.type}</span>: {ch.name || ch.account_id}
-										<span>({ch.status})</span>
-									</div>
-								);
-							})}
-						</div>
-					) : (
-						<>No channels configured</>
-					)}
-				</SummaryRow>
-
-				{/* Skills */}
-				{data.skills && (
-					<SummaryRow icon={data.skills.enabledCategories > 0 ? <CheckIcon /> : <InfoIcon />} label="Skills">
-						<span className="font-medium text-[var(--text)]">{data.skills.enabledSkills}</span> skills enabled across{" "}
-						<span className="font-medium text-[var(--text)]">
-							{data.skills.enabledCategories}/{data.skills.totalCategories}
-						</span>{" "}
-						categories
-					</SummaryRow>
-				)}
-
-				{/* System Memory */}
-				<SummaryRow
-					icon={data.mem?.total && data.mem.total < LOW_MEMORY_THRESHOLD ? <WarnIcon /> : <CheckIcon />}
-					label="System Memory"
-				>
-					{data.mem ? (
-						<>
-							Total: <span className="font-medium text-[var(--text)]">{formatMemBytes(data.mem.total)}</span> Available:{" "}
-							<span className="font-medium text-[var(--text)]">{formatMemBytes(data.mem.available)}</span>
-							{data.mem.total && data.mem.total < LOW_MEMORY_THRESHOLD ? (
-								<div className="text-[var(--warn)] mt-1">
-									Low memory detected. Consider upgrading to an instance with more RAM.
-								</div>
-							) : null}
-						</>
-					) : (
-						<>Memory info unavailable</>
-					)}
-				</SummaryRow>
-
-				{/* Sandbox */}
-				<SummaryRow icon={data.sandbox?.mode === "On" ? <CheckIcon /> : <InfoIcon />} label="Sandbox">
-					{data.sandbox?.mode === "On" ? (
-						<>
-							Backend: <span className="font-medium text-[var(--text)]">{data.sandbox.backend}</span>
-						</>
-					) : (
-						<>Mode: Off — commands execute directly on the host</>
-					)}
-				</SummaryRow>
-
-				{/* Version */}
-				<SummaryRow icon={data.update?.available ? <WarnIcon /> : <CheckIcon />} label="Version">
-					{data.update?.available ? (
-						<>
-							Update available:{" "}
-							<a
-								href={data.update.release_url || "#"}
-								target="_blank"
-								rel="noopener"
-								className="text-[var(--accent)] underline font-medium"
-							>
-								{data.update.latest_version}
-							</a>
-						</>
-					) : (
-						<>You are running the latest version.</>
-					)}
-				</SummaryRow>
-
-				{/* Voice (hidden if not enabled) */}
-				{data.voiceEnabled ? (
-					<SummaryRow
-						icon={
-							data.voice && [...data.voice.tts, ...data.voice.stt].some((p) => p.enabled) ? <CheckIcon /> : <InfoIcon />
-						}
-						label="Voice"
-					>
-						{(() => {
-							if (!data.voice) return <>Voice providers unavailable</>;
-							const enabledStt = data.voice.stt.filter((p) => p.enabled).map((p) => p.name);
-							const enabledTts = data.voice.tts.filter((p) => p.enabled).map((p) => p.name);
-							if (enabledStt.length === 0 && enabledTts.length === 0) return <>No voice providers enabled</>;
-							return (
-								<div className="flex flex-col gap-0.5">
-									{enabledStt.length > 0 ? (
-										<div>
-											STT: <span className="font-medium text-[var(--text)]">{enabledStt.join(", ")}</span>
-										</div>
-									) : null}
-									{enabledTts.length > 0 ? (
-										<div>
-											TTS: <span className="font-medium text-[var(--text)]">{enabledTts.join(", ")}</span>
-										</div>
-									) : null}
-								</div>
-							);
-						})()}
-					</SummaryRow>
-				) : null}
+				<IdentitySummary identity={data.identity} />
+				<ProvidersSummary providers={data.providers} activeModel={localStorage.getItem("chelix-model")} />
+				<ChannelsSummary channels={data.channels} />
+				<SkillsSummary skills={data.skills} />
+				<MemorySummary memory={data.mem} />
+				<SandboxSummary sandbox={data.sandbox} />
+				<VersionSummary update={data.update} />
+				<VoiceSummary enabled={data.voiceEnabled} voice={data.voice} />
 			</div>
-
-			<div className="flex flex-wrap items-center gap-3 mt-1">
-				<button type="button" className="provider-btn provider-btn-secondary" onClick={onBack}>
-					{t("common:actions.back")}
-				</button>
-				<div className="flex-1" />
-				<button type="button" className="provider-btn" onClick={onFinish}>
-					{data.identity?.emoji || ""} {data.identity?.name || "Your agent"}, reporting for duty
-				</button>
-			</div>
+			<SummaryActions data={data} onBack={onBack} onFinish={onFinish} />
 		</div>
 	);
 }
 
 // ── Main page component ─────────────────────────────────────
 
+interface OnboardingAuthStatus {
+	setup_required?: boolean;
+	auth_disabled?: boolean;
+	localhost_only?: boolean;
+}
+
+interface OnboardingAuthPlan {
+	authNeeded: boolean;
+	authSkippable: boolean;
+	initialStep: number;
+}
+
+interface OnboardingPlan {
+	steps: string[];
+	stepIndex: number;
+	importStep: number;
+	llmStep: number;
+	voiceStep: number;
+	skillsStep: number;
+	channelStep: number;
+	identityStep: number;
+	summaryStep: number;
+}
+
+function hideOnboardingChrome(): () => void {
+	const restorable = [
+		document.querySelector("header") as HTMLElement | null,
+		document.getElementById("navPanel"),
+		document.getElementById("sessionsPanel"),
+		document.getElementById("burgerBtn"),
+		document.getElementById("sessionsToggle"),
+	];
+	for (const element of restorable) {
+		if (element) element.style.display = "none";
+	}
+	const authBanner = document.getElementById("authDisabledBanner");
+	if (authBanner) authBanner.style.display = "none";
+	return () => {
+		for (const element of restorable) {
+			if (element) element.style.display = "";
+		}
+	};
+}
+
+function onboardingAuthPlan(status: OnboardingAuthStatus | null): OnboardingAuthPlan {
+	const authNeeded = !!(status?.setup_required || (status?.auth_disabled && !status.localhost_only));
+	return {
+		authNeeded,
+		authSkippable: authNeeded && !status?.setup_required,
+		initialStep: authNeeded ? 0 : 1,
+	};
+}
+
+async function fetchOnboardingAuthPlan(): Promise<OnboardingAuthPlan> {
+	try {
+		const response = await fetch("/api/auth/status");
+		return onboardingAuthPlan(response.ok ? ((await response.json()) as OnboardingAuthStatus) : null);
+	} catch {
+		return onboardingAuthPlan(null);
+	}
+}
+
+function buildOnboardingPlan(
+	step: number,
+	authNeeded: boolean,
+	voiceAvailable: boolean,
+	importDetected: boolean,
+): OnboardingPlan {
+	const allLabels = [t("onboarding:steps.security")];
+	if (importDetected) allLabels.push(t("onboarding:steps.import"));
+	allLabels.push(t("onboarding:steps.llm"));
+	if (voiceAvailable) allLabels.push(t("onboarding:steps.voice"));
+	allLabels.push(
+		t("onboarding:steps.skills"),
+		t("onboarding:steps.channel"),
+		t("onboarding:steps.identity"),
+		t("onboarding:steps.summary"),
+	);
+	let nextIndex = 1;
+	const importStep = importDetected ? nextIndex++ : -1;
+	const llmStep = nextIndex++;
+	const voiceStep = voiceAvailable ? nextIndex++ : -1;
+	const skillsStep = nextIndex++;
+	const channelStep = nextIndex++;
+	const identityStep = nextIndex++;
+	return {
+		steps: authNeeded ? allLabels : allLabels.slice(1),
+		stepIndex: authNeeded ? step : step - 1,
+		importStep,
+		llmStep,
+		voiceStep,
+		skillsStep,
+		channelStep,
+		identityStep,
+		summaryStep: nextIndex,
+	};
+}
+
+interface OnboardingStepContentProps {
+	step: number;
+	plan: OnboardingPlan;
+	authNeeded: boolean;
+	authSkippable: boolean;
+	importDetected: boolean;
+	onNext: () => void;
+	onBack: () => void;
+	onFinish: () => void;
+}
+
+function OnboardingStepContent(props: OnboardingStepContentProps): VNode | null {
+	if (props.step === 0) return <AuthStep onNext={props.onNext} skippable={props.authSkippable} />;
+	if (props.step === props.plan.importStep) {
+		return <ImportStep onNext={props.onNext} onBack={props.authNeeded ? props.onBack : null} />;
+	}
+	if (props.step === props.plan.llmStep) {
+		return (
+			<ProviderStep onNext={props.onNext} onBack={props.authNeeded || props.importDetected ? props.onBack : null} />
+		);
+	}
+	if (props.step === props.plan.voiceStep) return <VoiceStep onNext={props.onNext} onBack={props.onBack} />;
+	if (props.step === props.plan.skillsStep) return <SkillsStep onNext={props.onNext} onBack={props.onBack} />;
+	if (props.step === props.plan.channelStep) return <ChannelStep onNext={props.onNext} onBack={props.onBack} />;
+	if (props.step === props.plan.identityStep) return <IdentityStep onNext={props.onNext} onBack={props.onBack} />;
+	if (props.step === props.plan.summaryStep) return <SummaryStep onBack={props.onBack} onFinish={props.onFinish} />;
+	return null;
+}
+
+function OnboardingServerInfo({ startedAt, version }: { startedAt: number | null; version: string }): VNode | null {
+	if (!(startedAt || version)) return null;
+	return (
+		<div className="text-xs text-[var(--muted)] text-center mt-4 pt-3 border-t border-[var(--border)]">
+			{startedAt && (
+				<span>
+					Server started <time data-epoch-ms={startedAt} />
+				</span>
+			)}
+			{startedAt && version && <span> {"\u00b7"} </span>}
+			{version && (
+				<span>
+					{t("onboarding:summary.versionLabel")} v{version}
+				</span>
+			)}
+		</div>
+	);
+}
+
 function OnboardingPage(): VNode {
 	const [step, setStep] = useState(-1); // -1 = checking
 	const [authNeeded, setAuthNeeded] = useState(false);
 	const [authSkippable, setAuthSkippable] = useState(false);
 	const [voiceAvailable] = useState(() => getGon("voice_enabled") === true);
-	const headerRef = useRef<HTMLElement | null>(null);
-	const navRef = useRef<HTMLElement | null>(null);
-	const sessionsPanelRef = useRef<HTMLElement | null>(null);
 
-	// Hide nav, header, and banners for standalone experience
+	useEffect(hideOnboardingChrome, []);
+
 	useEffect(() => {
-		const header = document.querySelector("header") as HTMLElement | null;
-		const nav = document.getElementById("navPanel");
-		const sessions = document.getElementById("sessionsPanel");
-		const burger = document.getElementById("burgerBtn");
-		const toggle = document.getElementById("sessionsToggle");
-		const authBanner = document.getElementById("authDisabledBanner");
-		headerRef.current = header;
-		navRef.current = nav;
-		sessionsPanelRef.current = sessions;
-
-		if (header) header.style.display = "none";
-		if (nav) nav.style.display = "none";
-		if (sessions) sessions.style.display = "none";
-		if (burger) burger.style.display = "none";
-		if (toggle) toggle.style.display = "none";
-		if (authBanner) authBanner.style.display = "none";
-
-		return () => {
-			if (header) header.style.display = "";
-			if (nav) nav.style.display = "";
-			if (sessions) sessions.style.display = "";
-			if (burger) burger.style.display = "";
-			if (toggle) toggle.style.display = "";
-		};
-	}, []);
-
-	// Check auth status to decide whether to show step 0
-	useEffect(() => {
-		fetch("/api/auth/status")
-			.then((r) => (r.ok ? r.json() : null))
-			.then((auth: { setup_required?: boolean; auth_disabled?: boolean; localhost_only?: boolean } | null) => {
-				if (auth?.setup_required || (auth?.auth_disabled && !auth?.localhost_only)) {
-					setAuthNeeded(true);
-					setAuthSkippable(!auth.setup_required);
-					setStep(0);
-				} else {
-					setAuthNeeded(false);
-					ensureWsConnected();
-					setStep(1);
-				}
-			})
-			.catch(() => {
-				setAuthNeeded(false);
-				ensureWsConnected();
-				setStep(1);
-			});
+		fetchOnboardingAuthPlan().then((authPlan) => {
+			setAuthNeeded(authPlan.authNeeded);
+			setAuthSkippable(authPlan.authSkippable);
+			if (!authPlan.authNeeded) ensureWsConnected();
+			setStep(authPlan.initialStep);
+		});
 	}, []);
 
 	if (step === -1) {
@@ -522,34 +647,11 @@ function OnboardingPage(): VNode {
 		);
 	}
 
-	// Build step list dynamically based on auth + voice + import source availability
-	const anyImportDetected = getGon("claude_detected") === true || getGon("codex_detected") === true;
-	const allLabels = [t("onboarding:steps.security")];
-	if (anyImportDetected) allLabels.push(t("onboarding:steps.import"));
-	allLabels.push(t("onboarding:steps.llm"));
-	if (voiceAvailable) allLabels.push(t("onboarding:steps.voice"));
-	allLabels.push(
-		t("onboarding:steps.skills"),
-		t("onboarding:steps.channel"),
-		t("onboarding:steps.identity"),
-		t("onboarding:steps.summary"),
-	);
-	const steps = authNeeded ? allLabels : allLabels.slice(1);
-	const stepIndex = authNeeded ? step : step - 1;
-
-	// Compute dynamic step indices
-	let nextIdx = 1;
-	const importStep = anyImportDetected ? nextIdx++ : -1;
-	const llmStep = nextIdx++;
-	const voiceStep = voiceAvailable ? nextIdx++ : -1;
-	const skillsStep = nextIdx++;
-	const channelStep = nextIdx++;
-	const identityStep = nextIdx++;
-	const summaryStep = nextIdx;
-	const lastStep = summaryStep;
+	const importDetected = getGon("claude_detected") === true || getGon("codex_detected") === true;
+	const plan = buildOnboardingPlan(step, authNeeded, voiceAvailable, importDetected);
 
 	function goNext(): void {
-		if (step === lastStep) window.location.assign(preferredChatPath());
+		if (step === plan.summaryStep) window.location.assign(preferredChatPath());
 		else setStep(step + 1);
 	}
 
@@ -558,41 +660,28 @@ function OnboardingPage(): VNode {
 	}
 
 	function goBack(): void {
-		if (authNeeded) setStep(Math.max(0, step - 1));
-		else setStep(Math.max(1, step - 1));
+		setStep(Math.max(authNeeded ? 0 : 1, step - 1));
 	}
-
-	const startedAt = getGon("started_at") as number | null;
-	const version = String(getGon("version") || "").trim();
 
 	return (
 		<div className="onboarding-card">
-			<StepIndicator steps={steps} current={stepIndex} />
+			<StepIndicator steps={plan.steps} current={plan.stepIndex} />
 			<div className="mt-6">
-				{step === 0 && <AuthStep onNext={goNext} skippable={authSkippable} />}
-				{step === importStep && <ImportStep onNext={goNext} onBack={authNeeded ? goBack : null} />}
-				{step === llmStep && <ProviderStep onNext={goNext} onBack={authNeeded || anyImportDetected ? goBack : null} />}
-				{step === voiceStep && <VoiceStep onNext={goNext} onBack={goBack} />}
-				{step === skillsStep && <SkillsStep onNext={goNext} onBack={goBack} />}
-				{step === channelStep && <ChannelStep onNext={goNext} onBack={goBack} />}
-				{step === identityStep && <IdentityStep onNext={goNext} onBack={goBack} />}
-				{step === summaryStep && <SummaryStep onBack={goBack} onFinish={goFinish} />}
+				<OnboardingStepContent
+					step={step}
+					plan={plan}
+					authNeeded={authNeeded}
+					authSkippable={authSkippable}
+					importDetected={importDetected}
+					onNext={goNext}
+					onBack={goBack}
+					onFinish={goFinish}
+				/>
 			</div>
-			{startedAt || version ? (
-				<div className="text-xs text-[var(--muted)] text-center mt-4 pt-3 border-t border-[var(--border)]">
-					{startedAt ? (
-						<span>
-							Server started <time data-epoch-ms={startedAt} />
-						</span>
-					) : null}
-					{startedAt && version ? <span> {"\u00b7"} </span> : null}
-					{version ? (
-						<span>
-							{t("onboarding:summary.versionLabel")} v{version}
-						</span>
-					) : null}
-				</div>
-			) : null}
+			<OnboardingServerInfo
+				startedAt={getGon("started_at") as number | null}
+				version={String(getGon("version") || "").trim()}
+			/>
 		</div>
 	);
 }

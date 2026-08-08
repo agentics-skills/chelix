@@ -5,7 +5,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { TabBar } from "../../components/forms";
+import { TabBar } from "../../components/forms/Tabs";
 import { get as getGon } from "../../gon";
 import { sendRpc } from "../../helpers";
 import { ClaudeImportSection } from "../../pages/sections/ClaudeImportSection";

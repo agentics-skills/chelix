@@ -5,9 +5,88 @@
 
 import type { Signal } from "@preact/signals";
 import { computed, signal } from "@preact/signals";
-import type { ChannelBinding, SessionMeta, SessionTokens } from "../types";
+import type { ChannelBinding } from "../types/channel";
+import type { SessionMeta, SessionTokens } from "../types/session";
 
 // ── Session class ────────────────────────────────────────────
+
+interface NormalizedSessionMeta {
+	key: string;
+	label: string;
+	model: string;
+	reasoningEffort: string;
+	provider: string;
+	projectId: string;
+	messageCount: number;
+	lastSeenMessageCount: number;
+	preview: string;
+	updatedAt: number;
+	createdAt: number;
+	worktreeBranch: string;
+	channelBinding: ChannelBinding | null;
+	parentSessionKey: string;
+	forkPoint: number | null;
+	agentId: string;
+	modeId: string;
+	externalAgentKind: string | null;
+	externalSessionId: string | null;
+	mcpDisabled: boolean | undefined;
+	archived: boolean | undefined;
+	activeChannel: string | undefined;
+	version: number;
+}
+
+function stringValue(value: string | null | undefined, fallback = ""): string {
+	return value || fallback;
+}
+
+function numberValue(value: number | undefined): number {
+	return value || 0;
+}
+
+function nullableValue<T>(value: T | null | undefined): T | null {
+	return value ?? null;
+}
+
+function firstNonEmptyString(values: Array<string | null | undefined>): string | null {
+	return values.find(Boolean) || null;
+}
+
+function normalizeSessionMeta(serverData: SessionMeta, reasoningEffortFallback = ""): NormalizedSessionMeta {
+	return {
+		key: serverData.key,
+		label: stringValue(serverData.label),
+		model: stringValue(serverData.model),
+		reasoningEffort: serverData.reasoningEffort ?? reasoningEffortFallback,
+		provider: stringValue(serverData.provider),
+		projectId: stringValue(serverData.projectId),
+		messageCount: numberValue(serverData.messageCount),
+		lastSeenMessageCount: numberValue(serverData.lastSeenMessageCount),
+		preview: stringValue(serverData.preview),
+		updatedAt: numberValue(serverData.updatedAt),
+		createdAt: numberValue(serverData.createdAt),
+		worktreeBranch: stringValue(serverData.worktree_branch),
+		channelBinding: nullableValue(serverData.channelBinding),
+		parentSessionKey: stringValue(serverData.parentSessionKey),
+		forkPoint: nullableValue(serverData.forkPoint),
+		agentId: stringValue(serverData.agent_id, "main"),
+		modeId: stringValue(serverData.mode_id),
+		externalAgentKind: firstNonEmptyString([serverData.external_agent_kind, serverData.externalAgentKind]),
+		externalSessionId: firstNonEmptyString([serverData.externalSessionId]),
+		mcpDisabled: serverData.mcpDisabled,
+		archived: serverData.archived,
+		activeChannel: serverData.activeChannel,
+		version: numberValue(serverData.version),
+	};
+}
+
+function nextSessionVersion(incoming: number, current: number): number {
+	return incoming || current;
+}
+
+function isStaleSessionVersion(incoming: number, current: number): boolean {
+	return incoming > 0 && current > 0 && incoming < current;
+}
 
 export class Session {
 	// Server fields (plain properties, set on construction/update)
@@ -50,30 +129,31 @@ export class Session {
 	dataVersion: Signal<number>;
 
 	constructor(serverData: SessionMeta) {
+		const normalized = normalizeSessionMeta(serverData);
 		// Server fields (plain properties, set on construction/update)
-		this.key = serverData.key;
-		this.label = serverData.label || "";
-		this.model = serverData.model || "";
-		this.reasoningEffort = serverData.reasoningEffort ?? "";
-		this.provider = serverData.provider || "";
-		this.projectId = serverData.projectId || "";
-		this.messageCount = serverData.messageCount || 0;
-		this.lastSeenMessageCount = serverData.lastSeenMessageCount || 0;
-		this.preview = serverData.preview || "";
-		this.updatedAt = serverData.updatedAt || 0;
-		this.createdAt = serverData.createdAt || 0;
-		this.worktree_branch = serverData.worktree_branch || "";
-		this.channelBinding = serverData.channelBinding || null;
-		this.parentSessionKey = serverData.parentSessionKey || "";
-		this.forkPoint = serverData.forkPoint != null ? serverData.forkPoint : null;
-		this.agent_id = serverData.agent_id || "main";
-		this.mode_id = serverData.mode_id || "";
-		this.external_agent_kind = serverData.external_agent_kind || serverData.externalAgentKind || null;
-		this.externalSessionId = serverData.externalSessionId || null;
-		this.mcpDisabled = serverData.mcpDisabled;
-		this.archived = serverData.archived;
-		this.activeChannel = serverData.activeChannel;
-		this.version = serverData.version || 0;
+		this.key = normalized.key;
+		this.label = normalized.label;
+		this.model = normalized.model;
+		this.reasoningEffort = normalized.reasoningEffort;
+		this.provider = normalized.provider;
+		this.projectId = normalized.projectId;
+		this.messageCount = normalized.messageCount;
+		this.lastSeenMessageCount = normalized.lastSeenMessageCount;
+		this.preview = normalized.preview;
+		this.updatedAt = normalized.updatedAt;
+		this.createdAt = normalized.createdAt;
+		this.worktree_branch = normalized.worktreeBranch;
+		this.channelBinding = normalized.channelBinding;
+		this.parentSessionKey = normalized.parentSessionKey;
+		this.forkPoint = normalized.forkPoint;
+		this.agent_id = normalized.agentId;
+		this.mode_id = normalized.modeId;
+		this.external_agent_kind = normalized.externalAgentKind;
+		this.externalSessionId = normalized.externalSessionId;
+		this.mcpDisabled = normalized.mcpDisabled;
+		this.archived = normalized.archived;
+		this.activeChannel = normalized.activeChannel;
+		this.version = normalized.version;
 
 		// Client signals (reactive, per-session)
 		this.replying = signal(false);
@@ -100,36 +180,35 @@ export class Session {
 
 	/** Merge server fields, preserving client signals. Returns false if stale. */
 	update(serverData: SessionMeta): boolean {
-		const incoming = serverData.version || 0;
-		if (incoming > 0 && this.version > 0 && incoming < this.version) return false;
-		this.version = incoming || this.version;
-		this.label = serverData.label || "";
-		this.model = serverData.model || "";
-		this.reasoningEffort = serverData.reasoningEffort ?? this.reasoningEffort;
-		this.provider = serverData.provider || "";
-		this.projectId = serverData.projectId || "";
+		const normalized = normalizeSessionMeta(serverData, this.reasoningEffort);
+		if (isStaleSessionVersion(normalized.version, this.version)) return false;
+		this.version = nextSessionVersion(normalized.version, this.version);
+		this.label = normalized.label;
+		this.model = normalized.model;
+		this.reasoningEffort = normalized.reasoningEffort;
+		this.provider = normalized.provider;
+		this.projectId = normalized.projectId;
 		// Only accept server counts when they've caught up with optimistic
 		// client bumps. Authoritative resets (/clear, switchSession) use
 		// syncCounts() which sets messageCount directly before any fetch.
-		const serverCount = serverData.messageCount || 0;
-		if (serverCount >= this.messageCount) {
-			this.messageCount = serverCount;
-			this.lastSeenMessageCount = serverData.lastSeenMessageCount || 0;
-			this.preview = serverData.preview || "";
-			this.updatedAt = serverData.updatedAt || 0;
+		if (normalized.messageCount >= this.messageCount) {
+			this.messageCount = normalized.messageCount;
+			this.lastSeenMessageCount = normalized.lastSeenMessageCount;
+			this.preview = normalized.preview;
+			this.updatedAt = normalized.updatedAt;
 		}
-		this.createdAt = serverData.createdAt || 0;
-		this.worktree_branch = serverData.worktree_branch || "";
-		this.channelBinding = serverData.channelBinding || null;
-		this.parentSessionKey = serverData.parentSessionKey || "";
-		this.forkPoint = serverData.forkPoint != null ? serverData.forkPoint : null;
-		this.agent_id = serverData.agent_id || "main";
-		this.mode_id = serverData.mode_id || "";
-		this.external_agent_kind = serverData.external_agent_kind || serverData.externalAgentKind || null;
-		this.externalSessionId = serverData.externalSessionId || null;
-		this.mcpDisabled = serverData.mcpDisabled;
-		this.archived = serverData.archived;
-		this.activeChannel = serverData.activeChannel;
+		this.createdAt = normalized.createdAt;
+		this.worktree_branch = normalized.worktreeBranch;
+		this.channelBinding = normalized.channelBinding;
+		this.parentSessionKey = normalized.parentSessionKey;
+		this.forkPoint = normalized.forkPoint;
+		this.agent_id = normalized.agentId;
+		this.mode_id = normalized.modeId;
+		this.external_agent_kind = normalized.externalAgentKind;
+		this.externalSessionId = normalized.externalSessionId;
+		this.mcpDisabled = normalized.mcpDisabled;
+		this.archived = normalized.archived;
+		this.activeChannel = normalized.activeChannel;
 		this.updateBadge();
 		this.dataVersion.value++;
 		return true;
@@ -236,30 +315,21 @@ export function insertSessionInOrder(list: Session[], session: Session): Session
  * client-side signals (replying, localUnread, streamText) are preserved.
  * New keys get fresh instances. Missing keys are dropped.
  */
+function applyTransientSessionFlags(session: Session, data: SessionMeta): void {
+	if (data._localUnread) session.localUnread.value = true;
+	if (data._replying || data.replying) session.replying.value = true;
+}
+
+function mergeSessionData(existing: Map<string, Session>, data: SessionMeta): Session {
+	const session = existing.get(data.key) || new Session(data);
+	if (existing.has(data.key)) session.update(data);
+	applyTransientSessionFlags(session, data);
+	return session;
+}
+
 export function setAll(serverSessions: SessionMeta[]): void {
-	const existing: Record<string, Session> = {};
-	for (const s of sessions.value) {
-		existing[s.key] = s;
-	}
-
-	const result: Session[] = [];
-	for (const data of serverSessions) {
-		const prev = existing[data.key];
-		if (prev) {
-			prev.update(data);
-			// Preserve client-side flags from old patched objects
-			if (data._localUnread) prev.localUnread.value = true;
-			if (data._replying || data.replying) prev.replying.value = true;
-			result.push(prev);
-		} else {
-			const session = new Session(data);
-			if (data._localUnread) session.localUnread.value = true;
-			if (data._replying || data.replying) session.replying.value = true;
-			result.push(session);
-		}
-	}
-
-	sessions.value = result;
+	const existing = new Map(sessions.value.map((session) => [session.key, session]));
+	sessions.value = serverSessions.map((data) => mergeSessionData(existing, data));
 }
 
 /**
@@ -304,7 +374,9 @@ export function fetch(): Promise<void> {
 			if (!Array.isArray(payload)) return;
 			setAll(payload);
 		})
-		.catch(() => {});
+		.catch((error: unknown) => {
+			console.warn("Failed to refresh sessions:", error);
+		});
 }
 
 /** Notify Preact that session data changed (triggers re-render). */

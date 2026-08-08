@@ -5,7 +5,7 @@
 // and this module imports from the sub-modules that depend on shared.ts.
 
 import { sendRpc } from "../helpers";
-import type { RpcResponse } from "../types";
+import type { RpcResponse } from "../types/rpc";
 import { showApiKeyForm, showOAuthFlow } from "./auth-flow";
 import { showCustomProviderForm } from "./custom-provider";
 import { els } from "./shared";
@@ -24,8 +24,8 @@ export function openProviderModalImpl(): void {
 		const providers: ProviderInfo[] = (res.payload as ProviderInfo[]) || [];
 
 		providers.sort((a: ProviderInfo, b: ProviderInfo) => {
-			const aOrder = Number.isFinite(a.uiOrder) ? a.uiOrder! : Number.MAX_SAFE_INTEGER;
-			const bOrder = Number.isFinite(b.uiOrder) ? b.uiOrder! : Number.MAX_SAFE_INTEGER;
+			const aOrder = typeof a.uiOrder === "number" && Number.isFinite(a.uiOrder) ? a.uiOrder : Number.MAX_SAFE_INTEGER;
+			const bOrder = typeof b.uiOrder === "number" && Number.isFinite(b.uiOrder) ? b.uiOrder : Number.MAX_SAFE_INTEGER;
 			if (aOrder !== bOrder) return aOrder - bOrder;
 			return a.displayName.localeCompare(b.displayName);
 		});

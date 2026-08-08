@@ -2,12 +2,9 @@
 
 import { chatAddMsg, removeThinking, setComposerStopButton, updateTokenBar } from "../chat-ui";
 import { sendRpc } from "../helpers";
-import { modelDisplayLabel, modelTitle } from "../models";
 import { updateSessionProjectSelect } from "../project-combo";
-import { restoreReasoningEffort } from "../reasoning-toggle";
 import { sessionPath } from "../router";
 import * as S from "../state";
-import { modelStore } from "../stores/model-store";
 import { projectStore } from "../stores/project-store";
 import {
 	clearSessionHistory,
@@ -16,10 +13,15 @@ import {
 	replaceSessionHistory,
 } from "../stores/session-history-cache";
 import { insertSessionInOrder, Session, sessionStore } from "../stores/session-store";
-import type { HistoryMessage, RpcResponse, SessionMeta, SetSessionAgentPayload } from "../types";
+import type { RpcResponse } from "../types/rpc";
+import type { HistoryMessage, SessionMeta } from "../types/session";
 import type { ChatPayload, ToolCallPayload } from "../types/ws-events";
 import { handleToolCallStartDom } from "../ws/tool-helpers";
 
+import {
+	restoreSessionModelSettings as restoreSessionModelSettingsImpl,
+	setSessionAgent as setSessionAgentImpl,
+} from "./session-agent";
 import {
 	clearHistoryPaginationState,
 	fetchSessionHistoryViaHttp,
@@ -31,14 +33,18 @@ import {
 	shouldApplyServerHistory,
 } from "./session-history";
 
+import { renderSessionHistory } from "./session-history-pagination";
+import { markSessionLocallyCleared } from "./session-list";
 import {
 	hideSessionLoadIndicator,
 	postHistoryLoadActions,
-	renderHistory,
 	type SearchContext,
 	showSessionLoadIndicator,
 	updateChatSessionHeader,
 } from "./session-render";
+
+export const restoreSessionModelSettings = restoreSessionModelSettingsImpl;
+export const setSessionAgent = setSessionAgentImpl;
 
 /** Focus the chat input unless the user is actively editing a text field
  *  (e.g. rename input, search field). Buttons and other non-text elements
@@ -77,6 +83,26 @@ interface SwitchRpcParams {
 	include_history?: boolean;
 }
 
+interface SwitchRequestContext {
+	key: string;
+	searchContext: SearchContext | null;
+	projectId?: string;
+	requestId: number;
+	hasCache: boolean;
+	cachedHistoryCount: number | null;
+	cacheRevisionAtRequest: number;
+}
+
+interface HistoryApplication {
+	appliedServerHistory: boolean;
+	resolvedHistory: HistoryMessage[];
+}
+
+interface PaginationSnapshot {
+	hasMore: boolean;
+	nextCursor: number | null;
+}
+
 // ── Module state ─────────────────────────────────────────────
 
 let switchRequestSeq = 0;
@@ -95,25 +121,6 @@ function restoreMcpToggle(mcpEnabled: boolean): void {
 
 // ── Restore session state ───────────────────────────────────
 
-interface SessionModelSettings {
-	model?: string | null;
-	reasoningEffort?: string | null;
-}
-
-export function restoreSessionModelSettings(settings: SessionModelSettings): void {
-	if (settings.model) {
-		modelStore.select(settings.model);
-		localStorage.setItem("chelix-model", settings.model);
-		const found = modelStore.getById(settings.model);
-		if (S.modelComboLabel) {
-			const label = found ? modelDisplayLabel(found) : settings.model;
-			S.modelComboLabel.textContent = label;
-			S.modelComboLabel.title = found ? modelTitle(found) : label;
-		}
-	}
-	restoreReasoningEffort(settings.reasoningEffort);
-}
-
 export function restoreSessionState(entry: SessionMeta, projectId?: string): void {
 	const effectiveProjectId = entry.projectId || projectId || "";
 	projectStore.setActiveProjectId(effectiveProjectId);
@@ -123,52 +130,6 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 	restoreSessionModelSettings(entry);
 	restoreMcpToggle(!entry.mcpDisabled);
 	updateChatSessionHeader();
-}
-
-function isSetSessionAgentPayload(payload: unknown): payload is SetSessionAgentPayload {
-	if (!payload || typeof payload !== "object") return false;
-	const value = payload as Partial<SetSessionAgentPayload>;
-	return (
-		value.ok === true &&
-		typeof value.agent_id === "string" &&
-		value.agent_id.length > 0 &&
-		(value.model === null || typeof value.model === "string") &&
-		(value.reasoningEffort === null || typeof value.reasoningEffort === "string") &&
-		Number.isInteger(value.version) &&
-		(value.version as number) >= 0
-	);
-}
-
-export function setSessionAgent(sessionKey: string, agentId: string): Promise<RpcResponse<SetSessionAgentPayload>> {
-	return sendRpc<SetSessionAgentPayload>("agents.set_session", {
-		session_key: sessionKey,
-		agent_id: agentId,
-	}).then((res) => {
-		if (!res?.ok) return res;
-		if (!isSetSessionAgentPayload(res.payload)) {
-			return {
-				ok: false,
-				error: {
-					code: "INVALID_RESPONSE",
-					message: "Agent switch returned invalid session model settings",
-				},
-			};
-		}
-
-		const payload = res.payload;
-		const session = sessionStore.getByKey(sessionKey);
-		if (session) {
-			session.agent_id = payload.agent_id;
-			session.model = payload.model || "";
-			session.reasoningEffort = payload.reasoningEffort ?? "";
-			session.version = payload.version;
-			session.dataVersion.value++;
-		}
-		if (sessionStore.activeSessionKey.value === sessionKey) {
-			restoreSessionModelSettings(payload);
-		}
-		return res;
-	});
 }
 
 // ── Switch request tracking ─────────────────────────────────
@@ -234,7 +195,6 @@ function ensureSessionInClientStore(key: string, entry: SessionMeta, projectId?:
 
 function applyReplyingStateFromSwitchPayload(key: string, payload: SwitchPayload): void {
 	const replying = payload.replying === true;
-	// Lazy-load setSessionReplying from parent to avoid circular imports
 	const session = sessionStore.getByKey(key);
 	if (session) session.replying.value = replying;
 	const entry = (S.sessions as SessionMeta[]).find((s) => s.key === key);
@@ -293,8 +253,7 @@ export function clearActiveSession(): Promise<RpcResponse> {
 			S.setSessionCurrentContextTokens(0);
 			updateTokenBar();
 			const activeKey = sessionStore.activeSessionKey.value || S.activeSessionKey;
-			// Inline markSessionLocallyCleared to avoid circular import
-			void import("../sessions").then(({ markSessionLocallyCleared }) => markSessionLocallyCleared(activeKey));
+			markSessionLocallyCleared(activeKey);
 			clearSessionHistory(activeKey);
 			clearHistoryPaginationState(activeKey);
 			return res;
@@ -308,6 +267,142 @@ export function clearActiveSession(): Promise<RpcResponse> {
 
 // ── Main switch session function ────────────────────────────
 
+function capturePagination(key: string): PaginationSnapshot {
+	const paging = getHistoryPaginationState(key);
+	return {
+		hasMore: paging?.hasMore === true,
+		nextCursor: Number.isInteger(paging?.nextCursor) ? (paging?.nextCursor as number) : null,
+	};
+}
+
+function paginationChanged(before: PaginationSnapshot, after: PaginationSnapshot): boolean {
+	return before.hasMore !== after.hasMore || before.nextCursor !== after.nextCursor;
+}
+
+function switchHistoryPayload(payload: SwitchPayload): HistoryPayload {
+	return {
+		historyCacheHit: payload.historyCacheHit === true,
+		history: Array.isArray(payload.history) ? payload.history : [],
+		historyTruncated: payload.historyTruncated === true,
+		historyDroppedCount: Number(payload.historyDroppedCount) || 0,
+	};
+}
+
+function resolveSwitchHistory(context: SwitchRequestContext, payload: SwitchPayload): Promise<HistoryPayload> {
+	if (payload.historyOmitted !== true) return Promise.resolve(switchHistoryPayload(payload));
+	return fetchSessionHistoryViaHttp(context.key, {
+		cachedMessageCount: context.cachedHistoryCount ?? undefined,
+		limit: SESSION_HISTORY_PAGE_LIMIT,
+	});
+}
+
+function applySwitchHistory(context: SwitchRequestContext, payload: HistoryPayload): HistoryApplication {
+	const serverHistory = Array.isArray(payload.history) ? payload.history : [];
+	const appliedServerHistory =
+		payload.historyCacheHit !== true &&
+		shouldApplyServerHistory(context.key, serverHistory, context.cacheRevisionAtRequest);
+	if (appliedServerHistory) replaceSessionHistory(context.key, serverHistory);
+	return {
+		appliedServerHistory,
+		resolvedHistory: getSessionHistory(context.key) || serverHistory,
+	};
+}
+
+function finishSwitchWithError(context: SwitchRequestContext, message: string): void {
+	const stillActive = sessionStore.activeSessionKey.value === context.key;
+	if (stillActive && !context.hasCache) {
+		hideSessionLoadIndicator();
+		chatAddMsg("error", message);
+	}
+	finishSessionRefresh(context.key);
+	if (stillActive) focusChatInputIfIdle();
+}
+
+function appendHistoryLoadNotices(application: HistoryApplication, historyPayload: HistoryPayload): void {
+	if (!application.appliedServerHistory) return;
+	if (historyPayload.historyTruncated === true) {
+		const dropped = Number(historyPayload.historyDroppedCount) || 0;
+		chatAddMsg(
+			"system",
+			`Loaded the most recent messages for performance (${dropped} older message${dropped === 1 ? "" : "s"} omitted).`,
+		);
+	}
+	if (historyPayload.hasMore === true) {
+		const total = Number(historyPayload.totalMessages) || application.resolvedHistory.length;
+		chatAddMsg(
+			"system",
+			`Loaded recent history (${application.resolvedHistory.length} of ${total} messages) for faster loading.`,
+		);
+	}
+}
+
+function renderActiveSwitch(
+	context: SwitchRequestContext,
+	switchPayload: SwitchPayload,
+	entry: SessionMeta,
+	historyPayload: HistoryPayload,
+	application: HistoryApplication,
+	pagingChanged: boolean,
+): void {
+	restoreSessionState(entry, context.projectId);
+	applyReplyingStateFromSwitchPayload(context.key, switchPayload);
+	const thinkingText = switchPayload.replying ? switchPayload.thinkingText || null : null;
+	const totalCountHint = Number.isInteger(entry.messageCount)
+		? (entry.messageCount as number)
+		: Number(historyPayload.totalMessages) || application.resolvedHistory.length;
+	const shouldRerender =
+		!context.hasCache || Boolean(context.searchContext?.query) || application.appliedServerHistory || pagingChanged;
+	if (shouldRerender) {
+		renderSessionHistory(
+			context.key,
+			application.resolvedHistory,
+			context.searchContext,
+			thinkingText,
+			totalCountHint,
+			false,
+		);
+	} else {
+		postHistoryLoadActions(context.key, context.searchContext, [], thinkingText, false);
+	}
+	restoreActiveToolCallsFromSwitchPayload(context.key, switchPayload);
+	appendHistoryLoadNotices(application, historyPayload);
+	focusChatInputIfIdle();
+}
+
+async function handleSwitchResponse(
+	context: SwitchRequestContext,
+	response: RpcResponse<SwitchPayload>,
+): Promise<void> {
+	if (!isLatestSwitchRequest(context.key, context.requestId)) return;
+	if (!(response.ok && response.payload)) {
+		finishSwitchWithError(context, response.error?.message || "Failed to load session");
+		return;
+	}
+
+	const switchPayload = response.payload;
+	const entry = switchPayload.entry || ({} as SessionMeta);
+	ensureSessionInClientStore(context.key, entry, context.projectId);
+	const pagingBefore = capturePagination(context.key);
+	let historyPayload: HistoryPayload;
+	try {
+		historyPayload = await resolveSwitchHistory(context, switchPayload);
+	} catch (error) {
+		if (!isLatestSwitchRequest(context.key, context.requestId)) return;
+		const message = error instanceof Error ? error.message : "Failed to load session history";
+		finishSwitchWithError(context, message);
+		return;
+	}
+	if (!isLatestSwitchRequest(context.key, context.requestId)) return;
+
+	setHistoryPaginationState(context.key, historyPayload);
+	const pagingChanged = paginationChanged(pagingBefore, capturePagination(context.key));
+	const application = applySwitchHistory(context, historyPayload);
+	if (sessionStore.activeSessionKey.value === context.key) {
+		renderActiveSwitch(context, switchPayload, entry, historyPayload, application, pagingChanged);
+	}
+	finishSessionRefresh(context.key);
+}
+
 export function switchSession(key: string, searchContext?: SearchContext | null, projectId?: string): void {
 	sessionStore.setActive(key);
 	S.setActiveSessionKey(key);
@@ -315,129 +410,39 @@ export function switchSession(key: string, searchContext?: SearchContext | null,
 	history.replaceState(null, "", sessionPath(key));
 	resetSwitchViewState();
 	const cachedEntry = sessionStore.getByKey(key);
-	if (cachedEntry) {
-		restoreSessionState(cachedEntry.toMeta(), projectId);
-	}
+	if (cachedEntry) restoreSessionState(cachedEntry.toMeta(), projectId);
 
-	const switchReqId = startSwitchRequest(key);
-	const switchParams: SwitchRpcParams = { key, include_history: false };
-	if (projectId) switchParams.project_id = projectId;
 	const cachedHistory = getSessionHistory(key);
-	const hasCache = Array.isArray(cachedHistory);
-	const cacheRevisionAtRequest = getHistoryRevision(key);
+	const hasCache = cachedHistory !== null;
 	const cacheComplete = hasCache && isHistoryCacheComplete(key);
 	const cachedHistoryCount = cacheComplete
 		? Number.isInteger(cachedEntry?.messageCount)
 			? (cachedEntry?.messageCount as number)
-			: cachedHistory?.length
+			: cachedHistory?.length || 0
 		: null;
+	const context: SwitchRequestContext = {
+		key,
+		searchContext: searchContext || null,
+		projectId,
+		requestId: startSwitchRequest(key),
+		hasCache,
+		cachedHistoryCount,
+		cacheRevisionAtRequest: getHistoryRevision(key),
+	};
 	startSessionRefresh(key, !hasCache);
-	if (hasCache) {
-		renderHistory(key, cachedHistory!, searchContext || null, null, cachedHistoryCount, false);
+	if (cachedHistory) {
+		renderSessionHistory(key, cachedHistory, context.searchContext, null, cachedHistoryCount, false);
 	} else {
 		showSessionLoadIndicator();
 	}
 
-	sendRpc("sessions.switch", switchParams)
-		.then(async (res) => {
-			if (!isLatestSwitchRequest(key, switchReqId)) return;
-			let stillActive = sessionStore.activeSessionKey.value === key;
-			if (!(res?.ok && res.payload)) {
-				if (stillActive && !hasCache) {
-					hideSessionLoadIndicator();
-					chatAddMsg("error", res?.error?.message || "Failed to load session");
-				}
-				finishSessionRefresh(key);
-				if (stillActive) focusChatInputIfIdle();
-				return;
-			}
-
-			const switchPayload = res.payload as SwitchPayload;
-			const entry = switchPayload.entry || ({} as SessionMeta);
-			ensureSessionInClientStore(key, entry, projectId);
-			const pagingBefore = getHistoryPaginationState(key);
-			const pagingBeforeHasMore = pagingBefore?.hasMore === true;
-			const pagingBeforeCursor = Number.isInteger(pagingBefore?.nextCursor) ? pagingBefore?.nextCursor : null;
-			let historyPayload: HistoryPayload = {
-				historyCacheHit: switchPayload.historyCacheHit === true,
-				history: Array.isArray(switchPayload.history) ? switchPayload.history : [],
-				historyTruncated: switchPayload.historyTruncated === true,
-				historyDroppedCount: Number(switchPayload.historyDroppedCount) || 0,
-			};
-			if (switchPayload.historyOmitted === true) {
-				try {
-					historyPayload = await fetchSessionHistoryViaHttp(key, {
-						cachedMessageCount: cachedHistoryCount ?? undefined,
-						limit: SESSION_HISTORY_PAGE_LIMIT,
-					});
-				} catch (error) {
-					if (!isLatestSwitchRequest(key, switchReqId)) return;
-					stillActive = sessionStore.activeSessionKey.value === key;
-					if (stillActive && !hasCache) {
-						hideSessionLoadIndicator();
-						chatAddMsg("error", (error as Error)?.message || "Failed to load session history");
-					}
-					finishSessionRefresh(key);
-					if (stillActive) focusChatInputIfIdle();
-					return;
-				}
-				if (!isLatestSwitchRequest(key, switchReqId)) return;
-				stillActive = sessionStore.activeSessionKey.value === key;
-			}
-			setHistoryPaginationState(key, historyPayload);
-			const pagingAfter = getHistoryPaginationState(key);
-			const pagingAfterHasMore = pagingAfter?.hasMore === true;
-			const pagingAfterCursor = Number.isInteger(pagingAfter?.nextCursor) ? pagingAfter?.nextCursor : null;
-			const paginationChanged = pagingBeforeHasMore !== pagingAfterHasMore || pagingBeforeCursor !== pagingAfterCursor;
-
-			const cacheHit = historyPayload.historyCacheHit === true;
-			const serverHistory = Array.isArray(historyPayload.history) ? historyPayload.history : [];
-			let appliedServerHistory = false;
-			if (!cacheHit && shouldApplyServerHistory(key, serverHistory, cacheRevisionAtRequest)) {
-				replaceSessionHistory(key, serverHistory);
-				appliedServerHistory = true;
-			}
-			const resolvedHistory = getSessionHistory(key) || serverHistory;
-			if (stillActive) {
-				restoreSessionState(entry, projectId);
-				applyReplyingStateFromSwitchPayload(key, switchPayload);
-				const thinkingText = switchPayload.replying ? switchPayload.thinkingText || null : null;
-				const totalCountHint = Number.isInteger(entry.messageCount)
-					? entry.messageCount!
-					: Number(historyPayload.totalMessages) || resolvedHistory.length;
-				const shouldRerender = !hasCache || Boolean(searchContext?.query) || appliedServerHistory || paginationChanged;
-				if (shouldRerender) {
-					renderHistory(key, resolvedHistory, searchContext || null, thinkingText, totalCountHint, false);
-				} else {
-					postHistoryLoadActions(key, searchContext || null, [], thinkingText, false);
-				}
-				restoreActiveToolCallsFromSwitchPayload(key, switchPayload);
-				if (appliedServerHistory && historyPayload.historyTruncated === true) {
-					const dropped = Number(historyPayload.historyDroppedCount) || 0;
-					chatAddMsg(
-						"system",
-						`Loaded the most recent messages for performance (${dropped} older message${dropped === 1 ? "" : "s"} omitted).`,
-					);
-				}
-				if (appliedServerHistory && historyPayload.hasMore === true) {
-					const total = Number(historyPayload.totalMessages) || resolvedHistory.length;
-					chatAddMsg(
-						"system",
-						`Loaded recent history (${resolvedHistory.length} of ${total} messages) for faster loading.`,
-					);
-				}
-				focusChatInputIfIdle();
-			}
-			finishSessionRefresh(key);
-		})
+	const switchParams: SwitchRpcParams = { key, include_history: false };
+	if (projectId) switchParams.project_id = projectId;
+	void sendRpc<SwitchPayload>("sessions.switch", switchParams)
+		.then((response) => handleSwitchResponse(context, response))
 		.catch(() => {
-			if (!isLatestSwitchRequest(key, switchReqId)) return;
-			const stillActive = sessionStore.activeSessionKey.value === key;
-			if (stillActive && !hasCache) {
-				hideSessionLoadIndicator();
-				chatAddMsg("error", "Failed to load session");
+			if (isLatestSwitchRequest(key, context.requestId)) {
+				finishSwitchWithError(context, "Failed to load session");
 			}
-			finishSessionRefresh(key);
-			if (stillActive) focusChatInputIfIdle();
 		});
 }

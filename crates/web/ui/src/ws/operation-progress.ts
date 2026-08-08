@@ -3,7 +3,7 @@
 import { smartScrollToBottom } from "../chat-ui";
 import { currentPrefix } from "../router";
 import * as S from "../state";
-import type { OperationProgressPayload } from "../types";
+import type { OperationProgressPayload } from "../types/ws-events";
 import { clearChatEmptyState } from "./shared";
 
 interface OperationIndicator {

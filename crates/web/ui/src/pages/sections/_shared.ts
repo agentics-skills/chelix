@@ -24,13 +24,18 @@ export interface IdentityData {
 import type { RpcResponse } from "../../types/rpc";
 export type { RpcResponse };
 
-export interface SectionItem {
-	id?: string;
-	label?: string;
+export interface SectionNavigationItem {
+	id: string;
+	label: string;
 	icon?: VNode;
 	page?: boolean;
-	group?: string;
 }
+
+export interface SectionGroupHeading {
+	group: string;
+}
+
+export type SectionItem = SectionNavigationItem | SectionGroupHeading;
 
 // ── Module-level signals ─────────────────────────────────────
 

@@ -71,7 +71,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 | Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-tls` | 8.5K |
 | Scheduling and automation | `chelix-cron`, `chelix-caldav`, `chelix-auto-reply` | 4.7K |
 | Setup and import | `chelix-provider-setup`, `chelix-onboarding` | 11.7K |
-| Supporting crates | `chelix-media`, `chelix-metrics`, `chelix-routing`, `chelix-canvas`, `chelix-schema-export`, `benchmarks` | 2.1K |
+| Supporting crates | `chelix-media`, `chelix-metrics`, `chelix-routing`, `chelix-schema-export`, `benchmarks` | 2.1K |
 
 Use `--no-default-features --features lightweight` for constrained devices (Raspberry Pi, etc.).
 

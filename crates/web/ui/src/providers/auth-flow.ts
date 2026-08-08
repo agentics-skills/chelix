@@ -15,8 +15,8 @@ import {
 	validateProviderKey,
 } from "../provider-validation";
 import * as S from "../state";
-import type { RpcResponse } from "../types";
 import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../types/model";
+import type { RpcResponse } from "../types/rpc";
 import {
 	bindValidationProgressEvents,
 	clearOAuthStatusTimer,
@@ -384,6 +384,148 @@ export function showModelSelector(
 
 // ── Save and finish provider ─────────────────────────────────
 
+type ProviderModelConfig = ReturnType<typeof modelConfigMapFromSelection>;
+
+interface ProviderSaveRequest {
+	provider: ProviderInfo;
+	modelsForSave: ProviderModelConfig;
+	modelIds: string[];
+	keyVal: string | null;
+	endpointVal: string | null;
+	skipSave: boolean;
+	saveAsCustomProvider: boolean;
+}
+
+interface SavedProviderIdentity {
+	name: string;
+	displayName: string;
+}
+
+type ProviderModelProbe =
+	| { status: "skipped" }
+	| { status: "ready"; modelId: string }
+	| { status: "service-unavailable"; modelId: string }
+	| { status: "timeout"; modelId: string }
+	| { status: "failed"; error: string };
+
+function showProviderSaveError(message: string): void {
+	const wrapper = els().body.querySelector(".provider-key-form") as ModelSelectorWrapper | null;
+	if (!wrapper?._errorArea) return;
+	setFormError(wrapper._errorArea, message);
+	wrapper._resetSelection?.();
+}
+
+function saveProviderCredentials(request: ProviderSaveRequest): Promise<RpcResponse> {
+	if (request.skipSave) return Promise.resolve({ ok: true });
+	if (request.saveAsCustomProvider) {
+		return sendRpc("providers.add_custom", {
+			baseUrl: request.endpointVal,
+			apiKey: request.keyVal,
+			models: request.modelsForSave,
+		});
+	}
+	return saveProviderKey(request.provider.name, request.keyVal || "", request.endpointVal);
+}
+
+function savedProviderIdentity(response: RpcResponse, request: ProviderSaveRequest): SavedProviderIdentity {
+	if (!request.saveAsCustomProvider) {
+		return { name: request.provider.name, displayName: request.provider.displayName };
+	}
+	const payload = response.payload as AddCustomPayload | undefined;
+	return {
+		name: payload?.providerName || request.provider.name,
+		displayName: payload?.displayName || request.provider.displayName,
+	};
+}
+
+function firstModelTestId(request: ProviderSaveRequest, providerName: string): string | null {
+	const firstModelId = request.modelIds[0];
+	if (!firstModelId) return null;
+	if (!request.saveAsCustomProvider) return firstModelId;
+	const firstRawModelId = Object.keys(request.modelsForSave)[0];
+	if (!firstRawModelId) throw new Error("Selected model is missing from the provider model catalog.");
+	return `${providerName}::${firstRawModelId}`;
+}
+
+function classifyProviderModelProbe(modelId: string, result: TestModelResult): ProviderModelProbe {
+	if (result.ok) return { status: "ready", modelId };
+	const error = result.error || "";
+	if (isModelServiceNotConfigured(error)) return { status: "service-unavailable", modelId };
+	if (isTimeoutError(error)) return { status: "timeout", modelId };
+	return { status: "failed", error: error || "Model test failed. Try another model." };
+}
+
+async function probeFirstProviderModel(
+	request: ProviderSaveRequest,
+	providerName: string,
+): Promise<ProviderModelProbe> {
+	const modelId = firstModelTestId(request, providerName);
+	if (!modelId) return { status: "skipped" };
+	return classifyProviderModelProbe(modelId, await testModel(modelId));
+}
+
+function saveSelectedProviderModels(providerName: string, modelsForSave: ProviderModelConfig): Promise<RpcResponse> {
+	return sendRpc("providers.save_models", { provider: providerName, models: modelsForSave });
+}
+
+function reportAcceptedProviderProbe(probe: ProviderModelProbe): void {
+	if (probe.status === "timeout") {
+		console.warn(
+			"models.test timed out for",
+			probe.modelId,
+			"\u2014 saving models anyway (local servers may need longer to load)",
+		);
+	}
+	if (probe.status === "service-unavailable") {
+		console.warn("models.test unavailable in provider settings, saved selected models without probe");
+	}
+	if (probe.status !== "skipped" && probe.status !== "failed") {
+		localStorage.setItem("chelix-model", probe.modelId);
+	}
+}
+
+function renderProviderSaveSuccess(identity: SavedProviderIdentity, modelCount: number, modelTimedOut: boolean): void {
+	const body = els().body;
+	body.textContent = "";
+	const status = document.createElement("div");
+	status.className = "provider-status";
+	const countMessage = modelCount > 1 ? ` with ${modelCount} models` : "";
+	status.textContent = `${identity.displayName} configured successfully${countMessage}!`;
+	body.appendChild(status);
+	if (modelTimedOut) {
+		const slowHint = document.createElement("div");
+		slowHint.className = "text-xs text-[var(--muted)] mt-1";
+		slowHint.textContent = "Note: model was slow to respond. It may need a moment to finish loading.";
+		body.appendChild(slowHint);
+	}
+	fetchModels();
+	S.refreshProvidersPage?.();
+	setTimeout(closeProviderModal, modelTimedOut ? 3500 : 1500);
+}
+
+async function completeProviderSave(request: ProviderSaveRequest): Promise<void> {
+	const credentialsResponse = await saveProviderCredentials(request);
+	if (!credentialsResponse?.ok) {
+		showProviderSaveError(credentialsResponse?.error?.message || "Failed to save credentials.");
+		return;
+	}
+	const identity = savedProviderIdentity(credentialsResponse, request);
+	const probe = await probeFirstProviderModel(request, identity.name);
+	if (probe.status === "failed") {
+		showProviderSaveError(probe.error);
+		return;
+	}
+	if (probe.status !== "skipped") {
+		const modelsResponse = await saveSelectedProviderModels(identity.name, request.modelsForSave);
+		if (!modelsResponse?.ok) {
+			showProviderSaveError(modelsResponse?.error?.message || "Failed to save models.");
+			return;
+		}
+		reportAcceptedProviderProbe(probe);
+	}
+	renderProviderSaveSuccess(identity, request.modelIds.length, probe.status === "timeout");
+}
+
 function saveAndFinishProvider(
 	provider: ProviderInfo,
 	models: ModelEntry[],
@@ -392,101 +534,18 @@ function saveAndFinishProvider(
 	selectedModelIds: Set<string>,
 	skipSave: boolean,
 ): void {
-	const m = els();
-	const saveAsCustomProvider = !skipSave && shouldUseCustomProviderForOpenAi(provider, endpointVal);
-	const modelIds = Array.from(selectedModelIds);
-	const modelsForSave = modelConfigMapFromSelection(models, selectedModelIds);
-	const firstRawModelId = Object.keys(modelsForSave)[0];
-
-	function showError(msg: string): void {
-		const wrapperEl = m.body.querySelector(".provider-key-form") as ModelSelectorWrapper | null;
-		if (wrapperEl?._errorArea) {
-			setFormError(wrapperEl._errorArea, msg);
-			if (wrapperEl._resetSelection) wrapperEl._resetSelection();
-		}
-	}
-
-	let savePromise: Promise<RpcResponse>;
-	if (skipSave) {
-		savePromise = Promise.resolve({ ok: true });
-	} else if (saveAsCustomProvider) {
-		savePromise = sendRpc("providers.add_custom", {
-			baseUrl: endpointVal,
-			apiKey: keyVal,
-			models: modelsForSave,
-		});
-	} else {
-		savePromise = saveProviderKey(provider.name, keyVal || "", endpointVal);
-	}
-
-	savePromise
-		.then(async (res: RpcResponse) => {
-			if (!res?.ok) {
-				showError(res?.error?.message || "Failed to save credentials.");
-				return;
-			}
-			const savedProviderName = saveAsCustomProvider
-				? (res?.payload as AddCustomPayload)?.providerName || provider.name
-				: provider.name;
-			const successDisplayName = saveAsCustomProvider
-				? (res?.payload as AddCustomPayload)?.displayName || provider.displayName
-				: provider.displayName;
-
-			let modelTimedOut = false;
-			if (modelIds.length > 0) {
-				// Test first model as a connectivity check
-				const firstModelId = modelIds[0];
-				const firstModelForTest = saveAsCustomProvider ? `${savedProviderName}::${firstRawModelId}` : firstModelId;
-				const testResult: TestModelResult = await testModel(firstModelForTest);
-				const modelServiceUnavailable = !testResult.ok && isModelServiceNotConfigured(testResult.error || "");
-				modelTimedOut = !testResult.ok && isTimeoutError(testResult.error || "");
-				if (!(testResult.ok || modelServiceUnavailable || modelTimedOut)) {
-					showError(testResult.error || "Model test failed. Try another model.");
-					return;
-				}
-				if (modelTimedOut) {
-					console.warn(
-						"models.test timed out for",
-						firstModelForTest,
-						"\u2014 saving models anyway (local servers may need longer to load)",
-					);
-				}
-
-				// Save all selected models at once
-				const saveModelsRes: RpcResponse = await sendRpc("providers.save_models", {
-					provider: savedProviderName,
-					models: modelsForSave,
-				});
-				if (!saveModelsRes?.ok) {
-					showError(saveModelsRes?.error?.message || "Failed to save models.");
-					return;
-				}
-				if (modelServiceUnavailable) {
-					console.warn("models.test unavailable in provider settings, saved selected models without probe");
-				}
-				localStorage.setItem("chelix-model", firstModelForTest);
-			}
-
-			// Success
-			m.body.textContent = "";
-			const status = document.createElement("div");
-			status.className = "provider-status";
-			const countMsg = modelIds.length > 1 ? ` with ${modelIds.length} models` : "";
-			status.textContent = `${successDisplayName} configured successfully${countMsg}!`;
-			m.body.appendChild(status);
-			if (modelTimedOut) {
-				const slowHint = document.createElement("div");
-				slowHint.className = "text-xs text-[var(--muted)] mt-1";
-				slowHint.textContent = "Note: model was slow to respond. It may need a moment to finish loading.";
-				m.body.appendChild(slowHint);
-			}
-			fetchModels();
-			if (S.refreshProvidersPage) S.refreshProvidersPage();
-			setTimeout(closeProviderModal, modelTimedOut ? 3500 : 1500);
-		})
-		.catch((err: Error) => {
-			showError(err?.message || "Failed to save credentials.");
-		});
+	const request: ProviderSaveRequest = {
+		provider,
+		modelsForSave: modelConfigMapFromSelection(models, selectedModelIds),
+		modelIds: Array.from(selectedModelIds),
+		keyVal,
+		endpointVal,
+		skipSave,
+		saveAsCustomProvider: !skipSave && shouldUseCustomProviderForOpenAi(provider, endpointVal),
+	};
+	completeProviderSave(request).catch((error: Error) => {
+		showProviderSaveError(error.message || "Failed to save credentials.");
+	});
 }
 
 // ── OAuth flow ───────────────────────────────────────────────
@@ -743,26 +802,28 @@ function showMultiModelSelector(
 
 	const selectedIds: Set<string> = new Set(savedModels);
 
-	// Track per-model probe state: "probing" | "ok" | { error: string }
-	const probeResults: Map<string, string | ProbeResult> = new Map();
+	type ModelProbeState = "probing" | "ok" | ProbeResult;
+	const probeResults = new Map<string, ModelProbeState>();
+
+	function applyModelProbeResult(modelId: string, result: TestModelResult): void {
+		const error = result.error || "";
+		if (isModelServiceNotConfigured(error)) {
+			probeResults.delete(modelId);
+			return;
+		}
+		if (!result.ok && isTimeoutError(error)) {
+			probeResults.set(modelId, { error: "Slow to respond (may still work)", timeout: true });
+			return;
+		}
+		probeResults.set(modelId, result.ok ? "ok" : { error: humanizeProbeError(error || "Unsupported") as string });
+	}
 
 	function probeModel(modelId: string): void {
 		if (probeResults.has(modelId)) return;
 		probeResults.set(modelId, "probing");
 		renderCards(searchInp?.value.trim() || null);
 		testModel(modelId).then((result: TestModelResult) => {
-			if (isModelServiceNotConfigured(result.error || "")) {
-				// Model service not ready -- don't flag as broken.
-				probeResults.delete(modelId);
-			} else if (!result.ok && isTimeoutError(result.error || "")) {
-				// Timeout -- model may still work, local servers need time to load.
-				probeResults.set(modelId, { error: "Slow to respond (may still work)", timeout: true });
-			} else {
-				probeResults.set(
-					modelId,
-					result.ok ? "ok" : { error: humanizeProbeError(result.error || "Unsupported") as string },
-				);
-			}
+			applyModelProbeResult(modelId, result);
 			renderCards(searchInp?.value.trim() || null);
 		});
 	}
@@ -815,96 +876,111 @@ function showMultiModelSelector(
 		});
 	}
 
-	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: card rendering with probe badges
+	function filteredModels(filter: string | null): ModelEntry[] {
+		if (!filter) return models;
+		const query = filter.toLowerCase();
+		return models.filter(
+			(model) => model.display_name.toLowerCase().includes(query) || model.id.toLowerCase().includes(query),
+		);
+	}
+
+	function createModelBadge(className: string, text: string): HTMLSpanElement {
+		const badge = document.createElement("span");
+		badge.className = className;
+		badge.textContent = text;
+		return badge;
+	}
+
+	function failedProbe(probe: ModelProbeState | undefined): ProbeResult | null {
+		return typeof probe === "object" ? probe : null;
+	}
+
+	function createModelBadges(model: ModelEntry, probe: ModelProbeState | undefined): HTMLDivElement {
+		const badges = document.createElement("div");
+		badges.className = "flex gap-2";
+		if (model.tool_calling) badges.appendChild(createModelBadge("recommended-badge", "Tools"));
+		if (probe === "probing") badges.appendChild(createModelBadge("tier-badge", "Probing\u2026"));
+		const failure = failedProbe(probe);
+		if (failure) {
+			const className = failure.timeout ? "tier-badge" : "provider-item-badge warning";
+			badges.appendChild(createModelBadge(className, failure.timeout ? "Slow" : "Unsupported"));
+		}
+		return badges;
+	}
+
+	function createModelHeader(model: ModelEntry, probe: ModelProbeState | undefined): HTMLDivElement {
+		const header = document.createElement("div");
+		header.className = "flex items-center justify-between";
+		const name = document.createElement("span");
+		name.className = "text-sm font-medium text-[var(--text)] truncate";
+		name.textContent = model.display_name;
+		header.append(name, createModelBadges(model, probe));
+		return header;
+	}
+
+	function appendModelId(card: HTMLElement, modelId: string): void {
+		const idLine = document.createElement("div");
+		idLine.className = "text-xs text-[var(--muted)] mt-1 font-mono";
+		idLine.textContent = modelId;
+		card.appendChild(idLine);
+	}
+
+	function appendModelProbeError(card: HTMLElement, probe: ModelProbeState | undefined): void {
+		const error = failedProbe(probe)?.error;
+		if (!error) return;
+		const errorLine = document.createElement("div");
+		errorLine.className = "text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5";
+		errorLine.textContent = error;
+		card.appendChild(errorLine);
+	}
+
+	function appendModelDate(card: HTMLElement, createdAt: number | null | undefined): void {
+		if (!createdAt) return;
+		const dateLine = document.createElement("time");
+		dateLine.className = "text-xs text-[var(--muted)] mt-0.5 opacity-60 block";
+		dateLine.setAttribute("data-epoch-ms", String(createdAt * 1000));
+		dateLine.setAttribute("data-format", "year-month");
+		card.appendChild(dateLine);
+	}
+
+	function toggleSelectedModel(modelId: string): void {
+		if (selectedIds.has(modelId)) {
+			selectedIds.delete(modelId);
+		} else {
+			selectedIds.add(modelId);
+			probeModel(modelId);
+		}
+		renderCards(searchInp?.value.trim() || null);
+		updateStatus();
+	}
+
+	function createModelCard(model: ModelEntry): HTMLDivElement {
+		const card = document.createElement("div");
+		card.className = `model-card ${selectedIds.has(model.id) ? "selected" : ""}`;
+		const probe = probeResults.get(model.id);
+		card.appendChild(createModelHeader(model, probe));
+		appendModelId(card, model.id);
+		appendModelProbeError(card, probe);
+		appendModelDate(card, model.created_at);
+		card.addEventListener("click", () => toggleSelectedModel(model.id));
+		return card;
+	}
+
+	function renderEmptyModelList(): void {
+		const empty = document.createElement("div");
+		empty.className = "text-xs text-[var(--muted)] py-4 text-center";
+		empty.textContent = "No models match your search.";
+		list.appendChild(empty);
+	}
+
 	function renderCards(filter: string | null): void {
 		list.textContent = "";
-		let filtered = models;
-		if (filter) {
-			const q = filter.toLowerCase();
-			filtered = models.filter(
-				(entry: ModelEntry) => entry.display_name.toLowerCase().includes(q) || entry.id.toLowerCase().includes(q),
-			);
-		}
+		const filtered = filteredModels(filter);
 		if (filtered.length === 0) {
-			const empty = document.createElement("div");
-			empty.className = "text-xs text-[var(--muted)] py-4 text-center";
-			empty.textContent = "No models match your search.";
-			list.appendChild(empty);
+			renderEmptyModelList();
 			return;
 		}
-		const sorted = sortModelsForSelection(filtered);
-		for (const mdl of sorted) {
-			const card = document.createElement("div");
-			card.className = `model-card ${selectedIds.has(mdl.id) ? "selected" : ""}`;
-
-			const header = document.createElement("div");
-			header.className = "flex items-center justify-between";
-
-			const nameSpan = document.createElement("span");
-			nameSpan.className = "text-sm font-medium text-[var(--text)] truncate";
-			nameSpan.textContent = mdl.display_name;
-			header.appendChild(nameSpan);
-
-			const badges = document.createElement("div");
-			badges.className = "flex gap-2";
-			if (mdl.tool_calling) {
-				const toolsBadge = document.createElement("span");
-				toolsBadge.className = "recommended-badge";
-				toolsBadge.textContent = "Tools";
-				badges.appendChild(toolsBadge);
-			}
-			const probe = probeResults.get(mdl.id);
-			if (probe === "probing") {
-				const probeBadge = document.createElement("span");
-				probeBadge.className = "tier-badge";
-				probeBadge.textContent = "Probing\u2026";
-				badges.appendChild(probeBadge);
-			} else if (probe && probe !== "ok") {
-				const probeObj = probe as ProbeResult;
-				const unsupBadge = document.createElement("span");
-				unsupBadge.className = probeObj.timeout ? "tier-badge" : "provider-item-badge warning";
-				unsupBadge.textContent = probeObj.timeout ? "Slow" : "Unsupported";
-				badges.appendChild(unsupBadge);
-			}
-			header.appendChild(badges);
-			card.appendChild(header);
-
-			const idLine = document.createElement("div");
-			idLine.className = "text-xs text-[var(--muted)] mt-1 font-mono";
-			idLine.textContent = mdl.id;
-			card.appendChild(idLine);
-
-			if (probe && probe !== "ok" && probe !== "probing" && (probe as ProbeResult).error) {
-				const errorLine = document.createElement("div");
-				errorLine.className = "text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5";
-				errorLine.textContent = (probe as ProbeResult).error || "";
-				card.appendChild(errorLine);
-			}
-
-			if (mdl.created_at) {
-				const dateLine = document.createElement("time");
-				dateLine.className = "text-xs text-[var(--muted)] mt-0.5 opacity-60 block";
-				dateLine.setAttribute("data-epoch-ms", String(mdl.created_at * 1000));
-				dateLine.setAttribute("data-format", "year-month");
-				card.appendChild(dateLine);
-			}
-
-			// Closure to capture mdl
-			((modelId: string) => {
-				card.addEventListener("click", () => {
-					if (selectedIds.has(modelId)) {
-						selectedIds.delete(modelId);
-					} else {
-						selectedIds.add(modelId);
-						probeModel(modelId);
-					}
-					renderCards(searchInp?.value.trim() || null);
-					updateStatus();
-				});
-			})(mdl.id);
-
-			list.appendChild(card);
-		}
+		for (const model of sortModelsForSelection(filtered)) list.appendChild(createModelCard(model));
 	}
 
 	renderCards(null);

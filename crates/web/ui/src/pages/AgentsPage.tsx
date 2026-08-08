@@ -6,13 +6,14 @@
 import type { VNode } from "preact";
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { Loading, TabBar } from "../components/forms";
+import { Loading } from "../components/forms/ListItem";
+import { TabBar } from "../components/forms/Tabs";
 import { EmojiPicker } from "../emoji-picker";
 import { refresh as refreshGon } from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import { fetchSessions } from "../sessions";
 import { targetChecked, targetValue } from "../typed-events";
-import type { RpcResponse } from "../types";
+import type { RpcResponse } from "../types/rpc";
 import { confirmDialog } from "../ui";
 
 // ── Types ───────────────────────────────────────────────────
@@ -227,6 +228,113 @@ function buildCapabilitiesToml(fields: PresetFields): string {
 	return lines.join("\n");
 }
 
+interface PresetPayload {
+	toml?: string;
+	fields?: PresetFields;
+}
+
+interface PresetHydration {
+	toml: string;
+	mcpMode: "all" | "allow" | "deny";
+	mcpServers: string[];
+	skillsAllow: string;
+	skillsAllowSet: boolean;
+	skillsDeny: string;
+	capabilitiesOpen: boolean;
+}
+
+interface AgentSupplementalDraft {
+	agentId: string;
+	soul: string;
+	presetToml: string;
+	capabilitiesOpen: boolean;
+	mcpMode: "all" | "allow" | "deny";
+	mcpServers: string[];
+	skillsAllow: string;
+	skillsAllowSet: boolean;
+	skillsDeny: string;
+}
+
+function normalizePresetHydration(payload: PresetPayload): PresetHydration {
+	const fields = payload.fields;
+	const skillsAllow = Array.isArray(fields?.skills?.allow) ? fields.skills.allow.join(", ") : "";
+	const skillsDeny = (fields?.skills?.deny || []).join(", ");
+	return {
+		toml: payload.toml?.trim() ? payload.toml : "",
+		mcpMode: (fields?.mcp?.mode as "all" | "allow" | "deny" | undefined) || "all",
+		mcpServers: fields?.mcp?.servers || [],
+		skillsAllow,
+		skillsAllowSet: Array.isArray(fields?.skills?.allow),
+		skillsDeny,
+		capabilitiesOpen:
+			fields?.mcp?.mode !== undefined && fields.mcp.mode !== "all"
+				? true
+				: Array.isArray(fields?.skills?.allow) || skillsDeny.length > 0,
+	};
+}
+
+function normalizeMcpServers(payload: unknown): McpServer[] {
+	if (!Array.isArray(payload)) return [];
+	return (payload as McpServer[]).map((server) => ({
+		name: typeof server.name === "string" ? server.name : "",
+		enabled: server.enabled !== false,
+		display_name: typeof server.display_name === "string" ? server.display_name : undefined,
+	}));
+}
+
+function agentFormTitle(agent: AgentPersona | null): string {
+	return agent ? `Edit ${agent.name}` : "Create Agent";
+}
+
+function agentFormSubmitLabel(saving: boolean, isEdit: boolean): string {
+	if (saving) return "Saving\u2026";
+	return isEdit ? "Save" : "Create";
+}
+
+function presetFormTitle(preset: ConfigPreset | null): string {
+	return preset ? `Edit ${preset.name || preset.id}` : "Create Sub-Agent";
+}
+
+function presetFormSubmitLabel(saving: boolean, isEdit: boolean): string {
+	if (saving) return "Saving...";
+	return isEdit ? "Save" : "Create";
+}
+
+function capabilitiesConfigured(draft: AgentSupplementalDraft): boolean {
+	return (
+		draft.mcpMode !== "all" || draft.mcpServers.length > 0 || draft.skillsAllowSet || draft.skillsDeny.trim() !== ""
+	);
+}
+
+function mergedAgentPresetToml(draft: AgentSupplementalDraft): string {
+	let toml = draft.presetToml.trim();
+	if (!(draft.capabilitiesOpen || capabilitiesConfigured(draft))) return toml;
+	const generated = buildCapabilitiesToml({
+		mcp: { mode: draft.mcpMode, servers: draft.mcpServers },
+		skills: {
+			allow: draft.skillsAllowSet ? parseCsvList(draft.skillsAllow) : null,
+			deny: parseCsvList(draft.skillsDeny),
+		},
+	});
+	const rawToml = stripTomlSections(toml, ["mcp", "skills"]).trim();
+	toml = rawToml ? `${rawToml}\n\n${generated}` : generated;
+	return toml;
+}
+
+async function saveAgentSupplementalData(draft: AgentSupplementalDraft): Promise<string | null> {
+	const requests: Promise<RpcResponse>[] = [];
+	const trimmedSoul = draft.soul.trim();
+	if (trimmedSoul) {
+		requests.push(sendRpc("agents.identity.update_soul", { agent_id: draft.agentId, soul: trimmedSoul }));
+	}
+	const toml = mergedAgentPresetToml(draft);
+	const savingToml = draft.capabilitiesOpen || capabilitiesConfigured(draft) || !!toml;
+	if (savingToml) requests.push(sendRpc("agents.preset.save", { id: draft.agentId, toml }));
+	const results = await Promise.all(requests);
+	const tomlResult = savingToml ? results.at(-1) : null;
+	return tomlResult && !tomlResult.ok ? tomlResult.error?.message || "Failed to save preset TOML" : null;
+}
+
 function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 	const isEdit = !!agent;
 	const [id, setId] = useState(agent?.id || "");
@@ -273,15 +381,7 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 	// Fetch available MCP servers
 	useEffect(() => {
 		sendRpc("mcp.list", {}).then((res) => {
-			if (res?.ok && Array.isArray(res.payload)) {
-				setAvailableMcpServers(
-					(res.payload as McpServer[]).map((s) => ({
-						name: typeof s.name === "string" ? s.name : "",
-						enabled: s.enabled !== false,
-						display_name: typeof s.display_name === "string" ? s.display_name : undefined,
-					})),
-				);
-			}
+			if (res?.ok) setAvailableMcpServers(normalizeMcpServers(res.payload));
 		});
 	}, []);
 
@@ -290,28 +390,14 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 		if (!isEdit) return;
 		sendRpc("agents.preset.get", { id: agent?.id }).then((res) => {
 			if (!res?.ok) return;
-			const payload = res.payload as { toml?: string; fields?: PresetFields };
-			if (payload?.toml?.trim()) {
-				setPresetToml(payload.toml);
-			}
-			const f = payload?.fields;
-			if (f) {
-				if (f.mcp) {
-					setMcpMode(f.mcp.mode as "all" | "allow" | "deny");
-					setMcpServers(f.mcp.servers || []);
-					if (f.mcp.mode !== "all") setCapabilitiesOpen(true);
-				}
-				if (f.skills) {
-					if (Array.isArray(f.skills.allow)) {
-						setSkillsAllow(f.skills.allow.join(", "));
-						setSkillsAllowSet(true);
-					}
-					setSkillsDeny((f.skills.deny || []).join(", "));
-					if (Array.isArray(f.skills.allow) || (f.skills.deny && f.skills.deny.length > 0)) {
-						setCapabilitiesOpen(true);
-					}
-				}
-			}
+			const hydrated = normalizePresetHydration(res.payload as PresetPayload);
+			setPresetToml(hydrated.toml);
+			setMcpMode(hydrated.mcpMode);
+			setMcpServers(hydrated.mcpServers);
+			setSkillsAllow(hydrated.skillsAllow);
+			setSkillsAllowSet(hydrated.skillsAllowSet);
+			setSkillsDeny(hydrated.skillsDeny);
+			setCapabilitiesOpen(hydrated.capabilitiesOpen);
 		});
 	}, [isEdit, agent?.id]);
 
@@ -333,62 +419,25 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 	}
 
 	function finishSave(agentId: string): void {
-		const trimmedSoul = soul.trim();
-		const pending: Promise<unknown>[] = [];
-		if (trimmedSoul) {
-			pending.push(sendRpc("agents.identity.update_soul", { agent_id: agentId, soul: trimmedSoul }));
-		}
-		// Build TOML: merge structured capability fields with any raw TOML.
-		// The raw TOML textarea always preserves user content (tools, model,
-		// timeouts, etc.). Structured fields generate [mcp] and [skills]
-		// sections that are prepended. Apply structured fields whenever they
-		// contain non-default values, even if the user collapsed the panel before
-		// saving.
-		const capabilitiesConfigured =
-			mcpMode !== "all" || mcpServers.length > 0 || skillsAllowSet || skillsDeny.trim() !== "";
-		let tomlToSave = presetToml.trim();
-		if (capabilitiesOpen || capabilitiesConfigured) {
-			const generated = buildCapabilitiesToml({
-				mcp: { mode: mcpMode, servers: mcpServers },
-				skills: {
-					allow: skillsAllowSet ? parseCsvList(skillsAllow) : null,
-					deny: parseCsvList(skillsDeny),
-				},
-			});
-			// Merge: strip [mcp] and [skills] sections from the raw TOML
-			// to avoid duplicates. Put raw top-level keys FIRST so they stay at
-			// the TOML document root, then APPEND generated sections — this
-			// prevents model/timeout_secs/etc. from being misassigned to the
-			// last generated section header.
-			const rawWithoutStructured = stripTomlSections(tomlToSave, ["mcp", "skills"]).trim();
-			tomlToSave = rawWithoutStructured ? `${rawWithoutStructured}\n\n${generated}` : generated;
-		}
-		// Always save when capabilities are active — an empty TOML string
-		// clears the preset, which is correct when the user has removed all
-		// restrictions. Without this, old restrictions survive silently.
-		const savingToml = capabilitiesOpen || capabilitiesConfigured || !!tomlToSave;
-		if (savingToml) {
-			pending.push(sendRpc("agents.preset.save", { id: agentId, toml: tomlToSave }));
-		}
-		if (pending.length > 0) {
-			Promise.all(pending).then((results) => {
-				const tomlResult = savingToml
-					? (results[results.length - 1] as { ok?: boolean; error?: { message?: string } })
-					: null;
-				if (tomlResult && !tomlResult?.ok) {
-					setSaving(false);
-					setError(tomlResult?.error?.message || "Failed to save preset TOML");
-					return;
-				}
-				setSaving(false);
-				refreshGon();
-				onSave();
-			});
-		} else {
+		void saveAgentSupplementalData({
+			agentId,
+			soul,
+			presetToml,
+			capabilitiesOpen,
+			mcpMode,
+			mcpServers,
+			skillsAllow,
+			skillsAllowSet,
+			skillsDeny,
+		}).then((saveError) => {
 			setSaving(false);
+			if (saveError) {
+				setError(saveError);
+				return;
+			}
 			refreshGon();
 			onSave();
-		}
+		});
 	}
 
 	function onSubmit(e: Event): void {
@@ -417,9 +466,7 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 
 	return (
 		<form onSubmit={onSubmit} className="flex flex-col gap-3" style={{ maxWidth: "500px" }}>
-			<h3 className="text-sm font-medium text-[var(--text-strong)]">
-				{isEdit ? `Edit ${agent?.name}` : "Create Agent"}
-			</h3>
+			<h3 className="text-sm font-medium text-[var(--text-strong)]">{agentFormTitle(agent)}</h3>
 
 			{!isEdit && (
 				<label className="flex flex-col gap-1">
@@ -613,7 +660,7 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 
 			<div className="flex gap-2">
 				<button type="submit" className="provider-btn" disabled={saving}>
-					{saving ? "Saving\u2026" : isEdit ? "Save" : "Create"}
+					{agentFormSubmitLabel(saving, isEdit)}
 				</button>
 				<button type="button" className="provider-btn provider-btn-secondary" onClick={onCancel}>
 					Cancel
@@ -689,9 +736,7 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 
 	return (
 		<form onSubmit={onSubmit} className="flex flex-col gap-3 max-w-lg">
-			<h3 className="text-sm font-medium text-[var(--text-strong)]">
-				{isEdit ? `Edit ${preset?.name || preset?.id}` : "Create Sub-Agent"}
-			</h3>
+			<h3 className="text-sm font-medium text-[var(--text-strong)]">{presetFormTitle(preset)}</h3>
 			<label className="flex flex-col gap-1">
 				<span className="text-xs text-[var(--muted)]">ID (slug, cannot change later)</span>
 				<input
@@ -801,7 +846,7 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 			{error && <span className="text-xs text-[var(--error)]">{error}</span>}
 			<div className="flex gap-2">
 				<button type="submit" className="provider-btn" disabled={saving}>
-					{saving ? "Saving..." : isEdit ? "Save" : "Create"}
+					{presetFormSubmitLabel(saving, isEdit)}
 				</button>
 				<button type="button" className="provider-btn provider-btn-secondary" onClick={onCancel}>
 					Cancel
@@ -999,6 +1044,174 @@ function ModeCard({ mode }: ModeCardProps): VNode {
 
 // ── Main page ───────────────────────────────────────────────
 
+interface ChatAgentsPanelProps {
+	agents: AgentPersona[];
+	defaultId: string;
+	onEdit: (agent: AgentPersona) => void;
+	onDelete: (agent: AgentPersona) => void;
+	onSetDefault: (agent: AgentPersona) => void;
+}
+
+function ChatAgentsPanel(props: ChatAgentsPanelProps): VNode {
+	return (
+		<section className="flex flex-col gap-3 max-w-[600px]" aria-label="Chat Agents panel">
+			<div className="flex flex-col gap-1">
+				<h3 className="text-xs font-medium text-[var(--muted)]">Chat Agents</h3>
+				<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
+					Persistent identities with their own memory, system prompt, sessions, and capability boundaries (model, MCP
+					servers, sandbox policy, skills). Assign agents to channels for different users or contexts.
+				</p>
+			</div>
+			<div className="flex flex-col gap-2">
+				{props.agents.map((agent) => (
+					<AgentCard
+						key={agent.id}
+						agent={agent}
+						defaultId={props.defaultId}
+						onEdit={props.onEdit}
+						onDelete={props.onDelete}
+						onSetDefault={props.onSetDefault}
+					/>
+				))}
+			</div>
+		</section>
+	);
+}
+
+interface SubAgentsPanelProps {
+	presets: ConfigPreset[];
+	creatingPresetId: string | null;
+	onCreate: (preset: ConfigPreset) => void;
+	onEdit: (preset: ConfigPreset) => void;
+	onDelete: (preset: ConfigPreset) => void;
+	onRevert: (id: string) => void;
+}
+
+function SubAgentsPanel(props: SubAgentsPanelProps): VNode {
+	return (
+		<section className="flex flex-col gap-2 max-w-[600px]" aria-label="Sub-Agents panel">
+			<div className="flex flex-col gap-1">
+				<h3 className="text-xs font-medium text-[var(--muted)]">Sub-Agent Presets</h3>
+				<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
+					Web UI edits are stored as markdown files in <code>~/.chelix/agents</code>. These roles are usable by
+					spawn_agent for delegated work. Add one to chat to make it a persistent agent with memory and sessions.
+				</p>
+			</div>
+			{props.presets.length > 0 ? (
+				props.presets.map((preset) => (
+					<PresetCard
+						key={preset.id}
+						preset={preset}
+						creating={props.creatingPresetId === preset.id}
+						onCreate={props.onCreate}
+						onEdit={props.onEdit}
+						onDelete={props.onDelete}
+						onRevert={props.onRevert}
+					/>
+				))
+			) : (
+				<div className="backend-card text-xs text-[var(--muted)]">
+					All configured sub-agent presets are already available as chat agents.
+				</div>
+			)}
+		</section>
+	);
+}
+
+function ModesPanel({ modes }: { modes: ModePreset[] }): VNode {
+	return (
+		<section className="flex flex-col gap-2 max-w-[600px]" aria-label="Modes panel">
+			<div className="flex flex-col gap-1">
+				<h3 className="text-xs font-medium text-[var(--muted)]">Modes</h3>
+				<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
+					Defined in <code>[modes]</code> in <code>chelix.toml</code>. Temporary per-session prompt overlays. Use /mode
+					in chat or any connected channel to switch how the current agent works without changing its identity, memory,
+					or presets.
+				</p>
+			</div>
+			{modes.length > 0 ? (
+				modes.map((mode) => <ModeCard key={mode.id} mode={mode} />)
+			) : (
+				<div className="backend-card text-xs text-[var(--muted)]">No modes are configured.</div>
+			)}
+		</section>
+	);
+}
+
+interface AgentsOverviewProps {
+	activeTab: string;
+	agents: AgentPersona[];
+	defaultId: string;
+	configPresets: ConfigPreset[];
+	creatingPresetId: string | null;
+	modes: ModePreset[];
+	error: string | null;
+	onTabChange: (tab: string) => void;
+	onNewAgent: () => void;
+	onEditAgent: (agent: AgentPersona) => void;
+	onDeleteAgent: (agent: AgentPersona) => void;
+	onSetDefault: (agent: AgentPersona) => void;
+	onNewPreset: () => void;
+	onCreatePreset: (preset: ConfigPreset) => void;
+	onEditPreset: (preset: ConfigPreset) => void;
+	onDeletePreset: (preset: ConfigPreset) => void;
+	onRevertPreset: (id: string) => void;
+}
+
+function AgentsOverview(props: AgentsOverviewProps): VNode {
+	return (
+		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
+			<div className="flex items-center gap-3 flex-wrap">
+				<h2 className="text-lg font-medium text-[var(--text-strong)]">Agents</h2>
+				{props.activeTab === "chat" && (
+					<button type="button" className="provider-btn provider-btn-sm" onClick={props.onNewAgent}>
+						New Agent
+					</button>
+				)}
+				{props.activeTab === "subagents" && (
+					<button type="button" className="provider-btn provider-btn-sm" onClick={props.onNewPreset}>
+						New Sub-Agent
+					</button>
+				)}
+			</div>
+			<TabBar
+				tabs={[
+					{ id: "chat", label: "Chat Agents", badge: props.agents.length || undefined },
+					{ id: "subagents", label: "Sub-Agents", badge: props.configPresets.length || undefined },
+					{ id: "modes", label: "Modes", badge: props.modes.length || undefined },
+				]}
+				active={props.activeTab}
+				onChange={props.onTabChange}
+			/>
+			{props.error && (
+				<span className="text-xs" style={{ color: "var(--error)" }}>
+					{props.error}
+				</span>
+			)}
+			{props.activeTab === "chat" && (
+				<ChatAgentsPanel
+					agents={props.agents}
+					defaultId={props.defaultId}
+					onEdit={props.onEditAgent}
+					onDelete={props.onDeleteAgent}
+					onSetDefault={props.onSetDefault}
+				/>
+			)}
+			{props.activeTab === "subagents" && (
+				<SubAgentsPanel
+					presets={props.configPresets}
+					creatingPresetId={props.creatingPresetId}
+					onCreate={props.onCreatePreset}
+					onEdit={props.onEditPreset}
+					onDelete={props.onDeletePreset}
+					onRevert={props.onRevertPreset}
+				/>
+			)}
+			{props.activeTab === "modes" && <ModesPanel modes={props.modes} />}
+		</div>
+	);
+}
+
 function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	const [agents, setAgents] = useState<AgentPersona[]>([]);
 	const [configPresets, setConfigPresets] = useState<ConfigPreset[]>([]);
@@ -1175,6 +1388,17 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		});
 	}
 
+	function finishAgentEdit(): void {
+		setEditing(null);
+		fetchAgents();
+		fetchConfigPresets();
+	}
+
+	function finishPresetEdit(): void {
+		setEditingPreset(null);
+		fetchConfigPresets();
+	}
+
 	if (isLoading) {
 		return (
 			<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
@@ -1182,139 +1406,47 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 			</div>
 		);
 	}
-
 	if (editing) {
 		return (
 			<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 				<AgentForm
 					agent={editing === "new" ? null : editing}
-					onSave={() => {
-						setEditing(null);
-						fetchAgents();
-						fetchConfigPresets();
-					}}
+					onSave={finishAgentEdit}
 					onCancel={() => setEditing(null)}
 				/>
 			</div>
 		);
 	}
-
 	if (editingPreset) {
 		return (
 			<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 				<PresetForm
 					preset={editingPreset === "new" ? null : editingPreset}
-					onSave={() => {
-						setEditingPreset(null);
-						fetchConfigPresets();
-					}}
+					onSave={finishPresetEdit}
 					onCancel={() => setEditingPreset(null)}
 				/>
 			</div>
 		);
 	}
-
 	return (
-		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
-			<div className="flex items-center gap-3 flex-wrap">
-				<h2 className="text-lg font-medium text-[var(--text-strong)]">Agents</h2>
-				{activeTab === "chat" && (
-					<button type="button" className="provider-btn provider-btn-sm" onClick={() => setEditing("new")}>
-						New Agent
-					</button>
-				)}
-				{activeTab === "subagents" && (
-					<button type="button" className="provider-btn provider-btn-sm" onClick={() => setEditingPreset("new")}>
-						New Sub-Agent
-					</button>
-				)}
-			</div>
-			<TabBar
-				tabs={[
-					{ id: "chat", label: "Chat Agents", badge: agents.length || undefined },
-					{ id: "subagents", label: "Sub-Agents", badge: configPresets.length || undefined },
-					{ id: "modes", label: "Modes", badge: modes.length || undefined },
-				]}
-				active={activeTab}
-				onChange={setActiveTab}
-			/>
-
-			{error && (
-				<span className="text-xs" style={{ color: "var(--error)" }}>
-					{error}
-				</span>
-			)}
-
-			{activeTab === "chat" && (
-				<section className="flex flex-col gap-3 max-w-[600px]" aria-label="Chat Agents panel">
-					<div className="flex flex-col gap-1">
-						<h3 className="text-xs font-medium text-[var(--muted)]">Chat Agents</h3>
-						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
-							Persistent identities with their own memory, system prompt, sessions, and capability boundaries (model,
-							MCP servers, sandbox policy, skills). Assign agents to channels for different users or contexts.
-						</p>
-					</div>
-					<div className="flex flex-col gap-2">
-						{agents.map((agent) => (
-							<AgentCard
-								key={agent.id}
-								agent={agent}
-								defaultId={defaultId}
-								onEdit={(a) => setEditing(a)}
-								onDelete={onDelete}
-								onSetDefault={onSetDefault}
-							/>
-						))}
-					</div>
-				</section>
-			)}
-
-			{activeTab === "subagents" && (
-				<section className="flex flex-col gap-2 max-w-[600px]" aria-label="Sub-Agents panel">
-					<div className="flex flex-col gap-1">
-						<h3 className="text-xs font-medium text-[var(--muted)]">Sub-Agent Presets</h3>
-						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
-							Web UI edits are stored as markdown files in <code>~/.chelix/agents</code>. These roles are usable by
-							spawn_agent for delegated work. Add one to chat to make it a persistent agent with memory and sessions.
-						</p>
-					</div>
-					{configPresets.length > 0 ? (
-						configPresets.map((preset) => (
-							<PresetCard
-								key={preset.id}
-								preset={preset}
-								creating={creatingPresetId === preset.id}
-								onCreate={onCreateFromPreset}
-								onEdit={(p) => setEditingPreset(p)}
-								onDelete={onDeletePreset}
-								onRevert={onRevertPreset}
-							/>
-						))
-					) : (
-						<div className="backend-card text-xs text-[var(--muted)]">
-							All configured sub-agent presets are already available as chat agents.
-						</div>
-					)}
-				</section>
-			)}
-
-			{activeTab === "modes" && (
-				<section className="flex flex-col gap-2 max-w-[600px]" aria-label="Modes panel">
-					<div className="flex flex-col gap-1">
-						<h3 className="text-xs font-medium text-[var(--muted)]">Modes</h3>
-						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
-							Defined in <code>[modes]</code> in <code>chelix.toml</code>. Temporary per-session prompt overlays. Use
-							/mode in chat or any connected channel to switch how the current agent works without changing its
-							identity, memory, or presets.
-						</p>
-					</div>
-					{modes.length > 0 ? (
-						modes.map((mode) => <ModeCard key={mode.id} mode={mode} />)
-					) : (
-						<div className="backend-card text-xs text-[var(--muted)]">No modes are configured.</div>
-					)}
-				</section>
-			)}
-		</div>
+		<AgentsOverview
+			activeTab={activeTab}
+			agents={agents}
+			defaultId={defaultId}
+			configPresets={configPresets}
+			creatingPresetId={creatingPresetId}
+			modes={modes}
+			error={error}
+			onTabChange={setActiveTab}
+			onNewAgent={() => setEditing("new")}
+			onEditAgent={setEditing}
+			onDeleteAgent={onDelete}
+			onSetDefault={onSetDefault}
+			onNewPreset={() => setEditingPreset("new")}
+			onCreatePreset={onCreateFromPreset}
+			onEditPreset={setEditingPreset}
+			onDeletePreset={onDeletePreset}
+			onRevertPreset={onRevertPreset}
+		/>
 	);
 }

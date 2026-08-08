@@ -19,8 +19,7 @@ export function clearChatEmptyState(): void {
 // ── Thinking UI helpers ───────────────────────────────────────
 
 export function makeThinkingDots(): Element {
-	const tpl = S.$<HTMLTemplateElement>("tpl-thinking-dots")!;
-	return (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild!;
+	return S.cloneRequiredTemplateRoot("tpl-thinking-dots");
 }
 
 // ── Session helpers ───────────────────────────────────────────

@@ -284,24 +284,6 @@ pub mod browser {
     pub const POOL_UTILIZATION: &str = "chelix_browser_pool_utilization";
 }
 
-/// Canvas (A2UI) metrics
-pub mod canvas {
-    /// Active WebSocket connections
-    pub const CONNECTIONS_ACTIVE: &str = "chelix_canvas_connections_active";
-    /// Total messages received from UI
-    pub const MESSAGES_RECEIVED_TOTAL: &str = "chelix_canvas_messages_received_total";
-    /// Total messages sent to UI
-    pub const MESSAGES_SENT_TOTAL: &str = "chelix_canvas_messages_sent_total";
-    /// Message round-trip latency in seconds
-    pub const MESSAGE_LATENCY_SECONDS: &str = "chelix_canvas_message_latency_seconds";
-    /// Page serve duration in seconds
-    pub const PAGE_SERVE_DURATION_SECONDS: &str = "chelix_canvas_page_serve_duration_seconds";
-    /// WebSocket errors
-    pub const WEBSOCKET_ERRORS_TOTAL: &str = "chelix_canvas_websocket_errors_total";
-    /// Content size in bytes
-    pub const CONTENT_SIZE_BYTES: &str = "chelix_canvas_content_size_bytes";
-}
-
 /// Media pipeline metrics
 pub mod media {
     /// Total downloads attempted

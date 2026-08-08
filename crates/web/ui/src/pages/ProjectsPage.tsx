@@ -11,7 +11,7 @@ import { registerPage } from "../router";
 import { routes } from "../routes";
 import * as S from "../state";
 import { projects as projectsSig } from "../stores/project-store";
-import type { ProjectInfo } from "../types";
+import type { ProjectInfo } from "../types/project";
 import { ConfirmDialog, requestConfirm } from "../ui";
 
 interface Project extends ProjectInfo {
@@ -90,6 +90,7 @@ function PathInput(props: PathInputProps): VNode {
 					onInput={onInput}
 				/>
 				<button
+					type="button"
 					className="provider-btn"
 					onClick={() => {
 						const dir = inputRef.current?.value.trim();
@@ -105,9 +106,14 @@ function PathInput(props: PathInputProps): VNode {
 			{completions.value.length > 0 && (
 				<div className="project-completion" style={{ display: "block" }}>
 					{completions.value.map((p) => (
-						<div key={p} className="project-completion-item" onClick={() => selectPath(p)}>
+						<button
+							type="button"
+							key={p}
+							className="project-completion-item block w-full border-0 bg-transparent text-left font-[inherit]"
+							onClick={() => selectPath(p)}
+						>
 							{p}
-						</div>
+						</button>
 					))}
 				</div>
 			)}
@@ -210,10 +216,11 @@ function ProjectEditForm(props: ProjectEditFormProps): VNode {
 				<span className="text-xs text-[var(--text)]">{t("projects:editForm.codeIndex")}</span>
 			</label>
 			<div style={{ display: "flex", gap: "8px" }}>
-				<button className="provider-btn" onClick={onSave}>
+				<button type="button" className="provider-btn" onClick={onSave}>
 					{t("common:actions.save")}
 				</button>
 				<button
+					type="button"
 					className="provider-btn provider-btn-secondary"
 					onClick={() => {
 						editingProject.value = null;
@@ -270,6 +277,7 @@ function ProjectCard(props: ProjectCardProps): VNode {
 			</div>
 			<div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
 				<button
+					type="button"
 					className="session-action-btn"
 					title={t("projects:card.editProject")}
 					onClick={() => {
@@ -279,6 +287,7 @@ function ProjectCard(props: ProjectCardProps): VNode {
 					{t("projects:card.edit")}
 				</button>
 				<button
+					type="button"
 					className="session-action-btn session-delete"
 					title={t("projects:card.removeProject")}
 					onClick={onDelete}
@@ -359,6 +368,7 @@ function ProjectsPageComponent(): VNode {
 			<div className="flex items-center gap-3">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">{t("projects:title")}</h2>
 				<button
+					type="button"
 					className="provider-btn provider-btn-secondary"
 					onClick={onDetect}
 					disabled={detecting.value}
@@ -367,6 +377,7 @@ function ProjectsPageComponent(): VNode {
 					{detecting.value ? t("projects:detecting") : t("projects:autoDetect")}
 				</button>
 				<button
+					type="button"
 					className="provider-btn provider-btn-danger"
 					onClick={onClearAll}
 					disabled={clearDisabled}
@@ -429,4 +440,4 @@ export function teardownProjects(): void {
 	_projectsContainer = null;
 }
 
-registerPage(routes.projects!, initProjects, teardownProjects);
+registerPage(routes.projects, initProjects, teardownProjects);

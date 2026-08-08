@@ -48,14 +48,16 @@ export function AdvancedConfigPatchField({ value, onInput }: AdvancedConfigPatch
 					have dedicated fields yet.
 				</div>
 				<div>
-					<label className="text-xs text-[var(--muted)] mb-1 block">Advanced config JSON patch (optional)</label>
-					<textarea
-						name="channel_advanced_config"
-						className="provider-key-input w-full min-h-[140px] font-mono text-xs"
-						value={value}
-						onInput={(e) => onInput(targetValue(e))}
-						placeholder={'{"reply_to_message": true}'}
-					/>
+					<label>
+						<span className="text-xs text-[var(--muted)] mb-1 block">Advanced config JSON patch (optional)</span>
+						<textarea
+							name="channel_advanced_config"
+							className="provider-key-input w-full min-h-[140px] font-mono text-xs"
+							value={value}
+							onInput={(e) => onInput(targetValue(e))}
+							placeholder={'{"reply_to_message": true}'}
+						/>
+					</label>
 				</div>
 			</div>
 		</details>
@@ -233,58 +235,65 @@ export function TelegramForm({ onConnected, error, setError }: ChannelFormProps)
 				<span>3. Copy the bot token and paste it below</span>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Bot username</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={accountId}
-					onInput={(e) => setAccountId(targetValue(e))}
-					placeholder="e.g. my_assistant_bot"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="telegram_bot_username"
-					autoFocus
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Bot username</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={accountId}
+						onInput={(e) => setAccountId(targetValue(e))}
+						placeholder="e.g. my_assistant_bot"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="telegram_bot_username"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Bot token (from @BotFather)</label>
-				<input
-					type="password"
-					className="provider-key-input w-full"
-					value={token}
-					onInput={(e) => setToken(targetValue(e))}
-					placeholder="123456:ABC-DEF..."
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="telegram_bot_token"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Bot token (from @BotFather)</span>
+					<input
+						type="password"
+						className="provider-key-input w-full"
+						value={token}
+						onInput={(e) => setToken(targetValue(e))}
+						placeholder="123456:ABC-DEF..."
+						autoComplete="new-password"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="telegram_bot_token"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={dmPolicy}
-					onChange={(e) => setDmPolicy(targetValue(e))}
-				>
-					<option value="allowlist">Allowlist only (recommended)</option>
-					<option value="open">Open (anyone)</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={dmPolicy}
+						onChange={(e) => setDmPolicy(targetValue(e))}
+					>
+						<option value="allowlist">Allowlist only (recommended)</option>
+						<option value="open">Open (anyone)</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Your Telegram username(s)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={allowlist}
-					onInput={(e) => setAllowlist(targetValue(e))}
-					placeholder="your_username"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Your Telegram username(s)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={allowlist}
+						onInput={(e) => setAllowlist(targetValue(e))}
+						placeholder="your_username"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">
 					One username per line, without the @ sign. These users can DM your bot.
 				</div>
@@ -394,35 +403,38 @@ export function DiscordForm({ onConnected, error, setError }: ChannelFormProps):
 				<span>5. You can also DM the bot directly without adding it to a server</span>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Account ID</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={accountId}
-					onInput={(e) => setAccountId(targetValue(e))}
-					placeholder="e.g. my_discord_bot"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="discord_account_id"
-					autoFocus
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Account ID</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={accountId}
+						onInput={(e) => setAccountId(targetValue(e))}
+						placeholder="e.g. my_discord_bot"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="discord_account_id"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Bot token</label>
-				<input
-					type="password"
-					className="provider-key-input w-full"
-					value={token}
-					onInput={(e) => setToken(targetValue(e))}
-					placeholder="Bot token from Developer Portal"
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="discord_bot_token"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Bot token</span>
+					<input
+						type="password"
+						className="provider-key-input w-full"
+						value={token}
+						onInput={(e) => setToken(targetValue(e))}
+						placeholder="Bot token from Developer Portal"
+						autoComplete="new-password"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="discord_bot_token"
+					/>
+				</label>
 			</div>
 			{inviteUrl && (
 				<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-2.5 text-xs flex flex-col gap-1">
@@ -436,39 +448,45 @@ export function DiscordForm({ onConnected, error, setError }: ChannelFormProps):
 				</div>
 			)}
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select
-					className="provider-key-input w-full cursor-pointer"
-					value={dmPolicy}
-					onChange={(e) => setDmPolicy(targetValue(e))}
-				>
-					<option value="allowlist">Allowlist only (recommended)</option>
-					<option value="open">Open (anyone)</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
+					<select
+						className="provider-key-input w-full cursor-pointer"
+						value={dmPolicy}
+						onChange={(e) => setDmPolicy(targetValue(e))}
+					>
+						<option value="allowlist">Allowlist only (recommended)</option>
+						<option value="open">Open (anyone)</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Allowed Discord username(s)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={allowlist}
-					onInput={(e) => setAllowlist(targetValue(e))}
-					placeholder="your_username"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Allowed Discord username(s)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={allowlist}
+						onInput={(e) => setAllowlist(targetValue(e))}
+						placeholder="your_username"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">One username per line. These users can DM your bot.</div>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Channel Name Patterns (optional)</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={channelPatterns}
-					onInput={(e) => setChannelPatterns(targetValue(e))}
-					placeholder="ticket-*"
-					style="resize:vertical;font-family:var(--font-body);"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Channel Name Patterns (optional)</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={channelPatterns}
+						onInput={(e) => setChannelPatterns(targetValue(e))}
+						placeholder="ticket-*"
+						style="resize:vertical;font-family:var(--font-body);"
+					/>
+				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">
 					One glob pattern per line. When set, the bot only responds in matching guild channels (no @mention needed).
 					Supports * wildcards. E.g., ticket-*, support-*.
@@ -550,7 +568,6 @@ export function SignalForm({ onConnected, error, setError }: ChannelFormProps): 
 		<form onSubmit={onSubmit} className="flex flex-col gap-3">
 			<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 text-xs text-[var(--muted)] flex flex-col gap-1">
 				<span className="font-medium text-[var(--text-strong)]">Requires signal-cli</span>
-				{/* biome-ignore lint: single-line keeps whitespace intact */}
 				<span>
 					Signal integration requires a running{" "}
 					<a
@@ -568,68 +585,84 @@ export function SignalForm({ onConnected, error, setError }: ChannelFormProps): 
 				</code>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Signal Account (phone number)</label>
-				<input
-					type="text"
-					className="provider-key-input w-full"
-					value={account}
-					onInput={(e) => setAccount(targetValue(e))}
-					placeholder="+15551234567"
-					autoComplete="off"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="signal_account"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Signal Account (phone number)</span>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						value={account}
+						onInput={(e) => setAccount(targetValue(e))}
+						placeholder="+15551234567"
+						autoComplete="off"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="signal_account"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">signal-cli Daemon URL</label>
-				<input
-					type="url"
-					className="provider-key-input w-full"
-					value={httpUrl}
-					onInput={(e) => setHttpUrl(targetValue(e))}
-					placeholder="http://127.0.0.1:8080"
-					name="signal_http_url"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">signal-cli Daemon URL</span>
+					<input
+						type="url"
+						className="provider-key-input w-full"
+						value={httpUrl}
+						onInput={(e) => setHttpUrl(targetValue(e))}
+						placeholder="http://127.0.0.1:8080"
+						name="signal_http_url"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Policy</label>
-				<select className="channel-select w-full" value={dmPolicy} onChange={(e) => setDmPolicy(targetValue(e))}>
-					<option value="allowlist">Allowlist only</option>
-					<option value="open">Open (anyone)</option>
-					<option value="disabled">Disabled</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
+					<select className="channel-select w-full" value={dmPolicy} onChange={(e) => setDmPolicy(targetValue(e))}>
+						<option value="allowlist">Allowlist only</option>
+						<option value="open">Open (anyone)</option>
+						<option value="disabled">Disabled</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Group Policy</label>
-				<select className="channel-select w-full" value={groupPolicy} onChange={(e) => setGroupPolicy(targetValue(e))}>
-					<option value="disabled">Disabled</option>
-					<option value="allowlist">Allowlist only</option>
-					<option value="open">Open (any group)</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Group Policy</span>
+					<select
+						className="channel-select w-full"
+						value={groupPolicy}
+						onChange={(e) => setGroupPolicy(targetValue(e))}
+					>
+						<option value="disabled">Disabled</option>
+						<option value="allowlist">Allowlist only</option>
+						<option value="open">Open (any group)</option>
+					</select>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">DM Allowlist</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={allowlist}
-					onInput={(e) => setAllowlist(targetValue(e))}
-					placeholder={"+15551234567\n550e8400-e29b-41d4-a716-446655440000"}
-					name="signal_allowlist"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">DM Allowlist</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={allowlist}
+						onInput={(e) => setAllowlist(targetValue(e))}
+						placeholder={"+15551234567\n550e8400-e29b-41d4-a716-446655440000"}
+						name="signal_allowlist"
+					/>
+				</label>
 			</div>
 			<div>
-				<label className="text-xs text-[var(--muted)] mb-1 block">Group Allowlist</label>
-				<textarea
-					className="provider-key-input w-full"
-					rows={2}
-					value={groupAllowlist}
-					onInput={(e) => setGroupAllowlist(targetValue(e))}
-					placeholder="base64-encoded Signal group ID"
-					name="signal_group_allowlist"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)] mb-1 block">Group Allowlist</span>
+					<textarea
+						className="provider-key-input w-full"
+						rows={2}
+						value={groupAllowlist}
+						onInput={(e) => setGroupAllowlist(targetValue(e))}
+						placeholder="base64-encoded Signal group ID"
+						name="signal_group_allowlist"
+					/>
+				</label>
 			</div>
 			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />
 			{error && <div className="text-xs text-[var(--error)]">{error}</div>}

@@ -5,7 +5,8 @@
 
 import { computed, signal } from "@preact/signals";
 import { sendRpc } from "../helpers";
-import type { ModelInfo, RpcResponse } from "../types";
+import type { ModelInfo } from "../types/model";
+import type { RpcResponse } from "../types/rpc";
 
 // ── Signals ──────────────────────────────────────────────────
 export const models = signal<ModelInfo[]>([]);

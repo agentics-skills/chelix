@@ -2,7 +2,9 @@
 
 import type { VNode } from "preact";
 import { useRef, useState } from "preact/hooks";
-import { CheckboxField, Loading, SectionHeading, StatusMessage, SubHeading } from "../../components/forms";
+import { CheckboxField } from "../../components/forms/FormField";
+import { Loading } from "../../components/forms/ListItem";
+import { SectionHeading, StatusMessage, SubHeading } from "../../components/forms/SectionLayout";
 import { rerender } from "./_shared";
 
 interface ImportedItem {

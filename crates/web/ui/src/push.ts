@@ -120,6 +120,9 @@ export async function subscribeToPush(): Promise<PushResult> {
 			userVisibleOnly: true,
 			applicationServerKey: urlBase64ToUint8Array(key).buffer as ArrayBuffer,
 		});
+		const p256dhKey = subscription.getKey("p256dh");
+		const authKey = subscription.getKey("auth");
+		if (!(p256dhKey && authKey)) throw new Error("Push subscription is missing encryption keys");
 
 		// Send subscription to server
 		const response = await fetch("/api/push/subscribe", {
@@ -130,11 +133,11 @@ export async function subscribeToPush(): Promise<PushResult> {
 			body: JSON.stringify({
 				endpoint: subscription.endpoint,
 				keys: {
-					p256dh: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("p256dh")!)))
+					p256dh: btoa(String.fromCharCode(...new Uint8Array(p256dhKey)))
 						.replace(/\+/g, "-")
 						.replace(/\//g, "_")
 						.replace(/=+$/, ""),
-					auth: btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("auth")!)))
+					auth: btoa(String.fromCharCode(...new Uint8Array(authKey)))
 						.replace(/\+/g, "-")
 						.replace(/\//g, "_")
 						.replace(/=+$/, ""),

@@ -117,9 +117,8 @@ function renderPreview(): void {
 		removeBtn.textContent = "\u2715";
 		removeBtn.title = t("common:actions.remove");
 		removeBtn.dataset.idx = String(i);
-		removeBtn.addEventListener("click", (e: MouseEvent): void => {
-			const idx = Number.parseInt((e.currentTarget as HTMLButtonElement).dataset.idx!, 10);
-			removeAttachment(idx);
+		removeBtn.addEventListener("click", (): void => {
+			removeAttachment(i);
 		});
 		item.appendChild(removeBtn);
 
@@ -230,24 +229,22 @@ export function initMediaDrop(msgBox: HTMLElement, inputArea: HTMLElement): void
 	}
 }
 
-/** Remove all listeners and clean up. */
-export function teardownMediaDrop(): void {
-	if (chatMsgBoxRef) {
-		if (boundDragOver) chatMsgBoxRef.removeEventListener("dragover", boundDragOver);
-		if (boundDragEnter) chatMsgBoxRef.removeEventListener("dragenter", boundDragEnter);
-		if (boundDragLeave) chatMsgBoxRef.removeEventListener("dragleave", boundDragLeave);
-		if (boundDrop) chatMsgBoxRef.removeEventListener("drop", boundDrop);
-	}
-	if (S.chatInput && boundPaste) {
-		(S.chatInput as HTMLElement).removeEventListener("paste", boundPaste as EventListener);
-	}
+function removeDragListeners(): void {
+	if (!chatMsgBoxRef) return;
+	if (boundDragOver) chatMsgBoxRef.removeEventListener("dragover", boundDragOver);
+	if (boundDragEnter) chatMsgBoxRef.removeEventListener("dragenter", boundDragEnter);
+	if (boundDragLeave) chatMsgBoxRef.removeEventListener("dragleave", boundDragLeave);
+	if (boundDrop) chatMsgBoxRef.removeEventListener("drop", boundDrop);
+}
+
+function removeAttachmentListeners(): void {
 	const attachBtn = document.getElementById("attachBtn");
 	const attachInput = document.getElementById("attachInput");
 	if (attachBtn && boundAttachClick) attachBtn.removeEventListener("click", boundAttachClick);
 	if (attachInput && boundAttachChange) attachInput.removeEventListener("change", boundAttachChange);
-	if (previewStrip?.parentElement) {
-		previewStrip.parentElement.removeChild(previewStrip);
-	}
+}
+
+function resetMediaDropState(): void {
 	pendingAttachments = [];
 	previewStrip = null;
 	chatMsgBoxRef = null;
@@ -259,6 +256,17 @@ export function teardownMediaDrop(): void {
 	boundAttachClick = null;
 	boundAttachChange = null;
 	dragEnterCount = 0;
+}
+
+/** Remove all listeners and clean up. */
+export function teardownMediaDrop(): void {
+	removeDragListeners();
+	if (S.chatInput && boundPaste) {
+		(S.chatInput as HTMLElement).removeEventListener("paste", boundPaste as EventListener);
+	}
+	removeAttachmentListeners();
+	previewStrip?.remove();
+	resetMediaDropState();
 }
 
 export function getPendingAttachments(): PendingAttachment[] {

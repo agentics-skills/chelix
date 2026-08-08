@@ -148,6 +148,7 @@ function Toolbar(): VNode {
 				}, searchRef)}
 			/>
 			<button
+				type="button"
 				className="logs-btn"
 				onClick={() => {
 					paused.value = !paused.value;
@@ -157,6 +158,7 @@ function Toolbar(): VNode {
 				{paused.value ? t("logs:toolbar.resume") : t("logs:toolbar.pause")}
 			</button>
 			<button
+				type="button"
 				className="logs-btn"
 				onClick={() => {
 					const area = document.getElementById("logsArea");
@@ -199,7 +201,7 @@ function LogsPage(): VNode {
 		area.appendChild(row);
 		entryCount.value++;
 		while (area.childNodes.length > maxEntries) {
-			area.removeChild(area.firstChild!);
+			area.firstChild?.remove();
 			entryCount.value--;
 		}
 		if (!paused.value) {

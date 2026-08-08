@@ -45,21 +45,67 @@ export function terminalMetadataData(
 	};
 }
 
-export function appendTerminalMetadata(
-	container: HTMLElement | null,
-	anchor: HTMLElement | null,
-	data: TerminalMetadataData,
-): HTMLElement | null {
-	if (!(container && data.model)) return null;
+function metadataRowMatches(row: HTMLElement, data: TerminalMetadataData): boolean {
+	const matchesHistory = Number.isInteger(data.historyIndex) && row.dataset.historyIndex === String(data.historyIndex);
+	const matchesRun = Boolean(data.runId && row.dataset.runId === data.runId);
+	return matchesHistory || matchesRun;
+}
+
+function removeExistingMetadata(container: HTMLElement, data: TerminalMetadataData): void {
 	for (const child of container.children) {
 		if (!(child instanceof HTMLElement && child.classList.contains("terminal-metadata"))) continue;
-		if (
-			(Number.isInteger(data.historyIndex) && child.dataset.historyIndex === String(data.historyIndex)) ||
-			(data.runId && child.dataset.runId === data.runId)
-		) {
-			child.remove();
-		}
+		if (metadataRowMatches(child, data)) child.remove();
 	}
+}
+
+function metadataText(data: TerminalMetadataData): string {
+	let text = data.provider ? `${data.provider} / ${data.model}` : data.model || "";
+	if (data.reasoningEffort !== undefined) text += ` \u00b7 reasoning_effort: ${data.reasoningEffort || "off"}`;
+	if (data.inputTokens || data.outputTokens) {
+		text += ` \u00b7 ${formatAssistantTokenUsage(
+			data.inputTokens || 0,
+			data.outputTokens || 0,
+			data.cacheReadTokens || 0,
+		)}`;
+	}
+	return text;
+}
+
+function appendTokenSpeed(metadata: HTMLElement, data: TerminalMetadataData): void {
+	const outputTokens = data.outputTokens || 0;
+	const durationMs = data.durationMs || 0;
+	const speedLabel = formatTokenSpeed(outputTokens, durationMs);
+	if (!speedLabel) return;
+	const speed = document.createElement("span");
+	speed.className = "msg-token-speed";
+	const tone = tokenSpeedTone(outputTokens, durationMs);
+	if (tone) speed.classList.add(`msg-token-speed-${tone}`);
+	speed.textContent = ` \u00b7 ${speedLabel}`;
+	metadata.appendChild(speed);
+}
+
+function appendReplyMedium(metadata: HTMLElement, replyMedium: string | undefined): void {
+	if (replyMedium !== "voice" && replyMedium !== "text") return;
+	const badge = document.createElement("span");
+	badge.className = "reply-medium-badge";
+	badge.textContent = replyMedium;
+	metadata.appendChild(badge);
+}
+
+function appendTimestamp(metadata: HTMLElement, timestamp: number | undefined): void {
+	if (!timestamp) return;
+	const timeEl = document.createElement("time");
+	timeEl.className = "msg-footer-time";
+	timeEl.setAttribute("data-epoch-ms", String(timestamp));
+	timeEl.textContent = new Date(timestamp).toISOString();
+	const wrap = document.createElement("span");
+	wrap.className = "msg-footer-time";
+	wrap.appendChild(document.createTextNode(" \u00b7 "));
+	wrap.appendChild(timeEl);
+	metadata.appendChild(wrap);
+}
+
+function buildMetadataRow(data: TerminalMetadataData): HTMLElement {
 	const row = document.createElement("div");
 	row.className = "terminal-metadata";
 	if (Number.isInteger(data.historyIndex)) row.dataset.historyIndex = String(data.historyIndex);
@@ -67,55 +113,32 @@ export function appendTerminalMetadata(
 
 	const metadata = document.createElement("div");
 	metadata.className = "msg-model-footer";
-	let metadataText = data.provider ? `${data.provider} / ${data.model}` : data.model;
-	if (data.reasoningEffort !== undefined) {
-		metadataText += ` \u00b7 reasoning_effort: ${data.reasoningEffort || "off"}`;
-	}
-	if (data.inputTokens || data.outputTokens) {
-		metadataText += ` \u00b7 ${formatAssistantTokenUsage(
-			data.inputTokens || 0,
-			data.outputTokens || 0,
-			data.cacheReadTokens || 0,
-		)}`;
-	}
 	const text = document.createElement("span");
-	text.textContent = metadataText;
+	text.textContent = metadataText(data);
 	metadata.appendChild(text);
-
-	const speedLabel = formatTokenSpeed(data.outputTokens || 0, data.durationMs || 0);
-	if (speedLabel) {
-		const speed = document.createElement("span");
-		speed.className = "msg-token-speed";
-		const tone = tokenSpeedTone(data.outputTokens || 0, data.durationMs || 0);
-		if (tone) speed.classList.add(`msg-token-speed-${tone}`);
-		speed.textContent = ` \u00b7 ${speedLabel}`;
-		metadata.appendChild(speed);
-	}
-
-	if (data.replyMedium === "voice" || data.replyMedium === "text") {
-		const badge = document.createElement("span");
-		badge.className = "reply-medium-badge";
-		badge.textContent = data.replyMedium;
-		metadata.appendChild(badge);
-	}
-
-	if (data.timestamp) {
-		const timeEl = document.createElement("time");
-		timeEl.className = "msg-footer-time";
-		timeEl.setAttribute("data-epoch-ms", String(data.timestamp));
-		timeEl.textContent = new Date(data.timestamp).toISOString();
-		const wrap = document.createElement("span");
-		wrap.className = "msg-footer-time";
-		wrap.appendChild(document.createTextNode(" \u00b7 "));
-		wrap.appendChild(timeEl);
-		metadata.appendChild(wrap);
-	}
-
+	appendTokenSpeed(metadata, data);
+	appendReplyMedium(metadata, data.replyMedium);
+	appendTimestamp(metadata, data.timestamp);
 	row.appendChild(metadata);
+	return row;
+}
+
+function insertMetadataRow(container: HTMLElement, anchor: HTMLElement | null, row: HTMLElement): void {
 	if (anchor?.parentElement === container) {
 		anchor.insertAdjacentElement("afterend", row);
-	} else {
-		container.appendChild(row);
+		return;
 	}
+	container.appendChild(row);
+}
+
+export function appendTerminalMetadata(
+	container: HTMLElement | null,
+	anchor: HTMLElement | null,
+	data: TerminalMetadataData,
+): HTMLElement | null {
+	if (!(container && data.model)) return null;
+	removeExistingMetadata(container, data);
+	const row = buildMetadataRow(data);
+	insertMetadataRow(container, anchor, row);
 	return row;
 }

@@ -3,7 +3,7 @@
 import { sendRpc } from "./helpers";
 import { t } from "./i18n";
 import * as S from "./state";
-import type { ProjectInfo } from "./types";
+import type { ProjectInfo } from "./types/project";
 
 export function openProjectDropdown(): void {
 	if (!S.projectDropdown) return;

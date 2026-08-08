@@ -5,13 +5,13 @@ import { updateNavCount } from "./nav-counts";
 import { renderSessionProjectSelect } from "./project-combo";
 import * as S from "./state";
 import { projectStore } from "./stores/project-store";
-import type { ProjectInfo } from "./types";
+import type { ProjectInfo } from "./types/project";
 
-const combo = S.$("projectFilterCombo")!;
-const btn = S.$("projectFilterBtn")!;
-const label = S.$("projectFilterLabel")!;
-const dropdown = S.$("projectFilterDropdown")!;
-const list = S.$("projectFilterList")!;
+const combo = S.requireElement("projectFilterCombo");
+const btn = S.requireElement("projectFilterBtn");
+const label = S.requireElement("projectFilterLabel");
+const dropdown = S.requireElement("projectFilterDropdown");
+const list = S.requireElement("projectFilterList");
 const searchInput = S.$<HTMLInputElement>("projectFilterSearch");
 let kbIdx = -1;
 

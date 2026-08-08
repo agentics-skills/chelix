@@ -64,6 +64,7 @@ const configSaving = signal(false);
 const requestTimeoutSecs = signal("30");
 const configDirty = signal(false);
 const toasts = signal<ToastItem[]>([]);
+const ENV_PLACEHOLDER_EXAMPLE = `\${NAME}`;
 let toastId = 0;
 
 function showToast(message: string, type: string): void {
@@ -184,7 +185,7 @@ function deriveNameFromCommand(cmdLine: string): string {
 	for (let i = parts.length - 1; i >= 0; i--) {
 		const tk = parts[i];
 		if (tk.startsWith("-")) continue;
-		let base = tk.includes("/") ? tk.split("/").pop()! : tk;
+		let base = tk.slice(tk.lastIndexOf("/") + 1);
 		base = base
 			.replace(/^mcp-server-/, "")
 			.replace(/^server-/, "")
@@ -369,6 +370,7 @@ function FeaturedCard({ server: f }: { server: FeaturedServer }): VNode {
 					</div>
 				</div>
 				<button
+					type="button"
 					onClick={onAdd}
 					disabled={installing.value}
 					className="shrink-0 whitespace-nowrap provider-btn provider-btn-sm"
@@ -432,6 +434,7 @@ function FeaturedCard({ server: f }: { server: FeaturedServer }): VNode {
 						</>
 					)}
 					<button
+						type="button"
 						onClick={() => {
 							configuring.value = false;
 						}}
@@ -536,6 +539,7 @@ function InstallBox(): VNode {
 			<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Add Custom MCP Server</h3>
 			<div className="flex gap-2 mb-3">
 				<button
+					type="button"
 					onClick={() => {
 						transportType.value = "stdio";
 					}}
@@ -544,6 +548,7 @@ function InstallBox(): VNode {
 					Stdio (local)
 				</button>
 				<button
+					type="button"
 					onClick={() => {
 						transportType.value = "sse";
 					}}
@@ -552,6 +557,7 @@ function InstallBox(): VNode {
 					SSE (remote)
 				</button>
 				<button
+					type="button"
 					onClick={() => {
 						transportType.value = "streamable-http";
 					}}
@@ -594,8 +600,8 @@ function InstallBox(): VNode {
 					/>
 					<div className="text-xs text-[var(--muted)] mt-1">
 						If the server requires OAuth, your browser opens for sign-in when you enable or restart it. URL query values
-						may use <code>$NAME</code> or <code>{"${NAME}"}</code> placeholders from Settings &rarr; Environment
-						Variables.
+						may use <code>$NAME</code> or <code>{ENV_PLACEHOLDER_EXAMPLE}</code> placeholders from Settings &rarr;
+						Environment Variables.
 					</div>
 				</div>
 			)}
@@ -613,7 +619,7 @@ function InstallBox(): VNode {
 					/>
 					<div className="text-xs text-[var(--muted)] mt-1">
 						Optional request headers are sent to the remote MCP host. Stored header values stay hidden after save, and
-						values may use <code>$NAME</code> or <code>{"${NAME}"}</code> placeholders.
+						values may use <code>$NAME</code> or <code>{ENV_PLACEHOLDER_EXAMPLE}</code> placeholders.
 					</div>
 				</div>
 			)}
@@ -645,11 +651,12 @@ function InstallBox(): VNode {
 				/>
 			</div>
 			<div className="flex gap-2 items-center">
-				<button className="provider-btn" onClick={onAdd} disabled={adding.value || !canAdd}>
+				<button type="button" className="provider-btn" onClick={onAdd} disabled={adding.value || !canAdd}>
 					{adding.value ? "Adding\u2026" : "Add"}
 				</button>
 				{!isSse && (
 					<button
+						type="button"
 						onClick={() => {
 							showEnv.value = !showEnv.value;
 						}}
@@ -661,6 +668,83 @@ function InstallBox(): VNode {
 			</div>
 		</div>
 	);
+}
+
+interface McpServerEditDraft {
+	transport: string;
+	command: string;
+	args: string;
+	env: string;
+	url: string;
+	headers: string;
+	displayName: string;
+	clearHeaders: boolean;
+	clearEnv: boolean;
+	timeout: string;
+}
+
+type McpUpdateRequest = { ok: true; payload: Record<string, unknown> } | { ok: false; message: string };
+
+function remoteMcpUpdatePayload(
+	server: McpServer,
+	draft: McpServerEditDraft,
+	timeout: number | null,
+): Record<string, unknown> {
+	const payload: Record<string, unknown> = {
+		name: server.name,
+		transport: draft.transport,
+		request_timeout_secs: timeout,
+		command: "",
+		args: [],
+		display_name: draft.displayName.trim() || null,
+	};
+	if (draft.url.trim()) payload.url = draft.url.trim();
+	if (draft.clearHeaders) payload.headers = {};
+	else if (draft.headers.trim()) payload.headers = parseEnvLines(draft.headers);
+	return payload;
+}
+
+function stdioMcpUpdatePayload(server: McpServer, draft: McpServerEditDraft, timeout: number | null): McpUpdateRequest {
+	const command = draft.command.trim();
+	if (!command) return { ok: false, message: "Command required" };
+	const payload: Record<string, unknown> = {
+		name: server.name,
+		transport: draft.transport,
+		request_timeout_secs: timeout,
+		command,
+		args: draft.args.split(/\s+/).filter(Boolean),
+		headers: {},
+		url: null,
+		display_name: draft.displayName.trim() || null,
+	};
+	if (draft.clearEnv) payload.env = {};
+	else {
+		const updates = parseNonEmptyEnvLines(draft.env);
+		if (Object.keys(updates).length) payload.env = updates;
+	}
+	return { ok: true, payload };
+}
+
+function mcpUpdateRequest(server: McpServer, draft: McpServerEditDraft): McpUpdateRequest {
+	const timeout = normalizeOptionalTimeout(draft.timeout);
+	if (!timeout.ok) return { ok: false, message: timeout.message || "Invalid timeout" };
+	const remote = draft.transport === "sse" || draft.transport === "streamable-http";
+	if (remote) return { ok: true, payload: remoteMcpUpdatePayload(server, draft, timeout.value) };
+	return stdioMcpUpdatePayload(server, draft, timeout.value);
+}
+
+function reportMcpToggle(server: McpServer, response: Awaited<ReturnType<typeof sendRpc>>): void {
+	if (!response?.ok) {
+		showToast(`Failed: ${response?.error?.message || "unknown"}`, "error");
+		return;
+	}
+	const payload = response.payload as Record<string, unknown>;
+	if (!payload?.oauthPending) {
+		showToast(`${server.enabled ? "Disabled" : "Enabled"} "${server.name}"`, "success");
+		return;
+	}
+	showToast(`OAuth required for "${server.name}"`, "success");
+	if (payload.authUrl) window.open(payload.authUrl as string, "_blank", "noopener,noreferrer");
 }
 
 function ServerCard({ server }: { server: McpServer }): VNode {
@@ -693,14 +777,8 @@ function ServerCard({ server }: { server: McpServer }): VNode {
 		toggling.value = true;
 		const method = server.enabled ? "mcp.disable" : "mcp.enable";
 		const payload = server.enabled ? { name: server.name } : { name: server.name, redirectUri: oauthCallbackUrl() };
-		const res = await sendRpc(method, payload);
-		if (res?.ok) {
-			const p = res.payload as Record<string, unknown>;
-			if (p?.oauthPending) {
-				showToast(`OAuth required for "${server.name}"`, "success");
-				if (p?.authUrl) window.open(p.authUrl as string, "_blank", "noopener,noreferrer");
-			} else showToast(`${server.enabled ? "Disabled" : "Enabled"} "${server.name}"`, "success");
-		} else showToast(`Failed: ${res?.error?.message || "unknown"}`, "error");
+		const response = await sendRpc(method, payload);
+		reportMcpToggle(server, response);
 		await refreshServers();
 		toggling.value = false;
 	}
@@ -709,8 +787,7 @@ function ServerCard({ server }: { server: McpServer }): VNode {
 		showToast(`Restarted "${server.name}"`, "success");
 		await refreshServers();
 	}
-	async function reauth(e: Event): Promise<void> {
-		e.stopPropagation();
+	async function reauth(): Promise<void> {
 		authing.value = true;
 		const res = await sendRpc("mcp.reauth", { name: server.name, redirectUri: oauthCallbackUrl() });
 		if (res?.ok) {
@@ -721,8 +798,7 @@ function ServerCard({ server }: { server: McpServer }): VNode {
 		await refreshServers();
 		authing.value = false;
 	}
-	function startEdit(e: Event): void {
-		e.stopPropagation();
+	function startEdit(): void {
 		editTransport.value = server.transport || "stdio";
 		editCmd.value = server.command || "";
 		editArgs.value = (server.args || []).join(" ");
@@ -737,62 +813,40 @@ function ServerCard({ server }: { server: McpServer }): VNode {
 		editDisplayName.value = server.display_name || "";
 		editing.value = true;
 	}
+	function currentEditDraft(): McpServerEditDraft {
+		return {
+			transport: editTransport.value,
+			command: editCmd.value,
+			args: editArgs.value,
+			env: editEnv.value,
+			url: editUrl.value,
+			headers: editHeaders.value,
+			displayName: editDisplayName.value,
+			clearHeaders: clearHeaders.value,
+			clearEnv: clearEnv.value,
+			timeout: editTimeout.value,
+		};
+	}
+
 	async function saveEdit(): Promise<void> {
 		saving.value = true;
 		try {
-			const tr = resolveTimeoutOrAbort(editTimeout.value, (v) => {
-				saving.value = v;
-			});
-			if (!tr.ok) return;
-			const t = editTransport.value;
-			const isSseEdit = t === "sse" || t === "streamable-http";
-			let payload: Record<string, unknown>;
-			if (isSseEdit) {
-				payload = {
-					name: server.name,
-					transport: t,
-					request_timeout_secs: tr.value,
-					command: "",
-					args: [],
-					display_name: editDisplayName.value.trim() || null,
-				};
-				if (editUrl.value.trim()) payload.url = editUrl.value.trim();
-				if (clearHeaders.value) payload.headers = {};
-				else if (editHeaders.value.trim()) payload.headers = parseEnvLines(editHeaders.value);
-			} else {
-				const cmd = editCmd.value.trim();
-				if (!cmd) {
-					showToast("Command required", "error");
-					return;
-				}
-				payload = {
-					name: server.name,
-					transport: t,
-					request_timeout_secs: tr.value,
-					command: cmd,
-					args: editArgs.value.split(/\s+/).filter(Boolean),
-					headers: {},
-					url: null,
-					display_name: editDisplayName.value.trim() || null,
-				};
-				if (clearEnv.value) payload.env = {};
-				else {
-					const envUpdates = parseNonEmptyEnvLines(editEnv.value);
-					if (Object.keys(envUpdates).length) payload.env = envUpdates;
-				}
+			const request = mcpUpdateRequest(server, currentEditDraft());
+			if (!request.ok) {
+				showToast(request.message, "error");
+				return;
 			}
-			const res = await sendRpc("mcp.update", payload);
-			if (res?.ok) {
+			const response = await sendRpc("mcp.update", request.payload);
+			if (response?.ok) {
 				showToast(`Updated "${server.name}"`, "success");
 				editing.value = false;
-			} else showToast(`Failed: ${res?.error?.message || "unknown"}`, "error");
+			} else showToast(`Failed: ${response?.error?.message || "unknown"}`, "error");
 			await refreshServers();
 		} finally {
 			saving.value = false;
 		}
 	}
-	function remove(e: Event): void {
-		e.stopPropagation();
+	function remove(): void {
 		requestConfirm(`Remove "${server.name}"?`).then((yes) => {
 			if (!yes) return;
 			sendRpc("mcp.remove", { name: server.name }).then(() => {
@@ -809,308 +863,346 @@ function ServerCard({ server }: { server: McpServer }): VNode {
 	const currentHeaderSummary = remoteHeaderSummary(server);
 	const currentEnvSummary = stdioEnvSummary(server);
 
-	return (
-		<div className="skills-repo-card">
-			<div className="skills-repo-header" onClick={toggleTools}>
-				<div className="flex items-center gap-2">
-					<span
-						className={`text-[0.65rem] text-[var(--muted)] transition-transform duration-150 ${expanded.value ? "rotate-90" : ""}`}
-					>
-						{"\u25B6"}
-					</span>
-					<StatusBadge state={server.state} />
-					<span className="text-sm font-medium text-[var(--text-strong)]">{displayName}</span>
-					{showTechnical && (
-						<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--surface2)] text-[var(--muted)] font-mono">
-							{server.name}
-						</span>
-					)}
-					<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--surface2)] text-[var(--muted)] font-medium">
-						{server.state || "stopped"}
-					</span>
-					<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--surface2)] text-[var(--muted)] font-medium">
-						{transportLabel(server.transport)}
-					</span>
-					<span className="text-xs text-[var(--muted)]">
-						{server.tool_count} tool{server.tool_count !== 1 ? "s" : ""}
-					</span>
-					{needsReauth && (
-						<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--error)] text-white font-medium">
-							{server.auth_state === "failed" ? "Auth failed" : "OAuth required"}
-						</span>
-					)}
-				</div>
-				<div className="flex items-center gap-1.5">
-					{needsReauth && (
-						<button onClick={reauth} disabled={authing.value} className="provider-btn provider-btn-sm">
-							{authing.value ? "\u2026" : "Re-auth"}
-						</button>
-					)}
-					<button onClick={startEdit} className="provider-btn provider-btn-secondary provider-btn-sm">
-						Edit
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							toggleEnabled();
-						}}
-						disabled={toggling.value}
-						className={`provider-btn provider-btn-sm ${server.enabled ? "provider-btn-secondary" : ""}`}
-					>
-						{toggling.value ? "\u2026" : server.enabled ? "Disable" : "Enable"}
-					</button>
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							restart();
-						}}
-						disabled={!server.enabled}
-						className="provider-btn provider-btn-secondary provider-btn-sm"
-					>
-						Restart
-					</button>
-					<button onClick={remove} className="provider-btn provider-btn-danger provider-btn-sm">
-						Remove
-					</button>
-				</div>
-			</div>
-			{editing.value && (
-				<div
-					className="px-3 pb-3 border border-t-0 border-[var(--border)] rounded-b-[var(--radius-sm)]"
-					onClick={(e) => e.stopPropagation()}
+	function renderHeaderIdentity(): VNode {
+		return (
+			<button
+				type="button"
+				className="flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left font-[inherit] cursor-pointer"
+				aria-expanded={expanded.value}
+				onClick={toggleTools}
+			>
+				<span
+					className={`text-[0.65rem] text-[var(--muted)] transition-transform duration-150 ${expanded.value ? "rotate-90" : ""}`}
 				>
-					<div className="project-edit-group mb-2 mt-2">
-						<div className="text-xs text-[var(--muted)] mb-1">Transport</div>
-						<div className="flex gap-2">
-							<button
-								onClick={() => {
-									editTransport.value = "stdio";
-								}}
-								className={`provider-btn provider-btn-sm ${editTransport.value === "stdio" ? "" : "provider-btn-secondary"}`}
-							>
-								Stdio
-							</button>
-							<button
-								onClick={() => {
-									editTransport.value = "sse";
-								}}
-								className={`provider-btn provider-btn-sm ${editTransport.value === "sse" ? "" : "provider-btn-secondary"}`}
-							>
-								SSE
-							</button>
-							<button
-								onClick={() => {
-									editTransport.value = "streamable-http";
-								}}
-								className={`provider-btn provider-btn-sm ${editTransport.value === "streamable-http" ? "" : "provider-btn-secondary"}`}
-							>
-								Streamable HTTP
-							</button>
-						</div>
+					{"\u25B6"}
+				</span>
+				<StatusBadge state={server.state} />
+				<span className="text-sm font-medium text-[var(--text-strong)]">{displayName}</span>
+				{showTechnical && (
+					<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--surface2)] text-[var(--muted)] font-mono">
+						{server.name}
+					</span>
+				)}
+				<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--surface2)] text-[var(--muted)] font-medium">
+					{server.state || "stopped"}
+				</span>
+				<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--surface2)] text-[var(--muted)] font-medium">
+					{transportLabel(server.transport)}
+				</span>
+				<span className="text-xs text-[var(--muted)]">
+					{server.tool_count} tool{server.tool_count !== 1 ? "s" : ""}
+				</span>
+				{needsReauth && (
+					<span className="text-[0.62rem] px-1.5 py-px rounded-full bg-[var(--error)] text-white font-medium">
+						{server.auth_state === "failed" ? "Auth failed" : "OAuth required"}
+					</span>
+				)}
+			</button>
+		);
+	}
+
+	function renderHeaderActions(): VNode {
+		return (
+			<div className="flex items-center gap-1.5">
+				{needsReauth && (
+					<button type="button" onClick={reauth} disabled={authing.value} className="provider-btn provider-btn-sm">
+						{authing.value ? "\u2026" : "Re-auth"}
+					</button>
+				)}
+				<button type="button" onClick={startEdit} className="provider-btn provider-btn-secondary provider-btn-sm">
+					Edit
+				</button>
+				<button
+					type="button"
+					onClick={toggleEnabled}
+					disabled={toggling.value}
+					className={`provider-btn provider-btn-sm ${server.enabled ? "provider-btn-secondary" : ""}`}
+				>
+					{toggling.value ? "\u2026" : server.enabled ? "Disable" : "Enable"}
+				</button>
+				<button
+					type="button"
+					onClick={restart}
+					disabled={!server.enabled}
+					className="provider-btn provider-btn-secondary provider-btn-sm"
+				>
+					Restart
+				</button>
+				<button type="button" onClick={remove} className="provider-btn provider-btn-danger provider-btn-sm">
+					Remove
+				</button>
+			</div>
+		);
+	}
+
+	function renderServerHeader(): VNode {
+		return (
+			<div className="skills-repo-header flex items-center justify-between gap-3">
+				{renderHeaderIdentity()}
+				{renderHeaderActions()}
+			</div>
+		);
+	}
+
+	function renderRemoteEditorFields(): VNode {
+		return (
+			<>
+				<div className="project-edit-group mb-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Current URL</div>
+					<div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs font-mono text-[var(--text)]">
+						{currentSafeUrl || "(stored URL hidden until the API returns sanitized text)"}
 					</div>
-					{editTransport.value === "sse" || editTransport.value === "streamable-http" ? (
-						<>
-							<div className="project-edit-group mb-2">
-								<div className="text-xs text-[var(--muted)] mb-1">Current URL</div>
-								<div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs font-mono text-[var(--text)]">
-									{currentSafeUrl || "(stored URL hidden until the API returns sanitized text)"}
-								</div>
-								<div className="text-xs text-[var(--muted)] mt-2 mb-1">
-									Replace URL (leave blank to keep the current URL)
-								</div>
-								<input
-									type="text"
-									className="provider-key-input w-full font-mono"
-									value={editUrl.value}
-									placeholder={currentSafeUrl || "https://mcp.example.com/mcp"}
-									onInput={(e) => {
-										editUrl.value = (e.target as HTMLInputElement).value;
-									}}
-								/>
-								<div className="text-xs text-[var(--muted)] mt-1">
-									Leave this blank to preserve the stored URL. Query values may use <code>$NAME</code> or{" "}
-									<code>{"${NAME}"}</code> placeholders. OAuth, if required, runs in your browser when the server is
-									enabled.
-								</div>
-							</div>
-							<div className="project-edit-group mb-2">
-								<div className="text-xs text-[var(--muted)] mb-1">Current headers</div>
-								<div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs font-mono text-[var(--text)]">
-									{currentHeaderSummary}
-								</div>
-								<div className="mt-2">
-									<button
-										onClick={() => {
-											clearHeaders.value = !clearHeaders.value;
-										}}
-										className="provider-btn provider-btn-secondary provider-btn-sm"
-									>
-										{clearHeaders.value ? "Keep stored headers" : "Clear stored headers"}
-									</button>
-								</div>
-								<div className="text-xs text-[var(--muted)] mt-2 mb-1">
-									Replace headers (optional, KEY=VALUE per line)
-								</div>
-								<textarea
-									className="provider-key-input w-full min-h-[72px] resize-y font-mono text-sm"
-									rows={3}
-									placeholder="Authorization=Bearer ..."
-									value={editHeaders.value}
-									disabled={clearHeaders.value}
-									onInput={(e) => {
-										editHeaders.value = (e.target as HTMLTextAreaElement).value;
-									}}
-								/>
-								<div className="text-xs text-[var(--muted)] mt-1">
-									{clearHeaders.value ? (
-										"Saving now removes every stored header for this remote server."
-									) : (
-										<>
-											Leave blank to preserve stored headers. Enter new lines to replace them, or click{" "}
-											<strong>Clear stored headers</strong> to remove them entirely. Use <code>$NAME</code> or{" "}
-											<code>{"${NAME}"}</code> for env-backed values.
-										</>
-									)}
-								</div>
-							</div>
-						</>
-					) : (
-						<>
-							<div className="project-edit-group mb-2">
-								<div className="text-xs text-[var(--muted)] mb-1">Command</div>
-								<input
-									type="text"
-									className="provider-key-input w-full font-mono"
-									value={editCmd.value}
-									onInput={(e) => {
-										editCmd.value = (e.target as HTMLInputElement).value;
-									}}
-								/>
-							</div>
-							<div className="project-edit-group mb-2">
-								<div className="text-xs text-[var(--muted)] mb-1">Arguments</div>
-								<input
-									type="text"
-									className="provider-key-input w-full font-mono"
-									value={editArgs.value}
-									onInput={(e) => {
-										editArgs.value = (e.target as HTMLInputElement).value;
-									}}
-								/>
-							</div>
-							<div className="project-edit-group mb-2">
-								<div className="text-xs text-[var(--muted)] mb-1">Current env vars</div>
-								<div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs font-mono text-[var(--text)] mb-2">
-									{currentEnvSummary}
-								</div>
-								<div className="mb-2">
-									<button
-										onClick={() => {
-											clearEnv.value = !clearEnv.value;
-										}}
-										className="provider-btn provider-btn-secondary provider-btn-sm"
-									>
-										{clearEnv.value ? "Keep stored env vars" : "Clear stored env vars"}
-									</button>
-								</div>
-								<div className="text-xs text-[var(--muted)] mb-1">Replace env values (KEY=VALUE per line)</div>
-								<textarea
-									className="provider-key-input w-full min-h-[40px] resize-y font-mono text-sm"
-									rows={2}
-									value={editEnv.value}
-									disabled={clearEnv.value}
-									onInput={(e) => {
-										editEnv.value = (e.target as HTMLTextAreaElement).value;
-									}}
-								/>
-								<div className="text-xs text-[var(--muted)] mt-1">
-									{clearEnv.value
-										? "Saving now removes every stored env var for this stdio server."
-										: "Stored values are hidden. Leave values blank to preserve existing env vars; enter values only for keys you want to replace."}
-								</div>
-							</div>
-						</>
-					)}
-					<div className="project-edit-group mb-2">
-						<div className="text-xs text-[var(--muted)] mb-1">Timeout override (seconds)</div>
-						<input
-							type="number"
-							className="provider-key-input w-full font-mono"
-							min="1"
-							step="1"
-							placeholder="Use global default"
-							value={editTimeout.value}
-							onInput={(e) => {
-								editTimeout.value = (e.target as HTMLInputElement).value;
-							}}
-						/>
+					<div className="text-xs text-[var(--muted)] mt-2 mb-1">Replace URL (leave blank to keep the current URL)</div>
+					<input
+						type="text"
+						className="provider-key-input w-full font-mono"
+						value={editUrl.value}
+						placeholder={currentSafeUrl || "https://mcp.example.com/mcp"}
+						onInput={(event) => {
+							editUrl.value = (event.target as HTMLInputElement).value;
+						}}
+					/>
+					<div className="text-xs text-[var(--muted)] mt-1">
+						Leave this blank to preserve the stored URL. Query values may use <code>$NAME</code> or{" "}
+						<code>{ENV_PLACEHOLDER_EXAMPLE}</code> placeholders. OAuth, if required, runs in your browser when the
+						server is enabled.
 					</div>
-					<div className="flex gap-2">
-						<button className="provider-btn" onClick={saveEdit} disabled={saving.value}>
-							{saving.value ? "Saving\u2026" : "Save"}
-						</button>
+				</div>
+				<div className="project-edit-group mb-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Current headers</div>
+					<div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs font-mono text-[var(--text)]">
+						{currentHeaderSummary}
+					</div>
+					<div className="mt-2">
 						<button
+							type="button"
 							onClick={() => {
-								editing.value = false;
+								clearHeaders.value = !clearHeaders.value;
 							}}
 							className="provider-btn provider-btn-secondary provider-btn-sm"
 						>
-							Cancel
+							{clearHeaders.value ? "Keep stored headers" : "Clear stored headers"}
+						</button>
+					</div>
+					<div className="text-xs text-[var(--muted)] mt-2 mb-1">Replace headers (optional, KEY=VALUE per line)</div>
+					<textarea
+						className="provider-key-input w-full min-h-[72px] resize-y font-mono text-sm"
+						rows={3}
+						placeholder="Authorization=Bearer ..."
+						value={editHeaders.value}
+						disabled={clearHeaders.value}
+						onInput={(event) => {
+							editHeaders.value = (event.target as HTMLTextAreaElement).value;
+						}}
+					/>
+					<div className="text-xs text-[var(--muted)] mt-1">
+						{clearHeaders.value ? (
+							"Saving now removes every stored header for this remote server."
+						) : (
+							<>
+								Leave blank to preserve stored headers. Enter new lines to replace them, or click{" "}
+								<strong>Clear stored headers</strong> to remove them entirely. Use <code>$NAME</code> or{" "}
+								<code>{ENV_PLACEHOLDER_EXAMPLE}</code> for env-backed values.
+							</>
+						)}
+					</div>
+				</div>
+			</>
+		);
+	}
+
+	function renderStdioEditorFields(): VNode {
+		return (
+			<>
+				<div className="project-edit-group mb-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Command</div>
+					<input
+						type="text"
+						className="provider-key-input w-full font-mono"
+						value={editCmd.value}
+						onInput={(event) => {
+							editCmd.value = (event.target as HTMLInputElement).value;
+						}}
+					/>
+				</div>
+				<div className="project-edit-group mb-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Arguments</div>
+					<input
+						type="text"
+						className="provider-key-input w-full font-mono"
+						value={editArgs.value}
+						onInput={(event) => {
+							editArgs.value = (event.target as HTMLInputElement).value;
+						}}
+					/>
+				</div>
+				<div className="project-edit-group mb-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Current env vars</div>
+					<div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs font-mono text-[var(--text)] mb-2">
+						{currentEnvSummary}
+					</div>
+					<div className="mb-2">
+						<button
+							type="button"
+							onClick={() => {
+								clearEnv.value = !clearEnv.value;
+							}}
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+						>
+							{clearEnv.value ? "Keep stored env vars" : "Clear stored env vars"}
+						</button>
+					</div>
+					<div className="text-xs text-[var(--muted)] mb-1">Replace env values (KEY=VALUE per line)</div>
+					<textarea
+						className="provider-key-input w-full min-h-[40px] resize-y font-mono text-sm"
+						rows={2}
+						value={editEnv.value}
+						disabled={clearEnv.value}
+						onInput={(event) => {
+							editEnv.value = (event.target as HTMLTextAreaElement).value;
+						}}
+					/>
+					<div className="text-xs text-[var(--muted)] mt-1">
+						{clearEnv.value
+							? "Saving now removes every stored env var for this stdio server."
+							: "Stored values are hidden. Leave values blank to preserve existing env vars; enter values only for keys you want to replace."}
+					</div>
+				</div>
+			</>
+		);
+	}
+
+	function renderServerEditor(): VNode | null {
+		if (!editing.value) return null;
+		return (
+			<div className="px-3 pb-3 border border-t-0 border-[var(--border)] rounded-b-[var(--radius-sm)]">
+				<div className="project-edit-group mb-2 mt-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Transport</div>
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={() => {
+								editTransport.value = "stdio";
+							}}
+							className={`provider-btn provider-btn-sm ${editTransport.value === "stdio" ? "" : "provider-btn-secondary"}`}
+						>
+							Stdio
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								editTransport.value = "sse";
+							}}
+							className={`provider-btn provider-btn-sm ${editTransport.value === "sse" ? "" : "provider-btn-secondary"}`}
+						>
+							SSE
+						</button>
+						<button
+							type="button"
+							onClick={() => {
+								editTransport.value = "streamable-http";
+							}}
+							className={`provider-btn provider-btn-sm ${editTransport.value === "streamable-http" ? "" : "provider-btn-secondary"}`}
+						>
+							Streamable HTTP
 						</button>
 					</div>
 				</div>
-			)}
-			{expanded.value && (
-				<div className="skills-repo-detail" style={{ display: "block" }}>
-					{isSse ? (
-						<div>
-							<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
-								<span className="opacity-60">URL</span>
-								<code className="font-mono text-[var(--text)]">{currentSafeUrl || "(hidden)"}</code>
-							</div>
-							<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
-								<span className="opacity-60">HEADERS</span>
-								<code className="font-mono text-[var(--text)]">{currentHeaderSummary}</code>
-							</div>
-						</div>
-					) : (
-						<div>
-							<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
-								<span className="opacity-60">$</span>
-								<code className="font-mono text-[var(--text)]">
-									{server.command} {(server.args || []).join(" ")}
-								</code>
-							</div>
-							<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
-								<span className="opacity-60">ENV</span>
-								<code className="font-mono text-[var(--text)]">{currentEnvSummary}</code>
-							</div>
-						</div>
-					)}
-					{!tools.value && <div className="text-[var(--muted)] text-sm py-2">Loading tools&hellip;</div>}
-					{tools.value && tools.value.length > 0 && (
-						<div className="max-h-[360px] overflow-y-auto">
-							{tools.value.map((t) => (
-								<div key={t.name} className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
-									<div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-										<span className="font-mono text-sm font-medium text-[var(--text-strong)] whitespace-nowrap">
-											{t.name}
-										</span>
-										{t.description && (
-											<span className="text-[var(--muted)] text-xs overflow-hidden text-ellipsis whitespace-nowrap">
-												{t.description}
-											</span>
-										)}
-									</div>
-								</div>
-							))}
-						</div>
-					)}
-					{tools.value && tools.value.length === 0 && (
-						<div className="text-[var(--muted)] text-sm py-2">No tools exposed.</div>
-					)}
+				{editTransport.value === "sse" || editTransport.value === "streamable-http"
+					? renderRemoteEditorFields()
+					: renderStdioEditorFields()}
+				<div className="project-edit-group mb-2">
+					<div className="text-xs text-[var(--muted)] mb-1">Timeout override (seconds)</div>
+					<input
+						type="number"
+						className="provider-key-input w-full font-mono"
+						min="1"
+						step="1"
+						placeholder="Use global default"
+						value={editTimeout.value}
+						onInput={(e) => {
+							editTimeout.value = (e.target as HTMLInputElement).value;
+						}}
+					/>
 				</div>
-			)}
+				<div className="flex gap-2">
+					<button type="button" className="provider-btn" onClick={saveEdit} disabled={saving.value}>
+						{saving.value ? "Saving\u2026" : "Save"}
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							editing.value = false;
+						}}
+						className="provider-btn provider-btn-secondary provider-btn-sm"
+					>
+						Cancel
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	function renderServerDetails(): VNode | null {
+		if (!expanded.value) return null;
+		return (
+			<div className="skills-repo-detail" style={{ display: "block" }}>
+				{isSse ? (
+					<div>
+						<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
+							<span className="opacity-60">URL</span>
+							<code className="font-mono text-[var(--text)]">{currentSafeUrl || "(hidden)"}</code>
+						</div>
+						<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
+							<span className="opacity-60">HEADERS</span>
+							<code className="font-mono text-[var(--text)]">{currentHeaderSummary}</code>
+						</div>
+					</div>
+				) : (
+					<div>
+						<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
+							<span className="opacity-60">$</span>
+							<code className="font-mono text-[var(--text)]">
+								{server.command} {(server.args || []).join(" ")}
+							</code>
+						</div>
+						<div className="flex items-center gap-1.5 py-1.5 text-xs text-[var(--muted)]">
+							<span className="opacity-60">ENV</span>
+							<code className="font-mono text-[var(--text)]">{currentEnvSummary}</code>
+						</div>
+					</div>
+				)}
+				{!tools.value && <div className="text-[var(--muted)] text-sm py-2">Loading tools&hellip;</div>}
+				{tools.value && tools.value.length > 0 && (
+					<div className="max-h-[360px] overflow-y-auto">
+						{tools.value.map((t) => (
+							<div key={t.name} className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
+								<div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+									<span className="font-mono text-sm font-medium text-[var(--text-strong)] whitespace-nowrap">
+										{t.name}
+									</span>
+									{t.description && (
+										<span className="text-[var(--muted)] text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+											{t.description}
+										</span>
+									)}
+								</div>
+							</div>
+						))}
+					</div>
+				)}
+				{tools.value && tools.value.length === 0 && (
+					<div className="text-[var(--muted)] text-sm py-2">No tools exposed.</div>
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<div className="skills-repo-card">
+			{renderServerHeader()}
+			{renderServerEditor()}
+			{renderServerDetails()}
 		</div>
 	);
 }
@@ -1137,6 +1229,7 @@ function ConfigSection(): VNode {
 			<div className="flex items-center justify-between gap-3 mb-2">
 				<h3 className="text-sm font-medium text-[var(--text-strong)]">Request Timeout</h3>
 				<button
+					type="button"
 					className="provider-btn provider-btn-secondary provider-btn-sm"
 					onClick={refreshConfig}
 					disabled={configLoading.value || configSaving.value}
@@ -1161,6 +1254,7 @@ function ConfigSection(): VNode {
 					/>
 				</label>
 				<button
+					type="button"
 					className="provider-btn provider-btn-sm"
 					onClick={saveConfig}
 					disabled={configSaving.value || configLoading.value || !configDirty.value}
@@ -1189,7 +1283,7 @@ function McpPageComponent(): VNode {
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<div className="flex items-center gap-3">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">MCP</h2>
-				<button className="provider-btn provider-btn-secondary provider-btn-sm" onClick={refreshServers}>
+				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={refreshServers}>
 					Refresh
 				</button>
 			</div>

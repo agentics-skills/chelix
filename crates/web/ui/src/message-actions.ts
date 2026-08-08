@@ -133,7 +133,12 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 	const { messageEl, sessionKey } = ctx;
 	const shouldKeepBottomAnchored = isChatAtBottom();
 	let state = messageActionStates.get(messageEl);
-	if (!state) {
+	if (state) {
+		state.sessionKey = sessionKey;
+		state.text = ctx.text;
+		if (ctx.messageIndex !== undefined) state.messageIndex = ctx.messageIndex;
+		if (ctx.hasAudio !== undefined) state.hasAudio = ctx.hasAudio;
+	} else {
 		state = {
 			sessionKey,
 			messageIndex: ctx.messageIndex,
@@ -141,11 +146,6 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 			hasAudio: ctx.hasAudio === true,
 		};
 		messageActionStates.set(messageEl, state);
-	} else {
-		state.sessionKey = sessionKey;
-		state.text = ctx.text;
-		if (ctx.messageIndex !== undefined) state.messageIndex = ctx.messageIndex;
-		if (ctx.hasAudio !== undefined) state.hasAudio = ctx.hasAudio;
 	}
 	let domChanged = false;
 

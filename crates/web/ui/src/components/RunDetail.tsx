@@ -5,7 +5,7 @@
 
 import type { VNode } from "preact";
 import { useCallback, useState } from "preact/hooks";
-import { TabBar } from "../components/forms";
+import { TabBar } from "../components/forms/Tabs";
 import { sendRpc } from "../helpers";
 
 // ── Types ────────────────────────────────────────────────────
@@ -51,53 +51,60 @@ const RUN_DETAIL_TABS = [
 	{ id: "messages", label: "Messages" },
 ];
 
+interface RunOverview {
+	model: string | null;
+	provider: string | null;
+	totalInput: number;
+	totalOutput: number;
+}
+
+function summarizeRunMessages(messages: RunMessage[]): RunOverview {
+	const overview: RunOverview = { model: null, provider: null, totalInput: 0, totalOutput: 0 };
+	for (const message of messages) {
+		if (message.role !== "assistant") continue;
+		if (message.model) overview.model = message.model;
+		if (message.provider) overview.provider = message.provider;
+		overview.totalInput += message.inputTokens || 0;
+		overview.totalOutput += message.outputTokens || 0;
+	}
+	return overview;
+}
+
+interface OverviewRowProps {
+	label: string;
+	children: VNode | string | number;
+}
+
+function OverviewRow({ label, children }: OverviewRowProps): VNode {
+	return (
+		<div className="flex gap-4">
+			<span className="text-[var(--muted)]">{label}:</span>
+			<span className="font-medium">{children}</span>
+		</div>
+	);
+}
+
+function ModelOverview({ model, provider }: Pick<RunOverview, "model" | "provider">): VNode | null {
+	if (!model) return null;
+	return <OverviewRow label="Model">{provider ? `${provider} / ${model}` : model}</OverviewRow>;
+}
+
+function TokenOverview({ totalInput, totalOutput }: Pick<RunOverview, "totalInput" | "totalOutput">): VNode | null {
+	if (totalInput + totalOutput <= 0) return null;
+	return <OverviewRow label="Tokens">{`${totalInput} in / ${totalOutput} out`}</OverviewRow>;
+}
+
 function OverviewTab({ data }: TabProps): VNode | null {
 	if (!data) return null;
 	const summary = data.summary || {};
-	const messages = data.messages || [];
-	let model: string | null = null;
-	let provider: string | null = null;
-	let totalInput = 0;
-	let totalOutput = 0;
-	for (const m of messages) {
-		if (m.role === "assistant") {
-			if (m.model) model = m.model;
-			if (m.provider) provider = m.provider;
-			totalInput += m.inputTokens || 0;
-			totalOutput += m.outputTokens || 0;
-		}
-	}
+	const overview = summarizeRunMessages(data.messages || []);
 	return (
 		<div className="flex flex-col gap-1 text-xs">
-			<div className="flex gap-4">
-				<span className="text-[var(--muted)]">User messages:</span>
-				<span className="font-medium">{summary.userMessages || 0}</span>
-			</div>
-			<div className="flex gap-4">
-				<span className="text-[var(--muted)]">Tool calls:</span>
-				<span className="font-medium">{summary.toolCalls || 0}</span>
-			</div>
-			<div className="flex gap-4">
-				<span className="text-[var(--muted)]">Assistant messages:</span>
-				<span className="font-medium">{summary.assistantMessages || 0}</span>
-			</div>
-			{model ? (
-				<div className="flex gap-4">
-					<span className="text-[var(--muted)]">Model:</span>
-					<span className="font-medium">
-						{provider ? `${provider} / ` : ""}
-						{model}
-					</span>
-				</div>
-			) : null}
-			{totalInput + totalOutput > 0 ? (
-				<div className="flex gap-4">
-					<span className="text-[var(--muted)]">Tokens:</span>
-					<span className="font-medium">
-						{totalInput} in / {totalOutput} out
-					</span>
-				</div>
-			) : null}
+			<OverviewRow label="User messages">{summary.userMessages || 0}</OverviewRow>
+			<OverviewRow label="Tool calls">{summary.toolCalls || 0}</OverviewRow>
+			<OverviewRow label="Assistant messages">{summary.assistantMessages || 0}</OverviewRow>
+			<ModelOverview model={overview.model} provider={overview.provider} />
+			<TokenOverview totalInput={overview.totalInput} totalOutput={overview.totalOutput} />
 		</div>
 	);
 }
@@ -174,6 +181,7 @@ export function RunDetail({ sessionKey, runId }: RunDetailProps): VNode {
 	return (
 		<div className="mt-1">
 			<button
+				type="button"
 				className="text-xs text-[var(--muted)] cursor-pointer bg-transparent border-none underline"
 				onClick={toggle}
 			>

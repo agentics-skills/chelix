@@ -2,7 +2,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { Badge, EmptyState, Loading } from "../../components/forms";
+import { Badge, EmptyState, Loading } from "../../components/forms/ListItem";
 import { TabBar } from "../../components/forms/Tabs";
 import * as gon from "../../gon";
 import { localizedApiErrorMessage } from "../../helpers";
@@ -33,6 +33,259 @@ interface SshTargetEntry {
 interface TestResult {
 	reachable?: boolean;
 	failure_hint?: string;
+}
+
+interface SshTargetDraft {
+	label: string;
+	target: string;
+	port: number | null;
+	authMode: string;
+	keyId: number | null;
+}
+
+function sshVaultStatusDescription(status: unknown): string {
+	if (status === "unsealed") return " vault-backed managed keys are available";
+	if (status === "sealed") return " vault is locked, managed keys cannot be used until unlocked";
+	return " system OpenSSH remains available, managed keys stay plaintext until the vault is enabled";
+}
+
+function SshFlash({ message, error }: { message: string | null; error: string | null }): VNode {
+	return (
+		<>
+			{message && <div className="text-xs text-[var(--accent)]">{message}</div>}
+			{error && <div className="text-xs text-[var(--error)]">{error}</div>}
+		</>
+	);
+}
+
+function sshTargetDraftError(draft: SshTargetDraft): string | null {
+	if (!draft.label) return "Target label is required.";
+	if (!draft.target) return "SSH target is required.";
+	if (draft.authMode === "managed" && !draft.keyId) return "Choose a managed SSH key for this target.";
+	if (Number.isNaN(draft.port)) return "Port must be a valid number.";
+	return null;
+}
+
+function sshKeyUsage(entry: SshKeyEntry): string {
+	const storage = entry.encrypted ? "Encrypted in vault" : "Stored plaintext until the vault is available";
+	const targetCount = entry.target_count ?? 0;
+	if (targetCount === 0) return storage;
+	return `${storage}, used by ${targetCount} target${targetCount === 1 ? "" : "s"}`;
+}
+
+interface SshKeyRowProps {
+	entry: SshKeyEntry;
+	copied: boolean;
+	deleting: boolean;
+	onCopy: () => void;
+	onDelete: () => void;
+}
+
+function SshKeyRow({ entry, copied, deleting, onCopy, onDelete }: SshKeyRowProps): VNode {
+	return (
+		<div className="provider-item items-start gap-4">
+			<div className="flex-1 min-w-0">
+				<div className="provider-item-name">{entry.name}</div>
+				<div className="text-xs text-[var(--muted)] break-all mt-1">
+					<span className="text-[var(--text)]">Fingerprint (SHA256):</span> {entry.fingerprint}
+				</div>
+				<div className="text-xs text-[var(--muted)] mt-1">{sshKeyUsage(entry)}</div>
+				<pre className="mt-3 whitespace-pre-wrap break-all rounded border border-[var(--border)] bg-[var(--surface2)] p-2 text-[11px] leading-relaxed text-[var(--muted)]">
+					{entry.public_key}
+				</pre>
+			</div>
+			<div className="flex flex-col gap-2 shrink-0 self-start">
+				<button type="button" className="provider-btn provider-btn-secondary" onClick={onCopy}>
+					{copied ? "Copied" : "Copy Public Key"}
+				</button>
+				<button
+					type="button"
+					className="provider-btn provider-btn-danger"
+					onClick={onDelete}
+					disabled={deleting || (entry.target_count ?? 0) > 0}
+				>
+					{deleting ? "Deleting\u2026" : "Delete"}
+				</button>
+			</div>
+		</div>
+	);
+}
+
+interface SshKeyListProps {
+	loading: boolean;
+	keys: SshKeyEntry[];
+	copiedKeyId: number | null;
+	busyAction: string;
+	onCopy: (entry: SshKeyEntry) => void;
+	onDelete: (id: number) => void;
+}
+
+function SshKeyList(props: SshKeyListProps): VNode {
+	if (props.loading) return <Loading message="Loading keys..." />;
+	if (props.keys.length === 0) return <EmptyState message="No managed SSH keys yet." />;
+	return (
+		<>
+			{props.keys.map((entry) => (
+				<SshKeyRow
+					key={entry.id}
+					entry={entry}
+					copied={props.copiedKeyId === entry.id}
+					deleting={props.busyAction === `delete-key:${entry.id}`}
+					onCopy={() => props.onCopy(entry)}
+					onDelete={() => props.onDelete(entry.id)}
+				/>
+			))}
+		</>
+	);
+}
+
+function SshTargetBadges({ entry }: { entry: SshTargetEntry }): VNode {
+	return (
+		<div className="provider-item-name flex items-center gap-2 flex-wrap">
+			<span>{entry.label}</span>
+			{entry.is_default && <Badge label="Default" variant="configured" />}
+			<Badge label={entry.auth_mode === "managed" ? "Managed key" : "System SSH"} />
+			{entry.known_host ? (
+				<Badge label="Host pinned" variant="configured" />
+			) : (
+				<Badge label="Uses global known_hosts" variant="warning" />
+			)}
+		</div>
+	);
+}
+
+function SshTargetTestStatus({ result }: { result?: TestResult }): VNode | null {
+	if (!result) return null;
+	return (
+		<div className="mt-1">
+			<div className={`text-xs ${result.reachable ? "text-[var(--accent)]" : "text-[var(--error)]"}`}>
+				{result.reachable ? "Reachable" : "Unreachable"}
+			</div>
+			{result.failure_hint && <div className="text-xs text-[var(--text-muted)] mt-1">Hint: {result.failure_hint}</div>}
+		</div>
+	);
+}
+
+interface SshTargetActionsProps {
+	entry: SshTargetEntry;
+	busyAction: string;
+	onTest: () => void;
+	onPin: () => void;
+	onClearPin: () => void;
+	onSetDefault: () => void;
+	onDelete: () => void;
+}
+
+function SshTargetActions(props: SshTargetActionsProps): VNode {
+	const testBusy = props.busyAction === `test-target:${props.entry.id}`;
+	const pinBusy = props.busyAction === `pin-target:${props.entry.id}`;
+	const clearBusy = props.busyAction === `clear-pin:${props.entry.id}`;
+	const deleteBusy = props.busyAction === `delete-target:${props.entry.id}`;
+	return (
+		<div className="flex flex-col gap-2">
+			<button type="button" className="provider-btn provider-btn-secondary" onClick={props.onTest} disabled={testBusy}>
+				{testBusy ? "Testing\u2026" : "Test"}
+			</button>
+			<button type="button" className="provider-btn provider-btn-secondary" onClick={props.onPin} disabled={pinBusy}>
+				{pinBusy ? "Scanning\u2026" : props.entry.known_host ? "Refresh Pin" : "Scan & Pin"}
+			</button>
+			{props.entry.known_host && (
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary"
+					onClick={props.onClearPin}
+					disabled={clearBusy}
+				>
+					{clearBusy ? "Clearing\u2026" : "Clear Pin"}
+				</button>
+			)}
+			{!props.entry.is_default && (
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary"
+					onClick={props.onSetDefault}
+					disabled={props.busyAction === `default-target:${props.entry.id}`}
+				>
+					Make Default
+				</button>
+			)}
+			<button type="button" className="provider-btn provider-btn-danger" onClick={props.onDelete} disabled={deleteBusy}>
+				{deleteBusy ? "Deleting\u2026" : "Delete"}
+			</button>
+		</div>
+	);
+}
+
+interface SshTargetRowProps {
+	entry: SshTargetEntry;
+	result?: TestResult;
+	busyAction: string;
+	onTest: (id: number) => void;
+	onPin: (entry: SshTargetEntry) => void;
+	onClearPin: (entry: SshTargetEntry) => void;
+	onSetDefault: (id: number) => void;
+	onDelete: (id: number) => void;
+}
+
+function SshTargetRow(props: SshTargetRowProps): VNode {
+	return (
+		<div className="provider-item">
+			<div className="flex-1 min-w-0">
+				<SshTargetBadges entry={props.entry} />
+				<div className="text-xs text-[var(--muted)] break-all">
+					{props.entry.target}
+					{props.entry.port ? `:${props.entry.port}` : ""}
+				</div>
+				<div className="text-xs text-[var(--muted)]">
+					{props.entry.key_name ? `Key: ${props.entry.key_name}` : "Uses your local ssh config / agent"}
+				</div>
+				<SshTargetTestStatus result={props.result} />
+			</div>
+			<SshTargetActions
+				entry={props.entry}
+				busyAction={props.busyAction}
+				onTest={() => props.onTest(props.entry.id)}
+				onPin={() => props.onPin(props.entry)}
+				onClearPin={() => props.onClearPin(props.entry)}
+				onSetDefault={() => props.onSetDefault(props.entry.id)}
+				onDelete={() => props.onDelete(props.entry.id)}
+			/>
+		</div>
+	);
+}
+
+interface SshTargetListProps {
+	loading: boolean;
+	targets: SshTargetEntry[];
+	results: Record<number, TestResult>;
+	busyAction: string;
+	onTest: (id: number) => void;
+	onPin: (entry: SshTargetEntry) => void;
+	onClearPin: (entry: SshTargetEntry) => void;
+	onSetDefault: (id: number) => void;
+	onDelete: (id: number) => void;
+}
+
+function SshTargetList(props: SshTargetListProps): VNode {
+	if (props.loading) return <Loading message="Loading targets..." />;
+	if (props.targets.length === 0) return <EmptyState message="No SSH targets configured." />;
+	return (
+		<>
+			{props.targets.map((entry) => (
+				<SshTargetRow
+					key={entry.id}
+					entry={entry}
+					result={props.results[entry.id]}
+					busyAction={props.busyAction}
+					onTest={props.onTest}
+					onPin={props.onPin}
+					onClearPin={props.onClearPin}
+					onSetDefault={props.onSetDefault}
+					onDelete={props.onDelete}
+				/>
+			))}
+		</>
+	);
 }
 
 export function SshSection(): VNode {
@@ -202,20 +455,9 @@ export function SshSection(): VNode {
 		const target = targetHost.trim();
 		const port = targetPort.trim() ? Number.parseInt(targetPort.trim(), 10) : null;
 		const keyId = targetAuthMode === "managed" && targetKeyId ? Number.parseInt(targetKeyId, 10) : null;
-		if (!label) {
-			setError("Target label is required.");
-			return;
-		}
-		if (!target) {
-			setError("SSH target is required.");
-			return;
-		}
-		if (targetAuthMode === "managed" && !keyId) {
-			setError("Choose a managed SSH key for this target.");
-			return;
-		}
-		if (Number.isNaN(port)) {
-			setError("Port must be a valid number.");
+		const validationError = sshTargetDraftError({ label, target, port, authMode: targetAuthMode, keyId });
+		if (validationError) {
+			setError(validationError);
 			return;
 		}
 		runSshAction(
@@ -420,17 +662,10 @@ export function SshSection(): VNode {
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">SSH</h2>
 			<p className="text-xs text-[var(--muted)] leading-relaxed max-w-[760px]" style={{ margin: 0 }}>
 				Manage outbound SSH deploy keys and named targets. Current auth path:
-				<strong className="text-[var(--text)]">
-					{vaultStatus === "unsealed"
-						? " vault-backed managed keys are available"
-						: vaultStatus === "sealed"
-							? " vault is locked, managed keys cannot be used until unlocked"
-							: " system OpenSSH remains available, managed keys stay plaintext until the vault is enabled"}
-				</strong>
+				<strong className="text-[var(--text)]">{sshVaultStatusDescription(vaultStatus)}</strong>
 			</p>
 
-			{sshMsg ? <div className="text-xs text-[var(--accent)]">{sshMsg}</div> : null}
-			{sshErr ? <div className="text-xs text-[var(--error)]">{sshErr}</div> : null}
+			<SshFlash message={sshMsg} error={sshErr} />
 
 			<TabBar tabs={sshTabs} active={sshTab} onChange={setSshTab} />
 
@@ -446,9 +681,12 @@ export function SshSection(): VNode {
 						<code className="text-[var(--text)]">ssh-keyscan -H host</code> when creating the target.
 					</div>
 					<form onSubmit={onGenerateKey} className="flex flex-col gap-2 mb-4">
-						<label className="text-xs text-[var(--muted)]">Generate deploy key</label>
+						<label className="text-xs text-[var(--muted)]" htmlFor="sshGenerateKeyName">
+							Generate deploy key
+						</label>
 						<div className="flex gap-2 flex-wrap">
 							<input
+								id="sshGenerateKeyName"
 								className="provider-key-input flex-1 min-w-[180px]"
 								type="text"
 								value={generateName}
@@ -462,14 +700,16 @@ export function SshSection(): VNode {
 					</form>
 
 					<form onSubmit={onImportKey} className="flex flex-col gap-2">
-						<label className="text-xs text-[var(--muted)]">Import private key</label>
-						<input
-							className="provider-key-input"
-							type="text"
-							value={importName}
-							onInput={(e: Event) => setImportName(targetValue(e))}
-							placeholder="existing-deploy-key"
-						/>
+						<label>
+							<span className="text-xs text-[var(--muted)]">Import private key</span>
+							<input
+								className="provider-key-input"
+								type="text"
+								value={importName}
+								onInput={(e: Event) => setImportName(targetValue(e))}
+								placeholder="existing-deploy-key"
+							/>
+						</label>
 						<textarea
 							className="provider-key-input min-h-[140px] font-mono text-xs"
 							value={importPrivateKey}
@@ -489,48 +729,14 @@ export function SshSection(): VNode {
 					</form>
 
 					<div className="mt-4 flex flex-col gap-2">
-						{loadingSsh ? (
-							<Loading message="Loading keys..." />
-						) : keys.length === 0 ? (
-							<EmptyState message="No managed SSH keys yet." />
-						) : (
-							keys.map((entry) => (
-								<div className="provider-item items-start gap-4" key={entry.id}>
-									<div className="flex-1 min-w-0">
-										<div className="provider-item-name">{entry.name}</div>
-										<div className="text-xs text-[var(--muted)] break-all mt-1">
-											<span className="text-[var(--text)]">Fingerprint (SHA256):</span> {entry.fingerprint}
-										</div>
-										<div className="text-xs text-[var(--muted)] mt-1">
-											{entry.encrypted ? "Encrypted in vault" : "Stored plaintext until the vault is available"}
-											{(entry.target_count ?? 0) > 0
-												? `, used by ${entry.target_count} target${entry.target_count === 1 ? "" : "s"}`
-												: ""}
-										</div>
-										<pre className="mt-3 whitespace-pre-wrap break-all rounded border border-[var(--border)] bg-[var(--surface2)] p-2 text-[11px] leading-relaxed text-[var(--muted)]">
-											{entry.public_key}
-										</pre>
-									</div>
-									<div className="flex flex-col gap-2 shrink-0 self-start">
-										<button
-											type="button"
-											className="provider-btn provider-btn-secondary"
-											onClick={() => onCopyPublicKey(entry)}
-										>
-											{copiedKeyId === entry.id ? "Copied" : "Copy Public Key"}
-										</button>
-										<button
-											type="button"
-											className="provider-btn provider-btn-danger"
-											onClick={() => onDeleteKey(entry.id)}
-											disabled={busyAction === `delete-key:${entry.id}` || (entry.target_count ?? 0) > 0}
-										>
-											{busyAction === `delete-key:${entry.id}` ? "Deleting\u2026" : "Delete"}
-										</button>
-									</div>
-								</div>
-							))
-						)}
+						<SshKeyList
+							loading={loadingSsh}
+							keys={keys}
+							copiedKeyId={copiedKeyId}
+							busyAction={busyAction}
+							onCopy={onCopyPublicKey}
+							onDelete={onDeleteKey}
+						/>
 					</div>
 				</div>
 			)}
@@ -630,99 +836,17 @@ export function SshSection(): VNode {
 					</form>
 
 					<div className="flex flex-col gap-2">
-						{loadingSsh ? (
-							<Loading message="Loading targets..." />
-						) : targets.length === 0 ? (
-							<EmptyState message="No SSH targets configured." />
-						) : (
-							targets.map((entry) => (
-								<div className="provider-item" key={entry.id}>
-									<div className="flex-1 min-w-0">
-										<div className="provider-item-name flex items-center gap-2 flex-wrap">
-											<span>{entry.label}</span>
-											{entry.is_default ? <Badge label="Default" variant="configured" /> : null}
-											<Badge label={entry.auth_mode === "managed" ? "Managed key" : "System SSH"} />
-											{entry.known_host ? (
-												<Badge label="Host pinned" variant="configured" />
-											) : (
-												<Badge label="Uses global known_hosts" variant="warning" />
-											)}
-										</div>
-										<div className="text-xs text-[var(--muted)] break-all">
-											{entry.target}
-											{entry.port ? `:${entry.port}` : ""}
-										</div>
-										<div className="text-xs text-[var(--muted)]">
-											{entry.key_name ? `Key: ${entry.key_name}` : "Uses your local ssh config / agent"}
-										</div>
-										{testResults[entry.id] ? (
-											<div className="mt-1">
-												<div
-													className={`text-xs ${testResults[entry.id].reachable ? "text-[var(--accent)]" : "text-[var(--error)]"}`}
-												>
-													{testResults[entry.id].reachable ? "Reachable" : "Unreachable"}
-												</div>
-												{testResults[entry.id].failure_hint ? (
-													<div className="text-xs text-[var(--text-muted)] mt-1">
-														Hint: {testResults[entry.id].failure_hint}
-													</div>
-												) : null}
-											</div>
-										) : null}
-									</div>
-									<div className="flex flex-col gap-2">
-										<button
-											type="button"
-											className="provider-btn provider-btn-secondary"
-											onClick={() => onTestTarget(entry.id)}
-											disabled={busyAction === `test-target:${entry.id}`}
-										>
-											{busyAction === `test-target:${entry.id}` ? "Testing\u2026" : "Test"}
-										</button>
-										<button
-											type="button"
-											className="provider-btn provider-btn-secondary"
-											onClick={() => onScanAndPinTarget(entry)}
-											disabled={busyAction === `pin-target:${entry.id}`}
-										>
-											{busyAction === `pin-target:${entry.id}`
-												? "Scanning\u2026"
-												: entry.known_host
-													? "Refresh Pin"
-													: "Scan & Pin"}
-										</button>
-										{entry.known_host ? (
-											<button
-												type="button"
-												className="provider-btn provider-btn-secondary"
-												onClick={() => onClearTargetPin(entry)}
-												disabled={busyAction === `clear-pin:${entry.id}`}
-											>
-												{busyAction === `clear-pin:${entry.id}` ? "Clearing\u2026" : "Clear Pin"}
-											</button>
-										) : null}
-										{entry.is_default ? null : (
-											<button
-												type="button"
-												className="provider-btn provider-btn-secondary"
-												onClick={() => onSetDefaultTarget(entry.id)}
-												disabled={busyAction === `default-target:${entry.id}`}
-											>
-												Make Default
-											</button>
-										)}
-										<button
-											type="button"
-											className="provider-btn provider-btn-danger"
-											onClick={() => onDeleteTarget(entry.id)}
-											disabled={busyAction === `delete-target:${entry.id}`}
-										>
-											{busyAction === `delete-target:${entry.id}` ? "Deleting\u2026" : "Delete"}
-										</button>
-									</div>
-								</div>
-							))
-						)}
+						<SshTargetList
+							loading={loadingSsh}
+							targets={targets}
+							results={testResults}
+							busyAction={busyAction}
+							onTest={onTestTarget}
+							onPin={onScanAndPinTarget}
+							onClearPin={onClearTargetPin}
+							onSetDefault={onSetDefaultTarget}
+							onDelete={onDeleteTarget}
+						/>
 					</div>
 				</div>
 			)}

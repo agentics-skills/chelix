@@ -4,7 +4,7 @@
 
 import { get as getGon } from "./gon";
 import { sendRpc } from "./helpers";
-import { ChannelType } from "./types";
+import { ChannelType } from "./types/channel";
 
 export const MATRIX_DOCS_URL = "https://github.com/agentics-skills/chelix/blob/master/docs/src/matrix.md";
 export const MATRIX_DEFAULT_HOMESERVER = "https://matrix.org";

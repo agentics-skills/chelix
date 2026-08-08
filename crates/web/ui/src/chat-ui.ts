@@ -318,14 +318,15 @@ export function chatAddErrorCard(err: ErrorCardData): void {
 		body.appendChild(prov);
 	}
 
-	if (err.resetsAt) {
+	const resetsAt = err.resetsAt;
+	if (resetsAt) {
 		const countdown = document.createElement("div");
 		countdown.className = "error-countdown";
 		el.appendChild(body);
 		el.appendChild(countdown);
-		updateCountdown(countdown, err.resetsAt);
+		updateCountdown(countdown, resetsAt);
 		const timer = setInterval(() => {
-			if (updateCountdown(countdown, err.resetsAt!)) clearInterval(timer);
+			if (updateCountdown(countdown, resetsAt)) clearInterval(timer);
 		}, 1000);
 	} else {
 		el.appendChild(body);
@@ -342,9 +343,7 @@ export function chatAddErrorMsg(message: string): void {
 export function renderApprovalCard(requestId: string, command: string): void {
 	if (!S.chatMsgBox) return;
 	clearChatEmptyState();
-	const tpl = S.$<HTMLTemplateElement>("tpl-approval-card")!;
-	const frag = tpl.content.cloneNode(true) as DocumentFragment;
-	const card = frag.firstElementChild as HTMLElement;
+	const card = S.cloneRequiredTemplateRoot<HTMLElement>("tpl-approval-card");
 	card.id = `approval-${requestId}`;
 
 	(card.querySelector(".approval-cmd") as HTMLElement).textContent = command;
@@ -413,7 +412,8 @@ export function highlightAndScroll(msgEls: (HTMLElement | null)[], messageIndex:
 	setTimeout(() => {
 		if (!S.chatMsgBox) return;
 		S.chatMsgBox.querySelectorAll("mark.search-term-highlight").forEach((m) => {
-			const parent = m.parentNode!;
+			const parent = m.parentNode;
+			if (!parent) return;
 			parent.replaceChild(document.createTextNode(m.textContent || ""), m);
 			parent.normalize();
 		});

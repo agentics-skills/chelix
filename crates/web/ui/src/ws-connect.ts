@@ -2,7 +2,7 @@
 import { localizeRpcError, nextId, sendRpc } from "./helpers";
 import { getPreferredLocale } from "./i18n";
 import * as S from "./state";
-import type { RpcResponse } from "./types";
+import type { RpcResponse } from "./types/rpc";
 import type { WsFrame as EventWsFrame } from "./types/ws-events";
 
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -84,6 +84,75 @@ export function onServerRequest(method: string, handler: ServerRequestHandler): 
 	};
 }
 
+function helloFromResponse(response: RpcResponse): HelloPayload | null {
+	if (!(response.ok && response.payload)) return null;
+	const hello = response.payload as HelloPayload;
+	return hello.type === "hello-ok" ? hello : null;
+}
+
+function handleHandshakeResponse(response: RpcResponse, opts: ConnectOptions, ws: WebSocket): void {
+	const hello = helloFromResponse(response);
+	if (hello) {
+		S.setConnected(true);
+		S.setReconnectDelay(1000);
+		opts.onConnected?.(hello);
+		return;
+	}
+	S.setConnected(false);
+	if (opts.onHandshakeFailed) {
+		opts.onHandshakeFailed({
+			type: "res",
+			ok: response.ok,
+			payload: response.payload as HelloPayload | Record<string, unknown>,
+			error: response.error,
+		});
+		return;
+	}
+	ws.close();
+}
+
+function parseFrame(data: unknown): WsRpcFrame | null {
+	try {
+		return JSON.parse(data as string) as WsRpcFrame;
+	} catch {
+		return null;
+	}
+}
+
+function localizeFrameError(frame: WsRpcFrame): void {
+	if (!(frame.type === "res" && frame.error)) return;
+	frame.error = localizeRpcError(frame.error) as WsFrameError;
+	if (frame.error.code !== "UNAUTHORIZED" || authRedirectPending) return;
+	authRedirectPending = true;
+	window.dispatchEvent(new CustomEvent("chelix:auth-status-changed"));
+}
+
+function resolvePendingResponse(frame: WsRpcFrame): boolean {
+	if (!(frame.type === "res" && frame.id && Object.hasOwn(S.pending, frame.id))) return false;
+	S.pending[frame.id]({
+		ok: frame.ok ?? false,
+		payload: frame.payload,
+		error: frame.error as RpcResponse["error"],
+	});
+	delete S.pending[frame.id];
+	return true;
+}
+
+function routeWebSocketFrame(ws: WebSocket, opts: ConnectOptions, frame: WsRpcFrame): void {
+	localizeFrameError(frame);
+	if (resolvePendingResponse(frame)) return;
+	if (frame.type === "req" && frame.id && frame.method) {
+		handleServerRequest(ws, frame);
+		return;
+	}
+	opts.onFrame?.(frame as unknown as EventWsFrame);
+}
+
+function handleWebSocketMessage(ws: WebSocket, opts: ConnectOptions, event: MessageEvent): void {
+	const frame = parseFrame(event.data);
+	if (frame) routeWebSocketFrame(ws, opts, frame);
+}
+
 /**
  * Open a WebSocket, perform the protocol handshake, route RPC responses to
  * `S.pending`, and auto-reconnect on close.
@@ -99,28 +168,7 @@ export function connectWs(opts: ConnectOptions): void {
 		const id = nextId();
 		// The handshake callback receives an RpcResponse from the pending map.
 		// The payload is a HelloPayload on success.
-		S.pending[id] = (res: RpcResponse): void => {
-			if (res.ok && res.payload) {
-				const hello = res.payload as HelloPayload;
-				if (hello.type === "hello-ok") {
-					S.setConnected(true);
-					S.setReconnectDelay(1000);
-					if (opts.onConnected) opts.onConnected(hello);
-					return;
-				}
-			}
-			S.setConnected(false);
-			if (opts.onHandshakeFailed) {
-				opts.onHandshakeFailed({
-					type: "res",
-					ok: res.ok,
-					payload: res.payload as HelloPayload | Record<string, unknown>,
-					error: res.error,
-				});
-			} else {
-				ws.close();
-			}
-		};
+		S.pending[id] = (response: RpcResponse): void => handleHandshakeResponse(response, opts, ws);
 		ws.send(
 			JSON.stringify({
 				type: "req",
@@ -141,41 +189,7 @@ export function connectWs(opts: ConnectOptions): void {
 		);
 	};
 
-	ws.onmessage = (evt: MessageEvent): void => {
-		let frame: WsRpcFrame;
-		try {
-			frame = JSON.parse(evt.data as string);
-		} catch {
-			return;
-		}
-		if (frame?.type === "res" && frame.error) {
-			frame.error = localizeRpcError(frame.error) as WsFrameError;
-			// When an RPC response indicates auth failure, trigger the
-			// auth-status-changed flow so the UI redirects to login
-			// instead of showing stale/broken data. Use a flag to
-			// avoid dispatching multiple times when several RPCs fail.
-			if (frame.error?.code === "UNAUTHORIZED" && !authRedirectPending) {
-				authRedirectPending = true;
-				window.dispatchEvent(new CustomEvent("chelix:auth-status-changed"));
-			}
-		}
-		if (frame.type === "res" && frame.id && Object.hasOwn(S.pending, frame.id)) {
-			S.pending[frame.id]({
-				ok: frame.ok ?? false,
-				payload: frame.payload,
-				error: frame.error as RpcResponse["error"],
-			});
-			delete S.pending[frame.id];
-			return;
-		}
-		// Handle server-initiated RPC requests (v4 bidirectional RPC).
-		if (frame.type === "req" && frame.id && frame.method) {
-			handleServerRequest(ws, frame);
-			return;
-		}
-		// Non-RPC frames are event broadcasts; cast to the event-specific shape.
-		if (opts.onFrame) opts.onFrame(frame as unknown as EventWsFrame);
-	};
+	ws.onmessage = (event: MessageEvent): void => handleWebSocketMessage(ws, opts, event);
 
 	ws.onclose = (): void => {
 		const wasConnected = S.connected;

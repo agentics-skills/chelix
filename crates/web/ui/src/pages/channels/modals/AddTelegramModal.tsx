@@ -6,7 +6,7 @@ import type { VNode } from "preact";
 import { addChannel, parseChannelConfigPatch, validateChannelFields } from "../../../channel-utils";
 import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
-import { ChannelType } from "../../../types";
+import { ChannelType } from "../../../types/channel";
 import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddTelegram } from "../../ChannelsPage";
 import { AdvancedConfigPatchField, SharedChannelFields } from "../ChannelFields";
@@ -95,29 +95,33 @@ export function AddTelegramModal(): VNode {
 					</div>
 				</div>
 				<ConnectionModeHint type={ChannelType.Telegram} />
-				<label className="text-xs text-[var(--muted)]">Bot username</label>
-				<input
-					data-field="accountId"
-					type="text"
-					placeholder="e.g. my_assistant_bot"
-					value={accountDraft.value}
-					onInput={(e) => {
-						accountDraft.value = targetValue(e);
-					}}
-					className="channel-input"
-				/>
-				<label className="text-xs text-[var(--muted)]">Bot Token (from @BotFather)</label>
-				<input
-					data-field="credential"
-					type="password"
-					placeholder="123456:ABC-DEF..."
-					className="channel-input"
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="telegram_bot_token"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Bot username</span>
+					<input
+						data-field="accountId"
+						type="text"
+						placeholder="e.g. my_assistant_bot"
+						value={accountDraft.value}
+						onInput={(e) => {
+							accountDraft.value = targetValue(e);
+						}}
+						className="channel-input"
+					/>
+				</label>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Bot Token (from @BotFather)</span>
+					<input
+						data-field="credential"
+						type="password"
+						placeholder="123456:ABC-DEF..."
+						className="channel-input"
+						autoComplete="new-password"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="telegram_bot_token"
+					/>
+				</label>
 				{accountDraft.value.trim() && (
 					<div className="flex items-center gap-1.5 text-xs py-1">
 						<span className="text-[var(--muted)]">Chat with your bot:</span>
@@ -139,7 +143,7 @@ export function AddTelegramModal(): VNode {
 					}}
 				/>
 				{error.value && <div className="text-xs text-[var(--error)] py-1">{error.value}</div>}
-				<button className="provider-btn" onClick={onSubmit} disabled={saving.value}>
+				<button type="button" className="provider-btn" onClick={onSubmit} disabled={saving.value}>
 					{saving.value ? "Connecting\u2026" : "Connect Telegram"}
 				</button>
 			</div>

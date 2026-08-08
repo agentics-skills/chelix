@@ -89,6 +89,321 @@ function PttKeyPicker({ pttListening, setPttListening, pttKeyValue, setPttKeyVal
 	);
 }
 
+interface VoiceAudioPayload {
+	audio: string;
+	mimeType?: string;
+	content_type?: string;
+}
+
+interface SttUploadPayload {
+	ok?: boolean;
+	transcription?: { text?: string };
+	transcriptionError?: string;
+	error?: string;
+}
+
+interface SttRecordingCallbacks {
+	onTranscribing: () => void;
+	onResult: (result: VoiceTestResult) => void;
+}
+
+function settingsVoiceIdentity(): { user: string; bot: string } {
+	const identity = gon.get("identity") as { user_name?: string; name?: string } | undefined;
+	return { user: identity?.user_name || "friend", bot: identity?.name || "Chelix" };
+}
+
+function playProviderTestAudio(payload: VoiceAudioPayload): void {
+	const bytes = decodeBase64Safe(payload.audio);
+	const blob = new Blob([bytes as BlobPart], { type: payload.mimeType || payload.content_type || "audio/mpeg" });
+	const url = URL.createObjectURL(blob);
+	const audio = new Audio(url);
+	audio.onerror = (event) => {
+		console.error("[TTS] audio element error:", audio.error?.message || event);
+		URL.revokeObjectURL(url);
+	};
+	audio.onended = () => URL.revokeObjectURL(url);
+	audio.play().catch((error: Error) => console.error("[TTS] play() failed:", error));
+}
+
+async function runTtsProviderTest(providerId: string): Promise<VoiceTestResult> {
+	try {
+		const identity = settingsVoiceIdentity();
+		const text = await fetchPhrase("settings", identity.user, identity.bot);
+		const response = (await testTts(text, providerId)) as RpcResponse;
+		const payload = response.payload as VoiceAudioPayload | undefined;
+		if (!(response.ok && payload?.audio)) {
+			return { success: false, error: response.error?.message || "TTS test failed" };
+		}
+		playProviderTestAudio(payload);
+		return { success: true, error: null };
+	} catch (caught) {
+		return { success: false, error: caught instanceof Error ? caught.message : "TTS test failed" };
+	}
+}
+
+function sttUploadResult(payload: SttUploadPayload): VoiceTestResult {
+	if (payload.ok && typeof payload.transcription?.text === "string") {
+		const text = payload.transcription.text.trim();
+		return { text: text || null, error: text ? null : "No speech detected" };
+	}
+	return { text: null, error: payload.transcriptionError || payload.error || "STT test failed" };
+}
+
+function sttHttpError(body: string): string {
+	try {
+		return (JSON.parse(body) as { error?: string }).error || "STT test failed";
+	} catch (_error) {
+		return "STT test failed";
+	}
+}
+
+async function transcribeProviderAudio(providerId: string, audio: Blob): Promise<VoiceTestResult> {
+	try {
+		const response = await transcribeAudio(S.activeSessionKey, providerId, audio);
+		if (response.ok) return sttUploadResult((await response.json()) as SttUploadPayload);
+		const body = await response.text();
+		console.error("[STT] upload failed: status=%d body=%s", response.status, body);
+		return { text: null, error: `${sttHttpError(body)} (HTTP ${response.status})` };
+	} catch (caught) {
+		return { text: null, error: caught instanceof Error ? caught.message : "STT test failed" };
+	}
+}
+
+function recordingMimeType(): string {
+	return MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+}
+
+async function finishSttProviderRecording(
+	providerId: string,
+	recorder: MediaRecorder,
+	stream: MediaStream,
+	chunks: Blob[],
+	fallbackMimeType: string,
+	callbacks: SttRecordingCallbacks,
+): Promise<void> {
+	callbacks.onTranscribing();
+	for (const track of stream.getTracks()) track.stop();
+	const audio = new Blob(chunks, { type: recorder.mimeType || fallbackMimeType });
+	callbacks.onResult(await transcribeProviderAudio(providerId, audio));
+}
+
+async function startSttProviderRecording(providerId: string, callbacks: SttRecordingCallbacks): Promise<MediaRecorder> {
+	const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+	const mimeType = recordingMimeType();
+	const recorder = new MediaRecorder(stream, { mimeType });
+	const chunks: Blob[] = [];
+	recorder.ondataavailable = (event: BlobEvent) => {
+		if (event.data.size > 0) chunks.push(event.data);
+	};
+	recorder.onstop = () => {
+		void finishSttProviderRecording(providerId, recorder, stream, chunks, mimeType, callbacks);
+	};
+	recorder.start();
+	return recorder;
+}
+
+function humanizeMicError(error: { name?: string; message?: string }): string {
+	if (error.name === "OverconstrainedError" || (error.message && /constraint/i.test(error.message))) {
+		return "No compatible microphone found. Check your audio input device.";
+	}
+	if (error.name === "NotFoundError" || error.name === "NotAllowedError") {
+		return "Microphone access denied or no microphone found. Check browser permissions.";
+	}
+	if (error.name === "NotReadableError") return "Microphone is in use by another application.";
+	return error.message || "STT test failed";
+}
+
+type PersonaTestPhase = "testing" | "playing" | "";
+
+interface PersonaTestCallbacks {
+	onPlaying: () => void;
+	onEnded: () => void;
+}
+
+function playPersonaAudio(payload: { audio: string; mimeType?: string }, onEnded: () => void): void {
+	const bytes = decodeBase64Safe(payload.audio);
+	const blob = new Blob([bytes as BlobPart], { type: payload.mimeType || "audio/mpeg" });
+	const url = URL.createObjectURL(blob);
+	const audio = new Audio(url);
+	audio.onended = () => {
+		URL.revokeObjectURL(url);
+		onEnded();
+	};
+	audio.play().catch((error: Error) => console.error("[TTS]", error));
+}
+
+async function startPersonaTest(personaId: string, callbacks: PersonaTestCallbacks): Promise<boolean> {
+	try {
+		const identity = settingsVoiceIdentity();
+		const text = await fetchPhrase("settings", identity.user, identity.bot);
+		const response = (await testTtsWithPersona(text, personaId)) as RpcResponse;
+		const payload = response.payload as { audio?: string; mimeType?: string } | undefined;
+		if (!(response.ok && payload?.audio)) return false;
+		callbacks.onPlaying();
+		playPersonaAudio({ ...payload, audio: payload.audio }, callbacks.onEnded);
+		return true;
+	} catch (_error) {
+		return false;
+	}
+}
+
+function personaTestLabel(phase: PersonaTestPhase): string {
+	if (phase === "testing") return "Testing\u2026";
+	if (phase === "playing") return "Playing\u2026";
+	return "Test";
+}
+
+function PersonaBindingBadges({ persona }: { persona: VoicePersonaResponse }): VNode {
+	return (
+		<>
+			{persona.persona.provider_bindings.map((binding) => (
+				<span
+					key={binding.provider}
+					className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-alt)] text-[var(--muted)]"
+				>
+					{binding.provider}
+					{binding.voice_id ? `: ${binding.voice_id}` : ""}
+				</span>
+			))}
+		</>
+	);
+}
+
+function PersonaDetails({ persona }: { persona: VoicePersonaResponse }): VNode {
+	return (
+		<div className="flex-1 min-w-0">
+			<div className="flex items-center gap-2 flex-wrap">
+				<span className="text-sm font-medium text-[var(--text-strong)]">{persona.persona.label}</span>
+				{persona.isActive && (
+					<span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)] text-white">active</span>
+				)}
+				<PersonaBindingBadges persona={persona} />
+			</div>
+			{persona.persona.description && (
+				<p className="text-xs text-[var(--muted)] truncate mt-0.5 mb-0">{persona.persona.description}</p>
+			)}
+			{persona.persona.prompt.profile && (
+				<p className="text-[10px] text-[var(--muted)] truncate italic mt-0.5 mb-0">{persona.persona.prompt.profile}</p>
+			)}
+		</div>
+	);
+}
+
+interface PersonaActionsProps {
+	persona: VoicePersonaResponse;
+	testPhase: PersonaTestPhase;
+	onTest: () => void;
+	onEdit: () => void;
+	onSetActive: (personaId: string | null) => void;
+	onRemove: () => void;
+}
+
+function PersonaActions(props: PersonaActionsProps): VNode {
+	const personaId = props.persona.persona.id;
+	return (
+		<div className="flex items-center gap-1.5">
+			<button
+				type="button"
+				className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
+				disabled={Boolean(props.testPhase)}
+				onClick={props.onTest}
+			>
+				{personaTestLabel(props.testPhase)}
+			</button>
+			<button
+				type="button"
+				className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
+				onClick={props.onEdit}
+			>
+				Edit
+			</button>
+			<button
+				type="button"
+				className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
+				onClick={() => props.onSetActive(props.persona.isActive ? null : personaId)}
+			>
+				{props.persona.isActive ? "Deactivate" : "Activate"}
+			</button>
+			<button
+				type="button"
+				className="provider-btn text-xs !py-1 !px-2.5 !bg-[var(--error)] hover:!bg-red-700"
+				onClick={props.onRemove}
+			>
+				Remove
+			</button>
+		</div>
+	);
+}
+
+interface PersonaRowProps extends PersonaActionsProps {}
+
+function PersonaRow(props: PersonaRowProps): VNode {
+	return (
+		<div
+			className={`flex items-center gap-3 p-3 rounded border ${props.persona.isActive ? "border-[var(--accent)]" : "border-[var(--border)]"}`}
+			style={{ background: "var(--surface)" }}
+		>
+			<PersonaDetails persona={props.persona} />
+			<PersonaActions {...props} />
+		</div>
+	);
+}
+
+interface VoicePersonasPanelProps {
+	personas: VoicePersonaResponse[];
+	testing: Record<string, PersonaTestPhase>;
+	editingId: string | null;
+	onTest: (personaId: string) => void;
+	onEdit: (personaId: string) => void;
+	onSetActive: (personaId: string | null) => void;
+	onRemove: (personaId: string) => void;
+	onCloseEditor: () => void;
+	onSaved: () => void;
+}
+
+function editedPersona(personas: VoicePersonaResponse[], editingId: string): VoicePersonaResponse | null {
+	return editingId === "__new__" ? null : personas.find((persona) => persona.persona.id === editingId) || null;
+}
+
+function VoicePersonasPanel(props: VoicePersonasPanelProps): VNode {
+	return (
+		<div className="flex flex-col gap-3">
+			<p className="text-xs text-[var(--muted)] leading-relaxed m-0">
+				Named voice identities injected into every TTS call. Instead of improvising tone per-message, a persona defines
+				a stable spoken character.
+			</p>
+			{props.personas.length === 0 ? (
+				<p className="text-xs text-[var(--muted)] italic">No personas configured yet.</p>
+			) : (
+				<div className="flex flex-col gap-2">
+					{props.personas.map((persona) => (
+						<PersonaRow
+							key={persona.persona.id}
+							persona={persona}
+							testPhase={props.testing[persona.persona.id] || ""}
+							onTest={() => props.onTest(persona.persona.id)}
+							onEdit={() => props.onEdit(persona.persona.id)}
+							onSetActive={props.onSetActive}
+							onRemove={() => props.onRemove(persona.persona.id)}
+						/>
+					))}
+				</div>
+			)}
+			<button type="button" className="provider-btn" onClick={() => props.onEdit("__new__")}>
+				+ Add Persona
+			</button>
+			{props.editingId && (
+				<PersonaEditModal
+					editingId={props.editingId}
+					existingPersona={editedPersona(props.personas, props.editingId)}
+					onClose={props.onCloseEditor}
+					onSaved={props.onSaved}
+				/>
+			)}
+		</div>
+	);
+}
+
 export function VoiceSection(): VNode {
 	const [allProviders, setAllProviders] = useState<VoiceProviders>({ tts: [], stt: [] });
 	const [voiceLoading, setVoiceLoading] = useState(true);
@@ -101,8 +416,8 @@ export function VoiceSection(): VNode {
 	// Tab state
 	const [activeTab, setActiveTab] = useState("stt");
 
-	// Per-persona test state: persona id → "testing" | "playing" | null
-	const [personaTesting, setPersonaTesting] = useState<Record<string, string>>({});
+	// Per-persona test state: persona id → testing phase
+	const [personaTesting, setPersonaTesting] = useState<Record<string, PersonaTestPhase>>({});
 
 	// Voice personas
 	const [personas, setPersonas] = useState<VoicePersonaResponse[]>([]);
@@ -184,154 +499,70 @@ export function VoiceSection(): VNode {
 		return [...allProviders.stt, ...allProviders.tts].filter((p) => !p.available);
 	}
 
-	function stopSttRecording(): void {
-		if (activeRecorder) {
-			activeRecorder.stop();
-		}
-	}
-
-	function humanizeMicError(err: { name?: string; message?: string }): string {
-		if (err.name === "OverconstrainedError" || (err.message && /constraint/i.test(err.message))) {
-			return "No compatible microphone found. Check your audio input device.";
-		}
-		if (err.name === "NotFoundError" || err.name === "NotAllowedError") {
-			return "Microphone access denied or no microphone found. Check browser permissions.";
-		}
-		if (err.name === "NotReadableError") {
-			return "Microphone is in use by another application.";
-		}
-		return err.message || "STT test failed";
-	}
-
 	async function testVoiceProvider(providerId: string, type: string): Promise<void> {
-		if (voiceTesting?.id === providerId && voiceTesting?.type === "stt" && voiceTesting?.phase === "recording") {
-			stopSttRecording();
+		if (voiceTesting?.id === providerId && voiceTesting.type === "stt" && voiceTesting.phase === "recording") {
+			activeRecorder?.stop();
 			return;
 		}
 
 		setVoiceTesting({ id: providerId, type, phase: "testing" });
 		rerender();
-
 		if (type === "tts") {
-			try {
-				const id = gon.get("identity") as { user_name?: string; name?: string } | undefined;
-				const user = id?.user_name || "friend";
-				const bot = id?.name || "Chelix";
-				const ttsText = await fetchPhrase("settings", user, bot);
-				const res = (await testTts(ttsText, providerId)) as RpcResponse;
-				if (res?.ok && (res.payload as { audio?: string })?.audio) {
-					const payload = res.payload as { audio: string; mimeType?: string; content_type?: string; format?: string };
-					const bytes = decodeBase64Safe(payload.audio);
-					const audioMime = payload.mimeType || payload.content_type || "audio/mpeg";
-					const blob = new Blob([bytes as BlobPart], { type: audioMime });
-					const url = URL.createObjectURL(blob);
-					const audio = new Audio(url);
-					audio.onerror = (e) => {
-						console.error("[TTS] audio element error:", audio.error?.message || e);
-						URL.revokeObjectURL(url);
-					};
-					audio.onended = () => URL.revokeObjectURL(url);
-					audio.play().catch((e: Error) => console.error("[TTS] play() failed:", e));
-					setVoiceTestResults((prev) => ({
-						...prev,
-						[providerId]: { success: true, error: null },
-					}));
-				} else {
-					setVoiceTestResults((prev) => ({
-						...prev,
-						[providerId]: { success: false, error: (res?.error as { message?: string })?.message || "TTS test failed" },
-					}));
-				}
-			} catch (err) {
-				setVoiceTestResults((prev) => ({
-					...prev,
-					[providerId]: { success: false, error: (err as Error).message || "TTS test failed" },
-				}));
-			}
+			const result = await runTtsProviderTest(providerId);
+			setVoiceTestResults((current) => ({ ...current, [providerId]: result }));
 			setVoiceTesting(null);
-		} else {
-			try {
-				const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-				const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-					? "audio/webm;codecs=opus"
-					: "audio/webm";
-				const mediaRecorder = new MediaRecorder(stream, { mimeType });
-				const audioChunks: Blob[] = [];
+			rerender();
+			return;
+		}
 
-				mediaRecorder.ondataavailable = (e: BlobEvent) => {
-					if (e.data.size > 0) audioChunks.push(e.data);
-				};
-
-				mediaRecorder.start();
-				setActiveRecorder(mediaRecorder);
-				setVoiceTesting({ id: providerId, type, phase: "recording" });
-				rerender();
-
-				mediaRecorder.onstop = async () => {
+		try {
+			const recorder = await startSttProviderRecording(providerId, {
+				onTranscribing: () => {
 					setActiveRecorder(null);
-					for (const track of stream.getTracks()) track.stop();
 					setVoiceTesting({ id: providerId, type, phase: "transcribing" });
 					rerender();
-
-					const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || mimeType });
-
-					try {
-						const resp = await transcribeAudio(S.activeSessionKey, providerId, audioBlob);
-						if (resp.ok) {
-							const sttRes = (await resp.json()) as {
-								ok?: boolean;
-								transcription?: { text?: string };
-								transcriptionError?: string;
-								error?: string;
-							};
-
-							if (sttRes.ok && typeof sttRes.transcription?.text === "string") {
-								const transcriptText = sttRes.transcription.text.trim();
-								setVoiceTestResults((prev) => ({
-									...prev,
-									[providerId]: {
-										text: transcriptText || null,
-										error: transcriptText ? null : "No speech detected",
-									},
-								}));
-							} else {
-								setVoiceTestResults((prev) => ({
-									...prev,
-									[providerId]: {
-										text: null,
-										error: sttRes.transcriptionError || sttRes.error || "STT test failed",
-									},
-								}));
-							}
-						} else {
-							const errBody = await resp.text();
-							console.error("[STT] upload failed: status=%d body=%s", resp.status, errBody);
-							let errMsg = "STT test failed";
-							try {
-								errMsg = (JSON.parse(errBody) as { error?: string })?.error || errMsg;
-							} catch (_e) {
-								// not JSON
-							}
-							setVoiceTestResults((prev) => ({
-								...prev,
-								[providerId]: { text: null, error: `${errMsg} (HTTP ${resp.status})` },
-							}));
-						}
-					} catch (fetchErr) {
-						setVoiceTestResults((prev) => ({
-							...prev,
-							[providerId]: { text: null, error: (fetchErr as Error).message || "STT test failed" },
-						}));
-					}
+				},
+				onResult: (result) => {
+					setVoiceTestResults((current) => ({ ...current, [providerId]: result }));
 					setVoiceTesting(null);
 					rerender();
-				};
-			} catch (err) {
-				showToast(humanizeMicError(err as { name?: string; message?: string }), "error");
-				setVoiceTesting(null);
-			}
+				},
+			});
+			setActiveRecorder(recorder);
+			setVoiceTesting({ id: providerId, type, phase: "recording" });
+		} catch (caught) {
+			showToast(humanizeMicError(caught as { name?: string; message?: string }), "error");
+			setVoiceTesting(null);
 		}
 		rerender();
+	}
+
+	async function testPersona(personaId: string): Promise<void> {
+		const setPhase = (phase: PersonaTestPhase): void => {
+			setPersonaTesting((current) => ({ ...current, [personaId]: phase }));
+			rerender();
+		};
+		setPhase("testing");
+		const started = await startPersonaTest(personaId, {
+			onPlaying: () => setPhase("playing"),
+			onEnded: () => setPhase(""),
+		});
+		if (!started) setPhase("");
+	}
+
+	async function setActivePersona(personaId: string | null): Promise<void> {
+		await setActiveVoicePersona(personaId);
+		await fetchPersonas();
+	}
+
+	async function removePersona(personaId: string): Promise<void> {
+		await deleteVoicePersona(personaId);
+		await fetchPersonas();
+	}
+
+	function finishPersonaEditing(): void {
+		setPersonaEditing(null);
+		void fetchPersonas();
 	}
 
 	if (voiceLoading || !connected.value) {
@@ -433,163 +664,17 @@ export function VoiceSection(): VNode {
 				)}
 
 				{activeTab === "personas" && (
-					<div className="flex flex-col gap-3">
-						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
-							Named voice identities injected into every TTS call. Instead of improvising tone per-message, a persona
-							defines a stable spoken character.
-						</p>
-						{personas.length === 0 ? (
-							<p className="text-xs text-[var(--muted)] italic">No personas configured yet.</p>
-						) : (
-							<div className="flex flex-col gap-2">
-								{personas.map((pr) => (
-									<div
-										key={pr.persona.id}
-										className={`flex items-center gap-3 p-3 rounded border ${pr.isActive ? "border-[var(--accent)]" : "border-[var(--border)]"}`}
-										style={{ background: "var(--surface)" }}
-									>
-										<div className="flex-1 min-w-0">
-											<div className="flex items-center gap-2 flex-wrap">
-												<span className="text-sm font-medium text-[var(--text-strong)]">{pr.persona.label}</span>
-												{pr.isActive ? (
-													<span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)] text-white">
-														active
-													</span>
-												) : null}
-												{(pr.persona.provider_bindings || []).map((b) => (
-													<span
-														key={b.provider}
-														className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-alt)] text-[var(--muted)]"
-													>
-														{b.provider}
-														{b.voice_id ? `: ${b.voice_id}` : ""}
-													</span>
-												))}
-											</div>
-											{pr.persona.description ? (
-												<p className="text-xs text-[var(--muted)] truncate" style={{ margin: "2px 0 0 0" }}>
-													{pr.persona.description}
-												</p>
-											) : null}
-											{pr.persona.prompt.profile ? (
-												<p className="text-[10px] text-[var(--muted)] truncate italic" style={{ margin: "2px 0 0 0" }}>
-													{pr.persona.prompt.profile}
-												</p>
-											) : null}
-										</div>
-										<div className="flex items-center gap-1.5">
-											<button
-												type="button"
-												className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
-												disabled={!!personaTesting[pr.persona.id]}
-												onClick={async () => {
-													setPersonaTesting((prev) => ({ ...prev, [pr.persona.id]: "testing" }));
-													rerender();
-													try {
-														const identity = gon.get("identity") as { user_name?: string; name?: string } | undefined;
-														const user = identity?.user_name || "friend";
-														const bot = identity?.name || "Chelix";
-														const text = await fetchPhrase("settings", user, bot);
-														const res = (await testTtsWithPersona(text, pr.persona.id)) as RpcResponse;
-														if (res?.ok) {
-															const payload = res.payload as {
-																audio?: string;
-																mimeType?: string;
-															};
-															if (payload?.audio) {
-																setPersonaTesting((prev) => ({ ...prev, [pr.persona.id]: "playing" }));
-																rerender();
-																const bytes = decodeBase64Safe(payload.audio);
-																const blob = new Blob([bytes as BlobPart], {
-																	type: payload.mimeType || "audio/mpeg",
-																});
-																const url = URL.createObjectURL(blob);
-																const audio = new Audio(url);
-																audio.onended = () => {
-																	URL.revokeObjectURL(url);
-																	setPersonaTesting((prev) => ({ ...prev, [pr.persona.id]: "" }));
-																	rerender();
-																};
-																audio.play().catch((e: Error) => console.error("[TTS]", e));
-																return;
-															}
-														}
-													} catch (_e) {
-														/* ignore */
-													}
-													setPersonaTesting((prev) => ({ ...prev, [pr.persona.id]: "" }));
-													rerender();
-												}}
-											>
-												{personaTesting[pr.persona.id] === "testing"
-													? "Testing\u2026"
-													: personaTesting[pr.persona.id] === "playing"
-														? "Playing\u2026"
-														: "Test"}
-											</button>
-											<button
-												type="button"
-												className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
-												onClick={() => setPersonaEditing(pr.persona.id)}
-											>
-												Edit
-											</button>
-											{pr.isActive ? (
-												<button
-													type="button"
-													className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
-													onClick={async () => {
-														await setActiveVoicePersona(null);
-														fetchPersonas();
-													}}
-												>
-													Deactivate
-												</button>
-											) : (
-												<button
-													type="button"
-													className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
-													onClick={async () => {
-														await setActiveVoicePersona(pr.persona.id);
-														fetchPersonas();
-													}}
-												>
-													Activate
-												</button>
-											)}
-											<button
-												type="button"
-												className="provider-btn text-xs !py-1 !px-2.5 !bg-[var(--error)] hover:!bg-red-700"
-												onClick={async () => {
-													await deleteVoicePersona(pr.persona.id);
-													fetchPersonas();
-												}}
-											>
-												Remove
-											</button>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-						<button type="button" className="provider-btn" onClick={() => setPersonaEditing("__new__")}>
-							+ Add Persona
-						</button>
-
-						{personaEditing !== null ? (
-							<PersonaEditModal
-								editingId={personaEditing}
-								existingPersona={
-									personaEditing !== "__new__" ? (personas.find((p) => p.persona.id === personaEditing) ?? null) : null
-								}
-								onClose={() => setPersonaEditing(null)}
-								onSaved={() => {
-									setPersonaEditing(null);
-									fetchPersonas();
-								}}
-							/>
-						) : null}
-					</div>
+					<VoicePersonasPanel
+						personas={personas}
+						testing={personaTesting}
+						editingId={personaEditing}
+						onTest={(personaId) => void testPersona(personaId)}
+						onEdit={setPersonaEditing}
+						onSetActive={(personaId) => void setActivePersona(personaId)}
+						onRemove={(personaId) => void removePersona(personaId)}
+						onCloseEditor={() => setPersonaEditing(null)}
+						onSaved={finishPersonaEditing}
+					/>
 				)}
 
 				{activeTab === "input" && (
@@ -674,132 +759,164 @@ interface VoiceProviderRowProps {
 	onSetPreferred?: () => void;
 }
 
-function VoiceProviderRow({
+interface VoiceTestButtonState {
+	text: string;
+	disabled: boolean;
+}
+
+function voiceTestButtonState(testState: VoiceTesting | null): VoiceTestButtonState {
+	if (testState?.phase === "recording") return { text: "Stop", disabled: false };
+	if (testState) return { text: "Testing\u2026", disabled: true };
+	return { text: "Test", disabled: false };
+}
+
+function voiceKeySourceLabel(source?: string): string {
+	if (source === "env") return "(from env)";
+	if (source === "llm_provider") return "(from LLM provider)";
+	return "";
+}
+
+function VoiceProviderIdentity({
 	provider,
 	meta,
-	type,
-	saving,
-	testState,
-	testResult,
-	onToggle,
-	onConfigure,
-	onTest,
 	preferred,
-	onSetPreferred,
-}: VoiceProviderRowProps): VNode {
-	const canEnable = provider.available;
-	const keySourceLabel =
-		provider.keySource === "env" ? "(from env)" : provider.keySource === "llm_provider" ? "(from LLM provider)" : "";
-	const showTestBtn = canEnable && provider.enabled;
-
-	let buttonText = "Test";
-	let buttonDisabled = false;
-	if (testState) {
-		if (testState.phase === "recording") {
-			buttonText = "Stop";
-		} else if (testState.phase === "transcribing") {
-			buttonText = "Testing\u2026";
-			buttonDisabled = true;
-		} else {
-			buttonText = "Testing\u2026";
-			buttonDisabled = true;
-		}
-	}
-
+}: Pick<VoiceProviderRowProps, "provider" | "meta" | "preferred">): VNode {
+	const keySource = voiceKeySourceLabel(provider.keySource);
 	return (
-		<div
-			className="provider-card"
-			style={{ padding: "10px 14px", borderRadius: "8px", display: "flex", alignItems: "center", gap: "12px" }}
-		>
-			<div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "2px" }}>
-				<div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-					<span className="text-sm text-[var(--text-strong)]">{meta.name}</span>
-					{preferred ? (
-						<span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)] text-white">preferred</span>
-					) : null}
-					{provider.category === "local" ? <span className="provider-item-badge">local</span> : null}
-					{keySourceLabel ? <span className="text-xs text-[var(--muted)]">{keySourceLabel}</span> : null}
+		<>
+			<div className="flex items-center gap-2">
+				<span className="text-sm text-[var(--text-strong)]">{meta.name}</span>
+				{preferred && (
+					<span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)] text-white">preferred</span>
+				)}
+				{provider.category === "local" && <span className="provider-item-badge">local</span>}
+				{keySource && <span className="text-xs text-[var(--muted)]">{keySource}</span>}
+			</div>
+			<span className="text-xs text-[var(--muted)]">{meta.description}</span>
+		</>
+	);
+}
+
+function VoiceProviderMetadata({ provider, type }: Pick<VoiceProviderRowProps, "provider" | "type">): VNode {
+	return (
+		<>
+			{provider.settingsSummary && (
+				<span className="text-xs text-[var(--muted)]">
+					{type === "tts" ? "Voice" : "Settings"}: {provider.settingsSummary}
+				</span>
+			)}
+			{provider.binaryPath && <span className="text-xs text-[var(--muted)]">Found at: {provider.binaryPath}</span>}
+			{!provider.available && provider.statusMessage && (
+				<span className="text-xs text-[var(--muted)]">{provider.statusMessage}</span>
+			)}
+		</>
+	);
+}
+
+function VoiceTestProgress({ state, type }: { state: VoiceTesting | null; type: string }): VNode | null {
+	if (state?.phase === "recording") {
+		return (
+			<div className="voice-recording-hint">
+				<span className="voice-recording-dot" />
+				<span>Speak now, then click Stop when finished</span>
+			</div>
+		);
+	}
+	if (state?.phase === "transcribing") return <span className="text-xs text-[var(--muted)]">Transcribing...</span>;
+	if (state?.phase === "testing" && type === "tts")
+		return <span className="text-xs text-[var(--muted)]">Playing audio...</span>;
+	return null;
+}
+
+function VoiceTestFeedback({ result }: { result: VoiceTestResult | null }): VNode {
+	return (
+		<>
+			{result?.text && (
+				<div className="voice-transcription-result">
+					<span className="voice-transcription-label">Transcribed:</span>
+					<span className="voice-transcription-text">"{result.text}"</span>
 				</div>
-				<span className="text-xs text-[var(--muted)]">{meta.description}</span>
-				{provider.settingsSummary ? (
-					<span className="text-xs text-[var(--muted)]">
-						{type === "tts" ? "Voice" : "Settings"}: {provider.settingsSummary}
-					</span>
-				) : null}
-				{provider.binaryPath ? (
-					<span className="text-xs text-[var(--muted)]">Found at: {provider.binaryPath}</span>
-				) : null}
-				{!canEnable && provider.statusMessage ? (
-					<span className="text-xs text-[var(--muted)]">{provider.statusMessage}</span>
-				) : null}
-				{testState?.phase === "recording" ? (
-					<div className="voice-recording-hint">
-						<span className="voice-recording-dot" />
-						<span>Speak now, then click Stop when finished</span>
-					</div>
-				) : null}
-				{testState?.phase === "transcribing" ? (
-					<span className="text-xs text-[var(--muted)]">Transcribing...</span>
-				) : null}
-				{testState?.phase === "testing" && type === "tts" ? (
-					<span className="text-xs text-[var(--muted)]">Playing audio...</span>
-				) : null}
-				{testResult?.text ? (
-					<div className="voice-transcription-result">
-						<span className="voice-transcription-label">Transcribed:</span>
-						<span className="voice-transcription-text">"{testResult.text}"</span>
-					</div>
-				) : null}
-				{testResult?.success === true ? (
-					<div className="voice-success-result">
-						<span className="icon icon-md icon-check-circle" />
-						<span>Audio played successfully</span>
-					</div>
-				) : null}
-				{testResult?.error ? (
-					<div className="voice-error-result">
-						<span className="icon icon-md icon-x-circle" />
-						<span>{testResult.error}</span>
-					</div>
-				) : null}
-			</div>
-			<div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-				{onSetPreferred && provider.enabled && !preferred ? (
-					<button
-						className="provider-btn provider-btn-secondary text-xs !py-1 !px-2"
-						onClick={onSetPreferred}
-						title="Set as preferred TTS provider"
-					>
-						📌
-					</button>
-				) : null}
-				<button className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onConfigure}>
-					Configure
+			)}
+			{result?.success === true && (
+				<div className="voice-success-result">
+					<span className="icon icon-md icon-check-circle" />
+					<span>Audio played successfully</span>
+				</div>
+			)}
+			{result?.error && (
+				<div className="voice-error-result">
+					<span className="icon icon-md icon-x-circle" />
+					<span>{result.error}</span>
+				</div>
+			)}
+		</>
+	);
+}
+
+function VoiceProviderActions(props: VoiceProviderRowProps): VNode {
+	const button = voiceTestButtonState(props.testState);
+	return (
+		<div className="flex items-center gap-2">
+			{props.onSetPreferred && props.provider.enabled && !props.preferred && (
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary text-xs !py-1 !px-2"
+					onClick={props.onSetPreferred}
+					title="Set as preferred TTS provider"
+				>
+					📌
 				</button>
-				{showTestBtn ? (
-					<button
-						className="provider-btn provider-btn-secondary provider-btn-sm"
-						onClick={onTest}
-						disabled={buttonDisabled}
-						title={type === "tts" ? "Test voice output" : "Test voice input"}
-					>
-						{buttonText}
-					</button>
-				) : null}
-				{canEnable ? (
-					<label className="toggle-switch">
-						<input
-							type="checkbox"
-							checked={provider.enabled}
-							disabled={saving}
-							onChange={(e: Event) => onToggle(targetChecked(e))}
-						/>
-						<span className="toggle-slider" />
-					</label>
-				) : provider.category === "local" ? (
-					<span className="text-xs text-[var(--muted)]">Install required</span>
-				) : null}
+			)}
+			<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={props.onConfigure}>
+				Configure
+			</button>
+			{props.provider.available && props.provider.enabled && (
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary provider-btn-sm"
+					onClick={props.onTest}
+					disabled={button.disabled}
+					title={props.type === "tts" ? "Test voice output" : "Test voice input"}
+				>
+					{button.text}
+				</button>
+			)}
+			<VoiceProviderToggle {...props} />
+		</div>
+	);
+}
+
+function VoiceProviderToggle({
+	provider,
+	saving,
+	onToggle,
+}: Pick<VoiceProviderRowProps, "provider" | "saving" | "onToggle">): VNode | null {
+	if (provider.available) {
+		return (
+			<label className="toggle-switch">
+				<input
+					type="checkbox"
+					checked={provider.enabled}
+					disabled={saving}
+					onChange={(event) => onToggle(targetChecked(event))}
+				/>
+				<span className="toggle-slider" />
+			</label>
+		);
+	}
+	return provider.category === "local" ? <span className="text-xs text-[var(--muted)]">Install required</span> : null;
+}
+
+function VoiceProviderRow(props: VoiceProviderRowProps): VNode {
+	return (
+		<div className="provider-card flex items-center gap-3 py-2.5 px-3.5 rounded-lg">
+			<div className="flex-1 flex flex-col gap-0.5">
+				<VoiceProviderIdentity provider={props.provider} meta={props.meta} preferred={props.preferred} />
+				<VoiceProviderMetadata provider={props.provider} type={props.type} />
+				<VoiceTestProgress state={props.testState} type={props.type} />
+				<VoiceTestFeedback result={props.testResult} />
 			</div>
+			<VoiceProviderActions {...props} />
 		</div>
 	);
 }

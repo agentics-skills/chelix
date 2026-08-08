@@ -61,3 +61,20 @@ export interface SetSessionAgentPayload {
 	reasoningEffort: string | null;
 	version: number;
 }
+
+/** Session token usage counters. */
+export interface SessionTokens {
+	input: number;
+	output: number;
+}
+
+/** A history message stored in the session history cache. */
+export interface HistoryMessage {
+	role?: string;
+	content?: string;
+	historyIndex?: number;
+	messageIndex?: number;
+	tool_call_id?: string;
+	run_id?: string;
+	[key: string]: unknown;
+}

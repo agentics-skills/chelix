@@ -243,14 +243,14 @@ export function CommandPalette(): VNode | null {
 	let groupOffset = 0;
 
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss pattern, keyboard handled by inner dialog
-		// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled by capture-phase document listener
-		<div
-			class="cmd-palette-backdrop"
-			onClick={(e: Event) => {
-				if (e.target === e.currentTarget) closePalette();
-			}}
-		>
+		<div class="cmd-palette-backdrop">
+			<button
+				type="button"
+				class="cmd-palette-backdrop-dismiss"
+				aria-label="Close command palette"
+				tabIndex={-1}
+				onClick={closePalette}
+			/>
 			<div role="dialog" aria-modal="true" aria-label="Command palette" class="cmd-palette">
 				<div class="cmd-palette-input-row">
 					<span class="icon icon-md icon-search cmd-palette-search-icon" />
