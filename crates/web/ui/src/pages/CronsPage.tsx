@@ -1,7 +1,7 @@
 // ── Crons page (Preact + Signals) ──────────────────────────
 
 import { signal, useSignal } from "@preact/signals";
-import type { VNode } from "preact";
+import type { TargetedSubmitEvent, VNode } from "preact";
 import { render } from "preact";
 import { useEffect } from "preact/hooks";
 import { fetchChannelStatus } from "../channel-utils";
@@ -253,9 +253,9 @@ function HeartbeatSection(): VNode {
 	const job = findHeartbeatJob();
 	const runBlockedReason = heartbeatRunBlockedReason(cfg, promptSource, job);
 
-	function onSave(e: Event): void {
+	function onSave(e: TargetedSubmitEvent<HTMLFormElement>): void {
 		e.preventDefault();
-		const updated = collectHeartbeatForm(e.currentTarget as HTMLFormElement);
+		const updated = collectHeartbeatForm(e.currentTarget);
 		heartbeatSaving.value = true;
 		sendRpc("heartbeat.update", updated).then((res) => {
 			heartbeatSaving.value = false;
@@ -301,7 +301,7 @@ function HeartbeatSection(): VNode {
 	const promptSourceText = heartbeatPromptSourceText(promptSource);
 
 	return (
-		<div className="heartbeat-form" style={{ maxWidth: "600px" }}>
+		<form className="heartbeat-form" style={{ maxWidth: "600px" }} onSubmit={onSave}>
 			<div className="flex items-center justify-between mb-2">
 				<div className="flex items-center gap-3">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Heartbeat</h2>
@@ -507,11 +507,11 @@ function HeartbeatSection(): VNode {
 
 			{/* Save */}
 			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<button type="button" className="provider-btn" onClick={onSave} disabled={saving}>
+				<button type="submit" className="provider-btn" disabled={saving}>
 					{saving ? "Saving\u2026" : "Save"}
 				</button>
 			</div>
-		</div>
+		</form>
 	);
 }
 
