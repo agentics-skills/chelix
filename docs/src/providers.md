@@ -11,7 +11,6 @@ Configure providers through the web UI or directly in configuration files.
 | -------------------- | ------------ | -------------------- | ---------------------------------------------------------------- |
 | **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision, model discovery                        |
 | **Google Gemini**    | `gemini`     | `GEMINI_API_KEY`     | Streaming, tools, vision, model discovery                        |
-| **xAI (Grok)**       | `xai`        | `XAI_API_KEY`        | Streaming                                                        |
 | **OpenRouter**       | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools, model discovery                                |
 | **Moonshot (Kimi)**  | `moonshot`   | `MOONSHOT_API_KEY`   | Streaming, tools, model discovery                                |
 | **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools, model discovery                                |

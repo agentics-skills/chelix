@@ -88,16 +88,6 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "xai",
-            display_name: "xAI (Grok)",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("XAI_API_KEY"),
-            default_base_url: Some("https://api.x.ai/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
             name: "openrouter",
             display_name: "OpenRouter",
             auth_type: AuthType::ApiKey,

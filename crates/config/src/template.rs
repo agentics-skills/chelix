@@ -140,7 +140,7 @@ port = {port}                           # Port number (auto-generated for this i
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
-#   "openai", "gemini", "xai", "deepinfra",
+#   "openai", "gemini", "deepinfra",
 #   "openrouter", "moonshot", "zai", "zai-code", "alibaba-coding",
 #   "openai-codex", "kimi-code"
 
@@ -172,13 +172,6 @@ port = {port}                           # Port number (auto-generated for this i
 # base_url = "https://api.deepinfra.com/v1/openai"
 # alias = "deepinfra"
 # [providers.deepinfra.models."meta-llama/Llama-4-Maverick-17B-128E-Instruct"]
-
-# ── xAI (Grok) ────────────────────────────────────────────────
-# [providers.xai]
-# enabled = true
-# api_key = "..."                             # Or set XAI_API_KEY env var
-# alias = "xai"
-# [providers.xai.models."grok-3-mini"]
 
 # ── OpenRouter (multi-provider gateway) ───────────────────────
 # [providers.openrouter]

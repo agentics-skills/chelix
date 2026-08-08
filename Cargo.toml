@@ -193,8 +193,6 @@ serde_yaml        = "0.9"
 tokio-tungstenite = "0.26"
 toml              = "0.8"
 toml_edit         = "0.22"
-# LLM provider crates (optional, behind feature flags)
-async-openai = { features = ["chat-completion"], version = "0.32" }
 base64       = "0.22"
 bytemuck     = { features = ["derive"], version = "1" }
 bytes        = "1"

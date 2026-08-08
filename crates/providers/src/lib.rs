@@ -1,6 +1,5 @@
 //! LLM provider implementations and registry.
 
-pub mod async_openai_provider;
 mod client;
 pub mod config_helpers;
 pub mod discovered_model;
