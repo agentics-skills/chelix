@@ -337,7 +337,7 @@ fn conversion_errors_name_the_offending_tool() {
     });
 
     for error in [
-        to_openai_tools(&[broken.clone()]).err(),
+        to_openai_tools(std::slice::from_ref(&broken)).err(),
         to_responses_api_tools(&[broken]).err(),
     ] {
         let error = error.unwrap_or_else(|| panic!("the broken tool must be refused"));

@@ -74,6 +74,31 @@ export interface ProviderInfo {
 	uiOrder: number;
 }
 
+/** Configured model entry for the provider page. */
+export interface ConfiguredModel {
+	id: string;
+	provider: string;
+	displayName?: string;
+	[key: string]: unknown;
+}
+
+/** Provider metadata entry. */
+export interface ProviderMeta {
+	name: string;
+	configured?: boolean;
+	[key: string]: unknown;
+}
+
+/** Detection summary from provider auto-detect. */
+export interface DetectSummary {
+	[key: string]: unknown;
+}
+
+/** Detection progress update. */
+export interface DetectProgress {
+	[key: string]: unknown;
+}
+
 export function rawModelId(modelId: string): string {
 	const separator = modelId.lastIndexOf("::");
 	return separator >= 0 ? modelId.slice(separator + 2) : modelId;

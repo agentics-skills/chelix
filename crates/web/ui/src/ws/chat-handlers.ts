@@ -32,7 +32,7 @@ import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
 import { resolveAssistantTurnEnd, toolCallIds } from "../tool-call-card";
-import type { HistoryMessage } from "../types";
+import type { HistoryMessage } from "../types/session";
 import type { AbortedPartialState, ChatPayload, ToolCallPayload } from "../types/ws-events";
 import {
 	clearChatEmptyState,
@@ -165,32 +165,32 @@ function updateActiveTokenBarContextBudget(p: ChatPayload, isActive: boolean, is
 	if (isActive && isChatPage && p.contextBudget) updateTokenBar(p.contextBudget);
 }
 
-function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	updateSessionRunId(eventSession, p.runId);
-	// A rejected call never emits `tool_call_start`, so its canonical assistant
-	// frame arrives on this terminal event instead and must be cached here.
-	if (p.rejected === true && p.assistantMessage && Number.isInteger(p.assistantMessageIndex)) {
-		const assistantIndex = p.assistantMessageIndex as number;
-		const session = sessionStore.getByKey(eventSession);
-		const known = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
-		if (assistantIndex > known) bumpSessionCount(eventSession, 1);
-		cacheSessionHistoryMessage(eventSession, assistantHistoryMessage(p.assistantMessage), assistantIndex);
-		updateSessionHistoryIndex(eventSession, assistantIndex);
-	}
-	// The assistant tool-call frame was persisted at tool start; completion
-	// persists exactly one additional tool-result record.
-	let toolHistoryIndex: number | undefined | null = p.messageIndex;
-	if (toolHistoryIndex === undefined || toolHistoryIndex === null) {
-		const toolSession = sessionStore.getByKey(eventSession);
-		if (toolSession && typeof toolSession.messageCount === "number" && toolSession.messageCount > 0) {
-			toolHistoryIndex = toolSession.messageCount - 1;
-		}
-	}
-	const toolSession = sessionStore.getByKey(eventSession);
-	const knownIndex = toolSession ? toolSession.lastHistoryIndex.value : S.lastHistoryIndex;
-	if (toolHistoryIndex === undefined || toolHistoryIndex > knownIndex) {
-		bumpSessionCount(eventSession, 1);
-	}
+function cacheRejectedAssistantFrame(p: ChatPayload, eventSession: string): void {
+	if (p.rejected !== true || !p.assistantMessage || !Number.isInteger(p.assistantMessageIndex)) return;
+	const assistantIndex = p.assistantMessageIndex as number;
+	const session = sessionStore.getByKey(eventSession);
+	const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
+	if (assistantIndex > knownIndex) bumpSessionCount(eventSession, 1);
+	cacheSessionHistoryMessage(eventSession, assistantHistoryMessage(p.assistantMessage), assistantIndex);
+	updateSessionHistoryIndex(eventSession, assistantIndex);
+}
+
+function toolResultHistoryIndex(p: ChatPayload, eventSession: string): number | undefined {
+	if (p.messageIndex !== undefined && p.messageIndex !== null) return p.messageIndex;
+	const session = sessionStore.getByKey(eventSession);
+	return session && session.messageCount > 0 ? session.messageCount - 1 : undefined;
+}
+
+function toolResultError(p: ChatPayload): string | null {
+	if (typeof p.error === "string") return p.error;
+	return p.error?.detail || p.error?.message || null;
+}
+
+function cacheToolResultFrame(p: ChatPayload, eventSession: string): void {
+	const historyIndex = toolResultHistoryIndex(p, eventSession);
+	const session = sessionStore.getByKey(eventSession);
+	const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
+	if (historyIndex === undefined || historyIndex > knownIndex) bumpSessionCount(eventSession, 1);
 	cacheSessionHistoryMessage(
 		eventSession,
 		{
@@ -201,19 +201,18 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 			success: p.success === true,
 			rejected: p.rejected === true,
 			result: p.result || null,
-			error: p.error?.detail || p.error?.message || (typeof p.error === "string" ? String(p.error) : null),
+			error: toolResultError(p),
 			contextBudget: p.contextBudget,
 			created_at: Date.now(),
 		},
-		toolHistoryIndex as number | undefined,
+		historyIndex,
 	);
-	updateSessionHistoryIndex(eventSession, toolHistoryIndex as number | undefined);
-	updateActiveTokenBarContextBudget(p, isActive, isChatPage);
-	if (!(isActive && isChatPage)) return;
+	updateSessionHistoryIndex(eventSession, historyIndex);
+}
+
+function renderToolCallEnd(p: ChatPayload, eventSession: string): void {
 	// A rejected call has no `tool_call_start`, so nothing has closed the live
-	// assistant segment yet. Without this the card is appended after a stream
-	// element that keeps growing, and the next iteration's text is rendered
-	// above it — the rejection only appears in the right place after a reload.
+	// assistant segment yet.
 	if (p.rejected === true) {
 		removeThinking();
 		closeLiveAssistantSegment(p.assistantMessage, p.assistantMessageIndex, eventSession);
@@ -225,6 +224,14 @@ function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: bo
 		return;
 	}
 	completeToolCard(toolCard, p, eventSession);
+}
+
+function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+	updateSessionRunId(eventSession, p.runId);
+	cacheRejectedAssistantFrame(p, eventSession);
+	cacheToolResultFrame(p, eventSession);
+	updateActiveTokenBarContextBudget(p, isActive, isChatPage);
+	if (isActive && isChatPage) renderToolCallEnd(p, eventSession);
 }
 
 function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -308,20 +315,22 @@ function handleChatDelta(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	// extract into a reasoning disclosure on the tool card.
 	if (!(S.streamEl || p.text.trim())) return;
 	removeThinking();
-	if (!S.streamEl) {
+	let streamElement = S.streamEl;
+	if (!streamElement) {
 		S.setStreamText("");
-		S.setStreamEl(document.createElement("div"));
-		S.streamEl!.className = "msg assistant";
+		streamElement = document.createElement("div");
+		streamElement.className = "msg assistant";
+		S.setStreamEl(streamElement);
 		clearChatEmptyState();
-		S.chatMsgBox?.appendChild(S.streamEl!);
+		S.chatMsgBox?.appendChild(streamElement);
 	}
 	S.setStreamText(S.streamText + p.text);
-	setSafeMarkdownHtml(S.streamEl!, S.streamText);
+	setSafeMarkdownHtml(streamElement, S.streamText);
 	if (Number.isInteger(p.messageIndex)) {
-		S.streamEl!.dataset.historyIndex = String(p.messageIndex);
+		streamElement.dataset.historyIndex = String(p.messageIndex);
 	}
 	appendMessageActions({
-		messageEl: S.streamEl!,
+		messageEl: streamElement,
 		sessionKey: eventSession,
 		messageIndex: p.messageIndex,
 		text: S.streamText,
@@ -329,166 +338,208 @@ function handleChatDelta(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	smartScrollToBottom();
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Final message handling with audio/voice branching
-function handleChatFinal(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	clearPendingToolCallEndsForSession(eventSession);
-	updateSessionRunId(eventSession, p.runId);
-	let terminalMessageEl: HTMLElement | null = null;
-	const finalText = String(p.text || "");
-	const hasVisibleFinal =
-		hasNonWhitespaceContent(finalText) ||
-		hasNonWhitespaceContent(p.reasoning || "") ||
-		hasNonWhitespaceContent(p.audio || "");
-	const evtSession = sessionStore.getByKey(eventSession);
-	const lastIdx = evtSession ? evtSession.lastHistoryIndex.value : S.lastHistoryIndex;
-	const finalIsNewHistoryEntry = p.messageIndex === undefined || p.messageIndex > lastIdx;
-	if (finalIsNewHistoryEntry) bumpSessionCount(eventSession, 1);
-	if (hasVisibleFinal) {
-		cacheSessionHistoryMessage(
-			eventSession,
-			{
-				role: "assistant",
-				content: finalText,
-				model: p.model || "",
-				provider: p.provider || "",
-				inputTokens: p.inputTokens || 0,
-				outputTokens: p.outputTokens || 0,
-				cacheReadTokens: p.cacheReadTokens || 0,
-				cacheWriteTokens: p.cacheWriteTokens || 0,
-				durationMs: p.durationMs || 0,
-				requestInputTokens: p.requestInputTokens,
-				requestOutputTokens: p.requestOutputTokens,
-				requestCacheReadTokens: p.requestCacheReadTokens,
-				requestCacheWriteTokens: p.requestCacheWriteTokens,
-				reasoningEffort: p.reasoningEffort,
-				reasoning: p.reasoning || undefined,
-				audio: p.audio || undefined,
-				run_id: p.runId || undefined,
-				created_at: Date.now(),
-			},
-			p.messageIndex,
-		);
+interface FinalMessageContext {
+	text: string;
+	hasVisibleContent: boolean;
+}
+
+function finalMessageContext(payload: ChatPayload): FinalMessageContext {
+	const text = String(payload.text || "");
+	return {
+		text,
+		hasVisibleContent:
+			hasNonWhitespaceContent(text) ||
+			hasNonWhitespaceContent(payload.reasoning || "") ||
+			hasNonWhitespaceContent(payload.audio || ""),
+	};
+}
+
+function finalAssistantHistory(payload: ChatPayload, text: string): HistoryMessage {
+	return {
+		role: "assistant",
+		content: text,
+		model: payload.model || "",
+		provider: payload.provider || "",
+		inputTokens: payload.inputTokens || 0,
+		outputTokens: payload.outputTokens || 0,
+		cacheReadTokens: payload.cacheReadTokens || 0,
+		cacheWriteTokens: payload.cacheWriteTokens || 0,
+		durationMs: payload.durationMs || 0,
+		requestInputTokens: payload.requestInputTokens,
+		requestOutputTokens: payload.requestOutputTokens,
+		requestCacheReadTokens: payload.requestCacheReadTokens,
+		requestCacheWriteTokens: payload.requestCacheWriteTokens,
+		reasoningEffort: payload.reasoningEffort,
+		reasoning: payload.reasoning || undefined,
+		audio: payload.audio || undefined,
+		run_id: payload.runId || undefined,
+		created_at: Date.now(),
+	};
+}
+
+function cacheFinalMessage(payload: ChatPayload, eventSession: string, context: FinalMessageContext): void {
+	const session = sessionStore.getByKey(eventSession);
+	const lastHistoryIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
+	if (payload.messageIndex === undefined || payload.messageIndex > lastHistoryIndex) bumpSessionCount(eventSession, 1);
+	if (context.hasVisibleContent) {
+		cacheSessionHistoryMessage(eventSession, finalAssistantHistory(payload, context.text), payload.messageIndex);
 	}
-	updateSessionHistoryIndex(eventSession, p.messageIndex);
+	updateSessionHistoryIndex(eventSession, payload.messageIndex);
 	setSessionReplying(eventSession, false);
 	setSessionActiveRunId(eventSession, null);
-	if (!isActive) {
-		setSessionUnread(eventSession, true);
-	}
-	if (!(isActive && isChatPage)) {
-		S.setVoicePending(false);
-		return;
-	}
+}
+
+function prepareFinalMessageDom(): void {
 	setComposerStopButton(false);
 	removeThinking();
 	clearStaleRunningToolCards();
+}
 
-	if (S.voicePending && p.replyMedium === "voice") {
-		// Voice pending path: we suppressed streaming, so render everything at once.
-		console.debug("[audio] voice-pending path, audio:", !!p.audio, "text:", finalText.substring(0, 40));
-		const msgEl = S.streamEl || document.createElement("div");
-		msgEl.className = "msg assistant";
-		msgEl.textContent = "";
-		if (!msgEl.parentNode) {
-			clearChatEmptyState();
-			S.chatMsgBox?.appendChild(msgEl);
-		}
+function appendFinalText(messageElement: HTMLElement, text: string): void {
+	if (!hasNonWhitespaceContent(text)) return;
+	const textWrap = document.createElement("div");
+	textWrap.className = "mt-2";
+	setSafeMarkdownHtml(textWrap, text);
+	messageElement.appendChild(textWrap);
+}
 
-		if (p.audio) {
-			const audioSrc = sessionMediaUrl(p.sessionKey || S.activeSessionKey, p.audio);
-			if (audioSrc) {
-				console.debug("[audio] rendering persisted audio:", p.audio);
-				renderAudioPlayer(msgEl, audioSrc, true);
-			}
-		}
-		if (hasNonWhitespaceContent(finalText)) {
-			// Safe: renderMarkdown calls esc() first -- all user input is HTML-escaped.
-			const textWrap = document.createElement("div");
-			textWrap.className = "mt-2";
-			setSafeMarkdownHtml(textWrap, finalText);
-			msgEl.appendChild(textWrap);
-		}
-		if (p.reasoning && !isReasoningAlreadyShown(p.reasoning)) {
-			appendReasoningDisclosure(msgEl, p.reasoning);
-		}
-		terminalMessageEl = msgEl;
-		smartScrollToBottom();
-	} else {
-		let resolvedEl = resolveFinalMessageEl(p);
-		const skipReasoning = p.reasoning && isReasoningAlreadyShown(p.reasoning);
-		if (!resolvedEl && p.reasoning && !skipReasoning) {
-			resolvedEl = chatAddMsg("assistant", "", false);
-		}
-		if (resolvedEl && p.reasoning && !skipReasoning) {
-			appendReasoningDisclosure(resolvedEl, p.reasoning);
-		}
-		if (p.replyMedium === "voice" && p.audio) {
-			if (!resolvedEl) resolvedEl = chatAddMsg("assistant", "", false);
-			console.debug(
-				"[audio] streamed path, audio:",
-				!!p.audio,
-				"voicePending:",
-				S.voicePending,
-				"text:",
-				finalText.substring(0, 40),
-			);
-			if (resolvedEl) {
-				const src2 = sessionMediaUrl(p.sessionKey || S.activeSessionKey, p.audio);
-				console.debug("[audio] rendering persisted audio (streamed):", p.audio);
-				resolvedEl.textContent = "";
-				if (src2) renderAudioPlayer(resolvedEl, src2, true);
-				if (hasNonWhitespaceContent(finalText)) {
-					const textWrap = document.createElement("div");
-					textWrap.className = "mt-2";
-					setSafeMarkdownHtml(textWrap, finalText);
-					resolvedEl.appendChild(textWrap);
-				}
-			}
-		}
-		terminalMessageEl = resolvedEl;
+function appendFinalReasoning(messageElement: HTMLElement, reasoning: string | undefined): void {
+	if (reasoning && !isReasoningAlreadyShown(reasoning)) appendReasoningDisclosure(messageElement, reasoning);
+}
+
+function renderVoicePendingFinal(payload: ChatPayload, text: string): HTMLElement {
+	console.debug("[audio] voice-pending path, audio:", Boolean(payload.audio), "text:", text.substring(0, 40));
+	const messageElement = S.streamEl || document.createElement("div");
+	messageElement.className = "msg assistant";
+	messageElement.textContent = "";
+	if (!messageElement.parentNode) {
+		clearChatEmptyState();
+		S.chatMsgBox?.appendChild(messageElement);
 	}
-	if (terminalMessageEl) {
-		appendMessageActions({
-			messageEl: terminalMessageEl,
-			sessionKey: eventSession,
-			messageIndex: p.messageIndex,
-			text: finalText,
-			hasAudio: !!p.audio,
-		});
+	if (payload.audio) {
+		const audioSource = sessionMediaUrl(payload.sessionKey || S.activeSessionKey, payload.audio);
+		if (audioSource) {
+			console.debug("[audio] rendering persisted audio:", payload.audio);
+			renderAudioPlayer(messageElement, audioSource, true);
+		}
 	}
-	if (p.inputTokens || p.outputTokens) {
-		S.sessionTokens.input += p.inputTokens || 0;
-		S.sessionTokens.output += p.outputTokens || 0;
+	appendFinalText(messageElement, text);
+	appendFinalReasoning(messageElement, payload.reasoning);
+	smartScrollToBottom();
+	return messageElement;
+}
+
+function renderStreamedVoiceAudio(payload: ChatPayload, text: string, messageElement: HTMLElement): void {
+	console.debug(
+		"[audio] streamed path, audio:",
+		Boolean(payload.audio),
+		"voicePending:",
+		S.voicePending,
+		"text:",
+		text.substring(0, 40),
+	);
+	const audioSource = sessionMediaUrl(payload.sessionKey || S.activeSessionKey, payload.audio || "");
+	console.debug("[audio] rendering persisted audio (streamed):", payload.audio);
+	messageElement.textContent = "";
+	if (audioSource) renderAudioPlayer(messageElement, audioSource, true);
+	appendFinalText(messageElement, text);
+}
+
+function renderStreamedFinal(payload: ChatPayload, text: string): HTMLElement | null {
+	let messageElement = resolveFinalMessageEl(payload);
+	const reasoningAlreadyShown = Boolean(payload.reasoning && isReasoningAlreadyShown(payload.reasoning));
+	if (!messageElement && payload.reasoning && !reasoningAlreadyShown) {
+		messageElement = chatAddMsg("assistant", "", false);
 	}
-	if (p.requestInputTokens !== undefined && p.requestInputTokens !== null) {
-		S.setSessionCurrentInputTokens(p.requestInputTokens || 0);
-	} else if (p.inputTokens || p.outputTokens) {
-		S.setSessionCurrentInputTokens(p.inputTokens || 0);
+	if (messageElement && payload.reasoning && !reasoningAlreadyShown) {
+		appendReasoningDisclosure(messageElement, payload.reasoning);
 	}
-	S.setSessionCurrentContextTokens(terminalContextTokens(p));
+	if (payload.replyMedium === "voice" && payload.audio) {
+		messageElement ||= chatAddMsg("assistant", "", false);
+		if (messageElement) renderStreamedVoiceAudio(payload, text, messageElement);
+	}
+	return messageElement;
+}
+
+function renderFinalMessage(payload: ChatPayload, text: string): HTMLElement | null {
+	return S.voicePending && payload.replyMedium === "voice"
+		? renderVoicePendingFinal(payload, text)
+		: renderStreamedFinal(payload, text);
+}
+
+function appendFinalMessageActions(
+	messageElement: HTMLElement | null,
+	payload: ChatPayload,
+	eventSession: string,
+	text: string,
+): void {
+	if (!messageElement) return;
+	appendMessageActions({
+		messageEl: messageElement,
+		sessionKey: eventSession,
+		messageIndex: payload.messageIndex,
+		text,
+		hasAudio: Boolean(payload.audio),
+	});
+}
+
+function updateFinalTokenState(payload: ChatPayload): void {
+	if (payload.inputTokens || payload.outputTokens) {
+		S.sessionTokens.input += payload.inputTokens || 0;
+		S.sessionTokens.output += payload.outputTokens || 0;
+	}
+	if (payload.requestInputTokens !== undefined && payload.requestInputTokens !== null) {
+		S.setSessionCurrentInputTokens(payload.requestInputTokens || 0);
+	} else if (payload.inputTokens || payload.outputTokens) {
+		S.setSessionCurrentInputTokens(payload.inputTokens || 0);
+	}
+	S.setSessionCurrentContextTokens(terminalContextTokens(payload));
 	updateTokenBar();
+}
+
+function appendFinalTerminalMetadata(payload: ChatPayload, messageElement: HTMLElement | null): void {
 	appendTerminalMetadata(
 		S.chatMsgBox,
-		resolveAssistantTurnEnd(p.messageIndex, terminalMessageEl),
-		terminalMetadataData(p, { historyIndex: p.messageIndex, runId: p.runId, timestamp: Date.now() }),
+		resolveAssistantTurnEnd(payload.messageIndex, messageElement),
+		terminalMetadataData(payload, {
+			historyIndex: payload.messageIndex,
+			runId: payload.runId,
+			timestamp: Date.now(),
+		}),
 	);
-	// Reset per-session stream state
-	const finalSession = sessionStore.getByKey(eventSession);
-	if (finalSession) finalSession.resetStreamState();
-	// Dual-write to global state for backward compat
+}
+
+function resetFinalStreamState(eventSession: string): void {
+	sessionStore.getByKey(eventSession)?.resetStreamState();
 	S.setStreamEl(null);
 	S.setStreamText("");
 	S.setLastToolOutput("");
 	S.setVoicePending(false);
+}
+
+function finishFinalMessageUi(): void {
 	maybeRefreshFullContext();
-	// Syntax-highlight any code blocks in the completed message.
-	if (S.chatMsgBox?.lastElementChild) {
-		highlightCodeBlocks(S.chatMsgBox.lastElementChild as HTMLElement);
-	}
-	// Move the next queued message from the tray AFTER the response is
-	// fully rendered. This ensures correct ordering: user-msg -> response ->
-	// next-user-msg -> next-response (never next-user-msg before response).
+	if (S.chatMsgBox?.lastElementChild) highlightCodeBlocks(S.chatMsgBox.lastElementChild as HTMLElement);
 	moveFirstQueuedToChat();
+}
+
+function handleChatFinal(payload: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+	clearPendingToolCallEndsForSession(eventSession);
+	updateSessionRunId(eventSession, payload.runId);
+	const context = finalMessageContext(payload);
+	cacheFinalMessage(payload, eventSession, context);
+	if (!isActive) setSessionUnread(eventSession, true);
+	if (!(isActive && isChatPage)) {
+		S.setVoicePending(false);
+		return;
+	}
+	prepareFinalMessageDom();
+	const messageElement = renderFinalMessage(payload, context.text);
+	appendFinalMessageActions(messageElement, payload, eventSession, context.text);
+	updateFinalTokenState(payload);
+	appendFinalTerminalMetadata(payload, messageElement);
+	resetFinalStreamState(eventSession);
+	finishFinalMessageUi();
 }
 
 // ── Compact handling ──────────────────────────────────────────
@@ -548,22 +599,28 @@ function renderCheckpointFromPayload(
 	resetTokensAfterCompaction();
 }
 
+function handleAutoCompactStart(p: ChatPayload, activePage: boolean): void {
+	if (!activePage) return;
+	const statusElement = chatAddMsg("system", "Summarizing conversation (context limit reached)\u2026");
+	if (statusElement) compactingStatusElements.set(p.sessionKey || "__active__", statusElement);
+}
+
+function handleAutoCompactDone(p: ChatPayload, activePage: boolean, eventSession: string): void {
+	if (activePage) removeCompactingStatus(p);
+	renderCheckpointFromPayload(p, activePage, activePage, eventSession);
+}
+
+function handleAutoCompactError(p: ChatPayload, activePage: boolean): void {
+	if (!activePage) return;
+	removeCompactingStatus(p);
+	chatAddMsg("error", `Auto-compact failed: ${p.error?.message || p.error?.detail || "unknown error"}`);
+}
+
 function handleChatAutoCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	if (p.phase === "start") {
-		if (!(isActive && isChatPage)) return;
-		const statusEl = chatAddMsg("system", "Summarizing conversation (context limit reached)\u2026");
-		const key = p.sessionKey || "__active__";
-		if (statusEl) {
-			compactingStatusElements.set(key, statusEl);
-		}
-	} else if (p.phase === "done") {
-		if (isActive && isChatPage) removeCompactingStatus(p);
-		renderCheckpointFromPayload(p, isActive, isChatPage, eventSession);
-	} else if (p.phase === "error") {
-		if (!(isActive && isChatPage)) return;
-		removeCompactingStatus(p);
-		chatAddMsg("error", `Auto-compact failed: ${p.error?.message || p.error?.detail || "unknown error"}`);
-	}
+	const activePage = isActive && isChatPage;
+	if (p.phase === "start") handleAutoCompactStart(p, activePage);
+	if (p.phase === "done") handleAutoCompactDone(p, activePage, eventSession);
+	if (p.phase === "error") handleAutoCompactError(p, activePage);
 }
 
 // `chat.compact done` is emitted by ChatService::compact on every
@@ -684,6 +741,31 @@ function getAbortedPartialState(p: ChatPayload): AbortedPartialState {
 	};
 }
 
+function abortedPartialHistoryMessage(p: ChatPayload, partialState: AbortedPartialState): HistoryMessage {
+	const partial = partialState.partial;
+	return {
+		role: "assistant",
+		content: partialState.partialText,
+		model: partial?.model || "",
+		provider: partial?.provider || "",
+		inputTokens: partial?.inputTokens || 0,
+		outputTokens: partial?.outputTokens || 0,
+		cacheReadTokens: partial?.cacheReadTokens || 0,
+		cacheWriteTokens: partial?.cacheWriteTokens || 0,
+		durationMs: partial?.durationMs || 0,
+		requestInputTokens: partial?.requestInputTokens,
+		requestOutputTokens: partial?.requestOutputTokens,
+		requestCacheReadTokens: partial?.requestCacheReadTokens,
+		requestCacheWriteTokens: partial?.requestCacheWriteTokens,
+		tool_calls: partial?.tool_calls,
+		reasoningEffort: partial?.reasoningEffort,
+		reasoning: partial?.reasoning || undefined,
+		audio: partial?.audio || undefined,
+		run_id: partial?.run_id || p.runId || undefined,
+		created_at: partial?.created_at || Date.now(),
+	};
+}
+
 function cacheAbortedPartial(
 	eventSession: string,
 	p: ChatPayload,
@@ -691,37 +773,43 @@ function cacheAbortedPartial(
 	partialState: AbortedPartialState,
 ): void {
 	if (!(partialState.hasVisiblePartial || partialState.hasTerminalToolBatch)) return;
-	const partial = partialState.partial;
-	const lastIdx = abortSession ? abortSession.lastHistoryIndex.value : S.lastHistoryIndex;
-	if (p.messageIndex === undefined || p.messageIndex === null || p.messageIndex > lastIdx) {
+	const lastIndex = abortSession ? abortSession.lastHistoryIndex.value : S.lastHistoryIndex;
+	if (p.messageIndex === undefined || p.messageIndex === null || p.messageIndex > lastIndex) {
 		bumpSessionCount(eventSession, 1);
 	}
-	cacheSessionHistoryMessage(
-		eventSession,
-		{
-			role: "assistant",
-			content: partialState.partialText,
-			model: partial?.model || "",
-			provider: partial?.provider || "",
-			inputTokens: partial?.inputTokens || 0,
-			outputTokens: partial?.outputTokens || 0,
-			cacheReadTokens: partial?.cacheReadTokens || 0,
-			cacheWriteTokens: partial?.cacheWriteTokens || 0,
-			durationMs: partial?.durationMs || 0,
-			requestInputTokens: partial?.requestInputTokens,
-			requestOutputTokens: partial?.requestOutputTokens,
-			requestCacheReadTokens: partial?.requestCacheReadTokens,
-			requestCacheWriteTokens: partial?.requestCacheWriteTokens,
-			tool_calls: partial?.tool_calls,
-			reasoningEffort: partial?.reasoningEffort,
-			reasoning: partial?.reasoning || undefined,
-			audio: partial?.audio || undefined,
-			run_id: partial?.run_id || p.runId || undefined,
-			created_at: partial?.created_at || Date.now(),
-		},
-		p.messageIndex,
-	);
+	cacheSessionHistoryMessage(eventSession, abortedPartialHistoryMessage(p, partialState), p.messageIndex);
 	updateSessionHistoryIndex(eventSession, p.messageIndex);
+}
+
+function hasAbortedPartial(partialState: AbortedPartialState): boolean {
+	return partialState.hasVisiblePartial || partialState.hasTerminalToolBatch;
+}
+
+function updateAbortedTokenState(partialState: AbortedPartialState): void {
+	const partial = partialState.partial;
+	if (partial?.inputTokens || partial?.outputTokens) {
+		S.sessionTokens.input += partial.inputTokens || 0;
+		S.sessionTokens.output += partial.outputTokens || 0;
+	}
+	if (partial?.requestInputTokens !== undefined) {
+		S.setSessionCurrentInputTokens(partial.requestInputTokens || 0);
+	} else if (partial?.inputTokens || partial?.outputTokens) {
+		S.setSessionCurrentInputTokens(partial.inputTokens || 0);
+	}
+	if (!hasAbortedPartial(partialState)) return;
+	S.setSessionCurrentContextTokens(terminalContextTokens(partial || {}));
+	updateTokenBar();
+}
+
+function finalizeActiveAbort(p: ChatPayload, partialState: AbortedPartialState): void {
+	setComposerStopButton(false);
+	removeThinking();
+	clearStaleRunningToolCards();
+	renderAbortedPartialInDom(p, partialState);
+	S.setStreamEl(null);
+	S.setStreamText("");
+	S.setVoicePending(false);
+	moveFirstQueuedToChat();
 }
 
 function handleChatAborted(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -731,35 +819,14 @@ function handleChatAborted(p: ChatPayload, isActive: boolean, isChatPage: boolea
 	const partialState = getAbortedPartialState(p);
 	const abortSession = sessionStore.getByKey(eventSession);
 	cacheAbortedPartial(eventSession, p, abortSession, partialState);
-	if (abortSession) abortSession.resetStreamState();
-	if ((partialState.hasVisiblePartial || partialState.hasTerminalToolBatch) && !isActive) {
-		setSessionUnread(eventSession, true);
-	}
-	if (partialState.partial?.inputTokens || partialState.partial?.outputTokens) {
-		S.sessionTokens.input += partialState.partial.inputTokens || 0;
-		S.sessionTokens.output += partialState.partial.outputTokens || 0;
-	}
-	if (partialState.partial?.requestInputTokens !== undefined) {
-		S.setSessionCurrentInputTokens(partialState.partial.requestInputTokens || 0);
-	} else if (partialState.partial?.inputTokens || partialState.partial?.outputTokens) {
-		S.setSessionCurrentInputTokens(partialState.partial.inputTokens || 0);
-	}
-	if (partialState.hasVisiblePartial || partialState.hasTerminalToolBatch) {
-		S.setSessionCurrentContextTokens(terminalContextTokens(partialState.partial || {}));
-		updateTokenBar();
-	}
-	if (!(isActive && isChatPage)) {
-		S.setVoicePending(false);
+	abortSession?.resetStreamState();
+	if (hasAbortedPartial(partialState) && !isActive) setSessionUnread(eventSession, true);
+	updateAbortedTokenState(partialState);
+	if (isActive && isChatPage) {
+		finalizeActiveAbort(p, partialState);
 		return;
 	}
-	setComposerStopButton(false);
-	removeThinking();
-	clearStaleRunningToolCards();
-	renderAbortedPartialInDom(p, partialState);
-	S.setStreamEl(null);
-	S.setStreamText("");
 	S.setVoicePending(false);
-	moveFirstQueuedToChat();
 }
 
 function handleChatNotice(p: ChatPayload, isActive: boolean, isChatPage: boolean): void {

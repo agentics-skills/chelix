@@ -79,7 +79,7 @@ const namespaces: Record<string, (lng: string) => Promise<{ default?: Record<str
 };
 
 // ── Load all namespace bundles for a language ───────────────
-function loadLanguage(lng: string): Promise<void[]> {
+async function loadLanguage(lng: string): Promise<void> {
 	const keys = Object.keys(namespaces);
 	const promises = keys.map((ns) =>
 		namespaces[ns](lng)
@@ -90,7 +90,7 @@ function loadLanguage(lng: string): Promise<void[]> {
 				console.warn(`[i18n] failed to load ${lng}/${ns}`, err);
 			}),
 	);
-	return Promise.all(promises);
+	await Promise.all(promises);
 }
 
 function applyDocumentLocale(lng: string): void {

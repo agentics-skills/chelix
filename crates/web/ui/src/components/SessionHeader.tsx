@@ -3,7 +3,7 @@
 // Replaces the imperative updateChatSessionHeader() with a reactive
 // Preact component reading sessionStore.activeSession.
 
-import type { VNode } from "preact";
+import type { RefObject, VNode } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import * as gon from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
@@ -13,12 +13,13 @@ import {
 	fetchSessions,
 	isArchivableSession,
 	removeSessionFromClientState,
-	setSessionAgent,
 	setSessionActiveRunId,
+	setSessionAgent,
 	setSessionReplying,
 	switchSession,
 } from "../sessions";
 import { sessionStore } from "../stores/session-store";
+import type { RpcResponse } from "../types/rpc";
 import { ComboSelect, confirmDialog, shareLinkDialog, shareVisibilityDialog, showToast } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────
@@ -98,6 +99,491 @@ async function copyShareUrl(url: string, visibility: string): Promise<void> {
 	await shareLinkDialog(url, visibility);
 }
 
+interface SessionDeleteContext {
+	currentKey: string;
+	nextKey: string;
+	canOptimisticallyDelete: boolean;
+}
+
+function sessionDeleteError(response: RpcResponse | undefined): string {
+	const error = response?.error as unknown;
+	if (typeof error === "string") return error;
+	if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+		return error.message;
+	}
+	return "";
+}
+
+function hasUncommittedChanges(error: string): boolean {
+	return error.includes("uncommitted changes");
+}
+
+function applyDeletedSessionState(context: SessionDeleteContext): void {
+	removeSessionFromClientState(context.currentKey, { nextKey: context.nextKey });
+	switchSession(context.nextKey);
+}
+
+async function deleteSession(context: SessionDeleteContext, force = false): Promise<void> {
+	const optimisticallyApplied = context.canOptimisticallyDelete && !force;
+	if (optimisticallyApplied) applyDeletedSessionState(context);
+	const response = await sendRpc(
+		"sessions.delete",
+		force ? { key: context.currentKey, force: true } : { key: context.currentKey },
+	);
+	const error = sessionDeleteError(response);
+	if (!response?.ok && hasUncommittedChanges(error)) {
+		fetchSessions();
+		if (await confirmDialog("Worktree has uncommitted changes. Force delete?")) await deleteSession(context, true);
+		return;
+	}
+	if (!response?.ok) {
+		showToast(error || "Failed to delete session", "error");
+		fetchSessions();
+		return;
+	}
+	if (!optimisticallyApplied) applyDeletedSessionState(context);
+	fetchSessions();
+}
+
+function shouldConfirmSessionDelete(messageCount: number, forkPoint: number | null | undefined): boolean {
+	const isUnmodifiedFork = forkPoint != null && messageCount <= forkPoint;
+	return messageCount > 0 && !isUnmodifiedFork;
+}
+
+async function confirmAndDeleteSession(context: SessionDeleteContext, needsConfirmation: boolean): Promise<void> {
+	if (needsConfirmation && !(await confirmDialog("Delete this session?"))) return;
+	await deleteSession(context);
+}
+
+function initialAgentOptions(payload: ReturnType<typeof parseAgentsListPayload>): AgentOption[] {
+	return Array.isArray(payload?.agents) ? (payload.agents as AgentOption[]) : [];
+}
+
+function initialDefaultAgentId(payload: ReturnType<typeof parseAgentsListPayload>): string {
+	return typeof payload?.defaultId === "string" ? payload.defaultId : "main";
+}
+
+function currentExternalAgent(agents: ExternalAgentInfo[], kind: string): ExternalAgentInfo | null {
+	return kind ? agents.find((agent) => agent.kind === kind) || null : null;
+}
+
+function sessionDisplayName(
+	label: string | null | undefined,
+	sessionKey: string | undefined,
+	currentKey: string,
+	nameOwnLine: boolean,
+): string {
+	const fullName = label || sessionKey || currentKey;
+	return nameOwnLine || fullName.length <= 20 ? fullName : `${fullName.slice(0, 20)}\u2026`;
+}
+
+function agentSelectOptions(
+	agents: AgentOption[],
+	currentAgentId: string,
+	defaultAgentId: string,
+	switchingAgent: boolean,
+	agentOptionsLoaded: boolean,
+): SelectOption[] {
+	const options = agents.map((agent) => ({
+		value: agent.id,
+		label: `${agent.emoji ? `${agent.emoji} ` : ""}${agent.name}${agent.id === defaultAgentId ? " (default)" : ""}`,
+	}));
+	const hasCurrentAgent = agents.some((agent) => agent.id === currentAgentId);
+	if (hasCurrentAgent || !currentAgentId || !(switchingAgent || agentOptionsLoaded)) return options;
+	return [{ value: currentAgentId, label: switchingAgent ? "Switching\u2026" : `agent:${currentAgentId}` }, ...options];
+}
+
+function externalAgentSelectOptions(agents: ExternalAgentInfo[]): SelectOption[] {
+	return [
+		{ value: "", label: "Chelix agent" },
+		...agents.map((agent) => ({
+			value: agent.kind,
+			label: `${agent.name}${agent.installed ? "" : " (unavailable)"}`,
+		})),
+	];
+}
+
+function externalAgentStatus(
+	kind: string,
+	agent: ExternalAgentInfo | null,
+	externalSessionId: string | null | undefined,
+): string {
+	if (!kind) return "";
+	if (agent?.installed === false) return "External agent unavailable";
+	return externalSessionId ? `External session ${externalSessionId}` : "External agent bound";
+}
+
+function sessionNameStyle(canRename: boolean, nameOwnLine: boolean): Record<string, string> {
+	const style: Record<string, string> = { cursor: canRename ? "pointer" : "default" };
+	if (nameOwnLine) {
+		style.color = "var(--text-strong)";
+		style.wordBreak = "break-word";
+	}
+	return style;
+}
+
+interface SessionNameControlProps {
+	show: boolean;
+	renaming: boolean;
+	inputRef: RefObject<HTMLInputElement>;
+	renameInputStyle: Record<string, string> | undefined;
+	nameStyle: Record<string, string>;
+	canRename: boolean;
+	displayName: string;
+	onCommit: () => void;
+	onKeyDown: (event: KeyboardEvent) => void;
+	onStart: () => void;
+}
+
+function SessionNameControl(props: SessionNameControlProps): VNode | null {
+	if (!props.show) return null;
+	if (props.renaming) {
+		return (
+			<input
+				ref={props.inputRef}
+				className="chat-session-rename-input"
+				style={props.renameInputStyle}
+				onBlur={props.onCommit}
+				onKeyDown={props.onKeyDown}
+			/>
+		);
+	}
+	return (
+		<button
+			type="button"
+			className="chat-session-name"
+			style={props.nameStyle}
+			title={props.canRename ? "Click to rename" : ""}
+			disabled={!props.canRename}
+			onClick={props.onStart}
+		>
+			{props.displayName}
+		</button>
+	);
+}
+
+interface RenameActionsProps {
+	showName: boolean;
+	showRenameButton: boolean;
+	canRename: boolean;
+	renaming: boolean;
+	actionButtonClass: string;
+	generatingTitle: boolean;
+	onRename: () => void;
+	onGenerateTitle: () => void;
+}
+
+function RenameActions(props: RenameActionsProps): VNode | null {
+	if (!(props.showName && props.showRenameButton && props.canRename && !props.renaming)) return null;
+	return (
+		<div className="flex items-center gap-1">
+			<button type="button" className={props.actionButtonClass} onClick={props.onRename} title="Rename session">
+				Rename
+			</button>
+			<button
+				type="button"
+				className={props.actionButtonClass}
+				onClick={props.onGenerateTitle}
+				disabled={props.generatingTitle}
+				title="Auto-generate title from conversation"
+			>
+				{props.generatingTitle ? "..." : "Auto-title"}
+			</button>
+		</div>
+	);
+}
+
+interface AgentPickerProps {
+	show: boolean;
+	options: SelectOption[];
+	value: string;
+	disabled: boolean;
+	onChange: (value: string) => void;
+}
+
+function AgentPicker(props: AgentPickerProps): VNode | null {
+	if (!props.show) return null;
+	return (
+		<ComboSelect
+			options={props.options}
+			value={props.value}
+			onChange={props.onChange}
+			placeholder="Session agent"
+			searchable={false}
+			allowEmpty={false}
+			fullWidth={false}
+			disabled={props.disabled}
+			floating
+		/>
+	);
+}
+
+interface ExternalAgentPickerProps {
+	show: boolean;
+	options: SelectOption[];
+	value: string;
+	status: string;
+	disabled: boolean;
+	onChange: (value: string) => void;
+}
+
+function ExternalAgentPicker(props: ExternalAgentPickerProps): VNode | null {
+	if (!props.show) return null;
+	return (
+		<div className="flex items-center gap-1.5" data-testid="external-agent-picker">
+			<ComboSelect
+				options={props.options}
+				value={props.value}
+				onChange={props.onChange}
+				placeholder="External agent"
+				searchable={false}
+				allowEmpty={false}
+				fullWidth={false}
+				disabled={props.disabled}
+				floating
+			/>
+			{props.status && (
+				<span className="text-xs text-[var(--text-muted)]" title={props.status}>
+					{props.status}
+				</span>
+			)}
+		</div>
+	);
+}
+
+interface SessionSelectorsProps {
+	showSelectors: boolean;
+	isCron: boolean;
+	agentOptionsLoaded: boolean;
+	agents: AgentOption[];
+	currentAgentId: string;
+	defaultAgentId: string;
+	switchingAgent: boolean;
+	onAgentChange: (value: string) => void;
+	externalAgents: ExternalAgentInfo[];
+	currentExternalAgentKind: string;
+	currentExternalAgent: ExternalAgentInfo | null;
+	externalSessionId: string | null | undefined;
+	switchingExternalAgent: boolean;
+	onExternalAgentChange: (value: string) => void;
+}
+
+function SessionSelectors(props: SessionSelectorsProps): VNode {
+	const hasCurrentAgent = props.agents.some((agent) => agent.id === props.currentAgentId);
+	const options = agentSelectOptions(
+		props.agents,
+		props.currentAgentId,
+		props.defaultAgentId,
+		props.switchingAgent,
+		props.agentOptionsLoaded,
+	);
+	return (
+		<>
+			<AgentPicker
+				show={
+					props.showSelectors &&
+					!props.isCron &&
+					props.agentOptionsLoaded &&
+					(props.agents.length > 1 || !hasCurrentAgent)
+				}
+				options={options}
+				value={props.currentAgentId}
+				disabled={props.switchingAgent || options.length === 0}
+				onChange={props.onAgentChange}
+			/>
+			<ExternalAgentPicker
+				show={props.showSelectors && !props.isCron && props.externalAgents.length > 0}
+				options={externalAgentSelectOptions(props.externalAgents)}
+				value={props.currentExternalAgentKind}
+				status={externalAgentStatus(
+					props.currentExternalAgentKind,
+					props.currentExternalAgent,
+					props.externalSessionId,
+				)}
+				disabled={props.switchingExternalAgent}
+				onChange={props.onExternalAgentChange}
+			/>
+		</>
+	);
+}
+
+interface HeaderActionProps {
+	show: boolean;
+	className: string;
+	onClick: () => void;
+}
+
+function ArchiveAction(props: HeaderActionProps & { archived: boolean }): VNode | null {
+	if (!props.show) return null;
+	return (
+		<button
+			type="button"
+			className={props.className}
+			onClick={props.onClick}
+			title={props.archived ? "Unarchive session" : "Archive session"}
+		>
+			{props.archived ? "Unarchive" : "Archive"}
+		</button>
+	);
+}
+
+function IconAction(props: HeaderActionProps & { icon: string; title: string; label: string }): VNode | null {
+	if (!props.show) return null;
+	return (
+		<button
+			type="button"
+			className={`${props.className} inline-flex items-center gap-1.5`}
+			onClick={props.onClick}
+			title={props.title}
+		>
+			<span className={`icon icon-sm ${props.icon} shrink-0`} />
+			{props.label}
+		</button>
+	);
+}
+
+function DeleteAction(props: HeaderActionProps): VNode | null {
+	if (!props.show) return null;
+	return (
+		<button
+			type="button"
+			className={`${props.className} chat-session-btn-danger inline-flex items-center gap-1.5`}
+			onClick={props.onClick}
+			title="Delete session"
+			style={{ background: "var(--error)", borderColor: "var(--error)", color: "#fff" }}
+		>
+			<span className="icon icon-sm icon-x-circle shrink-0" />
+			Delete
+		</button>
+	);
+}
+
+function PendingAction(
+	props: HeaderActionProps & { title: string; pending: boolean; idleLabel: string; pendingLabel: string },
+): VNode | null {
+	if (!props.show) return null;
+	return (
+		<button
+			type="button"
+			className={props.className}
+			onClick={props.onClick}
+			title={props.title}
+			disabled={props.pending}
+		>
+			{props.pending ? props.pendingLabel : props.idleLabel}
+		</button>
+	);
+}
+
+interface SessionActionsProps {
+	actionButtonClass: string;
+	showArchive: boolean;
+	canArchive: boolean;
+	archived: boolean;
+	onArchive: () => void;
+	showFork: boolean;
+	showShare: boolean;
+	isCron: boolean;
+	onFork: () => void;
+	onShare: () => void;
+	showDelete: boolean;
+	isMain: boolean;
+	onDelete: () => void;
+	showStop: boolean;
+	canStop: boolean;
+	stopping: boolean;
+	onStop: () => void;
+	showClear: boolean;
+	clearing: boolean;
+	onClear: () => void;
+}
+
+function SessionActions(props: SessionActionsProps): VNode {
+	return (
+		<>
+			<ArchiveAction
+				show={props.showArchive && props.canArchive}
+				className={props.actionButtonClass}
+				onClick={props.onArchive}
+				archived={props.archived}
+			/>
+			<IconAction
+				show={props.showFork && !props.isCron}
+				className={props.actionButtonClass}
+				onClick={props.onFork}
+				icon="icon-layers"
+				title="Fork session"
+				label="Fork"
+			/>
+			<IconAction
+				show={props.showShare && !props.isCron}
+				className={props.actionButtonClass}
+				onClick={props.onShare}
+				icon="icon-share"
+				title="Share snapshot"
+				label="Share"
+			/>
+			<DeleteAction
+				show={props.showDelete && !props.isMain}
+				className={props.actionButtonClass}
+				onClick={props.onDelete}
+			/>
+			<PendingAction
+				show={props.showStop && props.canStop}
+				className={props.actionButtonClass}
+				onClick={props.onStop}
+				title="Stop generation"
+				pending={props.stopping}
+				idleLabel="Stop"
+				pendingLabel="Stopping\u2026"
+			/>
+			<PendingAction
+				show={props.showClear && props.isMain}
+				className={props.actionButtonClass}
+				onClick={props.onClear}
+				title="Clear session"
+				pending={props.clearing}
+				idleLabel="Clear"
+				pendingLabel="Clearing\u2026"
+			/>
+		</>
+	);
+}
+
+interface SessionHeaderViewProps {
+	nameOwnLine: boolean;
+	showName: boolean;
+	nameControl: VNode | null;
+	renameActions: VNode | null;
+	agentPicker: VNode | null;
+	externalAgentPicker: VNode | null;
+	actions: VNode;
+}
+
+function SessionHeaderView(props: SessionHeaderViewProps): VNode {
+	const controls = (
+		<>
+			{props.agentPicker}
+			{props.externalAgentPicker}
+			{!props.nameOwnLine && props.nameControl}
+			{!props.nameOwnLine && props.renameActions}
+			{props.actions}
+		</>
+	);
+	if (!props.nameOwnLine) return <div className="flex items-center gap-2">{controls}</div>;
+	return (
+		<div className="flex flex-col gap-2 w-full">
+			{props.showName && (
+				<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 w-full">
+					<div className="min-w-0">{props.nameControl}</div>
+					<div className="justify-self-end">{props.renameActions}</div>
+				</div>
+			)}
+			<div className="flex flex-wrap items-center gap-2">{controls}</div>
+		</div>
+	);
+}
+
 // ── Component ────────────────────────────────────────────────
 
 export function SessionHeader({
@@ -120,24 +606,22 @@ export function SessionHeader({
 	const sessionDataVersion = session?.dataVersion.value || 0;
 	const currentKey = sessionStore.activeSessionKey.value;
 	const gonAgentsPayload = parseAgentsListPayload(gon.get("agents") as never);
-	const initialAgentOptions: AgentOption[] = Array.isArray(gonAgentsPayload?.agents)
-		? (gonAgentsPayload.agents as AgentOption[])
-		: [];
-	const initialDefaultAgentId = typeof gonAgentsPayload?.defaultId === "string" ? gonAgentsPayload.defaultId : "main";
+	const hydratedAgentOptions = initialAgentOptions(gonAgentsPayload);
+	const hydratedDefaultAgentId = initialDefaultAgentId(gonAgentsPayload);
 
 	const [renaming, setRenaming] = useState(false);
 	const [clearing, setClearing] = useState(false);
 	const [stopping, setStopping] = useState(false);
 	const [switchingAgent, setSwitchingAgent] = useState(false);
-	const [agentOptions, setAgentOptions] = useState<AgentOption[]>(initialAgentOptions);
-	const [defaultAgentId, setDefaultAgentId] = useState(initialDefaultAgentId);
-	const [agentOptionsLoaded, setAgentOptionsLoaded] = useState(initialAgentOptions.length > 0);
+	const [agentOptions, setAgentOptions] = useState<AgentOption[]>(hydratedAgentOptions);
+	const [defaultAgentId, setDefaultAgentId] = useState(hydratedDefaultAgentId);
+	const [agentOptionsLoaded, setAgentOptionsLoaded] = useState(hydratedAgentOptions.length > 0);
 	const [externalAgentOptions, setExternalAgentOptions] = useState<ExternalAgentInfo[]>([]);
 	const [switchingExternalAgent, setSwitchingExternalAgent] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	const fullName = session ? session.label || session.key : currentKey;
-	const displayName = nameOwnLine ? fullName : fullName.length > 20 ? `${fullName.slice(0, 20)}\u2026` : fullName;
+	const fullName = session?.label || session?.key || currentKey;
+	const displayName = sessionDisplayName(session?.label, session?.key, currentKey, nameOwnLine);
 	const replying = session?.replying.value;
 	const activeRunId = session?.activeRunId.value || null;
 
@@ -149,9 +633,7 @@ export function SessionHeader({
 	const showArchivedSessions = sessionStore.showArchivedSessions.value;
 	const currentAgentId = session?.agent_id || defaultAgentId || "main";
 	const currentExternalAgentKind = session?.external_agent_kind || "";
-	const currentExternalAgent = currentExternalAgentKind
-		? externalAgentOptions.find((agent) => agent.kind === currentExternalAgentKind) || null
-		: null;
+	const selectedExternalAgent = currentExternalAgent(externalAgentOptions, currentExternalAgentKind);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -246,54 +728,15 @@ export function SessionHeader({
 	}, [currentKey]);
 
 	const onDelete = useCallback(() => {
-		if (typeof onBeforeDelete === "function") {
-			onBeforeDelete();
-		}
+		onBeforeDelete?.();
 		const currentSession = sessionStore.getByKey(currentKey);
-		const msgCount = currentSession ? currentSession.messageCount || 0 : 0;
-		const nextKey = nextSessionKey(currentKey);
-		const canOptimisticallyDelete = !currentSession?.worktree_branch;
-		const applyDeletedState = (): void => {
-			removeSessionFromClientState(currentKey, { nextKey });
-			switchSession(nextKey);
+		const messageCount = currentSession?.messageCount || 0;
+		const context: SessionDeleteContext = {
+			currentKey,
+			nextKey: nextSessionKey(currentKey),
+			canOptimisticallyDelete: !currentSession?.worktree_branch,
 		};
-		const runDelete = (force: boolean): void => {
-			const request: Record<string, unknown> = { key: currentKey };
-			if (force) request.force = true;
-			let optimisticApplied = false;
-			if (canOptimisticallyDelete && !force) {
-				applyDeletedState();
-				optimisticApplied = true;
-			}
-			sendRpc("sessions.delete", request).then((res) => {
-				const err = res?.error?.message || (typeof res?.error === "string" ? String(res.error) : "") || "";
-				if (res && !res.ok && typeof err === "string" && err.indexOf("uncommitted changes") !== -1) {
-					fetchSessions();
-					confirmDialog("Worktree has uncommitted changes. Force delete?").then((yes) => {
-						if (!yes) return;
-						runDelete(true);
-					});
-					return;
-				}
-				if (res && !res.ok) {
-					showToast(err || "Failed to delete session", "error");
-					fetchSessions();
-					return;
-				}
-				if (!optimisticApplied) {
-					applyDeletedState();
-				}
-				fetchSessions();
-			});
-		};
-		const isUnmodifiedFork = currentSession && currentSession.forkPoint != null && msgCount <= currentSession.forkPoint;
-		if (msgCount > 0 && !isUnmodifiedFork) {
-			confirmDialog("Delete this session?").then((yes) => {
-				if (yes) runDelete(false);
-			});
-		} else {
-			runDelete(false);
-		}
+		void confirmAndDeleteSession(context, shouldConfirmSessionDelete(messageCount, currentSession?.forkPoint));
 	}, [currentKey, onBeforeDelete, sessionDataVersion]);
 
 	const onClear = useCallback(() => {
@@ -424,183 +867,84 @@ export function SessionHeader({
 		[currentExternalAgentKind, currentKey, session, switchingExternalAgent],
 	);
 
-	const agentSelectValue = currentAgentId;
-	const hasCurrentAgentOption = agentOptions.some((agent) => agent.id === agentSelectValue);
-	let agentSelectOptions: SelectOption[] = agentOptions.map((agent) => {
-		const prefix = agent.emoji ? `${agent.emoji} ` : "";
-		const suffix = agent.id === defaultAgentId ? " (default)" : "";
-		return {
-			value: agent.id,
-			label: `${prefix}${agent.name}${suffix}`,
-		};
-	});
-	if (!hasCurrentAgentOption && agentSelectValue && (switchingAgent || agentOptionsLoaded)) {
-		agentSelectOptions = [
-			{
-				value: agentSelectValue,
-				label: switchingAgent ? "Switching\u2026" : `agent:${agentSelectValue}`,
-			},
-			...agentSelectOptions,
-		];
-	}
-	const agentSelectDisabled = switchingAgent || agentSelectOptions.length === 0;
-	const shouldShowAgentPicker = !isCron && agentOptionsLoaded && (agentOptions.length > 1 || !hasCurrentAgentOption);
-
-	const externalAgentSelectOptions: SelectOption[] = [
-		{ value: "", label: "Chelix agent" },
-		...externalAgentOptions.map((agent) => ({
-			value: agent.kind,
-			label: `${agent.name}${agent.installed ? "" : " (unavailable)"}`,
-		})),
-	];
-	const shouldShowExternalAgentPicker = !isCron && externalAgentOptions.length > 0;
-	const externalAgentStatus = currentExternalAgentKind
-		? currentExternalAgent?.installed === false
-			? "External agent unavailable"
-			: session?.externalSessionId
-				? `External session ${session.externalSessionId}`
-				: "External agent bound"
-		: "";
-	const nameStyle: Record<string, string> = { cursor: canRename ? "pointer" : "default" };
-	if (nameOwnLine) {
-		nameStyle.color = "var(--text-strong)";
-		nameStyle.wordBreak = "break-word";
-	}
-	const renameInputStyle = nameOwnLine ? { maxWidth: "none", width: "100%" } : undefined;
-
-	const nameControl =
-		showName &&
-		(renaming ? (
-			<input
-				ref={inputRef}
-				className="chat-session-rename-input"
-				style={renameInputStyle}
-				onBlur={commitRename}
-				onKeyDown={onKeyDown}
-			/>
-		) : (
-			<span
-				className="chat-session-name"
-				style={nameStyle}
-				title={canRename ? "Click to rename" : ""}
-				onClick={startRename}
-			>
-				{displayName}
-			</span>
-		));
-
-	const renameCta = showName && showRenameButton && canRename && !renaming && (
-		<div className="flex items-center gap-1">
-			<button type="button" className={actionButtonClass} onClick={startRename} title="Rename session">
-				Rename
-			</button>
-			<button
-				type="button"
-				className={actionButtonClass}
-				onClick={onGenerateTitle}
-				disabled={generatingTitle}
-				title="Auto-generate title from conversation"
-			>
-				{generatingTitle ? "..." : "Auto-title"}
-			</button>
-		</div>
+	const nameControl = (
+		<SessionNameControl
+			show={showName}
+			renaming={renaming}
+			inputRef={inputRef}
+			renameInputStyle={nameOwnLine ? { maxWidth: "none", width: "100%" } : undefined}
+			nameStyle={sessionNameStyle(canRename, nameOwnLine)}
+			canRename={canRename}
+			displayName={displayName}
+			onCommit={commitRename}
+			onKeyDown={onKeyDown}
+			onStart={startRename}
+		/>
+	);
+	const renameActions = (
+		<RenameActions
+			showName={showName}
+			showRenameButton={showRenameButton}
+			canRename={canRename}
+			renaming={renaming}
+			actionButtonClass={actionButtonClass}
+			generatingTitle={generatingTitle}
+			onRename={startRename}
+			onGenerateTitle={onGenerateTitle}
+		/>
+	);
+	const selectors = (
+		<SessionSelectors
+			showSelectors={showSelectors}
+			isCron={isCron}
+			agentOptionsLoaded={agentOptionsLoaded}
+			agents={agentOptions}
+			currentAgentId={currentAgentId}
+			defaultAgentId={defaultAgentId}
+			switchingAgent={switchingAgent}
+			onAgentChange={onAgentChange}
+			externalAgents={externalAgentOptions}
+			currentExternalAgentKind={currentExternalAgentKind}
+			currentExternalAgent={selectedExternalAgent}
+			externalSessionId={session?.externalSessionId}
+			switchingExternalAgent={switchingExternalAgent}
+			onExternalAgentChange={onExternalAgentChange}
+		/>
+	);
+	const actions = (
+		<SessionActions
+			actionButtonClass={actionButtonClass}
+			showArchive={showArchive}
+			canArchive={canArchive}
+			archived={!!session?.archived}
+			onArchive={onArchive}
+			showFork={showFork}
+			showShare={showShare}
+			isCron={isCron}
+			onFork={onFork}
+			onShare={onShare}
+			showDelete={showDelete}
+			isMain={isMain}
+			onDelete={onDelete}
+			showStop={showStop}
+			canStop={!!canStop}
+			stopping={stopping}
+			onStop={onStop}
+			showClear={showClear}
+			clearing={clearing}
+			onClear={onClear}
+		/>
 	);
 
 	return (
-		<div className={nameOwnLine ? "flex flex-col gap-2 w-full" : "flex items-center gap-2"}>
-			{nameOwnLine && showName && (
-				<div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 w-full">
-					<div className="min-w-0">{nameControl}</div>
-					<div className="justify-self-end">{renameCta}</div>
-				</div>
-			)}
-			<div className={nameOwnLine ? "flex flex-wrap items-center gap-2" : "flex items-center gap-2"}>
-				{showSelectors && shouldShowAgentPicker && (
-					<ComboSelect
-						options={agentSelectOptions}
-						value={agentSelectValue}
-						onChange={onAgentChange}
-						placeholder="Session agent"
-						searchable={false}
-						allowEmpty={false}
-						fullWidth={false}
-						disabled={agentSelectDisabled}
-						floating
-					/>
-				)}
-				{showSelectors && shouldShowExternalAgentPicker && (
-					<div className="flex items-center gap-1.5" data-testid="external-agent-picker">
-						<ComboSelect
-							options={externalAgentSelectOptions}
-							value={currentExternalAgentKind}
-							onChange={onExternalAgentChange}
-							placeholder="External agent"
-							searchable={false}
-							allowEmpty={false}
-							fullWidth={false}
-							disabled={switchingExternalAgent}
-							floating
-						/>
-						{externalAgentStatus && (
-							<span className="text-xs text-[var(--text-muted)]" title={externalAgentStatus}>
-								{externalAgentStatus}
-							</span>
-						)}
-					</div>
-				)}
-				{!nameOwnLine && showName && nameControl}
-				{!nameOwnLine && renameCta}
-				{showArchive && canArchive && (
-					<button
-						className={actionButtonClass}
-						onClick={onArchive}
-						title={session?.archived ? "Unarchive session" : "Archive session"}
-					>
-						{session?.archived ? "Unarchive" : "Archive"}
-					</button>
-				)}
-				{showFork && !isCron && (
-					<button
-						className={`${actionButtonClass} inline-flex items-center gap-1.5`}
-						onClick={onFork}
-						title="Fork session"
-					>
-						<span className="icon icon-sm icon-layers shrink-0" />
-						Fork
-					</button>
-				)}
-				{showShare && !isCron && (
-					<button
-						className={`${actionButtonClass} inline-flex items-center gap-1.5`}
-						onClick={onShare}
-						title="Share snapshot"
-					>
-						<span className="icon icon-sm icon-share shrink-0" />
-						Share
-					</button>
-				)}
-				{showDelete && !isMain && (
-					<button
-						className={`${actionButtonClass} chat-session-btn-danger inline-flex items-center gap-1.5`}
-						onClick={onDelete}
-						title="Delete session"
-						style={{ background: "var(--error)", borderColor: "var(--error)", color: "#fff" }}
-					>
-						<span className="icon icon-sm icon-x-circle shrink-0" />
-						Delete
-					</button>
-				)}
-				{showStop && canStop && (
-					<button className={actionButtonClass} onClick={onStop} title="Stop generation" disabled={stopping}>
-						{stopping ? "Stopping\u2026" : "Stop"}
-					</button>
-				)}
-				{showClear && isMain && (
-					<button className={actionButtonClass} onClick={onClear} title="Clear session" disabled={clearing}>
-						{clearing ? "Clearing\u2026" : "Clear"}
-					</button>
-				)}
-			</div>
-		</div>
+		<SessionHeaderView
+			nameOwnLine={nameOwnLine}
+			showName={showName}
+			nameControl={nameControl}
+			renameActions={renameActions}
+			agentPicker={selectors}
+			externalAgentPicker={null}
+			actions={actions}
+		/>
 	);
 }

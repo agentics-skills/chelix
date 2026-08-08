@@ -5,7 +5,7 @@ import { t } from "./i18n";
 import { showModelNotice } from "./pages/ChatPage";
 import * as S from "./state";
 import { modelStore } from "./stores/model-store";
-import type { ModelInfo } from "./types";
+import type { ModelInfo } from "./types/model";
 
 function setSessionModel(sessionKey: string, modelId: string, reasoningEffort?: string): void {
 	const params: Record<string, string> = { key: sessionKey, model: modelId };
@@ -173,6 +173,40 @@ function updateModelActive(): void {
 	}
 }
 
+function moveModelSelection(delta: number, itemCount: number): void {
+	const nextIndex = delta > 0 ? Math.min(S.modelIdx + delta, itemCount - 1) : Math.max(S.modelIdx + delta, 0);
+	S.setModelIdx(nextIndex);
+	updateModelActive();
+}
+
+function selectModelFromKeyboard(items: NodeListOf<HTMLElement>): void {
+	if (S.modelIdx >= 0 && items[S.modelIdx]) {
+		items[S.modelIdx].click();
+		return;
+	}
+	if (items.length === 1) items[0].click();
+}
+
+const modelSearchKeyHandlers: Record<string, (items: NodeListOf<HTMLElement>) => void> = {
+	ArrowDown: (items) => moveModelSelection(1, items.length),
+	ArrowUp: (items) => moveModelSelection(-1, items.length),
+	Enter: selectModelFromKeyboard,
+	Escape: () => {
+		closeModelDropdown();
+		S.modelComboBtn?.focus();
+	},
+};
+
+function handleModelSearchKeydown(event: Event): void {
+	const keyboardEvent = event as KeyboardEvent;
+	const handler = modelSearchKeyHandlers[keyboardEvent.key];
+	if (!handler) return;
+	const items = S.modelDropdownList?.querySelectorAll<HTMLElement>(".model-dropdown-item");
+	if (!items) return;
+	keyboardEvent.preventDefault();
+	handler(items);
+}
+
 export function bindModelComboEvents(): void {
 	if (!(S.modelComboBtn && S.modelSearchInput && S.modelDropdownList && S.modelCombo)) return;
 
@@ -189,30 +223,7 @@ export function bindModelComboEvents(): void {
 		renderModelList((S.modelSearchInput as HTMLInputElement).value.trim());
 	});
 
-	S.modelSearchInput.addEventListener("keydown", (e: Event) => {
-		const ke = e as KeyboardEvent;
-		const items = S.modelDropdownList?.querySelectorAll<HTMLElement>(".model-dropdown-item");
-		if (!items) return;
-		if (ke.key === "ArrowDown") {
-			ke.preventDefault();
-			S.setModelIdx(Math.min(S.modelIdx + 1, items.length - 1));
-			updateModelActive();
-		} else if (ke.key === "ArrowUp") {
-			ke.preventDefault();
-			S.setModelIdx(Math.max(S.modelIdx - 1, 0));
-			updateModelActive();
-		} else if (ke.key === "Enter") {
-			ke.preventDefault();
-			if (S.modelIdx >= 0 && items[S.modelIdx]) {
-				items[S.modelIdx].click();
-			} else if (items.length === 1) {
-				items[0].click();
-			}
-		} else if (ke.key === "Escape") {
-			closeModelDropdown();
-			S.modelComboBtn?.focus();
-		}
-	});
+	S.modelSearchInput.addEventListener("keydown", handleModelSearchKeydown);
 }
 
 document.addEventListener("click", (e: MouseEvent) => {

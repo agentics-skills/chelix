@@ -1,7 +1,7 @@
 import * as S from "../state";
 import { clearSessionHistory } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
-import type { SessionMeta } from "../types";
+import type { SessionMeta } from "../types/session";
 
 import { clearHistoryPaginationState } from "./session-history";
 

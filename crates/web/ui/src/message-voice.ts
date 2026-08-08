@@ -3,8 +3,8 @@ import { renderAudioPlayer, sendRpc } from "./helpers";
 let cachedTtsEnabled: boolean | null = null;
 let pendingStatus: Promise<boolean> | null = null;
 
-async function isTtsEnabled(): Promise<boolean> {
-	if (cachedTtsEnabled !== null) return cachedTtsEnabled;
+function isTtsEnabled(): Promise<boolean> {
+	if (cachedTtsEnabled !== null) return Promise.resolve(cachedTtsEnabled);
 	if (!pendingStatus) {
 		pendingStatus = sendRpc("tts.status", {})
 			.then((res) => {
@@ -142,7 +142,8 @@ export async function attachMessageVoiceControl(options: AttachMessageVoiceContr
 		footerEl.appendChild(actionBtn);
 	}
 
-	actionBtn.onclick = async (): Promise<void> => {
+	const voiceActionButton = actionBtn;
+	voiceActionButton.onclick = async (): Promise<void> => {
 		if (!sessionKey) {
 			upsertVoiceWarning(messageEl, "Cannot generate voice: missing session key.");
 			return;
@@ -153,15 +154,15 @@ export async function attachMessageVoiceControl(options: AttachMessageVoiceContr
 			return;
 		}
 
-		actionBtn!.disabled = true;
-		actionBtn!.textContent = "Voicing...";
+		voiceActionButton.disabled = true;
+		voiceActionButton.textContent = "Voicing...";
 		const result = (await sendRpc("sessions.voice.generate", {
 			key: sessionKey,
 			messageIndex,
 		})) as unknown as Record<string, unknown>;
 		if (!(result?.ok && (result.payload as Record<string, unknown> | undefined)?.audio)) {
-			actionBtn!.disabled = false;
-			actionBtn!.textContent = "Retry voice";
+			voiceActionButton.disabled = false;
+			voiceActionButton.textContent = "Retry voice";
 			const errorText =
 				((result?.error as Record<string, unknown> | undefined)?.message as string) || "Voice generation failed.";
 			upsertVoiceWarning(messageEl, errorText);
@@ -177,13 +178,13 @@ export async function attachMessageVoiceControl(options: AttachMessageVoiceContr
 				(result.payload as Record<string, unknown>).ttsProvider as string | undefined,
 			)
 		) {
-			actionBtn!.disabled = false;
-			actionBtn!.textContent = "Retry voice";
+			voiceActionButton.disabled = false;
+			voiceActionButton.textContent = "Retry voice";
 			upsertVoiceWarning(messageEl, "Voice audio generated but could not be rendered.");
 			return;
 		}
 
 		upsertVoiceWarning(messageEl, null);
-		actionBtn?.remove();
+		voiceActionButton.remove();
 	};
 }

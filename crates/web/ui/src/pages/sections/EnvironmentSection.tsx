@@ -2,17 +2,9 @@
 
 import type { ComponentChildren, VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import {
-	Badge,
-	CheckboxField,
-	EmptyState,
-	ListItem,
-	Loading,
-	SectionHeading,
-	StatusMessage,
-	SubHeading,
-	useSaveState,
-} from "../../components/forms";
+import { CheckboxField } from "../../components/forms/FormField";
+import { Badge, EmptyState, ListItem, Loading } from "../../components/forms/ListItem";
+import { SectionHeading, StatusMessage, SubHeading, useSaveState } from "../../components/forms/SectionLayout";
 import * as gon from "../../gon";
 import { localizedApiErrorMessage } from "../../helpers";
 import { targetValue } from "../../typed-events";

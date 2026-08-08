@@ -1,10 +1,10 @@
 import { A2uiSurface, basicCatalog, type LitComponentApi } from "@a2ui/lit/v0_9";
 import {
+	type A2uiClientAction,
 	A2uiClientMessageSchema,
+	type A2uiMessage,
 	A2uiMessageSchema,
 	MessageProcessor,
-	type A2uiClientAction,
-	type A2uiMessage,
 } from "@a2ui/web_core/v0_9";
 
 import { sendRpc } from "./helpers";
@@ -68,6 +68,41 @@ function payloadByteLength(value: unknown): number {
 	return new TextEncoder().encode(serialized).byteLength;
 }
 
+function parseA2uiMessage(message: unknown, index: number): A2uiMessage {
+	const parsed = A2uiMessageSchema.safeParse(message);
+	if (!parsed.success) {
+		const detail = parsed.error.issues[0]?.message || "schema validation failed";
+		throw new Error(`A2UI message ${index + 1} is invalid: ${detail}.`);
+	}
+	if (parsed.data.version !== A2UI_PROTOCOL_VERSION) {
+		throw new Error(`A2UI message ${index + 1} uses ${parsed.data.version}; expected ${A2UI_PROTOCOL_VERSION}.`);
+	}
+	return parsed.data;
+}
+
+function validateSurfaceMessage(message: A2uiMessage, surfaceId: string): number {
+	if ("createSurface" in message && message.createSurface.surfaceId !== surfaceId) {
+		throw new Error("A2UI messages target different surfaces.");
+	}
+	if ("updateComponents" in message) {
+		if (message.updateComponents.surfaceId !== surfaceId) {
+			throw new Error("A2UI messages target different surfaces.");
+		}
+		return message.updateComponents.components.length;
+	}
+	if ("updateDataModel" in message && message.updateDataModel.surfaceId !== surfaceId) {
+		throw new Error("A2UI messages target different surfaces.");
+	}
+	if ("deleteSurface" in message) throw new Error("Interactive A2UI payloads cannot delete their surface.");
+	return 0;
+}
+
+function validateComponentCount(componentCount: number): void {
+	if (componentCount === 0 || componentCount > MAX_COMPONENTS) {
+		throw new Error(`A2UI payload must contain between 1 and ${MAX_COMPONENTS} components.`);
+	}
+}
+
 function parseToolArguments(value: unknown): ParsedToolArguments {
 	if (!isRecord(value)) throw new Error("A2UI tool arguments must be an object.");
 	if (payloadByteLength(value) > MAX_PAYLOAD_BYTES) {
@@ -77,44 +112,15 @@ function parseToolArguments(value: unknown): ParsedToolArguments {
 		throw new Error(`A2UI messages must contain between 1 and ${MAX_MESSAGES} entries.`);
 	}
 
-	const messages = value.messages.map((message, index) => {
-		const parsed = A2uiMessageSchema.safeParse(message);
-		if (!parsed.success) {
-			const detail = parsed.error.issues[0]?.message || "schema validation failed";
-			throw new Error(`A2UI message ${index + 1} is invalid: ${detail}.`);
-		}
-		if (parsed.data.version !== A2UI_PROTOCOL_VERSION) {
-			throw new Error(`A2UI message ${index + 1} uses ${parsed.data.version}; expected ${A2UI_PROTOCOL_VERSION}.`);
-		}
-		return parsed.data;
-	});
-
+	const messages = value.messages.map(parseA2uiMessage);
 	const first = messages[0];
 	if (!("createSurface" in first)) throw new Error("The first A2UI message must be createSurface.");
 	if (first.createSurface.catalogId !== A2UI_BASIC_CATALOG_ID) {
 		throw new Error(`Unsupported A2UI catalog: ${first.createSurface.catalogId}.`);
 	}
 	const surfaceId = first.createSurface.surfaceId;
-	let componentCount = 0;
-	for (const message of messages) {
-		if ("createSurface" in message && message.createSurface.surfaceId !== surfaceId) {
-			throw new Error("A2UI messages target different surfaces.");
-		}
-		if ("updateComponents" in message) {
-			if (message.updateComponents.surfaceId !== surfaceId) {
-				throw new Error("A2UI messages target different surfaces.");
-			}
-			componentCount += message.updateComponents.components.length;
-		}
-		if ("updateDataModel" in message && message.updateDataModel.surfaceId !== surfaceId) {
-			throw new Error("A2UI messages target different surfaces.");
-		}
-		if ("deleteSurface" in message) throw new Error("Interactive A2UI payloads cannot delete their surface.");
-	}
-	if (componentCount === 0 || componentCount > MAX_COMPONENTS) {
-		throw new Error(`A2UI payload must contain between 1 and ${MAX_COMPONENTS} components.`);
-	}
-
+	const componentCount = messages.reduce((count, message) => count + validateSurfaceMessage(message, surfaceId), 0);
+	validateComponentCount(componentCount);
 	return { messages, surfaceId };
 }
 
@@ -137,7 +143,7 @@ function parseActionMessage(value: unknown): A2uiActionMessage {
 		}
 	}
 	const parsed = A2uiClientMessageSchema.safeParse(candidate);
-	if (!parsed.success || !("action" in parsed.data)) {
+	if (!(parsed.success && "action" in parsed.data)) {
 		throw new Error("A2UI result is not a standard client action message.");
 	}
 	if (parsed.data.version !== A2UI_PROTOCOL_VERSION) {
@@ -223,7 +229,11 @@ function failController(card: HTMLElement, controller: A2uiCardController, messa
 	setToolCardStatus(card, "error", "interface error");
 }
 
-async function submitAction(card: HTMLElement, controller: A2uiCardController, action: A2uiClientAction): Promise<void> {
+async function submitAction(
+	card: HTMLElement,
+	controller: A2uiCardController,
+	action: A2uiClientAction,
+): Promise<void> {
 	if (controller.state !== "waiting") return;
 	if (!(controller.runId && controller.toolCallId)) {
 		failController(card, controller, "This A2UI interaction is missing its trusted run identifiers.");
@@ -239,7 +249,7 @@ async function submitAction(card: HTMLElement, controller: A2uiCardController, a
 		action,
 	};
 	const validated = A2uiClientMessageSchema.safeParse(standardMessage);
-	if (!validated.success || !("action" in validated.data)) {
+	if (!(validated.success && "action" in validated.data)) {
 		failController(card, controller, "The A2UI renderer emitted an invalid standard action.");
 		return;
 	}
@@ -309,24 +319,30 @@ function renderMountFailure(card: HTMLElement, message: string): void {
 	section.appendChild(alert);
 }
 
-export function mountA2uiToolCard(card: HTMLElement, options: MountA2uiCardOptions): void {
+function updateExistingController(card: HTMLElement, options: MountA2uiCardOptions): boolean {
 	const existing = controllers.get(card);
-	if (existing) {
-		if (options.runId) existing.runId = options.runId;
-		if (options.toolCallId) existing.toolCallId = options.toolCallId;
-		if (options.success !== undefined) {
-			applyCompletion(card, existing, options.success, options.result, options.error);
-		}
-		return;
+	if (!existing) return false;
+	if (options.runId) existing.runId = options.runId;
+	if (options.toolCallId) existing.toolCallId = options.toolCallId;
+	if (options.success !== undefined) {
+		applyCompletion(card, existing, options.success, options.result, options.error);
 	}
+	return true;
+}
 
-	let parsed: ParsedToolArguments;
+function parseArgumentsForCard(card: HTMLElement, value: unknown): ParsedToolArguments | null {
 	try {
-		parsed = parseToolArguments(options.arguments);
+		return parseToolArguments(value);
 	} catch (error) {
 		renderMountFailure(card, error instanceof Error ? error.message : String(error));
-		return;
+		return null;
 	}
+}
+
+export function mountA2uiToolCard(card: HTMLElement, options: MountA2uiCardOptions): void {
+	if (updateExistingController(card, options)) return;
+	const parsed = parseArgumentsForCard(card, options.arguments);
+	if (!parsed) return;
 
 	try {
 		const { surface, feedback } = makeCardBody(card);

@@ -234,7 +234,9 @@ fn test_docker_resource_args_default_to_one_cpu() {
 
 fn mount_volume_for_guest<'a>(args: &'a [String], guest: &str) -> Option<&'a str> {
     let marker = format!(":{guest}:");
-    args.chunks_exact(2)
+    args.as_chunks::<2>()
+        .0
+        .iter()
         .find_map(|pair| (pair[0] == "-v" && pair[1].contains(&marker)).then_some(pair[1].as_str()))
 }
 

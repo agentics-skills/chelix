@@ -32,25 +32,29 @@ export function AdvancedConfigPatchField({
 				</div>
 				{currentConfig && (
 					<div className="flex flex-col gap-1">
-						<label className="text-xs text-[var(--muted)]">Current stored config (read-only)</label>
-						<textarea
-							className="channel-input min-h-[160px] font-mono text-xs"
-							readOnly
-							value={prettyConfigJson(currentConfig)}
-						/>
+						<label>
+							<span className="text-xs text-[var(--muted)]">Current stored config (read-only)</span>
+							<textarea
+								className="channel-input min-h-[160px] font-mono text-xs"
+								readOnly
+								value={prettyConfigJson(currentConfig)}
+							/>
+						</label>
 					</div>
 				)}
 				<div className="flex flex-col gap-1">
-					<label className="text-xs text-[var(--muted)]">Advanced config JSON patch (optional)</label>
-					<textarea
-						data-field="advancedConfigPatch"
-						className="channel-input min-h-[140px] font-mono text-xs"
-						value={value}
-						onInput={(e) => {
-							onInput(targetValue(e));
-						}}
-						placeholder='{"reply_to_message": true}'
-					/>
+					<label>
+						<span className="text-xs text-[var(--muted)]">Advanced config JSON patch (optional)</span>
+						<textarea
+							data-field="advancedConfigPatch"
+							className="channel-input min-h-[140px] font-mono text-xs"
+							value={value}
+							onInput={(e) => {
+								onInput(targetValue(e));
+							}}
+							placeholder='{"reply_to_message": true}'
+						/>
+					</label>
 				</div>
 			</div>
 		</details>
@@ -72,9 +76,10 @@ interface AllowlistInputProps {
 	onChange: (items: string[]) => void;
 	preserveAt?: boolean;
 	placeholder?: string;
+	ariaLabel?: string;
 }
 
-export function AllowlistInput({ value, onChange, preserveAt, placeholder }: AllowlistInputProps): VNode {
+export function AllowlistInput({ value, onChange, preserveAt, placeholder, ariaLabel }: AllowlistInputProps): VNode {
 	const input = useSignal("");
 
 	function addTag(raw: string): void {
@@ -99,8 +104,7 @@ export function AllowlistInput({ value, onChange, preserveAt, placeholder }: All
 	return (
 		<div
 			className="flex flex-wrap items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--surface2)] px-2 py-1.5"
-			style={{ minHeight: "38px", cursor: "text" }}
-			onClick={(e) => (e.currentTarget as HTMLElement).querySelector("input")?.focus()}
+			style={{ minHeight: "38px" }}
 		>
 			{value.map((tag) => (
 				<span
@@ -130,6 +134,7 @@ export function AllowlistInput({ value, onChange, preserveAt, placeholder }: All
 			))}
 			<input
 				type="text"
+				aria-label={ariaLabel}
 				value={input.value}
 				onInput={(e) => {
 					input.value = targetValue(e);
@@ -158,20 +163,25 @@ export function SharedChannelFields({ addModel, allowlistItems }: SharedChannelF
 
 	return (
 		<>
-			<label className="text-xs text-[var(--muted)]">DM Policy</label>
-			<select data-field="dmPolicy" className="channel-select">
-				<option value="allowlist">Allowlist only</option>
-				<option value="open">Open (anyone)</option>
-				<option value="disabled">Disabled</option>
-			</select>
-			<label className="text-xs text-[var(--muted)]">Group Mention Mode</label>
-			<select data-field="mentionMode" className="channel-select">
-				<option value="mention">Must @mention bot</option>
-				<option value="always">Always respond</option>
-				<option value="none">Don't respond in groups</option>
-			</select>
-			<label className="text-xs text-[var(--muted)]">Default Model</label>
+			<label>
+				<span className="text-xs text-[var(--muted)]">DM Policy</span>
+				<select data-field="dmPolicy" className="channel-select">
+					<option value="allowlist">Allowlist only</option>
+					<option value="open">Open (anyone)</option>
+					<option value="disabled">Disabled</option>
+				</select>
+			</label>
+			<label>
+				<span className="text-xs text-[var(--muted)]">Group Mention Mode</span>
+				<select data-field="mentionMode" className="channel-select">
+					<option value="mention">Must @mention bot</option>
+					<option value="always">Always respond</option>
+					<option value="none">Don't respond in groups</option>
+				</select>
+			</label>
+			<span className="text-xs text-[var(--muted)]">Default Model</span>
 			<ModelSelect
+				ariaLabel="Default Model"
 				models={modelsSig.value}
 				value={addModel.value}
 				onChange={(v: string) => {
@@ -179,8 +189,9 @@ export function SharedChannelFields({ addModel, allowlistItems }: SharedChannelF
 				}}
 				placeholder={defaultPlaceholder}
 			/>
-			<label className="text-xs text-[var(--muted)]">DM Allowlist</label>
+			<span className="text-xs text-[var(--muted)]">DM Allowlist</span>
 			<AllowlistInput
+				ariaLabel="DM Allowlist"
 				value={allowlistItems.value}
 				onChange={(v) => {
 					allowlistItems.value = v;

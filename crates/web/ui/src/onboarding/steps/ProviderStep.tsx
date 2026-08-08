@@ -70,17 +70,19 @@ export function ModelSelectCard({
 }): VNode {
 	const probeError = probe && probe !== "ok" && probe !== "probing" ? (probe as ProbeResult).error || "" : "";
 	return (
-		<div className={`model-card ${selected ? "selected" : ""}`} onClick={onToggle}>
-			<div className="flex flex-wrap items-center justify-between gap-2">
+		<button type="button" className={`model-card ${selected ? "selected" : ""}`} onClick={onToggle}>
+			<span className="flex flex-wrap items-center justify-between gap-2">
 				<span className="text-sm font-medium text-[var(--text)]">{model.display_name}</span>
-				<div className="flex flex-wrap gap-2 justify-end">
+				<span className="flex flex-wrap gap-2 justify-end">
 					{model.tool_calling ? <span className="recommended-badge">Tools</span> : null}
 					{probe === "probing" ? <span className="tier-badge">Probing{"\u2026"}</span> : null}
 					{probeError ? <span className="provider-item-badge warning">Unsupported</span> : null}
-				</div>
-			</div>
-			<div className="text-xs text-[var(--muted)] mt-1 font-mono">{model.id}</div>
-			{probeError ? <div className="text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5">{probeError}</div> : null}
+				</span>
+			</span>
+			<span className="text-xs text-[var(--muted)] mt-1 font-mono">{model.id}</span>
+			{probeError ? (
+				<span className="text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5">{probeError}</span>
+			) : null}
 			{model.created_at ? (
 				<time
 					className="text-xs text-[var(--muted)] mt-0.5 opacity-60 block"
@@ -88,7 +90,7 @@ export function ModelSelectCard({
 					data-format="year-month"
 				/>
 			) : null}
-		</div>
+		</button>
 	);
 }
 
@@ -124,288 +126,351 @@ interface OnboardingProviderRowProps {
 	onCancelOAuth: () => void;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: provider row renders inline config forms for api-key and oauth flows
-export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode {
-	const {
-		provider,
-		configuring,
-		phase,
-		providerModels,
-		selectedModels,
-		probeResults,
-		modelSearch,
-		setModelSearch,
-		oauthProvider,
-		oauthInfo,
-		oauthCallbackInput,
-		setOauthCallbackInput,
-		oauthSubmitting,
-		apiKey,
-		setApiKey,
-		endpoint,
-		setEndpoint,
-		savingModels,
-		error,
-		validationResult,
-		onStartConfigure,
-		onCancelConfigure,
-		onSaveKey,
-		onToggleModel,
-		onSaveModels,
-		onSubmitOAuthCallback,
-		onCancelOAuth,
-	} = props;
-
-	const isApiKeyForm = configuring === provider.name && (phase === "form" || phase === "validating");
-	const isModelSelect = configuring === provider.name && phase === "selectModel";
-	const isOAuth = oauthProvider === provider.name;
-	const isExpanded = isApiKeyForm || isModelSelect || isOAuth;
-	const keyInputRef = useRef<HTMLInputElement>(null);
-	const rowRef = useRef<HTMLDivElement>(null);
-
-	useEffect(() => {
-		if (isApiKeyForm && keyInputRef.current) keyInputRef.current.focus();
-	}, [isApiKeyForm]);
-
-	useEffect(() => {
-		if (isExpanded && rowRef.current) rowRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-	}, [isExpanded]);
-
-	const supportsEndpoint = OPENAI_COMPATIBLE.includes(provider.name);
-	const keyHelp = providerApiKeyHelp(provider) as KeyHelp | null;
-
-	const [showAllModels, setShowAllModels] = useState(false);
-	const DEFAULT_VISIBLE = 3;
-
-	const sortedModels = (providerModels || []).slice().sort((a, b) => {
-		const aRec = a.recommended ? 1 : 0;
-		const bRec = b.recommended ? 1 : 0;
-		if (aRec !== bRec) return bRec - aRec;
-		const aTime = a.created_at || 0;
-		const bTime = b.created_at || 0;
-		if (aTime !== bTime) return bTime - aTime;
-		return a.display_name.localeCompare(b.display_name);
-	});
-
-	const filteredModels = sortedModels.filter(
-		(m) =>
-			!modelSearch ||
-			m.display_name.toLowerCase().includes(modelSearch.toLowerCase()) ||
-			m.id.toLowerCase().includes(modelSearch.toLowerCase()),
-	);
-
-	const hasMoreModels = filteredModels.length > DEFAULT_VISIBLE && !modelSearch;
-	const visibleModels = showAllModels || modelSearch ? filteredModels : filteredModels.slice(0, DEFAULT_VISIBLE);
-	const hiddenModelCount = filteredModels.length - DEFAULT_VISIBLE;
-
+function ProviderRowHeader({
+	provider,
+	expanded,
+	validationResult,
+	onConfigure,
+}: {
+	provider: ProviderInfo;
+	expanded: boolean;
+	validationResult: ValidationResult | null;
+	onConfigure: () => void;
+}): VNode {
+	const authLabel = provider.authType === "oauth" ? "OAuth" : provider.authType === "local" ? "Local" : "API Key";
 	return (
-		<div ref={rowRef} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
-			<div className="flex items-center gap-3">
-				<div className="flex-1 min-w-0 flex flex-col gap-0.5">
-					<div className="flex items-center gap-2 flex-wrap">
-						<span className="text-sm font-medium text-[var(--text-strong)]">{provider.displayName}</span>
-						{provider.configured ? <span className="provider-item-badge configured">configured</span> : null}
-						{validationResult?.ok === true ? (
-							<span className="icon icon-md icon-check-circle inline-block" style={{ color: "var(--ok)" }} />
-						) : null}
-						<span className={`provider-item-badge ${provider.authType}`}>
-							{provider.authType === "oauth" ? "OAuth" : provider.authType === "local" ? "Local" : "API Key"}
-						</span>
-					</div>
-				</div>
-				<div className="shrink-0">
-					{isExpanded ? null : (
-						<button
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							onClick={() => onStartConfigure(provider.name)}
-						>
-							{provider.configured ? "Choose Model" : "Configure"}
-						</button>
+		<div className="flex items-center gap-3">
+			<div className="flex-1 min-w-0 flex flex-col gap-0.5">
+				<div className="flex items-center gap-2 flex-wrap">
+					<span className="text-sm font-medium text-[var(--text-strong)]">{provider.displayName}</span>
+					{provider.configured && <span className="provider-item-badge configured">configured</span>}
+					{validationResult?.ok === true && (
+						<span className="icon icon-md icon-check-circle inline-block" style={{ color: "var(--ok)" }} />
 					)}
+					<span className={`provider-item-badge ${provider.authType}`}>{authLabel}</span>
 				</div>
 			</div>
-			{validationResult?.ok === false && !isExpanded ? (
-				<div className="text-xs text-[var(--warning)] mt-1">{validationResult.message}</div>
-			) : null}
-			{isApiKeyForm ? (
-				<form onSubmit={onSaveKey} className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
-					<div>
-						<label className="text-xs text-[var(--muted)] mb-1 block">API Key</label>
-						<input
-							type="password"
-							className="provider-key-input w-full"
-							ref={keyInputRef}
-							value={apiKey}
-							onInput={(e) => setApiKey(targetValue(e))}
-							placeholder={provider.keyOptional ? "(optional)" : "sk-..."}
-						/>
-						{keyHelp ? (
-							<div className="text-xs text-[var(--muted)] mt-1">
-								{keyHelp.url ? (
-									<>
-										{keyHelp.text}{" "}
-										<a
-											href={keyHelp.url}
-											target="_blank"
-											rel="noopener noreferrer"
-											className="text-[var(--accent)] underline"
-										>
-											{keyHelp.label || keyHelp.url}
-										</a>
-									</>
-								) : (
-									keyHelp.text
-								)}
-							</div>
-						) : null}
-					</div>
-					{supportsEndpoint ? (
-						<div>
-							<label className="text-xs text-[var(--muted)] mb-1 block">Endpoint (optional)</label>
-							<input
-								type="text"
-								className="provider-key-input w-full"
-								value={endpoint}
-								onInput={(e) => setEndpoint(targetValue(e))}
-								placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
-							/>
-							<div className="text-xs text-[var(--muted)] mt-1">Leave empty to use the default endpoint.</div>
-						</div>
-					) : null}
-					{error ? <ErrorPanel message={error} /> : null}
-					<div className="flex items-center gap-2 mt-1">
-						<button
-							key={`prov-${phase}`}
-							type="submit"
-							className="provider-btn provider-btn-sm"
-							disabled={phase === "validating"}
-						>
-							{phase === "validating" ? "Saving\u2026" : "Save"}
-						</button>
-						<button
-							type="button"
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							onClick={onCancelConfigure}
-							disabled={phase === "validating"}
-						>
-							Cancel
-						</button>
-					</div>
-					{phase === "validating" ? (
-						<div className="text-xs text-[var(--muted)] mt-1">Discovering available models{"\u2026"}</div>
-					) : null}
-				</form>
-			) : null}
-			{isModelSelect ? (
-				<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
-					<div className="text-xs font-medium text-[var(--text-strong)]">Select preferred models</div>
-					<div className="text-xs text-[var(--muted)]">Selected models appear first in the session model selector.</div>
-					{(providerModels || []).length > 5 ? (
+			{!expanded && (
+				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onConfigure}>
+					{provider.configured ? "Choose Model" : "Configure"}
+				</button>
+			)}
+		</div>
+	);
+}
+
+interface ProviderApiKeyFormProps {
+	provider: ProviderInfo;
+	phase: string;
+	apiKey: string;
+	setApiKey: (value: string) => void;
+	endpoint: string;
+	setEndpoint: (value: string) => void;
+	error: string | null;
+	onSave: (event: Event) => void;
+	onCancel: () => void;
+}
+
+function ProviderApiKeyForm(props: ProviderApiKeyFormProps): VNode {
+	const keyInputRef = useRef<HTMLInputElement>(null);
+	useEffect(() => keyInputRef.current?.focus(), []);
+	const keyHelp = providerApiKeyHelp(props.provider) as KeyHelp | null;
+	return (
+		<form onSubmit={props.onSave} className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+			<label>
+				<span className="text-xs text-[var(--muted)] mb-1 block">API Key</span>
+				<input
+					type="password"
+					className="provider-key-input w-full"
+					ref={keyInputRef}
+					value={props.apiKey}
+					onInput={(event) => props.setApiKey(targetValue(event))}
+					placeholder={props.provider.keyOptional ? "(optional)" : "sk-..."}
+				/>
+			</label>
+			{keyHelp && (
+				<div className="text-xs text-[var(--muted)] mt-1">
+					{keyHelp.url ? (
+						<>
+							{keyHelp.text}{" "}
+							<a
+								href={keyHelp.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-[var(--accent)] underline"
+							>
+								{keyHelp.label || keyHelp.url}
+							</a>
+						</>
+					) : (
+						keyHelp.text
+					)}
+				</div>
+			)}
+			{OPENAI_COMPATIBLE.includes(props.provider.name) && (
+				<div>
+					<label>
+						<span className="text-xs text-[var(--muted)] mb-1 block">Endpoint (optional)</span>
 						<input
 							type="text"
-							className="provider-key-input w-full text-xs"
-							placeholder={"Search models\u2026"}
-							value={modelSearch}
-							onInput={(e) => setModelSearch(targetValue(e))}
+							className="provider-key-input w-full"
+							value={props.endpoint}
+							onInput={(event) => props.setEndpoint(targetValue(event))}
+							placeholder={props.provider.defaultBaseUrl || "https://api.example.com/v1"}
 						/>
-					) : null}
-					<div className="flex flex-col gap-1">
-						{visibleModels.length === 0 ? (
-							<div className="text-xs text-[var(--muted)] py-4 text-center">No models match your search.</div>
-						) : (
-							visibleModels.map((m) => (
-								<ModelSelectCard
-									key={m.id}
-									model={m}
-									selected={selectedModels.has(m.id)}
-									probe={probeResults.get(m.id)}
-									onToggle={() => onToggleModel(m.id)}
-								/>
-							))
-						)}
-						{hasMoreModels ? (
-							<button
-								className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none py-1 text-left hover:underline"
-								onClick={() => setShowAllModels(!showAllModels)}
-							>
-								{showAllModels
-									? t("providers:showFewerModels")
-									: t("providers:showAllModels", { count: hiddenModelCount })}
-							</button>
-						) : null}
-					</div>
-					<div className="text-xs text-[var(--muted)]">
-						{selectedModels.size === 0
-							? "No models selected"
-							: `${selectedModels.size} model${selectedModels.size > 1 ? "s" : ""} selected`}
-					</div>
-					{error ? <ErrorPanel message={error} /> : null}
-					<div className="flex items-center gap-2 mt-1">
-						<button
-							type="button"
-							className="provider-btn provider-btn-sm"
-							disabled={selectedModels.size === 0 || savingModels}
-							onClick={onSaveModels}
-						>
-							{savingModels ? "Saving\u2026" : "Save"}
-						</button>
-						<button
-							type="button"
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							onClick={onCancelConfigure}
-							disabled={savingModels}
-						>
-							Cancel
-						</button>
-					</div>
-					{savingModels ? (
-						<div className="text-xs text-[var(--muted)] mt-1">
-							Saving credentials and validating selected models{"\u2026"}
-						</div>
-					) : null}
+					</label>
+					<div className="text-xs text-[var(--muted)] mt-1">Leave empty to use the default endpoint.</div>
 				</div>
-			) : null}
-			{isOAuth ? (
-				<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
-					{oauthInfo?.status === "device" ? (
-						<div className="text-sm text-[var(--text)]">
-							Open{" "}
-							<a href={oauthInfo.uri} target="_blank" className="text-[var(--accent)] underline">
-								{oauthInfo.uri}
-							</a>{" "}
-							and enter code:<strong className="font-mono ml-1">{oauthInfo.code}</strong>
-						</div>
-					) : (
-						<div className="text-sm text-[var(--muted)]">Waiting for authentication{"\u2026"}</div>
-					)}
-					{oauthInfo?.status === "device" ? null : (
-						<>
-							<div className="text-xs text-[var(--muted)]">
-								If localhost callback fails, paste the redirect URL (or code#state) below.
-							</div>
-							<input
-								type="text"
-								className="provider-key-input w-full"
-								placeholder="http://localhost:1455/auth/callback?code=...&state=..."
-								value={oauthCallbackInput}
-								onInput={(event) => setOauthCallbackInput((event.target as HTMLInputElement).value)}
-								disabled={oauthSubmitting}
-							/>
-							<button
-								className="provider-btn provider-btn-secondary provider-btn-sm self-start"
-								onClick={() => onSubmitOAuthCallback(provider.name)}
-								disabled={oauthSubmitting}
-							>
-								{oauthSubmitting ? "Submitting..." : "Submit Callback"}
-							</button>
-						</>
-					)}
-					{error ? <ErrorPanel message={error} /> : null}
-					<button className="provider-btn provider-btn-secondary provider-btn-sm self-start" onClick={onCancelOAuth}>
-						Cancel
+			)}
+			{props.error && <ErrorPanel message={props.error} />}
+			<div className="flex items-center gap-2 mt-1">
+				<button
+					key={`prov-${props.phase}`}
+					type="submit"
+					className="provider-btn provider-btn-sm"
+					disabled={props.phase === "validating"}
+				>
+					{props.phase === "validating" ? "Saving\u2026" : "Save"}
+				</button>
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary provider-btn-sm"
+					onClick={props.onCancel}
+					disabled={props.phase === "validating"}
+				>
+					Cancel
+				</button>
+			</div>
+			{props.phase === "validating" && (
+				<div className="text-xs text-[var(--muted)] mt-1">Discovering available models{"\u2026"}</div>
+			)}
+		</form>
+	);
+}
+
+function sortedProviderModels(models: ModelSelectorRow[]): ModelSelectorRow[] {
+	return models.slice().sort((first, second) => {
+		const recommendationOrder = Number(second.recommended) - Number(first.recommended);
+		if (recommendationOrder !== 0) return recommendationOrder;
+		const creationOrder = (second.created_at || 0) - (first.created_at || 0);
+		return creationOrder || first.display_name.localeCompare(second.display_name);
+	});
+}
+
+interface ProviderModelFormProps {
+	models: ModelSelectorRow[];
+	selectedModels: Set<string>;
+	probeResults: Map<string, string | ProbeResult>;
+	modelSearch: string;
+	setModelSearch: (value: string) => void;
+	saving: boolean;
+	error: string | null;
+	onToggle: (id: string) => void;
+	onSave: () => void;
+	onCancel: () => void;
+}
+
+function ProviderModelForm(props: ProviderModelFormProps): VNode {
+	const [showAllModels, setShowAllModels] = useState(false);
+	const search = props.modelSearch.toLowerCase();
+	const filtered = sortedProviderModels(props.models).filter(
+		(model) => !search || model.display_name.toLowerCase().includes(search) || model.id.toLowerCase().includes(search),
+	);
+	const visible = showAllModels || search ? filtered : filtered.slice(0, 3);
+	const hasMore = filtered.length > 3 && !search;
+	return (
+		<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+			<div className="text-xs font-medium text-[var(--text-strong)]">Select preferred models</div>
+			<div className="text-xs text-[var(--muted)]">Selected models appear first in the session model selector.</div>
+			{props.models.length > 5 && (
+				<input
+					type="text"
+					className="provider-key-input w-full text-xs"
+					placeholder="Search models\u2026"
+					value={props.modelSearch}
+					onInput={(event) => props.setModelSearch(targetValue(event))}
+				/>
+			)}
+			<div className="flex flex-col gap-1">
+				{visible.length === 0 ? (
+					<div className="text-xs text-[var(--muted)] py-4 text-center">No models match your search.</div>
+				) : (
+					visible.map((model) => (
+						<ModelSelectCard
+							key={model.id}
+							model={model}
+							selected={props.selectedModels.has(model.id)}
+							probe={props.probeResults.get(model.id)}
+							onToggle={() => props.onToggle(model.id)}
+						/>
+					))
+				)}
+				{hasMore && (
+					<button
+						type="button"
+						className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none py-1 text-left hover:underline"
+						onClick={() => setShowAllModels(!showAllModels)}
+					>
+						{showAllModels
+							? t("providers:showFewerModels")
+							: t("providers:showAllModels", { count: filtered.length - 3 })}
 					</button>
+				)}
+			</div>
+			<div className="text-xs text-[var(--muted)]">
+				{props.selectedModels.size === 0
+					? "No models selected"
+					: `${props.selectedModels.size} model${props.selectedModels.size > 1 ? "s" : ""} selected`}
+			</div>
+			{props.error && <ErrorPanel message={props.error} />}
+			<div className="flex items-center gap-2 mt-1">
+				<button
+					type="button"
+					className="provider-btn provider-btn-sm"
+					disabled={props.selectedModels.size === 0 || props.saving}
+					onClick={props.onSave}
+				>
+					{props.saving ? "Saving\u2026" : "Save"}
+				</button>
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary provider-btn-sm"
+					onClick={props.onCancel}
+					disabled={props.saving}
+				>
+					Cancel
+				</button>
+			</div>
+			{props.saving && (
+				<div className="text-xs text-[var(--muted)] mt-1">
+					Saving credentials and validating selected models{"\u2026"}
 				</div>
-			) : null}
+			)}
+		</div>
+	);
+}
+
+interface ProviderOAuthFormProps {
+	provider: ProviderInfo;
+	info: OAuthInfo | null;
+	callbackInput: string;
+	setCallbackInput: (value: string) => void;
+	submitting: boolean;
+	error: string | null;
+	onSubmit: () => void;
+	onCancel: () => void;
+}
+
+function ProviderOAuthForm(props: ProviderOAuthFormProps): VNode {
+	const deviceFlow = props.info?.status === "device";
+	return (
+		<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+			{deviceFlow ? (
+				<div className="text-sm text-[var(--text)]">
+					Open{" "}
+					<a href={props.info?.uri} target="_blank" className="text-[var(--accent)] underline">
+						{props.info?.uri}
+					</a>{" "}
+					and enter code:<strong className="font-mono ml-1">{props.info?.code}</strong>
+				</div>
+			) : (
+				<div className="text-sm text-[var(--muted)]">Waiting for authentication{"\u2026"}</div>
+			)}
+			{!deviceFlow && (
+				<>
+					<div className="text-xs text-[var(--muted)]">
+						If localhost callback fails, paste the redirect URL (or code#state) below.
+					</div>
+					<input
+						type="text"
+						className="provider-key-input w-full"
+						placeholder="http://localhost:1455/auth/callback?code=...&state=..."
+						value={props.callbackInput}
+						onInput={(event) => props.setCallbackInput(targetValue(event))}
+						disabled={props.submitting}
+					/>
+					<button
+						type="button"
+						className="provider-btn provider-btn-secondary provider-btn-sm self-start"
+						onClick={props.onSubmit}
+						disabled={props.submitting}
+					>
+						{props.submitting ? "Submitting..." : "Submit Callback"}
+					</button>
+				</>
+			)}
+			{props.error && <ErrorPanel message={props.error} />}
+			<button
+				type="button"
+				className="provider-btn provider-btn-secondary provider-btn-sm self-start"
+				onClick={props.onCancel}
+			>
+				Cancel
+			</button>
+		</div>
+	);
+}
+
+export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode {
+	const apiKeyForm =
+		props.configuring === props.provider.name && (props.phase === "form" || props.phase === "validating");
+	const modelForm = props.configuring === props.provider.name && props.phase === "selectModel";
+	const oauthForm = props.oauthProvider === props.provider.name;
+	const expanded = apiKeyForm || modelForm || oauthForm;
+	const rowRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (expanded) rowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+	}, [expanded]);
+	return (
+		<div ref={rowRef} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+			<ProviderRowHeader
+				provider={props.provider}
+				expanded={expanded}
+				validationResult={props.validationResult}
+				onConfigure={() => props.onStartConfigure(props.provider.name)}
+			/>
+			{props.validationResult?.ok === false && !expanded && (
+				<div className="text-xs text-[var(--warning)] mt-1">{props.validationResult.message}</div>
+			)}
+			{apiKeyForm && (
+				<ProviderApiKeyForm
+					provider={props.provider}
+					phase={props.phase}
+					apiKey={props.apiKey}
+					setApiKey={props.setApiKey}
+					endpoint={props.endpoint}
+					setEndpoint={props.setEndpoint}
+					error={props.error}
+					onSave={props.onSaveKey}
+					onCancel={props.onCancelConfigure}
+				/>
+			)}
+			{modelForm && (
+				<ProviderModelForm
+					models={props.providerModels}
+					selectedModels={props.selectedModels}
+					probeResults={props.probeResults}
+					modelSearch={props.modelSearch}
+					setModelSearch={props.setModelSearch}
+					saving={props.savingModels}
+					error={props.error}
+					onToggle={props.onToggleModel}
+					onSave={props.onSaveModels}
+					onCancel={props.onCancelConfigure}
+				/>
+			)}
+			{oauthForm && (
+				<ProviderOAuthForm
+					provider={props.provider}
+					info={props.oauthInfo}
+					callbackInput={props.oauthCallbackInput}
+					setCallbackInput={props.setOauthCallbackInput}
+					submitting={props.oauthSubmitting}
+					error={props.error}
+					onSubmit={() => props.onSubmitOAuthCallback(props.provider.name)}
+					onCancel={props.onCancelOAuth}
+				/>
+			)}
 		</div>
 	);
 }
@@ -608,40 +673,48 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		});
 	}
 
+	async function savePendingProviderCredentials(providerName: string): Promise<string | null> {
+		if (modelSelectProvider) return null;
+		const provider = providers.find((candidate) => candidate.name === providerName);
+		const keyValue = apiKey.trim() || provider?.name || "";
+		const endpointValue = endpoint.trim() || null;
+		const response = await saveProviderKey(providerName, keyValue, endpointValue);
+		return response?.ok ? null : (response?.error as { message?: string })?.message || "Failed to save credentials.";
+	}
+
+	async function saveSelectedModelPreferences(providerName: string): Promise<string | null> {
+		const models = modelConfigMapFromSelection(providerModels, selectedModels);
+		const response = await sendRpc("providers.save_models", { provider: providerName, models });
+		return response?.ok ? null : response?.error?.message || "Failed to save model preferences.";
+	}
+
+	function finishSelectedModelSave(providerName: string): void {
+		const [firstModelId] = selectedModels;
+		if (firstModelId) localStorage.setItem("chelix-model", firstModelId);
+		setValidationResults((prev) => ({ ...prev, [providerName]: { ok: true, message: null } }));
+		closeAll();
+		refreshProviders();
+	}
+
 	async function onSaveSelectedModels(): Promise<boolean> {
 		const providerName = modelSelectProvider || configuring;
 		if (!providerName) return false;
-		const modelIds = Array.from(selectedModels);
-		const modelsForSave = modelConfigMapFromSelection(providerModels, selectedModels);
 		setSavingModels(true);
 		setError(null);
 		try {
-			if (!modelSelectProvider) {
-				const p = providers.find((pr) => pr.name === providerName);
-				const keyVal = apiKey.trim() || p?.name || "";
-				const endpointVal = endpoint.trim() || null;
-				const res = await saveProviderKey(providerName, keyVal, endpointVal);
-				if (!res?.ok) {
-					setSavingModels(false);
-					setError((res?.error as { message?: string })?.message || "Failed to save credentials.");
-					return false;
-				}
-			}
-			const res = await sendRpc("providers.save_models", { provider: providerName, models: modelsForSave });
-			if (!res?.ok) {
-				setSavingModels(false);
-				setError((res?.error as { message?: string })?.message || "Failed to save model preferences.");
+			const errorMessage =
+				(await savePendingProviderCredentials(providerName)) || (await saveSelectedModelPreferences(providerName));
+			if (errorMessage) {
+				setError(errorMessage);
 				return false;
 			}
-			if (modelIds.length > 0) localStorage.setItem("chelix-model", modelIds[0]);
-			setValidationResults((prev) => ({ ...prev, [providerName]: { ok: true, message: null } }));
-			closeAll();
-			refreshProviders();
+			finishSelectedModelSave(providerName);
 			return true;
 		} catch (err) {
-			setSavingModels(false);
 			setError((err as Error)?.message || "Failed to save credentials.");
 			return false;
+		} finally {
+			setSavingModels(false);
 		}
 	}
 
@@ -700,11 +773,11 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	function pollOAuth(p: ProviderInfo): void {
 		let attempts = 0;
 		if (oauthTimerRef.current) clearInterval(oauthTimerRef.current);
-		oauthTimerRef.current = setInterval(() => {
+		const oauthTimer = setInterval(() => {
 			attempts++;
 			if (attempts > 60) {
-				clearInterval(oauthTimerRef.current!);
-				oauthTimerRef.current = null;
+				clearInterval(oauthTimer);
+				if (oauthTimerRef.current === oauthTimer) oauthTimerRef.current = null;
 				setError("OAuth timed out.");
 				setOauthProvider(null);
 				setOauthInfo(null);
@@ -713,13 +786,15 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				return;
 			}
 			sendRpc<{ authenticated?: boolean }>("providers.oauth.status", { provider: p.name }).then((res) => {
+				if (oauthTimerRef.current !== oauthTimer) return;
 				if (res?.ok && res.payload?.authenticated) {
-					clearInterval(oauthTimerRef.current!);
+					clearInterval(oauthTimer);
 					oauthTimerRef.current = null;
 					onOAuthAuthenticated(p.name);
 				}
 			});
 		}, 2000);
+		oauthTimerRef.current = oauthTimer;
 	}
 
 	function cancelOAuth(): void {
@@ -852,13 +927,19 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			) : null}
 			{error && !configuring && !oauthProvider ? <ErrorPanel message={error} /> : null}
 			<div className="flex flex-wrap items-center gap-3 mt-1">
-				<button className="provider-btn provider-btn-secondary" onClick={onBack || undefined}>
+				<button type="button" className="provider-btn provider-btn-secondary" onClick={onBack || undefined}>
 					{t("common:actions.back")}
 				</button>
-				<button className="provider-btn" onClick={onContinue} disabled={phase === "validating" || savingModels}>
+				<button
+					type="button"
+					className="provider-btn"
+					onClick={onContinue}
+					disabled={phase === "validating" || savingModels}
+				>
 					{t("common:actions.continue")}
 				</button>
 				<button
+					type="button"
 					className="text-xs text-[var(--muted)] cursor-pointer bg-transparent border-none underline"
 					onClick={onNext}
 				>

@@ -113,7 +113,7 @@ function showToast(message: string, type: string): void {
 	const id = ++toastId;
 	toasts.value = toasts.value.concat([{ id, message, type }]);
 	setTimeout(() => {
-		toasts.value = toasts.value.filter((t) => t.id !== id);
+		toasts.value = toasts.value.filter((toast) => toast.id !== id);
 	}, 4000);
 }
 function shortSha(sha: string | null | undefined): string {
@@ -168,7 +168,7 @@ function doInstall(source: string): Promise<void> {
 	}
 	const opId = `skills-install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 	const pid = startInstallProgress(source, opId);
-	return sendRpc("skills.install", { source, op_id: opId }).then(async (res) => {
+	return sendRpc("skills.install", { source, op_id: opId }).then((res) => {
 		if (res?.ok) {
 			const p = (res.payload || {}) as Record<string, unknown[]>;
 			const installed = (p.installed || []) as Array<{ name?: string }>;
@@ -253,7 +253,7 @@ function InstallBox(): VNode {
 					if ((e as KeyboardEvent).key === "Enter") go();
 				}}
 			/>
-			<button className="provider-btn" onClick={go} disabled={installing.value}>
+			<button type="button" className="provider-btn" onClick={go} disabled={installing.value}>
 				{installing.value ? "Installing\u2026" : "Install"}
 			</button>
 		</div>
@@ -337,6 +337,7 @@ function FeaturedCard({ skill: f }: { skill: FeaturedSkill }): VNode {
 				<div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{f.desc}</div>
 			</div>
 			<button
+				type="button"
 				onClick={() => {
 					if (isInstalled) return;
 					installing.value = true;
@@ -415,6 +416,18 @@ function SkillMetadata({ detail: d }: { detail: SkillDetail }): VNode | null {
 	);
 }
 
+function skillActionClass(detail: SkillDetail, discovered: boolean): string {
+	if (discovered && detail.enabled) return "provider-btn provider-btn-sm provider-btn-danger";
+	if (detail.enabled) return "provider-btn provider-btn-sm provider-btn-secondary";
+	return "provider-btn provider-btn-sm";
+}
+
+function skillActionLabel(detail: SkillDetail, discovered: boolean, busy: boolean): string {
+	if (busy) return "...";
+	if (discovered && detail.enabled) return "Delete";
+	return detail.enabled ? "Disable" : "Install";
+}
+
 function SkillDetailPanel({
 	detail: d,
 	repoSource,
@@ -479,20 +492,11 @@ function SkillDetailPanel({
 					{d.display_name || d.name}
 				</span>
 				<div style={{ display: "flex", gap: "6px" }}>
-					<button
-						onClick={onToggle}
-						disabled={actionBusy.value}
-						className={
-							isDisc && d.enabled
-								? "provider-btn provider-btn-sm provider-btn-danger"
-								: d.enabled
-									? "provider-btn provider-btn-sm provider-btn-secondary"
-									: "provider-btn provider-btn-sm"
-						}
-					>
-						{actionBusy.value ? "..." : isDisc && d.enabled ? "Delete" : d.enabled ? "Disable" : "Install"}
+					<button type="button" onClick={onToggle} disabled={actionBusy.value} className={skillActionClass(d, isDisc)}>
+						{skillActionLabel(d, isDisc, actionBusy.value)}
 					</button>
 					<button
+						type="button"
 						onClick={onClose}
 						style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer" }}
 					>
@@ -627,6 +631,9 @@ function RepoCard({ repo }: { repo: RepoSummary }): VNode {
 		});
 	}
 	const installingAll = useSignal(false);
+	function showInstallAllSuccess(count: number): void {
+		if (count > 0) showToast(`Installed ${count} skill${count > 1 ? "s" : ""}`, "success");
+	}
 	async function installAllSkills(): Promise<void> {
 		let skills = allSkills.value;
 		if (!skills.length) {
@@ -650,9 +657,7 @@ function RepoCard({ repo }: { repo: RepoSummary }): VNode {
 			}
 		}
 		installingAll.value = false;
-		if (succeeded.size > 0) {
-			showToast(`Installed ${succeeded.size} skill${succeeded.size > 1 ? "s" : ""}`, "success");
-		}
+		showInstallAllSuccess(succeeded.size);
 		// Re-fetch both the skill list and repo summary from the server
 		// so counts are accurate (no optimistic update).
 		const [freshSkills] = await Promise.all([searchSkills(repo.source, ""), fetchAllAsync()]);
@@ -661,265 +666,273 @@ function RepoCard({ repo }: { repo: RepoSummary }): VNode {
 	const displayed = searchQuery.value.trim() ? searchResults.value : allSkills.value;
 	const unenabledCount =
 		allSkills.value.length > 0
-			? allSkills.value.filter((sk) => !sk.enabled).length
+			? allSkills.value.filter((skill) => !skill.enabled).length
 			: repo.skill_count - repo.enabled_count;
-	return (
-		<div className="skills-repo-card">
-			<div className="skills-repo-header" onClick={toggle}>
-				<div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-					<span style={{ fontSize: ".65rem", color: "var(--muted)", transform: expanded.value ? "rotate(90deg)" : "" }}>
+
+	function exportRepository(): void {
+		exportingRepo.value = true;
+		doExportBundle(repo.source, null).finally(() => {
+			exportingRepo.value = false;
+		});
+	}
+
+	function clearRepositoryQuarantine(): void {
+		if (!S.connected || unquarantiningRepo.value) return;
+		requestConfirm(`Clear quarantine for ${repo.source}?`, { confirmLabel: "Clear Quarantine" }).then((confirmed) => {
+			if (!confirmed) return;
+			unquarantiningRepo.value = true;
+			doUnquarantine(repo.source).finally(() => {
+				unquarantiningRepo.value = false;
+			});
+		});
+	}
+
+	function removeRepository(): void {
+		removingRepo.value = true;
+		sendRpc("skills.repos.remove", { source: repo.source }).then((response) => {
+			removingRepo.value = false;
+			if (response?.ok) fetchAll();
+			else showToast(`Failed: ${response?.error?.message || "unknown"}`, "error");
+		});
+	}
+
+	function renderTrustBadge(): VNode | null {
+		if (repo.trusted_count == null || repo.skill_count === 0) return null;
+		const trusted = repo.trusted_count === repo.skill_count;
+		return (
+			<span
+				style={{
+					fontSize: ".68rem",
+					padding: "1px 5px",
+					borderRadius: "var(--radius-sm)",
+					background: trusted ? "var(--success-bg, rgba(34,197,94,.12))" : "var(--warning-bg, rgba(234,179,8,.12))",
+					color: trusted ? "var(--success, #22c55e)" : "var(--warning, #eab308)",
+				}}
+			>
+				{trusted ? "trusted" : `${repo.trusted_count}/${repo.skill_count} trusted`}
+			</span>
+		);
+	}
+
+	function renderSourceLabel(): VNode {
+		const style = {
+			fontFamily: "var(--font-mono)",
+			fontSize: ".82rem",
+			fontWeight: 500,
+			color: "var(--text-strong)",
+		};
+		if (!href) return <span style={style}>{sourceLabel}</span>;
+		return (
+			<a href={href} target="_blank" rel="noopener noreferrer" style={{ ...style, textDecoration: "none" }}>
+				{sourceLabel}
+			</a>
+		);
+	}
+
+	function renderRepositoryIdentity(): VNode {
+		return (
+			<div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+				<button
+					type="button"
+					className="border-0 bg-transparent p-0 cursor-pointer"
+					style={{ fontSize: ".65rem", color: "var(--muted)" }}
+					aria-label={`${expanded.value ? "Collapse" : "Expand"} skills from ${sourceLabel}`}
+					aria-expanded={expanded.value}
+					onClick={toggle}
+				>
+					<span className={`block transition-transform duration-150 ${expanded.value ? "rotate-90" : ""}`}>
 						{"\u25B6"}
 					</span>
-					{!isOrphan && (
-						<img
-							src={orgAvatarUrl(repo.source)}
-							alt=""
-							style={{ width: "20px", height: "20px", borderRadius: "var(--radius-sm)" }}
-						/>
-					)}
-					{href ? (
-						<a
-							href={href}
-							target="_blank"
-							rel="noopener noreferrer"
-							onClick={(e) => e.stopPropagation()}
-							style={{
-								fontFamily: "var(--font-mono)",
-								fontSize: ".82rem",
-								fontWeight: 500,
-								color: "var(--text-strong)",
-								textDecoration: "none",
-							}}
-						>
-							{sourceLabel}
-						</a>
-					) : (
-						<span
-							style={{
-								fontFamily: "var(--font-mono)",
-								fontSize: ".82rem",
-								fontWeight: 500,
-								color: "var(--text-strong)",
-							}}
-						>
-							{sourceLabel}
-						</span>
-					)}
-					<span style={{ fontSize: ".72rem", color: "var(--muted)" }}>
-						{repo.enabled_count}/{repo.skill_count} enabled
+				</button>
+				{!isOrphan && (
+					<img
+						src={orgAvatarUrl(repo.source)}
+						alt=""
+						style={{ width: "20px", height: "20px", borderRadius: "var(--radius-sm)" }}
+					/>
+				)}
+				{renderSourceLabel()}
+				<span style={{ fontSize: ".72rem", color: "var(--muted)" }}>
+					{repo.enabled_count}/{repo.skill_count} enabled
+				</span>
+				{renderTrustBadge()}
+			</div>
+		);
+	}
+
+	function renderRepositoryActions(): VNode {
+		return (
+			<div style={{ display: "flex", gap: "6px" }}>
+				{!isOrphan && unenabledCount > 0 && (
+					<button
+						type="button"
+						className="provider-btn provider-btn-sm"
+						disabled={installingAll.value}
+						onClick={() => installAllSkills().catch(console.error)}
+					>
+						{installingAll.value ? "Installing\u2026" : "Install All"}
+					</button>
+				)}
+				{!isOrphan && (
+					<button
+						type="button"
+						className="provider-btn provider-btn-sm provider-btn-secondary"
+						disabled={exportingRepo.value}
+						onClick={exportRepository}
+					>
+						{exportingRepo.value ? "Exporting..." : "Export"}
+					</button>
+				)}
+				{repo.quarantined && (
+					<button
+						type="button"
+						className="provider-btn provider-btn-sm provider-btn-secondary"
+						disabled={unquarantiningRepo.value}
+						onClick={clearRepositoryQuarantine}
+					>
+						{unquarantiningRepo.value ? "Clearing..." : "Clear Quarantine"}
+					</button>
+				)}
+				<button
+					type="button"
+					className="provider-btn provider-btn-sm provider-btn-danger"
+					disabled={removingRepo.value}
+					onClick={removeRepository}
+				>
+					{removingRepo.value ? "Removing..." : "Remove"}
+				</button>
+			</div>
+		);
+	}
+
+	function renderRepositoryProvenance(): VNode | null {
+		if (!(expanded.value && (repo.quarantined || repo.provenance))) return null;
+		return (
+			<div style={{ padding: "8px 12px", fontSize: ".78rem", color: "var(--muted)" }}>
+				{repo.quarantined && (
+					<div style={{ marginBottom: "6px", color: "var(--warning, #c77d00)", fontWeight: 600 }}>
+						Quarantined{repo.quarantine_reason ? `: ${repo.quarantine_reason}` : ""}
+					</div>
+				)}
+				{repo.provenance?.original_source && (
+					<div>
+						<strong>Original source:</strong> {repo.provenance.original_source}
+					</div>
+				)}
+				{repo.provenance?.original_commit_sha && (
+					<div>
+						<strong>Original commit:</strong> <code>{shortSha(repo.provenance.original_commit_sha)}</code>
+					</div>
+				)}
+				{repo.provenance?.imported_from && (
+					<div>
+						<strong>Imported from:</strong> <code>{repo.provenance.imported_from}</code>
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	function renderBrowseSkill(skill: SkillSummary): VNode {
+		const installing = installingSkill.value === skill.name;
+		return (
+			<div
+				key={skill.name}
+				className="skills-ac-item"
+				style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+			>
+				<button
+					type="button"
+					className="border-0 bg-transparent p-0 text-left font-[inherit]"
+					style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+					onClick={() => loadDetail(skill)}
+				>
+					<span style={{ fontFamily: "var(--font-mono)", fontWeight: 500, color: "var(--text-strong)" }}>
+						{skill.display_name || skill.name}
 					</span>
-					{repo.trusted_count != null && repo.skill_count > 0 && (
-						<span
-							style={{
-								fontSize: ".68rem",
-								padding: "1px 5px",
-								borderRadius: "var(--radius-sm)",
-								background:
-									repo.trusted_count === repo.skill_count
-										? "var(--success-bg, rgba(34,197,94,.12))"
-										: "var(--warning-bg, rgba(234,179,8,.12))",
-								color: repo.trusted_count === repo.skill_count ? "var(--success, #22c55e)" : "var(--warning, #eab308)",
-							}}
-						>
-							{repo.trusted_count === repo.skill_count
-								? "trusted"
-								: `${repo.trusted_count}/${repo.skill_count} trusted`}
-						</span>
+					{skill.description && (
+						<span style={{ color: "var(--muted)", fontSize: ".72rem", marginLeft: "6px" }}>{skill.description}</span>
 					)}
-				</div>
-				<div style={{ display: "flex", gap: "6px" }}>
-					{!isOrphan && unenabledCount > 0 && (
+				</button>
+				<div style={{ display: "flex", gap: "4px", flexShrink: 0, marginLeft: "8px" }}>
+					<button
+						type="button"
+						className="provider-btn provider-btn-sm provider-btn-secondary"
+						onClick={() => loadDetail(skill)}
+					>
+						View
+					</button>
+					{skill.enabled ? (
+						<span style={{ fontSize: ".72rem", padding: "4px 8px", color: "var(--success, #22c55e)", fontWeight: 500 }}>
+							Installed
+						</span>
+					) : (
 						<button
 							type="button"
 							className="provider-btn provider-btn-sm"
-							disabled={installingAll.value}
-							onClick={(e) => {
-								e.stopPropagation();
-								installAllSkills().catch(console.error);
-							}}
+							disabled={installing}
+							onClick={() => quickInstall(skill)}
 						>
-							{installingAll.value ? "Installing\u2026" : "Install All"}
+							{installing ? "Installing\u2026" : "Install"}
 						</button>
 					)}
-					{!isOrphan && (
-						<button
-							className="provider-btn provider-btn-sm provider-btn-secondary"
-							disabled={exportingRepo.value}
-							onClick={(e) => {
-								e.stopPropagation();
-								exportingRepo.value = true;
-								doExportBundle(repo.source, null).finally(() => {
-									exportingRepo.value = false;
-								});
-							}}
-						>
-							{exportingRepo.value ? "Exporting..." : "Export"}
-						</button>
-					)}
-					{repo.quarantined && (
-						<button
-							className="provider-btn provider-btn-sm provider-btn-secondary"
-							disabled={unquarantiningRepo.value}
-							onClick={(e) => {
-								e.stopPropagation();
-								if (!S.connected || unquarantiningRepo.value) return;
-								requestConfirm(`Clear quarantine for ${repo.source}?`, {
-									confirmLabel: "Clear Quarantine",
-								}).then((confirmed) => {
-									if (!confirmed) return;
-									unquarantiningRepo.value = true;
-									doUnquarantine(repo.source).finally(() => {
-										unquarantiningRepo.value = false;
-									});
-								});
-							}}
-						>
-							{unquarantiningRepo.value ? "Clearing..." : "Clear Quarantine"}
-						</button>
-					)}
-					<button
-						className="provider-btn provider-btn-sm provider-btn-danger"
-						disabled={removingRepo.value}
-						onClick={(e) => {
-							e.stopPropagation();
-							removingRepo.value = true;
-							sendRpc("skills.repos.remove", { source: repo.source }).then((r) => {
-								removingRepo.value = false;
-								if (r?.ok) fetchAll();
-								else showToast(`Failed: ${r?.error?.message || "unknown"}`, "error");
-							});
-						}}
-					>
-						{removingRepo.value ? "Removing..." : "Remove"}
-					</button>
 				</div>
 			</div>
-			{(repo.quarantined || repo.provenance) && expanded.value && (
-				<div style={{ padding: "8px 12px", fontSize: ".78rem", color: "var(--muted)" }}>
-					{repo.quarantined && (
-						<div style={{ marginBottom: "6px", color: "var(--warning, #c77d00)", fontWeight: 600 }}>
-							Quarantined{repo.quarantine_reason ? `: ${repo.quarantine_reason}` : ""}
-						</div>
-					)}
-					{repo.provenance?.original_source && (
-						<div>
-							<strong>Original source:</strong> {repo.provenance.original_source}
-						</div>
-					)}
-					{repo.provenance?.original_commit_sha && (
-						<div>
-							<strong>Original commit:</strong> <code>{shortSha(repo.provenance.original_commit_sha)}</code>
-						</div>
-					)}
-					{repo.provenance?.imported_from && (
-						<div>
-							<strong>Imported from:</strong> <code>{repo.provenance.imported_from}</code>
-						</div>
-					)}
+		);
+	}
+
+	function renderRepositoryDetail(): VNode | null {
+		if (!expanded.value) return null;
+		return (
+			<div className="skills-repo-detail" style={{ display: "block" }}>
+				<div style={{ marginBottom: "8px" }}>
+					<input
+						type="text"
+						placeholder={`Search skills in ${repo.source}\u2026`}
+						value={searchQuery.value}
+						disabled={isOrphan}
+						onInput={onSearch}
+						style={{
+							width: "100%",
+							padding: "6px 10px",
+							border: "1px solid var(--border)",
+							borderRadius: "var(--radius-sm)",
+							background: "var(--surface)",
+							color: "var(--text)",
+							fontSize: ".8rem",
+							fontFamily: "var(--font-mono)",
+							boxSizing: "border-box",
+						}}
+					/>
 				</div>
-			)}
-			{expanded.value && (
-				<div className="skills-repo-detail" style={{ display: "block" }}>
-					<div style={{ marginBottom: "8px" }}>
-						<input
-							type="text"
-							placeholder={`Search skills in ${repo.source}\u2026`}
-							value={searchQuery.value}
-							disabled={isOrphan}
-							onInput={onSearch}
-							style={{
-								width: "100%",
-								padding: "6px 10px",
-								border: "1px solid var(--border)",
-								borderRadius: "var(--radius-sm)",
-								background: "var(--surface)",
-								color: "var(--text)",
-								fontSize: ".8rem",
-								fontFamily: "var(--font-mono)",
-								boxSizing: "border-box",
-							}}
-						/>
-					</div>
-					{!activeDetail.value && displayed.length > 0 && (
-						<div className="skills-browse-list">
-							{displayed.map((sk) => (
-								<div
-									key={sk.name}
-									className="skills-ac-item"
-									style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-								>
-									{/* biome-ignore lint/a11y/useSemanticElements: complex layout requires div wrapper */}
-									<div
-										role="button"
-										tabIndex={0}
-										style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
-										onClick={() => loadDetail(sk)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" || e.key === " ") loadDetail(sk);
-										}}
-									>
-										<span style={{ fontFamily: "var(--font-mono)", fontWeight: 500, color: "var(--text-strong)" }}>
-											{sk.display_name || sk.name}
-										</span>
-										{sk.description && (
-											<span style={{ color: "var(--muted)", fontSize: ".72rem", marginLeft: "6px" }}>
-												{sk.description}
-											</span>
-										)}
-									</div>
-									<div style={{ display: "flex", gap: "4px", flexShrink: 0, marginLeft: "8px" }}>
-										<button
-											type="button"
-											className="provider-btn provider-btn-sm provider-btn-secondary"
-											onClick={() => loadDetail(sk)}
-										>
-											View
-										</button>
-										{!sk.enabled && (
-											<button
-												type="button"
-												className="provider-btn provider-btn-sm"
-												disabled={installingSkill.value === sk.name}
-												onClick={(e) => {
-													e.stopPropagation();
-													quickInstall(sk);
-												}}
-											>
-												{installingSkill.value === sk.name ? "Installing\u2026" : "Install"}
-											</button>
-										)}
-										{sk.enabled && (
-											<span
-												style={{
-													fontSize: ".72rem",
-													padding: "4px 8px",
-													color: "var(--success, #22c55e)",
-													fontWeight: 500,
-												}}
-											>
-												Installed
-											</span>
-										)}
-									</div>
-								</div>
-							))}
-						</div>
-					)}
-					{searching.value && !activeDetail.value && (
-						<div style={{ padding: "8px", color: "var(--muted)", fontSize: ".78rem" }}>Searching...</div>
-					)}
-					{activeDetail.value && (
-						<SkillDetailPanel
-							detail={activeDetail.value}
-							repoSource={repo.source}
-							onClose={() => {
-								activeDetail.value = null;
-							}}
-							onReload={() => loadDetail({ name: activeDetail.value?.name } as SkillSummary)}
-						/>
-					)}
-				</div>
-			)}
+				{!activeDetail.value && displayed.length > 0 && (
+					<div className="skills-browse-list">{displayed.map(renderBrowseSkill)}</div>
+				)}
+				{searching.value && !activeDetail.value && (
+					<div style={{ padding: "8px", color: "var(--muted)", fontSize: ".78rem" }}>Searching...</div>
+				)}
+				{activeDetail.value && (
+					<SkillDetailPanel
+						detail={activeDetail.value}
+						repoSource={repo.source}
+						onClose={() => {
+							activeDetail.value = null;
+						}}
+						onReload={() => loadDetail({ name: activeDetail.value?.name } as SkillSummary)}
+					/>
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<div className="skills-repo-card">
+			<div className="skills-repo-header">
+				{renderRepositoryIdentity()}
+				{renderRepositoryActions()}
+			</div>
+			{renderRepositoryProvenance()}
+			{renderRepositoryDetail()}
 		</div>
 	);
 }
@@ -1096,6 +1109,86 @@ function EnabledSkillsTable(): VNode | null {
 			if (r?.ok) activeDetail.value = r.payload as SkillDetail;
 		});
 	}
+
+	function renderSkillAction(skill: SkillSummary): VNode | null {
+		if (skill.source === SkillSource.Bundled) return null;
+		const discovered = isDisc(skill);
+		return (
+			<button
+				type="button"
+				disabled={(discovered && skill.protected === true) || pending.value === skill.name}
+				className={
+					discovered
+						? "provider-btn provider-btn-sm provider-btn-danger"
+						: "provider-btn provider-btn-sm provider-btn-secondary"
+				}
+				onClick={(event) => {
+					event.stopPropagation();
+					onDisable(skill);
+				}}
+			>
+				{pending.value === skill.name ? "..." : discovered ? "Delete" : "Disable"}
+			</button>
+		);
+	}
+
+	function renderActiveSkillDetail(skill: SkillSummary): VNode | null {
+		if (activeDetail.value?.name !== skill.name) return null;
+		return (
+			<tr key={`${skill.name}-detail`}>
+				<td colSpan={4} style={{ padding: 0, borderBottom: "1px solid var(--border)" }}>
+					<SkillDetailPanel
+						detail={activeDetail.value}
+						repoSource={activeDetail.value.source}
+						onClose={() => {
+							activeDetail.value = null;
+						}}
+						onReload={() =>
+							loadDetail({
+								name: activeDetail.value?.name,
+								source: activeDetail.value?.source,
+							} as SkillSummary)
+						}
+					/>
+				</td>
+			</tr>
+		);
+	}
+
+	function renderEnabledSkill(skill: SkillSummary): VNode {
+		const active = activeDetail.value?.name === skill.name;
+		return (
+			<>
+				<tr
+					key={skill.name}
+					className="cursor-pointer"
+					style={{
+						borderBottom: active ? "none" : "1px solid var(--border)",
+						background: active ? "var(--bg-hover)" : undefined,
+					}}
+					onClick={() => loadDetail(skill)}
+				>
+					<td
+						style={{
+							padding: "8px 12px",
+							fontWeight: 500,
+							color: "var(--accent)",
+							fontFamily: "var(--font-mono)",
+						}}
+					>
+						{skill.name}
+						{skill.category && !activeCategory.value && <span className="skills-category-badge">{skill.category}</span>}
+					</td>
+					<td style={{ padding: "8px 12px" }}>{skill.description || "\u2014"}</td>
+					<td style={{ padding: "8px 12px" }}>
+						<span className={isRepoSource(skill.source) ? "tier-badge" : "recommended-badge"}>{skill.source}</span>
+					</td>
+					<td style={{ padding: "8px 12px", textAlign: "right" }}>{renderSkillAction(skill)}</td>
+				</tr>
+				{renderActiveSkillDetail(skill)}
+			</>
+		);
+	}
 	return (
 		<div className="skills-section">
 			<div className="flex items-center gap-3 mb-2">
@@ -1120,6 +1213,7 @@ function EnabledSkillsTable(): VNode | null {
 			{categories.value.length > 1 && (
 				<div className="flex flex-wrap gap-1.5 mb-3">
 					<button
+						type="button"
 						className={`skills-category-pill ${activeCategory.value === null ? "active" : ""}`}
 						onClick={() => {
 							activeCategory.value = null;
@@ -1131,6 +1225,7 @@ function EnabledSkillsTable(): VNode | null {
 						const count = s.filter((sk) => (sk.category || "other") === cat).length;
 						return (
 							<button
+								type="button"
 								key={cat}
 								className={`skills-category-pill ${activeCategory.value === cat ? "active" : ""}`}
 								onClick={() => {
@@ -1186,79 +1281,7 @@ function EnabledSkillsTable(): VNode | null {
 							<th />
 						</tr>
 					</thead>
-					<tbody>
-						{filtered.map((sk) => {
-							const isActive = activeDetail.value?.name === sk.name;
-							return (
-								<>
-									<tr
-										key={sk.name}
-										className="cursor-pointer"
-										style={{
-											borderBottom: isActive ? "none" : "1px solid var(--border)",
-											background: isActive ? "var(--bg-hover)" : undefined,
-										}}
-										onClick={() => loadDetail(sk)}
-									>
-										<td
-											style={{
-												padding: "8px 12px",
-												fontWeight: 500,
-												color: "var(--accent)",
-												fontFamily: "var(--font-mono)",
-											}}
-										>
-											{sk.name}
-											{sk.category && !activeCategory.value && (
-												<span className="skills-category-badge">{sk.category}</span>
-											)}
-										</td>
-										<td style={{ padding: "8px 12px" }}>{sk.description || "\u2014"}</td>
-										<td style={{ padding: "8px 12px" }}>
-											<span className={isRepoSource(sk.source) ? "tier-badge" : "recommended-badge"}>{sk.source}</span>
-										</td>
-										<td style={{ padding: "8px 12px", textAlign: "right" }}>
-											{sk.source !== SkillSource.Bundled && (
-												<button
-													disabled={(isDisc(sk) && sk.protected === true) || pending.value === sk.name}
-													className={
-														isDisc(sk)
-															? "provider-btn provider-btn-sm provider-btn-danger"
-															: "provider-btn provider-btn-sm provider-btn-secondary"
-													}
-													onClick={(e) => {
-														e.stopPropagation();
-														onDisable(sk);
-													}}
-												>
-													{pending.value === sk.name ? "..." : isDisc(sk) ? "Delete" : "Disable"}
-												</button>
-											)}
-										</td>
-									</tr>
-									{isActive && activeDetail.value && (
-										<tr key={`${sk.name}-detail`}>
-											<td colSpan={4} style={{ padding: 0, borderBottom: "1px solid var(--border)" }}>
-												<SkillDetailPanel
-													detail={activeDetail.value}
-													repoSource={activeDetail.value.source}
-													onClose={() => {
-														activeDetail.value = null;
-													}}
-													onReload={() =>
-														loadDetail({
-															name: activeDetail.value?.name,
-															source: activeDetail.value?.source,
-														} as SkillSummary)
-													}
-												/>
-											</td>
-										</tr>
-									)}
-								</>
-							);
-						})}
-					</tbody>
+					<tbody>{filtered.map(renderEnabledSkill)}</tbody>
 				</table>
 			</div>
 		</div>
@@ -1294,10 +1317,14 @@ function SkillsPageComponent(): VNode {
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<div className="flex items-center gap-3">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">Skills</h2>
-				<button className="provider-btn provider-btn-secondary provider-btn-sm" onClick={fetchAll}>
+				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={fetchAll}>
 					Refresh
 				</button>
-				<button className="provider-btn provider-btn-danger provider-btn-sm" onClick={emergencyDisableAllSkills}>
+				<button
+					type="button"
+					className="provider-btn provider-btn-danger provider-btn-sm"
+					onClick={emergencyDisableAllSkills}
+				>
 					Emergency Disable
 				</button>
 			</div>
@@ -1356,4 +1383,4 @@ export function teardownSkills(): void {
 	if (_skillsContainer) render(null, _skillsContainer);
 	_skillsContainer = null;
 }
-registerPage(routes.skills!, initSkills, teardownSkills);
+registerPage(routes.skills, initSkills, teardownSkills);

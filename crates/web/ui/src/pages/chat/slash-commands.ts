@@ -4,7 +4,7 @@ import { chatAddMsg } from "../../chat-ui";
 import { renderMarkdown, sendRpc } from "../../helpers";
 import { clearActiveSession, fetchSessions, switchSession } from "../../sessions";
 import * as S from "../../state";
-import { type ContextData, renderContextCard } from "./context-card";
+import { renderContextCard } from "./context-card";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -348,7 +348,7 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
 			if (res.ok && res.payload) {
 				try {
-					renderContextCard(res.payload as ContextData);
+					renderContextCard(res.payload);
 				} catch (err: unknown) {
 					const message = err instanceof Error ? err.message : "Unknown render error";
 					chatAddMsg("error", `Render error: ${message}`);

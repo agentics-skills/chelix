@@ -108,10 +108,6 @@ export function Modal(props: ModalProps): VNode | null {
 	const onClose = props.onClose;
 	const title = props.title;
 
-	function onBackdrop(e: Event): void {
-		if (e.target === e.currentTarget && onClose) onClose();
-	}
-
 	useEffect(() => {
 		if (!show) return;
 		function onKey(e: KeyboardEvent): void {
@@ -126,21 +122,36 @@ export function Modal(props: ModalProps): VNode | null {
 	return (
 		<div
 			class="modal-overlay"
-			onClick={onBackdrop}
 			style="display:flex;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center;"
 		>
+			{onClose && (
+				<button
+					type="button"
+					class="modal-backdrop-dismiss"
+					aria-label="Dismiss dialog"
+					tabIndex={-1}
+					onClick={onClose}
+				/>
+			)}
 			<div
 				class="modal-box"
-				style="background:var(--surface);border-radius:var(--radius);padding:20px;max-width:500px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.25);border:1px solid var(--border);"
+				role="dialog"
+				aria-modal="true"
+				aria-label={title || "Dialog"}
+				style="position:relative;z-index:1;background:var(--surface);border-radius:var(--radius);padding:20px;max-width:500px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.25);border:1px solid var(--border);"
 			>
 				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
 					<h3 style="margin:0;font-size:.95rem;font-weight:600;color:var(--text-strong)">{title}</h3>
-					<button
-						onClick={onClose}
-						style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:2px 6px"
-					>
-						{"\u2715"}
-					</button>
+					{onClose && (
+						<button
+							type="button"
+							aria-label="Close dialog"
+							onClick={onClose}
+							style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:2px 6px"
+						>
+							{"\u2715"}
+						</button>
+					)}
 				</div>
 				{props.children}
 			</div>
@@ -185,10 +196,10 @@ export function ConfirmDialog(): VNode | null {
 		<Modal show={true} onClose={no} title={t("common:actions.confirm")}>
 			<p style="font-size:.85rem;color:var(--text);margin:0 0 16px;">{s.message}</p>
 			<div style="display:flex;gap:8px;justify-content:flex-end;">
-				<button onClick={no} class="provider-btn provider-btn-secondary">
+				<button type="button" onClick={no} class="provider-btn provider-btn-secondary">
 					{t("common:actions.cancel")}
 				</button>
-				<button onClick={yes} class={btnClass}>
+				<button type="button" onClick={yes} class={btnClass}>
 					{label}
 				</button>
 			</div>
@@ -223,13 +234,21 @@ export function VanillaConfirmDialog(): VNode | null {
 		vanillaConfirmState.value = null;
 	}
 	return (
-		<div
-			class="provider-modal-backdrop"
-			onClick={(e: Event) => {
-				if (e.target === e.currentTarget) close(false);
-			}}
-		>
-			<div class="provider-modal" style="width:360px">
+		<div class="provider-modal-backdrop">
+			<button
+				type="button"
+				class="modal-backdrop-dismiss"
+				aria-label="Cancel confirmation"
+				tabIndex={-1}
+				onClick={() => close(false)}
+			/>
+			<div
+				class="provider-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-label={t("common:actions.confirm")}
+				style="width:360px"
+			>
 				<div class="provider-modal-body" style="gap:16px">
 					<p style="font-size:.85rem;color:var(--text);margin:0">{s.message}</p>
 					<div style="display:flex;gap:8px;justify-content:flex-end">
@@ -272,13 +291,21 @@ export function ShareVisibilityDialog(): VNode | null {
 		shareVisibilityState.value = null;
 	}
 	return (
-		<div
-			class="provider-modal-backdrop"
-			onClick={(e: Event) => {
-				if (e.target === e.currentTarget) close(null);
-			}}
-		>
-			<div class="provider-modal" style="width:460px">
+		<div class="provider-modal-backdrop">
+			<button
+				type="button"
+				class="modal-backdrop-dismiss"
+				aria-label="Cancel sharing"
+				tabIndex={-1}
+				onClick={() => close(null)}
+			/>
+			<div
+				class="provider-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-label={t("chat:share.title")}
+				style="width:460px"
+			>
 				<div class="provider-modal-header">
 					<div class="provider-item-name">{t("chat:share.title")}</div>
 					<button type="button" class="provider-btn provider-btn-secondary provider-btn-sm" onClick={() => close(null)}>
@@ -367,14 +394,21 @@ export function ShareLinkDialog(): VNode | null {
 	const hintText = s.visibility === "private" ? t("chat:share.privateHint") : t("chat:share.publicHint");
 
 	return (
-		<div
-			class="provider-modal-backdrop"
-			data-share-link-modal="true"
-			onClick={(e: Event) => {
-				if (e.target === e.currentTarget) close(null);
-			}}
-		>
-			<div class="provider-modal" style="width:560px">
+		<div class="provider-modal-backdrop" data-share-link-modal="true">
+			<button
+				type="button"
+				class="modal-backdrop-dismiss"
+				aria-label="Close share link dialog"
+				tabIndex={-1}
+				onClick={() => close(null)}
+			/>
+			<div
+				class="provider-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-label={t("chat:share.linkReady")}
+				style="width:560px"
+			>
 				<div class="provider-modal-header">
 					<div class="provider-item-name">{t("chat:share.linkReady")}</div>
 					<button
@@ -445,9 +479,10 @@ interface ModelSelectProps {
 	value: string;
 	onChange: (id: string) => void;
 	placeholder?: string;
+	ariaLabel?: string;
 }
 
-export function ModelSelect({ models, value, onChange, placeholder }: ModelSelectProps): VNode {
+export function ModelSelect({ models, value, onChange, placeholder, ariaLabel }: ModelSelectProps): VNode {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [kbIndex, setKbIndex] = useState(-1);
@@ -509,32 +544,40 @@ export function ModelSelect({ models, value, onChange, placeholder }: ModelSelec
 
 	return (
 		<div class="model-combo" ref={ref} style="width:100%;">
-			<button type="button" class="model-combo-btn" style="width:100%;" onClick={() => setOpen(!open)}>
+			<button
+				type="button"
+				class="model-combo-btn"
+				style="width:100%;"
+				aria-label={ariaLabel}
+				onClick={() => setOpen(!open)}
+			>
 				<span class="model-item-label">{label}</span>
 				<span class="icon icon-sm icon-chevron-down model-combo-chevron" />
 			</button>
 			{open && (
-				<div class="model-dropdown" style="width:100%;" onKeyDown={onKeyDown}>
+				<div class="model-dropdown" style="width:100%;">
 					<input
 						class="model-search-input"
 						ref={searchRef}
 						placeholder={"Search models\u2026"}
 						value={query}
 						onInput={(e: Event) => setQuery((e.target as HTMLInputElement).value)}
+						onKeyDown={onKeyDown}
 					/>
 					<div class="model-dropdown-list" ref={listRef}>
-						<div class={`model-dropdown-item ${value ? "" : "selected"}`} onClick={() => pick(null)}>
+						<button type="button" class={`model-dropdown-item ${value ? "" : "selected"}`} onClick={() => pick(null)}>
 							<span class="model-item-label">{placeholder || "(none)"}</span>
-						</div>
+						</button>
 						{filtered.map((m, i) => (
-							<div
+							<button
+								type="button"
 								key={m.id}
 								class={`model-dropdown-item ${m.id === value ? "selected" : ""} ${i === kbIndex ? "kb-active" : ""}`}
 								onClick={() => pick(m)}
 							>
 								<span class="model-item-label">{m.displayName || m.id}</span>
 								{m.provider && <span class="model-item-provider">{m.provider}</span>}
-							</div>
+							</button>
 						))}
 						{filtered.length === 0 && <div class="model-dropdown-empty">{t("common:labels.noMatches")}</div>}
 					</div>
@@ -558,6 +601,7 @@ interface ComboSelectProps {
 	value: string;
 	onChange: (value: string) => void;
 	placeholder?: string;
+	ariaLabel?: string;
 	searchPlaceholder?: string;
 	searchable?: boolean;
 	fullWidth?: boolean;
@@ -566,11 +610,18 @@ interface ComboSelectProps {
 	floating?: boolean;
 }
 
+function comboDropdownStyle(fullWidth: boolean, searchable: boolean): string | undefined {
+	if (fullWidth) return "width:100%;";
+	if (searchable) return undefined;
+	return "min-width:100%;width:max-content;max-width:min(360px,calc(100vw - 16px));";
+}
+
 export function ComboSelect({
 	options,
 	value,
 	onChange,
 	placeholder,
+	ariaLabel,
 	searchPlaceholder,
 	searchable = true,
 	fullWidth = true,
@@ -586,11 +637,7 @@ export function ComboSelect({
 	const searchRef = useRef<HTMLInputElement>(null);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const fillStyle = fullWidth ? "width:100%;" : undefined;
-	const dropdownStyle = fullWidth
-		? "width:100%;"
-		: searchable
-			? undefined
-			: "min-width:100%;width:max-content;max-width:min(360px,calc(100vw - 16px));";
+	const dropdownStyle = comboDropdownStyle(fullWidth, searchable);
 
 	const selected = options.find((o) => o.value === value);
 	const label = selected ? selected.label : placeholder || "(none)";
@@ -611,9 +658,7 @@ export function ComboSelect({
 	}, [open]);
 
 	useEffect(() => {
-		if (!open) return;
-		if (searchable && searchRef.current) searchRef.current.focus();
-		else if (!searchable && dropdownRef.current) dropdownRef.current.focus();
+		if (open && searchable && searchRef.current) searchRef.current.focus();
 	}, [open, searchable]);
 
 	useEffect(() => {
@@ -684,8 +729,12 @@ export function ComboSelect({
 				type="button"
 				class="model-combo-btn"
 				style={fillStyle}
+				aria-label={ariaLabel}
 				onClick={() => {
 					if (!disabled) setOpen(!open);
+				}}
+				onKeyDown={(e) => {
+					if (open && !searchable) onKeyDown(e);
 				}}
 				disabled={disabled}
 			>
@@ -696,9 +745,7 @@ export function ComboSelect({
 				<div
 					class={`model-dropdown ${floating ? "floating-dropdown" : alignRight ? "align-right" : ""}`}
 					ref={dropdownRef}
-					tabIndex={-1}
 					style={dropdownStyle}
-					onKeyDown={onKeyDown}
 				>
 					{searchable && (
 						<input
@@ -707,22 +754,24 @@ export function ComboSelect({
 							placeholder={searchPlaceholder || "Search\u2026"}
 							value={query}
 							onInput={(e: Event) => setQuery((e.target as HTMLInputElement).value)}
+							onKeyDown={onKeyDown}
 						/>
 					)}
 					<div class="model-dropdown-list">
 						{allowEmpty && (
-							<div class={`model-dropdown-item ${value ? "" : "selected"}`} onClick={() => pick(null)}>
+							<button type="button" class={`model-dropdown-item ${value ? "" : "selected"}`} onClick={() => pick(null)}>
 								<span class="model-item-label">{placeholder || "(none)"}</span>
-							</div>
+							</button>
 						)}
 						{filtered.map((o, i) => (
-							<div
+							<button
+								type="button"
 								key={o.value}
 								class={`model-dropdown-item ${o.value === value ? "selected" : ""} ${i === kbIndex ? "kb-active" : ""}`}
 								onClick={() => pick(o)}
 							>
 								<span class="model-item-label">{o.label}</span>
-							</div>
+							</button>
 						))}
 						{filtered.length === 0 && <div class="model-dropdown-empty">{t("common:labels.noMatches")}</div>}
 					</div>

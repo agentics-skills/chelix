@@ -2,7 +2,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { Loading } from "../../components/forms";
+import { Loading } from "../../components/forms/ListItem";
 import { sendRpc } from "../../helpers";
 import { clearAllSessions } from "../../sessions";
 import { connected } from "../../signals";

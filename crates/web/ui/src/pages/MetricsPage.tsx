@@ -8,7 +8,7 @@ import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import prettyBytes from "pretty-bytes";
 import uPlot from "uplot";
-import { TabBar } from "../components/forms";
+import { TabBar } from "../components/forms/Tabs";
 import { onEvent } from "../events";
 import { t } from "../i18n";
 import { registerPrefix } from "../router";
@@ -443,6 +443,24 @@ const providerColors = [
 	"#f97316", // orange
 ];
 
+function hasMeaningfulMetrics(categories: MetricsCategories, processMemory: number): boolean {
+	return [
+		categories.system?.uptime_seconds,
+		categories.http?.total,
+		categories.llm?.completions_total,
+		categories.tools?.total,
+		processMemory,
+	].some((value) => (value ?? 0) > 0);
+}
+
+function metricsErrorSubtitle(errors?: number): string | undefined {
+	return (errors ?? 0) > 0 ? t("metrics:errorsCount", { count: errors }) : undefined;
+}
+
+function cacheReadSubtitle(cacheReadTokens?: number): string | undefined {
+	return cacheReadTokens ? t("metrics:cacheRead", { value: formatNumber(cacheReadTokens) }) : undefined;
+}
+
 function MetricsGrid({
 	categories,
 	latestPoint,
@@ -454,16 +472,7 @@ function MetricsGrid({
 
 	const { llm, http, tools, mcp, system } = categories;
 	const processMemory = latestPoint?.process_memory_bytes || 0;
-
-	// Check if there's any meaningful data
-	const hasData =
-		(system?.uptime_seconds ?? 0) > 0 ||
-		(http?.total ?? 0) > 0 ||
-		(llm?.completions_total ?? 0) > 0 ||
-		(tools?.total ?? 0) > 0 ||
-		processMemory > 0;
-
-	if (!hasData) {
+	if (!hasMeaningfulMetrics(categories, processMemory)) {
 		return (
 			<EmptyState
 				icon={activityIcon}
@@ -498,18 +507,14 @@ function MetricsGrid({
 					<MetricCard
 						title={t("metrics:cards.completions")}
 						value={formatNumber(llm?.completions_total)}
-						subtitle={(llm?.errors ?? 0) > 0 ? t("metrics:errorsCount", { count: llm?.errors }) : undefined}
+						subtitle={metricsErrorSubtitle(llm?.errors)}
 					/>
 					<MetricCard title={t("metrics:cards.inputTokens")} value={formatNumber(llm?.input_tokens)} />
 					<MetricCard title={t("metrics:cards.outputTokens")} value={formatNumber(llm?.output_tokens)} />
 					<MetricCard
 						title={t("metrics:cards.cacheTokens")}
 						value={formatNumber((llm?.cache_read_tokens || 0) + (llm?.cache_write_tokens || 0))}
-						subtitle={
-							llm?.cache_read_tokens
-								? t("metrics:cacheRead", { value: formatNumber(llm.cache_read_tokens) })
-								: undefined
-						}
+						subtitle={cacheReadSubtitle(llm?.cache_read_tokens)}
 					/>
 				</div>
 			</section>
@@ -523,13 +528,13 @@ function MetricsGrid({
 					<MetricCard
 						title={t("metrics:cards.toolExecutions")}
 						value={formatNumber(tools?.total)}
-						subtitle={(tools?.errors ?? 0) > 0 ? t("metrics:errorsCount", { count: tools?.errors }) : undefined}
+						subtitle={metricsErrorSubtitle(tools?.errors)}
 					/>
 					<MetricCard title={t("metrics:cards.toolsActive")} value={formatNumber(tools?.active)} />
 					<MetricCard
 						title={t("metrics:cards.mcpToolCalls")}
 						value={formatNumber(mcp?.total)}
-						subtitle={(mcp?.errors ?? 0) > 0 ? t("metrics:errorsCount", { count: mcp?.errors }) : undefined}
+						subtitle={metricsErrorSubtitle(mcp?.errors)}
 					/>
 					<MetricCard title={t("metrics:cards.mcpServers")} value={formatNumber(mcp?.active)} />
 				</div>
@@ -653,6 +658,7 @@ function TimeRangeSelector({ value, onChange }: { value: string; onChange: (key:
 		<div className="flex items-center gap-1 bg-[var(--surface)] border border-[var(--border)] rounded-md p-1">
 			{Object.entries(TIME_RANGES).map(([key, range]) => (
 				<button
+					type="button"
 					key={key}
 					className={`px-3 py-1.5 text-xs rounded transition-colors ${value === key ? "bg-[var(--surface2)] text-[var(--text)] font-medium" : "text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)]"}`}
 					onClick={() => onChange(key)}
@@ -725,7 +731,7 @@ function PrometheusEndpoint(): VNode {
 					<code className="flex-1 px-4 py-3 bg-[var(--surface2)] rounded-md text-sm font-mono overflow-x-auto">
 						{endpoint}
 					</code>
-					<button className="provider-btn provider-btn-secondary text-sm shrink-0" onClick={copyEndpoint}>
+					<button type="button" className="provider-btn provider-btn-secondary text-sm shrink-0" onClick={copyEndpoint}>
 						{copied ? t("common:actions.copied") : t("common:actions.copy")}
 					</button>
 				</div>
@@ -1004,4 +1010,4 @@ export function teardownMonitoring(): void {
 }
 
 // Register as prefix route: /monitoring and /monitoring/charts
-registerPrefix(routes.monitoring!, initMonitoring, teardownMonitoring);
+registerPrefix(routes.monitoring, initMonitoring, teardownMonitoring);

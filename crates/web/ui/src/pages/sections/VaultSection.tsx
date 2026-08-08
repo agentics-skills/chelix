@@ -2,7 +2,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { SectionHeading, StatusMessage } from "../../components/forms";
+import { SectionHeading, StatusMessage } from "../../components/forms/SectionLayout";
 import * as gon from "../../gon";
 import { refresh as refreshGon } from "../../gon";
 import { targetValue } from "../../typed-events";

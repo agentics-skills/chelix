@@ -6,6 +6,7 @@
 // typed use `unknown` as a placeholder -- callers can narrow with
 // `as` casts until we refine the type here.
 
+import type { ChatContextPayload, ChatFullContextPayload, ChatPromptMemoryRefreshPayload } from "./chat";
 import type { ModelInfo, ProviderInfo } from "./model";
 import type { SessionMeta, SetSessionAgentPayload } from "./session";
 
@@ -43,9 +44,9 @@ export interface RpcMethodMap {
 	"chat.cancel_queued": unknown;
 	"chat.clear": unknown;
 	"chat.compact": unknown;
-	"chat.context": unknown;
-	"chat.full_context": unknown;
-	"chat.prompt_memory.refresh": unknown;
+	"chat.context": ChatContextPayload;
+	"chat.full_context": ChatFullContextPayload;
+	"chat.prompt_memory.refresh": ChatPromptMemoryRefreshPayload;
 	"chat.send": unknown;
 	"chat.send_sync": unknown;
 
@@ -178,7 +179,7 @@ export interface RpcMethodMap {
 
 	// ── TTS (Text-to-Speech) ────────────────────────────────────
 	"tts.convert": unknown;
-	"tts.generate_phrase": unknown;
+	"tts.generate_phrase": { phrase: string; source: "llm" | "static" };
 	"tts.status": unknown;
 
 	// ── Voice ───────────────────────────────────────────────────

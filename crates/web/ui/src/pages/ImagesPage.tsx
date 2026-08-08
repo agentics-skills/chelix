@@ -456,6 +456,7 @@ function ContainerRow({
 				<div className="flex items-center gap-1">
 					{isRunning && (
 						<button
+							type="button"
 							className="text-xs px-2 py-0.5 rounded border border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer"
 							onClick={() => stopContainer(c.name)}
 							disabled={!sandboxAvailable}
@@ -465,6 +466,7 @@ function ContainerRow({
 						</button>
 					)}
 					<button
+						type="button"
 						className="text-xs text-white border border-[var(--error)] px-2 py-0.5 rounded bg-[var(--error)] hover:opacity-80 transition-colors cursor-pointer"
 						onClick={() => removeContainer(c.name)}
 						disabled={!sandboxAvailable}
@@ -506,6 +508,7 @@ function RunningContainersSection(): VNode {
 					Running Containers{list.length > 0 ? ` (${list.length})` : ""}
 				</h3>
 				<button
+					type="button"
 					className="text-xs text-[var(--muted)] border border-[var(--border)] px-2 py-0.5 rounded-md hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer bg-transparent"
 					onClick={restartDaemon}
 					disabled={restarting.value || !sandboxAvailable}
@@ -514,6 +517,7 @@ function RunningContainersSection(): VNode {
 					{restarting.value ? "Restarting\u2026" : "Restart"}
 				</button>
 				<button
+					type="button"
 					className="text-xs text-[var(--muted)] border border-[var(--border)] px-2 py-0.5 rounded-md hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer bg-transparent"
 					onClick={() => {
 						fetchContainers();
@@ -526,6 +530,7 @@ function RunningContainersSection(): VNode {
 				</button>
 				{list.length > 0 && (
 					<button
+						type="button"
 						className="text-xs text-white border border-[var(--error)] px-2 py-0.5 rounded-md bg-[var(--error)] hover:opacity-80 transition-colors cursor-pointer"
 						onClick={cleanAllContainers}
 						disabled={cleaningAll.value || !sandboxAvailable}
@@ -583,6 +588,36 @@ interface AvailableBackendInfo {
 	kind: string;
 	available: boolean;
 }
+
+interface SandboxBackendButtonProps {
+	backend: AvailableBackendInfo;
+	isDefault: boolean;
+	disabled: boolean;
+	onSelect: (backendId: string) => void;
+}
+
+function SandboxBackendButton({ backend, isDefault, disabled, onSelect }: SandboxBackendButtonProps): VNode {
+	return (
+		<button
+			type="button"
+			className="rounded-md border px-3 py-1.5 text-xs cursor-pointer bg-transparent transition-colors"
+			style={{
+				borderColor: isDefault ? "var(--accent)" : "var(--border)",
+				color: isDefault ? "var(--accent)" : "var(--text)",
+				fontFamily: "var(--font-mono)",
+				fontWeight: isDefault ? "600" : "400",
+			}}
+			onClick={() => onSelect(backend.id)}
+			disabled={disabled}
+			title={isDefault ? "Active default backend" : `Set ${backend.label} as default`}
+		>
+			{backend.label}
+			{backend.kind === "remote" && <span style={{ marginLeft: "4px", opacity: 0.6 }}>{"\u2601"}</span>}
+			{isDefault && <span style={{ marginLeft: "6px", fontSize: "0.6rem", opacity: 0.7 }}>(default)</span>}
+		</button>
+	);
+}
+
 const availableBackendsList = signal<AvailableBackendInfo[]>([]);
 const defaultBackendId = signal("auto");
 const backendSaving = signal(false);
@@ -594,7 +629,9 @@ function fetchAvailableBackends(): void {
 			availableBackendsList.value = data.backends || [];
 			defaultBackendId.value = data.default || "auto";
 		})
-		.catch(() => {});
+		.catch((error: unknown) => {
+			console.warn("Failed to load available sandbox backends:", error);
+		});
 }
 
 function SandboxBanner(): VNode | null {
@@ -635,30 +672,18 @@ function SandboxBanner(): VNode | null {
 
 			{backends.length > 0 ? (
 				<div className="flex flex-wrap gap-2" style={{ marginBottom: "12px" }}>
-					{backends.map((b) => {
-						const isDefault =
-							b.id === defaultBackendId.value || (defaultBackendId.value === "auto" && b.id === info.backend);
-						return (
-							<button
-								type="button"
-								key={b.id}
-								className="rounded-md border px-3 py-1.5 text-xs cursor-pointer bg-transparent transition-colors"
-								style={{
-									borderColor: isDefault ? "var(--accent)" : "var(--border)",
-									color: isDefault ? "var(--accent)" : "var(--text)",
-									fontFamily: "var(--font-mono)",
-									fontWeight: isDefault ? "600" : "400",
-								}}
-								onClick={() => changeDefault(b.id)}
-								disabled={backendSaving.value}
-								title={isDefault ? "Active default backend" : `Set ${b.label} as default`}
-							>
-								{b.label}
-								{b.kind === "remote" && <span style={{ marginLeft: "4px", opacity: 0.6 }}>{"\u2601"}</span>}
-								{isDefault && <span style={{ marginLeft: "6px", fontSize: "0.6rem", opacity: 0.7 }}>(default)</span>}
-							</button>
-						);
-					})}
+					{backends.map((backend) => (
+						<SandboxBackendButton
+							key={backend.id}
+							backend={backend}
+							isDefault={
+								backend.id === defaultBackendId.value ||
+								(defaultBackendId.value === "auto" && backend.id === info.backend)
+							}
+							disabled={backendSaving.value}
+							onSelect={changeDefault}
+						/>
+					))}
 				</div>
 			) : (
 				<div className="text-xs text-[var(--muted)]" style={{ marginBottom: "12px" }}>
@@ -752,7 +777,12 @@ function SharedHomeSection(): VNode {
 						</div>
 					)}
 					<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-						<button className="provider-btn" onClick={saveSharedHomeConfig} disabled={sharedHomeSaving.value}>
+						<button
+							type="button"
+							className="provider-btn"
+							onClick={saveSharedHomeConfig}
+							disabled={sharedHomeSaving.value}
+						>
 							{sharedHomeSaving.value ? "Saving..." : "Save"}
 						</button>
 						{sharedHomeErr.value ? (
@@ -798,6 +828,7 @@ function ImageRow({ image: img, sandboxAvailable }: { image: CachedImage; sandbo
 				</div>
 			</div>
 			<button
+				type="button"
 				className="session-action-btn session-delete"
 				title={sandboxAvailable ? "Delete image" : SANDBOX_OFF_HINT}
 				disabled={!sandboxAvailable}
@@ -864,6 +895,7 @@ function ContainersTabContent(): VNode {
 		<>
 			<div className="flex items-center gap-3">
 				<button
+					type="button"
 					className="provider-btn-secondary provider-btn-sm"
 					onClick={pruneAll}
 					disabled={pruning.value || !sandboxRuntimeAvailable()}
@@ -952,6 +984,7 @@ function ContainersTabContent(): VNode {
 					/>
 				</div>
 				<button
+					type="button"
 					className="provider-btn"
 					onClick={buildImage}
 					disabled={

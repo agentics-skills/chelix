@@ -6,7 +6,7 @@ import type { VNode } from "preact";
 import { addChannel, parseChannelConfigPatch, validateChannelFields } from "../../../channel-utils";
 import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
-import { ChannelType } from "../../../types";
+import { ChannelType } from "../../../types/channel";
 import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddDiscord } from "../../ChannelsPage";
 import { AdvancedConfigPatchField, AllowlistInput, SharedChannelFields } from "../ChannelFields";
@@ -127,33 +127,37 @@ export function AddDiscordModal(): VNode {
 					</div>
 				</div>
 				<ConnectionModeHint type={ChannelType.Discord} />
-				<label className="text-xs text-[var(--muted)]">Account ID</label>
-				<input
-					data-field="accountId"
-					type="text"
-					placeholder="e.g. my-discord-bot"
-					value={accountDraft.value}
-					onInput={(e) => {
-						accountDraft.value = targetValue(e);
-					}}
-					className="channel-input"
-				/>
-				<label className="text-xs text-[var(--muted)]">Bot Token</label>
-				<input
-					data-field="credential"
-					type="password"
-					placeholder="Discord bot token"
-					className="channel-input"
-					value={tokenDraft.value}
-					onInput={(e) => {
-						tokenDraft.value = targetValue(e);
-					}}
-					autoComplete="new-password"
-					autoCapitalize="none"
-					autoCorrect="off"
-					spellcheck={false}
-					name="discord_bot_token"
-				/>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Account ID</span>
+					<input
+						data-field="accountId"
+						type="text"
+						placeholder="e.g. my-discord-bot"
+						value={accountDraft.value}
+						onInput={(e) => {
+							accountDraft.value = targetValue(e);
+						}}
+						className="channel-input"
+					/>
+				</label>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Bot Token</span>
+					<input
+						data-field="credential"
+						type="password"
+						placeholder="Discord bot token"
+						className="channel-input"
+						value={tokenDraft.value}
+						onInput={(e) => {
+							tokenDraft.value = targetValue(e);
+						}}
+						autoComplete="new-password"
+						autoCapitalize="none"
+						autoCorrect="off"
+						spellcheck={false}
+						name="discord_bot_token"
+					/>
+				</label>
 				{inviteUrl && (
 					<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-2.5 flex flex-col gap-1">
 						<span className="text-xs font-medium text-[var(--text-strong)]">Invite bot to a server</span>
@@ -166,8 +170,9 @@ export function AddDiscordModal(): VNode {
 					</div>
 				)}
 				<SharedChannelFields addModel={addModel} allowlistItems={allowlistItems} />
-				<label className="text-xs text-[var(--muted)]">Channel Name Patterns (optional)</label>
+				<span className="text-xs text-[var(--muted)]">Channel Name Patterns (optional)</span>
 				<AllowlistInput
+					ariaLabel="Channel Name Patterns (optional)"
 					value={channelNamePatterns.value}
 					onChange={(v) => {
 						channelNamePatterns.value = v;
@@ -178,8 +183,9 @@ export function AddDiscordModal(): VNode {
 					When set, the bot only responds in guild channels whose name matches a pattern. Matched channels do not
 					require @mention. Supports * wildcards.
 				</div>
-				<label className="text-xs text-[var(--muted)]">Category IDs (optional)</label>
+				<span className="text-xs text-[var(--muted)]">Category IDs (optional)</span>
 				<AllowlistInput
+					ariaLabel="Category IDs (optional)"
 					value={categoryAllowlist.value}
 					onChange={(v) => {
 						categoryAllowlist.value = v;
@@ -196,7 +202,7 @@ export function AddDiscordModal(): VNode {
 					}}
 				/>
 				{error.value && <div className="text-xs text-[var(--error)] py-1">{error.value}</div>}
-				<button className="provider-btn" onClick={onSubmit} disabled={saving.value}>
+				<button type="button" className="provider-btn" onClick={onSubmit} disabled={saving.value}>
 					{saving.value ? "Connecting\u2026" : "Connect Discord"}
 				</button>
 			</div>

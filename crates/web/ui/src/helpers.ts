@@ -3,7 +3,9 @@ import { Marked, Renderer, type Token } from "marked";
 import { onEvent } from "./events";
 import { hasTranslation, t } from "./i18n";
 import * as S from "./state";
-import { type OperationProgressPayload, type RpcResponse, WsEventName } from "./types";
+import type { RpcResponse } from "./types/rpc";
+import type { RpcMethod, RpcMethodMap } from "./types/rpc-methods";
+import { type OperationProgressPayload, WsEventName } from "./types/ws-events";
 
 // Extend Window for webkitAudioContext (Safari)
 declare global {
@@ -272,6 +274,8 @@ export function renderMarkdown(raw: string): string {
 	return result.trimEnd();
 }
 
+export function sendRpc<M extends RpcMethod>(method: M, params: unknown): Promise<RpcResponse<RpcMethodMap[M]>>;
+export function sendRpc<T = unknown>(method: string, params: unknown): Promise<RpcResponse<T>>;
 export function sendRpc<T = unknown>(method: string, params: unknown): Promise<RpcResponse<T>> {
 	return new Promise((resolve) => {
 		if (!S.ws || S.ws.readyState !== WebSocket.OPEN) {
@@ -702,22 +706,46 @@ export function renderScreenshot(container: HTMLElement, imgSrc: string, scale?:
 
 // ── Document card ───────────────────────────────────────────
 
+interface DocumentIconRule {
+	icon: string;
+	matches: (mimeType: string, extension: string) => boolean;
+}
+
+const DOCUMENT_ICON_RULES: DocumentIconRule[] = [
+	{ icon: "\uD83D\uDCC4", matches: (mimeType, extension) => mimeType === "application/pdf" || extension === "pdf" },
+	{
+		icon: "\uD83D\uDCDD",
+		matches: (mimeType, extension) => mimeType.startsWith("text/") || /^(txt|md|ics|json|xml|log)$/.test(extension),
+	},
+	{ icon: "\uD83D\uDDBC\uFE0F", matches: (mimeType) => mimeType.startsWith("image/") },
+	{ icon: "\uD83C\uDFB5", matches: (mimeType) => mimeType.startsWith("audio/") },
+	{ icon: "\uD83C\uDFA5", matches: (mimeType) => mimeType.startsWith("video/") },
+	{
+		icon: "\uD83D\uDCE6",
+		matches: (mimeType, extension) =>
+			["application/zip", "application/gzip"].includes(mimeType) || ["zip", "gz"].includes(extension),
+	},
+	{
+		icon: "\uD83D\uDCCA",
+		matches: (mimeType, extension) => /spreadsheet|csv|xls/.test(mimeType) || /^(csv|xls|xlsx)$/.test(extension),
+	},
+	{
+		icon: "\uD83D\uDCC3",
+		matches: (mimeType, extension) => /wordprocessing|msword|rtf/.test(mimeType) || /^(doc|docx|rtf)$/.test(extension),
+	},
+	{
+		icon: "\uD83D\uDCCA",
+		matches: (mimeType, extension) => /presentation|ppt/.test(mimeType) || /^(ppt|pptx)$/.test(extension),
+	},
+];
+
 /**
  * Return an icon string for a given MIME type / filename extension.
  */
 export function documentIcon(mimeType?: string, filename?: string): string {
-	const ext = (filename || "").split(".").pop()?.toLowerCase() || "";
-	if (mimeType === "application/pdf" || ext === "pdf") return "\uD83D\uDCC4"; // 📄
-	if ((mimeType || "").startsWith("text/") || /^(txt|md|ics|json|xml|log)$/.test(ext)) return "\uD83D\uDCDD"; // 📝
-	if ((mimeType || "").startsWith("image/")) return "\uD83D\uDDBC\uFE0F"; // 🖼️
-	if ((mimeType || "").startsWith("audio/")) return "\uD83C\uDFB5"; // 🎵
-	if ((mimeType || "").startsWith("video/")) return "\uD83C\uDFA5"; // 🎥
-	if (mimeType === "application/zip" || mimeType === "application/gzip" || ext === "zip" || ext === "gz")
-		return "\uD83D\uDCE6"; // 📦
-	if (/spreadsheet|csv|xls/.test(mimeType || "") || /^(csv|xls|xlsx)$/.test(ext)) return "\uD83D\uDCCA"; // 📊
-	if (/wordprocessing|msword|rtf/.test(mimeType || "") || /^(doc|docx|rtf)$/.test(ext)) return "\uD83D\uDCC3"; // 📃
-	if (/presentation|ppt/.test(mimeType || "") || /^(ppt|pptx)$/.test(ext)) return "\uD83D\uDCCA"; // 📊
-	return "\uD83D\uDCC1"; // 📁
+	const normalizedMimeType = mimeType || "";
+	const extension = (filename || "").split(".").pop()?.toLowerCase() || "";
+	return DOCUMENT_ICON_RULES.find((rule) => rule.matches(normalizedMimeType, extension))?.icon || "\uD83D\uDCC1";
 }
 
 /**

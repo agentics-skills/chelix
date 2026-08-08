@@ -182,107 +182,125 @@ interface StartRecordingOpts {
 	stream?: MediaStream | null;
 }
 
+function beginRecordingUi(fromVad: boolean): void {
+	isStarting = true;
+	if (!(micBtn && !fromVad)) return;
+	micBtn.classList.add("starting");
+	micBtn.setAttribute("aria-busy", "true");
+	micBtn.title = t("chat:micStarting");
+}
+
+function resetPendingRecordingUi(): void {
+	if (!micBtn) return;
+	micBtn.classList.remove("starting");
+	micBtn.removeAttribute("aria-busy");
+	micBtn.title = t("chat:micTooltip");
+}
+
+function showActiveRecordingUi(fromVad: boolean): void {
+	isStarting = false;
+	if (fromVad) {
+		vadBtn?.classList.add("vad-speech");
+		return;
+	}
+	if (!micBtn) return;
+	micBtn.classList.remove("starting");
+	micBtn.removeAttribute("aria-busy");
+	micBtn.classList.add("recording");
+	micBtn.setAttribute("aria-pressed", "true");
+	micBtn.title = t("chat:micStopAndSend");
+}
+
+function recordingUiActivator(fromVad: boolean): () => void {
+	let shown = false;
+	return () => {
+		if (shown) return;
+		shown = true;
+		showActiveRecordingUi(fromVad);
+	};
+}
+
+function cancelPendingRecording(stream: MediaStream, fromVad: boolean): boolean {
+	if (!recordingCancelled) return false;
+	isStarting = false;
+	recordingCancelled = false;
+	if (!fromVad) {
+		for (const track of stream.getTracks()) track.stop();
+	}
+	resetPendingRecordingUi();
+	return true;
+}
+
+function recordingMimeType(): string {
+	return MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+}
+
+function connectRecordingUi(stream: MediaStream, showRecordingUi: () => void): void {
+	const audioTrack = stream.getAudioTracks()[0];
+	if (audioTrack && !audioTrack.muted) {
+		setTimeout(showRecordingUi, 150);
+		return;
+	}
+	audioTrack?.addEventListener("unmute", showRecordingUi, { once: true });
+}
+
+function createRecordingMediaRecorder(stream: MediaStream, fromVad: boolean): MediaRecorder {
+	const recorder = new MediaRecorder(stream, { mimeType: recordingMimeType() });
+	const showRecordingUi = recordingUiActivator(fromVad);
+	recorder.ondataavailable = (event: BlobEvent): void => {
+		if (event.data.size === 0) return;
+		audioChunks.push(event.data);
+		showRecordingUi();
+	};
+	recorder.onstart = (): void => {
+		isRecording = true;
+	};
+	recorder.onstop = async (): Promise<void> => {
+		if (!fromVad) {
+			for (const track of stream.getTracks()) track.stop();
+		}
+		if (fromVad) vadBtn?.classList.remove("vad-speech");
+		await transcribeAudio();
+	};
+	connectRecordingUi(stream, showRecordingUi);
+	return recorder;
+}
+
+function recordingStream(opts: StartRecordingOpts | undefined): Promise<MediaStream> {
+	if (opts?.stream) return Promise.resolve(opts.stream);
+	return navigator.mediaDevices.getUserMedia({
+		audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+	});
+}
+
+function handleRecordingStartError(error: unknown, fromVad: boolean): void {
+	isStarting = false;
+	isRecording = false;
+	if (micBtn && !fromVad) {
+		micBtn.classList.remove("starting");
+		micBtn.removeAttribute("aria-busy");
+		micBtn.setAttribute("aria-pressed", "false");
+		micBtn.title = t("chat:micTooltip");
+	}
+	console.error("Failed to start recording:", error);
+	const errorName = (error as DOMException).name;
+	if (errorName === "NotAllowedError") alert(t("settings:voice.micDenied"));
+	else if (errorName === "NotFoundError") alert(t("settings:voice.noMicFound"));
+}
+
 async function startRecording(opts?: StartRecordingOpts): Promise<void> {
 	if (isRecording || isStarting || !sttConfigured) return;
-
 	const fromVad = opts?.fromVad === true;
-	let stream = opts?.stream ?? null;
-
 	if (!fromVad) stopAllAudio();
-
-	isStarting = true;
-	if (micBtn && !fromVad) {
-		micBtn.classList.add("starting");
-		micBtn.setAttribute("aria-busy", "true");
-		micBtn.title = t("chat:micStarting");
-	}
-
+	beginRecordingUi(fromVad);
 	try {
-		if (!stream) {
-			stream = await navigator.mediaDevices.getUserMedia({
-				audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-			});
-		}
-		// If recording was cancelled while getUserMedia was in-flight (e.g. quick PTT tap), bail out
-		if (recordingCancelled) {
-			isStarting = false;
-			recordingCancelled = false;
-			if (!fromVad) {
-				for (const track of stream.getTracks()) track.stop();
-			}
-			if (micBtn) {
-				micBtn.classList.remove("starting");
-				micBtn.removeAttribute("aria-busy");
-				micBtn.title = t("chat:micTooltip");
-			}
-			return;
-		}
+		const stream = await recordingStream(opts);
+		if (cancelPendingRecording(stream, fromVad)) return;
 		audioChunks = [];
-		let recordingUiShown = false;
-
-		function showRecordingUi(): void {
-			if (recordingUiShown) return;
-			recordingUiShown = true;
-			isStarting = false;
-			if (fromVad) {
-				vadBtn?.classList.add("vad-speech");
-			} else if (micBtn) {
-				micBtn.classList.remove("starting");
-				micBtn.removeAttribute("aria-busy");
-				micBtn.classList.add("recording");
-				micBtn.setAttribute("aria-pressed", "true");
-				micBtn.title = t("chat:micStopAndSend");
-			}
-		}
-
-		const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-
-		mediaRecorder = new MediaRecorder(stream, { mimeType });
-
-		mediaRecorder.ondataavailable = (e: BlobEvent): void => {
-			if (e.data.size > 0) {
-				audioChunks.push(e.data);
-				showRecordingUi();
-			}
-		};
-
-		mediaRecorder.onstart = (): void => {
-			isRecording = true;
-		};
-
-		const audioTrack = stream.getAudioTracks()[0];
-		if (audioTrack && !audioTrack.muted) {
-			setTimeout(showRecordingUi, 150);
-		} else if (audioTrack) {
-			audioTrack.addEventListener("unmute", showRecordingUi, { once: true });
-		}
-
-		mediaRecorder.onstop = async (): Promise<void> => {
-			if (!fromVad) {
-				for (const track of stream!.getTracks()) {
-					track.stop();
-				}
-			}
-			if (fromVad) vadBtn?.classList.remove("vad-speech");
-			await transcribeAudio();
-		};
-
+		mediaRecorder = createRecordingMediaRecorder(stream, fromVad);
 		mediaRecorder.start(250);
-	} catch (err) {
-		isStarting = false;
-		isRecording = false;
-		if (micBtn && !fromVad) {
-			micBtn.classList.remove("starting");
-			micBtn.removeAttribute("aria-busy");
-			micBtn.setAttribute("aria-pressed", "false");
-			micBtn.title = t("chat:micTooltip");
-		}
-		console.error("Failed to start recording:", err);
-		if ((err as DOMException).name === "NotAllowedError") {
-			alert(t("settings:voice.micDenied"));
-		} else if ((err as DOMException).name === "NotFoundError") {
-			alert(t("settings:voice.noMicFound"));
-		}
+	} catch (error) {
+		handleRecordingStartError(error, fromVad);
 	}
 }
 
@@ -460,81 +478,123 @@ interface TranscriptionUploadResponse {
 	error?: string;
 }
 
-async function transcribeAudio(): Promise<void> {
+type TranscriptionOutcome =
+	| { kind: "message"; text: string; filename: string | null }
+	| { kind: "no-speech" }
+	| { kind: "transcription-error"; error: string }
+	| { kind: "upload-error"; error: string }
+	| { kind: "none" };
+
+function showTranscribingIndicator(): void {
+	if (!S.chatMsgBox) return;
+	transcribingEl = createTranscribingIndicator(t("chat:voiceTranscribingMessage"), false);
+	(S.chatMsgBox as HTMLElement).appendChild(transcribingEl);
+	smartScrollToBottom();
+}
+
+function takeRecordedAudio(): Blob | null {
 	if (recordingCancelled || audioChunks.length === 0) {
 		recordingCancelled = false;
 		cleanupTranscribingState();
-		return;
+		return null;
 	}
 	recordingCancelled = false;
+	showTranscribingIndicator();
+	const blob = new Blob(audioChunks, { type: "audio/webm" });
+	audioChunks = [];
+	return blob;
+}
 
-	if (S.chatMsgBox) {
-		transcribingEl = createTranscribingIndicator(t("chat:voiceTranscribingMessage"), false);
-		(S.chatMsgBox as HTMLElement).appendChild(transcribingEl);
-		smartScrollToBottom();
+async function isValidRecordedAudio(blob: Blob): Promise<boolean> {
+	if (blob.size < 2000) {
+		console.debug("[voice] skipping tiny blob:", blob.size, "bytes");
+		return false;
 	}
+	const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+	const valid = header[0] === 0x1a && header[1] === 0x45 && header[2] === 0xdf && header[3] === 0xa3;
+	if (!valid) console.warn("[voice] corrupt WebM blob (bad EBML header), discarding. size:", blob.size);
+	return valid;
+}
 
+async function uploadTranscription(
+	blob: Blob,
+	providerInfo: SttProviderInfo | null,
+): Promise<TranscriptionUploadResponse> {
+	const abortController = new AbortController();
+	const timeout = setTimeout(() => abortController.abort(), 15000);
 	try {
-		const blob = new Blob(audioChunks, { type: "audio/webm" });
-		audioChunks = [];
+		const query = new URLSearchParams({ transcribe: "true" });
+		if (providerInfo?.id) query.set("provider", providerInfo.id);
+		const response = await fetch(`/api/sessions/${encodeURIComponent(S.activeSessionKey)}/upload?${query.toString()}`, {
+			method: "POST",
+			headers: { "Content-Type": blob.type || "audio/webm" },
+			body: blob,
+			signal: abortController.signal,
+		});
+		return (await response.json()) as TranscriptionUploadResponse;
+	} finally {
+		clearTimeout(timeout);
+	}
+}
+
+function transcriptionOutcome(response: TranscriptionUploadResponse): TranscriptionOutcome {
+	if (response.ok && response.transcription?.text) {
+		const text = String(response.transcription.text).trim();
+		if (!text) return { kind: "no-speech" };
+		const filename = typeof response.filename === "string" ? response.filename.trim() || null : null;
+		return { kind: "message", text, filename };
+	}
+	if (response.transcriptionError) return { kind: "transcription-error", error: response.transcriptionError };
+	if (!response.ok) return { kind: "upload-error", error: response.error || t("chat:unknownError") };
+	return { kind: "none" };
+}
+
+function resetMicAfterUpload(): void {
+	micBtn?.classList.remove("transcribing");
+	if (micBtn) micBtn.title = t("chat:micTooltip");
+}
+
+function applyTranscriptionOutcome(outcome: TranscriptionOutcome, providerInfo: SttProviderInfo | null): void {
+	if (outcome.kind === "message") {
+		cleanupTranscribingState();
+		sendTranscribedMessage(outcome.text, outcome.filename, providerInfo);
+		return;
+	}
+	if (outcome.kind === "no-speech") {
+		showTemporaryMessage(t("chat:voiceNoSpeech"), false, 2000);
+		return;
+	}
+	if (outcome.kind === "transcription-error") {
+		console.error("Transcription failed:", outcome.error);
+		showTemporaryMessage(t("chat:voiceTranscriptionFailed", { error: outcome.error }), true, 4000);
+		return;
+	}
+	if (outcome.kind === "upload-error") {
+		console.error("Upload failed:", outcome.error);
+		showTemporaryMessage(t("chat:voiceUploadFailed", { error: outcome.error }), true, 4000);
+	}
+}
+
+function handleTranscriptionException(error: unknown): void {
+	console.error("Transcription error:", error);
+	resetMicAfterUpload();
+	showTemporaryMessage(t("chat:voiceTranscriptionError"), true, 4000);
+}
+
+async function transcribeAudio(): Promise<void> {
+	const blob = takeRecordedAudio();
+	if (!blob) return;
+	try {
 		const providerInfo = await resolveSttProviderInfo();
-
-		// Skip tiny blobs that are just WebM headers with no real audio
-		if (blob.size < 2000) {
-			console.debug("[voice] skipping tiny blob:", blob.size, "bytes");
+		if (!(await isValidRecordedAudio(blob))) {
 			cleanupTranscribingState();
 			return;
 		}
-
-		// Validate EBML header (WebM magic bytes: 1A 45 DF A3)
-		const headerBytes = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-		if (headerBytes[0] !== 0x1a || headerBytes[1] !== 0x45 || headerBytes[2] !== 0xdf || headerBytes[3] !== 0xa3) {
-			console.warn("[voice] corrupt WebM blob (bad EBML header), discarding. size:", blob.size);
-			cleanupTranscribingState();
-			return;
-		}
-
-		const abortCtrl = new AbortController();
-		const fetchTimeout = setTimeout(() => abortCtrl.abort(), 15000);
-		let res: TranscriptionUploadResponse;
-		try {
-			const query = new URLSearchParams({ transcribe: "true" });
-			if (providerInfo?.id) query.set("provider", providerInfo.id);
-			const resp = await fetch(`/api/sessions/${encodeURIComponent(S.activeSessionKey)}/upload?${query.toString()}`, {
-				method: "POST",
-				headers: { "Content-Type": blob.type || "audio/webm" },
-				body: blob,
-				signal: abortCtrl.signal,
-			});
-			res = await resp.json();
-		} finally {
-			clearTimeout(fetchTimeout);
-		}
-
-		micBtn?.classList.remove("transcribing");
-		if (micBtn) micBtn.title = t("chat:micTooltip");
-
-		if (res.ok && res.transcription?.text) {
-			const text = String(res.transcription.text).trim();
-			const audioFilename = typeof res.filename === "string" ? res.filename.trim() : "";
-			if (text) {
-				cleanupTranscribingState();
-				sendTranscribedMessage(text, audioFilename || null, providerInfo);
-			} else {
-				showTemporaryMessage(t("chat:voiceNoSpeech"), false, 2000);
-			}
-		} else if (res.transcriptionError) {
-			console.error("Transcription failed:", res.transcriptionError);
-			showTemporaryMessage(t("chat:voiceTranscriptionFailed", { error: res.transcriptionError }), true, 4000);
-		} else if (!res.ok) {
-			console.error("Upload failed:", res.error);
-			showTemporaryMessage(t("chat:voiceUploadFailed", { error: res.error || t("chat:unknownError") }), true, 4000);
-		}
-	} catch (err) {
-		console.error("Transcription error:", err);
-		micBtn?.classList.remove("transcribing");
-		if (micBtn) micBtn.title = t("chat:micTooltip");
-		showTemporaryMessage(t("chat:voiceTranscriptionError"), true, 4000);
+		const response = await uploadTranscription(blob, providerInfo);
+		resetMicAfterUpload();
+		applyTranscriptionOutcome(transcriptionOutcome(response), providerInfo);
+	} catch (error) {
+		handleTranscriptionException(error);
 	}
 }
 
@@ -725,7 +785,9 @@ function stopVad(): void {
 		vadSourceNode = null;
 	}
 	if (vadAudioCtx) {
-		vadAudioCtx.close().catch(() => {});
+		vadAudioCtx.close().catch((error: unknown) => {
+			console.debug("[voice] VAD: failed to close AudioContext:", error);
+		});
 		vadAudioCtx = null;
 		vadAnalyser = null;
 		vadDataArray = null;
@@ -748,124 +810,135 @@ function stopVad(): void {
 	document.removeEventListener("pause", onTtsPause, true);
 }
 
-function vadMonitorLoop(): void {
-	if (!(vadActive && vadAnalyser && vadDataArray)) return;
+function scheduleVadMonitor(): void {
+	vadRafId = requestAnimationFrame(vadMonitorLoop);
+}
 
-	// Health check: resume AudioContext if browser suspended it
-	if (vadAudioCtx && vadAudioCtx.state === "suspended") {
-		console.debug("[voice] VAD: AudioContext suspended, resuming");
-		vadAudioCtx.resume().catch(() => {});
+function resumeSuspendedVadContext(): void {
+	if (vadAudioCtx?.state !== "suspended") return;
+	console.debug("[voice] VAD: AudioContext suspended, resuming");
+	vadAudioCtx.resume().catch((error: unknown) => {
+		console.debug("[voice] VAD: failed to resume AudioContext:", error);
+	});
+}
+
+function hasLiveVadStream(): boolean {
+	if (!vadStream) return true;
+	const track = vadStream.getAudioTracks()[0];
+	if (track?.readyState === "live") return true;
+	if (!vadReacquiring) {
+		vadReacquiring = true;
+		console.warn("[voice] VAD: mic track died, reacquiring");
+		vadReacquireStream().finally(() => {
+			vadReacquiring = false;
+		});
 	}
+	return false;
+}
 
-	// Health check: if the mic stream track ended, reacquire it (guarded to prevent concurrent calls)
-	if (vadStream) {
-		const track = vadStream.getAudioTracks()[0];
-		if (!track || track.readyState !== "live") {
-			if (!vadReacquiring) {
-				vadReacquiring = true;
-				console.warn("[voice] VAD: mic track died, reacquiring");
-				vadReacquireStream().finally(() => {
-					vadReacquiring = false;
-				});
-			}
-			vadRafId = requestAnimationFrame(vadMonitorLoop);
-			return;
-		}
+function isVadMonitoringPaused(now: number): boolean {
+	if (!(vadMutedForTts || micBtn?.classList.contains("transcribing"))) return false;
+	if (vadMutedForTts && !vadMonitorMuteStart) {
+		vadMonitorMuteStart = now;
+	} else if (vadMutedForTts && now - vadMonitorMuteStart > 10000) {
+		console.debug("[voice] VAD: TTS mute timeout, force-resuming");
+		vadMutedForTts = false;
+		vadMonitorMuteStart = 0;
+		vadSpeechDetected = false;
+		vadStartContinuousRecorder();
+		vadBtn?.classList.add("vad-listening");
 	}
+	return true;
+}
 
-	// Skip monitoring while TTS is playing or while transcribing
-	if (vadMutedForTts || micBtn?.classList.contains("transcribing")) {
-		if (vadMutedForTts && !vadMonitorMuteStart) {
-			vadMonitorMuteStart = Date.now();
-		} else if (vadMutedForTts && Date.now() - vadMonitorMuteStart > 10000) {
-			console.debug("[voice] VAD: TTS mute timeout, force-resuming");
-			vadMutedForTts = false;
-			vadMonitorMuteStart = 0;
-			vadSpeechDetected = false;
-			vadStartContinuousRecorder();
-			vadBtn?.classList.add("vad-listening");
-		}
-		vadRafId = requestAnimationFrame(vadMonitorLoop);
-		return;
-	}
-	vadMonitorMuteStart = 0;
-
-	// Skip if the session is still replying (waiting for AI response)
-	const activeSession = sessionStore.getByKey(S.activeSessionKey);
-	if (activeSession?.replying.value) {
-		vadRafId = requestAnimationFrame(vadMonitorLoop);
-		return;
-	}
-
-	// Show listening state when recorder is running
+function syncVadRecorderState(): void {
+	const recorderRunning = vadMediaRecorder?.state === "recording";
 	if (
-		vadMediaRecorder &&
-		vadMediaRecorder.state === "recording" &&
+		recorderRunning &&
 		vadBtn &&
 		!vadBtn.classList.contains("vad-listening") &&
 		!vadBtn.classList.contains("vad-speech")
 	) {
 		vadBtn.classList.add("vad-listening");
 	}
-
-	// Restart recorder if it died
 	if (!vadTranscribing && (!vadMediaRecorder || vadMediaRecorder.state === "inactive")) {
 		vadStartContinuousRecorder();
 	}
+}
 
-	const rms = getRMS(vadAnalyser, vadDataArray);
-	const now = Date.now();
+function stopVadRecordingAtLimit(): void {
+	console.debug("[voice] VAD: max duration reached, auto-sending");
+	vadSilenceStart = 0;
+	vadRecordingStart = 0;
+	vadBtn?.classList.remove("vad-speech", "vad-listening");
+	if (vadMediaRecorder?.state === "recording") vadMediaRecorder.stop();
+}
 
-	if (rms > vadSpeechThreshold) {
-		vadSilenceStart = 0;
-
-		// Safety valve: auto-stop after 30s of continuous speech
-		if (vadSpeechDetected && vadRecordingStart && now - vadRecordingStart > 30000) {
-			console.debug("[voice] VAD: max duration reached, auto-sending");
-			vadSilenceStart = 0;
-			vadRecordingStart = 0;
-			vadBtn?.classList.remove("vad-speech", "vad-listening");
-			if (vadMediaRecorder && vadMediaRecorder.state === "recording") {
-				vadMediaRecorder.stop();
-			}
-			vadRafId = requestAnimationFrame(vadMonitorLoop);
-			return;
-		}
-
-		if (!vadSpeechDetected) {
-			if (!vadSpeechStart) {
-				vadSpeechStart = now;
-			} else if (now - vadSpeechStart >= VAD_DEBOUNCE_SPEECH) {
-				vadSpeechDetected = true;
-				vadSpeechStart = 0;
-				vadRecordingStart = now;
-				console.debug("[voice] VAD: speech detected (recorder already running)");
-				stopAllAudio();
-				vadBtn?.classList.add("vad-speech");
-			}
-		}
-	} else {
-		vadSpeechStart = 0;
-
-		if (vadSpeechDetected) {
-			if (!vadSilenceStart) {
-				vadSilenceStart = now;
-			} else if (now - vadSilenceStart >= VAD_SILENCE_DURATION) {
-				console.debug("[voice] VAD: silence detected, stopping & sending");
-				vadRecordingStart = 0;
-				vadSilenceStart = 0;
-				vadBtn?.classList.remove("vad-speech", "vad-listening");
-				if (vadMediaRecorder && vadMediaRecorder.state === "recording") {
-					vadMediaRecorder.stop();
-				} else {
-					vadSpeechDetected = false;
-					audioChunks = [];
-				}
-			}
-		}
+function detectVadSpeech(now: number): void {
+	vadSilenceStart = 0;
+	if (vadSpeechDetected && vadRecordingStart && now - vadRecordingStart > 30000) {
+		stopVadRecordingAtLimit();
+		return;
 	}
+	if (vadSpeechDetected) return;
+	if (!vadSpeechStart) {
+		vadSpeechStart = now;
+		return;
+	}
+	if (now - vadSpeechStart < VAD_DEBOUNCE_SPEECH) return;
+	vadSpeechDetected = true;
+	vadSpeechStart = 0;
+	vadRecordingStart = now;
+	console.debug("[voice] VAD: speech detected (recorder already running)");
+	stopAllAudio();
+	vadBtn?.classList.add("vad-speech");
+}
 
-	vadRafId = requestAnimationFrame(vadMonitorLoop);
+function finishVadSpeech(): void {
+	console.debug("[voice] VAD: silence detected, stopping & sending");
+	vadRecordingStart = 0;
+	vadSilenceStart = 0;
+	vadBtn?.classList.remove("vad-speech", "vad-listening");
+	if (vadMediaRecorder?.state === "recording") {
+		vadMediaRecorder.stop();
+		return;
+	}
+	vadSpeechDetected = false;
+	audioChunks = [];
+}
+
+function detectVadSilence(now: number): void {
+	vadSpeechStart = 0;
+	if (!vadSpeechDetected) return;
+	if (!vadSilenceStart) {
+		vadSilenceStart = now;
+		return;
+	}
+	if (now - vadSilenceStart >= VAD_SILENCE_DURATION) finishVadSpeech();
+}
+
+function vadMonitorLoop(): void {
+	if (!(vadActive && vadAnalyser && vadDataArray)) return;
+	resumeSuspendedVadContext();
+	if (!hasLiveVadStream()) {
+		scheduleVadMonitor();
+		return;
+	}
+	const now = Date.now();
+	if (isVadMonitoringPaused(now)) {
+		scheduleVadMonitor();
+		return;
+	}
+	vadMonitorMuteStart = 0;
+	if (sessionStore.getByKey(S.activeSessionKey)?.replying.value) {
+		scheduleVadMonitor();
+		return;
+	}
+	syncVadRecorderState();
+	const rms = getRMS(vadAnalyser, vadDataArray);
+	if (rms > vadSpeechThreshold) detectVadSpeech(now);
+	else detectVadSilence(now);
+	scheduleVadMonitor();
 }
 
 // ── TTS mute/unmute for VAD ──────────────────────────────────

@@ -49,10 +49,13 @@ interface VoiceProviders {
 	stt: VoiceProvider[];
 }
 
+type VoiceType = "stt" | "tts";
+type VoiceTestPhase = "testing" | "recording" | "transcribing";
+
 interface VoiceTesting {
 	id: string;
-	type: string;
-	phase: string;
+	type: VoiceType;
+	phase: VoiceTestPhase;
 }
 
 interface VoiceTestResult {
@@ -65,15 +68,15 @@ interface VoiceTestResult {
 
 interface OnboardingVoiceRowProps {
 	provider: VoiceProvider;
-	type: string;
+	type: VoiceType;
 	configuring: string | null;
 	apiKey: string;
-	setApiKey: (v: string) => void;
+	setApiKey: (value: string) => void;
 	baseUrl: string;
-	setBaseUrl: (v: string) => void;
+	setBaseUrl: (value: string) => void;
 	saving: boolean;
 	error: string | null;
-	onSaveKey: (e: Event) => void;
+	onSaveKey: (event: Event) => void;
 	onStartConfigure: (id: string) => void;
 	onCancelConfigure: () => void;
 	onTest: () => void;
@@ -81,191 +84,415 @@ interface OnboardingVoiceRowProps {
 	voiceTestResult: VoiceTestResult | null;
 }
 
-function OnboardingVoiceRow({
-	provider,
-	type,
-	configuring,
-	apiKey,
-	setApiKey,
-	baseUrl,
-	setBaseUrl,
-	saving,
-	error,
-	onSaveKey,
-	onStartConfigure,
-	onCancelConfigure,
-	onTest,
-	voiceTesting,
-	voiceTestResult,
-}: OnboardingVoiceRowProps): VNode {
-	const isConfiguring = configuring === provider.id;
-	const keyInputRef = useRef<HTMLInputElement>(null);
+interface VoiceTestButtonView {
+	text: string;
+	disabled: boolean;
+}
 
-	useEffect(() => {
-		if (isConfiguring && keyInputRef.current) {
-			keyInputRef.current.focus();
-		}
-	}, [isConfiguring]);
+function voiceKeySourceLabel(provider: VoiceProvider): string {
+	if (provider.keySource === "env") return "(from env)";
+	return provider.keySource === "llm_provider" ? "(from LLM provider)" : "";
+}
 
-	const supportsBaseUrl = provider.capabilities?.baseUrl === true;
-	const keySourceLabel =
-		provider.keySource === "env" ? "(from env)" : provider.keySource === "llm_provider" ? "(from LLM provider)" : "";
+function voiceTestButtonView(testState: VoiceTesting | null): VoiceTestButtonView {
+	if (!testState) return { text: "Test", disabled: false };
+	if (testState.phase === "recording") return { text: "Stop", disabled: false };
+	return { text: "Testing\u2026", disabled: true };
+}
 
-	// Test button state
-	const testState = voiceTesting?.id === provider.id && voiceTesting?.type === type ? voiceTesting : null;
-	const showTestBtn = provider.available;
-	let testBtnText = "Test";
-	let testBtnDisabled = false;
-	if (testState) {
-		if (testState.phase === "recording") {
-			testBtnText = "Stop";
-		} else {
-			testBtnText = "Testing\u2026";
-			testBtnDisabled = true;
-		}
-	}
+interface VoiceProviderSummaryProps {
+	provider: VoiceProvider;
+	type: VoiceType;
+	isConfiguring: boolean;
+	testState: VoiceTesting | null;
+	onStartConfigure: (id: string) => void;
+	onTest: () => void;
+}
 
+function VoiceProviderSummary(props: VoiceProviderSummaryProps): VNode {
+	const keySourceLabel = voiceKeySourceLabel(props.provider);
+	const testButton = voiceTestButtonView(props.testState);
 	return (
-		<div className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
-			<div className="flex items-center gap-3">
-				<div className="flex-1 min-w-0 flex flex-col gap-0.5">
-					<div className="flex items-center gap-2 flex-wrap">
-						<span className="text-sm font-medium text-[var(--text-strong)]">{provider.name}</span>
-						{provider.available ? (
-							<span className="provider-item-badge configured">configured</span>
-						) : (
-							<span className="provider-item-badge needs-key">needs key</span>
+		<div className="flex items-center gap-3">
+			<div className="flex-1 min-w-0 flex flex-col gap-0.5">
+				<div className="flex items-center gap-2 flex-wrap">
+					<span className="text-sm font-medium text-[var(--text-strong)]">{props.provider.name}</span>
+					<span className={`provider-item-badge ${props.provider.available ? "configured" : "needs-key"}`}>
+						{props.provider.available ? "configured" : "needs key"}
+					</span>
+					{keySourceLabel && <span className="text-xs text-[var(--muted)]">{keySourceLabel}</span>}
+				</div>
+				{props.provider.description && (
+					<span className="text-xs text-[var(--muted)]">
+						{props.provider.description}
+						{!props.isConfiguring && props.provider.keyUrl && (
+							<>
+								{" \u2014 "}get your key at{" "}
+								<a
+									href={props.provider.keyUrl}
+									target="_blank"
+									rel="noopener"
+									className="text-[var(--accent)] underline"
+								>
+									{props.provider.keyUrlLabel || props.provider.keyUrl}
+								</a>
+							</>
 						)}
-						{keySourceLabel ? <span className="text-xs text-[var(--muted)]">{keySourceLabel}</span> : null}
-					</div>
-					{provider.description ? (
-						<span className="text-xs text-[var(--muted)]">
-							{provider.description}
-							{!isConfiguring && provider.keyUrl ? (
-								<>
-									{" \u2014 "}get your key at{" "}
-									<a href={provider.keyUrl} target="_blank" rel="noopener" className="text-[var(--accent)] underline">
-										{provider.keyUrlLabel || provider.keyUrl}
-									</a>
-								</>
-							) : null}
-						</span>
-					) : null}
-				</div>
-				<div className="shrink-0 flex items-center gap-2">
-					{isConfiguring ? null : (
-						<button
-							type="button"
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							onClick={() => onStartConfigure(provider.id)}
-						>
-							Configure
-						</button>
-					)}
-					{showTestBtn ? (
-						<button
-							type="button"
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							onClick={onTest}
-							disabled={testBtnDisabled}
-							title={type === "tts" ? "Test voice output" : "Test voice input"}
-						>
-							{testBtnText}
-						</button>
-					) : null}
-				</div>
+					</span>
+				)}
 			</div>
-			{testState?.phase === "recording" ? (
-				<div className="voice-recording-hint mt-2">
-					<span className="voice-recording-dot" />
-					<span>Speak now, then click Stop when finished</span>
-				</div>
-			) : null}
-			{testState?.phase === "transcribing" ? (
-				<span className="text-xs text-[var(--muted)] mt-1 block">Transcribing&hellip;</span>
-			) : null}
-			{testState?.phase === "testing" && type === "tts" ? (
-				<span className="text-xs text-[var(--muted)] mt-1 block">Playing audio&hellip;</span>
-			) : null}
-			{voiceTestResult?.text ? (
-				<div className="voice-transcription-result mt-2">
-					<span className="voice-transcription-label">Transcribed:</span>
-					<span className="voice-transcription-text">"{voiceTestResult.text}"</span>
-				</div>
-			) : null}
-			{voiceTestResult?.success === true ? (
-				<div className="voice-success-result mt-2">
-					<span className="icon icon-md icon-check-circle" />
-					<span>Audio played successfully</span>
-				</div>
-			) : null}
-			{voiceTestResult?.error ? (
-				<div className="voice-error-result">
-					<span className="icon icon-md icon-x-circle" />
-					<span>{voiceTestResult.error}</span>
-				</div>
-			) : null}
-			{isConfiguring ? (
-				<form onSubmit={onSaveKey} className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
-					<div>
-						<label className="text-xs text-[var(--muted)] mb-1 block">API Key</label>
-						<input
-							type="password"
-							className="provider-key-input w-full"
-							ref={keyInputRef}
-							value={apiKey}
-							onInput={(e) => setApiKey(targetValue(e))}
-							placeholder={provider.keyPlaceholder || "API key"}
-						/>
-					</div>
-					{supportsBaseUrl ? (
-						<div>
-							<label className="text-xs text-[var(--muted)] mb-1 block">Base URL</label>
-							<input
-								type="text"
-								className="provider-key-input w-full"
-								data-field="baseUrl"
-								value={baseUrl}
-								onInput={(e) => setBaseUrl(targetValue(e))}
-								placeholder="http://localhost:8000/v1"
-							/>
-							<div className="text-xs text-[var(--muted)] mt-1">
-								Use this for a local or OpenAI-compatible server. Leave the API key blank if the endpoint does not
-								require one.
-							</div>
-						</div>
-					) : null}
-					{provider.keyUrl ? (
-						<div className="text-xs text-[var(--muted)]">
-							Get your key at{" "}
-							<a href={provider.keyUrl} target="_blank" rel="noopener" className="text-[var(--accent)] underline">
-								{provider.keyUrlLabel || provider.keyUrl}
-							</a>
-						</div>
-					) : null}
-					{provider.hint ? <div className="text-xs text-[var(--accent)]">{provider.hint}</div> : null}
-					{error ? <ErrorPanel message={error} /> : null}
-					<div className="flex items-center gap-2 mt-1">
-						<button type="submit" className="provider-btn provider-btn-sm" disabled={saving}>
-							{saving ? "Saving\u2026" : "Save"}
-						</button>
-						<button
-							type="button"
-							className="provider-btn provider-btn-secondary provider-btn-sm"
-							onClick={onCancelConfigure}
-						>
-							Cancel
-						</button>
-					</div>
-				</form>
-			) : null}
+			<div className="shrink-0 flex items-center gap-2">
+				{!props.isConfiguring && (
+					<button
+						type="button"
+						className="provider-btn provider-btn-secondary provider-btn-sm"
+						onClick={() => props.onStartConfigure(props.provider.id)}
+					>
+						Configure
+					</button>
+				)}
+				{props.provider.available && (
+					<button
+						type="button"
+						className="provider-btn provider-btn-secondary provider-btn-sm"
+						onClick={props.onTest}
+						disabled={testButton.disabled}
+						title={props.type === "tts" ? "Test voice output" : "Test voice input"}
+					>
+						{testButton.text}
+					</button>
+				)}
+			</div>
 		</div>
 	);
 }
 
+function VoiceTestFeedback({
+	type,
+	testState,
+	result,
+}: {
+	type: VoiceType;
+	testState: VoiceTesting | null;
+	result: VoiceTestResult | null;
+}): VNode {
+	return (
+		<>
+			{testState?.phase === "recording" && (
+				<div className="voice-recording-hint mt-2">
+					<span className="voice-recording-dot" />
+					<span>Speak now, then click Stop when finished</span>
+				</div>
+			)}
+			{testState?.phase === "transcribing" && (
+				<span className="text-xs text-[var(--muted)] mt-1 block">Transcribing&hellip;</span>
+			)}
+			{testState?.phase === "testing" && type === "tts" && (
+				<span className="text-xs text-[var(--muted)] mt-1 block">Playing audio&hellip;</span>
+			)}
+			{result?.text && (
+				<div className="voice-transcription-result mt-2">
+					<span className="voice-transcription-label">Transcribed:</span>
+					<span className="voice-transcription-text">"{result.text}"</span>
+				</div>
+			)}
+			{result?.success === true && (
+				<div className="voice-success-result mt-2">
+					<span className="icon icon-md icon-check-circle" />
+					<span>Audio played successfully</span>
+				</div>
+			)}
+			{result?.error && (
+				<div className="voice-error-result">
+					<span className="icon icon-md icon-x-circle" />
+					<span>{result.error}</span>
+				</div>
+			)}
+		</>
+	);
+}
+
+interface VoiceConfigurationFormProps {
+	provider: VoiceProvider;
+	apiKey: string;
+	setApiKey: (value: string) => void;
+	baseUrl: string;
+	setBaseUrl: (value: string) => void;
+	saving: boolean;
+	error: string | null;
+	onSaveKey: (event: Event) => void;
+	onCancel: () => void;
+}
+
+function VoiceConfigurationForm(props: VoiceConfigurationFormProps): VNode {
+	const keyInputRef = useRef<HTMLInputElement>(null);
+	useEffect(() => keyInputRef.current?.focus(), []);
+	return (
+		<form onSubmit={props.onSaveKey} className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
+			<label>
+				<span className="text-xs text-[var(--muted)] mb-1 block">API Key</span>
+				<input
+					type="password"
+					className="provider-key-input w-full"
+					ref={keyInputRef}
+					value={props.apiKey}
+					onInput={(event) => props.setApiKey(targetValue(event))}
+					placeholder={props.provider.keyPlaceholder || "API key"}
+				/>
+			</label>
+			{props.provider.capabilities?.baseUrl === true && (
+				<div>
+					<label>
+						<span className="text-xs text-[var(--muted)] mb-1 block">Base URL</span>
+						<input
+							type="text"
+							className="provider-key-input w-full"
+							data-field="baseUrl"
+							value={props.baseUrl}
+							onInput={(event) => props.setBaseUrl(targetValue(event))}
+							placeholder="http://localhost:8000/v1"
+						/>
+					</label>
+					<div className="text-xs text-[var(--muted)] mt-1">
+						Use this for a local or OpenAI-compatible server. Leave the API key blank if the endpoint does not require
+						one.
+					</div>
+				</div>
+			)}
+			{props.provider.keyUrl && (
+				<div className="text-xs text-[var(--muted)]">
+					Get your key at{" "}
+					<a href={props.provider.keyUrl} target="_blank" rel="noopener" className="text-[var(--accent)] underline">
+						{props.provider.keyUrlLabel || props.provider.keyUrl}
+					</a>
+				</div>
+			)}
+			{props.provider.hint && <div className="text-xs text-[var(--accent)]">{props.provider.hint}</div>}
+			{props.error && <ErrorPanel message={props.error} />}
+			<div className="flex items-center gap-2 mt-1">
+				<button type="submit" className="provider-btn provider-btn-sm" disabled={props.saving}>
+					{props.saving ? "Saving\u2026" : "Save"}
+				</button>
+				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={props.onCancel}>
+					Cancel
+				</button>
+			</div>
+		</form>
+	);
+}
+
+function OnboardingVoiceRow(props: OnboardingVoiceRowProps): VNode {
+	const isConfiguring = props.configuring === props.provider.id;
+	const testState =
+		props.voiceTesting?.id === props.provider.id && props.voiceTesting.type === props.type ? props.voiceTesting : null;
+	return (
+		<div className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+			<VoiceProviderSummary
+				provider={props.provider}
+				type={props.type}
+				isConfiguring={isConfiguring}
+				testState={testState}
+				onStartConfigure={props.onStartConfigure}
+				onTest={props.onTest}
+			/>
+			<VoiceTestFeedback type={props.type} testState={testState} result={props.voiceTestResult} />
+			{isConfiguring && (
+				<VoiceConfigurationForm
+					provider={props.provider}
+					apiKey={props.apiKey}
+					setApiKey={props.setApiKey}
+					baseUrl={props.baseUrl}
+					setBaseUrl={props.setBaseUrl}
+					saving={props.saving}
+					error={props.error}
+					onSaveKey={props.onSaveKey}
+					onCancel={props.onCancelConfigure}
+				/>
+			)}
+		</div>
+	);
+}
+
+interface VoiceSaveResponse {
+	ok?: boolean;
+	error?: { message?: string };
+}
+
+interface VoiceSaveRequest {
+	providerId: string;
+	apiKey: string;
+	baseUrl?: string;
+	providers: VoiceProviders;
+}
+
+function matchingVoiceProvider(providers: VoiceProvider[], providerId: string): VoiceProvider | undefined {
+	const counterpartId = VOICE_COUNTERPART_IDS[providerId];
+	return providers.find((provider) => provider.id === providerId || provider.id === counterpartId);
+}
+
+async function enableSavedVoiceProvider(providerId: string, providers: VoiceProviders): Promise<void> {
+	const requests: Promise<unknown>[] = [];
+	const sttProvider = matchingVoiceProvider(providers.stt, providerId);
+	const ttsProvider = matchingVoiceProvider(providers.tts, providerId);
+	if (sttProvider) requests.push(toggleVoiceProvider(sttProvider.id, true, "stt"));
+	if (ttsProvider) requests.push(toggleVoiceProvider(ttsProvider.id, true, "tts"));
+	await Promise.all(requests);
+}
+
+async function saveAndEnableVoiceProvider(request: VoiceSaveRequest): Promise<VoiceSaveResponse> {
+	const response = request.apiKey
+		? ((await saveVoiceKey(request.providerId, request.apiKey, { baseUrl: request.baseUrl })) as VoiceSaveResponse)
+		: ((await saveVoiceSettings(
+				request.providerId,
+				request.baseUrl === undefined ? undefined : { baseUrl: request.baseUrl },
+			)) as VoiceSaveResponse);
+	if (response.ok) await enableSavedVoiceProvider(request.providerId, request.providers);
+	return response;
+}
+
+interface VoiceToggleResponse {
+	ok?: boolean;
+	error?: { message?: string };
+}
+
+interface VoiceEnableResult {
+	changed: boolean;
+	error: string | null;
+}
+
+async function enableVoiceProviderForTest(
+	providerId: string,
+	type: VoiceType,
+	providers: VoiceProviders,
+): Promise<VoiceEnableResult> {
+	const providerList = type === "stt" ? providers.stt : providers.tts;
+	const provider = providerList.find((candidate) => candidate.id === providerId);
+	if (!(provider?.available && !provider.enabled)) return { changed: false, error: null };
+	const response = (await toggleVoiceProvider(providerId, true, type)) as VoiceToggleResponse;
+	if (!response.ok) {
+		return { changed: false, error: response.error?.message || "Failed to enable provider" };
+	}
+	const counterpartType: VoiceType = type === "stt" ? "tts" : "stt";
+	const counterpartList = counterpartType === "stt" ? providers.stt : providers.tts;
+	const counterpartId = VOICE_COUNTERPART_IDS[providerId] || providerId;
+	const counterpart = counterpartList.find((candidate) => candidate.id === counterpartId);
+	if (counterpart?.available && !counterpart.enabled) {
+		await toggleVoiceProvider(counterpartId, true, counterpartType);
+	}
+	return { changed: true, error: null };
+}
+
+function playVoiceTestAudio(payload: { audio: string; mimeType?: string; content_type?: string }): void {
+	const bytes = decodeBase64Safe(payload.audio);
+	const audioMime = payload.mimeType || payload.content_type || "audio/mpeg";
+	const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: audioMime }));
+	const audio = new Audio(url);
+	audio.onerror = (event) => {
+		console.error("[TTS] audio element error:", audio.error?.message || event);
+		URL.revokeObjectURL(url);
+	};
+	audio.onended = () => URL.revokeObjectURL(url);
+	audio.play().catch((error) => console.error("[TTS] play() failed:", error));
+}
+
+async function runTtsVoiceTest(providerId: string): Promise<VoiceTestResult> {
+	try {
+		const identity = getGon("identity") as IdentityInfo | null;
+		const text = await fetchPhrase("onboarding", identity?.user_name || "friend", identity?.name || "Chelix");
+		const response = (await testTts(text, providerId)) as {
+			ok?: boolean;
+			payload?: { audio?: string; mimeType?: string; content_type?: string };
+			error?: { message?: string };
+		};
+		if (!(response.ok && response.payload?.audio)) {
+			return { success: false, error: response.error?.message || "TTS test failed" };
+		}
+		playVoiceTestAudio({ ...response.payload, audio: response.payload.audio });
+		return { success: true, error: null };
+	} catch (error) {
+		return { success: false, error: (error as Error).message || "TTS test failed" };
+	}
+}
+
+async function failedTranscriptionResult(response: Response): Promise<VoiceTestResult> {
+	const body = await response.text();
+	console.error("[STT] upload failed: status=%d body=%s", response.status, body);
+	let message = "STT test failed";
+	try {
+		message = (JSON.parse(body) as { error?: string }).error || message;
+	} catch {
+		// The HTTP status remains actionable when the server response is not JSON.
+	}
+	return { text: null, error: `${message} (HTTP ${response.status})` };
+}
+
+async function transcriptionResult(providerId: string, audio: Blob): Promise<VoiceTestResult> {
+	try {
+		const response = await transcribeAudio(activeSessionKey, providerId, audio);
+		if (!response.ok) return failedTranscriptionResult(response);
+		const result = (await response.json()) as {
+			ok?: boolean;
+			transcription?: { text?: string };
+			transcriptionError?: string;
+			error?: string;
+		};
+		if (!(result.ok && typeof result.transcription?.text === "string")) {
+			return { text: null, error: result.transcriptionError || result.error || "STT test failed" };
+		}
+		const text = result.transcription.text.trim();
+		return { text: text || null, error: text ? null : "No speech detected" };
+	} catch (error) {
+		return { text: null, error: (error as Error).message || "STT test failed" };
+	}
+}
+
+interface VoiceRecordingCallbacks {
+	onRecorder: (recorder: MediaRecorder | null) => void;
+	onPhase: (phase: VoiceTestPhase) => void;
+	onResult: (result: VoiceTestResult) => void;
+}
+
+async function finishVoiceRecording(
+	providerId: string,
+	recorder: MediaRecorder,
+	stream: MediaStream,
+	chunks: Blob[],
+	fallbackMimeType: string,
+	callbacks: VoiceRecordingCallbacks,
+): Promise<void> {
+	callbacks.onRecorder(null);
+	for (const track of stream.getTracks()) track.stop();
+	callbacks.onPhase("transcribing");
+	const audio = new Blob(chunks, { type: recorder.mimeType || fallbackMimeType });
+	callbacks.onResult(await transcriptionResult(providerId, audio));
+}
+
+async function startVoiceRecording(providerId: string, callbacks: VoiceRecordingCallbacks): Promise<MediaRecorder> {
+	const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+	const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+	const recorder = new MediaRecorder(stream, { mimeType });
+	const chunks: Blob[] = [];
+	recorder.ondataavailable = (event) => {
+		if (event.data.size > 0) chunks.push(event.data);
+	};
+	recorder.onstop = () => {
+		void finishVoiceRecording(providerId, recorder, stream, chunks, mimeType, callbacks);
+	};
+	recorder.start();
+	callbacks.onRecorder(recorder);
+	callbacks.onPhase("recording");
+	return recorder;
+}
+
+function microphoneErrorMessage(error: unknown): string {
+	const domError = error as DOMException;
+	if (domError.name === "NotAllowedError") return "Microphone permission denied";
+	if (domError.name === "NotFoundError") return "No microphone found";
+	return domError.message || "STT test failed";
+}
+
 // ── VoiceStep ───────────────────────────────────────────────
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: voice step manages provider list, key config forms, TTS playback, and STT mic recording
 export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }): VNode {
 	const [loading, setLoading] = useState(true);
 	const [allProviders, setAllProviders] = useState<VoiceProviders>({ tts: [], stt: [] });
@@ -375,8 +602,9 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 		setError(null);
 	}
 
-	function onSaveKey(e: Event): void {
-		e.preventDefault();
+	function onSaveKey(event: Event): void {
+		event.preventDefault();
+		if (!configuring) return;
 		const provider = [...allProviders.stt, ...allProviders.tts].find((candidate) => candidate.id === configuring);
 		const trimmedApiKey = apiKey.trim();
 		const trimmedBaseUrl = baseUrl.trim();
@@ -388,230 +616,63 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 		}
 		setError(null);
 		setSaving(true);
-		const providerId = configuring as string;
-		const req = trimmedApiKey
-			? saveVoiceKey(providerId, trimmedApiKey, {
-					baseUrl: shouldSaveBaseUrl ? trimmedBaseUrl : undefined,
-				})
-			: saveVoiceSettings(providerId, shouldSaveBaseUrl ? { baseUrl: trimmedBaseUrl } : undefined);
-		(req as Promise<{ ok?: boolean; error?: { message?: string } }>).then(async (res) => {
-			if (res?.ok) {
-				// Auto-enable in onboarding: toggle on for each type this provider appears in.
-				const counterId = VOICE_COUNTERPART_IDS[providerId];
-				const toggles: Promise<unknown>[] = [];
-				const sttMatch =
-					allProviders.stt.find((p) => p.id === providerId) ||
-					(counterId && allProviders.stt.find((p) => p.id === counterId));
-				const ttsMatch =
-					allProviders.tts.find((p) => p.id === providerId) ||
-					(counterId && allProviders.tts.find((p) => p.id === counterId));
-				if (sttMatch) {
-					toggles.push(toggleVoiceProvider(sttMatch.id, true, "stt"));
-				}
-				if (ttsMatch) {
-					toggles.push(toggleVoiceProvider(ttsMatch.id, true, "tts"));
-				}
-				await Promise.all(toggles);
-				setSaving(false);
-				setConfiguring(null);
-				setApiKey("");
-				setBaseUrl("");
-				fetchProviders();
-			} else {
-				setSaving(false);
-				setError(res?.error?.message || "Failed to save");
+		saveAndEnableVoiceProvider({
+			providerId: configuring,
+			apiKey: trimmedApiKey,
+			baseUrl: shouldSaveBaseUrl ? trimmedBaseUrl : undefined,
+			providers: allProviders,
+		}).then((response) => {
+			setSaving(false);
+			if (!response.ok) {
+				setError(response.error?.message || "Failed to save");
+				return;
 			}
+			setConfiguring(null);
+			setApiKey("");
+			setBaseUrl("");
+			void fetchProviders();
 		});
 	}
 
-	// Stop active STT recording
-	function stopSttRecording(): void {
-		if (activeRecorder) {
-			activeRecorder.stop();
-		}
+	function updateVoiceTestResult(providerId: string, result: VoiceTestResult): void {
+		setVoiceTestResults((previous) => ({ ...previous, [providerId]: result }));
 	}
 
-	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: test function handles TTS playback and STT mic recording flows
-	async function testVoiceProvider(providerId: string, type: string): Promise<void> {
-		// If already recording for this provider, stop it
-		if (voiceTesting?.id === providerId && voiceTesting?.type === "stt" && voiceTesting?.phase === "recording") {
-			stopSttRecording();
+	function stopActiveRecording(): void {
+		activeRecorder?.stop();
+	}
+
+	async function testVoiceProvider(providerId: string, type: VoiceType): Promise<void> {
+		if (voiceTesting?.id === providerId && voiceTesting.type === "stt" && voiceTesting.phase === "recording") {
+			stopActiveRecording();
 			return;
 		}
-
 		setError(null);
 		setVoiceTesting({ id: providerId, type, phase: "testing" });
-
-		// Auto-enable the provider if it's available but not yet enabled
-		const prov = (type === "stt" ? allProviders.stt : allProviders.tts).find((p) => p.id === providerId);
-		if (prov?.available && !prov?.enabled) {
-			const toggleRes = (await toggleVoiceProvider(providerId, true, type)) as {
-				ok?: boolean;
-				error?: { message?: string };
-			};
-			if (!toggleRes?.ok) {
-				setVoiceTestResults((prev) => ({
-					...prev,
-					[providerId]: {
-						success: false,
-						error: toggleRes?.error?.message || "Failed to enable provider",
-					},
-				}));
-				setVoiceTesting(null);
-				return;
-			}
-			// ElevenLabs/Google share API keys - enable the counterpart too.
-			const counterType = type === "stt" ? "tts" : "stt";
-			const counterList = type === "stt" ? allProviders.tts : allProviders.stt;
-			const counterId = VOICE_COUNTERPART_IDS[providerId] || providerId;
-			const counterProv = counterList.find((p) => p.id === counterId);
-			if (counterProv?.available && !counterProv?.enabled) {
-				await toggleVoiceProvider(counterId, true, counterType);
-			}
-			// Refresh provider list in background
-			fetchProviders();
-		}
-
-		if (type === "tts") {
-			try {
-				const identity = getGon("identity") as IdentityInfo | null;
-				const user = identity?.user_name || "friend";
-				const bot = identity?.name || "Chelix";
-				const ttsText = await fetchPhrase("onboarding", user, bot);
-				const res = (await testTts(ttsText, providerId)) as {
-					ok?: boolean;
-					payload?: { audio?: string; mimeType?: string; content_type?: string; format?: string };
-					error?: { message?: string };
-				};
-				if (res?.ok && res.payload?.audio) {
-					const bytes = decodeBase64Safe(res.payload.audio);
-					const audioMime = res.payload.mimeType || res.payload.content_type || "audio/mpeg";
-					const blob = new Blob([bytes.buffer as ArrayBuffer], { type: audioMime });
-					const url = URL.createObjectURL(blob);
-					const audio = new Audio(url);
-					audio.onerror = (e) => {
-						console.error("[TTS] audio element error:", audio.error?.message || e);
-						URL.revokeObjectURL(url);
-					};
-					audio.onended = () => URL.revokeObjectURL(url);
-					audio.play().catch((e) => console.error("[TTS] play() failed:", e));
-					setVoiceTestResults((prev) => ({
-						...prev,
-						[providerId]: { success: true, error: null },
-					}));
-				} else {
-					setVoiceTestResults((prev) => ({
-						...prev,
-						[providerId]: {
-							success: false,
-							error: res?.error?.message || "TTS test failed",
-						},
-					}));
-				}
-			} catch (err) {
-				setVoiceTestResults((prev) => ({
-					...prev,
-					[providerId]: {
-						success: false,
-						error: (err as Error).message || "TTS test failed",
-					},
-				}));
-			}
+		const enableResult = await enableVoiceProviderForTest(providerId, type, allProviders);
+		if (enableResult.error) {
+			updateVoiceTestResult(providerId, { success: false, error: enableResult.error });
 			setVoiceTesting(null);
-		} else {
-			// STT: record then transcribe
-			try {
-				const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-				const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-					? "audio/webm;codecs=opus"
-					: "audio/webm";
-				const mediaRecorder = new MediaRecorder(stream, { mimeType });
-				const audioChunks: Blob[] = [];
-
-				mediaRecorder.ondataavailable = (e) => {
-					if (e.data.size > 0) audioChunks.push(e.data);
-				};
-
-				mediaRecorder.start();
-				setActiveRecorder(mediaRecorder);
-				setVoiceTesting({ id: providerId, type, phase: "recording" });
-
-				mediaRecorder.onstop = async () => {
-					setActiveRecorder(null);
-					for (const track of stream.getTracks()) track.stop();
-					setVoiceTesting({ id: providerId, type, phase: "transcribing" });
-
-					const audioBlob = new Blob(audioChunks, {
-						type: mediaRecorder.mimeType || mimeType,
-					});
-
-					try {
-						const resp = await transcribeAudio(activeSessionKey, providerId, audioBlob);
-						if (resp.ok) {
-							const sttRes = (await resp.json()) as {
-								ok?: boolean;
-								transcription?: { text?: string };
-								transcriptionError?: string;
-								error?: string;
-							};
-
-							if (sttRes.ok && typeof sttRes.transcription?.text === "string") {
-								const transcriptText = sttRes.transcription.text.trim();
-								setVoiceTestResults((prev) => ({
-									...prev,
-									[providerId]: {
-										text: transcriptText || null,
-										error: transcriptText ? null : "No speech detected",
-									},
-								}));
-							} else {
-								setVoiceTestResults((prev) => ({
-									...prev,
-									[providerId]: {
-										text: null,
-										error: sttRes.transcriptionError || sttRes.error || "STT test failed",
-									},
-								}));
-							}
-						} else {
-							const errBody = await resp.text();
-							console.error("[STT] upload failed: status=%d body=%s", resp.status, errBody);
-							let errMsg = "STT test failed";
-							try {
-								errMsg = (JSON.parse(errBody) as { error?: string })?.error || errMsg;
-							} catch (_e) {
-								// not JSON
-							}
-							setVoiceTestResults((prev) => ({
-								...prev,
-								[providerId]: {
-									text: null,
-									error: `${errMsg} (HTTP ${resp.status})`,
-								},
-							}));
-						}
-					} catch (fetchErr) {
-						setVoiceTestResults((prev) => ({
-							...prev,
-							[providerId]: {
-								text: null,
-								error: (fetchErr as Error).message || "STT test failed",
-							},
-						}));
-					}
+			return;
+		}
+		if (enableResult.changed) void fetchProviders();
+		if (type === "tts") {
+			updateVoiceTestResult(providerId, await runTtsVoiceTest(providerId));
+			setVoiceTesting(null);
+			return;
+		}
+		try {
+			await startVoiceRecording(providerId, {
+				onRecorder: setActiveRecorder,
+				onPhase: (phase) => setVoiceTesting({ id: providerId, type: "stt", phase }),
+				onResult: (result) => {
+					updateVoiceTestResult(providerId, result);
 					setVoiceTesting(null);
-				};
-			} catch (err) {
-				const domErr = err as DOMException;
-				if (domErr.name === "NotAllowedError") {
-					setError("Microphone permission denied");
-				} else if (domErr.name === "NotFoundError") {
-					setError("No microphone found");
-				} else {
-					setError(domErr.message || "STT test failed");
-				}
-				setVoiceTesting(null);
-			}
+				},
+			});
+		} catch (recordingError) {
+			setError(microphoneErrorMessage(recordingError));
+			setVoiceTesting(null);
 		}
 	}
 

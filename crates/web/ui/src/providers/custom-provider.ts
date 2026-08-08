@@ -2,7 +2,7 @@
 
 import { sendRpc } from "../helpers";
 import { providerBaseUrlError, validateProviderKey } from "../provider-validation";
-import type { RpcResponse } from "../types";
+import type { RpcResponse } from "../types/rpc";
 import { showModelSelector } from "./auth-flow";
 import {
 	bindValidationProgressEvents,

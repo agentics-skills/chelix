@@ -3,70 +3,10 @@
 import { smartScrollToBottom } from "../../chat-ui";
 import { formatBytes, formatTokens } from "../../helpers";
 import * as S from "../../state";
+import type { ChatContextPayload, ChatContextTokenUsage, PromptMemoryData } from "../../types/chat";
 import { slashInjectStyles } from "./slash-commands";
 
 // ── Types ────────────────────────────────────────────────────
-
-interface ContextFile {
-	path: string;
-	size?: number;
-}
-
-export interface SessionData {
-	key?: string;
-	messageCount?: number;
-	model?: string;
-	provider?: string;
-	label?: string;
-}
-
-export interface ProjectData {
-	label?: string;
-	directory?: string;
-	systemPrompt?: string;
-	contextFiles?: ContextFile[];
-}
-
-export interface SandboxData {
-	enabled?: boolean;
-	backend?: string;
-	mode?: string;
-	scope?: string;
-	image?: string;
-	containerName?: string;
-}
-
-export interface TokenUsageData {
-	inputTokens?: number;
-	outputTokens?: number;
-	cacheReadTokens?: number;
-	cacheWriteTokens?: number;
-	total?: number;
-	currentInputTokens?: number;
-	currentOutputTokens?: number;
-	currentCacheReadTokens?: number;
-	currentCacheWriteTokens?: number;
-	currentTotal?: number;
-	estimatedNextInputTokens?: number;
-	contextWindow?: number;
-}
-
-export interface WorkspaceFile {
-	name?: string;
-	truncated?: boolean;
-	original_chars?: number;
-	limit_chars?: number;
-	truncated_chars?: number;
-}
-
-export interface PromptMemoryData {
-	mode?: string;
-	present?: boolean;
-	chars?: number;
-	fileSource?: string;
-	path?: string;
-	snapshotActive?: boolean;
-}
 
 /** Persisted checkpoint message fields used by the checkpoint card. */
 export interface CheckpointCardData {
@@ -77,22 +17,6 @@ export interface CheckpointCardData {
 	outputTokens?: number;
 	messagesSummarized?: number;
 	created_at?: number;
-}
-
-export interface ContextData {
-	session?: SessionData;
-	project?: ProjectData | null;
-	tools?: Array<{ name: string; description?: string }>;
-	/** Count of tool parameter schemas currently visible to the model. In lazy
-	 * mode this is smaller than `tools.length` (only `get_tool` + revealed). */
-	toolSchemaCount?: number;
-	skills?: Array<{ name: string; description?: string; source?: string }>;
-	mcpServers?: Array<{ name: string; state?: string; tool_count?: number }>;
-	mcpDisabled?: boolean;
-	sandbox?: SandboxData;
-	tokenUsage?: TokenUsageData;
-	promptMemory?: PromptMemoryData | null;
-	supportsTools?: boolean;
 }
 
 // ── DOM helpers ──────────────────────────────────────────────
@@ -199,7 +123,7 @@ export function promptMemoryDetailParts(promptMemory: PromptMemoryData | null): 
 
 // ── Section renderers ────────────────────────────────────────
 
-export function renderContextSessionSection(card: HTMLElement, data: ContextData): void {
+export function renderContextSessionSection(card: HTMLElement, data: ChatContextPayload): void {
 	const sess = data.session ?? {};
 	const sec = ctxSection("Session");
 	sec.appendChild(ctxRow("Key", sess.key || "unknown", true));
@@ -211,14 +135,14 @@ export function renderContextSessionSection(card: HTMLElement, data: ContextData
 	card.appendChild(sec);
 }
 
-export function renderContextProjectSection(card: HTMLElement, data: ContextData): void {
+export function renderContextProjectSection(card: HTMLElement, data: ChatContextPayload): void {
 	const proj = data.project;
 	const sec = ctxSection("Project");
 	if (proj) {
 		sec.appendChild(ctxRow("Name", proj.label || "(unnamed)"));
 		if (proj.directory) sec.appendChild(ctxRow("Directory", proj.directory, true));
 		if (proj.systemPrompt) sec.appendChild(ctxRow("System Prompt", `${proj.systemPrompt.length} chars`));
-		const ctxFiles: ContextFile[] = proj.contextFiles || [];
+		const ctxFiles = proj.contextFiles || [];
 		if (ctxFiles.length > 0) {
 			const fl = ctxEl("div", "ctx-section-title", `Context Files (${ctxFiles.length})`);
 			fl.classList.add("spaced");
@@ -236,7 +160,7 @@ export function renderContextProjectSection(card: HTMLElement, data: ContextData
 	card.appendChild(sec);
 }
 
-export function renderContextToolsSection(card: HTMLElement, data: ContextData): void {
+export function renderContextToolsSection(card: HTMLElement, data: ChatContextPayload): void {
 	const tools = data.tools || [];
 	const sec = ctxSection("Tools");
 	if (data.supportsTools === false) {
@@ -263,7 +187,7 @@ export function renderContextToolsSection(card: HTMLElement, data: ContextData):
 	card.appendChild(sec);
 }
 
-export function renderContextSkillsSection(card: HTMLElement, data: ContextData): void {
+export function renderContextSkillsSection(card: HTMLElement, data: ChatContextPayload): void {
 	const skills = data.skills || [];
 	const sec = ctxSection("Skills & Plugins");
 	if (data.supportsTools === false) {
@@ -287,7 +211,7 @@ export function renderContextSkillsSection(card: HTMLElement, data: ContextData)
 	card.appendChild(sec);
 }
 
-export function renderContextMcpSection(card: HTMLElement, data: ContextData): void {
+export function renderContextMcpSection(card: HTMLElement, data: ChatContextPayload): void {
 	const servers = data.mcpServers || [];
 	const sec = ctxSection("MCP Tools");
 	if (data.supportsTools === false) {
@@ -315,7 +239,7 @@ export function renderContextMcpSection(card: HTMLElement, data: ContextData): v
 	card.appendChild(sec);
 }
 
-export function renderContextSandboxSection(card: HTMLElement, data: ContextData): void {
+export function renderContextSandboxSection(card: HTMLElement, data: ChatContextPayload): void {
 	const sb = data.sandbox ?? {};
 	const sec = ctxSection("Sandbox");
 	sec.appendChild(ctxRow("Enabled", sb.enabled ? "yes" : "no", true));
@@ -331,40 +255,70 @@ export function renderContextSandboxSection(card: HTMLElement, data: ContextData
 	card.appendChild(sec);
 }
 
-export function renderContextTokensSection(card: HTMLElement, data: ContextData): void {
-	const tu = data.tokenUsage ?? {};
-	const sessionInput = tu.inputTokens || 0;
-	const sessionOutput = tu.outputTokens || 0;
-	const sessionCacheRead = tu.cacheReadTokens || 0;
-	const sessionCacheWrite = tu.cacheWriteTokens || 0;
-	const sessionTotal = tu.total || 0;
-	const currentInput = tu.currentInputTokens || sessionInput;
-	const currentOutput = tu.currentOutputTokens || 0;
-	const currentCacheRead = tu.currentCacheReadTokens || 0;
-	const currentCacheWrite = tu.currentCacheWriteTokens || 0;
-	const currentTotal = tu.currentTotal || currentInput + currentOutput;
-	const estimatedNextInput = tu.estimatedNextInputTokens || currentInput;
-	const sec = ctxSection("Token Usage");
-	sec.appendChild(ctxRow("Session input", formatTokens(sessionInput), true));
-	sec.appendChild(ctxRow("Session output", formatTokens(sessionOutput), true));
-	if (sessionCacheRead > 0) sec.appendChild(ctxRow("Session cached input", formatTokens(sessionCacheRead), true));
-	if (sessionCacheWrite > 0) sec.appendChild(ctxRow("Session cache writes", formatTokens(sessionCacheWrite), true));
-	sec.appendChild(ctxRow("Session total", formatTokens(sessionTotal), true));
-	sec.appendChild(ctxRow("Current input", formatTokens(currentInput), true));
-	sec.appendChild(ctxRow("Current output", formatTokens(currentOutput), true));
-	if (currentCacheRead > 0) sec.appendChild(ctxRow("Current cached input", formatTokens(currentCacheRead), true));
-	if (currentCacheWrite > 0) sec.appendChild(ctxRow("Current cache writes", formatTokens(currentCacheWrite), true));
-	sec.appendChild(ctxRow("Current total", formatTokens(currentTotal), true));
-	sec.appendChild(ctxRow("Estimated next input", formatTokens(estimatedNextInput), true));
-	const contextWindow = tu.contextWindow ?? 0;
-	if (contextWindow > 0) {
-		const pct = Math.max(0, 100 - Math.round((estimatedNextInput / contextWindow) * 100));
-		sec.appendChild(ctxRow("Context left", `${pct}% of ${formatTokens(contextWindow)}`, true));
-	}
-	card.appendChild(sec);
+interface TokenUsageView {
+	sessionInput: number;
+	sessionOutput: number;
+	sessionCacheRead: number;
+	sessionCacheWrite: number;
+	sessionTotal: number;
+	currentInput: number;
+	currentOutput: number;
+	currentCacheRead: number;
+	currentCacheWrite: number;
+	currentTotal: number;
+	estimatedNextInput: number;
+	contextWindow: number;
 }
 
-export function renderContextPromptMemorySection(card: HTMLElement, data: ContextData): void {
+function tokenUsageView(usage: ChatContextTokenUsage): TokenUsageView {
+	const sessionInput = usage.inputTokens || 0;
+	const currentInput = usage.currentInputTokens || sessionInput;
+	const currentOutput = usage.currentOutputTokens || 0;
+	return {
+		sessionInput,
+		sessionOutput: usage.outputTokens || 0,
+		sessionCacheRead: usage.cacheReadTokens || 0,
+		sessionCacheWrite: usage.cacheWriteTokens || 0,
+		sessionTotal: usage.total || 0,
+		currentInput,
+		currentOutput,
+		currentCacheRead: usage.currentCacheReadTokens || 0,
+		currentCacheWrite: usage.currentCacheWriteTokens || 0,
+		currentTotal: usage.currentTotal || currentInput + currentOutput,
+		estimatedNextInput: usage.estimatedNextInputTokens || currentInput,
+		contextWindow: usage.contextWindow ?? 0,
+	};
+}
+
+function appendPositiveTokenRow(section: HTMLElement, label: string, value: number): void {
+	if (value > 0) section.appendChild(ctxRow(label, formatTokens(value), true));
+}
+
+function appendContextLeftRow(section: HTMLElement, usage: TokenUsageView): void {
+	if (usage.contextWindow <= 0) return;
+	const percentage = Math.max(0, 100 - Math.round((usage.estimatedNextInput / usage.contextWindow) * 100));
+	section.appendChild(ctxRow("Context left", `${percentage}% of ${formatTokens(usage.contextWindow)}`, true));
+}
+
+export function renderContextTokensSection(card: HTMLElement, data: ChatContextPayload): void {
+	const usage = tokenUsageView(data.tokenUsage ?? {});
+	const section = ctxSection("Token Usage");
+	section.appendChild(ctxRow("Session input", formatTokens(usage.sessionInput), true));
+	section.appendChild(ctxRow("Session output", formatTokens(usage.sessionOutput), true));
+	appendPositiveTokenRow(section, "Session cached input", usage.sessionCacheRead);
+	appendPositiveTokenRow(section, "Session cache writes", usage.sessionCacheWrite);
+	section.appendChild(ctxRow("Session total", formatTokens(usage.sessionTotal), true));
+	section.appendChild(ctxRow("Current input", formatTokens(usage.currentInput), true));
+	section.appendChild(ctxRow("Current output", formatTokens(usage.currentOutput), true));
+	appendPositiveTokenRow(section, "Current cached input", usage.currentCacheRead);
+	appendPositiveTokenRow(section, "Current cache writes", usage.currentCacheWrite);
+	section.appendChild(ctxRow("Current total", formatTokens(usage.currentTotal), true));
+	section.appendChild(ctxRow("Estimated next input", formatTokens(usage.estimatedNextInput), true));
+	appendContextLeftRow(section, usage);
+	card.appendChild(section);
+}
+
+export function renderContextPromptMemorySection(card: HTMLElement, data: ChatContextPayload): void {
 	const pm = data.promptMemory || null;
 	const sec = ctxSection("Prompt Memory");
 	sec.appendChild(ctxRow("Status", buildPromptMemorySummary(pm)));
@@ -380,7 +334,7 @@ export function renderContextPromptMemorySection(card: HTMLElement, data: Contex
 
 // ── Main context card renderer ───────────────────────────────
 
-export function renderContextCard(data: ContextData): void {
+export function renderContextCard(data: ChatContextPayload): void {
 	if (!S.chatMsgBox) return;
 	slashInjectStyles();
 	const card = ctxEl("div", "ctx-card");

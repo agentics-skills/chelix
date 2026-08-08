@@ -1,24 +1,17 @@
 import { onEvent } from "./events";
+import type { ValidationEventPayload, ValidationProgressUpdate } from "./providers/types";
 
 export const VALIDATION_HINT_TEXT = "";
 export const VALIDATION_HINT_RUNNING_TEXT = "Discovering models...";
 
 const VALIDATION_PROGRESS_EVENT = "providers.validate.progress";
-
-interface ValidationProgressUpdate {
-	value: number;
-	message: string;
-}
-
-interface ValidationEventPayload {
-	requestId?: string;
-	phase?: string;
-	message?: string;
-	modelCount?: number;
-	totalAttempts?: number;
-	attempt?: number;
-	modelId?: string;
-}
+const STATIC_PHASE_UPDATES: Record<string, ValidationProgressUpdate> = {
+	start: { value: 8, message: "Starting provider validation..." },
+	probe_succeeded: { value: 94, message: "Model probe succeeded." },
+	complete: { value: 100, message: "Validation complete." },
+	error: { value: 98, message: "Validation failed." },
+};
+const PROBE_PHASES = new Set(["probe_started", "probe_failed", "probe_timeout"]);
 
 function normalizeAttempt(value: number | undefined, fallback: number): number {
 	if (!Number.isFinite(value)) return fallback;
@@ -26,46 +19,44 @@ function normalizeAttempt(value: number | undefined, fallback: number): number {
 }
 
 function stripModelNamespace(modelId: string | undefined): string | undefined {
-	if (!modelId || typeof modelId !== "string") return modelId;
-	const sep = modelId.lastIndexOf("::");
-	return sep >= 0 ? modelId.slice(sep + 2) : modelId;
+	if (!modelId) return modelId;
+	const separator = modelId.lastIndexOf("::");
+	return separator >= 0 ? modelId.slice(separator + 2) : modelId;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: maps backend validation phases to progress UI updates.
+function discoveredCandidatesUpdate(payload: ValidationEventPayload): ValidationProgressUpdate {
+	const count = Number.isFinite(payload.modelCount) ? payload.modelCount : null;
+	return {
+		value: 24,
+		message:
+			payload.message || (count == null ? "Discovered candidate models." : `Discovered ${count} candidate models.`),
+	};
+}
+
+function probeProgressUpdate(payload: ValidationEventPayload): ValidationProgressUpdate {
+	const total = normalizeAttempt(payload.totalAttempts, 1);
+	const attempt = Math.min(normalizeAttempt(payload.attempt, 1), total);
+	const modelName = stripModelNamespace(payload.modelId);
+	const defaultMessage = modelName
+		? `Probing ${modelName} (${attempt}/${total})...`
+		: `Probing model ${attempt}/${total}...`;
+	return {
+		value: 24 + (attempt / total) * 62,
+		message: payload.message || defaultMessage,
+	};
+}
+
+function staticPhaseUpdate(payload: ValidationEventPayload): ValidationProgressUpdate | null {
+	const update = payload.phase ? STATIC_PHASE_UPDATES[payload.phase] : null;
+	if (!update) return null;
+	return { ...update, message: payload.message || update.message };
+}
+
 function progressFromValidationEvent(payload: ValidationEventPayload): ValidationProgressUpdate | null {
-	if (!payload?.phase) return null;
-	const phase = payload.phase;
-	if (phase === "start") {
-		return { value: 8, message: payload.message || "Starting provider validation..." };
-	}
-	if (phase === "candidates_discovered") {
-		const count = Number.isFinite(payload.modelCount) ? payload.modelCount : null;
-		const message = count == null ? "Discovered candidate models." : `Discovered ${count} candidate models.`;
-		return { value: 24, message };
-	}
-	if (phase === "probe_started" || phase === "probe_failed" || phase === "probe_timeout") {
-		const total = normalizeAttempt(payload.totalAttempts, 1);
-		const attempt = Math.min(normalizeAttempt(payload.attempt, 1), total);
-		const value = 24 + (attempt / total) * 62;
-		const modelName = stripModelNamespace(payload.modelId);
-		const defaultMessage = modelName
-			? `Probing ${modelName} (${attempt}/${total})...`
-			: `Probing model ${attempt}/${total}...`;
-		return {
-			value,
-			message: payload.message || defaultMessage,
-		};
-	}
-	if (phase === "probe_succeeded") {
-		return { value: 94, message: payload.message || "Model probe succeeded." };
-	}
-	if (phase === "complete") {
-		return { value: 100, message: payload.message || "Validation complete." };
-	}
-	if (phase === "error") {
-		return { value: 98, message: payload.message || "Validation failed." };
-	}
-	return null;
+	if (!payload.phase) return null;
+	if (payload.phase === "candidates_discovered") return discoveredCandidatesUpdate(payload);
+	if (PROBE_PHASES.has(payload.phase)) return probeProgressUpdate(payload);
+	return staticPhaseUpdate(payload);
 }
 
 export function clampValidationProgressPercent(value: number): number {
@@ -82,17 +73,12 @@ export function subscribeValidationProgress(
 	requestId: string,
 	onProgress: (update: ValidationProgressUpdate, payload: ValidationEventPayload) => void,
 ): () => void {
-	if (!(requestId && typeof onProgress === "function")) {
-		return () => undefined;
-	}
+	if (!requestId) return () => undefined;
 	const off = onEvent(VALIDATION_PROGRESS_EVENT, (rawPayload: unknown) => {
 		const payload = rawPayload as ValidationEventPayload;
 		if (!payload || payload.requestId !== requestId) return;
 		const update = progressFromValidationEvent(payload);
-		if (!update) return;
-		onProgress(update, payload);
+		if (update) onProgress(update, payload);
 	});
-	return () => {
-		off();
-	};
+	return off;
 }

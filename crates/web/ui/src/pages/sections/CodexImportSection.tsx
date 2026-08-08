@@ -2,10 +2,11 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { SectionHeading } from "../../components/forms";
+import { SectionHeading } from "../../components/forms/SectionLayout";
 import { sendRpc } from "../../helpers";
 import type { RpcResponse } from "./_shared";
 import { rerender } from "./_shared";
+import { ImportCategoryGrid, type ImportResultData, ImportResultPanel } from "./ImportSectionComponents";
 
 interface CodexScanResult {
 	detected?: boolean;
@@ -15,17 +16,7 @@ interface CodexScanResult {
 	has_memory?: boolean;
 }
 
-interface ImportCategory {
-	category: string;
-	status: string;
-	items_imported: number;
-	items_skipped: number;
-}
-
-interface ImportResult {
-	categories?: ImportCategory[];
-	total_imported?: number;
-}
+type ImportResult = ImportResultData;
 
 interface CodexSelection {
 	mcp_servers: boolean;
@@ -87,6 +78,12 @@ export function CodexImportSection(): VNode {
 		});
 	}
 
+	function resetImport(): void {
+		setDone(false);
+		setResult(null);
+		rerender();
+	}
+
 	if (loading) {
 		return (
 			<div>
@@ -134,79 +131,17 @@ export function CodexImportSection(): VNode {
 				</div>
 			) : null}
 			{done && result ? (
-				<div className="flex flex-col gap-2 max-w-[600px]">
-					<div className="text-sm font-medium text-[var(--ok)]">
-						Import complete: {result.total_imported || 0} item(s) imported.
-					</div>
-					{result.categories ? (
-						<div className="flex flex-col gap-1">
-							{result.categories.map((cat) => (
-								<div key={cat.category} className="text-xs text-[var(--text)]">
-									<span className="font-mono">
-										[
-										{cat.status === "success"
-											? "\u2713"
-											: cat.status === "partial"
-												? "~"
-												: cat.status === "skipped"
-													? "-"
-													: "!"}
-										]
-									</span>{" "}
-									{cat.category}: {cat.items_imported} imported, {cat.items_skipped} skipped
-								</div>
-							))}
-						</div>
-					) : null}
-					<button
-						type="button"
-						className="provider-btn provider-btn-secondary mt-2 w-fit"
-						onClick={() => {
-							setDone(false);
-							setResult(null);
-							rerender();
-						}}
-					>
-						Import Again
-					</button>
-				</div>
+				<ImportResultPanel result={result} onReset={resetImport} />
 			) : (
-				<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-[600px]">
-					{categories.map((cat) => {
-						const checked = selection[cat.key] && cat.available;
-						return (
-							<button
-								key={cat.key}
-								type="button"
-								onClick={() => cat.available && !importing && toggleCategory(cat.key)}
-								disabled={!cat.available || importing}
-								className={`flex items-center gap-3 p-3 rounded-md border text-left cursor-pointer transition-colors ${
-									cat.available
-										? checked
-											? "border-[var(--accent)] bg-[var(--accent-bg,rgba(var(--accent-rgb,59,130,246),0.08))]"
-											: "border-[var(--border)] bg-[var(--surface)] opacity-60"
-										: "border-[var(--border)] bg-[var(--surface)] opacity-40 cursor-not-allowed"
-								}`}
-							>
-								<span className="text-lg shrink-0">{CATEGORY_ICONS[cat.key] || "\uD83D\uDCE6"}</span>
-								<div className="flex-1 min-w-0">
-									<span className="text-sm font-medium text-[var(--text-strong)]">{cat.label}</span>
-									{cat.detail && cat.available ? (
-										<div className="text-xs text-[var(--muted)] mt-0.5">{cat.detail}</div>
-									) : null}
-									{cat.available ? null : <div className="text-xs text-[var(--muted)] mt-0.5">not found</div>}
-								</div>
-								<div className="shrink-0">
-									{checked ? (
-										<span className="icon icon-check-circle text-[var(--accent)]" />
-									) : (
-										<span className="w-4 h-4 rounded-full border-2 border-[var(--border)] inline-block" />
-									)}
-								</div>
-							</button>
-						);
-					})}
-				</div>
+				<ImportCategoryGrid
+					categories={categories.map((category) => ({
+						...category,
+						icon: CATEGORY_ICONS[category.key],
+					}))}
+					selection={selection}
+					importing={importing}
+					onToggle={toggleCategory}
+				/>
 			)}
 			{done ? null : (
 				<button

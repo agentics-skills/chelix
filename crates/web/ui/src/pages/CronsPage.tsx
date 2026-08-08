@@ -1,7 +1,7 @@
 // ── Crons page (Preact + Signals) ──────────────────────────
 
 import { signal, useSignal } from "@preact/signals";
-import type { VNode } from "preact";
+import type { TargetedSubmitEvent, VNode } from "preact";
 import { render } from "preact";
 import { useEffect } from "preact/hooks";
 import { fetchChannelStatus } from "../channel-utils";
@@ -10,40 +10,10 @@ import { refresh as refreshGon } from "../gon";
 import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
 import { models as modelsSig } from "../stores/model-store";
+import type { CronJob, CronPayload, CronSchedule } from "../types/gon";
 import { ComboSelect, ConfirmDialog, Modal, ModelSelect, requestConfirm } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────
-
-interface CronJob {
-	id: string;
-	name: string;
-	enabled: boolean;
-	system?: boolean;
-	schedule: CronSchedule;
-	payload: CronPayload;
-	sessionTarget?: string;
-	deleteAfterRun?: boolean;
-	state?: { lastStatus?: string; nextRunAtMs?: number };
-	autoPruneContainer?: boolean;
-}
-
-interface CronSchedule {
-	kind: string;
-	expr?: string;
-	tz?: string;
-	at_ms?: number;
-	every_ms?: number;
-}
-
-interface CronPayload {
-	kind: string;
-	text?: string;
-	message?: string;
-	model?: string;
-	deliver?: boolean;
-	channel?: string;
-	to?: string;
-}
 
 interface CronStatusInfo {
 	running: boolean;
@@ -156,14 +126,14 @@ function loadJobs(): void {
 }
 
 function formatSchedule(sched: CronSchedule): string {
-	if (sched.kind === "at") return `At ${new Date(sched.at_ms!).toLocaleString()}`;
+	if (sched.kind === "at") return `At ${new Date(sched.atMs).toLocaleString()}`;
 	if (sched.kind === "every") {
-		const ms = sched.every_ms!;
+		const ms = sched.everyMs;
 		if (ms >= 3600000) return `Every ${ms / 3600000}h`;
 		if (ms >= 60000) return `Every ${ms / 60000}m`;
 		return `Every ${ms / 1000}s`;
 	}
-	if (sched.kind === "cron") return sched.expr! + (sched.tz ? ` (${sched.tz})` : "");
+	if (sched.kind === "cron") return sched.expr + (sched.tz ? ` (${sched.tz})` : "");
 	return JSON.stringify(sched);
 }
 
@@ -265,6 +235,17 @@ function collectHeartbeatForm(form: Element): HeartbeatConfig {
 	};
 }
 
+function heartbeatPromptSourceText(promptSource: string): string {
+	if (promptSource === "config") return "config custom prompt";
+	if (promptSource === "heartbeat_md") return "HEARTBEAT.md";
+	return "none (heartbeat inactive)";
+}
+
+function heartbeatActiveHoursEnd(configuredEnd: string | undefined): string {
+	if (!configuredEnd || configuredEnd === "24:00") return "23:59";
+	return configuredEnd;
+}
+
 function HeartbeatSection(): VNode {
 	const cfg = heartbeatConfig.value;
 	const saving = heartbeatSaving.value;
@@ -272,9 +253,9 @@ function HeartbeatSection(): VNode {
 	const job = findHeartbeatJob();
 	const runBlockedReason = heartbeatRunBlockedReason(cfg, promptSource, job);
 
-	function onSave(e: Event): void {
+	function onSave(e: TargetedSubmitEvent<HTMLFormElement>): void {
 		e.preventDefault();
-		const updated = collectHeartbeatForm((e.target as HTMLElement).closest(".heartbeat-form")!);
+		const updated = collectHeartbeatForm(e.currentTarget);
 		heartbeatSaving.value = true;
 		sendRpc("heartbeat.update", updated).then((res) => {
 			heartbeatSaving.value = false;
@@ -317,15 +298,10 @@ function HeartbeatSection(): VNode {
 
 	const running = heartbeatRunning.value;
 	const runNowDisabled = running || !!runBlockedReason;
-	const promptSourceText =
-		promptSource === "config"
-			? "config custom prompt"
-			: promptSource === "heartbeat_md"
-				? "HEARTBEAT.md"
-				: "none (heartbeat inactive)";
+	const promptSourceText = heartbeatPromptSourceText(promptSource);
 
 	return (
-		<div className="heartbeat-form" style={{ maxWidth: "600px" }}>
+		<form className="heartbeat-form" style={{ maxWidth: "600px" }} onSubmit={onSave}>
 			<div className="flex items-center justify-between mb-2">
 				<div className="flex items-center gap-3">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Heartbeat</h2>
@@ -336,6 +312,7 @@ function HeartbeatSection(): VNode {
 					<span className="text-xs text-[var(--muted)]">Enable</span>
 				</div>
 				<button
+					type="button"
 					className="provider-btn provider-btn-secondary"
 					onClick={onRunNow}
 					disabled={runNowDisabled}
@@ -359,12 +336,15 @@ function HeartbeatSection(): VNode {
 				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Schedule</h3>
 				<div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">Interval</label>
-						<input data-hb="every" className="provider-key-input" placeholder="30m" value={cfg.every || "30m"} />
+						<label>
+							<span className="block text-xs text-[var(--muted)] mb-1">Interval</span>
+							<input data-hb="every" className="provider-key-input" placeholder="30m" value={cfg.every || "30m"} />
+						</label>
 					</div>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">Model</label>
+						<span className="block text-xs text-[var(--muted)] mb-1">Model</span>
 						<ModelSelect
+							ariaLabel="Model"
 							models={modelsSig.value}
 							value={heartbeatModel.value}
 							onChange={(v: string) => {
@@ -379,14 +359,16 @@ function HeartbeatSection(): VNode {
 			{/* Prompt */}
 			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Prompt</h3>
-				<label className="block text-xs text-[var(--muted)] mb-1">Custom Prompt (optional)</label>
-				<textarea
-					data-hb="prompt"
-					className="provider-key-input textarea-sm"
-					placeholder="Leave blank to use default heartbeat prompt"
-				>
-					{cfg.prompt || ""}
-				</textarea>
+				<label>
+					<span className="block text-xs text-[var(--muted)] mb-1">Custom Prompt (optional)</span>
+					<textarea
+						data-hb="prompt"
+						className="provider-key-input textarea-sm"
+						placeholder="Leave blank to use default heartbeat prompt"
+					>
+						{cfg.prompt || ""}
+					</textarea>
+				</label>
 				<p className="text-xs text-[var(--muted)] mt-2">
 					Leave this empty to use <code>HEARTBEAT.md</code> in your workspace root. If that file exists but is
 					empty/comments-only, heartbeat LLM runs are skipped to save tokens.
@@ -396,14 +378,16 @@ function HeartbeatSection(): VNode {
 				</p>
 				<div className="grid gap-4 mt-3" style={{ gridTemplateColumns: "1fr" }}>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">Max Response Characters</label>
-						<input
-							data-hb="ackMax"
-							className="provider-key-input"
-							type="number"
-							min="50"
-							value={cfg.ack_max_chars || 300}
-						/>
+						<label>
+							<span className="block text-xs text-[var(--muted)] mb-1">Max Response Characters</span>
+							<input
+								data-hb="ackMax"
+								className="provider-key-input"
+								type="number"
+								min="50"
+								value={cfg.ack_max_chars || 300}
+							/>
+						</label>
 					</div>
 				</div>
 			</div>
@@ -421,12 +405,16 @@ function HeartbeatSection(): VNode {
 				</div>
 				<div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">Channel Account</label>
-						<input data-hb="channel" className="provider-key-input" placeholder="my-bot" value={cfg.channel || ""} />
+						<label>
+							<span className="block text-xs text-[var(--muted)] mb-1">Channel Account</span>
+							<input data-hb="channel" className="provider-key-input" placeholder="my-bot" value={cfg.channel || ""} />
+						</label>
 					</div>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">Chat ID</label>
-						<input data-hb="to" className="provider-key-input" placeholder="123456789" value={cfg.to || ""} />
+						<label>
+							<span className="block text-xs text-[var(--muted)] mb-1">Chat ID</span>
+							<input data-hb="to" className="provider-key-input" placeholder="123456789" value={cfg.to || ""} />
+						</label>
 					</div>
 				</div>
 				<p className="text-xs text-[var(--muted)] mt-2">
@@ -441,67 +429,73 @@ function HeartbeatSection(): VNode {
 				<p className="text-xs text-[var(--muted)] mb-3">Only run heartbeat during these hours.</p>
 				<div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">Start</label>
-						<input
-							data-hb="ahStart"
-							type="time"
-							className="provider-key-input"
-							value={cfg.active_hours?.start || "08:00"}
-						/>
+						<label>
+							<span className="block text-xs text-[var(--muted)] mb-1">Start</span>
+							<input
+								data-hb="ahStart"
+								type="time"
+								className="provider-key-input"
+								value={cfg.active_hours?.start || "08:00"}
+							/>
+						</label>
 					</div>
 					<div>
-						<label className="block text-xs text-[var(--muted)] mb-1">End</label>
-						<input
-							data-hb="ahEnd"
-							type="time"
-							className="provider-key-input"
-							value={cfg.active_hours?.end === "24:00" ? "23:59" : cfg.active_hours?.end || "23:59"}
-						/>
+						<label>
+							<span className="block text-xs text-[var(--muted)] mb-1">End</span>
+							<input
+								data-hb="ahEnd"
+								type="time"
+								className="provider-key-input"
+								value={heartbeatActiveHoursEnd(cfg.active_hours?.end)}
+							/>
+						</label>
 					</div>
 				</div>
 				<div className="mt-3">
-					<label className="block text-xs text-[var(--muted)] mb-1">Timezone</label>
-					<select data-hb="ahTz" className="provider-key-input">
-						<option value="local" selected={!cfg.active_hours?.timezone || cfg.active_hours?.timezone === "local"}>
-							Local ({systemTimezone})
-						</option>
-						<option value="UTC" selected={cfg.active_hours?.timezone === "UTC"}>
-							UTC
-						</option>
-						<option value="America/New_York" selected={cfg.active_hours?.timezone === "America/New_York"}>
-							America/New_York (EST/EDT)
-						</option>
-						<option value="America/Chicago" selected={cfg.active_hours?.timezone === "America/Chicago"}>
-							America/Chicago (CST/CDT)
-						</option>
-						<option value="America/Denver" selected={cfg.active_hours?.timezone === "America/Denver"}>
-							America/Denver (MST/MDT)
-						</option>
-						<option value="America/Los_Angeles" selected={cfg.active_hours?.timezone === "America/Los_Angeles"}>
-							America/Los_Angeles (PST/PDT)
-						</option>
-						<option value="Europe/London" selected={cfg.active_hours?.timezone === "Europe/London"}>
-							Europe/London (GMT/BST)
-						</option>
-						<option value="Europe/Paris" selected={cfg.active_hours?.timezone === "Europe/Paris"}>
-							Europe/Paris (CET/CEST)
-						</option>
-						<option value="Europe/Berlin" selected={cfg.active_hours?.timezone === "Europe/Berlin"}>
-							Europe/Berlin (CET/CEST)
-						</option>
-						<option value="Asia/Tokyo" selected={cfg.active_hours?.timezone === "Asia/Tokyo"}>
-							Asia/Tokyo (JST)
-						</option>
-						<option value="Asia/Shanghai" selected={cfg.active_hours?.timezone === "Asia/Shanghai"}>
-							Asia/Shanghai (CST)
-						</option>
-						<option value="Asia/Singapore" selected={cfg.active_hours?.timezone === "Asia/Singapore"}>
-							Asia/Singapore (SGT)
-						</option>
-						<option value="Australia/Sydney" selected={cfg.active_hours?.timezone === "Australia/Sydney"}>
-							Australia/Sydney (AEST/AEDT)
-						</option>
-					</select>
+					<label>
+						<span className="block text-xs text-[var(--muted)] mb-1">Timezone</span>
+						<select data-hb="ahTz" className="provider-key-input">
+							<option value="local" selected={!cfg.active_hours?.timezone || cfg.active_hours?.timezone === "local"}>
+								Local ({systemTimezone})
+							</option>
+							<option value="UTC" selected={cfg.active_hours?.timezone === "UTC"}>
+								UTC
+							</option>
+							<option value="America/New_York" selected={cfg.active_hours?.timezone === "America/New_York"}>
+								America/New_York (EST/EDT)
+							</option>
+							<option value="America/Chicago" selected={cfg.active_hours?.timezone === "America/Chicago"}>
+								America/Chicago (CST/CDT)
+							</option>
+							<option value="America/Denver" selected={cfg.active_hours?.timezone === "America/Denver"}>
+								America/Denver (MST/MDT)
+							</option>
+							<option value="America/Los_Angeles" selected={cfg.active_hours?.timezone === "America/Los_Angeles"}>
+								America/Los_Angeles (PST/PDT)
+							</option>
+							<option value="Europe/London" selected={cfg.active_hours?.timezone === "Europe/London"}>
+								Europe/London (GMT/BST)
+							</option>
+							<option value="Europe/Paris" selected={cfg.active_hours?.timezone === "Europe/Paris"}>
+								Europe/Paris (CET/CEST)
+							</option>
+							<option value="Europe/Berlin" selected={cfg.active_hours?.timezone === "Europe/Berlin"}>
+								Europe/Berlin (CET/CEST)
+							</option>
+							<option value="Asia/Tokyo" selected={cfg.active_hours?.timezone === "Asia/Tokyo"}>
+								Asia/Tokyo (JST)
+							</option>
+							<option value="Asia/Shanghai" selected={cfg.active_hours?.timezone === "Asia/Shanghai"}>
+								Asia/Shanghai (CST)
+							</option>
+							<option value="Asia/Singapore" selected={cfg.active_hours?.timezone === "Asia/Singapore"}>
+								Asia/Singapore (SGT)
+							</option>
+							<option value="Australia/Sydney" selected={cfg.active_hours?.timezone === "Australia/Sydney"}>
+								Australia/Sydney (AEST/AEDT)
+							</option>
+						</select>
+					</label>
 				</div>
 			</div>
 
@@ -513,11 +507,11 @@ function HeartbeatSection(): VNode {
 
 			{/* Save */}
 			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<button className="provider-btn" onClick={onSave} disabled={saving}>
+				<button type="submit" className="provider-btn" disabled={saving}>
 					{saving ? "Saving\u2026" : "Save"}
 				</button>
 			</div>
-		</div>
+		</form>
 	);
 }
 
@@ -536,8 +530,11 @@ function StatusBar(): VNode {
 }
 
 function CronJobRow({ job }: { job: CronJob }): VNode {
-	const modelLabel = job.payload?.kind === "agentTurn" ? job.payload.model || "default" : "\u2014";
-	const deliveryLabel = job.payload?.deliver && job.payload?.channel ? `\u2192 ${job.payload.channel}` : null;
+	const modelLabel = job.payload.kind === "agentTurn" ? job.payload.model || "default" : "\u2014";
+	const deliveryLabel =
+		job.payload.kind === "agentTurn" && job.payload.deliver && job.payload.channel
+			? `\u2192 ${job.payload.channel}`
+			: null;
 	function onToggle(e: Event): void {
 		sendRpc("cron.update", { id: job.id, patch: { enabled: (e.target as HTMLInputElement).checked } }).then(() => {
 			loadJobs();
@@ -588,6 +585,7 @@ function CronJobRow({ job }: { job: CronJob }): VNode {
 			</td>
 			<td className="cron-actions">
 				<button
+					type="button"
 					className="cron-action-btn"
 					onClick={() => {
 						editingJob.value = job;
@@ -596,13 +594,13 @@ function CronJobRow({ job }: { job: CronJob }): VNode {
 				>
 					Edit
 				</button>
-				<button className="cron-action-btn" onClick={onRun}>
+				<button type="button" className="cron-action-btn" onClick={onRun}>
 					Run
 				</button>
-				<button className="cron-action-btn" onClick={onHistory}>
+				<button type="button" className="cron-action-btn" onClick={onHistory}>
 					History
 				</button>
-				<button className="cron-action-btn cron-action-danger" onClick={onDelete}>
+				<button type="button" className="cron-action-btn cron-action-danger" onClick={onDelete}>
 					Delete
 				</button>
 			</td>
@@ -650,6 +648,7 @@ function RunHistoryPanel(): VNode | null {
 			<div className="flex items-center justify-between mb-md">
 				<span className="text-sm font-medium text-[var(--text-strong)]">Run History: {h.jobName}</span>
 				<button
+					type="button"
 					className="text-xs text-[var(--muted)] cursor-pointer bg-transparent border-none hover:text-[var(--text)]"
 					onClick={() => {
 						runsHistory.value = null;
@@ -677,17 +676,17 @@ function RunHistoryPanel(): VNode | null {
 
 function parseScheduleFromForm(
 	kind: string,
-	signals: Record<string, string>,
+	signals: Pick<CronModalDraft, "schedAtTimestamp" | "schedEverySecs" | "schedCronExpr" | "schedCronTz">,
 ): { schedule?: CronSchedule; error?: string } {
 	if (kind === "at") {
 		const ts = new Date(signals.schedAtTimestamp).getTime();
 		if (Number.isNaN(ts)) return { error: "at" };
-		return { schedule: { kind: "at", at_ms: ts } };
+		return { schedule: { kind: "at", atMs: ts } };
 	}
 	if (kind === "every") {
 		const secs = parseInt(signals.schedEverySecs, 10);
 		if (Number.isNaN(secs) || secs <= 0) return { error: "every" };
-		return { schedule: { kind: "every", every_ms: secs * 1000 } };
+		return { schedule: { kind: "every", everyMs: secs * 1000 } };
 	}
 	const expr = signals.schedCronExpr.trim();
 	if (!expr) return { error: "cron" };
@@ -695,6 +694,108 @@ function parseScheduleFromForm(
 	const tz = signals.schedCronTz.trim();
 	if (tz) schedule.tz = tz;
 	return { schedule };
+}
+
+interface CronModalDraft {
+	schedKind: string;
+	jobModel: string;
+	jobName: string;
+	payloadKind: string;
+	sessionTarget: string;
+	messageText: string;
+	deleteAfterRun: boolean;
+	jobEnabled: boolean;
+	deliverToChannel: boolean;
+	deliverChannel: string;
+	deliverTo: string;
+	schedCronExpr: string;
+	schedCronTz: string;
+	schedEverySecs: string;
+	schedAtTimestamp: string;
+}
+
+interface CronJobFields {
+	name: string;
+	schedule: CronSchedule;
+	payload: CronPayload;
+	sessionTarget: string;
+	deleteAfterRun: boolean;
+	enabled: boolean;
+}
+
+type CronSaveCommand = { ok: true; fields: CronJobFields } | { ok: false; errorField: string };
+
+function emptyCronModalDraft(): CronModalDraft {
+	return {
+		schedKind: "cron",
+		jobModel: "",
+		jobName: "",
+		payloadKind: "systemEvent",
+		sessionTarget: "main",
+		messageText: "",
+		deleteAfterRun: false,
+		jobEnabled: true,
+		deliverToChannel: false,
+		deliverChannel: "",
+		deliverTo: "",
+		schedCronExpr: "",
+		schedCronTz: "",
+		schedEverySecs: "",
+		schedAtTimestamp: "",
+	};
+}
+
+function cronModalDraft(job: CronJob | null): CronModalDraft {
+	if (!job) return emptyCronModalDraft();
+	const agentPayload = job.payload.kind === "agentTurn" ? job.payload : null;
+	return {
+		schedKind: job.schedule.kind,
+		jobModel: agentPayload?.model || "",
+		jobName: job.name,
+		payloadKind: job.payload.kind,
+		sessionTarget: job.sessionTarget || "main",
+		messageText: job.payload.kind === "systemEvent" ? job.payload.text : job.payload.message,
+		deleteAfterRun: !!job.deleteAfterRun,
+		jobEnabled: job.enabled,
+		deliverToChannel: !!agentPayload?.deliver,
+		deliverChannel: agentPayload?.channel || "",
+		deliverTo: agentPayload?.to || "",
+		schedCronExpr: job.schedule.kind === "cron" ? job.schedule.expr : "",
+		schedCronTz: job.schedule.kind === "cron" ? job.schedule.tz || "" : "",
+		schedEverySecs: job.schedule.kind === "every" ? String(Math.round(job.schedule.everyMs / 1000)) : "",
+		schedAtTimestamp: job.schedule.kind === "at" ? new Date(job.schedule.atMs).toISOString().slice(0, 16) : "",
+	};
+}
+
+function agentTurnPayload(draft: CronModalDraft, message: string): CronPayload {
+	const payload: CronPayload = { kind: "agentTurn", message, deliver: draft.deliverToChannel };
+	if (draft.deliverToChannel && draft.deliverChannel) payload.channel = draft.deliverChannel;
+	const recipient = draft.deliverTo.trim();
+	if (draft.deliverToChannel && recipient) payload.to = recipient;
+	if (draft.jobModel) payload.model = draft.jobModel;
+	return payload;
+}
+
+function cronSaveCommand(draft: CronModalDraft): CronSaveCommand {
+	const name = draft.jobName.trim();
+	if (!name) return { ok: false, errorField: "name" };
+	const parsedSchedule = parseScheduleFromForm(draft.schedKind, draft);
+	if (!parsedSchedule.schedule) return { ok: false, errorField: parsedSchedule.error || "cron" };
+	const message = draft.messageText.trim();
+	if (!message) return { ok: false, errorField: "message" };
+	const payload: CronPayload =
+		draft.payloadKind === "systemEvent" ? { kind: "systemEvent", text: message } : agentTurnPayload(draft, message);
+	return {
+		ok: true,
+		fields: {
+			name,
+			schedule: parsedSchedule.schedule,
+			payload,
+			sessionTarget: draft.sessionTarget,
+			deleteAfterRun: draft.deleteAfterRun,
+			enabled: draft.jobEnabled,
+		},
+	};
 }
 
 function CronModal(): VNode {
@@ -719,91 +820,52 @@ function CronModal(): VNode {
 	const schedAtTimestamp = useSignal("");
 
 	useEffect(() => {
-		if (editingJob.value) {
-			const j = editingJob.value;
-			saving.value = false;
-			errorField.value = null;
-			schedKind.value = j.schedule.kind;
-			jobModel.value = j.payload.kind === "agentTurn" ? j.payload.model || "" : "";
-			jobName.value = j.name;
-			payloadKind.value = j.payload.kind;
-			sessionTarget.value = j.sessionTarget || "main";
-			messageText.value = j.payload.text || j.payload.message || "";
-			deleteAfterRun.value = !!j.deleteAfterRun;
-			jobEnabled.value = j.enabled;
-			deliverToChannel.value = j.payload?.deliver === true;
-			deliverChannel.value = j.payload?.channel || "";
-			deliverTo.value = j.payload?.to || "";
-			schedCronExpr.value = j.schedule.kind === "cron" ? j.schedule.expr || "" : "";
-			schedCronTz.value = j.schedule.kind === "cron" ? j.schedule.tz || "" : "";
-			schedEverySecs.value = j.schedule.kind === "every" ? String(Math.round(j.schedule.every_ms! / 1000)) : "";
-			schedAtTimestamp.value = j.schedule.kind === "at" ? new Date(j.schedule.at_ms!).toISOString().slice(0, 16) : "";
-		} else {
-			saving.value = false;
-			errorField.value = null;
-			schedKind.value = "cron";
-			jobModel.value = "";
-			jobName.value = "";
-			payloadKind.value = "systemEvent";
-			sessionTarget.value = "main";
-			messageText.value = "";
-			deleteAfterRun.value = false;
-			jobEnabled.value = true;
-			deliverToChannel.value = false;
-			deliverChannel.value = "";
-			deliverTo.value = "";
-			schedCronExpr.value = "";
-			schedCronTz.value = "";
-			schedEverySecs.value = "";
-			schedAtTimestamp.value = "";
-		}
+		const draft = cronModalDraft(editingJob.value);
+		saving.value = false;
+		errorField.value = null;
+		schedKind.value = draft.schedKind;
+		jobModel.value = draft.jobModel;
+		jobName.value = draft.jobName;
+		payloadKind.value = draft.payloadKind;
+		sessionTarget.value = draft.sessionTarget;
+		messageText.value = draft.messageText;
+		deleteAfterRun.value = draft.deleteAfterRun;
+		jobEnabled.value = draft.jobEnabled;
+		deliverToChannel.value = draft.deliverToChannel;
+		deliverChannel.value = draft.deliverChannel;
+		deliverTo.value = draft.deliverTo;
+		schedCronExpr.value = draft.schedCronExpr;
+		schedCronTz.value = draft.schedCronTz;
+		schedEverySecs.value = draft.schedEverySecs;
+		schedAtTimestamp.value = draft.schedAtTimestamp;
 	}, [editingJob.value]);
 
 	function onSave(e: Event): void {
 		e.preventDefault();
-		const name = jobName.value.trim();
-		if (!name) {
-			errorField.value = "name";
-			return;
-		}
-		const parsed = parseScheduleFromForm(schedKind.value, {
+		const command = cronSaveCommand({
+			schedKind: schedKind.value,
+			jobModel: jobModel.value,
+			jobName: jobName.value,
+			payloadKind: payloadKind.value,
+			sessionTarget: sessionTarget.value,
+			messageText: messageText.value,
+			deleteAfterRun: deleteAfterRun.value,
+			jobEnabled: jobEnabled.value,
+			deliverToChannel: deliverToChannel.value,
+			deliverChannel: deliverChannel.value,
+			deliverTo: deliverTo.value,
 			schedCronExpr: schedCronExpr.value,
 			schedCronTz: schedCronTz.value,
 			schedEverySecs: schedEverySecs.value,
 			schedAtTimestamp: schedAtTimestamp.value,
 		});
-		if (parsed.error) {
-			errorField.value = parsed.error;
+		if (!command.ok) {
+			errorField.value = command.errorField;
 			return;
 		}
-		const msgText = messageText.value.trim();
-		if (!msgText) {
-			errorField.value = "message";
-			return;
-		}
-		const pk = payloadKind.value;
-		const payload: Record<string, unknown> =
-			pk === "systemEvent"
-				? { kind: "systemEvent", text: msgText }
-				: {
-						kind: "agentTurn",
-						message: msgText,
-						deliver: deliverToChannel.value,
-						...(deliverToChannel.value && deliverChannel.value ? { channel: deliverChannel.value } : {}),
-						...(deliverToChannel.value && deliverTo.value.trim() ? { to: deliverTo.value.trim() } : {}),
-					};
-		if (pk === "agentTurn" && jobModel.value) payload.model = jobModel.value;
-		const fields = {
-			name,
-			schedule: parsed.schedule,
-			payload,
-			sessionTarget: sessionTarget.value,
-			deleteAfterRun: deleteAfterRun.value,
-			enabled: jobEnabled.value,
-		};
 		saving.value = true;
 		const rpcMethod = isEdit ? "cron.update" : "cron.add";
-		const rpcParams = isEdit ? { id: job?.id, patch: fields } : fields;
+		const rpcParams = isEdit ? { id: job?.id, patch: command.fields } : command.fields;
 		sendRpc(rpcMethod, rpcParams).then((res) => {
 			saving.value = false;
 			if (res?.ok) {
@@ -877,62 +939,71 @@ function CronModal(): VNode {
 			title={isEdit ? "Edit Job" : "Add Job"}
 		>
 			<div className="provider-key-form">
-				<label className="text-xs text-[var(--muted)]">Name</label>
-				<input
-					data-field="name"
-					className={`provider-key-input ${errorField.value === "name" ? "field-error" : ""}`}
-					placeholder="Job name"
-					value={jobName.value}
-					onInput={(e) => {
-						jobName.value = (e.target as HTMLInputElement).value;
-					}}
-				/>
-				<label className="text-xs text-[var(--muted)]">Schedule Type</label>
-				<select
-					data-field="schedKind"
-					className="provider-key-input"
-					value={schedKind.value}
-					onChange={(e) => {
-						schedKind.value = (e.target as HTMLSelectElement).value;
-					}}
-				>
-					<option value="at">Run Once</option>
-					<option value="every">Every (interval)</option>
-					<option value="cron">Cron (expression)</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Name</span>
+					<input
+						data-field="name"
+						className={`provider-key-input ${errorField.value === "name" ? "field-error" : ""}`}
+						placeholder="Job name"
+						value={jobName.value}
+						onInput={(e) => {
+							jobName.value = (e.target as HTMLInputElement).value;
+						}}
+					/>
+				</label>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Schedule Type</span>
+					<select
+						data-field="schedKind"
+						className="provider-key-input"
+						value={schedKind.value}
+						onChange={(e) => {
+							schedKind.value = (e.target as HTMLSelectElement).value;
+						}}
+					>
+						<option value="at">Run Once</option>
+						<option value="every">Every (interval)</option>
+						<option value="cron">Cron (expression)</option>
+					</select>
+				</label>
 				{schedParams()}
-				<label className="text-xs text-[var(--muted)]">Payload Type</label>
-				<select
-					data-field="payloadKind"
-					className="provider-key-input"
-					value={payloadKind.value}
-					onChange={(e) => {
-						payloadKind.value = (e.target as HTMLSelectElement).value;
-						sessionTarget.value = (e.target as HTMLSelectElement).value === "systemEvent" ? "main" : "isolated";
-					}}
-				>
-					<option value="systemEvent">System Event</option>
-					<option value="agentTurn">Agent Turn</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Payload Type</span>
+					<select
+						data-field="payloadKind"
+						className="provider-key-input"
+						value={payloadKind.value}
+						onChange={(e) => {
+							payloadKind.value = (e.target as HTMLSelectElement).value;
+							sessionTarget.value = (e.target as HTMLSelectElement).value === "systemEvent" ? "main" : "isolated";
+						}}
+					>
+						<option value="systemEvent">System Event</option>
+						<option value="agentTurn">Agent Turn</option>
+					</select>
+				</label>
 				<p className="text-xs text-[var(--muted)] mt-1">
 					{payloadKind.value === "agentTurn"
 						? "Starts an isolated agent turn with this prompt. Enable channel delivery below to send the result to a chat."
 						: "Adds this text to the main session as a system event when the job runs."}
 				</p>
-				<label className="text-xs text-[var(--muted)]">Message</label>
-				<textarea
-					data-field="message"
-					className={`provider-key-input textarea-sm ${errorField.value === "message" ? "field-error" : ""}`}
-					placeholder={
-						payloadKind.value === "agentTurn" ? "Prompt sent to the agent" : "Message sent to the main session"
-					}
-					value={messageText.value}
-					onInput={(e) => {
-						messageText.value = (e.target as HTMLTextAreaElement).value;
-					}}
-				/>
-				<label className="text-xs text-[var(--muted)]">Model (Agent Turn)</label>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Message</span>
+					<textarea
+						data-field="message"
+						className={`provider-key-input textarea-sm ${errorField.value === "message" ? "field-error" : ""}`}
+						placeholder={
+							payloadKind.value === "agentTurn" ? "Prompt sent to the agent" : "Message sent to the main session"
+						}
+						value={messageText.value}
+						onInput={(e) => {
+							messageText.value = (e.target as HTMLTextAreaElement).value;
+						}}
+					/>
+				</label>
+				<span className="text-xs text-[var(--muted)]">Model (Agent Turn)</span>
 				<ModelSelect
+					ariaLabel="Model (Agent Turn)"
 					models={modelsSig.value}
 					value={jobModel.value}
 					onChange={(v: string) => {
@@ -957,8 +1028,9 @@ function CronModal(): VNode {
 						{deliverToChannel.value && (
 							<>
 								<div className="mt-3">
-									<label className="block text-xs text-[var(--muted)] mb-1">Channel Account</label>
+									<span className="block text-xs text-[var(--muted)] mb-1">Channel Account</span>
 									<ComboSelect
+										ariaLabel="Channel Account"
 										options={channelAccounts.value.map((c) => ({ value: c.account_id, label: c.name || c.account_id }))}
 										value={deliverChannel.value}
 										onChange={(v: string) => {
@@ -969,34 +1041,38 @@ function CronModal(): VNode {
 									/>
 								</div>
 								<div className="mt-3">
-									<label className="block text-xs text-[var(--muted)] mb-1">Chat ID (recipient)</label>
-									<input
-										className="provider-key-input"
-										placeholder="Telegram chat_id"
-										value={deliverTo.value}
-										onInput={(e) => {
-											deliverTo.value = (e.target as HTMLInputElement).value;
-										}}
-									/>
+									<label>
+										<span className="block text-xs text-[var(--muted)] mb-1">Chat ID (recipient)</span>
+										<input
+											className="provider-key-input"
+											placeholder="Telegram chat_id"
+											value={deliverTo.value}
+											onInput={(e) => {
+												deliverTo.value = (e.target as HTMLInputElement).value;
+											}}
+										/>
+									</label>
 								</div>
 							</>
 						)}
 					</div>
 				)}
 
-				<label className="text-xs text-[var(--muted)]">Session Target</label>
-				<select
-					data-field="target"
-					className="provider-key-input"
-					value={sessionTarget.value}
-					onChange={(e) => {
-						sessionTarget.value = (e.target as HTMLSelectElement).value;
-						payloadKind.value = (e.target as HTMLSelectElement).value === "main" ? "systemEvent" : "agentTurn";
-					}}
-				>
-					<option value="isolated">Isolated</option>
-					<option value="main">Main</option>
-				</select>
+				<label>
+					<span className="text-xs text-[var(--muted)]">Session Target</span>
+					<select
+						data-field="target"
+						className="provider-key-input"
+						value={sessionTarget.value}
+						onChange={(e) => {
+							sessionTarget.value = (e.target as HTMLSelectElement).value;
+							payloadKind.value = (e.target as HTMLSelectElement).value === "main" ? "systemEvent" : "agentTurn";
+						}}
+					>
+						<option value="isolated">Isolated</option>
+						<option value="main">Main</option>
+					</select>
+				</label>
 				<label className="text-xs text-[var(--muted)] flex items-center gap-2">
 					<input
 						data-field="deleteAfter"
@@ -1021,6 +1097,7 @@ function CronModal(): VNode {
 				</label>
 				<div className="btn-row-mt">
 					<button
+						type="button"
 						className="provider-btn provider-btn-secondary"
 						onClick={() => {
 							showModal.value = false;
@@ -1029,7 +1106,7 @@ function CronModal(): VNode {
 					>
 						Cancel
 					</button>
-					<button className="provider-btn" onClick={onSave} disabled={saving.value}>
+					<button type="button" className="provider-btn" onClick={onSave} disabled={saving.value}>
 						{saving.value ? "Saving\u2026" : isEdit ? "Update" : "Create"}
 					</button>
 				</div>
@@ -1063,6 +1140,7 @@ function CronJobsPanel(): VNode {
 			<div className="flex items-center gap-3">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">Cron Jobs</h2>
 				<button
+					type="button"
 					className="provider-btn"
 					onClick={() => {
 						editingJob.value = null;

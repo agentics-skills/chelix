@@ -25,8 +25,8 @@ import {
 import * as S from "../../state";
 import { modelStore } from "../../stores/model-store";
 import { sessionStore } from "../../stores/session-store";
-import type { SessionMeta } from "../../types";
 import type { RpcResponse } from "../../types/rpc";
+import type { SessionMeta } from "../../types/session";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
 
 // ── Types ────────────────────────────────────────────────────

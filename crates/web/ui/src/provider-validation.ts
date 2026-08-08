@@ -1,5 +1,6 @@
 import { sendRpc } from "./helpers";
-import type { ModelInfo, RpcResponse } from "./types";
+import type { ModelInfo } from "./types/model";
+import type { RpcResponse } from "./types/rpc";
 
 const MODEL_SERVICE_NOT_CONFIGURED = "model service not configured";
 const MODEL_TEST_RETRY_ATTEMPTS = 40;
@@ -69,6 +70,10 @@ function firstProbeFailure(payload: DetectPayload | undefined): string | null {
 	return null;
 }
 
+function includesAny(value: string, candidates: readonly string[]): boolean {
+	return candidates.some((candidate) => value.includes(candidate));
+}
+
 /**
  * Map raw error strings to user-friendly messages.
  */
@@ -76,33 +81,28 @@ export function humanizeProbeError(error: string | null | undefined): string | n
 	if (!error || typeof error !== "string") return error;
 	const lower = error.toLowerCase();
 
-	if (
-		lower.includes("401") ||
-		lower.includes("unauthorized") ||
-		lower.includes("invalid api key") ||
-		lower.includes("invalid x-api-key")
-	) {
+	if (includesAny(lower, ["401", "unauthorized", "invalid api key", "invalid x-api-key"])) {
 		return "Invalid API key. Please double-check and try again.";
 	}
-	if (lower.includes("403") || lower.includes("forbidden")) {
+	if (includesAny(lower, ["403", "forbidden"])) {
 		return "Your API key doesn't have access. Check your account permissions.";
 	}
 	if (lower.includes("permission")) {
 		return error;
 	}
-	if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
+	if (includesAny(lower, ["429", "rate limit", "too many requests"])) {
 		return "Rate limited by the provider. Wait a moment and try again.";
 	}
-	if (lower.includes("timeout") || lower.includes("timed out")) {
+	if (includesAny(lower, ["timeout", "timed out"])) {
 		return "Connection timed out. Check your endpoint URL and try again.";
 	}
-	if (lower.includes("connection refused") || lower.includes("econnrefused")) {
+	if (includesAny(lower, ["connection refused", "econnrefused"])) {
 		return "Connection refused. Make sure the provider endpoint is running and reachable.";
 	}
-	if (lower.includes("dns") || lower.includes("getaddrinfo") || lower.includes("name or service not known")) {
+	if (includesAny(lower, ["dns", "getaddrinfo", "name or service not known"])) {
 		return "Could not resolve the endpoint address. Check the URL and try again.";
 	}
-	if (lower.includes("404") || lower.includes("not found")) {
+	if (includesAny(lower, ["404", "not found"])) {
 		return "Model not found at this endpoint. Make sure it is installed and try again.";
 	}
 

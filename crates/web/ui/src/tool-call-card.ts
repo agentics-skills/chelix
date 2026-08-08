@@ -149,6 +149,33 @@ function resultExitCode(result: ToolResult): number | undefined {
 	return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
 }
 
+const SIMPLE_JSON_ESCAPES: Record<string, string> = {
+	n: "\n",
+	r: "\r",
+	t: "\t",
+	b: "\b",
+	f: "\f",
+	'"': '"',
+	"\\": "\\",
+	"/": "/",
+};
+
+interface DecodedJsonEscape {
+	text: string;
+	endIndex: number;
+}
+
+function decodeJsonEscape(value: string, escapeIndex: number): DecodedJsonEscape | null {
+	const escaped = value[escapeIndex];
+	if (escaped === undefined) return null;
+	if (escaped !== "u") {
+		return { text: SIMPLE_JSON_ESCAPES[escaped] ?? "", endIndex: escapeIndex };
+	}
+	const hex = value.slice(escapeIndex + 1, escapeIndex + 5);
+	if (!/^[0-9a-fA-F]{4}$/.test(hex)) return null;
+	return { text: String.fromCharCode(Number.parseInt(hex, 16)), endIndex: escapeIndex + 4 };
+}
+
 function decodeJsonStringPrefix(value: string): string {
 	let decoded = "";
 	for (let index = 0; index < value.length; index += 1) {
@@ -158,21 +185,10 @@ function decodeJsonStringPrefix(value: string): string {
 			decoded += char;
 			continue;
 		}
-		index += 1;
-		if (index >= value.length) break;
-		const escaped = value[index];
-		if (escaped === "n") decoded += "\n";
-		else if (escaped === "r") decoded += "\r";
-		else if (escaped === "t") decoded += "\t";
-		else if (escaped === "b") decoded += "\b";
-		else if (escaped === "f") decoded += "\f";
-		else if (escaped === '"' || escaped === "\\" || escaped === "/") decoded += escaped;
-		else if (escaped === "u") {
-			const hex = value.slice(index + 1, index + 5);
-			if (!/^[0-9a-fA-F]{4}$/.test(hex)) break;
-			decoded += String.fromCharCode(Number.parseInt(hex, 16));
-			index += 4;
-		}
+		const decodedEscape = decodeJsonEscape(value, index + 1);
+		if (!decodedEscape) break;
+		decoded += decodedEscape.text;
+		index = decodedEscape.endIndex;
 	}
 	return decoded;
 }
@@ -405,6 +421,78 @@ export function appendToolOutputChunk(card: HTMLElement, stream: "stdout" | "std
 	if (pre) pre.textContent = `${pre.textContent || ""}${chunk}`;
 }
 
+interface ToolResultStream {
+	field: "stdout" | "output" | "stderr";
+	className: string;
+}
+
+const TOOL_RESULT_STREAMS: ToolResultStream[] = [
+	{ field: "stdout", className: "command-output tool-call-output" },
+	{ field: "output", className: "command-output tool-call-output" },
+	{ field: "stderr", className: "command-output command-stderr tool-call-output" },
+];
+
+function renderToolResultStreams(content: HTMLElement, result: ToolResult): boolean {
+	let rendered = false;
+	for (const stream of TOOL_RESULT_STREAMS) {
+		const text = (result[stream.field] || "").replace(/\n+$/, "");
+		if (!text) continue;
+		content.appendChild(makeLabeledPre(stream.field, text, stream.className));
+		rendered = true;
+	}
+	return rendered;
+}
+
+function renderToolExitCode(content: HTMLElement, result: ToolResult): boolean {
+	const exitCode = resultExitCode(result);
+	if (exitCode === undefined || exitCode === 0) return false;
+	const codeEl = document.createElement("div");
+	codeEl.className = "command-exit command-exit-error";
+	codeEl.textContent = `exit ${exitCode}`;
+	content.appendChild(codeEl);
+	return true;
+}
+
+function renderToolMessage(content: HTMLElement, result: ToolResult, alreadyRendered: boolean): boolean {
+	if (alreadyRendered || !result.message) return alreadyRendered;
+	const messageEl = document.createElement("div");
+	messageEl.className = "tool-call-result-placeholder";
+	messageEl.textContent = result.message;
+	content.appendChild(messageEl);
+	return true;
+}
+
+function renderToolScreenshot(content: HTMLElement, result: ToolResult, options: ToolResultRenderOptions): boolean {
+	if (!result.screenshot) return false;
+	renderScreenshot(content, resolveScreenshotSrc(result.screenshot, options), result.screenshot_scale || 1);
+	return true;
+}
+
+function renderToolDocument(content: HTMLElement, result: ToolResult, options: ToolResultRenderOptions): boolean {
+	if (!result.document_ref) return false;
+	const storedName = result.document_ref.split("/").pop() || "";
+	const displayName = result.filename || storedName;
+	const sessionKey = options.sessionKey || "main";
+	const mediaSrc = `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(storedName)}`;
+	renderDocument(content, mediaSrc, displayName, result.mime_type, result.size_bytes);
+	return true;
+}
+
+function renderToolMap(content: HTMLElement, result: ToolResult): boolean {
+	if (renderMapPointGroups(content, result.points, result.label)) return true;
+	if (!result.map_links) return false;
+	renderMapLinks(content, result.map_links, result.label);
+	return true;
+}
+
+function appendEmptyToolResult(content: HTMLElement, rendered: boolean): void {
+	if (rendered) return;
+	const empty = document.createElement("div");
+	empty.className = "tool-call-result-placeholder";
+	empty.textContent = "No textual output.";
+	content.appendChild(empty);
+}
+
 export function renderToolCardResult(
 	card: HTMLElement,
 	resultValue: ToolResult | string,
@@ -414,69 +502,13 @@ export function renderToolCardResult(
 	const content = getResultContent(card);
 	content.textContent = "";
 
-	let renderedVisibleResult = false;
-	const stdout = (result.stdout || "").replace(/\n+$/, "");
-	if (stdout) {
-		content.appendChild(makeLabeledPre("stdout", stdout, "command-output tool-call-output"));
-		renderedVisibleResult = true;
-	}
-
-	const output = (result.output || "").replace(/\n+$/, "");
-	if (output) {
-		content.appendChild(makeLabeledPre("output", output, "command-output tool-call-output"));
-		renderedVisibleResult = true;
-	}
-
-	const stderr = (result.stderr || "").replace(/\n+$/, "");
-	if (stderr) {
-		content.appendChild(makeLabeledPre("stderr", stderr, "command-output command-stderr tool-call-output"));
-		renderedVisibleResult = true;
-	}
-
-	const exitCode = resultExitCode(result);
-	if (exitCode !== undefined && exitCode !== 0) {
-		const codeEl = document.createElement("div");
-		codeEl.className = "command-exit command-exit-error";
-		codeEl.textContent = `exit ${exitCode}`;
-		content.appendChild(codeEl);
-		renderedVisibleResult = true;
-	}
-
-	if (!renderedVisibleResult && result.message) {
-		const messageEl = document.createElement("div");
-		messageEl.className = "tool-call-result-placeholder";
-		messageEl.textContent = result.message;
-		content.appendChild(messageEl);
-		renderedVisibleResult = true;
-	}
-
-	if (result.screenshot) {
-		renderScreenshot(content, resolveScreenshotSrc(result.screenshot, options), result.screenshot_scale || 1);
-		renderedVisibleResult = true;
-	}
-
-	if (result.document_ref) {
-		const docStoredName = result.document_ref.split("/").pop() || "";
-		const docDisplayName = result.filename || docStoredName;
-		const sessionKey = options.sessionKey || "main";
-		const docMediaSrc = `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(docStoredName)}`;
-		renderDocument(content, docMediaSrc, docDisplayName, result.mime_type, result.size_bytes);
-		renderedVisibleResult = true;
-	}
-
-	const renderedPointGroups = renderMapPointGroups(content, result.points, result.label);
-	if (renderedPointGroups) renderedVisibleResult = true;
-	if (!renderedPointGroups && result.map_links) {
-		renderMapLinks(content, result.map_links, result.label);
-		renderedVisibleResult = true;
-	}
-
-	if (!renderedVisibleResult) {
-		const empty = document.createElement("div");
-		empty.className = "tool-call-result-placeholder";
-		empty.textContent = "No textual output.";
-		content.appendChild(empty);
-	}
+	let renderedVisibleResult = renderToolResultStreams(content, result);
+	renderedVisibleResult = renderToolExitCode(content, result) || renderedVisibleResult;
+	renderedVisibleResult = renderToolMessage(content, result, renderedVisibleResult);
+	renderedVisibleResult = renderToolScreenshot(content, result, options) || renderedVisibleResult;
+	renderedVisibleResult = renderToolDocument(content, result, options) || renderedVisibleResult;
+	renderedVisibleResult = renderToolMap(content, result) || renderedVisibleResult;
+	appendEmptyToolResult(content, renderedVisibleResult);
 
 	// A tool with a dedicated result view renders the payload elsewhere on the
 	// card, so the raw JSON stays collapsed even when this section is empty.

@@ -20,7 +20,8 @@ import { currentPrefix, navigate, sessionPath } from "../router";
 import { switchSession } from "../sessions";
 import * as projectStore from "../stores/project-store";
 import { type Session, sessionStore } from "../stores/session-store";
-import { ChannelType } from "../types";
+import { ChannelType } from "../types/channel";
+import type { ProjectInfo } from "../types/project";
 
 // ── Braille spinner ───────────��─────────────────────────────
 const spinnerFrames: string[] = [
@@ -60,6 +61,83 @@ function formatHHMM(epochMs: number): string {
 
 // ── Icon component (renders SVG icon into a ref) ────────────
 
+const channelIconFactories: Partial<Record<ChannelType, () => HTMLSpanElement>> = {
+	[ChannelType.Telegram]: makeTelegramIcon,
+	[ChannelType.Discord]: makeDiscordIcon,
+	[ChannelType.Slack]: makeSlackIcon,
+	[ChannelType.Matrix]: makeMatrixIcon,
+};
+
+const channelLabels: Partial<Record<ChannelType, string>> = {
+	[ChannelType.Discord]: "Discord",
+	[ChannelType.Slack]: "Slack",
+	[ChannelType.Matrix]: "Matrix",
+	[ChannelType.Telegram]: "Telegram",
+};
+
+function makePrimarySessionIcon(session: Session, isBranch: boolean, channelType: ChannelType | null): HTMLElement {
+	if (isBranch) return makeBranchIcon();
+	if ((session.key || "").startsWith("cron:")) return makeCronIcon();
+	return channelType ? (channelIconFactories[channelType]?.() ?? makeChatIcon()) : makeChatIcon();
+}
+
+function syncSessionIcon(
+	container: HTMLSpanElement,
+	session: Session,
+	isBranch: boolean,
+	channelType: ChannelType | null,
+	archived: boolean,
+): void {
+	container.replaceChildren(makePrimarySessionIcon(session, isBranch, channelType));
+	if (!archived) return;
+	const mark = makeArchiveIcon();
+	mark.classList.add("session-archived-mark");
+	container.appendChild(mark);
+}
+
+interface SessionIconPresentation {
+	style: Record<string, string>;
+	title: string;
+}
+
+function sessionIconPresentation(
+	session: Session,
+	channelType: ChannelType | null,
+	archived: boolean,
+): SessionIconPresentation {
+	if (!channelType) {
+		return {
+			style: { color: "var(--muted)" },
+			title: archived ? "Archived session" : "",
+		};
+	}
+
+	const active = Boolean(session.activeChannel);
+	const channelLabel = channelLabels[channelType] ?? "Telegram";
+	const baseTitle = active ? `Active ${channelLabel} session` : `${channelLabel} session (inactive)`;
+	return {
+		style: {
+			color: active ? "var(--accent)" : "var(--muted)",
+			opacity: active ? "1" : "0.5",
+		},
+		title: archived ? `${baseTitle} \u00b7 Archived` : baseTitle,
+	};
+}
+
+interface SessionBadgeProps {
+	count: number;
+	sessionKey: string;
+}
+
+function SessionBadge({ count, sessionKey }: SessionBadgeProps): VNode | null {
+	if (count <= 0) return null;
+	return (
+		<span className="session-badge" data-session-key={sessionKey}>
+			{count > 99 ? "99+" : String(count)}
+		</span>
+	);
+}
+
 interface SessionIconProps {
 	session: Session;
 	isBranch: boolean;
@@ -67,67 +145,24 @@ interface SessionIconProps {
 
 function SessionIcon({ session, isBranch }: SessionIconProps): VNode {
 	const iconRef = useRef<HTMLSpanElement>(null);
-	const archived = !!session.archived;
-	useEffect(() => {
-		if (!iconRef.current) return;
-		iconRef.current.textContent = "";
-		const key = session.key || "";
-		let icon: SVGElement | HTMLElement;
-		const channelType = channelSessionType(session);
-		if (isBranch) icon = makeBranchIcon();
-		else if (key.startsWith("cron:")) icon = makeCronIcon();
-		else if (channelType === ChannelType.Telegram) icon = makeTelegramIcon();
-		else if (channelType === ChannelType.Discord) icon = makeDiscordIcon();
-		else if (channelType === ChannelType.Slack) icon = makeSlackIcon();
-		else if (channelType === ChannelType.Matrix) icon = makeMatrixIcon();
-		else icon = makeChatIcon();
-		iconRef.current.appendChild(icon);
-		// Overlay a tiny archive glyph in the icon corner for archived sessions.
-		// Absolutely positioned via CSS, so it adds no layout width to the row.
-		if (archived) {
-			const mark = makeArchiveIcon();
-			mark.classList.add("session-archived-mark");
-			iconRef.current.appendChild(mark);
-		}
-	}, [session.key, isBranch, archived]);
-
+	const archived = Boolean(session.archived);
 	const channelType = channelSessionType(session);
-	const channelBound = Boolean(channelType);
-	const iconStyle: Record<string, string> = {};
-	if (channelBound) {
-		iconStyle.color = session.activeChannel ? "var(--accent)" : "var(--muted)";
-		iconStyle.opacity = session.activeChannel ? "1" : "0.5";
-	} else {
-		iconStyle.color = "var(--muted)";
-	}
-	const channelLabel =
-		channelType === ChannelType.Discord
-			? "Discord"
-			: channelType === ChannelType.Slack
-				? "Slack"
-				: channelType === ChannelType.Matrix
-					? "Matrix"
-					: "Telegram";
-	const baseTitle = channelBound
-		? session.activeChannel
-			? `Active ${channelLabel} session`
-			: `${channelLabel} session (inactive)`
-		: "";
-	// Surface the archived state on hover without taking any row space.
-	const title = archived ? (baseTitle ? `${baseTitle} \u00b7 Archived` : "Archived session") : baseTitle;
 
+	useEffect(() => {
+		const container = iconRef.current;
+		if (!container) return;
+		syncSessionIcon(container, session, isBranch, channelType, archived);
+	}, [session, isBranch, channelType, archived]);
+
+	const presentation = sessionIconPresentation(session, channelType, archived);
 	// Read the reactive signal — auto-subscribes for badge updates.
 	const count = session.badgeCount.value;
 
 	return (
-		<span className="session-icon" style={iconStyle} title={title}>
+		<span className="session-icon" style={presentation.style} title={presentation.title}>
 			<span ref={iconRef} />
 			<span className="session-spinner" />
-			{count > 0 && (
-				<span className="session-badge" data-session-key={session.key}>
-					{count > 99 ? "99+" : String(count)}
-				</span>
-			)}
+			<SessionBadge count={count} sessionKey={session.key} />
 		</span>
 	);
 }
@@ -138,35 +173,42 @@ interface SessionMetaProps {
 	session: Session;
 }
 
+function sessionMetaParts(session: Session): string[] {
+	const parts: string[] = [];
+	if (session.forkPoint != null) parts.push(`fork@${session.forkPoint}`);
+	if (session.worktree_branch) parts.push(`\u2387 ${session.worktree_branch}`);
+	return parts;
+}
+
+function appendProjectMeta(container: HTMLDivElement, project: ProjectInfo, followsText: boolean): void {
+	if (followsText) container.appendChild(document.createTextNode(" \u00b7 "));
+	const icon = makeProjectIcon();
+	icon.style.display = "inline";
+	icon.style.verticalAlign = "-1px";
+	icon.style.marginRight = "2px";
+	icon.style.opacity = "0.7";
+	container.appendChild(icon);
+	container.appendChild(document.createTextNode((project.label as string) || project.id));
+}
+
+function syncSessionMeta(container: HTMLDivElement, session: Session): void {
+	container.textContent = "";
+	const parts = sessionMetaParts(session);
+	const project = session.projectId ? projectStore.getById(session.projectId) : null;
+	if (parts.length === 0 && !project) return;
+	container.textContent = parts.join(" \u00b7 ");
+	if (project) appendProjectMeta(container, project, parts.length > 0);
+}
+
 function SessionMeta({ session }: SessionMetaProps): VNode {
 	const ref = useRef<HTMLDivElement>(null);
+	const dataVersion = session.dataVersion.value;
 
 	useEffect(() => {
-		if (!ref.current) return;
-		ref.current.textContent = "";
-
-		const parts: string[] = [];
-		if (session.forkPoint != null) parts.push(`fork@${session.forkPoint}`);
-		const branch = session.worktree_branch || "";
-		if (branch) parts.push(`\u2387 ${branch}`);
-
-		const projId = session.projectId || "";
-		const proj = projId ? projectStore.getById(projId) : null;
-
-		if (parts.length === 0 && !proj) return;
-
-		ref.current.textContent = parts.join(" \u00b7 ");
-		if (proj) {
-			if (parts.length > 0) ref.current.appendChild(document.createTextNode(" \u00b7 "));
-			const icon = makeProjectIcon();
-			icon.style.display = "inline";
-			icon.style.verticalAlign = "-1px";
-			icon.style.marginRight = "2px";
-			icon.style.opacity = "0.7";
-			ref.current.appendChild(icon);
-			ref.current.appendChild(document.createTextNode((proj.label as string) || proj.id));
-		}
-	}, [session.projectId, session.forkPoint, session.worktree_branch]);
+		const container = ref.current;
+		if (!container) return;
+		syncSessionMeta(container, session);
+	}, [session, dataVersion]);
 
 	return <div className="session-meta" data-session-key={session.key} ref={ref} />;
 }
@@ -185,6 +227,83 @@ interface SessionItemProps {
 	refreshing: boolean;
 }
 
+interface SessionItemState {
+	active: boolean;
+	unread: boolean;
+	replying: boolean;
+	refreshing: boolean;
+	archived: boolean;
+}
+
+function sessionItemClassName(state: SessionItemState): string {
+	const classes = ["session-item"];
+	if (state.active) classes.push("active");
+	if (state.unread) classes.push("unread");
+	if (state.replying) classes.push("replying");
+	if (state.refreshing) classes.push("loading");
+	if (state.archived) classes.push("archived");
+	return classes.join(" ");
+}
+
+function sessionHasUnread(session: Session, active: boolean, badge: number): boolean {
+	return session.localUnread.value || (!active && badge > (session.lastSeenMessageCount || 0));
+}
+
+function sessionPreview(session: Session, keyMap: KeyMap): string {
+	const preview = session.preview || "";
+	const parentPreview = keyMap[session.parentSessionKey || ""]?.preview || "";
+	return preview && preview === parentPreview ? "" : preview;
+}
+
+function navigateToSession(event: MouseEvent, href: string, sessionKey: string): void {
+	if (event.defaultPrevented) return;
+	if (event.button !== 0) return;
+	if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+	event.preventDefault();
+	if (currentPrefix !== "/chats") {
+		navigate(href);
+		return;
+	}
+	switchSession(sessionKey);
+}
+
+interface SessionAgentBadgeProps {
+	agentId?: string;
+}
+
+function SessionAgentBadge({ agentId = "main" }: SessionAgentBadgeProps): VNode | null {
+	if (!agentId || agentId === "main") return null;
+	return (
+		<span
+			className="text-[10px] text-[var(--muted)] border border-[var(--border)] rounded px-1 py-0 ml-1"
+			title={`Agent: ${agentId}`}
+		>
+			@{agentId}
+		</span>
+	);
+}
+
+interface SessionTimeProps {
+	timestamp?: number;
+}
+
+function SessionTime({ timestamp = 0 }: SessionTimeProps): VNode | null {
+	if (timestamp <= 0) return null;
+	return (
+		<span className="session-time" title={new Date(timestamp).toLocaleString()}>
+			{formatHHMM(timestamp)}
+		</span>
+	);
+}
+
+interface SessionPreviewProps {
+	preview: string;
+}
+
+function SessionPreview({ preview }: SessionPreviewProps): VNode | null {
+	return preview ? <div className="session-preview">{preview}</div> : null;
+}
+
 function SessionItem({ session, activeKey, depth, keyMap, refreshing }: SessionItemProps): VNode {
 	const isBranch = depth > 0;
 	const active = session.key === activeKey;
@@ -197,60 +316,33 @@ function SessionItem({ session, activeKey, depth, keyMap, refreshing }: SessionI
 	// Unread tint: true when not viewing this session and there are messages
 	// beyond what we last saw (badgeCount is reactive, triggers re-render).
 	const badge = session.badgeCount.value;
-	const unread = session.localUnread.value || (!active && badge > (session.lastSeenMessageCount || 0));
-
-	let className = "session-item";
-	if (active) className += " active";
-	if (unread) className += " unread";
-	if (replying) className += " replying";
-	if (refreshing) className += " loading";
-	if (session.archived) className += " archived";
-
+	const unread = sessionHasUnread(session, active, badge);
+	const className = sessionItemClassName({
+		active,
+		unread,
+		replying,
+		refreshing,
+		archived: Boolean(session.archived),
+	});
 	const style = isBranch ? { paddingLeft: `${12 + depth * 16}px` } : {};
-
-	const rawPreview = session.preview || "";
-	const parentPreview =
-		session.parentSessionKey && keyMap[session.parentSessionKey] ? keyMap[session.parentSessionKey].preview || "" : "";
-	const preview = rawPreview && rawPreview === parentPreview ? "" : rawPreview;
-	const ts = session.updatedAt || 0;
-	const agentId = session.agent_id || "main";
-	const showAgentBadge = !!agentId && agentId !== "main";
-
 	const href = sessionPath(session.key);
 
-	function onClick(event: MouseEvent): void {
-		if (event.defaultPrevented) return;
-		if (event.button !== 0) return;
-		if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-		event.preventDefault();
-		if (currentPrefix !== "/chats") {
-			navigate(href);
-		} else {
-			switchSession(session.key);
-		}
-	}
-
 	return (
-		<a href={href} className={className} data-session-key={session.key} style={style} onClick={onClick}>
+		<a
+			href={href}
+			className={className}
+			data-session-key={session.key}
+			style={style}
+			onClick={(event) => navigateToSession(event, href, session.key)}
+		>
 			<div className="session-info">
 				<div className="session-label">
 					<SessionIcon session={session} isBranch={isBranch} />
 					<span data-label-text>{session.label || session.key}</span>
-					{showAgentBadge && (
-						<span
-							className="text-[10px] text-[var(--muted)] border border-[var(--border)] rounded px-1 py-0 ml-1"
-							title={`Agent: ${agentId}`}
-						>
-							@{agentId}
-						</span>
-					)}
-					{ts > 0 && (
-						<span className="session-time" title={new Date(ts).toLocaleString()}>
-							{formatHHMM(ts)}
-						</span>
-					)}
+					<SessionAgentBadge agentId={session.agent_id} />
+					<SessionTime timestamp={session.updatedAt} />
 				</div>
-				{preview && <div className="session-preview">{preview}</div>}
+				<SessionPreview preview={sessionPreview(session, keyMap)} />
 				<SessionMeta session={session} />
 			</div>
 		</a>

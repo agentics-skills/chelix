@@ -6,7 +6,7 @@
 import { signal } from "@preact/signals";
 import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
-import type { McpServerInfo } from "../types";
+import type { McpServerInfo } from "../types/mcp";
 
 // ── Signals ──────────────────────────────────────────────────
 export const servers = signal<McpServerInfo[]>([]);

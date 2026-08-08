@@ -20,7 +20,9 @@ import { updateNavCounts } from "./nav-counts";
 import * as _channelsPage from "./pages/ChannelsPage";
 import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
-import * as _providers from "./providers";
+import { openModelSelectorForProvider, showApiKeyForm, showOAuthFlow } from "./providers/auth-flow";
+import { showCustomProviderForm } from "./providers/custom-provider";
+import { closeProviderModal, openProviderModal } from "./providers/shared";
 import { initPWA } from "./pwa";
 import { initInstallBanner } from "./pwa-install";
 import { mount, navigate, registerPage, sessionPath } from "./router";
@@ -45,14 +47,24 @@ import * as _sessionHistoryCache from "./stores/session-history-cache";
 import * as _sessionStoreModule from "./stores/session-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
-import type { ModelInfo, SessionMeta } from "./types";
 import type { SandboxGonInfo, VaultStatus } from "./types/gon";
+import type { ModelInfo } from "./types/model";
+import type { SessionMeta } from "./types/session";
 import { GlobalDialogs, Toasts } from "./ui";
 import { connect } from "./websocket";
 import * as _wsConnect from "./ws-connect";
 
 // Expose stores and modules on window for E2E test shims.
 // The shim files in assets/js/ proxy to these bundled modules.
+const providerE2eBridge = {
+	openModelSelectorForProvider,
+	showApiKeyForm,
+	showOAuthFlow,
+	showCustomProviderForm,
+	closeProviderModal,
+	openProviderModal,
+};
+
 window.__chelix_stores = { sessionStore, modelStore, projectStore };
 window.__chelix_state = S;
 window.__chelix_modules = {
@@ -65,7 +77,7 @@ window.__chelix_modules = {
 	gon,
 	"code-highlight": _codeHighlight,
 	"ws-connect": _wsConnect,
-	providers: _providers,
+	providers: providerE2eBridge,
 	"page-channels": _channelsPage,
 	i18n: _i18n,
 	"stores/model-store": _modelStore,
@@ -213,30 +225,45 @@ function removeSessionFromEvent(sessionKey: string): boolean {
 	return removeSessionFromClientState(sessionKey, { navigateIfActive: true });
 }
 
-onEvent("session", (_payload: unknown) => {
-	const payload = _payload as Record<string, unknown>;
+interface SessionEventPayload extends Record<string, unknown> {
+	kind?: string;
+	sessionKey?: string;
+	entry?: SessionEntry;
+	keptCount?: number;
+}
+
+function handleDeletedSessionEvent(payload: SessionEventPayload): void {
+	if (!removeSessionFromEvent(payload.sessionKey || "")) fetchSessions();
+}
+
+function handleTruncatedSessionEvent(payload: SessionEventPayload): void {
+	const sessionKey = payload.sessionKey || "";
+	const entry = payload.entry || null;
+	if (entry) upsertSessionFromEvent(entry);
+	markSessionTailLocallyTruncated(sessionKey, Number(payload.keptCount) || 0, entry || undefined);
+	if (sessionKey === sessionStore.activeSessionKey.value && location.pathname.startsWith("/chats/")) {
+		switchSession(sessionKey);
+	}
+}
+
+function handleUpsertSessionEvent(payload: SessionEventPayload): void {
+	if (upsertSessionFromEvent(payload.entry || null)) return;
+	if (payload.kind === "created" || payload.kind === "patched") fetchSessions();
+}
+
+const sessionEventHandlers: Record<string, (payload: SessionEventPayload) => void> = {
+	deleted: handleDeletedSessionEvent,
+	history_truncated: handleTruncatedSessionEvent,
+};
+
+function handleSessionEvent(value: unknown): void {
+	const payload = value as SessionEventPayload;
 	if (!payload?.kind) return;
-	if (payload.kind === "deleted") {
-		if (!removeSessionFromEvent(payload.sessionKey as string)) {
-			fetchSessions();
-		}
-		return;
-	}
-	if (payload.kind === "history_truncated") {
-		const sessionKey = payload.sessionKey as string;
-		const entry = (payload.entry as SessionEntry) || null;
-		if (entry) upsertSessionFromEvent(entry);
-		markSessionTailLocallyTruncated(sessionKey, Number(payload.keptCount) || 0, entry || undefined);
-		if (sessionKey === sessionStore.activeSessionKey.value && location.pathname.startsWith("/chats/")) {
-			switchSession(sessionKey);
-		}
-		return;
-	}
-	if (upsertSessionFromEvent((payload.entry as SessionEntry) || null)) return;
-	if (payload.kind === "created" || payload.kind === "patched") {
-		fetchSessions();
-	}
-});
+	const handler = sessionEventHandlers[payload.kind] || handleUpsertSessionEvent;
+	handler(payload);
+}
+
+onEvent("session", handleSessionEvent);
 
 function seedSessionsFromGon(): void {
 	const seeded = gon.get("sessions_recent") as SessionEntry[] | null;

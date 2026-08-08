@@ -1,5 +1,6 @@
 // ── Session rendering: history messages, welcome card, session list ──
 
+import { getA2uiToolArgumentsError, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
@@ -12,7 +13,6 @@ import {
 	syncChatFollowStateFromPosition,
 	updateTokenBar,
 } from "../chat-ui";
-import { getA2uiToolArgumentsError, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import { highlightCodeBlocks } from "../code-highlight";
 import * as gon from "../gon";
 import { parseAgentsListPayload, renderAudioPlayer, renderDocument, renderMarkdown, sendRpc } from "../helpers";
@@ -26,7 +26,6 @@ import { modelStore } from "../stores/model-store";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
-import { showToast } from "../ui";
 import {
 	appendToolCardContextBudget,
 	appendToolCardError,
@@ -37,10 +36,14 @@ import {
 	renderToolCardResult,
 	toolCallIds,
 } from "../tool-call-card";
-import type { HistoryMessage } from "../types";
+import type { RpcResponse } from "../types/rpc";
+import type { HistoryMessage } from "../types/session";
 import type { CheckpointHistoryMessage, ContextBudgetMetadata, ToolResult } from "../types/ws-events";
+import { showToast } from "../ui";
 
-import { computeHistoryTailIndex, ensureHistoryScrollBinding, syncHistoryState } from "./session-history";
+import { setSessionAgent } from "./session-agent";
+import { computeHistoryTailIndex, syncHistoryState } from "./session-history";
+import { fetchSessions } from "./session-list";
 import { markSessionTailLocallyTruncated } from "./session-tail";
 
 // ── Types ────────────────────────────────────────────────────
@@ -131,22 +134,6 @@ interface SeqHistoryMessage extends HistoryMessage {
 	created_at?: number;
 }
 
-/** Token usage counters returned by chat.context RPC. */
-interface TokenUsage {
-	contextWindow?: number;
-	inputTokens?: number;
-	outputTokens?: number;
-	estimatedNextInputTokens?: number;
-	currentInputTokens?: number;
-	currentTotal?: number;
-}
-
-/** Payload returned by the chat.context RPC. */
-interface ChatContextPayload {
-	tokenUsage?: TokenUsage;
-	supportsTools?: boolean;
-}
-
 // ── Multimodal parsing ───────────────────────────────────────
 
 /** Extract text and images from a multimodal content array. */
@@ -165,66 +152,90 @@ function parseMultimodalContent(blocks: unknown[]): { text: string; images: { da
 
 // ── History message renderers ────────────────────────────────
 
-function renderHistoryUserMessage(msg: UserMsg): HTMLElement | null {
-	let text = "";
-	let images: { dataUrl: string; name: string }[] = [];
-	if (Array.isArray(msg.content)) {
-		const parsed = parseMultimodalContent(msg.content);
-		text = msg.channel ? stripChannelPrefix(parsed.text) : parsed.text;
-		images = parsed.images;
-	} else {
-		text = msg.channel ? stripChannelPrefix((msg.content as string) || "") : (msg.content as string) || "";
-	}
+function userMessageContent(msg: UserMsg): { text: string; images: { dataUrl: string; name: string }[] } {
+	const parsed = Array.isArray(msg.content)
+		? parseMultimodalContent(msg.content)
+		: { text: (msg.content as string) || "", images: [] };
+	return {
+		text: msg.channel ? stripChannelPrefix(parsed.text) : parsed.text,
+		images: parsed.images,
+	};
+}
 
-	let el: HTMLElement | null;
-	if (msg.audio) {
-		el = chatAddMsg("user", "", true);
-		if (el) {
-			const filename = msg.audio.split("/").pop() || "";
-			const audioSrc = `/api/sessions/${encodeURIComponent(S.activeSessionKey)}/media/${encodeURIComponent(filename)}`;
-			renderAudioPlayer(el, audioSrc);
-			if (text) {
-				const textWrap = document.createElement("div");
-				textWrap.className = "mt-2";
-				// Safe: renderMarkdown escapes user input before formatting tags.
-				textWrap.insertAdjacentHTML("beforeend", renderMarkdown(text));
-				el.appendChild(textWrap);
-			}
-			if (images.length > 0) {
-				const thumbRow = document.createElement("div");
-				thumbRow.className = "msg-image-row";
-				for (const img of images) {
-					const thumb = document.createElement("img");
-					thumb.className = "msg-image-thumb";
-					thumb.src = img.dataUrl;
-					thumb.alt = img.name;
-					thumbRow.appendChild(thumb);
-				}
-				el.appendChild(thumbRow);
-			}
-		}
-	} else if (images.length > 0) {
-		el = chatAddMsgWithImages("user", text ? renderMarkdown(text) : "", images);
-	} else {
-		el = chatAddMsg("user", renderMarkdown(text), true);
+function appendImageThumbnails(messageEl: HTMLElement, images: { dataUrl: string; name: string }[]): void {
+	if (images.length === 0) return;
+	const thumbRow = document.createElement("div");
+	thumbRow.className = "msg-image-row";
+	for (const image of images) {
+		const thumb = document.createElement("img");
+		thumb.className = "msg-image-thumb";
+		thumb.src = image.dataUrl;
+		thumb.alt = image.name;
+		thumbRow.appendChild(thumb);
 	}
-	if (el && Array.isArray(msg.documents)) {
-		for (const doc of msg.documents) {
-			const storedName = doc.stored_filename || doc.media_ref?.split("/").pop() || "";
-			if (!storedName) continue;
-			const mediaSrc = `/api/sessions/${encodeURIComponent(S.activeSessionKey)}/media/${encodeURIComponent(storedName)}`;
-			renderDocument(el, mediaSrc, doc.display_name || storedName, doc.mime_type, doc.size_bytes);
-		}
+	messageEl.appendChild(thumbRow);
+}
+
+function renderUserAudioMessage(
+	audio: string,
+	text: string,
+	images: { dataUrl: string; name: string }[],
+): HTMLElement | null {
+	const messageEl = chatAddMsg("user", "", true);
+	if (!messageEl) return null;
+	const filename = audio.split("/").pop() || "";
+	const audioSrc = `/api/sessions/${encodeURIComponent(S.activeSessionKey)}/media/${encodeURIComponent(filename)}`;
+	renderAudioPlayer(messageEl, audioSrc);
+	if (text) {
+		const textWrap = document.createElement("div");
+		textWrap.className = "mt-2";
+		// Safe: renderMarkdown escapes user input before formatting tags.
+		textWrap.insertAdjacentHTML("beforeend", renderMarkdown(text));
+		messageEl.appendChild(textWrap);
 	}
+	appendImageThumbnails(messageEl, images);
+	return messageEl;
+}
+
+function renderUserMessageBody(
+	msg: UserMsg,
+	text: string,
+	images: { dataUrl: string; name: string }[],
+): HTMLElement | null {
+	if (msg.audio) return renderUserAudioMessage(msg.audio, text, images);
+	if (images.length > 0) return chatAddMsgWithImages("user", text ? renderMarkdown(text) : "", images);
+	return chatAddMsg("user", renderMarkdown(text), true);
+}
+
+function appendUserDocuments(messageEl: HTMLElement | null, documents: UserMsg["documents"]): void {
+	if (!(messageEl && Array.isArray(documents))) return;
+	for (const documentInfo of documents) {
+		const storedName = documentInfo.stored_filename || documentInfo.media_ref?.split("/").pop() || "";
+		if (!storedName) continue;
+		const mediaSrc = `/api/sessions/${encodeURIComponent(S.activeSessionKey)}/media/${encodeURIComponent(storedName)}`;
+		renderDocument(
+			messageEl,
+			mediaSrc,
+			documentInfo.display_name || storedName,
+			documentInfo.mime_type,
+			documentInfo.size_bytes,
+		);
+	}
+}
+
+function renderHistoryUserMessage(msg: UserMsg): HTMLElement | null {
+	const { text, images } = userMessageContent(msg);
+	const messageEl = renderUserMessageBody(msg, text, images);
+	appendUserDocuments(messageEl, msg.documents);
 	appendUserMessageActions({
-		messageEl: el,
+		messageEl,
 		sessionKey: S.activeSessionKey,
 		messageIndex: msg.historyIndex,
 		text,
-		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
+		onDeleted: (payload) => handleUserMessageDeleted(messageEl, payload),
 	});
-	if (el && msg.channel) appendChannelFooter(el, msg.channel);
-	return el;
+	if (messageEl && msg.channel) appendChannelFooter(messageEl, msg.channel);
+	return messageEl;
 }
 
 function handleUserMessageDeleted(messageEl: HTMLElement | null, payload: unknown): void {
@@ -266,60 +277,89 @@ function applyTerminalAssistantUsage(msg: AssistantMsg, isTerminal: boolean): vo
 	S.setSessionCurrentContextTokens(terminalContextTokens(msg));
 }
 
+function renderAssistantAudioMessage(msg: AssistantMsg): HTMLElement | null {
+	const messageEl = chatAddMsg("assistant", "", true);
+	if (!(messageEl && msg.audio)) return messageEl;
+	const filename = msg.audio.split("/").pop() || "";
+	const audioSrc = `/api/sessions/${encodeURIComponent(S.activeSessionKey)}/media/${encodeURIComponent(filename)}`;
+	renderAudioPlayer(messageEl, audioSrc);
+	if (msg.content) {
+		const textWrap = document.createElement("div");
+		textWrap.className = "mt-2";
+		textWrap.insertAdjacentHTML("beforeend", renderMarkdown(msg.content));
+		messageEl.appendChild(textWrap);
+	}
+	return messageEl;
+}
+
+function renderAssistantMessageBody(msg: AssistantMsg): HTMLElement | null {
+	const messageEl = msg.audio
+		? renderAssistantAudioMessage(msg)
+		: chatAddMsg("assistant", renderMarkdown(msg.content || ""), true);
+	if (messageEl && msg.reasoning) appendReasoningDisclosure(messageEl, msg.reasoning);
+	return messageEl;
+}
+
+function decorateAssistantMessage(messageEl: HTMLElement | null, msg: AssistantMsg): void {
+	if (!messageEl) return;
+	upsertTtsProviderFooter(messageEl, msg.tts_provider);
+	appendMessageActions({
+		messageEl,
+		sessionKey: S.activeSessionKey,
+		messageIndex: msg.historyIndex,
+		text: msg.content || "",
+		hasAudio: Boolean(msg.audio),
+	});
+	if (Number.isInteger(msg.historyIndex)) messageEl.dataset.historyIndex = String(msg.historyIndex);
+}
+
 function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
 	const isTerminal = isTerminalAssistantMessage(msg);
 	if (!hasVisibleAssistantContent(msg)) {
 		applyTerminalAssistantUsage(msg, isTerminal);
 		return null;
 	}
-	let el: HTMLElement | null;
-	if (msg.audio) {
-		el = chatAddMsg("assistant", "", true);
-		if (el) {
-			const filename = msg.audio.split("/").pop() || "";
-			const audioSrc = `/api/sessions/${encodeURIComponent(S.activeSessionKey)}/media/${encodeURIComponent(filename)}`;
-			renderAudioPlayer(el, audioSrc);
-			if (msg.content) {
-				const textWrap = document.createElement("div");
-				textWrap.className = "mt-2";
-				textWrap.insertAdjacentHTML("beforeend", renderMarkdown(msg.content));
-				el.appendChild(textWrap);
-			}
-			if (msg.reasoning) {
-				appendReasoningDisclosure(el, msg.reasoning);
-			}
-		}
-	} else {
-		el = chatAddMsg("assistant", renderMarkdown(msg.content || ""), true);
-		if (el && msg.reasoning) {
-			appendReasoningDisclosure(el, msg.reasoning);
-		}
-	}
-	if (el) {
-		upsertTtsProviderFooter(el, msg.tts_provider);
-		appendMessageActions({
-			messageEl: el,
-			sessionKey: S.activeSessionKey,
-			messageIndex: msg.historyIndex,
-			text: msg.content || "",
-			hasAudio: !!msg.audio,
+	const messageEl = renderAssistantMessageBody(msg);
+	decorateAssistantMessage(messageEl, msg);
+	applyTerminalAssistantUsage(msg, isTerminal);
+	return messageEl;
+}
+
+function appendToolResultSections(
+	card: HTMLElement,
+	msg: ToolResultMsg,
+	rejected: boolean,
+	a2uiArgumentsError: string | null,
+): void {
+	if (msg.result) {
+		renderToolCardResult(card, msg.result, {
+			sessionKey: S.activeSessionKey || "main",
+			screenshotMode: "media",
 		});
 	}
-	if (el && Number.isInteger(msg.historyIndex)) {
-		el.dataset.historyIndex = String(msg.historyIndex);
-	}
-	applyTerminalAssistantUsage(msg, isTerminal);
-	return el;
+	const toolError = rejected ? msg.error || a2uiArgumentsError : msg.success === false ? msg.error : undefined;
+	if (toolError && msg.result) appendToolCardError(card, toolError, rejected);
+	if (toolError && !msg.result) renderToolCardError(card, toolError, rejected);
+	appendToolCardContextBudget(card, msg.contextBudget);
+}
+
+function appendA2uiToolSurface(card: HTMLElement, msg: ToolResultMsg, rejected: boolean, success: boolean): void {
+	if (!isA2uiTool(msg.tool_name) || rejected) return;
+	mountA2uiToolCard(card, {
+		arguments: msg.arguments,
+		runId: msg.run_id,
+		toolCallId: msg.tool_call_id,
+		interactive: false,
+		success,
+		result: msg.result,
+		error: msg.error,
+	});
 }
 
 function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 	const success = msg.success !== false;
 	const a2uiTool = isA2uiTool(msg.tool_name);
 	const a2uiArgumentsError = a2uiTool ? getA2uiToolArgumentsError(msg.arguments) : null;
-	// `rejected` is persisted by the backend for calls refused before execution.
-	// A malformed A2UI payload is the client-side equivalent: the surface can
-	// never mount, so the card must show the retry state instead of an empty
-	// interface section.
 	const rejected = msg.rejected === true || a2uiArgumentsError !== null;
 	const card = createToolCallCard({
 		toolCallId: msg.tool_call_id,
@@ -328,48 +368,19 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 		status: rejected ? "retry" : success ? "success" : "error",
 		expanded: rejected || a2uiTool || isCommandToolName(msg.tool_name),
 	});
-
-	// Every tool, including A2UI, keeps the standard compact request, result,
-	// and context budget disclosures.
-	if (msg.result) {
-		renderToolCardResult(card, msg.result, {
-			sessionKey: S.activeSessionKey || "main",
-			screenshotMode: "media",
-		});
-	}
-
-	const toolError = rejected ? msg.error || a2uiArgumentsError : msg.success === false ? msg.error : undefined;
-	if (toolError) {
-		if (msg.result) appendToolCardError(card, toolError, rejected);
-		else renderToolCardError(card, toolError, rejected);
-	}
-	appendToolCardContextBudget(card, msg.contextBudget);
-
-	// The A2UI surface is appended after the standard sections so a renderer
-	// failure can never remove the persisted request and response.
-	if (a2uiTool && !rejected) {
-		mountA2uiToolCard(card, {
-			arguments: msg.arguments,
-			runId: msg.run_id,
-			toolCallId: msg.tool_call_id,
-			interactive: false,
-			success,
-			result: msg.result,
-			error: msg.error,
-		});
-	}
-
-	if (msg.reasoning) {
-		appendReasoningDisclosure(getToolCardDetailsContainer(card), msg.reasoning);
-	}
-
+	appendToolResultSections(card, msg, rejected, a2uiArgumentsError);
+	appendA2uiToolSurface(card, msg, rejected, success);
+	if (msg.reasoning) appendReasoningDisclosure(getToolCardDetailsContainer(card), msg.reasoning);
 	if (S.chatMsgBox) S.chatMsgBox.appendChild(card);
 	return card;
 }
 
 function makeThinkingDots(): HTMLElement {
-	const tpl = S.$<HTMLTemplateElement>("tpl-thinking-dots")!;
-	return (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
+	const template = S.$<HTMLTemplateElement>("tpl-thinking-dots");
+	if (!template) throw new Error("Thinking dots template is missing");
+	const element = (template.content.cloneNode(true) as DocumentFragment).firstElementChild;
+	if (!(element instanceof HTMLElement)) throw new Error("Thinking dots template is empty");
+	return element;
 }
 
 export function postHistoryLoadActions(
@@ -381,7 +392,7 @@ export function postHistoryLoadActions(
 ): void {
 	sendRpc("chat.context", {}).then((ctxRes) => {
 		if (ctxRes?.ok && ctxRes.payload) {
-			const p = ctxRes.payload as ChatContextPayload;
+			const p = ctxRes.payload;
 			if (p.tokenUsage) {
 				const tu = p.tokenUsage;
 				S.setSessionContextWindow(tu.contextWindow || 0);
@@ -430,6 +441,90 @@ export function updateChatSessionHeader(): void {
 	// Retained for backward compat call sites; Preact handles rendering.
 }
 
+function refreshWelcomeAfterAgentChange(): void {
+	fetchSessions();
+	const welcome = S.chatMsgBox?.querySelector("#welcomeCard");
+	if (!welcome) return;
+	welcome.remove();
+	showWelcomeCard();
+}
+
+function selectWelcomeAgent(chip: HTMLButtonElement, agentId: string): void {
+	const key = sessionStore.activeSessionKey.value || S.activeSessionKey || "main";
+	chip.disabled = true;
+	void setSessionAgent(key, agentId)
+		.then((response) => {
+			if (!response.ok) {
+				showToast(response.error?.message || "Failed to switch agent", "error");
+				return;
+			}
+			refreshWelcomeAfterAgentChange();
+		})
+		.finally(() => {
+			if (chip.isConnected) chip.disabled = false;
+		});
+}
+
+function createWelcomeAgentChip(agent: AgentInfo, agentId: string, activeAgentId: string): HTMLButtonElement {
+	const chip = document.createElement("button");
+	chip.type = "button";
+	chip.className = agentId === activeAgentId ? "provider-btn" : "provider-btn provider-btn-secondary";
+	chip.style.fontSize = "0.7rem";
+	chip.style.padding = "3px 8px";
+	const labelPrefix = agent.emoji ? `${agent.emoji} ` : "";
+	chip.textContent = `${labelPrefix}${agent.name || agentId}`;
+	chip.addEventListener("click", () => selectWelcomeAgent(chip, agentId));
+	return chip;
+}
+
+function appendHatchAgentButton(container: HTMLElement): void {
+	const hatchButton = document.createElement("button");
+	hatchButton.type = "button";
+	hatchButton.className = "provider-btn provider-btn-secondary";
+	hatchButton.style.fontSize = "0.7rem";
+	hatchButton.style.padding = "3px 8px";
+	hatchButton.textContent = "\u{1F95A} Hatch a new agent";
+	hatchButton.addEventListener("click", () => navigate(settingsPath("agents/new")));
+	container.appendChild(hatchButton);
+}
+
+function renderWelcomeAgentOptions(
+	container: HTMLElement,
+	agents: AgentInfo[],
+	activeAgentId: string,
+): AgentInfo | null {
+	container.textContent = "";
+	container.classList.remove("hidden");
+	container.classList.add("flex");
+	let activeAgent: AgentInfo | null = null;
+	for (const agent of agents) {
+		const agentId = agent?.id;
+		if (!agentId) continue;
+		if (agentId === activeAgentId) activeAgent = agent;
+		container.appendChild(createWelcomeAgentChip(agent, agentId, activeAgentId));
+	}
+	appendHatchAgentButton(container);
+	return activeAgent;
+}
+
+function handleWelcomeAgentsResponse(
+	card: HTMLElement,
+	container: HTMLElement,
+	activeAgentId: string,
+	onActiveAgentResolved: (agent: AgentInfo | null) => void,
+	response: RpcResponse,
+): void {
+	if (!card.isConnected) return;
+	if (!response.ok) {
+		container.classList.add("hidden");
+		return;
+	}
+	const parsed = parseAgentsListPayload(response.payload as Parameters<typeof parseAgentsListPayload>[0]);
+	const agents = (parsed.agents || []) as AgentInfo[];
+	const effectiveActive = activeAgentId || parsed.defaultId || "main";
+	onActiveAgentResolved(renderWelcomeAgentOptions(container, agents, effectiveActive));
+}
+
 export function renderWelcomeAgentPicker(
 	card: HTMLElement,
 	activeAgentId: string,
@@ -437,73 +532,9 @@ export function renderWelcomeAgentPicker(
 ): void {
 	const container = card.querySelector("[data-welcome-agents]") as HTMLElement | null;
 	if (!container) return;
-
-	sendRpc("agents.list", {}).then((res) => {
-		if (!card.isConnected) return;
-		if (!res?.ok) {
-			container.classList.add("hidden");
-			return;
-		}
-		const parsed = parseAgentsListPayload(res.payload as Parameters<typeof parseAgentsListPayload>[0]);
-		const agents = (parsed.agents || []) as AgentInfo[];
-		const defaultId = (parsed.defaultId || "main") as string;
-		const effectiveActive = activeAgentId || defaultId;
-
-		container.textContent = "";
-		container.classList.remove("hidden");
-		container.classList.add("flex");
-
-		let activeAgent: AgentInfo | null = null;
-		for (const agent of agents) {
-			if (!agent?.id) continue;
-			const agentId = agent.id;
-			if (agentId === effectiveActive) activeAgent = agent;
-			const chip = document.createElement("button");
-			chip.type = "button";
-			chip.className = agentId === effectiveActive ? "provider-btn" : "provider-btn provider-btn-secondary";
-			chip.style.fontSize = "0.7rem";
-			chip.style.padding = "3px 8px";
-			const labelPrefix = agent.emoji ? `${agent.emoji} ` : "";
-			chip.textContent = `${labelPrefix}${agent.name || agentId}`;
-			chip.addEventListener("click", () => {
-				const key = sessionStore.activeSessionKey.value || S.activeSessionKey || "main";
-				chip.disabled = true;
-				// Lazy import to avoid circular dependency with sessions.ts
-				void import("../sessions").then(({ fetchSessions, setSessionAgent }) => {
-					setSessionAgent(key, agentId)
-						.then((setRes) => {
-							if (!setRes?.ok) {
-								showToast(setRes?.error?.message || "Failed to switch agent", "error");
-								return;
-							}
-							fetchSessions();
-							const welcome = S.chatMsgBox?.querySelector("#welcomeCard");
-							if (welcome) {
-								welcome.remove();
-								showWelcomeCard();
-							}
-						})
-						.finally(() => {
-							if (chip.isConnected) chip.disabled = false;
-						});
-				});
-			});
-			container.appendChild(chip);
-		}
-
-		const hatchBtn = document.createElement("button");
-		hatchBtn.type = "button";
-		hatchBtn.className = "provider-btn provider-btn-secondary";
-		hatchBtn.style.fontSize = "0.7rem";
-		hatchBtn.style.padding = "3px 8px";
-		hatchBtn.textContent = "\u{1F95A} Hatch a new agent";
-		hatchBtn.addEventListener("click", () => {
-			navigate(settingsPath("agents/new"));
-		});
-		container.appendChild(hatchBtn);
-
-		onActiveAgentResolved(activeAgent);
-	});
+	void sendRpc("agents.list", {}).then((response) =>
+		handleWelcomeAgentsResponse(card, container, activeAgentId, onActiveAgentResolved, response),
+	);
 }
 
 function showWelcomeCard(): void {
@@ -576,6 +607,113 @@ export function hideSessionLoadIndicator(): void {
 	if (loading) loading.remove();
 }
 
+interface HistoryRenderState {
+	messageElements: (HTMLElement | null)[];
+	pendingTerminalMetadata: Map<string, PendingTerminalToolMetadata>;
+	latestToolContextBudget: ContextBudgetMetadata | null;
+}
+
+function registerAssistantTerminalMetadata(
+	message: AssistantMsg,
+	messageEl: HTMLElement | null,
+	pendingMetadata: Map<string, PendingTerminalToolMetadata>,
+): void {
+	if (!isTerminalAssistantMessage(message)) return;
+	const toolIds = toolCallIds(message.tool_calls);
+	if (toolIds.length === 0) {
+		appendTerminalMetadata(
+			S.chatMsgBox,
+			messageEl,
+			terminalMetadataData(message, { historyIndex: message.historyIndex }),
+		);
+		return;
+	}
+	const pending: PendingTerminalToolMetadata = {
+		message,
+		remaining: new Set(toolIds),
+		lastToolCard: null,
+	};
+	for (const toolCallId of toolIds) pendingMetadata.set(toolCallId, pending);
+}
+
+function resolvePendingToolMetadata(
+	message: ToolResultMsg,
+	toolCard: HTMLElement,
+	pendingMetadata: Map<string, PendingTerminalToolMetadata>,
+): void {
+	const toolCallId = message.tool_call_id;
+	if (!toolCallId) return;
+	const pending = pendingMetadata.get(toolCallId);
+	if (!pending) return;
+	pending.remaining.delete(toolCallId);
+	pending.lastToolCard = toolCard;
+	if (pending.remaining.size > 0) return;
+	for (const completedToolCallId of toolCallIds(pending.message.tool_calls)) {
+		pendingMetadata.delete(completedToolCallId);
+	}
+	appendTerminalMetadata(
+		S.chatMsgBox,
+		toolCard,
+		terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
+	);
+}
+
+function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState): void {
+	switch (message.role) {
+		case "user":
+			state.messageElements.push(renderHistoryUserMessage(message as UserMsg));
+			return;
+		case "assistant": {
+			const assistantMessage = message as AssistantMsg;
+			const messageEl = renderHistoryAssistantMessage(assistantMessage);
+			state.messageElements.push(messageEl);
+			registerAssistantTerminalMetadata(assistantMessage, messageEl, state.pendingTerminalMetadata);
+			return;
+		}
+		case "notice":
+			state.messageElements.push(
+				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
+			);
+			return;
+		case "checkpoint": {
+			const card = renderCheckpointCard(message as unknown as CheckpointHistoryMessage);
+			if (card && typeof message.historyIndex === "number") card.dataset.historyIndex = String(message.historyIndex);
+			state.messageElements.push(card);
+			return;
+		}
+		case "tool_result": {
+			const toolResult = message as ToolResultMsg;
+			state.latestToolContextBudget = toolResult.contextBudget || null;
+			const toolCard = renderHistoryToolResult(toolResult);
+			state.messageElements.push(toolCard);
+			resolvePendingToolMetadata(toolResult, toolCard, state.pendingTerminalMetadata);
+			return;
+		}
+		default:
+			state.messageElements.push(null);
+	}
+}
+
+function appendRemainingTerminalMetadata(pendingMetadata: Map<string, PendingTerminalToolMetadata>): void {
+	for (const pending of new Set(pendingMetadata.values())) {
+		if (!pending.lastToolCard) continue;
+		appendTerminalMetadata(
+			S.chatMsgBox,
+			pending.lastToolCard,
+			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
+		);
+	}
+}
+
+function latestUserSequence(history: HistoryMessage[]): number {
+	let maxSequence = 0;
+	for (const message of history) {
+		const sequence = (message as SeqHistoryMessage).seq;
+		if (message.role === "user" && typeof sequence === "number" && sequence > maxSequence) maxSequence = sequence;
+	}
+	return maxSequence;
+}
+
 export function renderHistory(
 	key: string,
 	history: HistoryMessage[],
@@ -584,100 +722,28 @@ export function renderHistory(
 	totalCountHint: number | null,
 	skipAutoScroll: boolean,
 ): void {
-	ensureHistoryScrollBinding();
 	hideSessionLoadIndicator();
 	if (S.chatMsgBox) {
 		S.chatMsgBox.classList.remove("chat-messages-empty");
 		S.chatMsgBox.textContent = "";
 	}
-	const msgEls: (HTMLElement | null)[] = [];
 	S.setSessionTokens({ input: 0, output: 0 });
 	S.setSessionCurrentInputTokens(0);
 	S.setSessionCurrentContextTokens(0);
 	S.setChatBatchLoading(true);
-	const pendingTerminalToolMetadata = new Map<string, PendingTerminalToolMetadata>();
-	let latestToolContextBudget: ContextBudgetMetadata | null = null;
-	history.forEach((msg) => {
-		if (msg.role === "user") {
-			msgEls.push(renderHistoryUserMessage(msg as UserMsg));
-		} else if (msg.role === "assistant") {
-			const assistantMessage = msg as AssistantMsg;
-			const assistantEl = renderHistoryAssistantMessage(assistantMessage);
-			msgEls.push(assistantEl);
-			if (!isTerminalAssistantMessage(assistantMessage)) {
-				return;
-			}
-			const toolIds = toolCallIds(assistantMessage.tool_calls);
-			if (toolIds.length === 0) {
-				appendTerminalMetadata(
-					S.chatMsgBox,
-					assistantEl,
-					terminalMetadataData(assistantMessage, { historyIndex: assistantMessage.historyIndex }),
-				);
-			} else {
-				const pending: PendingTerminalToolMetadata = {
-					message: assistantMessage,
-					remaining: new Set(toolIds),
-					lastToolCard: null,
-				};
-				for (const toolCallId of toolIds) pendingTerminalToolMetadata.set(toolCallId, pending);
-			}
-		} else if (msg.role === "notice") {
-			msgEls.push(chatAddMsg("system", renderMarkdown(typeof msg.content === "string" ? msg.content : ""), true));
-		} else if (msg.role === "checkpoint") {
-			const checkpoint = msg as unknown as CheckpointHistoryMessage;
-			const card = renderCheckpointCard(checkpoint);
-			if (card && typeof msg.historyIndex === "number") {
-				card.dataset.historyIndex = String(msg.historyIndex);
-			}
-			msgEls.push(card);
-		} else if (msg.role === "tool_result") {
-			const toolResult = msg as ToolResultMsg;
-			latestToolContextBudget = toolResult.contextBudget || null;
-			const toolCard = renderHistoryToolResult(toolResult);
-			msgEls.push(toolCard);
-			const pending = toolResult.tool_call_id ? pendingTerminalToolMetadata.get(toolResult.tool_call_id) : undefined;
-			if (pending && toolResult.tool_call_id) {
-				pending.remaining.delete(toolResult.tool_call_id);
-				pending.lastToolCard = toolCard;
-				if (pending.remaining.size === 0) {
-					for (const toolCallId of toolCallIds(pending.message.tool_calls)) {
-						pendingTerminalToolMetadata.delete(toolCallId);
-					}
-					appendTerminalMetadata(
-						S.chatMsgBox,
-						toolCard,
-						terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
-					);
-				}
-			}
-		} else {
-			msgEls.push(null);
-		}
-	});
-	for (const pending of new Set(pendingTerminalToolMetadata.values())) {
-		if (!pending.lastToolCard) continue;
-		appendTerminalMetadata(
-			S.chatMsgBox,
-			pending.lastToolCard,
-			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
-		);
-	}
-	updateTokenBar(latestToolContextBudget);
+	const state: HistoryRenderState = {
+		messageElements: [],
+		pendingTerminalMetadata: new Map(),
+		latestToolContextBudget: null,
+	};
+	for (const message of history) renderHistoryMessage(message, state);
+	appendRemainingTerminalMetadata(state.pendingTerminalMetadata);
+	updateTokenBar(state.latestToolContextBudget);
 	S.setChatBatchLoading(false);
 	if (S.chatMsgBox) highlightCodeBlocks(S.chatMsgBox);
 	const historyTailIndex = computeHistoryTailIndex(history);
 	syncHistoryState(key, history, historyTailIndex, totalCountHint);
-
-	let maxSeq = 0;
-	for (const hm of history) {
-		if (hm.role === "user" && ((hm as SeqHistoryMessage).seq as number) > maxSeq) {
-			maxSeq = (hm as SeqHistoryMessage).seq as number;
-		}
-	}
-	S.setChatSeq(maxSeq);
-	if (history.length === 0) {
-		showWelcomeCard();
-	}
-	postHistoryLoadActions(key, searchContext, msgEls, thinkingText, skipAutoScroll === true);
+	S.setChatSeq(latestUserSequence(history));
+	if (history.length === 0) showWelcomeCard();
+	postHistoryLoadActions(key, searchContext, state.messageElements, thinkingText, skipAutoScroll === true);
 }

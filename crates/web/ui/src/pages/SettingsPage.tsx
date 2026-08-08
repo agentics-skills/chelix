@@ -22,7 +22,7 @@ import { initWebhooks, teardownWebhooks } from "./WebhooksPage";
 
 // ── Section components (extracted into ./sections/) ──────
 
-import type { SectionItem } from "./sections/_shared";
+import type { SectionItem, SectionNavigationItem } from "./sections/_shared";
 import {
 	activeSection,
 	activeSubPath,
@@ -186,18 +186,18 @@ const sections: SectionItem[] = [
 
 function getVisibleSections(): SectionItem[] {
 	const vs = gon.get("vault_status");
-	return sections.filter((s) => {
-		if (!s.id) return true;
-		if (s.id === "graphql" && !gon.get("graphql_enabled")) return false;
-		if (s.id === "import" && !gon.get("claude_detected") && !gon.get("codex_detected")) return false;
-		if (s.id === "vault" && (!vs || vs === "disabled")) return false;
+	return sections.filter((section) => {
+		if (!("id" in section)) return true;
+		if (section.id === "graphql" && !gon.get("graphql_enabled")) return false;
+		if (section.id === "import" && !gon.get("claude_detected") && !gon.get("codex_detected")) return false;
+		if (section.id === "vault" && (!vs || vs === "disabled")) return false;
 		return true;
 	});
 }
 
 /** Return only items with an id (no group headings). */
-function getSectionItems(): SectionItem[] {
-	return getVisibleSections().filter((s) => s.id);
+function getSectionItems(): SectionNavigationItem[] {
+	return getVisibleSections().filter((section): section is SectionNavigationItem => "id" in section);
 }
 
 // ── Rerender wiring ──────────────────────────────────────────
@@ -214,6 +214,7 @@ function SettingsSidebar(): VNode {
 		<div className="settings-sidebar">
 			<div className="settings-sidebar-header">
 				<button
+					type="button"
 					className="settings-back-slot"
 					onClick={() => {
 						navigate(routes.chats as string);
@@ -225,25 +226,26 @@ function SettingsSidebar(): VNode {
 				</button>
 			</div>
 			<div className="settings-sidebar-nav">
-				{getVisibleSections().map((s) =>
-					s.group ? (
-						<div key={s.group} className="settings-group-label">
-							{s.group}
+				{getVisibleSections().map((section) =>
+					"group" in section ? (
+						<div key={section.group} className="settings-group-label">
+							{section.group}
 						</div>
 					) : (
 						<button
-							key={s.id}
-							className={`settings-nav-item ${activeSection.value === s.id ? "active" : ""}`}
-							data-section={s.id}
+							type="button"
+							key={section.id}
+							className={`settings-nav-item ${activeSection.value === section.id ? "active" : ""}`}
+							data-section={section.id}
 							onClick={() => {
 								if (isMobileViewport()) {
 									mobileSidebarVisible.value = false;
 									rerender();
 								}
-								navigate(settingsPath(s.id!));
+								navigate(settingsPath(section.id));
 							}}
 						>
-							{s.label}
+							{section.label}
 						</button>
 					),
 				)}
@@ -304,6 +306,109 @@ function PageSection({ initFn, teardownFn, subPath }: PageSectionProps): VNode {
 	return <div ref={ref} className="flex-1 flex flex-col min-w-0 overflow-hidden" />;
 }
 
+function MobileSettingsControls({ sectionsLabel }: { sectionsLabel: string }): VNode {
+	return (
+		<div className="settings-mobile-controls">
+			<button className="settings-mobile-chat-btn" type="button" onClick={() => navigate(routes.chats)}>
+				<span className="icon icon-chat" />
+				<span>Back to Chats</span>
+			</button>
+			<button
+				className="settings-mobile-menu-btn"
+				type="button"
+				onClick={() => {
+					mobileSidebarVisible.value = !mobileSidebarVisible.value;
+					rerender();
+				}}
+			>
+				<span className="icon icon-burger" />
+				<span>{sectionsLabel}</span>
+			</button>
+		</div>
+	);
+}
+
+function FeatureUnavailable({ title, message }: { title: string; message: VNode | string }): VNode {
+	return (
+		<div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-y-auto">
+			<h2 className="text-base font-medium text-[var(--text-strong)]">{title}</h2>
+			<div className="text-xs text-[var(--muted)] max-w-form">{message}</div>
+		</div>
+	);
+}
+
+function TerminalUnavailable(): VNode {
+	return (
+		<FeatureUnavailable
+			title="Terminal"
+			message={
+				<>
+					The host terminal has been disabled by the server administrator. To re-enable it, set{" "}
+					<code>terminal_enabled = true</code> under <code>[server]</code> in the configuration file, or remove the{" "}
+					<code>CHELIX_TERMINAL_DISABLED</code> environment variable if it is set.
+				</>
+			}
+		/>
+	);
+}
+
+function VoiceUnavailable(): VNode {
+	return (
+		<FeatureUnavailable
+			title="Voice"
+			message="Voice settings are unavailable in this build. Start a binary with the voice feature enabled to configure STT/TTS providers."
+		/>
+	);
+}
+
+const inlineSectionRenderers: Record<string, () => VNode> = {
+	profile: () => <IdentitySection />,
+	memory: () => <MemorySection />,
+	environment: () => <EnvironmentSection />,
+	tools: () => <ToolsSection />,
+	security: () => <SecuritySection />,
+	vault: () => <VaultSection />,
+	ssh: () => <SshSection />,
+	phone: () => <PhoneSection />,
+	notifications: () => <NotificationsSection />,
+	import: () => <ImportSection />,
+	graphql: () => <GraphqlSection />,
+	config: () => <ConfigSection />,
+};
+
+function settingsSectionContent(section: string, subPath: string): VNode | null {
+	const pageSection = pageSectionHandlers[section];
+	if (pageSection) {
+		if (section === "terminal" && gon.get("terminal_enabled") !== true) return <TerminalUnavailable />;
+		return (
+			<PageSection
+				key={`${section}:${subPath}`}
+				initFn={pageSection.init}
+				teardownFn={pageSection.teardown}
+				subPath={subPath}
+			/>
+		);
+	}
+	if (section === "voice") return gon.get("voice_enabled") === true ? <VoiceSection /> : <VoiceUnavailable />;
+	return inlineSectionRenderers[section]?.() || null;
+}
+
+interface SettingsContentProps {
+	mobile: boolean;
+	mobileSectionsLabel: string;
+	section: string;
+	subPath: string;
+}
+
+function SettingsContent(props: SettingsContentProps): VNode {
+	return (
+		<div className="settings-content-wrap">
+			{props.mobile && <MobileSettingsControls sectionsLabel={props.mobileSectionsLabel} />}
+			{settingsSectionContent(props.section, props.subPath)}
+		</div>
+	);
+}
+
 // ── Main layout ──────────────────────────────────────────────
 
 function SettingsPage(): VNode {
@@ -313,77 +418,20 @@ function SettingsPage(): VNode {
 
 	const section = activeSection.value;
 	const subPath = activeSubPath.value;
-	const ps = pageSectionHandlers[section];
 	const mobile = isMobileViewport();
 	const showSidebar = !mobile || mobileSidebarVisible.value;
 	const showContent = !(mobile && showSidebar);
-	const mobileSectionsLabel = showSidebar ? "Hide Sections" : "Sections";
-
 	return (
 		<div className={`settings-layout ${mobile && !showSidebar ? "settings-layout-mobile-collapsed" : ""}`}>
-			{showSidebar ? <SettingsSidebar /> : null}
-			{showContent ? (
-				<div className="settings-content-wrap">
-					{mobile ? (
-						<div className="settings-mobile-controls">
-							<button className="settings-mobile-chat-btn" type="button" onClick={() => navigate(routes.chats!)}>
-								<span className="icon icon-chat" />
-								<span>Back to Chats</span>
-							</button>
-							<button
-								className="settings-mobile-menu-btn"
-								type="button"
-								onClick={() => {
-									mobileSidebarVisible.value = !mobileSidebarVisible.value;
-									rerender();
-								}}
-							>
-								<span className="icon icon-burger" />
-								<span>{mobileSectionsLabel}</span>
-							</button>
-						</div>
-					) : null}
-					{ps ? (
-						section === "terminal" && gon.get("terminal_enabled") !== true ? (
-							<div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-y-auto">
-								<h2 className="text-base font-medium text-[var(--text-strong)]">Terminal</h2>
-								<div className="text-xs text-[var(--muted)] max-w-form">
-									The host terminal has been disabled by the server administrator. To re-enable it, set{" "}
-									<code>terminal_enabled = true</code> under <code>[server]</code> in the configuration file, or remove
-									the <code>CHELIX_TERMINAL_DISABLED</code> environment variable if it is set.
-								</div>
-							</div>
-						) : (
-							<PageSection key={`${section}:${subPath}`} initFn={ps.init} teardownFn={ps.teardown} subPath={subPath} />
-						)
-					) : null}
-					{section === "profile" ? <IdentitySection /> : null}
-					{section === "memory" ? <MemorySection /> : null}
-					{section === "environment" ? <EnvironmentSection /> : null}
-					{section === "tools" ? <ToolsSection /> : null}
-					{section === "security" ? <SecuritySection /> : null}
-					{section === "vault" ? <VaultSection /> : null}
-					{section === "ssh" ? <SshSection /> : null}
-					{section === "voice" ? (
-						gon.get("voice_enabled") === true ? (
-							<VoiceSection />
-						) : (
-							<div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-y-auto">
-								<h2 className="text-base font-medium text-[var(--text-strong)]">Voice</h2>
-								<div className="text-xs text-[var(--muted)] max-w-form">
-									Voice settings are unavailable in this build. Start a binary with the voice feature enabled to
-									configure STT/TTS providers.
-								</div>
-							</div>
-						)
-					) : null}
-					{section === "phone" ? <PhoneSection /> : null}
-					{section === "notifications" ? <NotificationsSection /> : null}
-					{section === "import" ? <ImportSection /> : null}
-					{section === "graphql" ? <GraphqlSection /> : null}
-					{section === "config" ? <ConfigSection /> : null}
-				</div>
-			) : null}
+			{showSidebar && <SettingsSidebar />}
+			{showContent && (
+				<SettingsContent
+					mobile={mobile}
+					mobileSectionsLabel={showSidebar ? "Hide Sections" : "Sections"}
+					section={section}
+					subPath={subPath}
+				/>
+			)}
 		</div>
 	);
 }
@@ -391,7 +439,7 @@ function SettingsPage(): VNode {
 const DEFAULT_SECTION = "profile";
 
 registerPrefix(
-	routes.settings!,
+	routes.settings,
 	(container: HTMLElement, param?: string | null) => {
 		setMounted(true);
 		setContainerRef(container);

@@ -46,6 +46,58 @@ interface ComboOption {
 	label: string;
 }
 
+interface WebhookFormValues {
+	agentId: string;
+	model: string;
+	sourceProfile: string;
+	authMode: string;
+	sessionMode: string;
+}
+
+interface WebhookDraft extends WebhookFormValues {
+	name: string;
+	description: string | null;
+	systemPromptSuffix: string | null;
+	authSecret: string;
+}
+
+function webhookFormValues(webhook: Webhook | null): WebhookFormValues {
+	return {
+		agentId: webhook?.agentId || "",
+		model: webhook?.model || "",
+		sourceProfile: webhook?.sourceProfile || "generic",
+		authMode: webhook?.authMode || "static_header",
+		sessionMode: webhook?.sessionMode || "per_delivery",
+	};
+}
+
+function webhookAuthConfig(authMode: string, secret: string): Record<string, string> | undefined {
+	if (!secret || authMode === "none") return undefined;
+	if (authMode === "static_header") return { header: "X-Webhook-Secret", value: secret };
+	if (authMode === "bearer" || authMode === "gitlab_token") return { token: secret };
+	return { secret };
+}
+
+function webhookSaveParams(draft: WebhookDraft, isEdit: boolean): Record<string, unknown> {
+	const params: Record<string, unknown> = {
+		name: draft.name,
+		description: draft.description,
+		agentId: draft.agentId || null,
+		model: draft.model || null,
+		systemPromptSuffix: draft.systemPromptSuffix,
+		authMode: draft.authMode,
+		sessionMode: draft.sessionMode,
+	};
+	if (!isEdit) params.sourceProfile = draft.sourceProfile;
+	const authConfig = webhookAuthConfig(draft.authMode, draft.authSecret);
+	if (authConfig) params.authConfig = authConfig;
+	return params;
+}
+
+function saveWebhook(webhook: Webhook | null, params: Record<string, unknown>): ReturnType<typeof sendRpc> {
+	return webhook ? sendRpc("webhooks.update", { id: webhook.id, patch: params }) : sendRpc("webhooks.create", params);
+}
+
 // ── State ─────────────��────────────────────────────────────────────────
 
 const webhooks = signal<Webhook[]>((gon.get("webhooks") as Webhook[]) || []);
@@ -110,6 +162,7 @@ function WebhooksListPanel(): VNode {
 			<div className="flex items-center gap-3">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">Webhooks</h2>
 				<button
+					type="button"
 					className="provider-btn"
 					onClick={() => {
 						editingWebhook.value = null;
@@ -155,6 +208,7 @@ function CopyTestCommandButton({ webhook }: { webhook: Webhook }): VNode {
 
 	return (
 		<button
+			type="button"
 			className="provider-btn provider-btn-sm provider-btn-secondary"
 			style={{ whiteSpace: "nowrap" }}
 			title={copied ? "Copied!" : "Copy a curl command to test this webhook"}
@@ -218,6 +272,7 @@ function WebhookCard({ webhook }: { webhook: Webhook }): VNode {
 					</label>
 
 					<button
+						type="button"
 						className="provider-btn provider-btn-sm provider-btn-secondary"
 						onClick={() => {
 							viewingDeliveries.value = wh.id;
@@ -228,6 +283,7 @@ function WebhookCard({ webhook }: { webhook: Webhook }): VNode {
 					</button>
 
 					<button
+						type="button"
 						className="provider-btn provider-btn-sm provider-btn-secondary"
 						onClick={() => {
 							editingWebhook.value = wh;
@@ -238,6 +294,7 @@ function WebhookCard({ webhook }: { webhook: Webhook }): VNode {
 					</button>
 
 					<button
+						type="button"
 						className="provider-btn provider-btn-sm provider-btn-danger"
 						onClick={async () => {
 							const ok = await requestConfirm(
@@ -273,6 +330,7 @@ function DeliveriesPanel(): VNode {
 		<div className="p-4 flex flex-col gap-4">
 			<div className="flex items-center gap-3">
 				<button
+					type="button"
 					className="provider-btn provider-btn-secondary"
 					onClick={() => {
 						viewingDeliveries.value = null;
@@ -330,7 +388,9 @@ function DeliveryRow({ delivery }: { delivery: Delivery }): VNode {
 // ── Create / Edit Modal ───────────────���────────────────────────────────
 
 function WebhookModal(): VNode | null {
-	const isEdit = !!editingWebhook.value;
+	const editedWebhook = editingWebhook.value;
+	const isEdit = Boolean(editedWebhook);
+	const initialValues = webhookFormValues(editedWebhook);
 	const saving = useSignal(false);
 	const error = useSignal("");
 
@@ -339,11 +399,11 @@ function WebhookModal(): VNode | null {
 	const promptSuffixRef = useRef<HTMLTextAreaElement>(null);
 	const authSecretRef = useRef<HTMLInputElement>(null);
 
-	const selectedAgent = useSignal(isEdit ? editingWebhook.value?.agentId || "" : "");
-	const selectedModel = useSignal(isEdit ? editingWebhook.value?.model || "" : "");
-	const sourceProfile = useSignal(isEdit ? editingWebhook.value?.sourceProfile || "generic" : "generic");
-	const authMode = useSignal(isEdit ? editingWebhook.value?.authMode || "static_header" : "static_header");
-	const sessionMode = useSignal(isEdit ? editingWebhook.value?.sessionMode || "per_delivery" : "per_delivery");
+	const selectedAgent = useSignal(initialValues.agentId);
+	const selectedModel = useSignal(initialValues.model);
+	const sourceProfile = useSignal(initialValues.sourceProfile);
+	const authMode = useSignal(initialValues.authMode);
+	const sessionMode = useSignal(initialValues.sessionMode);
 
 	const gonAgents = parseAgentsListPayload(gon.get("agents") as Parameters<typeof parseAgentsListPayload>[0]);
 	const agentOptions: ComboOption[] = (Array.isArray(gonAgents?.agents) ? gonAgents.agents : []).map((a) => ({
@@ -352,74 +412,46 @@ function WebhookModal(): VNode | null {
 	}));
 
 	useEffect(() => {
-		if (editingWebhook.value) {
-			selectedAgent.value = editingWebhook.value.agentId || "";
-			selectedModel.value = editingWebhook.value.model || "";
-			sourceProfile.value = editingWebhook.value.sourceProfile || "generic";
-			authMode.value = editingWebhook.value.authMode || "static_header";
-			sessionMode.value = editingWebhook.value.sessionMode || "per_delivery";
-		} else {
-			selectedAgent.value = "";
-			selectedModel.value = "";
-			sourceProfile.value = "generic";
-			authMode.value = "static_header";
-			sessionMode.value = "per_delivery";
-		}
+		const values = webhookFormValues(editingWebhook.value);
+		selectedAgent.value = values.agentId;
+		selectedModel.value = values.model;
+		sourceProfile.value = values.sourceProfile;
+		authMode.value = values.authMode;
+		sessionMode.value = values.sessionMode;
 	}, [editingWebhook.value]);
 
 	function onSave(e: Event): void {
 		e.preventDefault();
-		saving.value = true;
-		error.value = "";
-
-		const name = nameRef.current?.value?.trim();
+		const name = nameRef.current?.value?.trim() || "";
 		if (!name) {
 			error.value = "Name is required";
-			saving.value = false;
 			return;
 		}
-
-		const params: Record<string, unknown> = {
-			name,
-			description: descRef.current?.value?.trim() || null,
-			agentId: selectedAgent.value || null,
-			model: selectedModel.value || null,
-			systemPromptSuffix: promptSuffixRef.current?.value?.trim() || null,
-			authMode: authMode.value,
-			sessionMode: sessionMode.value,
-		};
-		// source_profile is immutable after creation -- only include on create.
-		if (!isEdit) {
-			params.sourceProfile = sourceProfile.value;
-		}
-
-		// Build auth config based on mode. The key name must match what
-		// the Rust verify function expects: "token" for bearer/gitlab,
-		// "secret" for all HMAC-based modes, "header"+"value" for static.
-		const secret = authSecretRef.current?.value?.trim();
-		if (secret && authMode.value !== "none") {
-			if (authMode.value === "static_header") {
-				params.authConfig = { header: "X-Webhook-Secret", value: secret };
-			} else if (authMode.value === "bearer" || authMode.value === "gitlab_token") {
-				params.authConfig = { token: secret };
-			} else {
-				// All HMAC-based modes (github, stripe, linear, pagerduty, sentry)
-				params.authConfig = { secret };
-			}
-		}
-
-		const method = isEdit ? "webhooks.update" : "webhooks.create";
-		const rpcParams = isEdit ? { id: editingWebhook.value?.id, patch: params } : params;
-
-		sendRpc(method, rpcParams).then((res) => {
+		saving.value = true;
+		error.value = "";
+		const params = webhookSaveParams(
+			{
+				name,
+				description: descRef.current?.value?.trim() || null,
+				agentId: selectedAgent.value,
+				model: selectedModel.value,
+				systemPromptSuffix: promptSuffixRef.current?.value?.trim() || null,
+				authMode: authMode.value,
+				sessionMode: sessionMode.value,
+				sourceProfile: sourceProfile.value,
+				authSecret: authSecretRef.current?.value?.trim() || "",
+			},
+			isEdit,
+		);
+		saveWebhook(editedWebhook, params).then((res) => {
 			saving.value = false;
-			if (res?.ok) {
-				showCreateModal.value = false;
-				editingWebhook.value = null;
-				loadWebhooks();
-			} else {
+			if (!res?.ok) {
 				error.value = res?.error?.message || "Failed to save";
+				return;
 			}
+			showCreateModal.value = false;
+			editingWebhook.value = null;
+			loadWebhooks();
 		});
 	}
 
@@ -460,26 +492,33 @@ function WebhookModal(): VNode | null {
 			<form onSubmit={onSave} className="provider-key-form" style={{ maxWidth: "460px" }}>
 				{error.value && <div className="text-xs text-[var(--error)] mb-2">{error.value}</div>}
 
-				<label className="text-xs text-[var(--muted)]">Name</label>
+				<label className="text-xs text-[var(--muted)]" htmlFor="webhookName">
+					Name
+				</label>
 				<input
+					id="webhookName"
 					ref={nameRef}
 					className="provider-key-input"
 					placeholder="e.g. GitHub PR Review"
 					value={wh?.name || ""}
 				/>
 
-				<label className="text-xs text-[var(--muted)]">Description</label>
+				<label className="text-xs text-[var(--muted)]" htmlFor="webhookDescription">
+					Description
+				</label>
 				<input
+					id="webhookDescription"
 					ref={descRef}
 					className="provider-key-input"
 					placeholder="Optional description"
 					value={wh?.description || ""}
 				/>
 
-				<label className="text-xs text-[var(--muted)]">
+				<label className="text-xs text-[var(--muted)]" htmlFor="webhookSourceProfile">
 					Source Profile{isEdit ? " (read-only after creation)" : ""}
 				</label>
 				<select
+					id="webhookSourceProfile"
 					className="provider-key-input"
 					value={sourceProfile.value}
 					disabled={isEdit}
@@ -496,8 +535,11 @@ function WebhookModal(): VNode | null {
 					))}
 				</select>
 
-				<label className="text-xs text-[var(--muted)]">Auth Mode</label>
+				<label className="text-xs text-[var(--muted)]" htmlFor="webhookAuthMode">
+					Auth Mode
+				</label>
 				<select
+					id="webhookAuthMode"
 					className="provider-key-input"
 					value={authMode.value}
 					onChange={(e) => {
@@ -513,8 +555,11 @@ function WebhookModal(): VNode | null {
 
 				{authMode.value !== "none" && (
 					<div>
-						<label className="text-xs text-[var(--muted)]">Secret / Token</label>
+						<label className="text-xs text-[var(--muted)]" htmlFor="webhookAuthSecret">
+							Secret / Token
+						</label>
 						<input
+							id="webhookAuthSecret"
 							ref={authSecretRef}
 							type="password"
 							className="provider-key-input"
@@ -523,8 +568,9 @@ function WebhookModal(): VNode | null {
 					</div>
 				)}
 
-				<label className="text-xs text-[var(--muted)]">Agent</label>
+				<span className="text-xs text-[var(--muted)]">Agent</span>
 				<ComboSelect
+					ariaLabel="Agent"
 					options={agentOptions}
 					value={selectedAgent.value}
 					onChange={(v: string) => {
@@ -534,8 +580,9 @@ function WebhookModal(): VNode | null {
 					searchPlaceholder={"Search agents\u2026"}
 				/>
 
-				<label className="text-xs text-[var(--muted)]">Model</label>
+				<span className="text-xs text-[var(--muted)]">Model</span>
 				<ModelSelect
+					ariaLabel="Model"
 					models={modelsSig.value}
 					value={selectedModel.value}
 					onChange={(v: string) => {
@@ -548,8 +595,11 @@ function WebhookModal(): VNode | null {
 					}
 				/>
 
-				<label className="text-xs text-[var(--muted)]">Session Mode</label>
+				<label className="text-xs text-[var(--muted)]" htmlFor="webhookSessionMode">
+					Session Mode
+				</label>
 				<select
+					id="webhookSessionMode"
 					className="provider-key-input"
 					value={sessionMode.value}
 					onChange={(e) => {
@@ -563,8 +613,11 @@ function WebhookModal(): VNode | null {
 					))}
 				</select>
 
-				<label className="text-xs text-[var(--muted)]">System Prompt Suffix (optional)</label>
+				<label className="text-xs text-[var(--muted)]" htmlFor="webhookPromptSuffix">
+					System Prompt Suffix (optional)
+				</label>
 				<textarea
+					id="webhookPromptSuffix"
 					ref={promptSuffixRef}
 					className="provider-key-input"
 					style={{

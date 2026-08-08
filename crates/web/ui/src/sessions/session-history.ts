@@ -1,16 +1,14 @@
 // ── Session history: loading, caching, pagination ─────────────────
 
-import { chatAddMsg } from "../chat-ui";
 import * as S from "../state";
 import {
 	clearSessionHistory,
 	getHistoryRevision,
 	getSessionHistory,
-	replaceSessionHistory,
 	upsertSessionHistoryMessage,
 } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
-import type { HistoryMessage } from "../types";
+import type { HistoryMessage, SessionMeta } from "../types/session";
 
 interface ChatParams {
 	content?: unknown[];
@@ -18,7 +16,7 @@ interface ChatParams {
 	_seq?: number | null;
 }
 
-interface HistoryPaginationState {
+export interface HistoryPaginationState {
 	hasMore: boolean;
 	nextCursor: number | null;
 	totalMessages: number | null;
@@ -47,11 +45,8 @@ interface OutgoingUserMessage extends HistoryMessage {
 	seq?: number | null;
 }
 
-const SESSION_HISTORY_PAGE_LIMIT = 120;
-const HISTORY_AUTOLOAD_THRESHOLD_PX = 120;
+export const SESSION_HISTORY_PAGE_LIMIT = 120;
 const sessionHistoryPaging = new Map<string, HistoryPaginationState>();
-let historyScrollEl: HTMLElement | null = null;
-let historyScrollRaf = 0;
 
 function toValidHistoryIndex(value: unknown): number | null {
 	if (value === null || value === undefined) return null;
@@ -84,6 +79,14 @@ export function setHistoryPaginationState(key: string, payload: HistoryPayload):
 
 export function getHistoryPaginationState(key: string): HistoryPaginationState | null {
 	return sessionHistoryPaging.get(key) || null;
+}
+
+export function setHistoryPaginationLoading(key: string, loadingOlder: boolean): HistoryPaginationState | null {
+	const paging = getHistoryPaginationState(key);
+	if (!paging) return null;
+	const next = { ...paging, loadingOlder };
+	sessionHistoryPaging.set(key, next);
+	return next;
 }
 
 export function isHistoryCacheComplete(key: string): boolean {
@@ -220,100 +223,6 @@ export function mergeHistoryPages(existingHistory: HistoryMessage[], olderHistor
 	});
 }
 
-function canLoadOlderHistory(key: string): boolean {
-	const paging = getHistoryPaginationState(key);
-	if (!(paging?.hasMore && Number.isInteger(paging.nextCursor))) return false;
-	if (paging.loadingOlder) return false;
-	return true;
-}
-
-function maybeLoadOlderHistoryFromScroll(): void {
-	if (!S.chatMsgBox) return;
-	if (S.chatMsgBox.scrollTop > HISTORY_AUTOLOAD_THRESHOLD_PX) return;
-	const key = sessionStore.activeSessionKey.value || S.activeSessionKey;
-	if (!key) return;
-	if (!canLoadOlderHistory(key)) return;
-	void loadOlderHistoryPage(key);
-}
-
-function handleHistoryScroll(): void {
-	if (historyScrollRaf) return;
-	historyScrollRaf = requestAnimationFrame(() => {
-		historyScrollRaf = 0;
-		maybeLoadOlderHistoryFromScroll();
-	});
-}
-
-export function ensureHistoryScrollBinding(): void {
-	const nextEl = S.chatMsgBox;
-	if (historyScrollEl === nextEl) return;
-	if (historyScrollEl) {
-		historyScrollEl.removeEventListener("scroll", handleHistoryScroll);
-	}
-	historyScrollEl = nextEl;
-	if (!historyScrollEl) return;
-	historyScrollEl.addEventListener("scroll", handleHistoryScroll, { passive: true });
-}
-
-async function loadOlderHistoryPage(key: string): Promise<void> {
-	if (!canLoadOlderHistory(key)) return;
-	const paging = getHistoryPaginationState(key);
-	if (!paging) return;
-	if (sessionStore.activeSessionKey.value !== key) return;
-
-	const nextState = { ...paging, loadingOlder: true };
-	sessionHistoryPaging.set(key, nextState);
-	const loadedHistory = getSessionHistory(key) || [];
-	const totalBefore = Number.isInteger(nextState.totalMessages) ? nextState.totalMessages! : loadedHistory.length;
-
-	// Lazy import to avoid circular dependency
-	const { renderHistory } = await import("./session-render");
-	renderHistory(key, loadedHistory, null, null, totalBefore, true);
-
-	const beforeHeight = S.chatMsgBox ? S.chatMsgBox.scrollHeight : 0;
-	const beforeTop = S.chatMsgBox ? S.chatMsgBox.scrollTop : 0;
-
-	try {
-		const payload = await fetchSessionHistoryViaHttp(key, {
-			cursor: nextState.nextCursor as number,
-			limit: SESSION_HISTORY_PAGE_LIMIT,
-		});
-		if (sessionStore.activeSessionKey.value !== key) return;
-
-		const older = Array.isArray(payload.history) ? payload.history : [];
-		const current = getSessionHistory(key) || [];
-		if (older.length > 0 && payload.historyCacheHit !== true) {
-			replaceSessionHistory(key, mergeHistoryPages(current, older));
-		}
-		setHistoryPaginationState(key, payload);
-
-		const merged = getSessionHistory(key) || [];
-		const sessionEntry = sessionStore.getByKey(key);
-		const totalCountHint = Number.isInteger(sessionEntry?.messageCount)
-			? (sessionEntry?.messageCount as number)
-			: Number(payload.totalMessages) || merged.length;
-		renderHistory(key, merged, null, null, totalCountHint, true);
-
-		if (S.chatMsgBox) {
-			const afterHeight = S.chatMsgBox.scrollHeight;
-			S.chatMsgBox.scrollTop = Math.max(0, beforeTop + (afterHeight - beforeHeight));
-		}
-	} catch {
-		if (sessionStore.activeSessionKey.value !== key) return;
-		const fallback = getSessionHistory(key) || [];
-		const fallbackTotal = Number.isInteger(nextState.totalMessages) ? nextState.totalMessages! : fallback.length;
-		sessionHistoryPaging.set(key, { ...nextState, loadingOlder: false });
-		renderHistory(key, fallback, null, null, fallbackTotal, true);
-		chatAddMsg("error", "Failed to load older messages");
-	} finally {
-		const latest = getHistoryPaginationState(key);
-		if (latest) sessionHistoryPaging.set(key, { ...latest, loadingOlder: false });
-		if (sessionStore.activeSessionKey.value === key) {
-			maybeLoadOlderHistoryFromScroll();
-		}
-	}
-}
-
 export function shouldApplyServerHistory(
 	key: string,
 	serverHistory: HistoryMessage[],
@@ -338,10 +247,10 @@ export function syncHistoryState(
 ): void {
 	const loadedCount = Array.isArray(history) ? history.length : 0;
 	const sessionEntry = sessionStore.getByKey(key);
-	const legacy = (S.sessions as import("../types").SessionMeta[]).find((s) => s.key === key);
+	const legacy = (S.sessions as SessionMeta[]).find((session) => session.key === key);
 	const existingCount = Number.isInteger(sessionEntry?.messageCount) ? (sessionEntry?.messageCount as number) : 0;
 	const legacyCount = Number.isInteger(legacy?.messageCount) ? (legacy?.messageCount as number) : 0;
-	const hintedCount = Number.isInteger(totalCountHint) ? totalCountHint! : 0;
+	const hintedCount = Number.isInteger(totalCountHint) ? (totalCountHint as number) : 0;
 	const count = Math.max(loadedCount, existingCount, hintedCount, legacyCount);
 	if (sessionEntry) {
 		sessionEntry.syncCounts(count, count);
@@ -355,5 +264,3 @@ export function syncHistoryState(
 	}
 	S.setLastHistoryIndex(historyTailIndex);
 }
-
-export { SESSION_HISTORY_PAGE_LIMIT };

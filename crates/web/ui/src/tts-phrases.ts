@@ -45,17 +45,12 @@ export function settingsPhrases(user: string, bot: string): string[] {
 	];
 }
 
-interface GeneratePhraseResponse {
-	ok?: boolean;
-	payload?: { phrase?: string };
-}
-
 /**
  * Fetch a TTS test phrase: try LLM generation first, fall back to static.
  */
 export async function fetchPhrase(context: "onboarding" | "settings", user: string, bot: string): Promise<string> {
 	try {
-		const res: GeneratePhraseResponse = await sendRpc("tts.generate_phrase", { context, user, bot });
+		const res = await sendRpc("tts.generate_phrase", { context, user, bot });
 		if (res?.ok && res.payload?.phrase) {
 			return res.payload.phrase;
 		}
