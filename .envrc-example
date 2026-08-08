@@ -10,7 +10,6 @@ export CHELIX_USER__NAME=""                    # your name
 # ── LLM Provider API keys ────────────────────────────────────────
 export OPENAI_API_KEY=""
 export GEMINI_API_KEY=""                       # Google Gemini (or use GOOGLE_API_KEY)
-export XAI_API_KEY=""
 export OPENROUTER_API_KEY=""
 
 # ── Voice: TTS ───────────────────────────────────────────────────

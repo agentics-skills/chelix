@@ -123,7 +123,6 @@ pub fn normalize_provider_name(value: &str) -> Option<String> {
 
     let canonical = match normalized.as_str() {
         "google" | "google-gemini" => "gemini",
-        "grok" => "xai",
         "z-ai" | "z.ai" | "zhipu" | "zhipu-ai" => "zai",
         "zai-code" | "zai-coding" | "zhipu-code" => "zai-code",
         "alibaba" | "alibaba-coding" | "dashscope-coding" => "alibaba-coding",
@@ -271,7 +270,6 @@ mod tests {
         let aliases = [
             "google",
             "google-gemini",
-            "grok",
             "z-ai",
             "z.ai",
             "zhipu",

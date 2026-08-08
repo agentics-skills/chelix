@@ -18,7 +18,6 @@ by Chelix so you can pick the best fit for your use case.
 | ------------------ | ----------------------------- | -------- | --------- | ------- | ----------------- | ------ | --------------------------------------------------- |
 | **OpenAI**         | GPT-5.5, GPT-4.1, o3, o4-mini | Full     | Yes       | 128K-1M | $$ / Subscription | Fast   | Widest ecosystem, GPT-5.5 quality, reasoning models |
 | **Google Gemini**  | Gemini 2.5 Pro, 2.5 Flash     | Full     | Yes       | 1M      | $                 | Fast   | Largest context, competitive pricing                |
-| **xAI**            | Grok 3, Grok 3 Mini           | Yes      | Yes       | 128K    | $$                | Fast   | Strong reasoning capabilities                       |
 | **OpenRouter**     | Any (aggregator)              | Varies   | Yes       | Varies  | Varies            | Varies | Access 100+ models with one key                     |
 | **Z.AI (Zhipu)**   | GLM-4, GLM-4 Air              | Full     | Yes       | 128K    | $                 | Fast   | GLM-4 series, competitive quality                   |
 | **Z.AI Coding**    | CodeGeeX, GLM-4 Code          | Full     | Yes       | 128K    | $                 | Fast   | Optimized for code tasks                            |

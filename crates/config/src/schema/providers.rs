@@ -32,8 +32,6 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     // Feature-gated providers
     "kimi-code",
     "openai-codex",
-    // Providers registered via async-openai backends
-    "xai",
 ];
 
 /// OAuth provider configuration (e.g. openai-codex).

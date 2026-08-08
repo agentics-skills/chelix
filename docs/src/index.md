@@ -33,8 +33,8 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
 
 ## Key Features
 
-- **Multiple LLM Providers** — OpenAI, Google Gemini, xAI,
-  OpenRouter, Moonshot, Z.AI, and more
+- **Multiple LLM Providers** — OpenAI, Google Gemini, OpenRouter,
+  Moonshot, Z.AI, and more
 - **Streaming-First** — Responses appear as tokens arrive, not after completion
 - **Generative UI** — Agents can render trusted A2UI v0.9.1 controls in web
   chat and wait for standard user actions

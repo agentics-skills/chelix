@@ -931,7 +931,6 @@ test.describe("Onboarding wizard", () => {
 			{ providerName: "OpenAI", linkName: "OpenAI Platform" },
 			{ providerName: "Kimi Code", linkName: "Kimi Code Console" },
 			{ providerName: "Google Gemini", linkName: "Google AI Studio" },
-			{ providerName: "xAI (Grok)", linkName: "xAI Console" },
 			{ providerName: "OpenRouter", linkName: "OpenRouter Settings" },
 			{ providerName: "Moonshot", linkName: "Moonshot Platform" },
 		];

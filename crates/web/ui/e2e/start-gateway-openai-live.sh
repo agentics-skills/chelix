@@ -61,7 +61,6 @@ fi
 export HOME="${HOME_DIR}"
 
 unset GEMINI_API_KEY
-unset XAI_API_KEY
 unset OPENROUTER_API_KEY
 unset MOONSHOT_API_KEY
 unset Z_API_KEY

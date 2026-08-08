@@ -109,7 +109,6 @@ pub(crate) async fn init_memory_system(
                 "OPENROUTER_API_KEY",
                 "https://openrouter.ai/api/v1",
             ),
-            ("xai", "XAI_API_KEY", "https://api.x.ai"),
             ("moonshot", "MOONSHOT_API_KEY", "https://api.moonshot.ai/v1"),
         ];
 
