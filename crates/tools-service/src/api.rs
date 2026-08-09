@@ -30,7 +30,7 @@ use axum::serve;
 
 use crate::{
     edit_file,
-    file_edit::FileEditRuntime,
+    file_write::FileWriteRuntime,
     interactive_terminal, list_directory, multiedit_file, overwrite_file, process, read_file,
     read_media,
     ripgrep::{self, RipgrepRuntime},
@@ -40,7 +40,7 @@ use crate::{
 #[derive(Clone)]
 struct ApiState {
     token: Arc<str>,
-    file_edit_runtime: Arc<FileEditRuntime>,
+    file_write_runtime: Arc<FileWriteRuntime>,
     terminal_manager: Arc<TerminalManager>,
     ripgrep_runtime: Arc<RipgrepRuntime>,
 }
@@ -75,7 +75,7 @@ pub fn router(
         .route(TOOLS_SERVICE_TERMINAL_WS_PATH, get(attach_terminal))
         .with_state(ApiState {
             token: Arc::from(token),
-            file_edit_runtime: Arc::new(FileEditRuntime::default()),
+            file_write_runtime: Arc::new(FileWriteRuntime::default()),
             terminal_manager,
             ripgrep_runtime,
         })
@@ -102,7 +102,7 @@ async fn run_edit_file(
         return unauthorized_response();
     }
 
-    match edit_file::run_tool(request, &state.file_edit_runtime).await {
+    match edit_file::run_tool(request, &state.file_write_runtime).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => tool_error_response(error),
     }
@@ -118,7 +118,7 @@ async fn run_multiedit_file(
         return unauthorized_response();
     }
 
-    match multiedit_file::run_tool(request, &state.file_edit_runtime).await {
+    match multiedit_file::run_tool(request, &state.file_write_runtime).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => tool_error_response(error),
     }
@@ -150,7 +150,7 @@ async fn run_overwrite_file(
         return unauthorized_response();
     }
 
-    match overwrite_file::run_tool(request).await {
+    match overwrite_file::run_tool(request, &state.file_write_runtime).await {
         Ok(response) => Json(response).into_response(),
         Err(error) => tool_error_response(error),
     }
@@ -893,7 +893,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn multiedit_file_runs_atomically_and_surfaces_indexed_errors() {
+    async fn multiedit_file_runs_as_one_batch_and_surfaces_indexed_errors() {
         let directory =
             tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
         let path = directory.path().join("sample.txt");

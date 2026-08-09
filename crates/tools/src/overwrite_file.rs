@@ -32,7 +32,7 @@ impl AgentTool for OverwriteFileTool {
     }
 
     fn description(&self) -> &str {
-        "Create a file or atomically replace its complete contents. The path must be absolute and its parent directory must already exist. Symbolic-link targets are rejected."
+        "Create a file or write its complete contents in place. The path must be absolute and its parent directory must already exist. Symbolic links are followed, including dangling links whose target parent exists."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -206,13 +206,13 @@ mod tests {
             .mock("POST", chelix_protocol::TOOLS_SERVICE_OVERWRITE_FILE_PATH)
             .with_status(422)
             .with_header("content-type", "application/json")
-            .with_body("{\"error\":\"refusing to overwrite symbolic link\"}")
+            .with_body("{\"error\":\"failed to write file\"}")
             .expect(1)
             .create_async()
             .await;
         let result = OverwriteFileTool::new(client(server.url(), "test-token"))
             .execute(json!({
-                "filePath": "/workspace/link.txt",
+                "filePath": "/workspace/file.txt",
                 "content": "value"
             }))
             .await;
@@ -221,7 +221,7 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(error.to_string().contains("symbolic link"));
+        assert!(error.to_string().contains("failed to write file"));
         call.assert_async().await;
     }
 }

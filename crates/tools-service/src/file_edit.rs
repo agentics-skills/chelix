@@ -1,64 +1,10 @@
-//! Shared exact-edit primitives and same-target serialization.
+//! Shared exact-edit primitives.
 
 use {
     anyhow::{Context, Result, anyhow, bail},
     chelix_protocol::EditFileRecovery,
-    std::{
-        collections::HashMap,
-        io::Write as _,
-        path::{Path, PathBuf},
-        sync::{Arc, Weak},
-    },
-    tokio::sync::{Mutex, Semaphore},
+    std::path::Path,
 };
-
-#[derive(Default)]
-pub(crate) struct FileEditRuntime {
-    path_permits: Mutex<HashMap<PathBuf, Weak<Semaphore>>>,
-}
-
-impl FileEditRuntime {
-    async fn path_permit(&self, path: &Path) -> Arc<Semaphore> {
-        let mut path_permits = self.path_permits.lock().await;
-        path_permits.retain(|_, permit| permit.strong_count() > 0);
-        if let Some(permit) = path_permits.get(path).and_then(Weak::upgrade) {
-            return permit;
-        }
-
-        let permit = Arc::new(Semaphore::new(1));
-        path_permits.insert(path.to_path_buf(), Arc::downgrade(&permit));
-        permit
-    }
-
-    pub(crate) async fn run<T, F>(&self, requested_path: PathBuf, operation: F) -> Result<T>
-    where
-        T: Send + 'static,
-        F: FnOnce(&Path) -> Result<T> + Send + 'static,
-    {
-        let path_to_resolve = requested_path.clone();
-        let canonical_path = tokio::task::spawn_blocking(move || resolve_target(&path_to_resolve))
-            .await
-            .context("blocking edit target resolution failed")??;
-        let path_permit = self.path_permit(&canonical_path).await;
-        let _permit = path_permit
-            .acquire_owned()
-            .await
-            .map_err(|_| anyhow!("edit serialization closed unexpectedly"))?;
-
-        tokio::task::spawn_blocking(move || {
-            let current_path = resolve_target(&requested_path)?;
-            if current_path != canonical_path {
-                bail!(
-                    "filePath resolved to a different target while waiting to edit '{}'.",
-                    requested_path.display()
-                );
-            }
-            operation(&canonical_path)
-        })
-        .await
-        .context("blocking file edit task failed")?
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct EditOutcome {
@@ -225,61 +171,4 @@ pub(crate) fn response_path(path: &Path) -> Result<String> {
     path.to_str()
         .context("resolved filePath contains invalid UTF-8.")
         .map(str::to_owned)
-}
-
-pub(crate) fn persist_atomic(path: &Path, content: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .with_context(|| format!("file '{}' has no parent directory", path.display()))?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)
-        .with_context(|| format!("failed to create temporary file in '{}'", parent.display()))?;
-    temporary
-        .write_all(content)
-        .with_context(|| format!("failed to write temporary file for '{}'", path.display()))?;
-    temporary
-        .as_file()
-        .sync_all()
-        .with_context(|| format!("failed to sync temporary file for '{}'", path.display()))?;
-    let current_path = resolve_target(path)?;
-    if current_path != path {
-        bail!(
-            "file target changed before persisting edit '{}'.",
-            path.display()
-        );
-    }
-    temporary
-        .persist(path)
-        .map_err(|error| error.error)
-        .with_context(|| format!("failed to replace file '{}'", path.display()))?;
-    Ok(())
-}
-
-fn resolve_target(path: &Path) -> Result<PathBuf> {
-    let metadata = std::fs::symlink_metadata(path)
-        .with_context(|| format!("failed to inspect file '{}'", path.display()))?;
-    if metadata.file_type().is_symlink() {
-        bail!("refusing to edit symbolic link '{}'", path.display());
-    }
-    if !metadata.is_file() {
-        bail!("target is not a regular file: {}", path.display());
-    }
-
-    let canonical_path = std::fs::canonicalize(path)
-        .with_context(|| format!("failed to resolve file '{}'", path.display()))?;
-    let canonical_metadata = std::fs::metadata(&canonical_path).with_context(|| {
-        format!(
-            "failed to inspect resolved file '{}'",
-            canonical_path.display()
-        )
-    })?;
-    if !canonical_metadata.is_file() {
-        bail!(
-            "resolved target is not a regular file: {}",
-            canonical_path.display()
-        );
-    }
-    if canonical_path.to_str().is_none() {
-        bail!("resolved filePath contains invalid UTF-8.");
-    }
-    Ok(canonical_path)
 }

@@ -23,13 +23,13 @@ rmux-pty          = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }
 sha2              = { workspace = true }
-tempfile          = { workspace = true }
 tokio             = { workspace = true }
 tracing           = { workspace = true }
 uuid              = { workspace = true }
 
 [dev-dependencies]
-reqwest = { workspace = true }
+reqwest  = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

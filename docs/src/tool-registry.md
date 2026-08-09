@@ -114,7 +114,7 @@ host.
 unique form contains required `oldString` and `newString` fields. The explicit
 form additionally requires boolean `replaceAll`. Both forms are strict
 `oneOf` branches with no additional fields; no root-level default is applied.
-The tool edits an existing regular UTF-8 file and rejects symbolic links.
+The tool edits an existing regular UTF-8 file and follows symbolic links.
 
 ```json
 {
@@ -142,10 +142,13 @@ straight quotes can match Unicode smart quotes. The structured result reports
 `filePath`, the number of `replacements`, the applied `replaceAll` value, and
 an optional `recovery` value of `crlf` or `smart_quotes`.
 
-Same-file calls are serialized in the service and successful changes are
-persisted atomically. Relative paths, unknown or invalid parameters, missing or
-non-UTF-8 files, non-unique matches, absent matches, and persistence failures
-are explicit errors. A failed edit leaves the file unchanged.
+Calls that resolve to the same target are serialized in the service. The
+complete edit is prepared before the existing file is written in place, which
+preserves its inode and permissions. Symbolic links are followed and preserved.
+Relative paths, unknown or invalid parameters, missing or non-UTF-8 files,
+non-unique matches, and absent matches are explicit errors that leave the file
+unchanged. Persistence failures are explicit errors, but an I/O failure or
+process interruption after writing starts can leave partially updated content.
 
 ### `multiedit_file`
 
@@ -172,16 +175,18 @@ additionally requires boolean `replaceAll`.
 ```
 
 Edits run sequentially against one in-memory buffer, so each item sees all
-preceding results. The service writes only after the complete batch succeeds;
-any failure reports the one-based edit index and leaves the file unchanged.
-The structured response reports `filePath`, `editsApplied`,
+preceding results. The service begins persistence only after the complete batch
+succeeds; any edit failure reports the one-based edit index and leaves the file
+unchanged. The structured response reports `filePath`, `editsApplied`,
 `replacementsPerEdit`, and ordered `recoveriesPerEdit` entries (`null`, `crlf`,
 or `smart_quotes`).
 
-The service serializes `edit_file` and `multiedit_file` calls that resolve to
-the same target and atomically persists successful results. Invalid parameters,
-relative paths, symbolic links, missing or non-regular files, non-UTF-8 content,
-match failures, and persistence failures are explicit errors.
+The service serializes all write tools that resolve to the same target and
+writes successful results in place, preserving the inode and permissions.
+Symbolic links are followed and preserved. Invalid parameters, relative paths,
+missing or non-regular files, non-UTF-8 content, and match failures are explicit
+errors. Persistence failures are also explicit, but an I/O failure or process
+interruption after writing starts can leave partially updated content.
 
 ### `read_file`
 
@@ -214,11 +219,13 @@ page metadata (`totalPages`, `pagesReturned`, `startPage`, `endPage`,
 ### `overwrite_file`
 
 `overwrite_file` requires an absolute `filePath` and the complete UTF-8
-`content`. It creates a new file or atomically replaces an existing regular
-file through a temporary file in the same directory. Parent directories must
-already exist. An empty `content` truncates the target. A symbolic-link or
-non-regular target is rejected without modifying it. The result reports the
-resolved `filePath` and UTF-8 `bytesWritten`.
+`content`. It creates a new file or writes an existing regular file in place.
+Parent directories must already exist. An empty `content` truncates the target.
+Symbolic links are followed and preserved; a dangling link creates its target
+when the target parent exists. Non-regular targets are rejected. Existing
+targets retain their inode and permissions. An I/O failure or process
+interruption after writing starts can leave partially updated content. The
+result reports the resolved `filePath` and UTF-8 `bytesWritten`.
 
 ### `list_directory`
 

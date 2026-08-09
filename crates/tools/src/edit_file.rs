@@ -32,7 +32,7 @@ impl AgentTool for EditFileTool {
     }
 
     fn description(&self) -> &str {
-        "Replace exact UTF-8 text in an existing regular file. The path must be absolute. Use the unique edit form without replaceAll, or the explicit form with replaceAll. The update is atomic, symbolic links are rejected, and unsuccessful edits leave the file unchanged."
+        "Replace exact UTF-8 text in an existing regular file. The path must be absolute. Use the unique edit form without replaceAll, or the explicit form with replaceAll. The edit is fully prepared before the existing file is written in place; symbolic links are followed."
     }
 
     fn parameters_schema(&self) -> Value {

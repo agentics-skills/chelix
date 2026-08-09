@@ -7,7 +7,10 @@ use {
     tracing::instrument,
 };
 
-use crate::file_edit::{FileEditRuntime, apply_edit, persist_atomic, read_utf8, response_path};
+use crate::{
+    file_edit::{apply_edit, read_utf8, response_path},
+    file_write::{FileWriteRuntime, persist_in_place},
+};
 
 #[instrument(
     skip_all,
@@ -15,7 +18,7 @@ use crate::file_edit::{FileEditRuntime, apply_edit, persist_atomic, read_utf8, r
 )]
 pub(crate) async fn run_tool(
     request: EditFileRequest,
-    runtime: &FileEditRuntime,
+    runtime: &FileWriteRuntime,
 ) -> Result<EditFileResponse> {
     request.validate().map_err(anyhow::Error::from)?;
     let requested_path = PathBuf::from(&request.file_path);
@@ -24,7 +27,7 @@ pub(crate) async fn run_tool(
     }
 
     runtime
-        .run(requested_path, move |canonical_path| {
+        .run_existing(requested_path, move |canonical_path| {
             let content = read_utf8(canonical_path)?;
             let replace_all = request.edit.replace_all();
             let outcome = apply_edit(
@@ -33,7 +36,7 @@ pub(crate) async fn run_tool(
                 request.edit.new_string(),
                 replace_all,
             )?;
-            persist_atomic(canonical_path, outcome.content.as_bytes())?;
+            persist_in_place(canonical_path, outcome.content.as_bytes(), false)?;
 
             Ok(EditFileResponse {
                 file_path: response_path(canonical_path)?,
@@ -95,7 +98,7 @@ mod tests {
 
         let response = run_tool(
             unique_request(&path, "beta", "BETA"),
-            &FileEditRuntime::default(),
+            &FileWriteRuntime::default(),
         )
         .await
         .unwrap();
@@ -114,7 +117,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("sample.txt");
         tokio::fs::write(&path, "foo foo").await.unwrap();
-        let runtime = FileEditRuntime::default();
+        let runtime = FileWriteRuntime::default();
 
         let duplicate_error = run_tool(request(&path, "foo", "bar", false), &runtime)
             .await
@@ -137,7 +140,7 @@ mod tests {
 
         let response = run_tool(
             request(&path, "foo", "bar", true),
-            &FileEditRuntime::default(),
+            &FileWriteRuntime::default(),
         )
         .await
         .unwrap();
@@ -160,7 +163,7 @@ mod tests {
 
         let response = run_tool(
             request(&path, "one\ntwo", "ONE\nTWO", false),
-            &FileEditRuntime::default(),
+            &FileWriteRuntime::default(),
         )
         .await
         .unwrap();
@@ -182,7 +185,7 @@ mod tests {
 
         let response = run_tool(
             request(&path, "\"quoted text\"", "the value", false),
-            &FileEditRuntime::default(),
+            &FileWriteRuntime::default(),
         )
         .await
         .unwrap();
@@ -199,7 +202,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("sample.txt");
         tokio::fs::write(&path, "alpha beta").await.unwrap();
-        let runtime = FileEditRuntime::default();
+        let runtime = FileWriteRuntime::default();
 
         let (first, second) = tokio::join!(
             run_tool(request(&path, "alpha", "ALPHA", false), &runtime),
@@ -215,8 +218,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_relative_directory_non_utf8_and_symlink_targets() {
-        let runtime = FileEditRuntime::default();
+    async fn rejects_relative_directory_and_non_utf8_targets() {
+        let runtime = FileWriteRuntime::default();
         let relative = EditFileRequest {
             file_path: "relative.txt".into(),
             edit: EditFileOperation::Unique(EditFileUniqueOperation {
@@ -247,21 +250,65 @@ mod tests {
                 .to_string()
                 .contains("UTF-8")
         );
+    }
 
-        #[cfg(unix)]
-        {
-            let target = directory.path().join("target.txt");
-            let link = directory.path().join("link.txt");
-            tokio::fs::write(&target, "old").await.unwrap();
-            std::os::unix::fs::symlink(&target, &link).unwrap();
-            assert!(
-                run_tool(request(&link, "old", "new", false), &runtime)
-                    .await
-                    .unwrap_err()
-                    .to_string()
-                    .contains("symbolic link")
-            );
-            assert_eq!(tokio::fs::read_to_string(target).await.unwrap(), "old");
-        }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writes_through_symlink_without_replacing_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("target.txt");
+        let link = directory.path().join("link.txt");
+        tokio::fs::write(&target, "old value").await.unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        run_tool(
+            request(&link, "old", "new", false),
+            &FileWriteRuntime::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            tokio::fs::read_to_string(&target).await.unwrap(),
+            "new value"
+        );
+        assert!(
+            tokio::fs::symlink_metadata(&link)
+                .await
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn preserves_inode_and_permissions() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("script.sh");
+        tokio::fs::write(&path, "#!/bin/sh\necho old\n")
+            .await
+            .unwrap();
+        tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .await
+            .unwrap();
+        let before = tokio::fs::metadata(&path).await.unwrap();
+
+        run_tool(
+            request(&path, "old", "new value", false),
+            &FileWriteRuntime::default(),
+        )
+        .await
+        .unwrap();
+
+        let after = tokio::fs::metadata(&path).await.unwrap();
+        assert_eq!(after.ino(), before.ino());
+        assert_eq!(after.permissions().mode(), before.permissions().mode());
+        assert_eq!(
+            tokio::fs::read_to_string(&path).await.unwrap(),
+            "#!/bin/sh\necho new value\n"
+        );
     }
 }
