@@ -325,36 +325,23 @@ impl AgentRuntimeLimitSource {
 pub struct AgentRuntimeLimits {
     pub timeout_secs: u64,
     pub timeout_source: AgentRuntimeLimitSource,
-    pub max_iterations: usize,
-    pub max_iterations_source: AgentRuntimeLimitSource,
+    pub max_tools_threshold: usize,
     pub max_tool_result_bytes: usize,
     pub max_tool_result_bytes_source: AgentRuntimeLimitSource,
 }
 
 impl AgentRuntimeLimits {
     #[must_use]
-    pub fn resolve(tools: &ToolsConfig, preset: Option<&AgentPreset>) -> Self {
+    pub fn resolve(tools: &ToolsConfig, preset: &AgentPreset) -> Self {
         let (timeout_secs, timeout_source) = preset
-            .and_then(|preset| preset.timeout_secs)
+            .timeout_secs
             .map(|timeout_secs| (timeout_secs, AgentRuntimeLimitSource::AgentPreset))
             .unwrap_or((
                 tools.agent_timeout_secs,
                 AgentRuntimeLimitSource::GlobalTools,
             ));
-        let (max_iterations, max_iterations_source) = preset
-            .and_then(|preset| preset.max_iterations)
-            .map(|max_iterations| {
-                (
-                    usize::try_from(max_iterations).unwrap_or(usize::MAX),
-                    AgentRuntimeLimitSource::AgentPreset,
-                )
-            })
-            .unwrap_or((
-                tools.agent_max_iterations,
-                AgentRuntimeLimitSource::GlobalTools,
-            ));
         let (max_tool_result_bytes, max_tool_result_bytes_source) = preset
-            .and_then(|preset| preset.max_tool_result_bytes)
+            .max_tool_result_bytes
             .map(|bytes| (bytes, AgentRuntimeLimitSource::AgentPreset))
             .unwrap_or((
                 tools.max_tool_result_bytes,
@@ -364,17 +351,16 @@ impl AgentRuntimeLimits {
         Self {
             timeout_secs,
             timeout_source,
-            max_iterations,
-            max_iterations_source,
+            max_tools_threshold: preset.max_tools_threshold,
             max_tool_result_bytes,
             max_tool_result_bytes_source,
         }
     }
 
     #[must_use]
-    pub fn resolve_for_spawned_agent(tools: &ToolsConfig, preset: Option<&AgentPreset>) -> Self {
+    pub fn resolve_for_spawned_agent(tools: &ToolsConfig, preset: &AgentPreset) -> Self {
         let mut limits = Self::resolve(tools, preset);
-        if preset.and_then(|preset| preset.timeout_secs).is_none() {
+        if preset.timeout_secs.is_none() {
             limits.timeout_secs = 0;
             limits.timeout_source = AgentRuntimeLimitSource::GlobalTools;
         }
@@ -383,9 +369,12 @@ impl AgentRuntimeLimits {
 }
 
 impl ChelixConfig {
-    #[must_use]
-    pub fn agent_runtime_limits(&self, agent_id: &str) -> AgentRuntimeLimits {
-        AgentRuntimeLimits::resolve(&self.tools, self.agents.get_preset(agent_id))
+    pub fn agent_runtime_limits(&self, agent_id: &str) -> anyhow::Result<AgentRuntimeLimits> {
+        let preset = self
+            .agents
+            .get_preset(agent_id)
+            .ok_or_else(|| anyhow::anyhow!("agent '{agent_id}' has no configured preset"))?;
+        Ok(AgentRuntimeLimits::resolve(&self.tools, preset))
     }
 
     /// Returns `true` when both the agent name and user name have been set

@@ -204,6 +204,10 @@ impl ChatService for LiveChatService {
         });
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
+        let runtime_limits = persona
+            .config
+            .agent_runtime_limits(&session_agent_id)
+            .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
@@ -341,6 +345,7 @@ impl ChatService for LiveChatService {
         } else {
             run_with_tools(
                 persona,
+                runtime_limits,
                 &state,
                 &model_store,
                 &run_id,

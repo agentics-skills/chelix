@@ -26,7 +26,7 @@ use {
         },
         tool_registry::ToolRegistry,
     },
-    chelix_config::ToolMode,
+    chelix_config::{AgentRuntimeLimits, ToolMode},
     chelix_sessions::{PersistedMessage, store::SessionStore},
 };
 
@@ -42,7 +42,7 @@ use crate::{
         notify_channels_of_compaction, send_location_to_channels, send_retry_status_to_channels,
         send_screenshot_to_channels, send_tool_result_to_channels, send_tool_status_to_channels,
     },
-    chat_error::parse_chat_error,
+    chat_error::{parse_agent_run_error, parse_chat_error},
     compaction,
     memory_tools::effective_tool_mode,
     message::apply_voice_reply_suffix,
@@ -163,6 +163,7 @@ fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, 
 
 pub(crate) async fn run_with_tools(
     persona: PromptPersona,
+    runtime_limits: AgentRuntimeLimits,
     state: &Arc<dyn ChatRuntime>,
     model_store: &Arc<RwLock<DisabledModelsStore>>,
     run_id: &str,
@@ -196,13 +197,11 @@ pub(crate) async fn run_with_tools(
     tool_controls: Option<AgentToolControls>,
 ) -> Option<AssistantTurnOutput> {
     let run_started = Instant::now();
-    let runtime_limits = persona.config.agent_runtime_limits(agent_id);
     info!(
         agent_id,
         timeout_secs = runtime_limits.timeout_secs,
         timeout_source = runtime_limits.timeout_source.as_str(),
-        max_iterations = runtime_limits.max_iterations,
-        max_iterations_source = runtime_limits.max_iterations_source.as_str(),
+        max_tools_threshold = runtime_limits.max_tools_threshold,
         "resolved agent runtime limits"
     );
 
@@ -869,17 +868,14 @@ pub(crate) async fn run_with_tools(
                     "toolCallsMade": tool_calls_made,
                     "seq": seq,
                 }),
-                RunnerEvent::AutoContinue {
-                    iteration,
-                    max_iterations,
-                } => serde_json::json!({
+                RunnerEvent::AutoContinue { iteration } => serde_json::json!({
                     "runId": run_id,
                     "sessionKey": sk,
                     "state": "notice",
                     "title": "Auto-continue",
                     "message": format!(
-                        "Model paused at iteration {}/{}. Asking it to continue...",
-                        iteration, max_iterations
+                        "Model paused after iteration {}. Asking it to continue...",
+                        iteration
                     ),
                     "seq": seq,
                 }),
@@ -1106,16 +1102,6 @@ pub(crate) async fn run_with_tools(
     // The runner is the only automatic compaction trigger. It evaluates the
     // exact next provider request before every LLM call and pauses at 85%.
     let result = loop {
-        let remaining_iterations = runtime_limits
-            .max_iterations
-            .saturating_sub(completed_iterations);
-        if remaining_iterations == 0 {
-            break Err(AgentRunError::Other(anyhow::anyhow!(
-                "agent loop exceeded max iterations ({})",
-                runtime_limits.max_iterations
-            )));
-        }
-
         let agent_future = run_agent_loop_streaming_with_limits(
             provider_ref.clone(),
             &filtered_registry,
@@ -1129,7 +1115,7 @@ pub(crate) async fn run_with_tools(
             sender_name.clone(),
             Some(steer_inbox.clone()),
             AgentLoopLimits {
-                max_iterations: Some(remaining_iterations),
+                max_tools_threshold: runtime_limits.max_tools_threshold,
                 max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
                 automatic_checkpointing: true,
                 resume_from_history,
@@ -1571,7 +1557,7 @@ pub(crate) async fn run_with_tools(
             };
             warn!(run_id, error = %error_str, "agent run error");
             state.set_run_error(run_id, error_str.clone()).await;
-            let error_obj = parse_chat_error(&error_str, Some(provider_name));
+            let error_obj = parse_agent_run_error(&e, &error_str, Some(provider_name));
             mark_unsupported_model(state, model_store, model_id, provider_name, &error_obj).await;
             deliver_channel_error(state, session_key, &error_obj).await;
             let error_payload = ChatErrorBroadcast {

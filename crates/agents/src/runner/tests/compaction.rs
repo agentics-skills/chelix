@@ -212,7 +212,7 @@ fn checkpoint_resume_bypasses_only_the_first_automatic_checkpoint_gate() {
     let limits = AgentLoopLimits {
         automatic_checkpointing: true,
         resume_after_checkpoint: true,
-        ..Default::default()
+        ..test_agent_loop_limits()
     };
     let metadata = chelix_sessions::message::ContextBudgetMetadata {
         context_window: 100,
@@ -269,7 +269,7 @@ async fn automatic_checkpoint_trigger_stops_before_provider_call() {
         None,
         AgentLoopLimits {
             automatic_checkpointing: true,
-            ..Default::default()
+            ..test_agent_loop_limits()
         },
     )
     .await;
@@ -371,7 +371,7 @@ async fn isolated_runner_does_not_trigger_session_checkpointing() {
         None,
         AgentLoopLimits {
             automatic_checkpointing: false,
-            ..Default::default()
+            ..test_agent_loop_limits()
         },
     )
     .await;
@@ -401,7 +401,7 @@ async fn checkpoint_resume_does_not_repeat_original_user_message() {
         AgentLoopLimits {
             automatic_checkpointing: true,
             resume_from_history: true,
-            ..Default::default()
+            ..test_agent_loop_limits()
         },
     )
     .await

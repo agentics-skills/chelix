@@ -95,7 +95,9 @@ name = "Chelix"                 # Agent display name
 
 [tools]
 agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
-agent_max_iterations = 25       # Max tool call iterations per run
+
+[agents.presets.main]
+max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 ```
 
 ## LLM Providers
@@ -459,8 +461,7 @@ All settings can be overridden via environment variables:
 | `CHELIX_DATA_DIR`                    | Data directory                    |
 | `CHELIX_SERVER__PORT`                | Server port override              |
 | `CHELIX_SERVER__BIND`                | Server bind address override      |
-| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS`   | Agent run timeout override        |
-| `CHELIX_TOOLS__AGENT_MAX_ITERATIONS` | Agent loop iteration cap override |
+| `CHELIX_TOOLS__AGENT_TIMEOUT_SECS` | Agent run timeout override        |
 
 ## CLI Flags
 
@@ -480,7 +481,9 @@ name = "Atlas"
 
 [tools]
 agent_timeout_secs = 600
-agent_max_iterations = 25
+
+[agents.presets.main]
+max_tools_threshold = 128
 
 [providers]
 offered = ["openai", "gemini"]

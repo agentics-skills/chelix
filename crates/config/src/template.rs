@@ -244,10 +244,13 @@ port = {port}                           # Port number (auto-generated for this i
 # Configure reusable presets for agents and sub-agents spawned via the
 # `spawn_agent` tool.
 #
-# Runtime fields like `timeout_secs` and `max_iterations` apply to matching
-# direct agent sessions and spawned sub-agents. Direct sessions use global
-# `[tools]` values as fallbacks when a preset omits them. Spawned sub-agents
-# preserve no-timeout behavior unless the preset sets `timeout_secs`.
+# `max_tools_threshold` is required on every agent preset and limits actual
+# LLM-emitted tool calls in each agent-loop segment. Every call in a parallel
+# batch counts; a batch that does not fit is rejected atomically. The budget
+# resets for each user message and after automatic context compaction.
+# `timeout_secs` and `max_tool_result_bytes` retain their documented `[tools]`
+# fallback behavior. Spawned sub-agents preserve no-timeout behavior unless the
+# preset sets `timeout_secs`.
 #
 # ⚠️  SCOPE: `tools.allow` / `tools.deny` under a preset do NOT filter tools
 # for the main agent session. To allow/deny tools for the main session, use
@@ -265,7 +268,7 @@ port = {port}                           # Port number (auto-generated for this i
 # identity.theme = "thorough, skeptical, and evidence-oriented"
 # tools.preload = ["read_file", "list_directory", "ripgrep"] # Schemas sent immediately when tools.registry_mode = "lazy"; allow/deny still apply
 # system_prompt_suffix = "..."
-# max_iterations = 16
+# max_tools_threshold = {max_tools_threshold}         # Required; actual LLM-emitted tool calls per loop segment
 # max_tool_result_bytes = 100000   # Per-agent override of tools.max_tool_result_bytes
 # # Optional drift-resistant per-turn controls for spawned/preset agents:
 # # [agents.presets.research.tool_controls]
@@ -281,6 +284,7 @@ port = {port}                           # Port number (auto-generated for this i
 # Example: restricted agent for kids (no MCP, no network, limited skills):
 # [agents.presets.kids]
 # model = "openai/gpt-5.2"
+# max_tools_threshold = {max_tools_threshold}
 # [agents.presets.kids.mcp]
 # allow_servers = []                # No MCP tools at all
 # [agents.presets.kids.skills]
@@ -288,6 +292,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Example: full-access agent for parents:
 # [agents.presets.admin]
+# max_tools_threshold = {max_tools_threshold}
 # [agents.presets.admin.mcp]
 # allow_servers = ["github", "home-assistant", "memory"]
 # ══════════════════════════════════════════════════════════════════════════════
@@ -348,7 +353,6 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [tools]
 # agent_timeout_secs = 600          # Max seconds for an agent run (0 = no timeout)
-# agent_max_iterations = 25         # Max LLM/tool loop iterations before stopping
 # agent_max_auto_continues = 2      # Auto-continue nudges when model stops mid-task (0 = off)
 # agent_auto_continue_min_tool_calls = 3  # Min tool calls before auto-continue can trigger
 # max_tool_result_bytes = 50000     # Max in-context bytes per tool result before truncation (50KB).
@@ -603,6 +607,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [env]
 # OPENROUTER_API_KEY = "sk-or-..."
-"##
+"##,
+        max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
     )
 }

@@ -18,9 +18,6 @@ pub struct ToolsConfig {
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
     #[serde(default = "default_agent_timeout_secs")]
     pub agent_timeout_secs: u64,
-    /// Maximum number of agent loop iterations before aborting. Default 25.
-    #[serde(default = "default_agent_max_iterations")]
-    pub agent_max_iterations: usize,
     /// Maximum auto-continue nudges when the model stops mid-task (0 = disabled). Default 2.
     #[serde(default = "default_agent_max_auto_continues")]
     pub agent_max_auto_continues: usize,
@@ -61,7 +58,6 @@ impl Default for ToolsConfig {
             maps: MapsConfig::default(),
             browser: BrowserConfig::default(),
             agent_timeout_secs: default_agent_timeout_secs(),
-            agent_max_iterations: default_agent_max_iterations(),
             agent_max_auto_continues: default_agent_max_auto_continues(),
             agent_auto_continue_min_tool_calls: default_agent_auto_continue_min_tool_calls(),
             max_tool_result_bytes: default_max_tool_result_bytes(),
@@ -77,10 +73,6 @@ pub const DEFAULT_AGENT_TIMEOUT_SECS: u64 = 600;
 
 fn default_agent_timeout_secs() -> u64 {
     DEFAULT_AGENT_TIMEOUT_SECS
-}
-
-fn default_agent_max_iterations() -> usize {
-    25
 }
 
 fn default_agent_max_auto_continues() -> usize {

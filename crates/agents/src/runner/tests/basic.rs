@@ -90,14 +90,6 @@ fn test_parse_tool_call_function_block_with_wrapper_and_text() {
     assert!(!remaining.contains("</tool_call>"));
 }
 
-#[test]
-fn test_resolve_agent_max_iterations_falls_back_for_zero() {
-    assert_eq!(
-        resolve_agent_max_iterations(0),
-        DEFAULT_AGENT_MAX_ITERATIONS
-    );
-}
-
 // ── Tests ────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -481,17 +473,6 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     let starts = starts.lock().unwrap();
     assert_eq!(starts.len(), 1);
     assert!(starts[0].get("_tool_call_id").is_none());
-}
-
-#[test]
-fn test_non_streaming_runner_uses_max_iteration_override() {
-    let mut config = chelix_config::ChelixConfig::default();
-    config.tools.registry_mode = chelix_config::ToolRegistryMode::Full;
-
-    assert_eq!(
-        super::super::non_streaming::resolve_agent_loop_max_iterations(&config.tools, Some(1)),
-        1
-    );
 }
 
 #[tokio::test]

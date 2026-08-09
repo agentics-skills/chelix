@@ -14,6 +14,7 @@ use {
 
 use crate::{
     channels::deliver_channel_error,
+    chat_error::parse_chat_error,
     message::{
         apply_message_received_rewrite, infer_reply_medium, to_user_content,
         user_audio_path_from_params, user_documents_for_persistence, user_documents_from_params,
@@ -550,16 +551,24 @@ impl LiveChatService {
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);
-        info!(
-            session = %session_key,
-            agent_id = %session_agent_id,
-            timeout_secs = runtime_limits.timeout_secs,
-            timeout_source = runtime_limits.timeout_source.as_str(),
-            max_iterations = runtime_limits.max_iterations,
-            max_iterations_source = runtime_limits.max_iterations_source.as_str(),
-            client_seq = ?client_seq,
-            "chat.send: persona loaded"
-        );
+        match &runtime_limits {
+            Ok(limits) => info!(
+                session = %session_key,
+                agent_id = %session_agent_id,
+                timeout_secs = limits.timeout_secs,
+                timeout_source = limits.timeout_source.as_str(),
+                max_tools_threshold = limits.max_tools_threshold,
+                client_seq = ?client_seq,
+                "chat.send: persona loaded"
+            ),
+            Err(error) => warn!(
+                session = %session_key,
+                agent_id = %session_agent_id,
+                client_seq = ?client_seq,
+                error = %error,
+                "chat.send: failed to resolve agent runtime limits"
+            ),
+        }
         let mcp_disabled = session_entry
             .as_ref()
             .and_then(|entry| entry.mcp_disabled)
@@ -696,6 +705,34 @@ impl LiveChatService {
             }
         }
 
+        let runtime_limits = match runtime_limits {
+            Ok(limits) => limits,
+            Err(error) => {
+                if let Some(target) = deferred_channel_target {
+                    self.state.push_channel_reply(&session_key, target).await;
+                }
+                let error_detail = error.to_string();
+                self.state
+                    .set_run_error(&run_id, error_detail.clone())
+                    .await;
+                let error_obj = parse_chat_error(&error_detail, Some(&provider_name));
+                deliver_channel_error(&self.state, &session_key, &error_obj).await;
+                let error_payload = ChatErrorBroadcast {
+                    run_id: run_id.clone(),
+                    session_key: session_key.clone(),
+                    state: "error",
+                    error: error_obj,
+                    seq: client_seq,
+                };
+                #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                let payload = serde_json::to_value(&error_payload).unwrap();
+                self.terminal_runs.write().await.insert(run_id.clone());
+                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
+                self.terminal_runs.write().await.remove(&run_id);
+                return Ok(serde_json::json!({ "ok": true, "runId": run_id }));
+            },
+        };
+
         let outer_agent_timeout_secs = if stream_only {
             runtime_limits.timeout_secs
         } else {
@@ -750,6 +787,7 @@ impl LiveChatService {
             // Capture config values before persona is moved into the agent future.
             let auto_extract_interval = persona.config.memory.auto_extract_interval;
             let extraction_write_mode = persona.config.memory.agent_write_mode;
+            let extraction_max_tools_threshold = runtime_limits.max_tools_threshold;
             let auto_title_enabled = persona.config.chat.auto_title;
             let agent_fut = async {
                 if stream_only {
@@ -780,6 +818,7 @@ impl LiveChatService {
                 } else {
                     run_with_tools(
                         persona,
+                        runtime_limits,
                         &state,
                         &model_store,
                         &run_id_clone,
@@ -925,6 +964,7 @@ impl LiveChatService {
                             match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
                                 prov,
                                 &extraction_tools_config,
+                                extraction_max_tools_threshold,
                                 &chat_msgs,
                                 writer,
                                 chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,

@@ -10,7 +10,14 @@ pub fn sync_persona_into_preset(
 ) {
     let soul = chelix_config::load_soul_for_agent(&persona.id);
 
-    let entry = agents.presets.entry(persona.id.clone()).or_default();
+    let entry =
+        agents
+            .presets
+            .entry(persona.id.clone())
+            .or_insert_with(|| chelix_config::AgentPreset {
+                max_tools_threshold: chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+                ..chelix_config::AgentPreset::default()
+            });
 
     entry.identity.name = Some(persona.name.clone());
     entry.identity.emoji = persona.emoji.clone();

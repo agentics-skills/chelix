@@ -53,6 +53,15 @@ pub enum AgentRunError {
     /// The prompt reached the automatic checkpoint threshold.
     #[error("automatic context compaction required")]
     ContextCompactionRequired(Box<ContextCompactionRequest>),
+    /// The next LLM-emitted tool-call batch does not fit in the current budget.
+    #[error(
+        "max tools threshold reached (threshold={threshold}, used={used}, requested={requested})"
+    )]
+    MaxToolsThresholdReached {
+        threshold: usize,
+        used: usize,
+        requested: usize,
+    },
     /// Any other error.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -142,9 +151,9 @@ impl From<&ToolCall> for RunnerToolCall {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct AgentLoopLimits {
-    pub max_iterations: Option<usize>,
+    pub max_tools_threshold: usize,
     /// Per-agent override for the in-context tool result byte budget.
     /// Falls back to `tools.max_tool_result_bytes` when `None`.
     pub max_tool_result_bytes: Option<usize>,
@@ -155,6 +164,41 @@ pub struct AgentLoopLimits {
     /// Allow the first provider call after a checkpoint through once when the
     /// preserved tail remains above the 85% checkpoint trigger.
     pub resume_after_checkpoint: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ToolCallBudget {
+    threshold: usize,
+    used: usize,
+}
+
+impl ToolCallBudget {
+    pub(crate) fn new(threshold: usize) -> Self {
+        Self { threshold, used: 0 }
+    }
+
+    pub(crate) fn reserve_batch(&mut self, requested: usize) -> Result<(), AgentRunError> {
+        let Some(next_used) = self.used.checked_add(requested) else {
+            return Err(AgentRunError::MaxToolsThresholdReached {
+                threshold: self.threshold,
+                used: self.used,
+                requested,
+            });
+        };
+        if next_used > self.threshold {
+            return Err(AgentRunError::MaxToolsThresholdReached {
+                threshold: self.threshold,
+                used: self.used,
+                requested,
+            });
+        }
+        self.used = next_used;
+        Ok(())
+    }
+
+    pub(crate) const fn used(self) -> usize {
+        self.used
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -236,11 +280,9 @@ pub enum RunnerEvent {
         error: String,
         delay_ms: u64,
     },
-    /// The model stopped without tool calls but iteration budget remains;
-    /// the runner is automatically re-prompting.
+    /// The model stopped without tool calls while auto-continue remains enabled.
     AutoContinue {
         iteration: usize,
-        max_iterations: usize,
     },
     /// A tool call was rejected by pre-dispatch schema validation before the
     /// tool's `execute` method ran. Used in place of the usual

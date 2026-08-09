@@ -9,18 +9,15 @@ pub mod tool_result;
 #[cfg(test)]
 mod tests;
 
-// ── Re-exports (preserve public API) ────────────────────────────────────
+// ── Re-exports ──────────────────────────────────────────────────────────
 
 pub use {
     helpers::{
         AgentLoopLimits, AgentRunError, AgentRunResult, ContextCompactionRequest, FinalTextSource,
         OnEvent, RunnerEvent, RunnerToolCall,
     },
-    non_streaming::{
-        run_agent, run_agent_loop, run_agent_loop_with_context,
-        run_agent_loop_with_context_and_limits,
-    },
-    streaming::{run_agent_loop_streaming, run_agent_loop_streaming_with_limits},
+    non_streaming::{run_agent, run_agent_loop_with_context_and_limits},
+    streaming::run_agent_loop_streaming_with_limits,
     tool_result::{persist_and_truncate, sanitize_tool_result},
 };
 
@@ -33,7 +30,7 @@ pub type SteerInbox = std::sync::Arc<tokio::sync::Mutex<Vec<String>>>;
 // Re-export helpers at the module level so that sibling submodules
 // (`non_streaming`, `streaming`) can continue to import via `super::item_name`.
 pub(crate) use helpers::{
-    AUTO_CONTINUE_NUDGE, MALFORMED_TOOL_RETRY_PROMPT, UsageAccumulator,
+    AUTO_CONTINUE_NUDGE, MALFORMED_TOOL_RETRY_PROMPT, ToolCallBudget, UsageAccumulator,
     apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
     channel_binding_from_tool_context, dispatch_after_llm_call_hook,
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, enrich_tool_arguments,

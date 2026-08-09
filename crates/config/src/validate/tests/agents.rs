@@ -4,50 +4,69 @@ use {
 };
 
 #[test]
-fn agent_runtime_limits_use_global_fallbacks() {
+fn agent_runtime_limits_use_required_preset_threshold_and_global_timeout() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [tools]
 agent_timeout_secs = 120
-agent_max_iterations = 11
 
 [agents.presets.quick]
 model = "openai/gpt-5.2"
+max_tools_threshold = 11
 "#,
     )
     .unwrap();
 
-    let limits = config.agent_runtime_limits("quick");
+    let limits = config.agent_runtime_limits("quick").unwrap();
     assert_eq!(limits.timeout_secs, 120);
     assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::GlobalTools);
-    assert_eq!(limits.max_iterations, 11);
+    assert_eq!(limits.max_tools_threshold, 11);
+}
+
+#[test]
+fn agent_runtime_limits_use_preset_timeout_override() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools]
+agent_timeout_secs = 120
+
+[agents.presets.quick]
+timeout_secs = 5
+max_tools_threshold = 11
+"#,
+    )
+    .unwrap();
+
+    let limits = config.agent_runtime_limits("quick").unwrap();
+    assert_eq!(limits.timeout_secs, 5);
+    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::AgentPreset);
+    assert_eq!(limits.max_tools_threshold, 11);
+}
+
+#[test]
+fn agent_runtime_limits_reject_missing_preset() {
+    let config = ChelixConfig::default();
+    let error = config.agent_runtime_limits("missing").unwrap_err();
     assert_eq!(
-        limits.max_iterations_source,
-        AgentRuntimeLimitSource::GlobalTools
+        error.to_string(),
+        "agent 'missing' has no configured preset"
     );
 }
 
 #[test]
-fn agent_runtime_limits_use_partial_preset_overrides() {
-    let config: ChelixConfig = toml::from_str(
+fn agent_preset_rejects_missing_max_tools_threshold() {
+    let result = toml::from_str::<ChelixConfig>(
         r#"
-[tools]
-agent_timeout_secs = 120
-agent_max_iterations = 11
-
 [agents.presets.quick]
-timeout_secs = 5
+model = "openai/gpt-5.2"
 "#,
-    )
-    .unwrap();
-
-    let limits = config.agent_runtime_limits("quick");
-    assert_eq!(limits.timeout_secs, 5);
-    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::AgentPreset);
-    assert_eq!(limits.max_iterations, 11);
-    assert_eq!(
-        limits.max_iterations_source,
-        AgentRuntimeLimitSource::GlobalTools
+    );
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("max_tools_threshold")
     );
 }
 
@@ -56,15 +75,15 @@ fn spawned_agent_runtime_limits_preserve_default_no_timeout() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [agents.presets.quick]
-max_iterations = 7
+max_tools_threshold = 7
 "#,
     )
     .unwrap();
 
-    let preset = config.agents.get_preset("quick");
+    let preset = config.agents.get_preset("quick").unwrap();
     let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset);
     assert_eq!(limits.timeout_secs, 0);
-    assert_eq!(limits.max_iterations, 7);
+    assert_eq!(limits.max_tools_threshold, 7);
 }
 
 #[test]
@@ -75,16 +94,16 @@ fn spawned_agent_runtime_limits_require_preset_timeout() {
 agent_timeout_secs = 1800
 
 [agents.presets.deep]
-max_iterations = 80
+max_tools_threshold = 80
 "#,
     )
     .unwrap();
 
-    let preset = config.agents.get_preset("deep");
+    let preset = config.agents.get_preset("deep").unwrap();
     let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset);
     assert_eq!(limits.timeout_secs, 0);
     assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::GlobalTools);
-    assert_eq!(limits.max_iterations, 80);
+    assert_eq!(limits.max_tools_threshold, 80);
 }
 
 #[test]
@@ -96,16 +115,16 @@ agent_timeout_secs = 1800
 
 [agents.presets.deep]
 timeout_secs = 600
-max_iterations = 80
+max_tools_threshold = 80
 "#,
     )
     .unwrap();
 
-    let preset = config.agents.get_preset("deep");
+    let preset = config.agents.get_preset("deep").unwrap();
     let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, preset);
     assert_eq!(limits.timeout_secs, 600);
     assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::AgentPreset);
-    assert_eq!(limits.max_iterations, 80);
+    assert_eq!(limits.max_tools_threshold, 80);
 }
 
 #[test]
@@ -117,11 +136,12 @@ max_tool_result_bytes = 12345
 
 [agents.presets.quick]
 model = "openai/gpt-5.2"
+max_tools_threshold = 128
 "#,
     )
     .unwrap();
 
-    let limits = config.agent_runtime_limits("quick");
+    let limits = config.agent_runtime_limits("quick").unwrap();
     assert_eq!(limits.max_tool_result_bytes, 12345);
     assert_eq!(
         limits.max_tool_result_bytes_source,
@@ -137,12 +157,13 @@ fn agent_runtime_limits_max_tool_result_bytes_uses_preset_override() {
 max_tool_result_bytes = 12345
 
 [agents.presets.quick]
+max_tools_threshold = 128
 max_tool_result_bytes = 999
 "#,
     )
     .unwrap();
 
-    let limits = config.agent_runtime_limits("quick");
+    let limits = config.agent_runtime_limits("quick").unwrap();
     assert_eq!(limits.max_tool_result_bytes, 999);
     assert_eq!(
         limits.max_tool_result_bytes_source,
@@ -155,6 +176,7 @@ fn preset_max_tool_result_bytes_is_valid_config_key() {
     let result = validate_toml_str(
         r#"
 [agents.presets.quick]
+max_tools_threshold = 128
 max_tool_result_bytes = 100000
 "#,
     );
@@ -172,6 +194,9 @@ max_tool_result_bytes = 100000
 fn preset_tools_preload_is_valid_config_key() {
     let result = validate_toml_str(
         r#"
+[agents.presets.quick]
+max_tools_threshold = 128
+
 [agents.presets.quick.tools]
 preload = ["read_file", "ripgrep"]
 "#,
@@ -187,17 +212,17 @@ preload = ["read_file", "ripgrep"]
 }
 
 #[test]
-fn preset_max_iterations_must_be_positive() {
+fn preset_max_tools_threshold_must_be_positive() {
     let result = validate_toml_str(
         r#"
 [agents.presets.quick]
-max_iterations = 0
+max_tools_threshold = 0
 "#,
     );
     assert!(result.diagnostics.iter().any(|diagnostic| {
         diagnostic.severity == Severity::Error
             && diagnostic.category == "invalid-value"
-            && diagnostic.path == "agents.presets.quick.max_iterations"
+            && diagnostic.path == "agents.presets.quick.max_tools_threshold"
     }));
 }
 
@@ -206,6 +231,7 @@ fn reasoning_effort_accepts_provider_defined_value() {
     let toml = r#"
     [agents.presets.thinker]
     model = "claude-opus-4-5-20251101"
+    max_tools_threshold = 128
     reasoning_effort = "ultra"
     "#;
     let result = validate_toml_str(toml);
@@ -224,6 +250,7 @@ fn reasoning_effort_accepts_provider_defined_value() {
 fn reasoning_effort_recognized_in_schema() {
     let toml = r#"
     [agents.presets.thinker]
+    max_tools_threshold = 128
     reasoning_effort = "high"
     "#;
     let result = validate_toml_str(toml);
@@ -251,6 +278,8 @@ fn preset_tools_deny_without_main_policy_warns() {
 default_preset = "full"
 
 [agents.presets.full]
+max_tools_threshold = 128
+
 [agents.presets.full.tools]
 deny = ["browser", "execute_command"]
 "#;
@@ -278,6 +307,8 @@ deny = ["browser", "execute_command"]
 fn preset_tools_allow_without_main_policy_also_warns() {
     let toml = r#"
 [agents.presets.research]
+max_tools_threshold = 128
+
 [agents.presets.research.tools]
 allow = ["read_file", "ripgrep"]
 "#;
@@ -298,6 +329,8 @@ fn preset_tools_deny_with_main_policy_deny_does_not_warn() {
 deny = ["execute_command"]
 
 [agents.presets.full]
+max_tools_threshold = 128
+
 [agents.presets.full.tools]
 deny = ["browser"]
 "#;
@@ -316,6 +349,8 @@ fn preset_tools_deny_with_main_policy_allow_does_not_warn() {
 allow = ["read_file"]
 
 [agents.presets.full]
+max_tools_threshold = 128
+
 [agents.presets.full.tools]
 deny = ["browser"]
 "#;
@@ -334,6 +369,8 @@ fn preset_tools_deny_with_main_policy_profile_does_not_warn() {
 profile = "default"
 
 [agents.presets.full]
+max_tools_threshold = 128
+
 [agents.presets.full.tools]
 deny = ["browser"]
 "#;
@@ -352,6 +389,7 @@ fn empty_preset_tools_does_not_warn() {
 default_preset = "basic"
 
 [agents.presets.basic]
+max_tools_threshold = 128
 model = "openai/gpt-5.2"
 "#;
     let result = validate_toml_str(toml);
@@ -366,10 +404,14 @@ model = "openai/gpt-5.2"
 fn multiple_offending_presets_are_rolled_up() {
     let toml = r#"
 [agents.presets.full]
+max_tools_threshold = 128
+
 [agents.presets.full.tools]
 deny = ["browser"]
 
 [agents.presets.minimal]
+max_tools_threshold = 128
+
 [agents.presets.minimal.tools]
 allow = ["read_file"]
 "#;

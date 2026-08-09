@@ -262,20 +262,20 @@ sandbox = false
 }
 
 #[test]
-fn tools_agent_max_iterations_must_be_positive() {
+fn tools_agent_max_iterations_is_rejected_as_unknown() {
     let toml = r#"
 [tools]
-agent_max_iterations = 0
+agent_max_iterations = 25
 "#;
     let result = validate_toml_str(toml);
-    let invalid = result.diagnostics.iter().find(|d| {
+    let unknown = result.diagnostics.iter().find(|d| {
         d.path == "tools.agent_max_iterations"
             && d.severity == Severity::Error
-            && d.category == "invalid-value"
+            && d.category == "unknown-field"
     });
     assert!(
-        invalid.is_some(),
-        "expected tools.agent_max_iterations invalid-value error, got: {:?}",
+        unknown.is_some(),
+        "expected tools.agent_max_iterations unknown-field error, got: {:?}",
         result.diagnostics
     );
 }

@@ -220,6 +220,7 @@ fn spawn_agent_tool(
         tool_registry,
         ToolsConfigSource::snapshot(ToolsConfig::default()),
     )
+    .with_agents_config(agents_config_with_presets(Some("research"), &[]))
 }
 
 fn registry_with_tools(names: &[&str]) -> Arc<ToolRegistry> {
@@ -694,8 +695,8 @@ async fn test_resolve_preset_uses_explicit_name() {
         .resolve_preset(&serde_json::json!({ "preset": "research" }))
         .await
         .expect("resolve preset");
-    assert_eq!(name.as_deref(), Some("research"));
-    assert_eq!(preset.as_ref().map(|p| p.delegate_only), Some(true));
+    assert_eq!(name, "research");
+    assert!(preset.delegate_only);
 }
 
 #[tokio::test]
@@ -721,14 +722,8 @@ async fn test_resolve_preset_uses_default_when_missing() {
         .resolve_preset(&serde_json::json!({}))
         .await
         .expect("resolve default preset");
-    assert_eq!(name.as_deref(), Some("default"));
-    assert_eq!(
-        preset
-            .as_ref()
-            .map(|p| p.tools.allow.clone())
-            .unwrap_or_default(),
-        vec!["task_list".to_string()]
-    );
+    assert_eq!(name, "default");
+    assert_eq!(preset.tools.allow, vec!["task_list".to_string()]);
 }
 
 #[tokio::test]

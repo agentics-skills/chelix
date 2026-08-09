@@ -156,6 +156,8 @@ const WRITE_METHODS: &[&str] = &[
     #[cfg(feature = "agent")]
     "agents.preset.delete",
     #[cfg(feature = "agent")]
+    "agents.preset.revert",
+    #[cfg(feature = "agent")]
     "agents.preset.save",
     "modes.set_session",
     "wake",

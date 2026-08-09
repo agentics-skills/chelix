@@ -18,7 +18,7 @@ use chelix_metrics::{counter, histogram, labels, memory as mem_metrics};
 use crate::{
     memory_writer::{MemoryWriteResult, MemoryWriter},
     model::{ChatMessage, LlmProvider},
-    runner::run_agent_loop,
+    runner::{AgentLoopLimits, run_agent_loop_with_context_and_limits},
     tool_registry::{AgentTool, ToolRegistry},
 };
 
@@ -190,6 +190,7 @@ pub enum SilentTurnPrompt {
 pub async fn run_silent_memory_turn_with_prompt(
     provider: Arc<dyn LlmProvider>,
     tools_config: &chelix_config::schema::ToolsConfig,
+    max_tools_threshold: usize,
     conversation: &[ChatMessage],
     writer: Arc<dyn MemoryWriter>,
     prompt_variant: SilentTurnPrompt,
@@ -267,7 +268,7 @@ pub async fn run_silent_memory_turn_with_prompt(
     let start = Instant::now();
 
     let user_content = crate::model::UserContent::Text(conversation_text);
-    let result = run_agent_loop(
+    let result = run_agent_loop_with_context_and_limits(
         provider,
         &tools,
         tools_config,
@@ -275,6 +276,16 @@ pub async fn run_silent_memory_turn_with_prompt(
         &user_content,
         None, // no event callbacks — silent
         None, // no history
+        None,
+        None,
+        None,
+        AgentLoopLimits {
+            max_tools_threshold,
+            max_tool_result_bytes: None,
+            automatic_checkpointing: false,
+            resume_from_history: false,
+            resume_after_checkpoint: false,
+        },
     )
     .await;
 
@@ -472,6 +483,7 @@ mod tests {
         let paths = run_silent_memory_turn_with_prompt(
             provider,
             &tools_config,
+            chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
             &conversation,
             writer,
             SilentTurnPrompt::PeriodicExtract,
@@ -503,6 +515,7 @@ mod tests {
         let paths = run_silent_memory_turn_with_prompt(
             provider,
             &tools_config,
+            chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
             &conversation,
             writer,
             SilentTurnPrompt::SessionSummary,
@@ -563,6 +576,7 @@ mod tests {
         let paths = run_silent_memory_turn_with_prompt(
             provider,
             &tools_config,
+            chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
             &[ChatMessage::user("test")],
             writer,
             SilentTurnPrompt::PeriodicExtract,

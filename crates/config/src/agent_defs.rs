@@ -9,6 +9,7 @@
 //! ```markdown
 //! ---
 //! name: code-reviewer
+//! max_tools_threshold: 128
 //! tools: read_file, ripgrep, list_directory
 //! model: sonnet
 //! ---
@@ -17,7 +18,7 @@
 
 use std::{collections::HashMap, path::Path};
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::schema::{
     AgentIdentity, AgentPreset, McpServerId, PresetMcpPolicy, PresetToolPolicy, ReasoningEffort,
@@ -37,7 +38,7 @@ struct AgentFrontmatter {
     emoji: Option<String>,
     theme: Option<String>,
     delegate_only: bool,
-    max_iterations: Option<u64>,
+    max_tools_threshold: Option<usize>,
     timeout_secs: Option<u64>,
     reasoning_effort: Option<String>,
     mcp_allow_servers: Option<String>,
@@ -65,8 +66,7 @@ struct AgentFrontmatterOut {
     theme: Option<String>,
     #[serde(skip_serializing_if = "is_false")]
     delegate_only: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_iterations: Option<u64>,
+    max_tools_threshold: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     timeout_secs: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,6 +91,9 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<(String, AgentPreset)> {
     let name = fm
         .name
         .ok_or_else(|| anyhow::anyhow!("agent definition missing required 'name' field"))?;
+    let max_tools_threshold = fm.max_tools_threshold.ok_or_else(|| {
+        anyhow::anyhow!("agent definition missing required 'max_tools_threshold' field")
+    })?;
 
     let allow = fm.tools.map(csv_list).unwrap_or_default();
 
@@ -119,7 +122,7 @@ pub fn parse_agent_md(content: &str) -> anyhow::Result<(String, AgentPreset)> {
         },
         system_prompt_suffix,
         delegate_only: fm.delegate_only,
-        max_iterations: fm.max_iterations,
+        max_tools_threshold,
         timeout_secs: fm.timeout_secs,
         reasoning_effort: fm.reasoning_effort.map(ReasoningEffort::from),
         mcp: parse_mcp_policy(fm.mcp_allow_servers, fm.mcp_deny_servers)?,
@@ -151,7 +154,7 @@ pub fn render_agent_md(name: &str, preset: &AgentPreset) -> anyhow::Result<Strin
         emoji: preset.identity.emoji.clone(),
         theme: preset.identity.theme.clone(),
         delegate_only: preset.delegate_only,
-        max_iterations: preset.max_iterations,
+        max_tools_threshold: preset.max_tools_threshold,
         timeout_secs: preset.timeout_secs,
         reasoning_effort: preset
             .reasoning_effort
@@ -264,18 +267,18 @@ fn split_frontmatter(content: &str) -> anyhow::Result<(String, String)> {
 ///
 /// Scans `~/.chelix/agents/` (user-global) then `.chelix/agents/` (project-local).
 /// Project-local files override user-global ones with the same name.
-pub fn discover_agent_defs() -> HashMap<String, AgentPreset> {
+pub fn discover_agent_defs() -> anyhow::Result<HashMap<String, AgentPreset>> {
     let mut defs = HashMap::new();
 
     // User-global: ~/.chelix/agents/
     let user_dir = crate::loader::data_dir().join("agents");
-    load_defs_from_dir(&user_dir, &mut defs);
+    load_defs_from_dir(&user_dir, &mut defs)?;
 
     // Project-local: .chelix/agents/
     let project_dir = std::path::PathBuf::from(".chelix").join("agents");
-    load_defs_from_dir(&project_dir, &mut defs);
+    load_defs_from_dir(&project_dir, &mut defs)?;
 
-    defs
+    Ok(defs)
 }
 
 /// Merge discovered agent definitions into the config's preset map.
@@ -296,31 +299,46 @@ pub fn merge_agent_defs(
     }
 }
 
-fn load_defs_from_dir(dir: &Path, defs: &mut HashMap<String, AgentPreset>) {
+fn load_defs_from_dir(dir: &Path, defs: &mut HashMap<String, AgentPreset>) -> anyhow::Result<()> {
     let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return, // Directory doesn't exist — that's fine.
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            anyhow::bail!(
+                "failed to read agent definition directory {}: {error}",
+                dir.display()
+            );
+        },
     };
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            anyhow::anyhow!(
+                "failed to read entry in agent definition directory {}: {error}",
+                dir.display()
+            )
+        })?;
         let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == "md") {
-            match std::fs::read_to_string(&path) {
-                Ok(content) => match parse_agent_md(&content) {
-                    Ok((name, preset)) => {
-                        debug!(name = %name, path = %path.display(), "loaded agent definition");
-                        defs.insert(name, preset);
-                    },
-                    Err(e) => {
-                        warn!(path = %path.display(), error = %e, "failed to parse agent definition");
-                    },
-                },
-                Err(e) => {
-                    warn!(path = %path.display(), error = %e, "failed to read agent definition");
-                },
-            }
+        if !path.extension().is_some_and(|ext| ext == "md") {
+            continue;
         }
+        let content = std::fs::read_to_string(&path).map_err(|error| {
+            anyhow::anyhow!(
+                "failed to read agent definition {}: {error}",
+                path.display()
+            )
+        })?;
+        let (name, preset) = parse_agent_md(&content).map_err(|error| {
+            anyhow::anyhow!(
+                "failed to parse agent definition {}: {error}",
+                path.display()
+            )
+        })?;
+        debug!(name = %name, path = %path.display(), "loaded agent definition");
+        defs.insert(name, preset);
     }
+
+    Ok(())
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -334,6 +352,7 @@ mod tests {
 name: reviewer
 tools: read_file, ripgrep
 model: sonnet
+max_tools_threshold: 128
 ---
 You are a code reviewer. Focus on correctness.
 "#;
@@ -359,7 +378,7 @@ model: haiku
 emoji: 🦉
 theme: focused and efficient
 delegate_only: false
-max_iterations: 20
+max_tools_threshold: 20
 timeout_secs: 60
 ---
 Search thoroughly.
@@ -380,13 +399,13 @@ Search thoroughly.
             Some("focused and efficient")
         );
         assert!(!preset.delegate_only);
-        assert_eq!(preset.max_iterations, Some(20));
+        assert_eq!(preset.max_tools_threshold, 20);
         assert_eq!(preset.timeout_secs, Some(60));
     }
 
     #[test]
     fn test_body_becomes_system_prompt_suffix() {
-        let content = "---\nname: test\n---\nThis is the system prompt.";
+        let content = "---\nname: test\nmax_tools_threshold: 128\n---\nThis is the system prompt.";
         let (_, preset) = parse_agent_md(content).unwrap();
         assert_eq!(
             preset.system_prompt_suffix.as_deref(),
@@ -396,9 +415,22 @@ Search thoroughly.
 
     #[test]
     fn test_empty_body() {
-        let content = "---\nname: minimal\n---\n";
+        let content = "---\nname: minimal\nmax_tools_threshold: 128\n---\n";
         let (_, preset) = parse_agent_md(content).unwrap();
         assert!(preset.system_prompt_suffix.is_none());
+    }
+
+    #[test]
+    fn test_missing_max_tools_threshold_error() {
+        let content = "---\nname: test\n---\nbody";
+        let result = parse_agent_md(content);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("max_tools_threshold")
+        );
     }
 
     #[test]
@@ -416,7 +448,7 @@ Search thoroughly.
 
     #[test]
     fn test_missing_closing_delimiter() {
-        let content = "---\nname: test\nno closing";
+        let content = "---\nname: test\nmax_tools_threshold: 128\nno closing";
         let result = parse_agent_md(content);
         assert!(result.is_err());
         assert!(
@@ -429,7 +461,7 @@ Search thoroughly.
 
     #[test]
     fn test_missing_name_error() {
-        let content = "---\ntools: read_file\n---\nbody";
+        let content = "---\nmax_tools_threshold: 128\ntools: read_file\n---\nbody";
         let result = parse_agent_md(content);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("missing required"));
@@ -443,19 +475,19 @@ Search thoroughly.
 
         std::fs::write(
             agents_dir.join("reviewer.md"),
-            "---\nname: reviewer\n---\nReview code.",
+            "---\nname: reviewer\nmax_tools_threshold: 128\n---\nReview code.",
         )
         .unwrap();
         std::fs::write(
             agents_dir.join("scout.md"),
-            "---\nname: scout\ntools: read_file\n---\nSearch.",
+            "---\nname: scout\nmax_tools_threshold: 128\ntools: read_file\n---\nSearch.",
         )
         .unwrap();
         // Non-md file should be ignored.
         std::fs::write(agents_dir.join("notes.txt"), "not an agent").unwrap();
 
         let mut defs = HashMap::new();
-        load_defs_from_dir(&agents_dir, &mut defs);
+        load_defs_from_dir(&agents_dir, &mut defs).unwrap();
 
         assert_eq!(defs.len(), 2);
         assert!(defs.contains_key("reviewer"));
@@ -522,18 +554,18 @@ Search thoroughly.
 
         std::fs::write(
             user_agents.join("reviewer.md"),
-            "---\nname: reviewer\nmodel: haiku\n---\nUser version.",
+            "---\nname: reviewer\nmodel: haiku\nmax_tools_threshold: 128\n---\nUser version.",
         )
         .unwrap();
         std::fs::write(
             project_agents.join("reviewer.md"),
-            "---\nname: reviewer\nmodel: sonnet\n---\nProject version.",
+            "---\nname: reviewer\nmodel: sonnet\nmax_tools_threshold: 128\n---\nProject version.",
         )
         .unwrap();
 
         let mut defs = HashMap::new();
-        load_defs_from_dir(&user_agents, &mut defs);
-        load_defs_from_dir(&project_agents, &mut defs); // project overrides user
+        load_defs_from_dir(&user_agents, &mut defs).unwrap();
+        load_defs_from_dir(&project_agents, &mut defs).unwrap(); // project overrides user
 
         assert_eq!(defs["reviewer"].model.as_deref(), Some("sonnet"));
         assert_eq!(

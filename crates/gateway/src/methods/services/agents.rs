@@ -160,6 +160,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     Ok(serde_json::json!({
                         "default_id": default_id,
                         "agents": agents,
+                        "defaults": agent_preset_defaults_payload(),
                     }))
                 })
             }),
@@ -763,6 +764,114 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             }),
         );
         reg.register(
+            "agents.preset.revert",
+            Box::new(|ctx| {
+                Box::pin(async move {
+                    let id = parse_agent_id_param(&ctx.params).ok_or_else(|| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            "missing 'id' or 'agent_id' parameter",
+                        )
+                    })?;
+                    validate_preset_id(&id)?;
+
+                    let config = chelix_config::discover_and_load().map_err(|error| {
+                        ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                    })?;
+                    if !chelix_config::schema::default_agent_presets().contains_key(&id) {
+                        return Err(ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("preset '{id}' has no built-in default"),
+                        ));
+                    }
+                    let provenance =
+                        chelix_config::defaults::compute_preset_provenance(&config.agents);
+                    let is_user_override = provenance.iter().any(|entry| {
+                        entry.id == id
+                            && entry.source
+                                == chelix_config::defaults::ConfigSource::UserOverride
+                    });
+                    if !is_user_override {
+                        return Err(ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("preset '{id}' is not a user override"),
+                        ));
+                    }
+
+                    let project_markdown_path = PathBuf::from(".chelix")
+                        .join("agents")
+                        .join(format!("{id}.md"));
+                    if project_markdown_path.exists() {
+                        return Err(ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!(
+                                "preset '{id}' is overridden by {}; remove the project-local definition manually",
+                                project_markdown_path.display()
+                            ),
+                        ));
+                    }
+
+                    let toml_config = chelix_config::discover_and_load_without_agent_defs()
+                        .map_err(|error| {
+                            ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                        })?;
+                    let toml_backed = toml_config.agents.presets.get(&id).is_some_and(|preset| {
+                        !chelix_config::schema::is_default_agent_preset(&id, preset)
+                    });
+                    let markdown_path = chelix_config::data_dir()
+                        .join("agents")
+                        .join(format!("{id}.md"));
+                    let markdown_backed = markdown_path.exists();
+                    if !(toml_backed || markdown_backed) {
+                        return Err(ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("preset '{id}' has no removable user override"),
+                        ));
+                    }
+
+                    if toml_backed {
+                        chelix_config::update_config(|cfg| {
+                            cfg.agents.presets.remove(&id);
+                        })
+                        .map_err(|error| {
+                            ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
+                        })?;
+                    }
+                    let markdown_removed = if markdown_backed {
+                        chelix_config::agent_defs::delete_user_agent_def(&id).map_err(|error| {
+                            ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
+                        })?
+                    } else {
+                        false
+                    };
+
+                    refresh_agents_config(&ctx).await?;
+                    let reverted = chelix_config::discover_and_load().map_err(|error| {
+                        ErrorShape::new(error_codes::INTERNAL, error.to_string())
+                    })?;
+                    let Some(effective) = reverted.agents.presets.get(&id) else {
+                        return Err(ErrorShape::new(
+                            error_codes::INTERNAL,
+                            format!("built-in preset '{id}' was not restored"),
+                        ));
+                    };
+                    if !chelix_config::schema::is_default_agent_preset(&id, effective) {
+                        return Err(ErrorShape::new(
+                            error_codes::INTERNAL,
+                            format!("preset '{id}' is still overridden after revert"),
+                        ));
+                    }
+
+                    Ok(serde_json::json!({
+                        "ok": true,
+                        "id": id,
+                        "toml_removed": toml_backed,
+                        "markdown_removed": markdown_removed,
+                    }))
+                })
+            }),
+        );
+        reg.register(
             "agents.preset.save",
             Box::new(|ctx| {
                 Box::pin(async move {
@@ -772,48 +881,38 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             "missing 'id' or 'agent_id' parameter",
                         )
                     })?;
-                    let toml_str = ctx
-                        .params
-                        .get("toml")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                    let toml_str =
+                        ctx.params
+                            .get("toml")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                ErrorShape::new(
+                                    error_codes::INVALID_REQUEST,
+                                    "missing 'toml' parameter",
+                                )
+                            })?;
 
-                    // Parse the TOML as a partial AgentPreset to validate it
-                    let partial: chelix_config::AgentPreset = if toml_str.trim().is_empty() {
-                        chelix_config::AgentPreset::default()
-                    } else {
-                        toml::from_str(&toml_str).map_err(|e| {
-                            ErrorShape::new(
-                                error_codes::INVALID_REQUEST,
-                                format!("invalid TOML: {e}"),
-                            )
-                        })?
-                    };
+                    let preset = parse_agent_preset_toml(toml_str)?;
 
                     // Write to chelix.toml using update_config
                     chelix_config::update_config(|cfg| {
-                        if toml_str.trim().is_empty() {
-                            cfg.agents.presets.remove(&id);
-                        } else {
-                            // Merge: keep existing identity fields from persona if present,
-                            // let TOML fields override everything else.
-                            if let Some(existing) = cfg.agents.presets.get(&id) {
-                                let mut merged = partial.clone();
-                                // Preserve persona identity if TOML didn't set it
-                                if merged.identity.name.is_none() {
-                                    merged.identity.name = existing.identity.name.clone();
-                                }
-                                if merged.identity.emoji.is_none() {
-                                    merged.identity.emoji = existing.identity.emoji.clone();
-                                }
-                                if merged.identity.theme.is_none() {
-                                    merged.identity.theme = existing.identity.theme.clone();
-                                }
-                                cfg.agents.presets.insert(id.clone(), merged);
-                            } else {
-                                cfg.agents.presets.insert(id.clone(), partial);
+                        // Merge: keep existing identity fields from persona if present,
+                        // let TOML fields override everything else.
+                        if let Some(existing) = cfg.agents.presets.get(&id) {
+                            let mut merged = preset.clone();
+                            // Preserve persona identity if TOML didn't set it
+                            if merged.identity.name.is_none() {
+                                merged.identity.name = existing.identity.name.clone();
                             }
+                            if merged.identity.emoji.is_none() {
+                                merged.identity.emoji = existing.identity.emoji.clone();
+                            }
+                            if merged.identity.theme.is_none() {
+                                merged.identity.theme = existing.identity.theme.clone();
+                            }
+                            cfg.agents.presets.insert(id.clone(), merged);
+                        } else {
+                            cfg.agents.presets.insert(id.clone(), preset);
                         }
                     })
                     .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
@@ -903,6 +1002,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 }
 
 #[cfg(feature = "agent")]
+fn agent_preset_defaults_payload() -> serde_json::Value {
+    serde_json::json!({
+        "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+    })
+}
+
+#[cfg(feature = "agent")]
 fn validate_preset_id(id: &str) -> Result<(), ErrorShape> {
     let valid = !id.is_empty()
         && id.len() <= 80
@@ -935,12 +1041,13 @@ fn preset_from_rpc_params(
     if let Some(toml_str) = params.get("toml").and_then(|value| value.as_str())
         && !toml_str.trim().is_empty()
     {
-        return toml::from_str(toml_str).map_err(|e| {
-            ErrorShape::new(error_codes::INVALID_REQUEST, format!("invalid TOML: {e}"))
-        });
+        return parse_agent_preset_toml(toml_str);
     }
 
-    let mut preset = base.cloned().unwrap_or_default();
+    let mut preset = base.cloned().unwrap_or_else(|| chelix_config::AgentPreset {
+        max_tools_threshold: chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+        ..chelix_config::AgentPreset::default()
+    });
     if params.get("name").is_some() {
         preset.identity.name = optional_string(params, "name").or_else(|| Some(id.to_string()));
     } else if preset.identity.name.is_none() {
@@ -972,9 +1079,24 @@ fn preset_from_rpc_params(
         preset.tools.deny = string_list_param(params, "tools_deny");
     }
     if params.get("max_iterations").is_some() {
-        preset.max_iterations = params
-            .get("max_iterations")
-            .and_then(serde_json::Value::as_u64);
+        return Err(ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "unknown field 'max_iterations'",
+        ));
+    }
+    if params.get("max_tools_threshold").is_some() {
+        let Some(max_tools_threshold) = params
+            .get("max_tools_threshold")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .filter(|value| *value >= 1)
+        else {
+            return Err(ErrorShape::new(
+                error_codes::INVALID_REQUEST,
+                "max_tools_threshold must be an integer greater than or equal to 1",
+            ));
+        };
+        preset.max_tools_threshold = max_tools_threshold;
     }
     if params.get("timeout_secs").is_some() {
         preset.timeout_secs = params
@@ -999,6 +1121,16 @@ fn preset_from_rpc_params(
         };
     }
     Ok(preset)
+}
+
+#[cfg(feature = "agent")]
+fn parse_agent_preset_toml(toml_str: &str) -> Result<chelix_config::AgentPreset, ErrorShape> {
+    toml::from_str(toml_str).map_err(|error| {
+        ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            format!("invalid TOML: {error}"),
+        )
+    })
 }
 
 #[cfg(feature = "agent")]
@@ -1079,4 +1211,28 @@ async fn refresh_agents_config(ctx: &MethodContext) -> Result<(), ErrorShape> {
         *guard = fresh.agents;
     }
     Ok(())
+}
+
+#[cfg(all(test, feature = "agent"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_preset_defaults_payload_uses_rust_default() {
+        let payload = agent_preset_defaults_payload();
+        assert_eq!(
+            payload["max_tools_threshold"].as_u64(),
+            Some(chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD as u64)
+        );
+    }
+
+    #[test]
+    fn empty_advanced_toml_is_rejected() {
+        assert!(parse_agent_preset_toml("").is_err());
+    }
+
+    #[test]
+    fn advanced_toml_requires_max_tools_threshold() {
+        assert!(parse_agent_preset_toml("model = \"haiku\"").is_err());
+    }
 }

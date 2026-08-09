@@ -216,7 +216,14 @@ fn defaults_toml_is_generated_and_parseable() {
         toml::from_str(&content).expect("defaults.toml should parse as valid ChelixConfig");
     // Verify it matches the built-in defaults.
     assert_eq!(config.tools.agent_timeout_secs, 600);
-    assert_eq!(config.tools.agent_max_iterations, 25);
+    assert_eq!(
+        config
+            .agents
+            .get_preset("main")
+            .unwrap()
+            .max_tools_threshold,
+        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
+    );
     assert!(config.tls.enabled);
 }
 
@@ -247,7 +254,14 @@ agent_timeout_secs = 120
     // User override applied.
     assert_eq!(config.tools.agent_timeout_secs, 120);
     // Defaults preserved.
-    assert_eq!(config.tools.agent_max_iterations, 25);
+    assert_eq!(
+        config
+            .agents
+            .get_preset("main")
+            .unwrap()
+            .max_tools_threshold,
+        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
+    );
     assert!(config.tls.enabled);
     assert!(!config.auth.disabled);
 }
@@ -297,7 +311,7 @@ fn save_user_config_does_not_materialize_defaults() {
         "defaults should not be materialized into user config"
     );
     assert!(
-        !saved.contains("agent_max_iterations"),
+        !saved.contains("max_tools_threshold"),
         "defaults should not be materialized into user config"
     );
 }
@@ -361,7 +375,14 @@ fn layered_load_user_override_wins_over_defaults() {
     // User override wins.
     assert_eq!(config.tools.agent_timeout_secs, 999);
     // Defaults inherited.
-    assert_eq!(config.tools.agent_max_iterations, 25);
+    assert_eq!(
+        config
+            .agents
+            .get_preset("main")
+            .unwrap()
+            .max_tools_threshold,
+        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
+    );
     assert!(config.tls.enabled);
 
     clear_config_dir();
@@ -386,7 +407,14 @@ fn upgrade_adds_new_defaults_automatically() {
     let config = discover_and_load().expect("load config");
     // Defaults should be inherited even though user didn't specify them.
     assert_eq!(config.tools.agent_timeout_secs, 600);
-    assert_eq!(config.tools.agent_max_iterations, 25);
+    assert_eq!(
+        config
+            .agents
+            .get_preset("main")
+            .unwrap()
+            .max_tools_threshold,
+        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
+    );
     assert!(config.heartbeat.enabled);
 
     clear_config_dir();
@@ -424,62 +452,33 @@ fn user_override_survives_defaults_refresh() {
     clear_config_dir();
 }
 
-/// Upgrade scenario: existing user has defaults spelled out in chelix.toml
-/// (from the old template). An unrelated config write must NOT strip those
-/// values — they are intentional freezes from the prior version.
 #[test]
-fn upgrade_existing_config_preserves_explicit_defaults() {
+fn upgrade_existing_config_rejects_removed_agent_max_iterations() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     let config_path = dir.path().join("chelix.toml");
 
-    // Simulate an old-style chelix.toml with many active defaults.
     std::fs::write(
         &config_path,
         r#"[server]
 port = 18789
-bind = "127.0.0.1"
 
 [tools]
-agent_timeout_secs = 600
 agent_max_iterations = 25
-
-[auth]
-disabled = false
 "#,
     )
-    .expect("write old-style config");
+    .expect("write legacy config");
 
     set_config_dir(dir.path().to_path_buf());
 
-    // Simulate a web UI change: user changes http_request_logs.
-    update_config(|cfg| {
+    let error = update_config(|cfg| {
         cfg.server.http_request_logs = true;
     })
-    .expect("update_config");
+    .expect_err("removed config key must fail");
+    assert!(error.to_string().contains("agent_max_iterations"));
 
-    let saved = std::fs::read_to_string(&config_path).expect("read saved");
-
-    // New change must be present.
-    assert!(
-        saved.contains("http_request_logs = true"),
-        "http_request_logs should be saved"
-    );
-    // Existing defaults must NOT be stripped — they were already in the file.
-    assert!(
-        saved.contains("agent_timeout_secs = 600"),
-        "existing agent_timeout_secs must survive (not stripped)"
-    );
-    assert!(
-        saved.contains("agent_max_iterations = 25"),
-        "existing agent_max_iterations must survive (not stripped)"
-    );
-    assert!(
-        saved.contains("bind = \"127.0.0.1\""),
-        "existing bind must survive (not stripped)"
-    );
-    // Port is installation-specific, must survive.
-    assert!(saved.contains("port = 18789"), "port must survive");
+    let saved = std::fs::read_to_string(&config_path).expect("read unchanged config");
+    assert!(!saved.contains("http_request_logs"));
 
     clear_config_dir();
 }
@@ -723,18 +722,18 @@ agent_timeout_secs = 600
 // ── Revert to built-in tests ─────────────────────────────────────────
 
 #[test]
-fn revert_preset_removes_from_user_config() {
+fn revert_preset_removes_override_and_restores_builtin() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     let config_path = dir.path().join("chelix.toml");
 
-    // User config with a custom preset.
     std::fs::write(
         &config_path,
         r#"[server]
 port = 44444
 
-[agents.presets.custom-agent]
+[agents.presets.research]
+max_tools_threshold = 7
 model = "openai/gpt-5.2"
 delegate_only = true
 "#,
@@ -742,22 +741,28 @@ delegate_only = true
     .expect("write seed");
 
     set_config_dir(dir.path().to_path_buf());
+    let overridden = discover_and_load().expect("load overridden config");
+    assert_eq!(overridden.agents.presets["research"].max_tools_threshold, 7);
 
-    // Simulate revert: remove the preset via update_config.
     update_config(|cfg| {
-        cfg.agents.presets.remove("custom-agent");
+        cfg.agents.presets.remove("research");
     })
     .expect("update_config");
 
     let saved = std::fs::read_to_string(&config_path).expect("read saved");
-
-    // Preset should be removed from user config.
     assert!(
-        !saved.contains("custom-agent"),
-        "reverted preset should be removed from user config"
+        !saved.contains("[agents.presets.research]"),
+        "reverted override should be removed from user config"
     );
-    // Port should survive.
     assert!(saved.contains("port = 44444"), "port must survive revert");
+
+    let reverted = discover_and_load().expect("load reverted config");
+    let built_in = &reverted.agents.presets["research"];
+    assert_eq!(
+        built_in.max_tools_threshold,
+        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
+    );
+    assert!(crate::schema::is_default_agent_preset("research", built_in));
 
     clear_config_dir();
 }

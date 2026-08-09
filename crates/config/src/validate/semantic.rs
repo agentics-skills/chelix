@@ -316,22 +316,14 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // Loop limit must be positive to avoid immediate run failures.
-    if config.tools.agent_max_iterations == 0 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "invalid-value",
-            path: "tools.agent_max_iterations".into(),
-            message: "tools.agent_max_iterations must be at least 1".into(),
-        });
-    }
+    // Tool-call thresholds must be positive to avoid rejecting every tool batch.
     for (name, preset) in &config.agents.presets {
-        if preset.max_iterations == Some(0) {
+        if preset.max_tools_threshold == 0 {
             diagnostics.push(Diagnostic {
                 severity: Severity::Error,
                 category: "invalid-value",
-                path: format!("agents.presets.{name}.max_iterations"),
-                message: "agents.presets.<name>.max_iterations must be at least 1".into(),
+                path: format!("agents.presets.{name}.max_tools_threshold"),
+                message: "agents.presets.<name>.max_tools_threshold must be at least 1".into(),
             });
         }
         if let Some(ToolChoice::Tool { name: tool_name }) = &preset.tool_controls.tool_choice {

@@ -163,7 +163,11 @@ fn try_discover_and_load_readonly_with_options(
 
     // Merge markdown agent definitions (TOML presets take precedence).
     if include_agent_defs {
-        let agent_defs = crate::agent_defs::discover_agent_defs();
+        let agent_defs = crate::agent_defs::discover_agent_defs().map_err(|source| {
+            crate::Error::message(format!(
+                "failed to discover markdown agent definitions: {source:#}"
+            ))
+        })?;
         if !agent_defs.is_empty() {
             crate::agent_defs::merge_agent_defs(&mut cfg.agents.presets, agent_defs);
         }
