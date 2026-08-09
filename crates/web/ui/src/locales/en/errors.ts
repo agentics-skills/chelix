@@ -31,6 +31,11 @@ export default {
 			title: "Insufficient quota",
 			detail: "Your account quota is exhausted. Add funds or switch providers and try again.",
 		},
+		maxToolsThresholdReached: {
+			title: "Tool-call threshold reached",
+			detail:
+				"The next batch requests {{requested}} tool calls after {{used}} of {{threshold}} have been used. Send a new message to continue.",
+		},
 		rateLimited: {
 			title: "Rate limited",
 			detail: "Too many requests. Please wait a moment and try again.",

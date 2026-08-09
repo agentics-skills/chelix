@@ -701,7 +701,7 @@ function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	} else {
 		chatAddErrorMsg(p.message || "unknown");
 	}
-	// Add continue button for max_iterations_reached errors.
+	// Add a continue button when a new user message can start a fresh tool-call budget.
 	if (p.error?.canContinue) {
 		const lastCard = S.chatMsgBox?.querySelector(".error-card:last-child") as HTMLElement | null;
 		if (lastCard) {

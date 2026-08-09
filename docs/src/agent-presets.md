@@ -34,12 +34,14 @@ identity.name = "scout"
 identity.emoji = "🔍"
 identity.theme = "thorough and methodical"
 model = "openai/gpt-5.2"
+max_tools_threshold = 128
 tools.allow = ["read_file", "list_directory", "ripgrep"]
 tools.deny = ["execute_command", "overwrite_file"]
 tools.preload = ["read_file", "list_directory", "ripgrep"]
 system_prompt_suffix = "Gather facts and report clearly."
 
 [agents.presets.coordinator]
+max_tools_threshold = 128
 identity.name = "orchestrator"
 delegate_only = true
 tools.allow = ["spawn_agent", "sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list"]
@@ -70,11 +72,21 @@ Per preset (`[agents.presets.<name>]`):
 - `mcp` — MCP server access: `allow_servers` or `deny_servers`
 - `skills.allow`, `skills.deny`
 - `system_prompt_suffix`
-- `max_iterations`, `timeout_secs` (override `[tools]` runtime limits for
-  matching direct sessions and spawned sub-agents)
+- `max_tools_threshold` (required, must be at least `1`; built-in presets use
+  `128`)
+- `timeout_secs` (overrides `[tools].agent_timeout_secs` for matching direct
+  sessions and spawned sub-agents)
 - `sessions.*` access policy
 - `memory.scope`, `memory.max_lines`
 - `delegate_only`
+
+`max_tools_threshold` limits actual tool calls emitted by the LLM, not model
+rounds. Every recognized call consumes one unit, including `get_tool`, calls
+that fail validation or policy checks, and each sibling in a parallel batch. If
+the entire batch does not fit in the remaining budget, no sibling executes and
+the used count is unchanged. The budget resets for every new user message and
+after context compaction. Reaching the threshold still allows a later model
+response without tools; the next emitted tool batch is rejected.
 
 ## Tool Policy Behavior
 
@@ -198,7 +210,7 @@ preload_tools: Read, ripgrep
 model: sonnet
 emoji: 🔍
 theme: focused and efficient
-max_iterations: 20
+max_tools_threshold: 128
 timeout_secs: 60
 ---
 
@@ -206,6 +218,6 @@ You are a code reviewer. Focus on correctness and security.
 ```
 
 Frontmatter fields: `name` (required), `tools`, `deny_tools`, `preload_tools`,
-`model`, `emoji`, `theme`, `delegate_only`, `max_iterations`, `timeout_secs`,
+`model`, `emoji`, `theme`, `delegate_only`, `max_tools_threshold` (required), `timeout_secs`,
 `display_name`, `reasoning_effort`, `mcp_allow_servers`, `mcp_deny_servers`,
 `skills_allow`, and `skills_deny`. The markdown body becomes `system_prompt_suffix`.

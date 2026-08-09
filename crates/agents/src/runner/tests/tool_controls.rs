@@ -33,8 +33,8 @@ async fn active_tools_hides_unselected_tool() {
         None,
         None,
         AgentLoopLimits {
-            max_iterations: Some(3),
-            ..Default::default()
+            max_tools_threshold: 3,
+            ..test_agent_loop_limits()
         },
     )
     .await
@@ -69,7 +69,7 @@ async fn active_tools_allows_selected_tool() {
         Some(tool_context),
         None,
         None,
-        AgentLoopLimits::default(),
+        test_agent_loop_limits(),
     )
     .await
     .unwrap();
@@ -104,7 +104,7 @@ async fn tool_choice_none_forces_text_only() {
         Some(tool_context),
         None,
         None,
-        AgentLoopLimits::default(),
+        test_agent_loop_limits(),
     )
     .await
     .unwrap();
@@ -138,7 +138,7 @@ async fn tool_choice_forced_missing_tool_errors() {
         Some(tool_context),
         None,
         None,
-        AgentLoopLimits::default(),
+        test_agent_loop_limits(),
     )
     .await
     .unwrap_err();
@@ -175,7 +175,7 @@ async fn tool_choice_auto_with_active_tools_succeeds() {
         Some(tool_context),
         None,
         None,
-        AgentLoopLimits::default(),
+        test_agent_loop_limits(),
     )
     .await
     .unwrap();
@@ -207,7 +207,7 @@ async fn tool_choice_any_with_no_active_tools_errors() {
         Some(tool_context),
         None,
         None,
-        AgentLoopLimits::default(),
+        test_agent_loop_limits(),
     )
     .await
     .unwrap_err();
@@ -239,7 +239,7 @@ async fn no_tool_context_runs_normally() {
         None, // no tool_context
         None,
         None,
-        AgentLoopLimits::default(),
+        test_agent_loop_limits(),
     )
     .await
     .unwrap();

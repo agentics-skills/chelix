@@ -1,7 +1,5 @@
 //! Error classification and retry delay logic for transient provider failures.
 
-use tracing::warn;
-
 /// Error patterns that indicate a transient server error worth retrying.
 const RETRYABLE_SERVER_PATTERNS: &[&str] = &[
     "http 500",
@@ -164,18 +162,4 @@ pub(crate) fn next_retry_delay_ms(
     }
 
     None
-}
-
-/// Fallback loop limit when config is missing or invalid.
-pub(crate) const DEFAULT_AGENT_MAX_ITERATIONS: usize = 25;
-
-pub(crate) fn resolve_agent_max_iterations(configured: usize) -> usize {
-    if configured == 0 {
-        warn!(
-            default = DEFAULT_AGENT_MAX_ITERATIONS,
-            "tools.agent_max_iterations was 0; falling back to default"
-        );
-        return DEFAULT_AGENT_MAX_ITERATIONS;
-    }
-    configured
 }

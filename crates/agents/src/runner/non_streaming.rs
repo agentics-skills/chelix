@@ -1,4 +1,4 @@
-//! Non-streaming agent loop: `run_agent_loop` and `run_agent_loop_with_context`.
+//! Non-streaming agent loop with explicit runtime limits.
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -22,14 +22,14 @@ use crate::{
 
 use super::{
     AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, FinalTextSource,
-    MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall, UsageAccumulator,
-    apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
+    MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall, ToolCallBudget,
+    UsageAccumulator, apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
     channel_binding_from_tool_context, dispatch_after_llm_call_hook,
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, enrich_tool_arguments,
     fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
     is_substantive_answer_text, log_tool_argument_diagnostic, public_tool_arguments,
     record_answer_text, resolve_tool_lookup,
-    retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms, resolve_agent_max_iterations},
+    retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
     sanitize_tool_name,
     tool_result::persist_and_truncate,
 };
@@ -37,79 +37,6 @@ use super::{
 use chelix_sessions::ToolResultStore;
 
 use crate::tool_loop_detector::ToolLoopDetector;
-
-/// Run the agent loop: send messages to the LLM, execute tool calls, repeat.
-///
-/// If `history` is provided, those messages are inserted between the system
-/// prompt and the current user message, giving the LLM conversational context.
-pub async fn run_agent_loop(
-    provider: Arc<dyn LlmProvider>,
-    tools: &ToolRegistry,
-    tools_config: &chelix_config::schema::ToolsConfig,
-    system_prompt: &str,
-    user_content: &UserContent,
-    on_event: Option<&OnEvent>,
-    history: Option<Vec<ChatMessage>>,
-) -> Result<AgentRunResult, AgentRunError> {
-    run_agent_loop_with_context(
-        provider,
-        tools,
-        tools_config,
-        system_prompt,
-        user_content,
-        on_event,
-        history,
-        None,
-        None,
-        None,
-    )
-    .await
-}
-
-/// Like `run_agent_loop` but accepts optional context values that are injected
-/// into every tool call's parameters (e.g. `_session_key`).
-pub async fn run_agent_loop_with_context(
-    provider: Arc<dyn LlmProvider>,
-    tools: &ToolRegistry,
-    tools_config: &chelix_config::schema::ToolsConfig,
-    system_prompt: &str,
-    user_content: &UserContent,
-    on_event: Option<&OnEvent>,
-    history: Option<Vec<ChatMessage>>,
-    tool_context: Option<serde_json::Value>,
-    hook_registry: Option<Arc<HookRegistry>>,
-    sender_name: Option<String>,
-) -> Result<AgentRunResult, AgentRunError> {
-    run_agent_loop_with_context_and_limits(
-        provider,
-        tools,
-        tools_config,
-        system_prompt,
-        user_content,
-        on_event,
-        history,
-        tool_context,
-        hook_registry,
-        sender_name,
-        Default::default(),
-    )
-    .await
-}
-
-pub(super) fn resolve_agent_loop_max_iterations(
-    tools_config: &chelix_config::schema::ToolsConfig,
-    max_iterations_override: Option<usize>,
-) -> usize {
-    let configured_max_iterations =
-        max_iterations_override.unwrap_or(tools_config.agent_max_iterations);
-    let base_max_iterations = resolve_agent_max_iterations(configured_max_iterations);
-    // Lazy mode needs extra iterations for get_tool discovery round-trips.
-    if tools_config.registry_mode == chelix_config::ToolRegistryMode::Lazy {
-        base_max_iterations * 3
-    } else {
-        base_max_iterations
-    }
-}
 
 pub async fn run_agent_loop_with_context_and_limits(
     provider: Arc<dyn LlmProvider>,
@@ -130,7 +57,6 @@ pub async fn run_agent_loop_with_context_and_limits(
         .unwrap_or(tools_config.max_tool_result_bytes);
     let max_auto_continues = tools_config.agent_max_auto_continues;
     let auto_continue_min_tool_calls = tools_config.agent_auto_continue_min_tool_calls;
-    let max_iterations = resolve_agent_loop_max_iterations(tools_config, limits.max_iterations);
 
     let is_multimodal = matches!(user_content, UserContent::Multimodal(_));
     info!(
@@ -210,7 +136,7 @@ pub async fn run_agent_loop_with_context_and_limits(
     .await?;
 
     let mut iterations = 0;
-    let mut total_tool_calls = 0;
+    let mut tool_call_budget = ToolCallBudget::new(limits.max_tools_threshold);
     let mut usage_accumulator = UsageAccumulator::default();
     let mut server_retries_remaining: u8 = 1;
     let mut rate_limit_retries_remaining: u8 = RATE_LIMIT_MAX_RETRIES;
@@ -233,13 +159,6 @@ pub async fn run_agent_loop_with_context_and_limits(
 
     loop {
         iterations += 1;
-        if iterations > max_iterations {
-            warn!("agent loop exceeded max iterations ({})", max_iterations);
-            return Err(AgentRunError::Other(anyhow::anyhow!(
-                "agent loop exceeded max iterations ({})",
-                max_iterations
-            )));
-        }
 
         // Re-compute schemas each iteration so schemas revealed via get_tool appear immediately.
         // When the loop detector has escalated to stage 2, do not send tools
@@ -334,7 +253,7 @@ pub async fn run_agent_loop_with_context_and_limits(
                     continuation_messages,
                     tool_schemas: schemas_for_api,
                     completed_iterations: iterations.saturating_sub(1),
-                    tool_calls_made: total_tool_calls,
+                    tool_calls_made: tool_call_budget.used(),
                     usage: usage_accumulator.total(),
                     raw_llm_responses: Vec::new(),
                 },
@@ -456,6 +375,8 @@ pub async fn run_agent_loop_with_context_and_limits(
             }
         }
 
+        tool_call_budget.reserve_batch(response.tool_calls.len())?;
+
         if let Some(tc) = find_empty_tool_name_call(&response.tool_calls) {
             if has_named_tool_call(&response.tool_calls) {
                 warn!(
@@ -518,8 +439,8 @@ pub async fn run_agent_loop_with_context_and_limits(
             // the nudge when the model already produced a substantive final
             // answer — nudging in that case risks losing the answer (GH #628).
             if !is_substantive_answer_text(&response_text)
-                && total_tool_calls > 0
-                && total_tool_calls >= auto_continue_min_tool_calls
+                && tool_call_budget.used() > 0
+                && tool_call_budget.used() >= auto_continue_min_tool_calls
                 && auto_continue_count < max_auto_continues
             {
                 auto_continue_count += 1;
@@ -530,7 +451,6 @@ pub async fn run_agent_loop_with_context_and_limits(
                 if let Some(cb) = on_event {
                     cb(RunnerEvent::AutoContinue {
                         iteration: iterations,
-                        max_iterations,
                     });
                 }
                 if !response_text.is_empty() {
@@ -549,7 +469,7 @@ pub async fn run_agent_loop_with_context_and_limits(
 
             info!(
                 iterations,
-                tool_calls = total_tool_calls,
+                tool_calls = tool_call_budget.used(),
                 "agent loop complete — returning text"
             );
             return Ok(finish_agent_run(
@@ -560,7 +480,7 @@ pub async fn run_agent_loop_with_context_and_limits(
                     FinalTextSource::NewSegment
                 },
                 iterations,
-                total_tool_calls,
+                tool_call_budget.used(),
                 &usage_accumulator,
                 Vec::new(),
             ));
@@ -587,8 +507,6 @@ pub async fn run_agent_loop_with_context_and_limits(
         ));
 
         // Execute tool calls concurrently.
-        total_tool_calls += response.tool_calls.len();
-
         let iteration_tool_calls: Arc<[RunnerToolCall]> = response
             .tool_calls
             .iter()

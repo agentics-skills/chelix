@@ -81,6 +81,13 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
             return;
         },
     };
+    let runtime_limits = match config.agent_runtime_limits(&agent_id) {
+        Ok(limits) => limits,
+        Err(error) => {
+            warn!(agent_id, error = %error, "session summary: failed to resolve agent runtime limits");
+            return;
+        },
+    };
     let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
     let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> = Arc::new(
         chelix_chat::AgentScopedMemoryWriter::new(Arc::clone(mm), agent_id, write_mode),
@@ -89,6 +96,7 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
     match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
         provider,
         &tools_config,
+        runtime_limits.max_tools_threshold,
         &chat_msgs,
         writer,
         chelix_agents::silent_turn::SilentTurnPrompt::SessionSummary,

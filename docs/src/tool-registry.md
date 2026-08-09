@@ -324,15 +324,17 @@ registry_mode = "lazy"   # default: "full"
    directly — standard pipeline, hooks fire normally. `get_tool` is not an
    execution permission step and should not be repeated for the same tool.
 
-The runner re-computes schemas each iteration, so revealed schemas appear
+The runner re-computes schemas each model round, so revealed schemas appear
 immediately. On later turns, lazy visibility is restored from structured session
 history: prior successful `get_tool` schema reveals (`tool_result` with
 `tool_name == "get_tool"`, `success == true`, and
 `result.schema_visible == true`) and prior assistant tool calls keep those
 schemas visible. The restoration is not inferred from user or assistant prose,
-and older sessions that predate `get_tool` simply start from `{get_tool}`. The
-iteration limit is tripled in lazy mode to account for the extra discovery
-round-trips.
+and older sessions that predate `get_tool` simply start from `{get_tool}`.
+Every LLM-emitted `get_tool` invocation consumes one unit from the active
+agent's `max_tools_threshold`, just like any other tool call. Calling the
+revealed target tool consumes another unit. Lazy mode does not increase the
+threshold.
 
 `get_tool` is a reserved control-plane name: enabling lazy mode fails cleanly if
 a user or MCP tool is already named `get_tool`, and the existing tool is left

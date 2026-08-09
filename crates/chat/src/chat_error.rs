@@ -3,7 +3,49 @@
 //! Converts raw error strings from agent runners / LLM providers into
 //! structured JSON payloads that the frontend can render directly.
 
-use serde_json::Value;
+use {chelix_agents::AgentRunError, serde_json::Value};
+
+/// Convert a typed runner error into a structured chat error object.
+pub fn parse_agent_run_error(
+    error: &AgentRunError,
+    raw: &str,
+    provider_name: Option<&str>,
+) -> Value {
+    let AgentRunError::MaxToolsThresholdReached {
+        threshold,
+        used,
+        requested,
+    } = error
+    else {
+        return parse_chat_error(raw, provider_name);
+    };
+
+    let mut error = build_error(
+        "max_tools_threshold_reached",
+        "\u{1F6D1}",
+        "Tool-call threshold reached",
+        &format!(
+            "The next batch requests {requested} tool calls after {used} of {threshold} have been used. Send a new message to continue."
+        ),
+        None,
+        None,
+        Some(serde_json::json!({
+            "threshold": threshold,
+            "used": used,
+            "requested": requested,
+        })),
+    );
+    if let Some(obj) = error.as_object_mut() {
+        obj.insert("threshold".into(), serde_json::json!(threshold));
+        obj.insert("used".into(), serde_json::json!(used));
+        obj.insert("requested".into(), serde_json::json!(requested));
+        obj.insert("canContinue".into(), Value::Bool(true));
+        if let Some(name) = provider_name {
+            obj.insert("provider".into(), Value::String(name.to_string()));
+        }
+    }
+    error
+}
 
 /// Parse a raw error string into a structured error object with `type`, `icon`,
 /// `title`, `detail`, and optionally `provider`, `resetsAt`, and
@@ -23,31 +65,6 @@ pub fn parse_chat_error(raw: &str, provider_name: Option<&str>) -> Value {
 fn try_parse_known_error(raw: &str) -> Value {
     if raw.starts_with("agent run timed out after ") {
         return build_error("timeout", "", "Timed out", raw, None, None, None);
-    }
-
-    // Max iterations reached — before JSON parsing since the message is plain text.
-    if raw.contains("agent loop exceeded max iterations") {
-        let limit = raw
-            .rsplit('(')
-            .next()
-            .and_then(|s| s.trim_end_matches(')').trim().parse::<u64>().ok())
-            .unwrap_or(25);
-        let mut err = build_error(
-            "max_iterations_reached",
-            "\u{1F504}",
-            "Iteration limit reached",
-            &format!(
-                "The agent stopped after {} iterations. You can continue if needed.",
-                limit
-            ),
-            None,
-            None,
-            Some(serde_json::json!({ "limit": limit })),
-        );
-        if let Some(obj) = err.as_object_mut() {
-            obj.insert("canContinue".into(), Value::Bool(true));
-        }
-        return err;
     }
 
     let http_status = extract_http_status(raw);
@@ -461,9 +478,9 @@ fn translation_keys_for(error_type: &str) -> (Option<&'static str>, Option<&'sta
             Some("errors:chat.billingExhausted.title"),
             Some("errors:chat.billingExhausted.detail"),
         ),
-        "max_iterations_reached" => (
-            Some("errors:chat.maxIterationsReached.title"),
-            Some("errors:chat.maxIterationsReached.detail"),
+        "max_tools_threshold_reached" => (
+            Some("errors:chat.maxToolsThresholdReached.title"),
+            Some("errors:chat.maxToolsThresholdReached.detail"),
         ),
         "api_error" | "unknown" => (Some("errors:generic.title"), None),
         _ => (None, None),
@@ -660,22 +677,30 @@ mod tests {
     }
 
     #[test]
-    fn test_max_iterations_reached() {
-        let raw = "agent loop exceeded max iterations (25)";
-        let result = parse_chat_error(raw, None);
-        assert_eq!(result["type"], "max_iterations_reached");
-        assert_eq!(result["title"], "Iteration limit reached");
+    fn test_max_tools_threshold_reached() {
+        let error = AgentRunError::MaxToolsThresholdReached {
+            threshold: 128,
+            used: 127,
+            requested: 2,
+        };
+        let result = parse_agent_run_error(&error, &error.to_string(), None);
+        assert_eq!(result["type"], "max_tools_threshold_reached");
+        assert_eq!(result["title"], "Tool-call threshold reached");
         assert_eq!(result["canContinue"], true);
-        assert_eq!(result["detail_params"]["limit"], 25u64);
+        assert_eq!(result["threshold"], 128u64);
+        assert_eq!(result["used"], 127u64);
+        assert_eq!(result["requested"], 2u64);
+        assert_eq!(result["detail_params"]["threshold"], 128u64);
+        assert_eq!(result["detail_params"]["used"], 127u64);
+        assert_eq!(result["detail_params"]["requested"], 2u64);
         assert_eq!(
             result["title_key"],
-            "errors:chat.maxIterationsReached.title"
+            "errors:chat.maxToolsThresholdReached.title"
         );
         assert_eq!(
             result["detail_key"],
-            "errors:chat.maxIterationsReached.detail"
+            "errors:chat.maxToolsThresholdReached.detail"
         );
-        assert!(result["detail"].as_str().unwrap().contains("25 iterations"));
     }
 
     #[test]
@@ -690,11 +715,15 @@ mod tests {
     }
 
     #[test]
-    fn test_max_iterations_reached_custom_limit() {
-        let raw = "agent loop exceeded max iterations (10)";
-        let result = parse_chat_error(raw, Some("openrouter"));
-        assert_eq!(result["type"], "max_iterations_reached");
-        assert_eq!(result["detail_params"]["limit"], 10u64);
+    fn test_max_tools_threshold_reached_includes_provider() {
+        let error = AgentRunError::MaxToolsThresholdReached {
+            threshold: 10,
+            used: 9,
+            requested: 2,
+        };
+        let result = parse_agent_run_error(&error, &error.to_string(), Some("openrouter"));
+        assert_eq!(result["type"], "max_tools_threshold_reached");
+        assert_eq!(result["threshold"], 10u64);
         assert_eq!(result["provider"], "openrouter");
     }
 

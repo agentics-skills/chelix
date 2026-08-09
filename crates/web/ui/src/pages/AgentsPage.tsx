@@ -61,6 +61,7 @@ interface ModePreset {
 
 interface AgentFormProps {
 	agent: AgentPersona | null;
+	defaultMaxToolsThreshold: number | null;
 	onSave: () => void;
 	onCancel: () => void;
 }
@@ -84,6 +85,7 @@ interface PresetCardProps {
 
 interface PresetFormProps {
 	preset: ConfigPreset | null;
+	defaultMaxToolsThreshold: number | null;
 	onSave: () => void;
 	onCancel: () => void;
 }
@@ -122,6 +124,12 @@ function parseModesPayload(value: unknown): ModePreset[] {
 	return value.modes.map(parseModePayload).filter((mode): mode is ModePreset => mode !== null);
 }
 
+function parseDefaultMaxToolsThreshold(value: unknown): number | null {
+	if (!(isRecord(value) && isRecord(value.defaults))) return null;
+	const threshold = value.defaults.max_tools_threshold;
+	return typeof threshold === "number" && Number.isSafeInteger(threshold) && threshold >= 1 ? threshold : null;
+}
+
 export function initAgents(container: HTMLElement, subPath?: string | null): void {
 	containerRef = container;
 	render(<AgentsPageComponent subPath={subPath || undefined} />, container);
@@ -134,7 +142,14 @@ export function teardownAgents(): void {
 
 // ── Create / Edit form ──────────────────────────────────────
 
-const PRESET_TOML_PLACEHOLDER = `model = "haiku"
+function defaultAgentPresetToml(maxToolsThreshold: number): string {
+	return `max_tools_threshold = ${maxToolsThreshold}`;
+}
+
+function presetTomlPlaceholder(maxToolsThreshold: number | null): string {
+	const threshold = maxToolsThreshold === null ? "<required>" : String(maxToolsThreshold);
+	return `model = "haiku"
+max_tools_threshold = ${threshold}
 timeout_secs = 30
 
 [tools]
@@ -149,6 +164,7 @@ deny = ["execute_command"]
 # Skill access control
 # [skills]
 # deny = ["gaming", "social-media"]`;
+}
 
 // ── Capability controls types ────────────────────────────────
 
@@ -328,14 +344,13 @@ async function saveAgentSupplementalData(draft: AgentSupplementalDraft): Promise
 		requests.push(sendRpc("agents.identity.update_soul", { agent_id: draft.agentId, soul: trimmedSoul }));
 	}
 	const toml = mergedAgentPresetToml(draft);
-	const savingToml = draft.capabilitiesOpen || capabilitiesConfigured(draft) || !!toml;
-	if (savingToml) requests.push(sendRpc("agents.preset.save", { id: draft.agentId, toml }));
+	if (toml) requests.push(sendRpc("agents.preset.save", { id: draft.agentId, toml }));
 	const results = await Promise.all(requests);
-	const tomlResult = savingToml ? results.at(-1) : null;
+	const tomlResult = toml ? results.at(-1) : null;
 	return tomlResult && !tomlResult.ok ? tomlResult.error?.message || "Failed to save preset TOML" : null;
 }
 
-function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
+function AgentForm({ agent, defaultMaxToolsThreshold, onSave, onCancel }: AgentFormProps): VNode {
 	const isEdit = !!agent;
 	const [id, setId] = useState(agent?.id || "");
 	const [name, setName] = useState(agent?.name || "");
@@ -419,10 +434,19 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 	}
 
 	function finishSave(agentId: string): void {
+		let materializedPresetToml = presetToml;
+		if (!(isEdit || materializedPresetToml.trim())) {
+			if (defaultMaxToolsThreshold === null) {
+				setSaving(false);
+				setError("Agent preset defaults are unavailable.");
+				return;
+			}
+			materializedPresetToml = defaultAgentPresetToml(defaultMaxToolsThreshold);
+		}
 		void saveAgentSupplementalData({
 			agentId,
 			soul,
-			presetToml,
+			presetToml: materializedPresetToml,
 			capabilitiesOpen,
 			mcpMode,
 			mcpServers,
@@ -448,6 +472,10 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 		}
 		if (!(isEdit || id.trim())) {
 			setError("ID is required.");
+			return;
+		}
+		if (!(isEdit || defaultMaxToolsThreshold !== null)) {
+			setError("Agent preset defaults are unavailable.");
 			return;
 		}
 		setError(null);
@@ -637,7 +665,7 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 								className="provider-key-input"
 								value={presetToml}
 								onInput={(e) => setPresetToml(targetValue(e))}
-								placeholder={PRESET_TOML_PLACEHOLDER}
+								placeholder={presetTomlPlaceholder(defaultMaxToolsThreshold)}
 								rows={6}
 								style={{
 									resize: "vertical",
@@ -670,7 +698,7 @@ function AgentForm({ agent, onSave, onCancel }: AgentFormProps): VNode {
 	);
 }
 
-function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
+function PresetForm({ preset, defaultMaxToolsThreshold, onSave, onCancel }: PresetFormProps): VNode {
 	const isEdit = !!preset;
 	const [id, setId] = useState(preset?.id || "");
 	const [name, setName] = useState(preset?.name || "");
@@ -707,23 +735,30 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 			setError("Name is required.");
 			return;
 		}
+		const usesAdvancedToml = advancedDirty && advancedToml.trim() !== "";
+		if (!(isEdit || usesAdvancedToml || defaultMaxToolsThreshold !== null)) {
+			setError("Agent preset defaults are unavailable.");
+			return;
+		}
 		setSaving(true);
 		setError(null);
 		const method = isEdit ? "agents.preset.update" : "agents.preset.create";
-		const params =
-			advancedDirty && advancedToml.trim()
-				? { id: trimmedId, toml: advancedToml }
-				: {
-						id: trimmedId,
-						name,
-						emoji,
-						theme,
-						model,
-						system_prompt_suffix: systemPrompt,
-						tools_allow: parseCsvList(toolsAllow),
-						tools_deny: parseCsvList(toolsDeny),
-						delegate_only: delegateOnly,
-					};
+		const structuredParams = {
+			id: trimmedId,
+			name,
+			emoji,
+			theme,
+			model,
+			system_prompt_suffix: systemPrompt,
+			tools_allow: parseCsvList(toolsAllow),
+			tools_deny: parseCsvList(toolsDeny),
+			delegate_only: delegateOnly,
+		};
+		const params = usesAdvancedToml
+			? { id: trimmedId, toml: advancedToml }
+			: isEdit
+				? structuredParams
+				: { ...structuredParams, max_tools_threshold: defaultMaxToolsThreshold };
 		sendRpc(method, params).then((res) => {
 			setSaving(false);
 			if (!res?.ok) {
@@ -839,7 +874,7 @@ function PresetForm({ preset, onSave, onCancel }: PresetFormProps): VNode {
 						setAdvancedDirty(true);
 						setAdvancedToml(targetValue(e));
 					}}
-					placeholder={PRESET_TOML_PLACEHOLDER}
+					placeholder={presetTomlPlaceholder(defaultMaxToolsThreshold)}
 					rows={8}
 				/>
 			)}
@@ -1217,6 +1252,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	const [configPresets, setConfigPresets] = useState<ConfigPreset[]>([]);
 	const [modes, setModes] = useState<ModePreset[]>([]);
 	const [defaultId, setDefaultId] = useState("main");
+	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState<number | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [editing, setEditing] = useState<null | "new" | AgentPersona>(null);
 	const [editingPreset, setEditingPreset] = useState<null | "new" | ConfigPreset>(null);
@@ -1239,7 +1275,9 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 				}
 				setIsLoading(false);
 				if (res?.ok) {
-					const parsed = parseAgentsListPayload(res.payload as Parameters<typeof parseAgentsListPayload>[0]);
+					const payload = res.payload as Parameters<typeof parseAgentsListPayload>[0];
+					const parsed = parseAgentsListPayload(payload);
+					setDefaultMaxToolsThreshold(parseDefaultMaxToolsThreshold(res.payload));
 					setDefaultId(parsed.defaultId);
 					setAgents(parsed.agents.map((a) => ({ ...a, id: a.id || "", name: a.name || a.id || "" }) as AgentPersona));
 				} else {
@@ -1321,8 +1359,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	function onRevertPreset(id: string): void {
 		confirmDialog(`Revert preset "${id}" to the built-in default? Your local override will be removed.`).then((yes) => {
 			if (!yes) return;
-			// Remove the user override by saving an empty TOML (removes from chelix.toml)
-			sendRpc("agents.preset.save", { id, toml: "" }).then((res) => {
+			sendRpc("agents.preset.revert", { id }).then((res) => {
 				if (res?.ok) {
 					fetchConfigPresets();
 				} else {
@@ -1411,6 +1448,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 			<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 				<AgentForm
 					agent={editing === "new" ? null : editing}
+					defaultMaxToolsThreshold={defaultMaxToolsThreshold}
 					onSave={finishAgentEdit}
 					onCancel={() => setEditing(null)}
 				/>
@@ -1422,6 +1460,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 			<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 				<PresetForm
 					preset={editingPreset === "new" ? null : editingPreset}
+					defaultMaxToolsThreshold={defaultMaxToolsThreshold}
 					onSave={finishPresetEdit}
 					onCancel={() => setEditingPreset(null)}
 				/>

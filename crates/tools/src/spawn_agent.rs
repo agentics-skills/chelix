@@ -223,29 +223,24 @@ impl SpawnAgentTool {
     async fn resolve_preset(
         &self,
         params: &serde_json::Value,
-    ) -> crate::Result<(Option<String>, Option<AgentPreset>)> {
+    ) -> crate::Result<(String, AgentPreset)> {
         let explicit_name = str_param(params, "preset").map(String::from);
 
-        let Some(ref agents_config) = self.agents_config else {
-            if explicit_name.is_some() {
-                return Err(Error::message(
-                    "spawn preset requested but agents presets are not configured",
-                ));
-            }
-            return Ok((None, None));
-        };
+        let agents_config = self
+            .agents_config
+            .as_ref()
+            .ok_or_else(|| Error::message("spawn_agent requires configured agent presets"))?;
 
         let agents = agents_config.read().await;
-        let preset_name = explicit_name.or_else(|| agents.default_preset.clone());
-        let Some(preset_name) = preset_name else {
-            return Ok((None, None));
-        };
+        let preset_name = explicit_name
+            .or_else(|| agents.default_preset.clone())
+            .ok_or_else(|| Error::message("spawn_agent requires a configured default preset"))?;
         let preset = agents.get_preset(&preset_name).cloned().ok_or_else(|| {
             Error::message(format!(
                 "spawn preset '{preset_name}' not found in config.agents.presets"
             ))
         })?;
-        Ok((Some(preset_name), Some(preset)))
+        Ok((preset_name, preset))
     }
 }
 
@@ -440,43 +435,27 @@ impl AgentTool for SpawnAgentTool {
             .tools_config_source
             .load()
             .map_err(|error| Error::message(format!("reload tools config: {error}")))?;
-        let runtime_limits =
-            AgentRuntimeLimits::resolve_for_spawned_agent(&tools_config, preset.as_ref());
+        let runtime_limits = AgentRuntimeLimits::resolve_for_spawned_agent(&tools_config, &preset);
         let explicit_model = str_param(&params, "model").map(String::from);
-        let model_id = explicit_model
-            .clone()
-            .or_else(|| preset.as_ref().and_then(|p| p.model.clone()));
+        let model_id = explicit_model.clone().or_else(|| preset.model.clone());
 
         let explicit_allow_tools = string_array_param(&params, "allow_tools")?;
         let allow_tools = if explicit_allow_tools.is_empty() {
-            preset
-                .as_ref()
-                .map(|p| p.tools.allow.clone())
-                .unwrap_or_default()
+            preset.tools.allow.clone()
         } else {
             explicit_allow_tools
         };
 
         let explicit_deny_tools = string_array_param(&params, "deny_tools")?;
         let deny_tools = if explicit_deny_tools.is_empty() {
-            preset
-                .as_ref()
-                .map(|p| p.tools.deny.clone())
-                .unwrap_or_default()
+            preset.tools.deny.clone()
         } else {
             explicit_deny_tools
         };
 
-        let delegate_only = bool_param(
-            &params,
-            "delegate_only",
-            preset.as_ref().map(|p| p.delegate_only).unwrap_or(false),
-        );
+        let delegate_only = bool_param(&params, "delegate_only", preset.delegate_only);
         let nonblocking = bool_param(&params, "nonblocking", false);
-        let mut tool_controls = preset
-            .as_ref()
-            .map(|p| p.tool_controls.clone())
-            .unwrap_or_default();
+        let mut tool_controls = preset.tool_controls.clone();
         if params.get("active_tools").is_some() {
             tool_controls.active_tools = Some(string_array_param(&params, "active_tools")?);
         }
@@ -502,10 +481,10 @@ impl AgentTool for SpawnAgentTool {
             let base_provider = reg
                 .get(&id)
                 .ok_or_else(|| Error::message(format!("unknown model: {id}")))?;
-            Self::maybe_apply_reasoning_effort(base_provider, preset.as_ref())
+            Self::maybe_apply_reasoning_effort(base_provider, Some(&preset))
         } else {
             let base = Arc::clone(&self.default_provider);
-            Self::maybe_apply_reasoning_effort(base, preset.as_ref())
+            Self::maybe_apply_reasoning_effort(base, Some(&preset))
         };
 
         // Capture model ID before provider is moved into the sub-agent loop.
@@ -515,11 +494,10 @@ impl AgentTool for SpawnAgentTool {
             task = %task,
             depth = depth,
             model = %model_id,
-            preset = ?preset_name,
+            preset = %preset_name,
             timeout_secs = runtime_limits.timeout_secs,
             timeout_source = runtime_limits.timeout_source.as_str(),
-            max_iterations = runtime_limits.max_iterations,
-            max_iterations_source = runtime_limits.max_iterations_source.as_str(),
+            max_tools_threshold = runtime_limits.max_tools_threshold,
             "spawning sub-agent"
         );
 
@@ -533,8 +511,7 @@ impl AgentTool for SpawnAgentTool {
         let mut sub_tools = self.build_sub_tools(&allow_tools, &deny_tools, delegate_only);
 
         // Apply session access policy if the preset configures one.
-        if let Some(ref p) = preset
-            && let Some(ref session_config) = p.sessions
+        if let Some(ref session_config) = preset.sessions
             && let Some(ref deps) = self.session_deps
         {
             let policy = SessionAccessPolicy::from(session_config);
@@ -567,7 +544,7 @@ impl AgentTool for SpawnAgentTool {
 
         // Build system prompt with identity injection and memory.
         let system_prompt =
-            build_sub_agent_prompt(task, context, preset.as_ref(), preset_name.as_deref());
+            build_sub_agent_prompt(task, context, Some(&preset), Some(&preset_name));
 
         // Build tool context with incremented depth and propagated session key.
         let session_key = params
@@ -602,7 +579,7 @@ impl AgentTool for SpawnAgentTool {
                     task.to_string(),
                     session_key,
                     model_id.clone(),
-                    preset_name.clone(),
+                    Some(preset_name.clone()),
                     abort_handle,
                 )
                 .await;
@@ -848,7 +825,7 @@ async fn run_spawned_agent(
         None,
         None,
         AgentLoopLimits {
-            max_iterations: Some(runtime_limits.max_iterations),
+            max_tools_threshold: runtime_limits.max_tools_threshold,
             max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
             automatic_checkpointing: false,
             resume_from_history: false,

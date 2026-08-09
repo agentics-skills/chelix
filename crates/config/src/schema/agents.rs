@@ -5,6 +5,7 @@ use {
 };
 
 const DEFAULT_AGENT_PRESET: &str = "research";
+pub const DEFAULT_MAX_TOOLS_THRESHOLD: usize = 128;
 
 /// Agent presets configure identity, model, and tool policy for agents.
 ///
@@ -122,6 +123,10 @@ fn default_preset_name() -> Option<String> {
 #[must_use]
 pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
     [
+        ("main", AgentPreset {
+            max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
+            ..Default::default()
+        }),
         (
             "research",
             builtin_agent_preset(
@@ -132,7 +137,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                  Do not edit files unless the task explicitly asks for changes. \
                  Return a concise synthesis with source paths, URLs, commands, and open \
                  questions.",
-                Some(16),
                 false,
             ),
         ),
@@ -145,7 +149,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                  existing patterns, keep edits small, and remove dead code you directly \
                  replace. Run the smallest relevant verification and report changed files, \
                  validation, and any remaining risk.",
-                Some(25),
                 false,
             ),
         ),
@@ -157,7 +160,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                 "Review for correctness, regressions, security issues, data loss, and missing \
                  tests. Findings come first, ordered by severity, with concrete file and line \
                  references when available. Do not make edits unless explicitly asked.",
-                Some(14),
                 false,
             ),
         ),
@@ -170,7 +172,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                  workflow, use browser automation when available, capture useful evidence, \
                  and report exact steps, expected behavior, actual behavior, and pass/fail \
                  status.",
-                Some(16),
                 false,
             ),
         ),
@@ -183,7 +184,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                  copy, responsive behavior, and edge states. Propose concrete changes that \
                  fit the existing design system and call out usability risks without hand-wavy \
                  vibes.",
-                Some(14),
                 false,
             ),
         ),
@@ -195,7 +195,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                 "Update or draft user-facing documentation. Keep docs aligned with behavior, \
                  include runnable examples when useful, verify command names and config keys, \
                  and flag any product behavior that is unclear or undocumented.",
-                Some(14),
                 false,
             ),
         ),
@@ -207,7 +206,6 @@ pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
                 "Break broad work into independent subtasks, delegate only when useful, track \
                  dependencies, and integrate results into a single answer. Avoid doing \
                  implementation work directly unless coordination is not enough.",
-                Some(18),
                 true,
             ),
         ),
@@ -238,7 +236,6 @@ fn builtin_agent_preset(
     display_name: &str,
     theme: &str,
     system_prompt_suffix: &str,
-    max_iterations: Option<u64>,
     delegate_only: bool,
 ) -> AgentPreset {
     AgentPreset {
@@ -248,7 +245,7 @@ fn builtin_agent_preset(
             theme: Some(theme.to_string()),
         },
         system_prompt_suffix: Some(system_prompt_suffix.to_string()),
-        max_iterations,
+        max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
         delegate_only,
         ..Default::default()
     }
@@ -521,14 +518,17 @@ impl PresetSkillPolicy {
 /// The global `[tools.policy]` (Layer 1) always applies first; the preset's
 /// tool policy (Layer 3) narrows further. MCP tools can be filtered using
 /// `tools.deny = ["mcp__<server>__*"]` patterns.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AgentPreset {
     /// Agent identity overrides.
+    #[serde(default)]
     pub identity: AgentIdentity,
     /// Optional model override for this preset.
+    #[serde(default)]
     pub model: Option<String>,
     /// Tool policy and lazy schema visibility for this preset.
+    #[serde(default)]
     pub tools: PresetToolPolicy,
     /// Restrict sub-agent to delegation/session/task tools only.
     #[serde(default)]
@@ -537,23 +537,29 @@ pub struct AgentPreset {
     #[serde(default, skip_serializing_if = "AgentToolControls::is_empty")]
     pub tool_controls: AgentToolControls,
     /// Optional extra instructions appended to sub-agent system prompt.
+    #[serde(default)]
     pub system_prompt_suffix: Option<String>,
-    /// Maximum iterations for agent loop.
-    pub max_iterations: Option<u64>,
+    /// Maximum LLM-initiated tool calls per agent loop segment.
+    pub max_tools_threshold: usize,
     /// Timeout in seconds for the sub-agent.
+    #[serde(default)]
     pub timeout_secs: Option<u64>,
     /// Maximum in-context bytes per tool result before truncation.
     /// Falls back to `tools.max_tool_result_bytes`.
+    #[serde(default)]
     pub max_tool_result_bytes: Option<usize>,
     /// Session access policy for inter-agent communication.
+    #[serde(default)]
     pub sessions: Option<SessionAccessPolicyConfig>,
     /// Persistent per-agent memory configuration.
+    #[serde(default)]
     pub memory: Option<PresetMemoryConfig>,
     /// Reasoning/thinking effort level for models that support extended thinking.
     ///
     /// Controls extended thinking for models that support it (e.g. Claude Opus,
     /// OpenAI o-series). Higher values enable deeper reasoning but increase
     /// latency and token usage.
+    #[serde(default)]
     pub reasoning_effort: Option<ReasoningEffort>,
     /// Per-agent MCP server access control.
     ///
@@ -570,6 +576,27 @@ pub struct AgentPreset {
     /// by name or category.
     #[serde(default, skip_serializing_if = "PresetSkillPolicy::is_empty")]
     pub skills: PresetSkillPolicy,
+}
+
+impl Default for AgentPreset {
+    fn default() -> Self {
+        Self {
+            identity: AgentIdentity::default(),
+            model: None,
+            tools: PresetToolPolicy::default(),
+            delegate_only: false,
+            tool_controls: AgentToolControls::default(),
+            system_prompt_suffix: None,
+            max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
+            timeout_secs: None,
+            max_tool_result_bytes: None,
+            sessions: None,
+            memory: None,
+            reasoning_effort: None,
+            mcp: PresetMcpPolicy::default(),
+            skills: PresetSkillPolicy::default(),
+        }
+    }
 }
 
 #[cfg(test)]

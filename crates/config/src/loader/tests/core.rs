@@ -71,10 +71,11 @@ fn apply_env_overrides_tools_agent_timeout() {
 }
 
 #[test]
-fn apply_env_overrides_tools_agent_max_iterations() {
+fn apply_env_overrides_rejects_tools_agent_max_iterations() {
     let vars = vec![("CHELIX_TOOLS__AGENT_MAX_ITERATIONS".into(), "64".into())];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
-    assert_eq!(config.tools.agent_max_iterations, 64);
+    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
+        .expect_err("removed env override must fail");
+    assert!(error.to_string().contains("agent_max_iterations"));
 }
 
 #[test]

@@ -6,5 +6,6 @@ mod compaction;
 mod helpers;
 mod loop_detector;
 mod parallel;
+mod tool_budget;
 mod tool_controls;
 mod tool_result_persistence;

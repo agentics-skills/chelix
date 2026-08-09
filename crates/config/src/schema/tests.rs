@@ -256,7 +256,7 @@ default_preset = "research"
 model = "openai/gpt-5.2"
 delegate_only = false
 system_prompt_suffix = "Focus on evidence."
-max_iterations = 10
+max_tools_threshold = 10
 timeout_secs = 120
 
 [agents.presets.research.identity]
@@ -284,7 +284,7 @@ preload = ["ripgrep"]
     assert_eq!(preset.identity.name.as_deref(), Some("scout"));
     assert_eq!(preset.identity.emoji.as_deref(), Some("🔍"));
     assert_eq!(preset.identity.theme.as_deref(), Some("thorough"));
-    assert_eq!(preset.max_iterations, Some(10));
+    assert_eq!(preset.max_tools_threshold, 10);
     assert_eq!(preset.timeout_secs, Some(120));
 }
 
@@ -296,12 +296,14 @@ default_preset = "custom"
 
 [agents.presets.custom]
 system_prompt_suffix = "Custom work."
+max_tools_threshold = 128
 
 [agents.presets.custom.identity]
 name = "Custom"
 
 [agents.presets.research]
 system_prompt_suffix = "User research override."
+max_tools_threshold = 128
 
 [agents.presets.research.identity]
 name = "Scout"
@@ -1036,6 +1038,7 @@ fn resolve_external_url_returns_none_when_both_unset() {
 fn mcp_policy_empty_toml_is_all() {
     let toml_str = r#"
 [agents.presets.test]
+max_tools_threshold = 128
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let preset = config.agents.presets.get("test").unwrap();
@@ -1046,6 +1049,9 @@ fn mcp_policy_empty_toml_is_all() {
 fn mcp_policy_empty_allow_is_not_all() {
     // allow_servers = [] should parse as Allow(vec![]), NOT as All.
     let toml_str = r#"
+[agents.presets.test]
+max_tools_threshold = 128
+
 [agents.presets.test.mcp]
 allow_servers = []
 "#;
@@ -1058,6 +1064,9 @@ allow_servers = []
 #[test]
 fn mcp_policy_both_fields_is_error() {
     let toml_str = r#"
+[agents.presets.test]
+max_tools_threshold = 128
+
 [agents.presets.test.mcp]
 allow_servers = ["github"]
 deny_servers = ["home-assistant"]
