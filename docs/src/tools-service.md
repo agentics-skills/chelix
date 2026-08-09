@@ -156,9 +156,9 @@ The shared wire types live in `chelix-protocol`. The current protocol version is
 | ------ | --------------------- | ------------------------------------------------- |
 | `GET`  | `/v1/health`          | Return the tools-service protocol version         |
 | `POST` | `/v1/edit-file`       | Replace exact text in one existing UTF-8 file     |
-| `POST` | `/v1/multiedit-file`  | Atomically apply ordered edits to one UTF-8 file  |
+| `POST` | `/v1/multiedit-file`  | Apply ordered edits to one existing UTF-8 file   |
 | `POST` | `/v1/list-directory`  | List one directory                                |
-| `POST` | `/v1/overwrite-file`  | Atomically create or replace one complete file    |
+| `POST` | `/v1/overwrite-file`  | Create or write one complete file in place        |
 | `POST` | `/v1/read-file`       | Read text or binary file content                  |
 | `POST` | `/v1/read-media`      | Read an image or PDF                              |
 | `POST` | `/v1/ripgrep`         | Execute the `ripgrep` tool request and reply      |
@@ -217,8 +217,8 @@ required boolean:
 ```
 
 Unknown fields, explicit `null`, an empty path or `oldString`, and identical old
-and new strings are rejected. The path must be absolute and identify an
-existing regular UTF-8 file. Symbolic links are rejected.
+and new strings are rejected. The path must be absolute and resolve to an
+existing regular UTF-8 file. Symbolic links are followed.
 
 A literal `oldString` match is used first. Without `replaceAll`, more than one
 match is an error; with `replaceAll`, every match is replaced. If no literal
@@ -227,11 +227,15 @@ matches straight quotes against Unicode smart quotes. A successful recovery is
 reported explicitly as `crlf` or `smart_quotes` in the optional `recovery`
 response field.
 
-Edits for the same resolved path are serialized inside the service. The file
-is read, matched, and atomically replaced through a temporary sibling file
-within one service call. Validation, read, match, and persistence failures are
-explicit tool errors and leave the target unchanged. The gateway has no local
-implementation or fallback path.
+Writes for the same resolved target are serialized inside the service. The
+file is read and the complete edit is prepared before persistence starts.
+Validation, read, and match failures therefore leave the target unchanged. A
+successful edit writes the existing file in place, preserving its inode and
+permissions. If `filePath` is a symbolic link, the service writes its resolved
+target and preserves the link. Persistence failures are explicit tool errors,
+but an I/O failure or process interruption after writing starts can leave
+partially updated content. The gateway has no local implementation or fallback
+path.
 
 ### Multiedit file execution contract
 
@@ -259,21 +263,39 @@ ordered `edits` array. Every item uses the same two strict forms as the nested
 
 The service reads the existing regular UTF-8 file once and applies every edit
 to one in-memory buffer in array order. Each edit therefore sees the output of
-all preceding edits. The service persists the final buffer after every edit
-succeeds. An error identifies the failing edit by its one-based index and
-leaves the target unchanged.
+all preceding edits. The service begins persistence only after every edit
+succeeds. An edit error identifies the failing edit by its one-based index and
+leaves the target unchanged. Once in-place persistence starts, an I/O failure
+or process interruption can leave partially updated content.
 
 The successful response contains `filePath`, `editsApplied`,
 `replacementsPerEdit`, and `recoveriesPerEdit`. The two arrays preserve request
 order; each recovery entry is `null`, `crlf`, or `smart_quotes`. Unknown fields,
 explicit `null`, invalid edit forms, empty arrays or strings, identical old and
-new strings, relative paths, symbolic links, non-regular targets, and non-UTF-8
-files are explicit errors.
+new strings, relative paths, non-regular targets, and non-UTF-8 files are
+explicit errors. Symbolic links are followed.
 
-`edit_file` and `multiedit_file` share the service-owned lock for the resolved
-target and the same exact-match, recovery, and atomic-persistence primitives.
-The `multiedit_file` implementation and state live only in
-`chelix-tools-service`; the gateway performs one authenticated API call.
+`edit_file`, `multiedit_file`, and `overwrite_file` share the service-owned lock
+for the resolved target and the same in-place persistence primitive.
+`edit_file` and `multiedit_file` also share exact-match and recovery logic. The
+`multiedit_file` implementation and state live only in `chelix-tools-service`;
+the gateway performs one authenticated API call.
+
+### Overwrite file execution contract
+
+`POST /v1/overwrite-file` requires an absolute `filePath` and the complete
+UTF-8 `content`. It creates a missing file or writes an existing regular file
+in place. Parent directories must already exist. An empty `content` truncates
+the target. Existing symbolic links are followed and preserved. A dangling
+symbolic link creates its target when the target parent exists. Non-regular
+targets are explicit errors.
+
+The resolved target shares the write lock used by `edit_file` and
+`multiedit_file`. In-place writes preserve the inode and permissions of an
+existing target. Persistence failures are explicit tool errors, but an I/O
+failure or process interruption after writing starts can leave partially
+updated content. The successful response reports the resolved `filePath` and
+UTF-8 `bytesWritten`.
 
 ### Ripgrep execution contract
 

@@ -2,6 +2,7 @@ mod api;
 mod app;
 mod edit_file;
 mod file_edit;
+mod file_write;
 mod interactive_terminal;
 mod list_directory;
 mod multiedit_file;

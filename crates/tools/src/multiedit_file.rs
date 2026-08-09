@@ -32,7 +32,7 @@ impl AgentTool for MultieditFileTool {
     }
 
     fn description(&self) -> &str {
-        "Apply an ordered batch of exact UTF-8 text replacements to one existing regular file. Each edit sees the output of the previous edit. The path must be absolute. The complete batch is atomic: every edit succeeds and the final content is persisted, or the file remains unchanged. Symbolic links are rejected."
+        "Apply an ordered batch of exact UTF-8 text replacements to one existing regular file. Each edit sees the output of the previous edit. The path must be absolute. Every edit must succeed in memory before the existing file is written in place; symbolic links are followed."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -49,7 +49,7 @@ impl AgentTool for MultieditFileTool {
                 "edits": {
                     "type": "array",
                     "minItems": 1,
-                    "description": "The ordered exact replacements to apply atomically.",
+                    "description": "The ordered exact replacements to prepare before writing the file.",
                     "items": {
                         "oneOf": [
                             {
