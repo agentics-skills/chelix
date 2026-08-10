@@ -102,7 +102,6 @@ pub(in crate::channel_events) async fn dispatch_command(
         "agent" => {
             control_handlers::handle_agent(state, session_metadata, &session_key, args).await
         },
-        "mode" => control_handlers::handle_mode(state, session_metadata, &session_key, args).await,
         "model" => {
             control_handlers::handle_model(state, session_metadata, &session_key, args).await
         },

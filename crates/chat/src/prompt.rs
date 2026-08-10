@@ -7,8 +7,8 @@ use {serde_json::Value, tracing::warn};
 use {
     chelix_agents::{
         prompt::{
-            PromptBuildLimits, PromptHostRuntimeContext, PromptModeRuntimeContext,
-            PromptRuntimeContext, PromptSandboxRuntimeContext,
+            PromptBuildLimits, PromptHostRuntimeContext, PromptRuntimeContext,
+            PromptSandboxRuntimeContext,
         },
         tool_registry::ToolSource,
     },
@@ -77,64 +77,46 @@ pub(crate) fn prompt_memory_status(
     }
 }
 
-pub(crate) fn resolve_prompt_agent_id(session_entry: Option<&SessionEntry>) -> String {
-    let Some(entry) = session_entry else {
-        return "main".to_string();
-    };
-    let Some(agent_id) = entry
-        .agent_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return "main".to_string();
-    };
-    if chelix_config::agent_workspace_dir(agent_id).exists() {
-        return agent_id.to_string();
-    }
-    warn!(
-        session = %entry.key,
-        agent_id,
-        "session references unknown agent workspace, falling back to main prompt persona"
-    );
-    "main".to_string()
-}
-
-pub(crate) fn resolve_prompt_mode_context(
+pub(crate) fn resolve_prompt_agent_id(
     config: &chelix_config::ChelixConfig,
     session_entry: Option<&SessionEntry>,
-) -> Option<PromptModeRuntimeContext> {
-    let mode_id = session_entry?
-        .mode_id
-        .as_deref()
+) -> crate::error::Result<String> {
+    let agent_id = session_entry
+        .and_then(|entry| entry.agent_id.as_deref())
         .map(str::trim)
-        .filter(|value| !value.is_empty())?;
-    let mode = config.modes.get_preset(mode_id)?;
-    let prompt = mode.prompt.trim();
-    if prompt.is_empty() {
-        return None;
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| config.agents.default.trim());
+    if agent_id.is_empty() {
+        return Err(crate::error::Error::message(
+            "agents.default must reference an existing agent",
+        ));
     }
-    Some(PromptModeRuntimeContext {
-        id: mode_id.to_string(),
-        name: mode.name.clone().unwrap_or_else(|| mode_id.to_string()),
-        prompt: prompt.to_string(),
-    })
+    if config.agents.get(agent_id).is_none() {
+        return Err(crate::error::Error::message(format!(
+            "unknown agent '{agent_id}'",
+        )));
+    }
+    Ok(agent_id.to_string())
 }
 
-/// Load identity, user profile, soul, and workspace text for one agent.
+/// Load user profile, Soul, and workspace text for one agent.
 pub(crate) fn load_prompt_persona_base_for_agent(
     config: &chelix_config::ChelixConfig,
     agent_id: &str,
-) -> PromptPersona {
+) -> crate::error::Result<PromptPersona> {
     let prompt_memory_mode = config.chat.prompt_memory_mode;
     let agent_write_mode = config.memory.agent_write_mode;
     let memory_style = config.memory.style;
-    let identity =
-        chelix_config::load_identity_for_agent(agent_id).unwrap_or_else(|| config.identity.clone());
+    let agent = config
+        .agents
+        .get(agent_id)
+        .cloned()
+        .ok_or_else(|| crate::error::Error::message(format!("unknown agent '{agent_id}'")))?;
     let user = chelix_config::resolve_user_profile_from_config(config);
-    PromptPersona {
+    Ok(PromptPersona {
         config: config.clone(),
-        identity,
+        agent_id: agent_id.to_string(),
+        agent,
         user,
         soul_text: chelix_config::load_soul_for_agent(agent_id),
         boot_text: chelix_config::load_boot_md_for_agent(agent_id),
@@ -149,7 +131,7 @@ pub(crate) fn load_prompt_persona_base_for_agent(
             false,
             None,
         ),
-    }
+    })
 }
 
 pub(crate) async fn load_prompt_memory_for_session(
@@ -222,9 +204,9 @@ pub(crate) async fn load_prompt_persona_for_session(
     session_key: &str,
     session_entry: Option<&SessionEntry>,
     state_store: Option<&SessionStateStore>,
-) -> PromptPersona {
-    let agent_id = resolve_prompt_agent_id(session_entry);
-    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id);
+) -> crate::error::Result<PromptPersona> {
+    let agent_id = resolve_prompt_agent_id(config, session_entry)?;
+    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id)?;
     let style = persona.config.memory.style;
     let mode = persona.config.chat.prompt_memory_mode;
     let write_mode = persona.config.memory.agent_write_mode;
@@ -236,7 +218,7 @@ pub(crate) async fn load_prompt_persona_for_session(
     persona.memory_text = memory.as_ref().map(|entry| entry.content.clone());
     persona.memory_status =
         prompt_memory_status(style, mode, write_mode, snapshot_active, memory.as_ref());
-    persona
+    Ok(persona)
 }
 
 pub(crate) fn prompt_build_limits_from_config(
@@ -305,11 +287,11 @@ pub(crate) async fn discover_skills_if_enabled(
 
 /// Apply per-agent skill policy to a discovered skill list.
 ///
-/// When the agent preset has a `skills.allow` list, only skills matching
-/// by name or category are kept. Skills in `skills.deny` are then removed.
+/// When the agent has a `skills.allow` list, only skills matching by name or
+/// category are kept. Skills in `skills.deny` are then removed.
 pub(crate) fn filter_skills_for_agent(
     skills: Vec<chelix_skills::types::SkillMetadata>,
-    policy: &chelix_config::schema::PresetSkillPolicy,
+    policy: &chelix_config::schema::AgentSkillPolicy,
 ) -> Vec<chelix_skills::types::SkillMetadata> {
     if policy.is_empty() {
         return skills;
@@ -475,7 +457,6 @@ pub(crate) async fn build_prompt_runtime_context(
     PromptRuntimeContext {
         host: host_ctx,
         sandbox: sandbox_ctx,
-        mode: None,
     }
 }
 
@@ -527,15 +508,15 @@ pub(crate) fn apply_runtime_tool_filters(
 
     let policy = resolve_effective_policy(config, policy_context);
 
-    // Resolve MCP allow-list: if the agent preset uses Allow mode, only
+    // Resolve MCP allow-list: if the agent uses Allow mode, only
     // tools from listed servers pass through. This is handled here (not
     // in the policy deny layer) because ToolPolicy's deny-wins-over-allow
     // semantics can't express "deny all MCP except these servers".
     let mcp_allow: Option<&[chelix_config::schema::McpServerId]> = config
         .agents
-        .get_preset(&policy_context.agent_id)
-        .and_then(|p| match &p.mcp {
-            chelix_config::schema::PresetMcpPolicy::Allow(servers) => Some(servers.as_slice()),
+        .get(&policy_context.agent_id)
+        .and_then(|agent| match &agent.mcp {
+            chelix_config::schema::AgentMcpPolicy::Allow(servers) => Some(servers.as_slice()),
             _ => None,
         });
 
@@ -557,7 +538,7 @@ pub(crate) fn apply_runtime_tool_filters(
 /// The steps mirror the live loop exactly so every surface sees the same tools:
 /// 1. apply allow/deny/runtime filters (or a bare clone when tools are off);
 /// 2. swap in agent-scoped memory tools when a memory manager is available;
-/// 3. in lazy mode, wrap the registry so `get_tool`, preset-preloaded schemas,
+/// 3. in lazy mode, wrap the registry so `get_tool`, agent-preloaded schemas,
 ///    and schemas revealed by session history are visible, while the full
 ///    catalog stays advertised.
 ///
@@ -601,8 +582,8 @@ pub(crate) fn prepare_run_registry(
         )
     {
         let mut visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
-        if let Some(preset) = config.agents.get_preset(&policy_context.agent_id) {
-            visible.extend(preset.tools.preload.iter().cloned());
+        if let Some(agent) = config.agents.get(&policy_context.agent_id) {
+            visible.extend(agent.tools.preload.iter().cloned());
         }
         registry = chelix_agents::lazy_tools::wrap_registry_lazy_with_visible(registry, visible)?;
     }
@@ -683,9 +664,9 @@ mod tests {
         config.tools.policy.allow = vec!["*".into()];
         config
             .agents
-            .presets
-            .insert("locked".into(), chelix_config::schema::AgentPreset {
-                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec![]),
+            .entries
+            .insert("locked".into(), chelix_config::schema::AgentConfig {
+                mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec![]),
                 ..Default::default()
             });
 
@@ -713,9 +694,9 @@ mod tests {
         config.tools.policy.allow = vec!["*".into()];
         config
             .agents
-            .presets
-            .insert("github-only".into(), chelix_config::schema::AgentPreset {
-                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
+            .entries
+            .insert("github-only".into(), chelix_config::schema::AgentConfig {
+                mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec!["github".into()]),
                 ..Default::default()
             });
 
@@ -738,9 +719,9 @@ mod tests {
         config.tools.registry_mode = chelix_config::ToolRegistryMode::Lazy;
         config
             .agents
-            .presets
-            .insert("preloaded".into(), chelix_config::schema::AgentPreset {
-                tools: chelix_config::schema::PresetToolPolicy {
+            .entries
+            .insert("preloaded".into(), chelix_config::schema::AgentConfig {
+                tools: chelix_config::schema::AgentToolPolicy {
                     allow: vec![
                         "execute_command".into(),
                         "mcp__github__builtin_named_like_mcp".into(),
@@ -809,7 +790,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let policy = chelix_config::schema::PresetSkillPolicy {
+        let policy = chelix_config::schema::AgentSkillPolicy {
             allow: Some(vec!["research".into(), "writer".into()]),
             deny: Some(vec!["writer".into()]),
         };

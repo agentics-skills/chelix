@@ -264,7 +264,7 @@ Sessions are labeled for easy identification in the sidebar:
 
 ## Agent Execution
 
-Each webhook is bound to an agent preset. When a delivery is processed:
+Each webhook is bound to an agent. When a delivery is processed:
 
 1. The worker creates a session with the webhook's session key.
 2. The configured agent is assigned to the session.
@@ -274,7 +274,7 @@ Each webhook is bound to an agent preset. When a delivery is processed:
 
 ### Execution Overrides
 
-Webhooks can override specific agent settings without changing the base preset:
+Webhooks can override specific settings without changing the configured agent:
 
 - **Model** — use a different LLM for webhook processing.
 - **System prompt suffix** — append extra instructions (e.g., "Focus on security

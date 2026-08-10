@@ -11,7 +11,6 @@
 //! invoked through method handlers registered in `methods.rs`.
 
 pub mod a2ui;
-pub mod agent_persona;
 pub mod approval;
 pub mod auth;
 pub mod auth_webauthn;

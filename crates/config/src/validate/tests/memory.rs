@@ -123,6 +123,13 @@ user_profile_write_mode = "explicit-only"
 #[test]
 fn legacy_memory_embedding_fields_warn_but_do_not_error() {
     let toml = r#"
+[agents]
+default = "main"
+
+[agents.main]
+name = "Chelix"
+max_tools_threshold = 128
+
 [memory]
 embedding_provider = "custom"
 embedding_model = "intfloat/multilingual-e5-small"
@@ -226,6 +233,13 @@ embedding_provider = "custom"
 #[test]
 fn memory_prefetch_fields_are_valid() {
     let toml = r#"
+[agents]
+default = "main"
+
+[agents.main]
+name = "Chelix"
+max_tools_threshold = 128
+
 [memory]
 enable_prefetch = true
 prefetch_limit = 5

@@ -119,7 +119,7 @@ fn policy_from_config(cfg: &chelix_config::schema::ToolPolicyConfig) -> ToolPoli
 /// Layer precedence (later wins for allow, deny always accumulates):
 /// 1. Global — `[tools.policy]`
 /// 2. Per-provider — `[providers.<name>.policy]`
-/// 3. Per-agent preset — `[agents.presets.<agent_id>.tools]`
+/// 3. Per-agent policy — `[agents.<agent_id>.tools]`
 /// 4. Per-channel-group — `[channels.<type>.<account>.tools.groups.<chat_type>]`
 /// 5. Per-sender in group — `[channels.<type>.<account>.tools.groups.<chat_type>.by_sender.<id>]`
 /// 6. Sandbox policy — `[sandbox.tools_policy]` (only when global mode is `On`)
@@ -157,33 +157,30 @@ pub fn resolve_effective_policy(
         }
     }
 
-    // Layer 3: Per-agent preset — [agents.presets.<agent_id>.tools] + [....mcp]
-    if let Some(preset) = config.agents.get_preset(&context.agent_id) {
-        let mut deny = preset.tools.deny.clone();
+    // Layer 3: Per-agent policy — [agents.<agent_id>.tools] + [agents.<agent_id>.mcp]
+    if let Some(agent) = config.agents.get(&context.agent_id) {
+        let mut deny = agent.tools.deny.clone();
 
         // Translate MCP server policy into tool deny patterns.
-        match &preset.mcp {
-            chelix_config::schema::PresetMcpPolicy::All => {},
-            chelix_config::schema::PresetMcpPolicy::Deny(servers) => {
+        match &agent.mcp {
+            chelix_config::schema::AgentMcpPolicy::All => {},
+            chelix_config::schema::AgentMcpPolicy::Deny(servers) => {
                 for server in servers {
                     deny.push(server.to_deny_pattern());
                 }
             },
-            chelix_config::schema::PresetMcpPolicy::Allow(_) => {
-                // Allow-list enforcement is handled in apply_runtime_tool_filters
-                // (prompt.rs) where the full tool registry is available, not here
-                // in the policy layer — because the deny-wins-over-allow semantics
-                // of ToolPolicy prevent expressing "deny all MCP except these".
+            chelix_config::schema::AgentMcpPolicy::Allow(_) => {
+                // Allow-list enforcement is handled where the full tool registry is available.
             },
         }
 
-        let p = ToolPolicy {
-            allow: preset.tools.allow.clone(),
+        let policy = ToolPolicy {
+            allow: agent.tools.allow.clone(),
             deny,
         };
-        if !p.allow.is_empty() || !p.deny.is_empty() {
-            effective = effective.merge_with(&p);
-            debug!(agent_id = %context.agent_id, "policy: applied agent preset layer");
+        if !policy.allow.is_empty() || !policy.deny.is_empty() {
+            effective = effective.merge_with(&policy);
+            debug!(agent_id = %context.agent_id, "policy: applied agent layer");
         }
     }
 
@@ -352,13 +349,13 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_agent_preset_layer() {
+    fn test_resolve_agent_layer() {
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
         cfg.agents
-            .presets
-            .insert("researcher".into(), chelix_config::schema::AgentPreset {
-                tools: chelix_config::schema::PresetToolPolicy {
+            .entries
+            .insert("researcher".into(), chelix_config::schema::AgentConfig {
+                tools: chelix_config::schema::AgentToolPolicy {
                     allow: vec!["read_file".into(), "ripgrep".into()],
                     deny: Vec::new(),
                     preload: Vec::new(),
@@ -525,9 +522,9 @@ mod tests {
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
         cfg.agents
-            .presets
-            .insert("restricted".into(), chelix_config::schema::AgentPreset {
-                mcp: chelix_config::schema::PresetMcpPolicy::Deny(vec!["home-assistant".into()]),
+            .entries
+            .insert("restricted".into(), chelix_config::schema::AgentConfig {
+                mcp: chelix_config::schema::AgentMcpPolicy::Deny(vec!["home-assistant".into()]),
                 ..Default::default()
             });
 
@@ -561,9 +558,9 @@ mod tests {
             .insert("home-assistant".into(), stub_mcp_entry());
 
         cfg.agents
-            .presets
-            .insert("allow-only".into(), chelix_config::schema::AgentPreset {
-                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec!["github".into()]),
+            .entries
+            .insert("allow-only".into(), chelix_config::schema::AgentConfig {
+                mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec!["github".into()]),
                 ..Default::default()
             });
 
@@ -584,9 +581,9 @@ mod tests {
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.tools.policy.allow = vec!["*".into()];
         cfg.agents
-            .presets
-            .insert("open".into(), chelix_config::schema::AgentPreset {
-                mcp: chelix_config::schema::PresetMcpPolicy::All,
+            .entries
+            .insert("open".into(), chelix_config::schema::AgentConfig {
+                mcp: chelix_config::schema::AgentMcpPolicy::All,
                 ..Default::default()
             });
 
@@ -609,9 +606,9 @@ mod tests {
         cfg.mcp.servers.insert("github".into(), stub_mcp_entry());
 
         cfg.agents
-            .presets
-            .insert("locked".into(), chelix_config::schema::AgentPreset {
-                mcp: chelix_config::schema::PresetMcpPolicy::Allow(vec![]),
+            .entries
+            .insert("locked".into(), chelix_config::schema::AgentConfig {
+                mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec![]),
                 ..Default::default()
             });
 

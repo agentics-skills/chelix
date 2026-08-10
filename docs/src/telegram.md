@@ -235,7 +235,6 @@ Telegram supports the standard channel session commands:
 | `/sessions`  | List or switch among sessions already bound to the current chat    |
 | `/attach`    | List existing non-cron sessions and rebind one to the current chat |
 | `/agent`     | List or switch chat agents                                         |
-| `/mode`      | List or switch temporary session modes                             |
 | `/model`     | List or switch models                                              |
 | `/approvals` | List pending command approvals for the current session             |
 | `/approve N` | Approve the numbered command request from `/approvals`             |

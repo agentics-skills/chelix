@@ -9,17 +9,7 @@ import { renderContextCard } from "./context-card";
 // ── Types ────────────────────────────────────────────────────
 
 /** Known slash command names — adding a name here requires a handler in `slashHandlers`. */
-type SlashCommandName =
-	| "btw"
-	| "clear"
-	| "compact"
-	| "context"
-	| "fast"
-	| "fork"
-	| "insights"
-	| "mode"
-	| "new"
-	| "reset";
+type SlashCommandName = "btw" | "clear" | "compact" | "context" | "fast" | "fork" | "insights" | "new" | "reset";
 
 export interface SlashCommand {
 	name: SlashCommandName;
@@ -36,13 +26,6 @@ export interface ParsedSlash {
 
 interface UnknownRecord {
 	[key: string]: unknown;
-}
-
-interface ModePayload {
-	id: string;
-	name: string;
-	description: string;
-	prompt: string;
 }
 
 interface InsightsApiResponse {
@@ -65,10 +48,6 @@ function fmtNum(n: number): string {
 	return n.toLocaleString();
 }
 
-interface ModesListPayload {
-	modes: ModePayload[];
-}
-
 // ── Slash commands list ─────────────────────────────────────
 
 export const slashCommands: SlashCommand[] = [
@@ -79,7 +58,6 @@ export const slashCommands: SlashCommand[] = [
 	{ name: "fast", description: "Toggle fast/priority mode" },
 	{ name: "fork", description: "Fork this session into a new branch" },
 	{ name: "insights", description: "Show usage analytics (tokens, providers)" },
-	{ name: "mode", description: "Switch session mode (/mode none to clear)" },
 	{ name: "new", description: "Start a new session" },
 	{ name: "reset", description: "Clear conversation history" },
 ];
@@ -246,88 +224,6 @@ export function shouldHandleSlashLocally(cmdName: string): boolean {
 	return slashCommands.some((c) => c.name === cmdName);
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-	return typeof value === "object" && value !== null;
-}
-
-function parseMode(value: unknown): ModePayload | null {
-	if (!isRecord(value)) return null;
-	const id = typeof value.id === "string" ? value.id : "";
-	if (!id) return null;
-	return {
-		id,
-		name: typeof value.name === "string" && value.name.trim() ? value.name : id,
-		description: typeof value.description === "string" ? value.description : "",
-		prompt: typeof value.prompt === "string" ? value.prompt : "",
-	};
-}
-
-function parseModesListPayload(value: unknown): ModesListPayload {
-	if (!(isRecord(value) && Array.isArray(value.modes))) return { modes: [] };
-	return { modes: value.modes.map(parseMode).filter((mode): mode is ModePayload => mode !== null) };
-}
-
-function formatModeList(modes: ModePayload[]): string {
-	if (modes.length === 0) return "No modes are configured.";
-	const lines = modes.map((mode, index) => {
-		const description = mode.description ? ` - ${mode.description}` : "";
-		return `${index + 1}. ${mode.name} [${mode.id}]${description}`;
-	});
-	lines.push("", "Use `/mode N`, `/mode <id>`, or `/mode none`.");
-	return lines.join("\n");
-}
-
-function findMode(modes: ModePayload[], args: string): ModePayload | null {
-	const normalized = args.trim().toLowerCase();
-	const number = Number.parseInt(normalized, 10);
-	if (Number.isInteger(number) && number > 0 && String(number) === normalized) {
-		return modes[number - 1] || null;
-	}
-	return modes.find((mode) => mode.id.toLowerCase() === normalized || mode.name.toLowerCase() === normalized) || null;
-}
-
-function handleModeCommand(cmdArgs: string): void {
-	const args = cmdArgs.trim();
-	chatAddMsg("system", "Loading modes...");
-	sendRpc("modes.list", {}).then((listRes) => {
-		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-		if (!listRes?.ok) {
-			chatAddMsg("error", listRes?.error?.message || "Failed to load modes");
-			return;
-		}
-		const modes = parseModesListPayload(listRes.payload).modes;
-		if (!args) {
-			chatAddMsg("system", renderMarkdown(formatModeList(modes)), true);
-			return;
-		}
-		const normalized = args.toLowerCase();
-		if (["none", "off", "clear", "default", "reset"].includes(normalized)) {
-			sendRpc("modes.set_session", { session_key: S.activeSessionKey, mode_id: null }).then((setRes) => {
-				if (!setRes?.ok) {
-					chatAddMsg("error", setRes?.error?.message || "Failed to clear mode");
-					return;
-				}
-				fetchSessions();
-				chatAddMsg("system", renderMarkdown("**Mode:** cleared"), true);
-			});
-			return;
-		}
-		const selected = findMode(modes, args);
-		if (!selected) {
-			chatAddMsg("error", `Unknown mode: ${args}`);
-			return;
-		}
-		sendRpc("modes.set_session", { session_key: S.activeSessionKey, mode_id: selected.id }).then((setRes) => {
-			if (!setRes?.ok) {
-				chatAddMsg("error", setRes?.error?.message || "Failed to set mode");
-				return;
-			}
-			fetchSessions();
-			chatAddMsg("system", renderMarkdown(`**Mode:** ${selected.name}`), true);
-		});
-	});
-}
-
 /**
  * Handler map — every `SlashCommandName` must have an entry here.
  * TypeScript will error at `satisfies` if a command is missing.
@@ -356,8 +252,6 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 			} else chatAddMsg("error", res.error?.message || "Context failed");
 		});
 	},
-
-	mode: (args) => handleModeCommand(args),
 
 	new: () => switchSession(`session:${crypto.randomUUID()}`),
 

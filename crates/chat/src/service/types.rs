@@ -41,8 +41,7 @@ use crate::{
     prompt::{
         apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
         discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
-        prepare_run_registry, prompt_build_limits_from_config, resolve_prompt_agent_id,
-        resolve_prompt_mode_context,
+        prepare_run_registry, prompt_build_limits_from_config,
     },
     runtime::ChatRuntime,
     types::*,
@@ -432,10 +431,27 @@ pub struct LiveChatService {
     /// Per-session reply medium for active runs, so the frontend can restore
     /// `voicePending` state after a page reload.
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
-    /// Startup configuration snapshot for chat hot-path decisions.
+    /// Startup configuration snapshot for non-agent chat settings.
     pub(in crate::service) config: chelix_config::ChelixConfig,
+    /// Live agent registry shared with agent CRUD and `spawn_agent`.
+    pub(in crate::service) agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
     /// Source used to reload `[tools]` before each new agent run.
     pub(in crate::service) tools_config_source: chelix_config::ToolsConfigSource,
+}
+
+async fn runtime_config_for_agent_run(
+    base: &chelix_config::ChelixConfig,
+    agents_config: &RwLock<chelix_config::AgentsConfig>,
+    tools_config_source: &chelix_config::ToolsConfigSource,
+) -> error::Result<chelix_config::ChelixConfig> {
+    let tools = tools_config_source
+        .load()
+        .map_err(|error| error::Error::message(format!("reload tools config: {error}")))?;
+    let agents = agents_config.read().await.clone();
+    let mut config = base.clone();
+    config.agents = agents;
+    config.tools = tools;
+    Ok(config)
 }
 
 impl LiveChatService {
@@ -446,6 +462,7 @@ impl LiveChatService {
         session_store: Arc<SessionStore>,
         session_metadata: Arc<SqliteSessionMetadata>,
         config: chelix_config::ChelixConfig,
+        agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
         tools_config_source: chelix_config::ToolsConfigSource,
     ) -> Self {
         Self {
@@ -469,6 +486,7 @@ impl LiveChatService {
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
             config,
+            agents_config,
             tools_config_source,
         }
     }
@@ -478,24 +496,30 @@ impl LiveChatService {
         self
     }
 
+    pub(in crate::service) async fn load_runtime_config_for_agent_run(
+        &self,
+    ) -> error::Result<chelix_config::ChelixConfig> {
+        runtime_config_for_agent_run(
+            &self.config,
+            self.agents_config.as_ref(),
+            &self.tools_config_source,
+        )
+        .await
+    }
+
     pub(in crate::service) async fn load_prompt_persona_for_agent_run(
         &self,
         session_key: &str,
         session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
     ) -> error::Result<PromptPersona> {
-        let tools_config = self
-            .tools_config_source
-            .load()
-            .map_err(|error| error::Error::message(format!("reload tools config: {error}")))?;
-        let mut persona = load_prompt_persona_for_session(
-            &self.config,
+        let config = self.load_runtime_config_for_agent_run().await?;
+        load_prompt_persona_for_session(
+            &config,
             session_key,
             session_entry,
             self.session_state_store.as_deref(),
         )
-        .await;
-        persona.config.tools = tools_config;
-        Ok(persona)
+        .await
     }
 
     pub fn with_session_mutations(mut self, mutations: Arc<SessionMutationCoordinator>) -> Self {
@@ -821,7 +845,6 @@ impl LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
         apply_request_runtime_context(
             &mut runtime_context.host,
             params,
@@ -840,12 +863,8 @@ impl LiveChatService {
             .as_ref()
             .and_then(|entry| entry.mcp_disabled)
             .unwrap_or(false);
-        let agent_id = resolve_prompt_agent_id(session_entry.as_ref());
-        let discovered_skills = if let Some(preset) = persona.config.agents.get_preset(&agent_id) {
-            filter_skills_for_agent(discovered_skills, &preset.skills)
-        } else {
-            discovered_skills
-        };
+        let agent_id = persona.agent_id.clone();
+        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
 
         let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context), Some(params));
         let filtered_registry = {
@@ -875,7 +894,7 @@ impl LiveChatService {
                 native_tools,
                 project_context.as_deref(),
                 &discovered_skills,
-                Some(&persona.identity),
+                Some(&persona.agent),
                 Some(&persona.user),
                 persona.soul_text.as_deref(),
                 persona.boot_text.as_deref(),
@@ -889,7 +908,7 @@ impl LiveChatService {
         } else {
             build_system_prompt_minimal_runtime_details(
                 project_context.as_deref(),
-                Some(&persona.identity),
+                Some(&persona.agent),
                 Some(&persona.user),
                 persona.soul_text.as_deref(),
                 persona.boot_text.as_deref(),
@@ -919,7 +938,7 @@ mod tests {
             build_persisted_assistant_message, build_persisted_tool_call,
             finalize_aborted_tool_segment, finalize_persisted_assistant_message,
             latest_tool_segment_index, persist_active_assistant_draft,
-            persist_final_assistant_segment,
+            persist_final_assistant_segment, runtime_config_for_agent_run,
         },
         crate::types::AssistantTurnOutput,
         chelix_agents::model::Usage,
@@ -927,6 +946,47 @@ mod tests {
         std::{collections::HashMap, sync::Arc},
         tokio::sync::RwLock,
     };
+
+    #[tokio::test]
+    async fn runtime_config_uses_live_agent_registry_updates() -> crate::error::Result<()> {
+        let mut initial = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..Default::default()
+        };
+        initial
+            .entries
+            .insert("main".to_string(), chelix_config::AgentConfig {
+                name: "Main".to_string(),
+                ..Default::default()
+            });
+        let live = RwLock::new(initial);
+        let base = chelix_config::ChelixConfig::default();
+        let tools = chelix_config::ToolsConfigSource::snapshot(
+            chelix_config::schema::ToolsConfig::default(),
+        );
+
+        let first = runtime_config_for_agent_run(&base, &live, &tools).await?;
+        assert!(first.agents.get("main").is_some());
+        assert!(first.agents.get("writer").is_none());
+
+        {
+            let mut agents = live.write().await;
+            agents.entries.remove("main");
+            agents.default = "writer".to_string();
+            agents
+                .entries
+                .insert("writer".to_string(), chelix_config::AgentConfig {
+                    name: "Writer".to_string(),
+                    ..Default::default()
+                });
+        }
+
+        let updated = runtime_config_for_agent_run(&base, &live, &tools).await?;
+        assert!(updated.agents.get("main").is_none());
+        assert_eq!(updated.agents.default, "writer");
+        assert!(updated.agents.get("writer").is_some());
+        Ok(())
+    }
 
     #[test]
     fn active_tool_call_serializes_switch_payload_shape() {

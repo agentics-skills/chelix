@@ -1,6 +1,6 @@
 //! Pure state machine for the onboarding wizard. No I/O.
 
-use chelix_config::{AgentIdentity, UserProfile};
+use chelix_config::{AgentConfig, UserProfile};
 
 /// Steps in the onboarding wizard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -10,7 +10,6 @@ pub enum WizardStep {
     UserName,
     AgentName,
     AgentEmoji,
-    AgentTheme,
     Confirm,
     Done,
 }
@@ -20,7 +19,7 @@ pub enum WizardStep {
 pub struct WizardState {
     pub step: WizardStep,
     pub user: UserProfile,
-    pub identity: AgentIdentity,
+    pub agent: AgentConfig,
 }
 
 impl Default for WizardState {
@@ -34,7 +33,7 @@ impl WizardState {
         Self {
             step: WizardStep::Welcome,
             user: UserProfile::default(),
-            identity: AgentIdentity::default(),
+            agent: AgentConfig::default(),
         }
     }
 
@@ -47,9 +46,6 @@ impl WizardState {
             WizardStep::UserName => "What's your name?",
             WizardStep::AgentName => "Pick a name for your agent:",
             WizardStep::AgentEmoji => "Choose an emoji for your agent (e.g. \u{1f916}):",
-            WizardStep::AgentTheme => {
-                "Describe your agent's theme (e.g. wise owl, chill fox, witty robot):"
-            },
             WizardStep::Confirm => "All set! Press Enter to save, or type 'back' to go back.",
             WizardStep::Done => "Onboarding complete!",
         }
@@ -68,27 +64,21 @@ impl WizardState {
             },
             WizardStep::AgentName => {
                 if !input.is_empty() {
-                    self.identity.name = Some(input.to_string());
-                } else if self.identity.name.is_none() {
-                    self.identity.name = Some("chelix".to_string());
+                    self.agent.name = input.to_string();
+                } else if self.agent.name.trim().is_empty() {
+                    self.agent.name = "chelix".to_string();
                 }
                 self.step = WizardStep::AgentEmoji;
             },
             WizardStep::AgentEmoji => {
                 if !input.is_empty() {
-                    self.identity.emoji = Some(input.to_string());
-                }
-                self.step = WizardStep::AgentTheme;
-            },
-            WizardStep::AgentTheme => {
-                if !input.is_empty() {
-                    self.identity.theme = Some(input.to_string());
+                    self.agent.emoji = Some(input.to_string());
                 }
                 self.step = WizardStep::Confirm;
             },
             WizardStep::Confirm => {
                 if input.eq_ignore_ascii_case("back") {
-                    self.step = WizardStep::AgentTheme;
+                    self.step = WizardStep::AgentEmoji;
                 } else {
                     self.step = WizardStep::Done;
                 }
@@ -108,51 +98,46 @@ mod tests {
 
     #[test]
     fn full_wizard_flow() {
-        let mut s = WizardState::new();
-        assert_eq!(s.step, WizardStep::Welcome);
+        let mut state = WizardState::new();
+        assert_eq!(state.step, WizardStep::Welcome);
 
-        s.advance(""); // welcome → user name
-        assert_eq!(s.step, WizardStep::UserName);
+        state.advance("");
+        assert_eq!(state.step, WizardStep::UserName);
 
-        s.advance("Alice"); // → agent name
-        assert_eq!(s.user.name.as_deref(), Some("Alice"));
-        assert_eq!(s.step, WizardStep::AgentName);
+        state.advance("Alice");
+        assert_eq!(state.user.name.as_deref(), Some("Alice"));
+        assert_eq!(state.step, WizardStep::AgentName);
 
-        s.advance("Momo"); // → emoji
-        assert_eq!(s.identity.name.as_deref(), Some("Momo"));
+        state.advance("Momo");
+        assert_eq!(state.agent.name, "Momo");
 
-        s.advance("\u{1f99c}"); // → theme
-        assert_eq!(s.identity.emoji.as_deref(), Some("\u{1f99c}"));
+        state.advance("\u{1f99c}");
+        assert_eq!(state.agent.emoji.as_deref(), Some("\u{1f99c}"));
+        assert_eq!(state.step, WizardStep::Confirm);
 
-        s.advance("cheerful parrot"); // → confirm
-        assert_eq!(s.identity.theme.as_deref(), Some("cheerful parrot"));
-        assert_eq!(s.step, WizardStep::Confirm);
-
-        s.advance(""); // confirm → done
-        assert!(s.is_done());
+        state.advance("");
+        assert!(state.is_done());
     }
 
     #[test]
     fn back_from_confirm() {
-        let mut s = WizardState::new();
-        // fast-forward to confirm
-        s.advance(""); // welcome
-        s.advance("Bob");
-        s.advance("Rex");
-        s.advance("\u{1f436}");
-        s.advance("loyal dog");
-        assert_eq!(s.step, WizardStep::Confirm);
+        let mut state = WizardState::new();
+        state.advance("");
+        state.advance("Bob");
+        state.advance("Rex");
+        state.advance("\u{1f436}");
+        assert_eq!(state.step, WizardStep::Confirm);
 
-        s.advance("back");
-        assert_eq!(s.step, WizardStep::AgentTheme);
+        state.advance("back");
+        assert_eq!(state.step, WizardStep::AgentEmoji);
     }
 
     #[test]
     fn default_agent_name() {
-        let mut s = WizardState::new();
-        s.advance(""); // welcome
-        s.advance("User");
-        s.advance(""); // empty agent name → defaults to "chelix"
-        assert_eq!(s.identity.name.as_deref(), Some("chelix"));
+        let mut state = WizardState::new();
+        state.advance("");
+        state.advance("User");
+        state.advance("");
+        assert_eq!(state.agent.name, "chelix");
     }
 }

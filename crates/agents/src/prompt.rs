@@ -13,8 +13,7 @@ pub use {
     },
     types::{
         DEFAULT_WORKSPACE_FILE_MAX_CHARS, ModelFamily, PromptBuildLimits, PromptBuildMetadata,
-        PromptBuildOutput, PromptHostRuntimeContext, PromptModeRuntimeContext,
-        PromptRuntimeContext, PromptSandboxRuntimeContext, VOICE_REPLY_SUFFIX,
-        WorkspaceFilePromptStatus,
+        PromptBuildOutput, PromptHostRuntimeContext, PromptRuntimeContext,
+        PromptSandboxRuntimeContext, VOICE_REPLY_SUFFIX, WorkspaceFilePromptStatus,
     },
 };

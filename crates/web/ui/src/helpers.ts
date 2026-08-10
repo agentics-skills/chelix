@@ -92,8 +92,8 @@ interface AgentEntry {
 }
 
 interface AgentsListPayload {
-	default_id?: string;
-	agents?: AgentEntry[];
+	default_id: string;
+	agents: AgentEntry[];
 }
 
 interface ParsedAgentsList {
@@ -1203,20 +1203,11 @@ export function renderMapPointGroups(
 	return rendered;
 }
 
-/**
- * Parse the payload from `agents.list` into `{ defaultId, agents }`.
- * Handles both array (legacy) and object shapes.
- */
-export function parseAgentsListPayload(payload: AgentEntry[] | AgentsListPayload): ParsedAgentsList {
-	if (Array.isArray(payload)) {
-		const legacyDefault = payload.find((agent) => agent?.is_default === true && typeof agent?.id === "string")?.id;
-		return { defaultId: legacyDefault || "main", agents: payload };
-	}
-	const agents = Array.isArray(payload?.agents) ? payload.agents : [];
-	const inferredDefault = agents.find((agent) => agent?.is_default === true && typeof agent?.id === "string")?.id;
+/** Parse the canonical `agents.list` payload into UI state. */
+export function parseAgentsListPayload(payload: AgentsListPayload): ParsedAgentsList {
 	return {
-		defaultId: typeof payload?.default_id === "string" ? payload.default_id : inferredDefault || "main",
-		agents: agents,
+		defaultId: typeof payload?.default_id === "string" ? payload.default_id : "",
+		agents: Array.isArray(payload?.agents) ? payload.agents : [],
 	};
 }
 

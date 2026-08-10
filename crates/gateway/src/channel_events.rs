@@ -290,53 +290,34 @@ async fn resolve_channel_agent_id(
     state: &Arc<GatewayState>,
     session_key: &str,
     requested_agent_id: Option<&str>,
-) -> String {
-    let fallback = if let Some(ref store) = state.services.agent_persona_store {
-        store
-            .default_id()
-            .await
-            .unwrap_or_else(|_| "main".to_string())
-    } else {
-        "main".to_string()
-    };
+) -> ChannelResult<String> {
+    let agents_config = state
+        .services
+        .agents_config
+        .as_ref()
+        .ok_or_else(|| ChannelError::unavailable("agent configuration is not available"))?;
+    let agents = agents_config.read().await;
+    let default_id = agents.default.trim();
+    if default_id.is_empty() || !agents.entries.contains_key(default_id) {
+        return Err(ChannelError::unavailable("default agent is not configured"));
+    }
 
-    let Some(agent_id) = requested_agent_id
+    let agent_id = requested_agent_id
         .map(str::trim)
         .filter(|value| !value.is_empty())
-    else {
-        return fallback;
-    };
-
-    if agent_id == "main" {
-        return "main".to_string();
+        .unwrap_or(default_id);
+    if !agents.entries.contains_key(agent_id) {
+        warn!(
+            session = %session_key,
+            agent_id,
+            "channel requested unknown agent"
+        );
+        return Err(ChannelError::invalid_input(format!(
+            "unknown agent `{agent_id}`"
+        )));
     }
 
-    let Some(ref store) = state.services.agent_persona_store else {
-        return agent_id.to_string();
-    };
-
-    match store.get(agent_id).await {
-        Ok(Some(_)) => agent_id.to_string(),
-        Ok(None) => {
-            warn!(
-                session = %session_key,
-                agent_id,
-                fallback = %fallback,
-                "channel requested unknown agent, falling back to default"
-            );
-            fallback
-        },
-        Err(error) => {
-            warn!(
-                session = %session_key,
-                agent_id,
-                fallback = %fallback,
-                %error,
-                "failed to resolve channel agent, falling back to default"
-            );
-            fallback
-        },
-    }
+    Ok(agent_id.to_string())
 }
 
 mod commands;

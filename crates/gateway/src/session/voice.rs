@@ -75,7 +75,7 @@ impl LiveSessionService {
         if let Some(ref vp_store) = self.voice_persona_store {
             let persona = crate::voice_persona::resolve_persona(
                 vp_store,
-                self.agent_persona_store.as_deref(),
+                Some(&self.agents_config),
                 None,
                 Some(key),
                 Some(&*self.metadata),

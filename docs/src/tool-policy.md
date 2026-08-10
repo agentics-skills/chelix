@@ -13,7 +13,7 @@ deny entries accumulate across all of them.
 | --- | ----------------- | ------------------------------------------------------ | ------------------------------------------- |
 | 1   | Global            | `[tools.policy]`                                       | All sessions                                |
 | 2   | Per-provider      | `[providers.<name>.policy]`                            | Requests routed through that provider       |
-| 3   | Per-agent preset  | `[agents.presets.<id>.tools]`                          | Sub-agents spawned with that preset         |
+| 3   | Per-agent         | `[agents.<id>.tools]`                                  | All sessions using that agent               |
 | 4   | Per-channel group | `[channels.<type>.<account>.tools.groups.<chat_type>]` | Channel sessions matching that chat type    |
 | 5   | Per-sender        | `...groups.<chat_type>.by_sender.<sender_id>`          | Messages from that sender in that group     |
 | 6   | Sandbox           | `[sandbox.tools_policy]`                               | All requests when global sandbox mode is `On` |
@@ -83,24 +83,20 @@ policy.deny = ["execute_command"]
 This denies `execute_command` whenever OpenAI is the active provider, regardless
 of what the global layer allows. Other providers are unaffected.
 
-## Layer 3 — Per-Agent Preset
+## Layer 3 — Per-Agent
 
-Agent presets (used by `spawn_agent`) can restrict their sub-agent's tools.
+Each agent can restrict tools for both chat sessions and spawned runs.
 
 ```toml
-[agents.presets.researcher]
+[agents.researcher]
 model = "openai/gpt-5.2"
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```
 
-When the `researcher` preset is active, only the four listed tools are allowed,
-and `execute_command`/`write_file` are explicitly denied. See
-[Agent Presets](agent-presets.md) for the full preset reference.
-
-> **Note:** Preset tool policies apply only to sub-agents spawned via
-> `spawn_agent`. They do not affect the main agent session. Use the global
-> `[tools.policy]` for the main session.
+When the `researcher` agent is active, only the listed tools are allowed, and
+`execute_command`/`write_file` are explicitly denied. See
+[Agents](agents.md) for the full agent reference.
 
 ## Layer 4 — Per-Channel Group
 
@@ -201,17 +197,16 @@ allow = ["*"]
 Normal group members can only read and search files. Sender `123456` can use every
 tool (nothing was denied at the group layer, so nothing accumulates).
 
-### Agent preset with limited tools
+### Agent with limited tools
 
 ```toml
-[agents.presets.researcher]
+[agents.researcher]
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command"]
 ```
 
-The `researcher` sub-agent can only read files and search. Even if a higher
-layer allows `execute_command`, it is denied here and the denial carries
-through.
+The `researcher` agent can only read files and search. Even if a later layer
+widens the allow list, `execute_command` remains denied.
 
 ### Use a profile for the global policy
 
@@ -249,7 +244,7 @@ Enable `debug` logging to see which layers are applied at runtime:
 policy: applied global profile 'coding'
 policy: applied global layer
 policy: applied provider layer    provider=openai
-policy: applied agent preset layer agent_id=researcher
+policy: applied agent layer agent_id=researcher
 policy: applied group layer       channel=telegram account_id=my-bot group_id=group
 policy: applied sender layer      channel=telegram group_id=group sender_id=123456
 policy: applied sandbox layer

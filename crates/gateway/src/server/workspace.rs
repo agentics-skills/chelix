@@ -4,32 +4,6 @@ use super::seed_content::{
     DEFAULT_BOOT_MD, DEFAULT_HEARTBEAT_MD, DEFAULT_TOOLS_MD, DEFAULT_WORKSPACE_AGENTS_MD,
 };
 
-pub fn sync_persona_into_preset(
-    agents: &mut chelix_config::AgentsConfig,
-    persona: &crate::agent_persona::AgentPersona,
-) {
-    let soul = chelix_config::load_soul_for_agent(&persona.id);
-
-    let entry =
-        agents
-            .presets
-            .entry(persona.id.clone())
-            .or_insert_with(|| chelix_config::AgentPreset {
-                max_tools_threshold: chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
-                ..chelix_config::AgentPreset::default()
-            });
-
-    entry.identity.name = Some(persona.name.clone());
-    entry.identity.emoji = persona.emoji.clone();
-    entry.identity.theme = persona.theme.clone();
-
-    if let Some(ref soul) = soul
-        && !soul.trim().is_empty()
-    {
-        entry.system_prompt_suffix = Some(soul.clone());
-    }
-}
-
 pub(crate) fn seed_default_workspace_markdown_files() {
     let data_dir = chelix_config::data_dir();
     seed_file_if_missing(data_dir.join("BOOT.md"), DEFAULT_BOOT_MD);

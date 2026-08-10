@@ -90,14 +90,15 @@ and points agents at it separately.
 port = 13131                    # HTTP/WebSocket port
 bind = "0.0.0.0"               # Listen address
 
-[identity]
+[agents]
+default = "main"
+
+[agents.main]
 name = "Chelix"                 # Agent display name
+max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 
 [tools]
 agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
-
-[agents.presets.main]
-max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 ```
 
 ## LLM Providers
@@ -475,14 +476,15 @@ chelix --config-dir /path/to/config --data-dir /path/to/data
 port = 13131
 bind = "0.0.0.0"
 
-[identity]
+[agents]
+default = "main"
+
+[agents.main]
 name = "Atlas"
+max_tools_threshold = 128
 
 [tools]
 agent_timeout_secs = 600
-
-[agents.presets.main]
-max_tools_threshold = 128
 
 [providers]
 offered = ["openai", "gemini"]

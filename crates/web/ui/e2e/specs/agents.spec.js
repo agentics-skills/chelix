@@ -109,26 +109,20 @@ async function expectActiveSessionExternalAgent(page, kind) {
 }
 
 test.describe("Agents settings page", () => {
-	test("settings/agents loads and shows heading", async ({ page }) => {
+	test("settings/agents shows one unified agent list", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/settings/agents");
 
 		await expect(page).toHaveURL(/\/settings\/agents$/);
 		await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
-		await expect(page.getByRole("tab", { name: /Chat Agents/ })).toBeVisible();
-		await expect(page.getByRole("tab", { name: /Sub-Agents/ })).toBeVisible();
-		await expect(page.getByRole("tab", { name: /Modes/ })).toBeVisible();
-
-		const chatPanel = page.getByLabel("Chat Agents panel");
-		await expect(chatPanel.getByText("Persistent identities with their own memory", { exact: false })).toBeVisible();
-
-		await page.getByRole("tab", { name: /Modes/ }).click();
-		const modesPanel = page.getByLabel("Modes panel");
-		await expect(modesPanel.getByText("Temporary per-session prompt overlays", { exact: false })).toBeVisible();
-		await expect(modesPanel.locator(".backend-card").filter({ hasText: "Concise" })).toBeVisible({
-			timeout: 10_000,
-		});
-		await expect(modesPanel.locator(".backend-card").filter({ hasText: "Review" })).toBeVisible();
+		await expect(page.getByLabel("Agents list")).toBeVisible();
+		await expect(page.getByRole("tab")).toHaveCount(0);
+		await expect(page.getByText("Chat Agents", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Sub-Agents", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Modes", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Built-in", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Custom", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Every agent can be selected in chat", { exact: false })).toBeVisible();
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -140,7 +134,7 @@ test.describe("Agents settings page", () => {
 		const mainCard = page.locator(".backend-card").filter({ hasText: "Default" });
 		await expect(mainCard).toBeVisible();
 
-		// Main agent has Edit but no Delete (cannot delete the main agent)
+		// The current default agent can be edited but cannot be deleted until another default is selected.
 		await expect(mainCard.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
 		await expect(mainCard.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
 
@@ -155,89 +149,14 @@ test.describe("Agents settings page", () => {
 		await expect(newBtn).toBeVisible();
 		await newBtn.click();
 
-		// Form should be visible with ID, Name, and Create/Cancel buttons
+		// One form configures both chat and spawned-agent prompts.
 		await expect(page.getByText("Create Agent", { exact: true })).toBeVisible();
 		await expect(page.getByPlaceholder("e.g. writer, coder, researcher")).toBeVisible();
 		await expect(page.getByPlaceholder("Creative Writer")).toBeVisible();
+		await expect(page.getByText("Soul", { exact: true })).toBeVisible();
+		await expect(page.getByText("Sub-Agent system prompt", { exact: true })).toBeVisible();
 		await expect(page.getByRole("button", { name: "Create", exact: true })).toBeVisible();
 		await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("config-only preset can be promoted into an agent", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await navigateAndWait(page, "/settings/agents");
-		await waitForWsConnected(page);
-		await sendRpcFromPage(page, "agents.delete", { id: "coder" });
-		await navigateAndWait(page, "/settings/agents");
-		await waitForWsConnected(page);
-
-		await page.getByRole("tab", { name: /Sub-Agents/ }).click();
-		await expect(page.getByRole("heading", { name: "Sub-Agent Presets", exact: true })).toBeVisible({
-			timeout: 10_000,
-		});
-		await expect(page.getByText("usable by spawn_agent", { exact: false })).toBeVisible();
-		const presetCard = page
-			.locator(".backend-card")
-			.filter({ hasText: "Coder" })
-			.filter({ hasText: "Built-in" })
-			.first();
-		await expect(presetCard).toBeVisible({ timeout: 10_000 });
-		await presetCard.getByRole("button", { name: "Add to Chat", exact: true }).click();
-		await expect(presetCard).toHaveCount(0, { timeout: 10_000 });
-		await page.getByRole("tab", { name: /Chat Agents/ }).click();
-
-		const agentCard = page
-			.locator(".backend-card")
-			.filter({ hasText: "Coder" })
-			.filter({ has: page.getByRole("button", { name: "Edit", exact: true }) })
-			.first();
-		await expect(agentCard).toBeVisible({ timeout: 10_000 });
-
-		try {
-			await agentCard.getByRole("button", { name: "Edit", exact: true }).click();
-			await expect(page.getByText("Edit Coder", { exact: true })).toBeVisible({ timeout: 10_000 });
-			await expect(page.locator("textarea").first()).toHaveValue(/Implement scoped code changes/);
-			await page.getByRole("button", { name: "Cancel", exact: true }).click();
-		} finally {
-			await deleteAgentByName(page, "Coder");
-		}
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("sub-agent preset can be created edited and deleted", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await navigateAndWait(page, "/settings/agents");
-		await waitForWsConnected(page);
-		await sendRpcFromPage(page, "agents.preset.delete", { id: "e2e-sub-agent" });
-
-		await page.getByRole("tab", { name: /Sub-Agents/ }).click();
-		await page.getByRole("button", { name: "New Sub-Agent", exact: true }).click();
-		await expect(page.getByText("Create Sub-Agent", { exact: true })).toBeVisible();
-		await page.getByPlaceholder("e.g. researcher, reviewer, qa-helper").fill("e2e-sub-agent");
-		await page.getByPlaceholder("Research Specialist").fill("E2E Sub Agent");
-		await page
-			.getByPlaceholder("Give this sub-agent a focused role and constraints...")
-			.fill("Answer with concise evidence.");
-		await page.getByPlaceholder("Read, Glob, ripgrep").fill("Read, ripgrep");
-		await page.getByRole("button", { name: "Create", exact: true }).click();
-
-		const presetCard = page.locator(".backend-card").filter({ hasText: "E2E Sub Agent" });
-		await expect(presetCard).toBeVisible({ timeout: 10_000 });
-		await expect(presetCard.getByText("Custom", { exact: true })).toBeVisible();
-
-		await presetCard.getByRole("button", { name: "Edit", exact: true }).click();
-		await expect(page.getByText("Edit E2E Sub Agent", { exact: true })).toBeVisible();
-		await page.getByPlaceholder("Research Specialist").fill("E2E Edited Sub Agent");
-		await page.getByRole("button", { name: "Save", exact: true }).click();
-		const editedCard = page.locator(".backend-card").filter({ hasText: "E2E Edited Sub Agent" });
-		await expect(editedCard).toBeVisible({ timeout: 10_000 });
-
-		await editedCard.getByRole("button", { name: "Delete", exact: true }).click();
-		await page.locator(".provider-modal").getByRole("button", { name: "Delete", exact: true }).click();
-		await expect(editedCard).toHaveCount(0, { timeout: 10_000 });
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -270,6 +189,8 @@ test.describe("Agents settings page", () => {
 		const nameInput = page.getByPlaceholder("Creative Writer");
 		await idInput.fill("e2e-test-agent");
 		await nameInput.fill("E2E Test Agent");
+		await page.getByPlaceholder("System prompt used in chat").fill("Chat-only soul prompt.");
+		await page.getByPlaceholder("System prompt used by spawn_agent").fill("Spawn-only system prompt.");
 		await page.getByRole("button", { name: "Create", exact: true }).click();
 
 		// Should return to the list and show the new agent
@@ -284,7 +205,10 @@ test.describe("Agents settings page", () => {
 		await expect(page.getByText("Edit E2E Test Agent", { exact: true })).toBeVisible();
 
 		const editNameInput = page.getByPlaceholder("Creative Writer");
+		await expect(page.getByPlaceholder("System prompt used in chat")).toHaveValue("Chat-only soul prompt.");
+		await expect(page.getByPlaceholder("System prompt used by spawn_agent")).toHaveValue("Spawn-only system prompt.");
 		await editNameInput.fill("E2E Renamed Agent");
+		await page.getByPlaceholder("System prompt used by spawn_agent").fill("Updated spawn prompt.");
 		await page.getByRole("button", { name: "Save", exact: true }).click();
 
 		// Should return to the list with updated name
@@ -459,41 +383,6 @@ test.describe("Agents settings page", () => {
 
 		// The edit form should appear (heading begins with "Edit")
 		await expect(page.getByText(/^Edit\s/, { exact: false })).toBeVisible({ timeout: 10_000 });
-
-		expect(pageErrors).toEqual([]);
-	});
-
-	test("shows workspace prompt truncation warning when AGENTS.md exceeds the cap", async ({ page }) => {
-		const pageErrors = watchPageErrors(page);
-		await navigateAndWait(page, "/settings/agents");
-		await waitForWsConnected(page);
-
-		const originalResponse = await sendRpcFromPage(page, "agents.files.get", {
-			agent_id: "main",
-			path: "AGENTS.md",
-		});
-		const originalContent = originalResponse?.ok ? originalResponse.payload?.content || "" : "";
-		const oversizedContent = `${"A".repeat(32_050)}\n`;
-
-		try {
-			const setResponse = await sendRpcFromPage(page, "agents.files.set", {
-				agent_id: "main",
-				path: "AGENTS.md",
-				content: oversizedContent,
-			});
-			expect(setResponse?.ok).toBe(true);
-
-			await navigateAndWait(page, "/settings/agents");
-			const mainCard = page.locator(".backend-card").filter({ hasText: "Default" });
-			await expect(mainCard).toContainText("AGENTS.md", { timeout: 10_000 });
-			await expect(mainCard).toContainText("truncated by", { timeout: 10_000 });
-		} finally {
-			await sendRpcFromPage(page, "agents.files.set", {
-				agent_id: "main",
-				path: "AGENTS.md",
-				content: originalContent,
-			});
-		}
 
 		expect(pageErrors).toEqual([]);
 	});

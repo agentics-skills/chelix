@@ -27,7 +27,6 @@ interface NormalizedSessionMeta {
 	parentSessionKey: string;
 	forkPoint: number | null;
 	agentId: string;
-	modeId: string;
 	externalAgentKind: string | null;
 	externalSessionId: string | null;
 	mcpDisabled: boolean | undefined;
@@ -69,8 +68,7 @@ function normalizeSessionMeta(serverData: SessionMeta, reasoningEffortFallback =
 		channelBinding: nullableValue(serverData.channelBinding),
 		parentSessionKey: stringValue(serverData.parentSessionKey),
 		forkPoint: nullableValue(serverData.forkPoint),
-		agentId: stringValue(serverData.agent_id, "main"),
-		modeId: stringValue(serverData.mode_id),
+		agentId: stringValue(serverData.agent_id),
 		externalAgentKind: firstNonEmptyString([serverData.external_agent_kind, serverData.externalAgentKind]),
 		externalSessionId: firstNonEmptyString([serverData.externalSessionId]),
 		mcpDisabled: serverData.mcpDisabled,
@@ -106,7 +104,6 @@ export class Session {
 	parentSessionKey: string;
 	forkPoint: number | null;
 	agent_id: string;
-	mode_id: string;
 	external_agent_kind: string | null;
 	externalSessionId: string | null;
 	mcpDisabled: boolean | undefined;
@@ -147,7 +144,6 @@ export class Session {
 		this.parentSessionKey = normalized.parentSessionKey;
 		this.forkPoint = normalized.forkPoint;
 		this.agent_id = normalized.agentId;
-		this.mode_id = normalized.modeId;
 		this.external_agent_kind = normalized.externalAgentKind;
 		this.externalSessionId = normalized.externalSessionId;
 		this.mcpDisabled = normalized.mcpDisabled;
@@ -203,7 +199,6 @@ export class Session {
 		this.parentSessionKey = normalized.parentSessionKey;
 		this.forkPoint = normalized.forkPoint;
 		this.agent_id = normalized.agentId;
-		this.mode_id = normalized.modeId;
 		this.external_agent_kind = normalized.externalAgentKind;
 		this.externalSessionId = normalized.externalSessionId;
 		this.mcpDisabled = normalized.mcpDisabled;
@@ -261,7 +256,6 @@ export class Session {
 			preview: this.preview,
 			archived: this.archived,
 			agent_id: this.agent_id,
-			mode_id: this.mode_id,
 			external_agent_kind: this.external_agent_kind,
 			externalSessionId: this.externalSessionId,
 			version: this.version,

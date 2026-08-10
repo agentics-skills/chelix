@@ -675,15 +675,15 @@ impl OnboardingService for MockOnboardingService {
         Ok(serde_json::json!({ "active": !onboarded, "onboarded": onboarded }))
     }
 
-    async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "name": "chelix", "avatar": null }))
+    async fn user_get(&self) -> ServiceResult {
+        Ok(serde_json::json!({
+            "name": null,
+            "timezone": null,
+            "location": null,
+        }))
     }
 
-    async fn identity_update(&self, _params: serde_json::Value) -> ServiceResult {
-        Err("not configured".into())
-    }
-
-    async fn identity_update_soul(&self, _soul: Option<String>) -> ServiceResult {
+    async fn user_update(&self, _params: serde_json::Value) -> ServiceResult {
         Err("not configured".into())
     }
 
@@ -713,7 +713,7 @@ pub(super) async fn start_server_with_onboarding(
     behind_proxy: bool,
 ) -> (SocketAddr, Arc<CredentialStore>, Arc<GatewayState>) {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
+    write_test_config(tmp.path());
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
@@ -731,7 +731,7 @@ pub(super) async fn start_server_with_onboarding(
     });
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop().with_onboarding(mock_onboarding);
+    let services = with_test_web_services(GatewayServices::noop()).with_onboarding(mock_onboarding);
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,

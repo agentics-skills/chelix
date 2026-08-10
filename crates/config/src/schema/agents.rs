@@ -1,37 +1,47 @@
 use {
     super::*,
-    serde::{Deserialize, Deserializer, Serialize},
+    serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
 
-const DEFAULT_AGENT_PRESET: &str = "research";
 pub const DEFAULT_MAX_TOOLS_THRESHOLD: usize = 128;
 
-/// Agent presets configure identity, model, and tool policy for agents.
+const RESERVED_AGENT_IDS: &[&str] = &["default"];
+const INVALID_AGENT_ID_MESSAGE: &str = "agent id must use lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen";
+
+/// Validate an agent ID for use as a dynamic key under `[agents]`.
 ///
-/// Each agent persona (including "main") can have a matching preset under
-/// `[agents.presets.<agent_id>]`. The preset's `tools.allow`/`tools.deny`
-/// applies to **all sessions belonging to that agent** — both the agent's
-/// own direct sessions and sub-agents spawned via `spawn_agent`.
+/// Static `AgentsConfig` field names are reserved because TOML cannot contain
+/// both `[agents].<field>` and `[agents.<field>]`.
+pub fn validate_agent_id(id: &str) -> Result<(), &'static str> {
+    if RESERVED_AGENT_IDS.contains(&id) {
+        return Err("agent id is reserved by the [agents] configuration table");
+    }
+
+    let valid = !id.is_empty()
+        && id.len() <= 80
+        && !id.starts_with('-')
+        && !id.ends_with('-')
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if valid {
+        Ok(())
+    } else {
+        Err(INVALID_AGENT_ID_MESSAGE)
+    }
+}
+
+/// User-owned agent registry.
 ///
-/// MCP tools appear as `mcp__<server>__<tool>` and can be filtered per-agent
-/// via `tools.deny = ["mcp__home-assistant__*"]` on the agent's preset.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `default` selects the agent used for sessions and `spawn_agent` calls that
+/// do not specify one. Every other key under `[agents]` is an agent ID.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentsConfig {
-    /// Default preset name used when `spawn_agent.preset` is omitted and
-    /// for new sessions when no specific agent is selected. It does NOT
-    /// configure tool policy, model, or identity for the main
-    /// agent session. For main-session tool allow/deny, use
-    /// `[tools.policy]`.
-    #[serde(default = "default_preset_name")]
-    pub default_preset: Option<String>,
-    /// Named spawn presets.
-    #[serde(
-        default = "default_agent_presets",
-        deserialize_with = "deserialize_agent_presets"
-    )]
-    pub presets: HashMap<String, AgentPreset>,
+    pub default: String,
+    #[serde(flatten)]
+    pub entries: HashMap<String, AgentConfig>,
 }
 
 /// Per-request tool choice requested by the agent harness.
@@ -97,157 +107,14 @@ impl AgentToolControls {
 }
 
 impl AgentsConfig {
-    /// Return a preset by name.
-    pub fn get_preset(&self, name: &str) -> Option<&AgentPreset> {
-        self.presets.get(name)
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<&AgentConfig> {
+        self.entries.get(id)
     }
-}
 
-impl Default for AgentsConfig {
-    fn default() -> Self {
-        Self {
-            default_preset: default_preset_name(),
-            presets: default_agent_presets(),
-        }
-    }
-}
-
-fn default_preset_name() -> Option<String> {
-    Some(DEFAULT_AGENT_PRESET.to_string())
-}
-
-/// Built-in sub-agent presets available on every install.
-///
-/// User TOML and markdown definitions with the same key override these
-/// defaults during config loading.
-#[must_use]
-pub fn default_agent_presets() -> HashMap<String, AgentPreset> {
-    [
-        ("main", AgentPreset {
-            max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
-            ..Default::default()
-        }),
-        (
-            "research",
-            builtin_agent_preset(
-                "Researcher",
-                "thorough, skeptical, and evidence-oriented",
-                "Gather evidence before concluding. Prefer targeted file reads, searches, \
-                 and browser automation when the answer depends on current or external facts. \
-                 Do not edit files unless the task explicitly asks for changes. \
-                 Return a concise synthesis with source paths, URLs, commands, and open \
-                 questions.",
-                false,
-            ),
-        ),
-        (
-            "coder",
-            builtin_agent_preset(
-                "Coder",
-                "pragmatic, idiomatic, and test-focused",
-                "Implement scoped code changes. Read the surrounding code first, follow \
-                 existing patterns, keep edits small, and remove dead code you directly \
-                 replace. Run the smallest relevant verification and report changed files, \
-                 validation, and any remaining risk.",
-                false,
-            ),
-        ),
-        (
-            "reviewer",
-            builtin_agent_preset(
-                "Reviewer",
-                "precise, skeptical, and security-minded",
-                "Review for correctness, regressions, security issues, data loss, and missing \
-                 tests. Findings come first, ordered by severity, with concrete file and line \
-                 references when available. Do not make edits unless explicitly asked.",
-                false,
-            ),
-        ),
-        (
-            "qa",
-            builtin_agent_preset(
-                "QA",
-                "reproducible, evidence-driven, and user-facing",
-                "Validate behavior end to end. Reproduce reported bugs, exercise the user \
-                 workflow, use browser automation when available, capture useful evidence, \
-                 and report exact steps, expected behavior, actual behavior, and pass/fail \
-                 status.",
-                false,
-            ),
-        ),
-        (
-            "ux",
-            builtin_agent_preset(
-                "UX Designer",
-                "user-centered, accessible, and visually rigorous",
-                "Evaluate flows, information architecture, accessibility, visual hierarchy, \
-                 copy, responsive behavior, and edge states. Propose concrete changes that \
-                 fit the existing design system and call out usability risks without hand-wavy \
-                 vibes.",
-                false,
-            ),
-        ),
-        (
-            "docs",
-            builtin_agent_preset(
-                "Docs Writer",
-                "clear, accurate, and example-heavy",
-                "Update or draft user-facing documentation. Keep docs aligned with behavior, \
-                 include runnable examples when useful, verify command names and config keys, \
-                 and flag any product behavior that is unclear or undocumented.",
-                false,
-            ),
-        ),
-        (
-            "coordinator",
-            builtin_agent_preset(
-                "Coordinator",
-                "structured, concise, and delegation-oriented",
-                "Break broad work into independent subtasks, delegate only when useful, track \
-                 dependencies, and integrate results into a single answer. Avoid doing \
-                 implementation work directly unless coordination is not enough.",
-                true,
-            ),
-        ),
-    ]
-    .into_iter()
-    .map(|(name, preset)| (name.to_string(), preset))
-    .collect()
-}
-
-#[must_use]
-pub fn is_default_agent_preset(name: &str, preset: &AgentPreset) -> bool {
-    default_agent_presets().get(name) == Some(preset)
-}
-
-fn deserialize_agent_presets<'de, D>(
-    deserializer: D,
-) -> Result<HashMap<String, AgentPreset>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let user_presets = HashMap::<String, AgentPreset>::deserialize(deserializer)?;
-    let mut presets = default_agent_presets();
-    presets.extend(user_presets);
-    Ok(presets)
-}
-
-fn builtin_agent_preset(
-    display_name: &str,
-    theme: &str,
-    system_prompt_suffix: &str,
-    delegate_only: bool,
-) -> AgentPreset {
-    AgentPreset {
-        identity: AgentIdentity {
-            name: Some(display_name.to_string()),
-            emoji: None,
-            theme: Some(theme.to_string()),
-        },
-        system_prompt_suffix: Some(system_prompt_suffix.to_string()),
-        max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
-        delegate_only,
-        ..Default::default()
+    #[must_use]
+    pub fn default_agent(&self) -> Option<&AgentConfig> {
+        self.get(&self.default)
     }
 }
 
@@ -315,15 +182,15 @@ impl std::borrow::Borrow<str> for McpServerId {
 ///
 /// ```toml
 /// # Allow-list: only these servers are visible
-/// [agents.presets.my-agent.mcp]
+/// [agents.my-agent.mcp]
 /// allow_servers = ["github", "memory"]
 ///
 /// # Deny-list: all servers except these
-/// [agents.presets.my-agent.mcp]
+/// [agents.my-agent.mcp]
 /// deny_servers = ["home-assistant"]
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum PresetMcpPolicy {
+pub enum AgentMcpPolicy {
     /// No restrictions — all MCP servers are visible (default).
     #[default]
     All,
@@ -333,7 +200,7 @@ pub enum PresetMcpPolicy {
     Deny(Vec<McpServerId>),
 }
 
-impl PresetMcpPolicy {
+impl AgentMcpPolicy {
     /// Returns `true` when no MCP restrictions are configured.
     #[must_use]
     pub fn is_all(&self) -> bool {
@@ -341,7 +208,7 @@ impl PresetMcpPolicy {
     }
 }
 
-impl Serialize for PresetMcpPolicy {
+impl Serialize for AgentMcpPolicy {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap;
         match self {
@@ -363,7 +230,7 @@ impl Serialize for PresetMcpPolicy {
     }
 }
 
-impl<'de> Deserialize<'de> for PresetMcpPolicy {
+impl<'de> Deserialize<'de> for AgentMcpPolicy {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -388,7 +255,7 @@ impl<'de> Deserialize<'de> for PresetMcpPolicy {
     }
 }
 
-/// Tool policy and lazy schema visibility for an agent preset.
+/// Tool policy and lazy schema visibility for an agent.
 ///
 /// Applied as Layer 3 in the 6-layer policy resolution for all sessions
 /// belonging to this agent. When both `allow` and `deny` are specified,
@@ -398,7 +265,7 @@ impl<'de> Deserialize<'de> for PresetMcpPolicy {
 /// already-filtered registry at the start of a run.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct PresetToolPolicy {
+pub struct AgentToolPolicy {
     /// Tools to allow (whitelist). If empty, all tools are allowed.
     #[serde(default)]
     pub allow: Vec<String>,
@@ -417,26 +284,26 @@ pub struct PresetToolPolicy {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MemoryScope {
-    /// User-global: `~/.chelix/agent-memory/<preset>/`
+    /// User-global: `~/.chelix/agent-memory/<agent>/`
     #[default]
     User,
-    /// Project-local: `.chelix/agent-memory/<preset>/`
+    /// Project-local: `.chelix/agent-memory/<agent>/`
     Project,
-    /// Untracked local: `.chelix/agent-memory-local/<preset>/`
+    /// Untracked local: `.chelix/agent-memory-local/<agent>/`
     Local,
 }
 
-/// Persistent memory configuration for a preset.
+/// Persistent memory configuration for an agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct PresetMemoryConfig {
+pub struct AgentMemoryConfig {
     /// Memory scope: where the MEMORY.md is stored.
     pub scope: MemoryScope,
     /// Maximum lines to load from MEMORY.md (default: 200).
     pub max_lines: usize,
 }
 
-impl Default for PresetMemoryConfig {
+impl Default for AgentMemoryConfig {
     fn default() -> Self {
         Self {
             scope: MemoryScope::default(),
@@ -445,7 +312,7 @@ impl Default for PresetMemoryConfig {
     }
 }
 
-/// Session access policy configuration for a preset.
+/// Session access policy configuration for an agent.
 ///
 /// Controls which sessions an agent can see and interact with via
 /// the `sessions_list`, `sessions_history`, and `sessions_send` tools.
@@ -480,16 +347,16 @@ impl Default for SessionAccessPolicyConfig {
 ///
 /// ```toml
 /// # Only allow specific skills
-/// [agents.presets.kids.skills]
+/// [agents.kids.skills]
 /// allow = ["research"]
 ///
 /// # Deny specific skills
-/// [agents.presets.admin.skills]
+/// [agents.admin.skills]
 /// deny = ["gaming", "social-media"]
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct PresetSkillPolicy {
+pub struct AgentSkillPolicy {
     /// When `Some`, only these skills (by name or category) are available.
     /// `Some(vec![])` means "no skills allowed" (deny all).
     /// `None` (absent from config) means "no restriction".
@@ -500,7 +367,7 @@ pub struct PresetSkillPolicy {
     pub deny: Option<Vec<String>>,
 }
 
-impl PresetSkillPolicy {
+impl AgentSkillPolicy {
     /// Returns `true` when no skill filtering is configured.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -508,37 +375,23 @@ impl PresetSkillPolicy {
     }
 }
 
-/// Agent preset configuration.
-///
-/// Presets define identity, model, tool policies, and system prompt for an
-/// agent. When an agent persona has a matching preset (same ID), the preset's
-/// `tools.allow`/`tools.deny` filters tools for **all** sessions belonging
-/// to that agent — direct chat, channel messages, and spawned sub-agents.
-///
-/// The global `[tools.policy]` (Layer 1) always applies first; the preset's
-/// tool policy (Layer 3) narrows further. MCP tools can be filtered using
-/// `tools.deny = ["mcp__<server>__*"]` patterns.
+/// Complete configuration for one user-owned agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AgentPreset {
-    /// Agent identity overrides.
+pub struct AgentConfig {
+    pub name: String,
     #[serde(default)]
-    pub identity: AgentIdentity,
-    /// Optional model override for this preset.
+    pub emoji: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub voice_persona_id: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
-    /// Tool policy and lazy schema visibility for this preset.
     #[serde(default)]
-    pub tools: PresetToolPolicy,
-    /// Restrict sub-agent to delegation/session/task tools only.
-    #[serde(default)]
-    pub delegate_only: bool,
-    /// Per-turn tool visibility and provider tool-choice controls.
+    pub tools: AgentToolPolicy,
     #[serde(default, skip_serializing_if = "AgentToolControls::is_empty")]
     pub tool_controls: AgentToolControls,
-    /// Optional extra instructions appended to sub-agent system prompt.
-    #[serde(default)]
-    pub system_prompt_suffix: Option<String>,
     /// Maximum LLM-initiated tool calls per agent loop segment.
     pub max_tools_threshold: usize,
     /// Timeout in seconds for the sub-agent.
@@ -553,7 +406,7 @@ pub struct AgentPreset {
     pub sessions: Option<SessionAccessPolicyConfig>,
     /// Persistent per-agent memory configuration.
     #[serde(default)]
-    pub memory: Option<PresetMemoryConfig>,
+    pub memory: Option<AgentMemoryConfig>,
     /// Reasoning/thinking effort level for models that support extended thinking.
     ///
     /// Controls extended thinking for models that support it (e.g. Claude Opus,
@@ -567,34 +420,35 @@ pub struct AgentPreset {
     /// - `All` (default) — no restrictions, all MCP servers visible.
     /// - `Allow(servers)` — only listed servers visible; others denied.
     /// - `Deny(servers)` — all servers visible except listed ones.
-    #[serde(default, skip_serializing_if = "PresetMcpPolicy::is_all")]
-    pub mcp: PresetMcpPolicy,
+    #[serde(default, skip_serializing_if = "AgentMcpPolicy::is_all")]
+    pub mcp: AgentMcpPolicy,
     /// Per-agent skill access control.
     ///
     /// Controls which skills are visible to this agent. When `allow` is
     /// non-empty, only listed skills are available. `deny` removes skills
     /// by name or category.
-    #[serde(default, skip_serializing_if = "PresetSkillPolicy::is_empty")]
-    pub skills: PresetSkillPolicy,
+    #[serde(default, skip_serializing_if = "AgentSkillPolicy::is_empty")]
+    pub skills: AgentSkillPolicy,
 }
 
-impl Default for AgentPreset {
+impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            identity: AgentIdentity::default(),
+            name: String::new(),
+            emoji: None,
+            description: None,
+            voice_persona_id: None,
             model: None,
-            tools: PresetToolPolicy::default(),
-            delegate_only: false,
+            tools: AgentToolPolicy::default(),
             tool_controls: AgentToolControls::default(),
-            system_prompt_suffix: None,
             max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
             timeout_secs: None,
             max_tool_result_bytes: None,
             sessions: None,
             memory: None,
             reasoning_effort: None,
-            mcp: PresetMcpPolicy::default(),
-            skills: PresetSkillPolicy::default(),
+            mcp: AgentMcpPolicy::default(),
+            skills: AgentSkillPolicy::default(),
         }
     }
 }
@@ -602,6 +456,17 @@ impl Default for AgentPreset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_ids_reject_reserved_and_invalid_keys() {
+        assert!(validate_agent_id("qa-2").is_ok());
+        assert_eq!(
+            validate_agent_id("default"),
+            Err("agent id is reserved by the [agents] configuration table")
+        );
+        assert_eq!(validate_agent_id("QA"), Err(INVALID_AGENT_ID_MESSAGE));
+        assert_eq!(validate_agent_id("-qa"), Err(INVALID_AGENT_ID_MESSAGE));
+    }
 
     #[test]
     fn tool_controls_parse_from_tool_context() {

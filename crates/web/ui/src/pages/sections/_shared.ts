@@ -1,9 +1,4 @@
 // ── Shared state and helpers for settings sections ───────────
-//
-// This module holds module-level signals, types, and tiny helpers that
-// multiple section components reference.  By extracting them here we
-// avoid circular imports between SettingsPage.tsx and the individual
-// section files.
 
 import { signal } from "@preact/signals";
 import type { VNode } from "preact";
@@ -12,13 +7,17 @@ import * as S from "../../state";
 
 // ── Types ────────────────────────────────────────────────────
 
-export interface IdentityData {
-	name?: string;
-	emoji?: string;
-	theme?: string;
-	user_name?: string;
-	soul?: string;
-	[key: string]: unknown;
+export interface UserLocationData {
+	latitude: number;
+	longitude: number;
+	place?: string | null;
+	updated_at?: number | null;
+}
+
+export interface UserProfileData {
+	name?: string | null;
+	timezone?: string | null;
+	location?: UserLocationData | null;
 }
 
 import type { RpcResponse } from "../../types/rpc";
@@ -39,7 +38,7 @@ export type SectionItem = SectionNavigationItem | SectionGroupHeading;
 
 // ── Module-level signals ─────────────────────────────────────
 
-export const identity = signal<IdentityData | null>(null);
+export const userProfile = signal<UserProfileData | null>(null);
 export const loading = signal(true);
 export const activeSection = signal("profile");
 export const activeSubPath = signal("");
@@ -54,22 +53,19 @@ export function isMounted(): boolean {
 	return _mounted;
 }
 
-export function setMounted(v: boolean): void {
-	_mounted = v;
+export function setMounted(value: boolean): void {
+	_mounted = value;
 }
 
 export function getContainerRef(): HTMLElement | null {
 	return _containerRef;
 }
 
-export function setContainerRef(el: HTMLElement | null): void {
-	_containerRef = el;
+export function setContainerRef(element: HTMLElement | null): void {
+	_containerRef = element;
 }
 
 // ── Render helper ────────────────────────────────────────────
-// `rerender` is supplied by SettingsPage after it mounts via
-// `setRerenderFn`.  This avoids the circular import that would
-// occur if sections imported the <SettingsPage/> component.
 
 let _rerenderFn: (() => void) | null = null;
 
@@ -96,29 +92,15 @@ export function isSafariBrowser(): boolean {
 	return /Apple/i.test(vendor) || ua.includes("Safari/");
 }
 
-export function isMissingMethodError(res: RpcResponse | null): boolean {
-	const message = res?.error?.message;
-	if (typeof message !== "string") return false;
-	const lower = message.toLowerCase();
-	return lower.includes("method") && (lower.includes("not found") || lower.includes("unknown"));
-}
-
-export function fetchMainIdentity(): Promise<RpcResponse> {
-	return sendRpc("agents.identity.get", { agent_id: "main" }).then((res: RpcResponse) => {
-		if (res?.ok || !isMissingMethodError(res)) return res;
-		return sendRpc("agent.identity.get", {});
-	});
-}
-
-export function fetchIdentity(): void {
+export function fetchUserProfile(): void {
 	if (!_mounted) return;
-	fetchMainIdentity().then((res: RpcResponse) => {
-		if (res?.ok) {
-			identity.value = res.payload as IdentityData;
+	sendRpc("user.get", {}).then((response) => {
+		if (response.ok) {
+			userProfile.value = (response.payload || {}) as UserProfileData;
 			loading.value = false;
 			rerender();
 		} else if (_mounted && !S.connected) {
-			setTimeout(fetchIdentity, 500);
+			setTimeout(fetchUserProfile, 500);
 		} else {
 			loading.value = false;
 			rerender();

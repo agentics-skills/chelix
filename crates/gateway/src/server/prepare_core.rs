@@ -8,8 +8,7 @@ use {
         init_channels, init_code_index, init_memory,
         prepared::PreparedGatewayCore,
         workspace::{
-            seed_default_workspace_markdown_files, sync_persona_into_preset,
-            warn_on_workspace_prompt_file_truncation,
+            seed_default_workspace_markdown_files, warn_on_workspace_prompt_file_truncation,
         },
     },
     crate::{
@@ -79,7 +78,7 @@ pub async fn prepare_gateway_core(
         "loaded offered channels from config"
     );
     let config_env_overrides = config.env.clone();
-    let instance_slug_value = super::helpers::instance_slug(&config);
+    let instance_slug_value = super::helpers::instance_slug(&config)?;
     let browser_container_prefix = super::helpers::browser_container_prefix(&instance_slug_value);
     let sandbox_container_prefix = super::helpers::sandbox_container_prefix(&instance_slug_value);
     let mut startup_mem_probe = StartupMemProbe::new();
@@ -569,13 +568,6 @@ pub async fn prepare_gateway_core(
                         .set_project_id(&entry.key, entry.project_id.clone())
                         .await;
                 }
-                if entry.mode_id.is_some()
-                    && let Err(e) = sqlite_meta
-                        .set_mode_id(&entry.key, entry.mode_id.as_deref())
-                        .await
-                {
-                    tracing::warn!("failed to migrate session mode for {}: {e}", entry.key);
-                }
             }
         }
         let bak = metadata_json_path.with_extension("json.bak");
@@ -596,15 +588,7 @@ pub async fn prepare_gateway_core(
         db_pool.clone(),
     ));
 
-    let agent_persona_store = Arc::new(crate::agent_persona::AgentPersonaStore::new(
-        db_pool.clone(),
-    ));
-    if let Err(e) = agent_persona_store.ensure_main_workspace_seeded() {
-        tracing::warn!(error = %e, "failed to seed main agent workspace");
-    }
-    if let Err(e) = agent_persona_store.ensure_main_row().await {
-        tracing::warn!(error = %e, "failed to ensure main agent DB row");
-    }
+    let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
 
     let voice_persona_store = Arc::new(crate::voice_persona::VoicePersonaStore::new(
         db_pool.clone(),
@@ -1063,24 +1047,9 @@ pub async fn prepare_gateway_core(
     services = services.with_session_metadata(Arc::clone(&session_metadata));
     services = services.with_session_store(Arc::clone(&session_store));
     services = services.with_session_share_store(Arc::clone(&session_share_store));
-    services = services.with_agent_persona_store(Arc::clone(&agent_persona_store));
     services = services.with_voice_persona_store(Arc::clone(&voice_persona_store));
-    startup_mem_probe.checkpoint("channels.initialized");
-
-    let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
-    {
-        let personas = agent_persona_store.list().await;
-        if let Ok(personas) = personas {
-            let mut guard = agents_config.write().await;
-            for persona in &personas {
-                if persona.id == "main" {
-                    continue;
-                }
-                sync_persona_into_preset(&mut guard, persona);
-            }
-        }
-    }
     services = services.with_agents_config(Arc::clone(&agents_config));
+    startup_mem_probe.checkpoint("channels.initialized");
 
     // ── Hook discovery & registration ─────────────────────────────────────
     seed_default_workspace_markdown_files();
@@ -1108,10 +1077,10 @@ pub async fn prepare_gateway_core(
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),
             Arc::clone(&sandbox_router),
+            Arc::clone(&agents_config),
         )
         .with_tts_service(Arc::clone(&services.tts))
         .with_share_store(Arc::clone(&session_share_store))
-        .with_agent_persona_store(Arc::clone(&agent_persona_store))
         .with_voice_persona_store(Arc::clone(&voice_persona_store))
         .with_project_store(Arc::clone(&project_store))
         .with_state_store(Arc::clone(&session_state_store))
@@ -1154,7 +1123,6 @@ pub async fn prepare_gateway_core(
         session_metadata,
         session_share_store,
         session_state_store,
-        agent_persona_store,
         sandbox_router,
         tools_service,
         cron_service,

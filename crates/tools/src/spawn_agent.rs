@@ -26,7 +26,7 @@ use {
     },
     chelix_config::{
         AgentRuntimeLimits, ToolsConfigSource,
-        schema::{AgentPreset, AgentsConfig, ToolsConfig},
+        schema::{AgentConfig, AgentsConfig, ToolsConfig},
     },
     chelix_providers::ProviderRegistry,
     chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
@@ -42,20 +42,6 @@ const MAX_SPAWN_DEPTH: u64 = 3;
 
 /// Tool parameter injected via `tool_context` to track nesting depth.
 const SPAWN_DEPTH_KEY: &str = "_spawn_depth";
-
-/// Minimal delegate-only toolset for coordinator-style sub-agents.
-const DELEGATE_TOOLS: &[&str] = &[
-    "spawn_agent",
-    "spawn_status",
-    "spawn_result",
-    "spawn_list",
-    "cancel_spawn",
-    "sessions_list",
-    "sessions_history",
-    "sessions_search",
-    "sessions_send",
-    "task_list",
-];
 
 /// Callback for emitting events from the sub-agent back to the parent UI.
 pub type OnSpawnEvent = Arc<dyn Fn(RunnerEvent) + Send + Sync>;
@@ -113,7 +99,7 @@ impl SpawnAgentTool {
         self
     }
 
-    /// Attach agent preset config for `preset` lookups.
+    /// Attach the shared agent registry.
     pub fn with_agents_config(
         mut self,
         agents_config: Arc<tokio::sync::RwLock<AgentsConfig>>,
@@ -140,23 +126,13 @@ impl SpawnAgentTool {
         }
     }
 
-    fn build_sub_tools(
-        &self,
-        allow_tools: &[String],
-        deny_tools: &[String],
-        delegate_only: bool,
-    ) -> ToolRegistry {
-        let mut sub_tools = if delegate_only {
-            let allowed: HashSet<&str> = DELEGATE_TOOLS.iter().copied().collect();
-            self.tool_registry
-                .clone_allowed_by(|name| allowed.contains(name))
-        } else if !allow_tools.is_empty() {
+    fn build_sub_tools(&self, allow_tools: &[String], deny_tools: &[String]) -> ToolRegistry {
+        let mut sub_tools = if allow_tools.is_empty() {
+            self.tool_registry.clone_without(&["spawn_agent"])
+        } else {
             let allowed: HashSet<&str> = allow_tools.iter().map(String::as_str).collect();
             self.tool_registry
                 .clone_allowed_by(|name| name != "spawn_agent" && allowed.contains(name))
-        } else {
-            // Default behavior preserves old semantics.
-            self.tool_registry.clone_without(&["spawn_agent"])
         };
 
         if !deny_tools.is_empty() {
@@ -164,48 +140,25 @@ impl SpawnAgentTool {
             sub_tools = sub_tools.clone_allowed_by(|name| !deny.contains(name));
         }
 
-        if delegate_only && sub_tools.get("spawn_agent").is_none() {
-            sub_tools.replace(Box::new(self.child_spawn_tool()));
-        }
-
         sub_tools
     }
 
-    fn child_spawn_tool(&self) -> Self {
-        Self {
-            provider_registry: Arc::clone(&self.provider_registry),
-            default_provider: Arc::clone(&self.default_provider),
-            tool_registry: Arc::clone(&self.tool_registry),
-            tools_config_source: self.tools_config_source.clone(),
-            agents_config: self.agents_config.clone(),
-            on_event: self.on_event.clone(),
-            session_deps: self.session_deps.clone(),
-            task_store: Arc::clone(&self.task_store),
-        }
-    }
-
-    /// Apply reasoning_effort from the agent preset to the provider, if set.
-    ///
-    /// Returns the original provider if reasoning_effort is not configured or
-    /// the provider doesn't support it. Warns when the preset overrides a
-    /// reasoning effort already set via the model ID suffix.
+    /// Apply the agent reasoning effort to the provider, if configured.
     fn maybe_apply_reasoning_effort(
         provider: Arc<dyn LlmProvider>,
-        preset: Option<&AgentPreset>,
+        agent: &AgentConfig,
     ) -> Arc<dyn LlmProvider> {
-        let Some(effort) = preset.and_then(|p| p.reasoning_effort.as_ref()) else {
+        let Some(effort) = agent.reasoning_effort.as_ref() else {
             return provider;
         };
-        // Warn if the provider already has a (different) reasoning effort from
-        // the model ID suffix — the preset value will take precedence.
         if let Some(existing) = provider.reasoning_effort()
             && existing.as_str() != effort.as_str()
         {
             tracing::warn!(
                 model = %provider.id(),
                 existing = ?existing,
-                preset = ?effort,
-                "preset reasoning_effort overrides model-ID suffix; using preset value"
+                agent = ?effort,
+                "agent reasoning_effort overrides model-ID suffix; using agent value"
             );
         }
         let cloned = Arc::clone(&provider);
@@ -214,33 +167,33 @@ impl SpawnAgentTool {
             info!(
                 model = %provider.id(),
                 ?effort,
-                "provider does not support reasoning effort; ignoring preset setting"
+                "provider does not support reasoning effort; ignoring agent setting"
             );
         }
         new_provider.unwrap_or(provider)
     }
 
-    async fn resolve_preset(
+    async fn resolve_agent(
         &self,
         params: &serde_json::Value,
-    ) -> crate::Result<(String, AgentPreset)> {
-        let explicit_name = str_param(params, "preset").map(String::from);
-
+    ) -> crate::Result<(String, AgentConfig)> {
         let agents_config = self
             .agents_config
             .as_ref()
-            .ok_or_else(|| Error::message("spawn_agent requires configured agent presets"))?;
-
+            .ok_or_else(|| Error::message("spawn_agent requires a configured agent registry"))?;
         let agents = agents_config.read().await;
-        let preset_name = explicit_name
-            .or_else(|| agents.default_preset.clone())
-            .ok_or_else(|| Error::message("spawn_agent requires a configured default preset"))?;
-        let preset = agents.get_preset(&preset_name).cloned().ok_or_else(|| {
-            Error::message(format!(
-                "spawn preset '{preset_name}' not found in config.agents.presets"
-            ))
+        let agent_id = str_param(params, "agent")
+            .map(String::from)
+            .unwrap_or_else(|| agents.default.clone());
+        if agent_id.trim().is_empty() {
+            return Err(Error::message(
+                "spawn_agent requires agents.default to be configured",
+            ));
+        }
+        let agent = agents.get(&agent_id).cloned().ok_or_else(|| {
+            Error::message(format!("agent '{agent_id}' not found in config.agents"))
         })?;
-        Ok((preset_name, preset))
+        Ok((agent_id, agent))
     }
 }
 
@@ -249,33 +202,33 @@ fn default_spawn_task_store() -> Arc<SpawnTaskStore> {
     Arc::clone(STORE.get_or_init(|| Arc::new(SpawnTaskStore::default())))
 }
 
-/// Resolve the memory directory for a preset based on its scope.
+/// Resolve the memory directory for an agent based on its scope.
 fn resolve_memory_dir(
-    preset_name: &str,
+    agent_id: &str,
     scope: &chelix_config::schema::MemoryScope,
 ) -> std::path::PathBuf {
     use chelix_config::schema::MemoryScope;
     match scope {
         MemoryScope::User => {
             let data_dir = chelix_config::data_dir();
-            data_dir.join("agent-memory").join(preset_name)
+            data_dir.join("agent-memory").join(agent_id)
         },
         MemoryScope::Project => std::path::PathBuf::from(".chelix")
             .join("agent-memory")
-            .join(preset_name),
+            .join(agent_id),
         MemoryScope::Local => std::path::PathBuf::from(".chelix")
             .join("agent-memory-local")
-            .join(preset_name),
+            .join(agent_id),
     }
 }
 
 /// Load the first N lines of MEMORY.md from the agent's memory directory.
 /// Returns `None` if the file doesn't exist or is empty.
 fn load_memory_context(
-    preset_name: &str,
-    config: &chelix_config::schema::PresetMemoryConfig,
+    agent_id: &str,
+    config: &chelix_config::schema::AgentMemoryConfig,
 ) -> Option<String> {
-    let dir = resolve_memory_dir(preset_name, &config.scope);
+    let dir = resolve_memory_dir(agent_id, &config.scope);
     load_memory_from_dir(&dir, config.max_lines)
 }
 
@@ -295,62 +248,33 @@ fn load_memory_from_dir(dir: &std::path::Path, max_lines: usize) -> Option<Strin
     Some(lines.join("\n"))
 }
 
-/// Build the system prompt for a sub-agent, incorporating preset customizations.
+/// Build the system prompt for a spawned agent.
 fn build_sub_agent_prompt(
     task: &str,
     context: &str,
-    preset: Option<&AgentPreset>,
-    preset_name: Option<&str>,
+    agent: &AgentConfig,
+    agent_id: &str,
 ) -> String {
-    let mut prompt = String::new();
+    let mut prompt = chelix_config::load_subagent_prompt_for_agent(agent_id).unwrap_or_default();
 
-    // Add preset identity if available.
-    if let Some(p) = preset {
-        if let Some(ref name) = p.identity.name {
-            prompt.push_str(&format!("You are {name}"));
-            if let Some(ref emoji) = p.identity.emoji {
-                prompt.push_str(&format!(" ({emoji})"));
-            }
-            prompt.push_str(". ");
-        }
-        if let Some(ref theme) = p.identity.theme {
-            prompt.push_str(&format!("Your style is {theme}. "));
-        }
-    }
-
-    // Add base instruction.
-    if prompt.is_empty() {
-        prompt.push_str("You are a sub-agent spawned to handle a specific task. ");
-    }
-    prompt.push_str("Complete the task thoroughly and return a clear result.\n\n");
-
-    // Inject persistent memory if configured.
-    if let Some(p) = preset
-        && let Some(ref mem_config) = p.memory
-        && let Some(name) = preset_name
-        && let Some(memory_content) = load_memory_context(name, mem_config)
+    if let Some(ref memory_config) = agent.memory
+        && let Some(memory_content) = load_memory_context(agent_id, memory_config)
     {
+        if !prompt.is_empty() {
+            prompt.push_str("\n\n");
+        }
         prompt.push_str("# Agent Memory\n\n");
         prompt.push_str(&memory_content);
-        prompt.push_str("\n\n");
     }
 
-    // Add task.
-    prompt.push_str(&format!("Task: {task}"));
-
-    // Add context if provided.
+    if !prompt.is_empty() {
+        prompt.push_str("\n\n");
+    }
+    prompt.push_str("Task: ");
+    prompt.push_str(task);
     if !context.is_empty() {
-        prompt.push_str(&format!("\n\nContext: {context}"));
-    }
-
-    // Add preset system prompt suffix.
-    if let Some(extra) = preset
-        .and_then(|p| p.system_prompt_suffix.as_ref())
-        .map(|s| s.trim())
-        .filter(|v| !v.is_empty())
-    {
-        prompt.push_str("\n\n");
-        prompt.push_str(extra);
+        prompt.push_str("\n\nContext: ");
+        prompt.push_str(context);
     }
 
     prompt
@@ -381,27 +305,23 @@ impl AgentTool for SpawnAgentTool {
                     "type": "string",
                     "description": "Additional context for the sub-agent (optional)"
                 },
-                "preset": {
+                "agent": {
                     "type": "string",
-                    "description": "Agent preset name (e.g. 'researcher', 'coder'). Presets define model, tool policies, and behavior."
+                    "description": "Agent ID. If omitted, uses agents.default."
                 },
                 "model": {
                     "type": "string",
-                    "description": "Model ID to use (e.g. a cheaper model). If not specified, uses preset model or parent's model."
+                    "description": "Model ID to use. If omitted, uses the selected agent model or the parent model."
                 },
                 "allow_tools": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Optional whitelist of tool names for the sub-agent. spawn_agent is always excluded unless delegate_only is true."
+                    "description": "Optional whitelist of tool names for the spawned agent. spawn_agent is always excluded."
                 },
                 "deny_tools": {
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Optional blacklist of tool names for the sub-agent."
-                },
-                "delegate_only": {
-                    "type": "boolean",
-                    "description": "If true, sub-agent is restricted to delegation/session/task tools."
                 },
                 "nonblocking": {
                     "type": "boolean",
@@ -410,11 +330,11 @@ impl AgentTool for SpawnAgentTool {
                 "active_tools": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Optional per-turn whitelist of tool names visible to the sub-agent. Overrides preset tool_controls.active_tools."
+                    "description": "Optional per-turn whitelist of tool names visible to the spawned agent. Overrides agent tool_controls.active_tools."
                 },
                 "tool_choice": {
                     "type": "object",
-                    "description": "Optional provider tool choice for the sub-agent turn, e.g. {type:'tool', name:'classify_destination'}. Overrides preset tool_controls.tool_choice.",
+                    "description": "Optional provider tool choice for the spawned-agent turn. Overrides agent tool_controls.tool_choice.",
                     "properties": {
                         "type": { "type": "string", "enum": ["auto", "any", "none", "tool"] },
                         "name": { "type": "string" }
@@ -430,32 +350,31 @@ impl AgentTool for SpawnAgentTool {
         let task = str_param(&params, "task")
             .ok_or_else(|| Error::message("missing required parameter: task"))?;
         let context = str_param(&params, "context").unwrap_or("");
-        let (preset_name, preset) = self.resolve_preset(&params).await?;
+        let (agent_id, agent) = self.resolve_agent(&params).await?;
         let tools_config = self
             .tools_config_source
             .load()
             .map_err(|error| Error::message(format!("reload tools config: {error}")))?;
-        let runtime_limits = AgentRuntimeLimits::resolve_for_spawned_agent(&tools_config, &preset);
+        let runtime_limits = AgentRuntimeLimits::resolve_for_spawned_agent(&tools_config, &agent);
         let explicit_model = str_param(&params, "model").map(String::from);
-        let model_id = explicit_model.clone().or_else(|| preset.model.clone());
+        let model_id = explicit_model.clone().or_else(|| agent.model.clone());
 
         let explicit_allow_tools = string_array_param(&params, "allow_tools")?;
         let allow_tools = if explicit_allow_tools.is_empty() {
-            preset.tools.allow.clone()
+            agent.tools.allow.clone()
         } else {
             explicit_allow_tools
         };
 
         let explicit_deny_tools = string_array_param(&params, "deny_tools")?;
         let deny_tools = if explicit_deny_tools.is_empty() {
-            preset.tools.deny.clone()
+            agent.tools.deny.clone()
         } else {
             explicit_deny_tools
         };
 
-        let delegate_only = bool_param(&params, "delegate_only", preset.delegate_only);
         let nonblocking = bool_param(&params, "nonblocking", false);
-        let mut tool_controls = preset.tool_controls.clone();
+        let mut tool_controls = agent.tool_controls.clone();
         if params.get("active_tools").is_some() {
             tool_controls.active_tools = Some(string_array_param(&params, "active_tools")?);
         }
@@ -475,16 +394,16 @@ impl AgentTool for SpawnAgentTool {
             .into());
         }
 
-        // Resolve provider (and apply reasoning_effort from preset if set).
+        // Resolve provider and apply the selected agent's reasoning effort.
         let provider = if let Some(id) = model_id {
             let reg = self.provider_registry.read().await;
             let base_provider = reg
                 .get(&id)
                 .ok_or_else(|| Error::message(format!("unknown model: {id}")))?;
-            Self::maybe_apply_reasoning_effort(base_provider, Some(&preset))
+            Self::maybe_apply_reasoning_effort(base_provider, &agent)
         } else {
             let base = Arc::clone(&self.default_provider);
-            Self::maybe_apply_reasoning_effort(base, Some(&preset))
+            Self::maybe_apply_reasoning_effort(base, &agent)
         };
 
         // Capture model ID before provider is moved into the sub-agent loop.
@@ -494,7 +413,7 @@ impl AgentTool for SpawnAgentTool {
             task = %task,
             depth = depth,
             model = %model_id,
-            preset = %preset_name,
+            agent = %agent_id,
             timeout_secs = runtime_limits.timeout_secs,
             timeout_source = runtime_limits.timeout_source.as_str(),
             max_tools_threshold = runtime_limits.max_tools_threshold,
@@ -508,10 +427,10 @@ impl AgentTool for SpawnAgentTool {
         });
 
         // Build filtered tool registry from policy knobs.
-        let mut sub_tools = self.build_sub_tools(&allow_tools, &deny_tools, delegate_only);
+        let mut sub_tools = self.build_sub_tools(&allow_tools, &deny_tools);
 
-        // Apply session access policy if the preset configures one.
-        if let Some(ref session_config) = preset.sessions
+        // Apply session access policy configured for the selected agent.
+        if let Some(ref session_config) = agent.sessions
             && let Some(ref deps) = self.session_deps
         {
             let policy = SessionAccessPolicy::from(session_config);
@@ -542,9 +461,7 @@ impl AgentTool for SpawnAgentTool {
             ));
         }
 
-        // Build system prompt with identity injection and memory.
-        let system_prompt =
-            build_sub_agent_prompt(task, context, Some(&preset), Some(&preset_name));
+        let system_prompt = build_sub_agent_prompt(task, context, &agent, &agent_id);
 
         // Build tool context with incremented depth and propagated session key.
         let session_key = params
@@ -579,7 +496,7 @@ impl AgentTool for SpawnAgentTool {
                     task.to_string(),
                     session_key,
                     model_id.clone(),
-                    Some(preset_name.clone()),
+                    Some(agent_id.clone()),
                     abort_handle,
                 )
                 .await;
@@ -588,7 +505,7 @@ impl AgentTool for SpawnAgentTool {
             let on_event = self.on_event.clone();
             let task_for_run = task.to_string();
             let model_for_run = model_id.clone();
-            let preset_for_log = preset_name.clone();
+            let agent_for_log = agent_id.clone();
             tokio::spawn(async move {
                 let result = Abortable::new(
                     std::panic::AssertUnwindSafe(run_spawned_agent(
@@ -700,7 +617,7 @@ impl AgentTool for SpawnAgentTool {
                     depth = depth,
                     iterations = iterations,
                     tool_calls = tool_calls_made,
-                    preset = ?preset_for_log,
+                    agent = ?agent_for_log,
                     status = status_label,
                     "nonblocking sub-agent finished"
                 );
@@ -732,7 +649,7 @@ impl AgentTool for SpawnAgentTool {
                 "status": "running",
                 "started_at": task_entry.started_at,
                 "model": model_id,
-                "preset": preset_name,
+                "agent": agent_id,
             }));
         }
 
@@ -788,7 +705,7 @@ impl AgentTool for SpawnAgentTool {
             depth = depth,
             iterations = result.iterations,
             tool_calls = result.tool_calls_made,
-            preset = ?preset_name,
+            agent = ?agent_id,
             "sub-agent completed"
         );
 
@@ -797,7 +714,7 @@ impl AgentTool for SpawnAgentTool {
             "iterations": result.iterations,
             "tool_calls_made": result.tool_calls_made,
             "model": model_id,
-            "preset": preset_name,
+            "agent": agent_id,
         }))
     }
 }

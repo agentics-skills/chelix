@@ -38,7 +38,31 @@ impl OnboardingService for GatewayOnboardingService {
 
     async fn wizard_next(&self, params: Value) -> ServiceResult {
         let input = params.get("input").and_then(|v| v.as_str()).unwrap_or("");
-        self.inner.wizard_next(input).map_err(ServiceError::message)
+        let response = self
+            .inner
+            .wizard_next(input)
+            .map_err(ServiceError::message)?;
+
+        if response.get("done").and_then(Value::as_bool) == Some(true)
+            && let (Some(agent_id), Some(agent_value)) = (
+                response.get("agent_id").and_then(Value::as_str),
+                response.get("agent"),
+            )
+        {
+            let agent: chelix_config::AgentConfig =
+                serde_json::from_value(agent_value.clone()).map_err(ServiceError::message)?;
+            if let Some(state) = self.gateway_state.get()
+                && let Some(agents) = state.services.agents_config.as_ref()
+            {
+                agents
+                    .write()
+                    .await
+                    .entries
+                    .insert(agent_id.to_string(), agent);
+            }
+        }
+
+        Ok(response)
     }
 
     async fn wizard_cancel(&self) -> ServiceResult {
@@ -50,35 +74,22 @@ impl OnboardingService for GatewayOnboardingService {
         Ok(self.inner.wizard_status())
     }
 
-    async fn identity_get(&self) -> ServiceResult {
-        let identity = self.inner.identity_get().map_err(ServiceError::message)?;
-        serde_json::to_value(identity).map_err(ServiceError::message)
+    async fn user_get(&self) -> ServiceResult {
+        self.inner.user_get().map_err(ServiceError::message)
     }
 
-    async fn identity_update(&self, params: Value) -> ServiceResult {
+    async fn user_update(&self, params: Value) -> ServiceResult {
         let response = self
             .inner
-            .identity_update(params)
+            .user_update(params)
             .map_err(ServiceError::message)?;
 
-        if let Some(state) = self.gateway_state.get()
-            && let Some(location_value) = response.get("user_location")
-        {
+        if let Some(state) = self.gateway_state.get() {
             let mut inner = state.inner.write().await;
-            if location_value.is_null() {
-                inner.cached_location = None;
-            } else if let Some(location) = parse_geo_location(location_value) {
-                inner.cached_location = Some(location);
-            }
+            inner.cached_location = response.get("location").and_then(parse_geo_location);
         }
 
         Ok(response)
-    }
-
-    async fn identity_update_soul(&self, soul: Option<String>) -> ServiceResult {
-        self.inner
-            .identity_update_soul(soul)
-            .map_err(ServiceError::message)
     }
 
     // ── Claude import ───────────────────────────────────────────────────────

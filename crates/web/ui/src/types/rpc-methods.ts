@@ -15,22 +15,14 @@ export interface RpcMethodMap {
 	// ── A2UI ────────────────────────────────────────────────────
 	"a2ui.action": { accepted: boolean };
 
-	// ── Agent / Identity ────────────────────────────────────────
-	"agent.identity.get": Record<string, unknown>;
-	"agent.identity.update": Record<string, unknown>;
+	// ── Agents ──────────────────────────────────────────────────
+	"agents.create": unknown;
 	"agents.delete": unknown;
-	"agents.identity.get": Record<string, unknown>;
-	"agents.identity.update": Record<string, unknown>;
-	"agents.identity.update_soul": unknown;
+	"agents.get": unknown;
 	"agents.list": unknown;
-	"agents.preset.create": unknown;
-	"agents.preset.delete": unknown;
-	"agents.preset.get": unknown;
-	"agents.preset.save": unknown;
-	"agents.preset.update": unknown;
-	"agents.presets_list": unknown;
 	"agents.set_default": unknown;
 	"agents.set_session": SetSessionAgentPayload;
+	"agents.update": unknown;
 
 	// ── Channels ────────────────────────────────────────────────
 	"channels.add": unknown;
@@ -126,10 +118,6 @@ export interface RpcMethodMap {
 	"projects.list": unknown;
 	"projects.upsert": unknown;
 
-	// ── Modes ──────────────────────────────────────────────────
-	"modes.list": unknown;
-	"modes.set_session": unknown;
-
 	// ── Providers ───────────────────────────────────────────────
 	"providers.add_custom": unknown;
 	"providers.available": ProviderInfo[];
@@ -181,6 +169,10 @@ export interface RpcMethodMap {
 	"tts.convert": unknown;
 	"tts.generate_phrase": { phrase: string; source: "llm" | "static" };
 	"tts.status": unknown;
+
+	// ── User profile ────────────────────────────────────────────
+	"user.get": unknown;
+	"user.update": unknown;
 
 	// ── Voice ───────────────────────────────────────────────────
 	"voice.config.save_key": unknown;

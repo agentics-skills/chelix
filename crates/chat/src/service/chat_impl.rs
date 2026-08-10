@@ -44,7 +44,7 @@ use crate::{
         apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
         clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
         load_prompt_persona_for_session, prepare_run_registry, prompt_build_limits_from_config,
-        resolve_prompt_agent_id, resolve_prompt_mode_context,
+        resolve_prompt_agent_id,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -56,16 +56,14 @@ use super::*;
 pub(super) fn resolved_turn_reasoning_effort(
     session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
     persona: &PromptPersona,
-    agent_id: &str,
 ) -> Option<String> {
     if let Some(reasoning_effort) = session_entry.and_then(|entry| entry.reasoning_effort.clone()) {
         return Some(reasoning_effort);
     }
     persona
-        .config
-        .agents
-        .get_preset(agent_id)
-        .and_then(|preset| preset.reasoning_effort.as_ref())
+        .agent
+        .reasoning_effort
+        .as_ref()
         .map(|effort| effort.as_str().to_string())
 }
 
@@ -194,14 +192,13 @@ impl ChatService for LiveChatService {
             reg.get(model_id)
                 .ok_or_else(|| format!("model '{model_id}' not found"))?
         };
-        let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
         let persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
             .map_err(ServiceError::message)?;
-        let resolved_reasoning_effort = requested_reasoning_effort_override.or_else(|| {
-            resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
-        });
+        let session_agent_id = persona.agent_id.clone();
+        let resolved_reasoning_effort = requested_reasoning_effort_override
+            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona));
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona
@@ -216,7 +213,6 @@ impl ChatService for LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
         apply_request_runtime_context(
             &mut runtime_context.host,
             &params,
@@ -755,13 +751,10 @@ impl ChatService for LiveChatService {
         // Session info
         let message_count = self.session_store.count(&session_key).await.unwrap_or(0);
         let session_entry = self.session_metadata.get(&session_key).await;
-        let prompt_persona = load_prompt_persona_for_session(
-            &self.config,
-            &session_key,
-            session_entry.as_ref(),
-            self.session_state_store.as_deref(),
-        )
-        .await;
+        let prompt_persona = self
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .await
+            .map_err(ServiceError::message)?;
         let (provider_arc, provider_name, supports_tools) = {
             let reg = self.providers.read().await;
             let session_model = session_entry.as_ref().and_then(|e| e.model.as_deref());
@@ -844,7 +837,6 @@ impl ChatService for LiveChatService {
             .as_ref()
             .and_then(|e| e.mcp_disabled)
             .unwrap_or(false);
-        let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
         // Read history once: the token usage below reuses it, and the tool
         // catalog needs it to restore lazy schema visibility.
         let messages = self
@@ -857,7 +849,7 @@ impl ChatService for LiveChatService {
         // separately reports how many parameter schemas are currently visible.
         let (tools, tool_schema_count): (Vec<Value>, usize) = if supports_tools {
             let registry_guard = self.tool_registry.read().await;
-            let list_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+            let list_agent_id = prompt_persona.agent_id.clone();
             let list_ctx = PolicyContext {
                 agent_id: list_agent_id.clone(),
                 ..Default::default()
@@ -869,7 +861,7 @@ impl ChatService for LiveChatService {
             });
             match prepare_run_registry(
                 &registry_guard,
-                &config,
+                &prompt_persona.config,
                 &[],
                 mcp_disabled,
                 &list_ctx,
@@ -957,7 +949,7 @@ impl ChatService for LiveChatService {
         // Discover enabled skills/plugins (only if provider supports tools and
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if supports_tools {
-            discover_skills_if_enabled(&config)
+            discover_skills_if_enabled(&prompt_persona.config)
                 .await
                 .iter()
                 .map(|s| {
@@ -1047,7 +1039,6 @@ impl ChatService for LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
         apply_request_runtime_context(
             &mut runtime_context.host,
             &params,
@@ -1072,15 +1063,10 @@ impl ChatService for LiveChatService {
             .and_then(|entry| entry.mcp_disabled)
             .unwrap_or(false);
 
-        let raw_prompt_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+        let raw_prompt_agent_id = persona.agent_id.clone();
 
         // Apply per-agent skill policy.
-        let discovered_skills =
-            if let Some(preset) = persona.config.agents.get_preset(&raw_prompt_agent_id) {
-                filter_skills_for_agent(discovered_skills, &preset.skills)
-            } else {
-                discovered_skills
-            };
+        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
 
         // Build filtered tool registry with the same preparation as the live
         // run (filter → memory tools → lazy wrap) so the debug prompt matches.
@@ -1117,7 +1103,7 @@ impl ChatService for LiveChatService {
                 native_tools,
                 project_context.as_deref(),
                 &discovered_skills,
-                Some(&persona.identity),
+                Some(&persona.agent),
                 Some(&persona.user),
                 persona.soul_text.as_deref(),
                 persona.boot_text.as_deref(),
@@ -1131,7 +1117,7 @@ impl ChatService for LiveChatService {
         } else {
             build_system_prompt_minimal_runtime_details(
                 project_context.as_deref(),
-                Some(&persona.identity),
+                Some(&persona.agent),
                 Some(&persona.user),
                 persona.soul_text.as_deref(),
                 persona.boot_text.as_deref(),
@@ -1200,7 +1186,6 @@ impl ChatService for LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
         apply_request_runtime_context(
             &mut runtime_context.host,
             &params,
@@ -1226,15 +1211,10 @@ impl ChatService for LiveChatService {
             .unwrap_or(false);
 
         // Build filtered tool registry.
-        let full_ctx_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+        let full_ctx_agent_id = persona.agent_id.clone();
 
         // Apply per-agent skill policy.
-        let discovered_skills =
-            if let Some(preset) = persona.config.agents.get_preset(&full_ctx_agent_id) {
-                filter_skills_for_agent(discovered_skills, &preset.skills)
-            } else {
-                discovered_skills
-            };
+        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
         let policy_ctx =
             build_policy_context(&full_ctx_agent_id, Some(&runtime_context), Some(&params));
         // Same preparation as the live run so the full-context prompt reflects
@@ -1267,7 +1247,7 @@ impl ChatService for LiveChatService {
                 native_tools,
                 project_context.as_deref(),
                 &discovered_skills,
-                Some(&persona.identity),
+                Some(&persona.agent),
                 Some(&persona.user),
                 persona.soul_text.as_deref(),
                 persona.boot_text.as_deref(),
@@ -1281,7 +1261,7 @@ impl ChatService for LiveChatService {
         } else {
             build_system_prompt_minimal_runtime_details(
                 project_context.as_deref(),
-                Some(&persona.identity),
+                Some(&persona.agent),
                 Some(&persona.user),
                 persona.soul_text.as_deref(),
                 persona.boot_text.as_deref(),
@@ -1335,7 +1315,12 @@ impl ChatService for LiveChatService {
     async fn refresh_prompt_memory(&self, params: Value) -> ServiceResult {
         let session_key = self.resolve_session_key_from_params(&params).await;
         let session_entry = self.session_metadata.get(&session_key).await;
-        let agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+        let runtime_config = self
+            .load_runtime_config_for_agent_run()
+            .await
+            .map_err(ServiceError::message)?;
+        let agent_id = resolve_prompt_agent_id(&runtime_config, session_entry.as_ref())
+            .map_err(ServiceError::message)?;
         let snapshot_cleared = clear_prompt_memory_snapshot(
             &session_key,
             &agent_id,
@@ -1343,12 +1328,13 @@ impl ChatService for LiveChatService {
         )
         .await;
         let persona = load_prompt_persona_for_session(
-            &self.config,
+            &runtime_config,
             &session_key,
             session_entry.as_ref(),
             self.session_state_store.as_deref(),
         )
-        .await;
+        .await
+        .map_err(ServiceError::message)?;
 
         Ok(serde_json::json!({
             "ok": true,
@@ -1476,7 +1462,6 @@ mod tests {
             last_seen_message_count: 0,
             version: 0,
             agent_id: None,
-            mode_id: None,
             external_agent_kind: None,
             external_session_id: None,
             reasoning_effort: None,

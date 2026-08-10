@@ -2,44 +2,39 @@
 
 use std::io::{BufRead, Write};
 
-use chelix_config::{ChelixConfig, find_or_default_config_path, save_config};
+use chelix_config::{AgentConfig, find_or_default_config_path};
 
-use crate::{Context, Result, state::WizardState};
+use crate::{Context, Error, Result, state::WizardState};
 
 /// Run the interactive onboarding wizard in the terminal.
 pub async fn run_onboarding() -> Result<()> {
     let config_path = find_or_default_config_path();
-
-    // Check if already onboarded.
-    let mut identity_name: Option<String> = None;
-    let mut user_name: Option<String> = None;
-    if config_path.exists() {
-        let cfg = chelix_config::loader::load_config(&config_path)
-            .context("failed to load existing onboarding config")?;
-        identity_name = cfg.identity.name;
-        user_name = cfg.user.name;
-    }
-    if let Some(id) = chelix_config::load_identity_for_agent("main")
-        && id.name.is_some()
-    {
-        identity_name = id.name;
-    }
-    if let Some(user) = chelix_config::load_user()
-        && user.name.is_some()
-    {
-        user_name = user.name;
+    if !config_path.exists() {
+        return Err(Error::message(format!(
+            "onboarding config does not exist: {}",
+            config_path.display()
+        )));
     }
 
-    if identity_name.is_some() && user_name.is_some() {
+    let mut config = chelix_config::loader::load_config(&config_path)
+        .context("failed to load existing onboarding config")?;
+    let default_id = config.agents.default.clone();
+    let default_agent = configured_default_agent(&config)?.clone();
+    let user = chelix_config::resolve_user_profile_from_config(&config);
+
+    if !default_agent.name.trim().is_empty() && user.name.is_some() {
         println!(
             "Already onboarded as {} with agent {}.",
-            user_name.as_deref().unwrap_or("?"),
-            identity_name.as_deref().unwrap_or("?"),
+            user.name.as_deref().unwrap_or(""),
+            default_agent.name,
         );
         return Ok(());
     }
 
     let mut state = WizardState::new();
+    state.agent = default_agent;
+    state.user = user;
+
     let stdin = std::io::stdin();
     let mut reader = stdin.lock();
 
@@ -52,22 +47,27 @@ pub async fn run_onboarding() -> Result<()> {
         state.advance(&line);
     }
 
-    // Merge into existing config or create new one.
-    let mut config = if config_path.exists() {
-        chelix_config::loader::load_config(&config_path)
-            .context("failed to load existing onboarding config")?
-    } else {
-        ChelixConfig::default()
-    };
-    config.identity = state.identity;
+    config.agents.entries.insert(default_id, state.agent);
     config.user = state.user;
 
-    let path = save_config(&config).context("failed to save onboarding config")?;
-    chelix_config::save_identity_for_agent("main", &config.identity)
-        .context("failed to save identity")?;
+    chelix_config::loader::save_config_to_path(&config_path, &config)
+        .context("failed to save onboarding config")?;
     chelix_config::save_user_with_mode(&config.user, config.memory.user_profile_write_mode)
-        .context("failed to save user")?;
-    println!("Config saved to {}", path.display());
+        .context("failed to save user profile")?;
+    println!("Config saved to {}", config_path.display());
     println!("Onboarding complete!");
     Ok(())
+}
+
+/// Return the configured default agent without normalization or fallback.
+fn configured_default_agent(config: &chelix_config::ChelixConfig) -> Result<&AgentConfig> {
+    let default_id = config.agents.default.as_str();
+    if default_id.trim().is_empty() {
+        return Err(Error::message("agents.default is empty"));
+    }
+    config.agents.entries.get(default_id).ok_or_else(|| {
+        Error::message(format!(
+            "default agent \"{default_id}\" is not defined under [agents]"
+        ))
+    })
 }

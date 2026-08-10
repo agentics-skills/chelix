@@ -319,7 +319,7 @@ pub(crate) async fn run_with_tools(
             native_tools,
             project_context,
             skills,
-            Some(&persona.identity),
+            Some(&persona.agent),
             Some(&persona.user),
             persona.soul_text.as_deref(),
             persona.boot_text.as_deref(),
@@ -334,7 +334,7 @@ pub(crate) async fn run_with_tools(
     } else {
         build_system_prompt_minimal_runtime_details(
             project_context,
-            Some(&persona.identity),
+            Some(&persona.agent),
             Some(&persona.user),
             persona.soul_text.as_deref(),
             persona.boot_text.as_deref(),

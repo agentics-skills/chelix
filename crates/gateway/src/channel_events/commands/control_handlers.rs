@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use {
     chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
-    chelix_config::ModePreset,
     chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
@@ -14,31 +13,12 @@ use crate::{
 use super::{
     super::{
         ApprovalListResponse, format_pending_approvals_list, is_sender_on_allowlist,
-        parse_numbered_selection,
+        parse_numbered_selection, resolve_channel_agent_id,
     },
     formatting::{format_model_list, unique_providers},
 };
 
 // ── Control command handlers ─────────────────────────────────────
-
-fn sorted_mode_presets(config: &chelix_config::ChelixConfig) -> Vec<(String, ModePreset)> {
-    let mut modes: Vec<(String, ModePreset)> = config
-        .modes
-        .presets
-        .iter()
-        .filter(|(_, preset)| !preset.prompt.trim().is_empty())
-        .map(|(id, preset)| (id.clone(), preset.clone()))
-        .collect();
-    modes.sort_by(|(left_id, left), (right_id, right)| {
-        let left_name = left.name.as_deref().unwrap_or(left_id);
-        let right_name = right.name.as_deref().unwrap_or(right_id);
-        left_name
-            .to_lowercase()
-            .cmp(&right_name.to_lowercase())
-            .then_with(|| left_id.cmp(right_id))
-    });
-    modes
-}
 
 pub(in crate::channel_events) async fn handle_approvals(
     state: &Arc<GatewayState>,
@@ -136,35 +116,47 @@ pub(in crate::channel_events) async fn handle_agent(
     session_key: &str,
     args: &str,
 ) -> ChannelResult<String> {
-    let Some(ref store) = state.services.agent_persona_store else {
-        return Err(ChannelError::unavailable(
-            "agent personas are not available",
-        ));
+    let agents_config = state
+        .services
+        .agents_config
+        .as_ref()
+        .ok_or_else(|| ChannelError::unavailable("agent configuration is not available"))?;
+    let (default_id, agents) = {
+        let guard = agents_config.read().await;
+        let default_id = guard.default.trim().to_string();
+        if default_id.is_empty() || !guard.entries.contains_key(&default_id) {
+            return Err(ChannelError::unavailable("default agent is not configured"));
+        }
+        let mut agents: Vec<_> = guard
+            .entries
+            .iter()
+            .map(|(id, agent)| (id.clone(), agent.clone()))
+            .collect();
+        agents.sort_by(|(left_id, left), (right_id, right)| {
+            left.name
+                .to_lowercase()
+                .cmp(&right.name.to_lowercase())
+                .then_with(|| left_id.cmp(right_id))
+        });
+        (default_id, agents)
     };
-    let default_id = store
-        .default_id()
-        .await
-        .unwrap_or_else(|_| "main".to_string());
-    let agents = store
-        .list()
-        .await
-        .map_err(|e| ChannelError::external("listing agents", e))?;
-    let current_agent = session_metadata
+    let requested_agent = session_metadata
         .get(session_key)
         .await
         .and_then(|entry| entry.agent_id)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(default_id.clone());
+        .filter(|value| !value.trim().is_empty());
+    let current_agent =
+        resolve_channel_agent_id(state, session_key, requested_agent.as_deref()).await?;
 
     if args.is_empty() {
         let mut lines = Vec::new();
-        for (i, agent) in agents.iter().enumerate() {
-            let marker = if agent.id == current_agent {
+        for (i, (agent_id, agent)) in agents.iter().enumerate() {
+            let marker = if agent_id == &current_agent {
                 " *"
             } else {
                 ""
             };
-            let default_badge = if agent.id == default_id {
+            let default_badge = if agent_id == &default_id {
                 " (default)"
             } else {
                 ""
@@ -179,7 +171,7 @@ pub(in crate::channel_events) async fn handle_agent(
                 "{}. {} [{}]{}{}",
                 i + 1,
                 label,
-                agent.id,
+                agent_id,
                 default_badge,
                 marker,
             ));
@@ -196,9 +188,9 @@ pub(in crate::channel_events) async fn handle_agent(
                 agents.len()
             )));
         }
-        let chosen = &agents[n - 1];
+        let (chosen_id, chosen) = &agents[n - 1];
         session_metadata
-            .set_agent_id(session_key, Some(&chosen.id))
+            .set_agent_id(session_key, Some(chosen_id))
             .await
             .map_err(|e| ChannelError::external("setting session agent", e))?;
 
@@ -223,119 +215,6 @@ pub(in crate::channel_events) async fn handle_agent(
             Ok(format!("Agent switched to: {} {}", emoji, chosen.name))
         }
     }
-}
-
-pub(in crate::channel_events) async fn handle_mode(
-    state: &Arc<GatewayState>,
-    session_metadata: &SqliteSessionMetadata,
-    session_key: &str,
-    args: &str,
-) -> ChannelResult<String> {
-    let config = chelix_config::discover_and_load()
-        .map_err(|error| ChannelError::external("load config", error))?;
-    let modes = sorted_mode_presets(&config);
-    if modes.is_empty() {
-        return Ok("No modes are configured.".to_string());
-    }
-
-    let current_mode = session_metadata
-        .get(session_key)
-        .await
-        .and_then(|entry| entry.mode_id)
-        .filter(|value| !value.trim().is_empty());
-
-    if args.is_empty() {
-        let mut lines = Vec::with_capacity(modes.len() + 1);
-        for (i, (id, preset)) in modes.iter().enumerate() {
-            let marker = if current_mode.as_deref() == Some(id.as_str()) {
-                " *"
-            } else {
-                ""
-            };
-            let name = preset.name.as_deref().unwrap_or(id);
-            let description = preset.description.as_deref().unwrap_or_default();
-            if description.is_empty() {
-                lines.push(format!("{}. {} [{}]{}", i + 1, name, id, marker));
-            } else {
-                lines.push(format!(
-                    "{}. {} [{}] - {}{}",
-                    i + 1,
-                    name,
-                    id,
-                    description,
-                    marker,
-                ));
-            }
-        }
-        lines.push("\nUse /mode N, /mode <id>, or /mode none.".to_string());
-        return Ok(lines.join("\n"));
-    }
-
-    let normalized = args.trim().to_lowercase();
-    if matches!(
-        normalized.as_str(),
-        "none" | "off" | "clear" | "default" | "reset"
-    ) {
-        session_metadata
-            .set_mode_id(session_key, None)
-            .await
-            .map_err(|e| ChannelError::external("clearing session mode", e))?;
-        broadcast(
-            state,
-            "session",
-            serde_json::json!({
-                "kind": "patched",
-                "sessionKey": session_key,
-            }),
-            BroadcastOpts {
-                drop_if_slow: true,
-                ..Default::default()
-            },
-        )
-        .await;
-        return Ok("Mode cleared.".to_string());
-    }
-
-    let chosen = if let Ok(n) = normalized.parse::<usize>() {
-        if n == 0 || n > modes.len() {
-            return Err(ChannelError::invalid_input(format!(
-                "invalid mode number. Use 1-{}.",
-                modes.len()
-            )));
-        }
-        modes.get(n - 1)
-    } else {
-        modes.iter().find(|(id, preset)| {
-            id.eq_ignore_ascii_case(args.trim())
-                || preset
-                    .name
-                    .as_deref()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(args.trim()))
-        })
-    }
-    .ok_or_else(|| ChannelError::invalid_input(format!("unknown mode: {args}")))?;
-
-    session_metadata
-        .set_mode_id(session_key, Some(&chosen.0))
-        .await
-        .map_err(|e| ChannelError::external("setting session mode", e))?;
-
-    broadcast(
-        state,
-        "session",
-        serde_json::json!({
-            "kind": "patched",
-            "sessionKey": session_key,
-        }),
-        BroadcastOpts {
-            drop_if_slow: true,
-            ..Default::default()
-        },
-    )
-    .await;
-
-    let name = chosen.1.name.as_deref().unwrap_or(&chosen.0);
-    Ok(format!("Mode switched to: {name}"))
 }
 
 pub(in crate::channel_events) async fn handle_model(

@@ -97,13 +97,14 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
         let mut config = ChelixConfig::default();
         config.server.port = generate_random_port();
         write_default_config(&default_path, &config)?;
+        materialize_starter_agent_workspaces()?;
         info!(
             path = %default_path.display(),
             "wrote default config template"
         );
     }
 
-    let cfg = try_discover_and_load_readonly_with_options(true, true)?;
+    let cfg = try_discover_and_load_readonly_with_options(true)?;
 
     // Persist randomly generated port so it stays stable across restarts.
     // Read-only discovery generates an in-memory port when the on-disk
@@ -140,19 +141,11 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
 ///
 /// Returns an error if no config file is found or the file is invalid.
 pub fn discover_and_load() -> crate::Result<ChelixConfig> {
-    try_discover_and_load_readonly_with_options(true, true)
-}
-
-/// Load config using layered merge without writing any files.
-///
-/// Load config without merging markdown agent definitions.
-pub fn discover_and_load_without_agent_defs() -> crate::Result<ChelixConfig> {
-    try_discover_and_load_readonly_with_options(true, false)
+    try_discover_and_load_readonly_with_options(true)
 }
 
 fn try_discover_and_load_readonly_with_options(
     apply_third_party_aliases: bool,
-    include_agent_defs: bool,
 ) -> crate::Result<ChelixConfig> {
     let path = find_config_file().ok_or_else(|| crate::Error::message("no config file found"))?;
     debug!(path = %path.display(), "loading config (read-only)");
@@ -160,19 +153,6 @@ fn try_discover_and_load_readonly_with_options(
     if cfg.server.port == 0 {
         cfg.server.port = generate_random_port();
     }
-
-    // Merge markdown agent definitions (TOML presets take precedence).
-    if include_agent_defs {
-        let agent_defs = crate::agent_defs::discover_agent_defs().map_err(|source| {
-            crate::Error::message(format!(
-                "failed to discover markdown agent definitions: {source:#}"
-            ))
-        })?;
-        if !agent_defs.is_empty() {
-            crate::agent_defs::merge_agent_defs(&mut cfg.agents.presets, agent_defs);
-        }
-    }
-
     Ok(cfg)
 }
 
@@ -298,8 +278,42 @@ pub fn update_config(f: impl FnOnce(&mut ChelixConfig)) -> crate::Result<PathBuf
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let target_path = find_or_default_config_path();
     guard.target_path = Some(target_path.clone());
-    let mut config = try_discover_and_load_readonly_with_options(false, true)?;
+    let mut config = try_discover_and_load_readonly_with_options(false)?;
     f(&mut config);
+    save_user_config_to_path(&target_path, &config)
+}
+
+/// Atomically load, mutate, validate, and save the user configuration.
+///
+/// The mutation may reject the update before any file is written. The fully
+/// mutated configuration is then validated before the existing user config is
+/// replaced.
+pub fn update_config_checked(
+    f: impl FnOnce(&mut ChelixConfig) -> crate::Result<()>,
+) -> crate::Result<PathBuf> {
+    let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let target_path = find_or_default_config_path();
+    guard.target_path = Some(target_path.clone());
+    let mut config = try_discover_and_load_readonly_with_options(false)?;
+    f(&mut config)?;
+    validate_agent_ids(&config.agents, "configuration update")?;
+
+    let serialized = toml::to_string_pretty(&config)
+        .map_err(|source| crate::Error::external("serialize config", source))?;
+    let validation = crate::validate::validate_toml_str(&serialized);
+    let errors = validation
+        .diagnostics
+        .into_iter()
+        .filter(|diagnostic| diagnostic.severity == crate::validate::Severity::Error)
+        .map(|diagnostic| format!("{}: {}", diagnostic.path, diagnostic.message))
+        .collect::<Vec<_>>();
+    if !errors.is_empty() {
+        return Err(crate::Error::message(format!(
+            "configuration update rejected: {}",
+            errors.join("; ")
+        )));
+    }
+
     save_user_config_to_path(&target_path, &config)
 }
 
@@ -340,6 +354,7 @@ pub fn save_raw_config(toml_str: &str) -> crate::Result<PathBuf> {
 /// For existing TOML files, this preserves user comments by merging the new
 /// serialized values into the current document structure before writing.
 pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<PathBuf> {
+    validate_agent_ids(&config.agents, "configuration write")?;
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     guard.target_path = Some(path.to_path_buf());
     if let Some(parent) = path.parent() {
@@ -372,6 +387,7 @@ pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<
 ///
 /// For new files, writes only non-default values.
 pub fn save_user_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<PathBuf> {
+    validate_agent_ids(&config.agents, "user configuration write")?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -685,7 +701,7 @@ pub(super) fn write_default_config(path: &Path, config: &ChelixConfig) -> crate:
         std::fs::create_dir_all(parent)?;
     }
     // Use the documented template instead of plain serialization
-    let toml_str = crate::template::default_config_template(config.server.port);
+    let toml_str = crate::template::first_run_config_template(config.server.port);
     atomic_write(path, &toml_str)?;
     debug!(path = %path.display(), "wrote default config file with template");
     Ok(())
@@ -921,8 +937,30 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     let config: ChelixConfig = serde_json::from_value(value).map_err(|source| {
         crate::Error::external(format!("invalid config {}", path.display()), source)
     })?;
-    validate_provider_names(&config.providers, &format!("config {}", path.display()))?;
+    let context = format!("config {}", path.display());
+    validate_provider_names(&config.providers, &context)?;
+    validate_agent_ids(&config.agents, &context)?;
     Ok(config)
+}
+
+fn validate_agent_ids(agents: &crate::schema::AgentsConfig, context: &str) -> crate::Result<()> {
+    let mut invalid = agents
+        .entries
+        .keys()
+        .filter_map(|id| {
+            crate::schema::validate_agent_id(id)
+                .err()
+                .map(|message| format!("agents.{id}: {message}"))
+        })
+        .collect::<Vec<_>>();
+    if invalid.is_empty() {
+        return Ok(());
+    }
+    invalid.sort();
+    Err(crate::Error::message(format!(
+        "invalid {context}: {}",
+        invalid.join("; ")
+    )))
 }
 
 fn validate_provider_names(

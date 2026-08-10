@@ -32,8 +32,6 @@ pub struct PatchParams {
     pub project_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option", alias = "worktree_branch")]
     pub worktree_branch: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option", alias = "mode_id")]
-    pub mode_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option", alias = "mcp_disabled")]
     pub mcp_disabled: Option<Option<bool>>,
     #[serde(

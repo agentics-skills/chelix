@@ -25,8 +25,8 @@ pub enum AuthAction {
     },
     /// Reset gateway authentication (remove password, sessions, passkeys, API keys).
     ResetPassword,
-    /// Reset agent identity and user profile (triggers onboarding on next start).
-    ResetIdentity,
+    /// Reset the user profile (triggers onboarding on next start).
+    ResetProfile,
     /// Create a new API key for authenticating with the gateway.
     CreateApiKey {
         /// Label for the API key (e.g. "CLI tool", "CI pipeline").
@@ -45,7 +45,7 @@ pub async fn handle_auth(action: AuthAction) -> Result<()> {
         AuthAction::Status => status(),
         AuthAction::Logout { provider } => logout(&provider),
         AuthAction::ResetPassword => reset_password().await,
-        AuthAction::ResetIdentity => reset_identity(),
+        AuthAction::ResetProfile => reset_profile(),
         AuthAction::CreateApiKey { label, scopes } => create_api_key(&label, scopes).await,
     }
 }
@@ -192,12 +192,11 @@ fn logout(provider: &str) -> Result<()> {
     Ok(())
 }
 
-fn reset_identity() -> Result<()> {
+fn reset_profile() -> Result<()> {
     chelix_config::loader::update_config(|cfg| {
-        cfg.identity = Default::default();
         cfg.user = Default::default();
     })?;
-    println!("Identity and user profile cleared. Onboarding will be required on next load.");
+    println!("User profile cleared. Onboarding will be required on next load.");
     Ok(())
 }
 

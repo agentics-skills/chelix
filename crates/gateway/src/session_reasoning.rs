@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 
 use crate::state::GatewayState;
 
-pub async fn preset_defaults_for_agent(
+pub async fn agent_defaults_for_agent(
     state: &GatewayState,
     agent_id: Option<&str>,
 ) -> (Option<String>, Option<String>) {
@@ -13,12 +13,12 @@ pub async fn preset_defaults_for_agent(
         return (None, None);
     };
     let guard = agents_config.read().await;
-    let Some(preset) = guard.presets.get(agent_id) else {
+    let Some(agent) = guard.get(agent_id) else {
         return (None, None);
     };
     (
-        preset.model.clone(),
-        preset
+        agent.model.clone(),
+        agent
             .reasoning_effort
             .as_ref()
             .map(|effort| effort.as_str().to_string()),
@@ -43,21 +43,21 @@ pub(crate) async fn enrich_session_entry_for_ui(
         .get("agent_id")
         .or_else(|| entry.get("agentId"))
         .and_then(Value::as_str);
-    let (preset_model, preset_reasoning) = preset_defaults_for_agent(state, agent_id).await;
+    let (agent_model, agent_reasoning) = agent_defaults_for_agent(state, agent_id).await;
 
     if stored_model.is_none()
-        && let Some(model) = preset_model
+        && let Some(model) = agent_model
     {
         entry.insert("model".to_string(), Value::String(model));
     }
 
-    let resolved_reasoning = stored_reasoning.or(preset_reasoning);
+    let resolved_reasoning = stored_reasoning.or(agent_reasoning);
     if let Some(reasoning) = resolved_reasoning {
         entry.insert("reasoningEffort".to_string(), Value::String(reasoning));
     }
 }
 
-pub(crate) async fn materialize_agent_preset_session_defaults(
+pub(crate) async fn materialize_agent_session_defaults(
     state: &GatewayState,
     session_key: &str,
     agent_id: &str,
@@ -65,13 +65,13 @@ pub(crate) async fn materialize_agent_preset_session_defaults(
     let Some(metadata) = state.services.session_metadata.as_ref() else {
         return;
     };
-    let (preset_model, preset_reasoning) = preset_defaults_for_agent(state, Some(agent_id)).await;
-    if let Some(model) = preset_model {
+    let (agent_model, agent_reasoning) = agent_defaults_for_agent(state, Some(agent_id)).await;
+    if let Some(model) = agent_model {
         metadata.set_model(session_key, Some(model)).await;
     }
-    if preset_reasoning.is_some() {
+    if agent_reasoning.is_some() {
         metadata
-            .set_reasoning_effort(session_key, preset_reasoning)
+            .set_reasoning_effort(session_key, agent_reasoning)
             .await;
     }
 }

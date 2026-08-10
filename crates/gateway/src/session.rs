@@ -27,7 +27,6 @@ use {
 
 #[allow(unused_imports)]
 use crate::{
-    agent_persona::AgentPersonaStore,
     services::{ServiceError, ServiceResult, SessionService, TtsService},
     session_types::{PatchParams, TruncateTailParams, VoiceGenerateParams, parse_params},
     share_store::{
@@ -129,8 +128,6 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "archived": entry.archived,
         "agent_id": &entry.agent_id,
         "agentId": &entry.agent_id,
-        "mode_id": &entry.mode_id,
-        "modeId": &entry.mode_id,
         "external_agent_kind": entry.external_agent_kind.map(|kind| kind.as_str()),
         "externalAgentKind": entry.external_agent_kind.map(|kind| kind.as_str()),
         "externalSessionId": &entry.external_session_id,

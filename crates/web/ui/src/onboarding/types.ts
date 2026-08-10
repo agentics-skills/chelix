@@ -17,7 +17,6 @@ export interface IdentityInfo {
 	user_name?: string;
 	name?: string;
 	emoji?: string;
-	theme?: string;
 	[key: string]: unknown;
 }
 

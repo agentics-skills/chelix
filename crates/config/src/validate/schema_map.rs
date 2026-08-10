@@ -239,16 +239,12 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let agent_preset = || {
+    let agent = || {
         Struct(HashMap::from([
-            (
-                "identity",
-                Struct(HashMap::from([
-                    ("name", Leaf),
-                    ("emoji", Leaf),
-                    ("theme", Leaf),
-                ])),
-            ),
+            ("name", Leaf),
+            ("emoji", Leaf),
+            ("description", Leaf),
+            ("voice_persona_id", Leaf),
             ("model", Leaf),
             (
                 "tools",
@@ -258,7 +254,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ("preload", Leaf),
                 ])),
             ),
-            ("delegate_only", Leaf),
             (
                 "tool_controls",
                 Struct(HashMap::from([
@@ -269,7 +264,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ),
                 ])),
             ),
-            ("system_prompt_suffix", Leaf),
             ("max_tools_threshold", Leaf),
             ("timeout_secs", Leaf),
             ("max_tool_result_bytes", Leaf),
@@ -298,14 +292,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 "skills",
                 Struct(HashMap::from([("allow", Leaf), ("deny", Leaf)])),
             ),
-        ]))
-    };
-
-    let mode_preset = || {
-        Struct(HashMap::from([
-            ("name", Leaf),
-            ("description", Leaf),
-            ("prompt", Leaf),
         ]))
     };
 
@@ -343,23 +329,16 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("priority_models", Leaf),
             ])),
         ),
-        (
-            "agents",
-            Struct(HashMap::from([
-                ("default_preset", Leaf),
-                ("presets", Map(Box::new(agent_preset()))),
-            ])),
-        ),
+        ("agents", MapWithFields {
+            value: Box::new(agent()),
+            fields: HashMap::from([("default", Leaf)]),
+        }),
         (
             "external_agents",
             Struct(HashMap::from([
                 ("enabled", Leaf),
                 ("agents", Map(Box::new(external_agent_entry()))),
             ])),
-        ),
-        (
-            "modes",
-            Struct(HashMap::from([("presets", Map(Box::new(mode_preset())))])),
         ),
         ("tools", tools()),
         ("sandbox", sandbox()),
@@ -437,14 +416,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("prometheus_endpoint", Leaf),
                 ("history_points", Leaf),
                 ("labels", Map(Box::new(Leaf))),
-            ])),
-        ),
-        (
-            "identity",
-            Struct(HashMap::from([
-                ("name", Leaf),
-                ("emoji", Leaf),
-                ("theme", Leaf),
             ])),
         ),
         (

@@ -1,6 +1,6 @@
 //! Interactive onboarding wizard.
 //!
-//! Flow: welcome → user name → agent name → agent theme → confirm → done.
+//! Flow: welcome → user name → agent name → agent emoji → confirm → done.
 
 pub mod error;
 pub mod service;

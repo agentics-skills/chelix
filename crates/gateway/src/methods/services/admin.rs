@@ -78,6 +78,32 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             })
         }),
     );
+    reg.register(
+        "user.get",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                ctx.state
+                    .services
+                    .onboarding
+                    .user_get()
+                    .await
+                    .map_err(ErrorShape::from)
+            })
+        }),
+    );
+    reg.register(
+        "user.update",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                ctx.state
+                    .services
+                    .onboarding
+                    .user_update(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)
+            })
+        }),
+    );
 
     // Web login
     reg.register(

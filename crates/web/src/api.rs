@@ -425,8 +425,22 @@ async fn api_bootstrap_with_query(
     let projects_enabled = query.projects_enabled();
     let counts_enabled = query.counts_enabled();
     let identity_enabled = query.identity_enabled();
+    let identity = if identity_enabled {
+        match crate::resolve_default_agent_presentation(gw).await {
+            Ok(identity) => Some(identity),
+            Err(error) => {
+                return api_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "DEFAULT_AGENT_RESOLUTION_FAILED",
+                    error.to_string(),
+                );
+            },
+        }
+    } else {
+        None
+    };
 
-    let (channels, sessions, models, projects, identity, counts, onboarded) = tokio::join!(
+    let (channels, sessions, models, projects, counts, onboarded) = tokio::join!(
         async {
             if channels_enabled {
                 gw.services.channel.status().await.ok()
@@ -451,13 +465,6 @@ async fn api_bootstrap_with_query(
         async {
             if projects_enabled {
                 gw.services.project.list().await.ok()
-            } else {
-                None
-            }
-        },
-        async {
-            if identity_enabled {
-                gw.services.agent.identity_get().await.ok()
             } else {
                 None
             }

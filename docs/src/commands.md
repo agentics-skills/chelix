@@ -21,7 +21,7 @@ Type `/` in the chat input to see the autocomplete popup.
 ### /fork
 
 Creates an independent copy of the current conversation. The new session
-inherits the parent's model, project, mode, and agent. Messages up to the
+inherits the parent's model, project, and agent. Messages up to the
 current point are copied.
 
 ```
@@ -36,7 +36,6 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 | Command                       | Description                               |
 | ----------------------------- | ----------------------------------------- |
 | `/agent [N]`                  | Switch session agent                      |
-| `/mode [N\|name\|none]`       | Switch session mode                       |
 | `/model [N]`                  | Switch provider/model                     |
 | `/sandbox [on\|off\|image N]` | Toggle sandbox and choose image           |
 | `/stop`                       | Abort the current running agent           |

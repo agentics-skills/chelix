@@ -135,15 +135,17 @@ pub async fn share_page_handler(
             },
         };
 
-    let identity = state
-        .gateway
-        .services
-        .onboarding
-        .identity_get()
-        .await
-        .ok()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    let identity = match crate::resolve_default_agent_presentation(&state.gateway).await {
+        Ok(identity) => identity,
+        Err(error) => {
+            warn!(share_id, %error, "failed to resolve default agent presentation");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to resolve default agent",
+            )
+                .into_response();
+        },
+    };
     let share_image_url = share_social_image_url(&headers, state.gateway.tls_active, &share.id);
 
     let body = match crate::share_render::render_share_html(
@@ -253,15 +255,17 @@ pub async fn share_social_image_handler(
             },
         };
 
-    let identity = state
-        .gateway
-        .services
-        .onboarding
-        .identity_get()
-        .await
-        .ok()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    let identity = match crate::resolve_default_agent_presentation(&state.gateway).await {
+        Ok(identity) => identity,
+        Err(error) => {
+            warn!(share_id, %error, "failed to resolve default agent presentation");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to resolve default agent",
+            )
+                .into_response();
+        },
+    };
     let svg = crate::share_render::render_share_og_svg(&snapshot, &identity);
     serve_static_share_svg(svg)
 }

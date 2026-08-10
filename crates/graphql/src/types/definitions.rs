@@ -716,19 +716,6 @@ pub struct CommandApprovalConfig {
     pub mode: Option<String>,
 }
 
-// ── Agents ──────────────────────────────────────────────────────────────────
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentIdentity {
-    #[serde(default)]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub emoji: Option<String>,
-    #[serde(default)]
-    pub theme: Option<String>,
-}
-
 // ── Memory ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, SimpleObject, Deserialize)]

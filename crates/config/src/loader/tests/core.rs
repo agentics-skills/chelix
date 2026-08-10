@@ -1,4 +1,4 @@
-use crate::{AgentIdentity, MemoryBackend, UserProfile, schema::ChelixConfig};
+use crate::{MemoryBackend, UserProfile, schema::ChelixConfig};
 
 use super::*;
 
@@ -379,11 +379,16 @@ fn write_default_config_writes_template_to_requested_path() {
         "generated template must not document the removed workspace_mount setting"
     );
 
+    assert!(raw.contains("[agents.main]"));
+    assert!(raw.contains("[agents.coordinator]"));
+
     let parsed: ChelixConfig = parse_config(&raw, &path).expect("parse generated config");
     assert_eq!(
         parsed.server.port, 23456,
         "parsed config should have the correct port"
     );
+    assert_eq!(parsed.agents.default, "main");
+    assert_eq!(parsed.agents.entries.len(), 8);
 }
 
 #[test]
@@ -420,7 +425,7 @@ fn save_config_to_path_preserves_comment_blocks() {
 }
 
 #[test]
-fn save_config_to_path_removes_stale_keys_when_values_are_cleared() {
+fn save_config_to_path_removes_cleared_agent_fields() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("chelix.toml");
     std::fs::write(
@@ -429,26 +434,27 @@ fn save_config_to_path_removes_stale_keys_when_values_are_cleared() {
 bind = "127.0.0.1"
 port = 18789
 
-[identity]
+[agents]
+default = "main"
+
+[agents.main]
 name = "Rex"
+emoji = "🐶"
+max_tools_threshold = 128
 "#,
     )
     .expect("write seed config");
 
-    // Use parse_config directly to avoid env-override pollution
-    // (e.g. CHELIX_IDENTITY__NAME in the process environment).
     let raw = std::fs::read_to_string(&path).expect("read seed");
     let mut config: ChelixConfig = parse_config(&raw, &path).expect("parse seed config");
-    config.identity.name = None;
+    config.agents.entries.get_mut("main").unwrap().emoji = None;
 
     save_config_to_path(&path, &config).expect("save config");
 
     let saved = std::fs::read_to_string(&path).expect("read saved file");
     let reloaded: ChelixConfig = parse_config(&saved, &path).expect("reload config");
-    assert!(
-        reloaded.identity.name.is_none(),
-        "identity.name should be removed when cleared"
-    );
+    assert!(reloaded.agents.entries["main"].emoji.is_none());
+    assert!(!saved.contains("emoji"));
 }
 
 #[test]
@@ -465,50 +471,6 @@ fn data_dir_override_works() {
     let path = PathBuf::from("/tmp/test-data-dir-override");
     set_data_dir(path.clone());
     assert_eq!(data_dir(), path);
-    clear_data_dir();
-}
-
-#[test]
-fn save_and_load_identity_frontmatter() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    let identity = AgentIdentity {
-        name: Some("Rex".to_string()),
-        emoji: Some("🐶".to_string()),
-        theme: Some("chill dog golden retriever".to_string()),
-    };
-
-    let path = save_identity(&identity).expect("save identity");
-    assert!(path.exists());
-    let raw = std::fs::read_to_string(&path).expect("read identity file");
-
-    let loaded = load_identity().expect("load identity");
-    assert_eq!(loaded.name.as_deref(), Some("Rex"));
-    assert_eq!(loaded.emoji.as_deref(), Some("🐶"), "raw file:\n{raw}");
-    assert_eq!(loaded.theme.as_deref(), Some("chill dog golden retriever"));
-
-    clear_data_dir();
-}
-
-#[test]
-fn save_identity_removes_empty_file() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    let seeded = AgentIdentity {
-        name: Some("Rex".to_string()),
-        emoji: None,
-        theme: None,
-    };
-    let path = save_identity(&seeded).expect("seed identity");
-    assert!(path.exists());
-
-    save_identity(&AgentIdentity::default()).expect("save empty identity");
-    assert!(!path.exists());
-
     clear_data_dir();
 }
 
@@ -766,16 +728,14 @@ fn load_memory_md_returns_none_when_missing() {
 }
 
 #[test]
-fn load_memory_md_for_main_prefers_agent_workspace_then_root() {
+fn load_memory_md_for_agent_is_agent_scoped() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
 
     std::fs::write(dir.path().join("MEMORY.md"), "root memory").unwrap();
-    assert_eq!(
-        load_memory_md_for_agent("main").as_deref(),
-        Some("root memory")
-    );
+    assert_eq!(load_memory_md_for_agent("main"), None);
+    assert_eq!(load_memory_md_for_agent("ops"), None);
 
     let agent_dir = dir.path().join("agents").join("main");
     std::fs::create_dir_all(&agent_dir).unwrap();
@@ -789,36 +749,10 @@ fn load_memory_md_for_main_prefers_agent_workspace_then_root() {
 }
 
 #[test]
-fn load_memory_md_for_non_main_is_agent_scoped() {
+fn load_memory_md_for_agent_reports_agent_workspace_source_and_path() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
-
-    std::fs::write(dir.path().join("MEMORY.md"), "root memory").unwrap();
-    assert_eq!(load_memory_md_for_agent("ops"), None);
-
-    let agent_dir = dir.path().join("agents").join("ops");
-    std::fs::create_dir_all(&agent_dir).unwrap();
-    std::fs::write(agent_dir.join("MEMORY.md"), "ops memory").unwrap();
-    assert_eq!(
-        load_memory_md_for_agent("ops").as_deref(),
-        Some("ops memory")
-    );
-
-    clear_data_dir();
-}
-
-#[test]
-fn load_memory_md_for_agent_reports_resolved_source_and_path() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    std::fs::write(dir.path().join("MEMORY.md"), "root memory").unwrap();
-    let main_root = load_memory_md_for_agent_with_source("main").unwrap();
-    assert_eq!(main_root.content, "root memory");
-    assert_eq!(main_root.path, dir.path().join("MEMORY.md"));
-    assert_eq!(main_root.source, WorkspaceMarkdownSource::RootWorkspace);
 
     let agent_dir = dir.path().join("agents").join("ops");
     std::fs::create_dir_all(&agent_dir).unwrap();
@@ -874,119 +808,77 @@ fn workspace_markdown_comment_only_is_treated_as_empty() {
 }
 
 #[test]
-fn load_soul_creates_default_when_missing() {
+fn starter_workspace_materialization_creates_soul_for_every_agent() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
+    let starter_ids = [
+        "main",
+        "research",
+        "coder",
+        "reviewer",
+        "qa",
+        "ux",
+        "docs",
+        "coordinator",
+    ];
 
-    let soul_file = dir.path().join("SOUL.md");
-    assert!(!soul_file.exists(), "SOUL.md should not exist yet");
+    materialize_starter_agent_workspaces().expect("materialize starter workspaces");
 
-    let content = load_soul();
-    assert!(
-        content.is_some(),
-        "load_soul should return Some after seeding"
-    );
-    assert_eq!(content.as_deref(), Some(DEFAULT_SOUL));
-    assert!(soul_file.exists(), "SOUL.md should be created on disk");
-
-    let on_disk = std::fs::read_to_string(&soul_file).unwrap();
-    assert_eq!(on_disk, DEFAULT_SOUL);
+    for agent_id in starter_ids {
+        let soul_file = dir.path().join("agents").join(agent_id).join("SOUL.md");
+        assert_eq!(
+            load_soul_for_agent(agent_id).as_deref(),
+            Some(DEFAULT_SOUL),
+            "starter agent {agent_id} should receive the initial Soul"
+        );
+        assert_eq!(std::fs::read_to_string(soul_file).unwrap(), DEFAULT_SOUL);
+    }
 
     clear_data_dir();
 }
 
 #[test]
-fn load_soul_does_not_overwrite_existing() {
+fn starter_workspace_materialization_does_not_overwrite_existing_soul() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
 
     let custom = "You are a loyal companion who loves fetch.";
-    std::fs::write(dir.path().join("SOUL.md"), custom).unwrap();
+    save_soul_for_agent("main", Some(custom)).expect("save custom soul");
 
-    let content = load_soul();
-    assert_eq!(content.as_deref(), Some(custom));
+    materialize_starter_agent_workspaces().expect("materialize starter workspaces");
 
-    let on_disk = std::fs::read_to_string(dir.path().join("SOUL.md")).unwrap();
-    assert_eq!(on_disk, custom, "existing SOUL.md must not be overwritten");
+    assert_eq!(load_soul_for_agent("main").as_deref(), Some(custom));
 
     clear_data_dir();
 }
 
 #[test]
-fn load_soul_reseeds_after_deletion() {
+fn load_soul_for_agent_does_not_create_missing_file() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
 
-    // First call seeds the file.
-    let _ = load_soul();
-    let soul_file = dir.path().join("SOUL.md");
-    assert!(soul_file.exists());
-
-    // Delete it.
-    std::fs::remove_file(&soul_file).unwrap();
+    let soul_file = dir.path().join("agents/main/SOUL.md");
+    assert_eq!(load_soul_for_agent("main"), None);
     assert!(!soul_file.exists());
 
-    // Second call re-seeds.
-    let content = load_soul();
-    assert_eq!(content.as_deref(), Some(DEFAULT_SOUL));
-    assert!(soul_file.exists());
-
     clear_data_dir();
 }
 
 #[test]
-fn save_soul_none_prevents_reseed() {
+fn load_soul_for_agent_does_not_reseed_deleted_file() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
 
-    // Auto-seed SOUL.md.
-    let _ = load_soul();
-    let soul_file = dir.path().join("SOUL.md");
-    assert!(soul_file.exists());
+    materialize_starter_agent_workspaces().expect("materialize starter workspaces");
+    let soul_file = dir.path().join("agents/main/SOUL.md");
+    std::fs::remove_file(&soul_file).unwrap();
 
-    // User explicitly clears the soul via settings.
-    save_soul(None).expect("save_soul(None)");
-    assert!(
-        soul_file.exists(),
-        "save_soul(None) should leave an empty file, not delete"
-    );
-    assert!(
-        std::fs::read_to_string(&soul_file).unwrap().is_empty(),
-        "file should be empty after clearing"
-    );
-
-    // load_soul must return None — NOT re-seed.
-    let content = load_soul();
-    assert_eq!(
-        content, None,
-        "load_soul must return None after explicit clear, not re-seed"
-    );
-
-    clear_data_dir();
-}
-
-#[test]
-fn save_soul_some_overwrites_default() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    // Auto-seed.
-    let _ = load_soul();
-
-    // User writes custom soul.
-    let custom = "You love fetch and belly rubs.";
-    save_soul(Some(custom)).expect("save_soul");
-
-    let content = load_soul();
-    assert_eq!(content.as_deref(), Some(custom));
-
-    let on_disk = std::fs::read_to_string(dir.path().join("SOUL.md")).unwrap();
-    assert_eq!(on_disk, custom);
+    assert_eq!(load_soul_for_agent("main"), None);
+    assert!(!soul_file.exists());
 
     clear_data_dir();
 }

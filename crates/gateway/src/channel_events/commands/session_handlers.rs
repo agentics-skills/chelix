@@ -14,7 +14,8 @@ use crate::{
 
 use super::super::{
     format_attachable_sessions_list, format_channel_sessions_list, is_attachable_session,
-    parse_numbered_selection, resolve_channel_session_defaults, session_list_label,
+    parse_numbered_selection, resolve_channel_agent_id, resolve_channel_session_defaults,
+    session_list_label,
 };
 
 // ── Session management command handlers ──────────────────────────
@@ -72,21 +73,14 @@ pub(in crate::channel_events) async fn handle_new(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    let target_agent = if let Some(agent_id) = inherited_agent {
-        agent_id
-    } else if let Some(agent_id) = channel_defaults.agent_id.clone() {
-        agent_id
-    } else if let Some(ref store) = state.services.agent_persona_store {
-        store
-            .default_id()
-            .await
-            .unwrap_or_else(|_| "main".to_string())
-    } else {
-        "main".to_string()
-    };
-    let _ = session_metadata
+    let requested_agent = inherited_agent
+        .as_deref()
+        .or(channel_defaults.agent_id.as_deref());
+    let target_agent = resolve_channel_agent_id(state, session_key, requested_agent).await?;
+    session_metadata
         .set_agent_id(&new_key, Some(&target_agent))
-        .await;
+        .await
+        .map_err(|e| ChannelError::external("setting session agent", e))?;
 
     // Update forward mapping.
     session_metadata

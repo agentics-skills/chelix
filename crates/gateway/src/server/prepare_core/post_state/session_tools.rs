@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
-    chelix_config::{AgentPreset, schema::ReasoningEffort},
+    chelix_config::schema::ReasoningEffort,
     chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
     serde_json::Value,
 };
@@ -61,32 +61,36 @@ fn build_explore_sessions(
     Arc::new(move || {
         let state = Arc::clone(&state);
         Box::pin(async move {
-            let store =
-                state.services.agent_persona_store.as_ref().ok_or_else(|| {
-                    chelix_tools::Error::message("agent personas are not available")
-                })?;
-            let (agents, default_id, presets) =
-                tokio::join!(store.list(), store.default_id(), agent_presets(&state),);
-            let agents = agents.map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-            let default_id =
-                default_id.map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-
-            let agents = agents
-                .into_iter()
-                .map(|agent| {
-                    let preset = presets.as_ref().and_then(|presets| presets.get(&agent.id));
+            let agents_config = state.services.agents_config.as_ref().ok_or_else(|| {
+                chelix_tools::Error::message("agent configuration is not available")
+            })?;
+            let guard = agents_config.read().await;
+            let default_id = guard.default.clone();
+            if !guard.entries.contains_key(&default_id) {
+                return Err(chelix_tools::Error::message(format!(
+                    "default agent '{default_id}' not found"
+                )));
+            }
+            let mut agents = guard
+                .entries
+                .iter()
+                .map(|(id, agent)| {
                     serde_json::json!({
-                        "id": agent.id,
+                        "id": id,
                         "name": agent.name,
                         "description": agent.description,
                         "emoji": agent.emoji,
-                        "theme": agent.theme,
-                        "isDefault": agent.is_default,
-                        "model": preset.and_then(|preset| preset.model.clone()),
-                        "reasoningEffort": preset.and_then(|preset| preset.reasoning_effort.as_ref()).map(ReasoningEffort::as_str),
+                        "isDefault": id == &default_id,
+                        "model": agent.model,
+                        "reasoningEffort": agent.reasoning_effort.as_ref().map(ReasoningEffort::as_str),
                     })
                 })
                 .collect::<Vec<_>>();
+            agents.sort_by(|left, right| {
+                let left_id = left.get("id").and_then(Value::as_str).unwrap_or("");
+                let right_id = right.get("id").and_then(Value::as_str).unwrap_or("");
+                left_id.cmp(right_id)
+            });
 
             Ok(serde_json::json!({
                 "defaultAgentId": default_id,
@@ -221,17 +225,12 @@ fn build_send_to_session(
 
 #[tracing::instrument(skip(state))]
 async fn validate_agent_id(state: &GatewayState, agent_id: &str) -> chelix_tools::Result<()> {
-    let store = state
+    let agents_config = state
         .services
-        .agent_persona_store
+        .agents_config
         .as_ref()
-        .ok_or_else(|| chelix_tools::Error::message("agent personas are not available"))?;
-    if store
-        .get(agent_id)
-        .await
-        .map_err(|error| chelix_tools::Error::message(error.to_string()))?
-        .is_some()
-    {
+        .ok_or_else(|| chelix_tools::Error::message("agent configuration is not available"))?;
+    if agents_config.read().await.entries.contains_key(agent_id) {
         return Ok(());
     }
     Err(chelix_tools::Error::message(format!(
@@ -251,7 +250,7 @@ async fn resolve_model_and_reasoning_effort(
             model_override.reasoning_effort.clone(),
         )
     } else {
-        preset_model_and_reasoning(state, agent_id).await?
+        agent_model_and_reasoning(state, agent_id).await?
     };
 
     validate_model_and_reasoning_effort(state, &model, &effort).await?;
@@ -282,40 +281,30 @@ async fn validate_model_and_reasoning_effort(
 }
 
 #[tracing::instrument(skip(state))]
-async fn preset_model_and_reasoning(
+async fn agent_model_and_reasoning(
     state: &GatewayState,
     agent_id: &str,
 ) -> chelix_tools::Result<(String, ReasoningEffort)> {
     let agents_config = state.services.agents_config.as_ref().ok_or_else(|| {
         chelix_tools::Error::message(
-            "agent presets are not available; pass model and reasoning_effort explicitly",
+            "agent configuration is not available; pass model and reasoning_effort explicitly",
         )
     })?;
     let guard = agents_config.read().await;
-    let preset = guard.presets.get(agent_id).ok_or_else(|| {
+    let agent = guard
+        .get(agent_id)
+        .ok_or_else(|| chelix_tools::Error::message(format!("agent '{agent_id}' not found")))?;
+    let model = agent.model.clone().ok_or_else(|| {
         chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no preset; pass model+reasoning_effort or configure [agents.presets.{agent_id}]"
+            "agent '{agent_id}' has no model; pass model+reasoning_effort or configure [agents.{agent_id}].model"
         ))
     })?;
-    let model = preset.model.clone().ok_or_else(|| {
+    let effort = agent.reasoning_effort.clone().ok_or_else(|| {
         chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no preset model; pass model+reasoning_effort or configure [agents.presets.{agent_id}].model"
-        ))
-    })?;
-    let effort = preset.reasoning_effort.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no reasoning_effort; pass model+reasoning_effort or configure [agents.presets.{agent_id}].reasoning_effort"
+            "agent '{agent_id}' has no reasoning_effort; pass model+reasoning_effort or configure [agents.{agent_id}].reasoning_effort"
         ))
     })?;
     Ok((model, effort))
-}
-
-#[tracing::instrument(skip(state))]
-async fn agent_presets(
-    state: &GatewayState,
-) -> Option<std::collections::HashMap<String, AgentPreset>> {
-    let agents_config = state.services.agents_config.as_ref()?;
-    Some(agents_config.read().await.presets.clone())
 }
 
 #[tracing::instrument(skip(state))]

@@ -91,18 +91,6 @@ port = {port}                           # Port number (auto-generated for this i
 # ca_cert_path = "/path/to/ca.pem"  # CA certificate for trust instructions
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AGENT IDENTITY
-# ══════════════════════════════════════════════════════════════════════════════
-# Customize your agent's personality. These are typically set during onboarding.
-
-# [identity]
-# name = "chelix"                   # Agent's display name
-# emoji = "🦊"                      # Agent's emoji/avatar
-# theme = "wise owl"                # Theme for agent personality (e.g. wise owl, chill fox)
-# soul = ""                         # Freeform personality text injected into system prompt
-                                    # Use this for custom instructions, tone, or behavior
-
-# ══════════════════════════════════════════════════════════════════════════════
 # USER PROFILE
 # ══════════════════════════════════════════════════════════════════════════════
 # Information about you. Set during onboarding.
@@ -239,62 +227,46 @@ port = {port}                           # Port number (auto-generated for this i
 # vision = "openrouter/google/gemini-2.5-flash"            # Model for vision/image tasks
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SUB-AGENT SPAWN PRESETS
+# AGENTS
 # ══════════════════════════════════════════════════════════════════════════════
-# Configure reusable presets for agents and sub-agents spawned via the
-# `spawn_agent` tool.
+# Agents are user-owned configuration. The `default` ID is used for new chat
+# sessions and when `spawn_agent.agent` is omitted. Agent display data and
+# structural runtime settings live here. Chat prompts live in
+# `agents/<id>/SOUL.md`; spawned-agent prompts live in
+# `agents/<id>/SUBAGENT.md`.
 #
-# `max_tools_threshold` is required on every agent preset and limits actual
-# LLM-emitted tool calls in each agent-loop segment. Every call in a parallel
-# batch counts; a batch that does not fit is rejected atomically. The budget
-# resets for each user message and after automatic context compaction.
-# `timeout_secs` and `max_tool_result_bytes` retain their documented `[tools]`
-# fallback behavior. Spawned sub-agents preserve no-timeout behavior unless the
-# preset sets `timeout_secs`.
-#
-# ⚠️  SCOPE: `tools.allow` / `tools.deny` under a preset do NOT filter tools
-# for the main agent session. To allow/deny tools for the main session, use
-# the `[tools.policy]` section further down this file.
+# `max_tools_threshold` is required and limits actual LLM-emitted tool calls in
+# each agent-loop segment. Every call in a parallel batch counts; a batch that
+# does not fit is rejected atomically. The budget resets for each user message
+# and after automatic context compaction.
 #
 # [agents]
-# default_preset = "research"      # Sub-agent preset used when spawn_agent.preset is omitted
+# default = "main"
 #
-# Built-in agent presets (research, coder, reviewer, qa, ux, docs, coordinator)
-# live in defaults.toml. Uncomment and modify below to override a preset,
-# or add your own custom presets.
-#
-# [agents.presets.research]
-# identity.name = "Researcher"
-# identity.theme = "thorough, skeptical, and evidence-oriented"
-# tools.preload = ["read_file", "list_directory", "ripgrep"] # Schemas sent immediately when tools.registry_mode = "lazy"; allow/deny still apply
-# system_prompt_suffix = "..."
-# max_tools_threshold = {max_tools_threshold}         # Required; actual LLM-emitted tool calls per loop segment
-# max_tool_result_bytes = 100000   # Per-agent override of tools.max_tool_result_bytes
-# # Optional drift-resistant per-turn controls for spawned/preset agents:
-# # [agents.presets.research.tool_controls]
-# # active_tools = ["classify_destination"]
-# # [agents.presets.research.tool_controls.tool_choice]
-# # type = "tool"  # auto | any | none | tool
-# # name = "classify_destination"
-#
-# ── Per-agent capability boundaries ──────────────────────────────────────────
-# Each agent can be scoped to specific MCP servers and skills.
-# Assign agents to channels via `agent_id` in the channel account config.
-#
-# Example: restricted agent for kids (no MCP, no network, limited skills):
-# [agents.presets.kids]
+# [agents.main]
+# name = "Chelix"
+# emoji = "🤖"
+# description = "General-purpose assistant"
+# max_tools_threshold = {max_tools_threshold}
 # model = "openai/gpt-5.2"
-# max_tools_threshold = {max_tools_threshold}
-# [agents.presets.kids.mcp]
-# allow_servers = []                # No MCP tools at all
-# [agents.presets.kids.skills]
-# deny = ["gaming", "social-media"] # Block specific skill categories
 #
-# Example: full-access agent for parents:
-# [agents.presets.admin]
-# max_tools_threshold = {max_tools_threshold}
-# [agents.presets.admin.mcp]
-# allow_servers = ["github", "home-assistant", "memory"]
+# [agents.main.tools]
+# allow = []
+# deny = []
+# preload = ["read_file", "list_directory", "ripgrep"]
+#
+# [agents.main.tool_controls]
+# active_tools = ["classify_destination"]
+#
+# [agents.main.tool_controls.tool_choice]
+# type = "tool"                     # auto | any | none | tool
+# name = "classify_destination"
+#
+# [agents.main.mcp]
+# allow_servers = ["github", "memory"]
+#
+# [agents.main.skills]
+# deny = ["gaming", "social-media"]
 # ══════════════════════════════════════════════════════════════════════════════
 # SANDBOX
 # ══════════════════════════════════════════════════════════════════════════════
@@ -330,24 +302,6 @@ port = {port}                           # Port number (auto-generated for this i
 # mode = "ro"                        # "ro" | "rw"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SESSION MODES
-# ══════════════════════════════════════════════════════════════════════════════
-# Modes are temporary per-session prompt overlays selected with `/mode`.
-# They do not create chat agents, do not affect sub-agent presets, and do not
-# change an agent's identity or memory. Built-ins include concise, technical,
-# creative, teacher, plan, build, review, research, and elevated.
-#
-# [modes.presets.concise]
-# name = "Concise"
-# description = "short direct answers"
-# prompt = "Keep answers short, concrete, and caveat-light unless the user asks for detail."
-#
-# [modes.presets.incident]
-# name = "Incident"
-# description = "production incident response"
-# prompt = "Prioritize impact, timeline, mitigation, rollback, logs, and clear status updates."
-
-# ══════════════════════════════════════════════════════════════════════════════
 # TOOLS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -381,7 +335,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 #   1. Global        — [tools.policy]
 #   2. Per-provider  — [providers.<name>.policy]
-#   3. Per-agent     — [agents.presets.<id>.tools]
+#   3. Per-agent     — [agents.<id>.tools]
 #   4. Per-channel   — [channels.<type>.<account>.tools.groups.<chat_type>]
 #   5. Per-sender    — [...groups.<chat_type>.by_sender.<sender_id>]
 #   6. Sandbox       — [sandbox.tools_policy]
@@ -610,4 +564,72 @@ port = {port}                           # Port number (auto-generated for this i
 "##,
         max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
     )
+}
+
+/// Generate the user config written on first run.
+///
+/// Starter agents are materialized in the user-owned layer so subsequent
+/// edits and deletions are never restored from managed defaults.
+pub fn first_run_config_template(port: u16) -> String {
+    let base = default_config_template(port);
+    let max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD;
+    format!(
+        r#"{base}
+# ══════════════════════════════════════════════════════════════════════════════
+# STARTER AGENTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+[agents]
+default = "main"
+
+[agents.main]
+name = "chelix"
+description = "Default agent"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.research]
+name = "Researcher"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.coder]
+name = "Coder"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.reviewer]
+name = "Reviewer"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.qa]
+name = "QA"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.ux]
+name = "UX Designer"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.docs]
+name = "Docs Writer"
+max_tools_threshold = {max_tools_threshold}
+
+[agents.coordinator]
+name = "Coordinator"
+max_tools_threshold = {max_tools_threshold}
+"#
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_run_agents_use_default_max_tools_threshold() -> Result<(), toml::de::Error> {
+        let config: crate::ChelixConfig = toml::from_str(&first_run_config_template(18_789))?;
+
+        assert_eq!(config.agents.entries.len(), 8);
+        assert!(config.agents.entries.values().all(|agent| {
+            agent.max_tools_threshold == crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
+        }));
+        Ok(())
+    }
 }

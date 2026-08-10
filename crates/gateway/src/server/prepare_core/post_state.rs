@@ -67,7 +67,6 @@ pub(super) struct PostStateInputs {
     pub session_metadata: Arc<SqliteSessionMetadata>,
     pub session_share_store: Arc<crate::share_store::ShareStore>,
     pub session_state_store: Arc<chelix_sessions::state_store::SessionStateStore>,
-    pub agent_persona_store: Arc<crate::agent_persona::AgentPersonaStore>,
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
     pub tools_service: Arc<chelix_tools::tools_service::ManagedToolsService>,
     pub cron_service: Arc<chelix_cron::service::CronService>,
@@ -165,7 +164,7 @@ async fn build_webauthn_registry(
         .collect();
         try_add("localhost", &localhost_origin, &chelix_localhost);
 
-        let instance_slug_value = instance_slug(config);
+        let instance_slug_value = instance_slug(config)?;
         if instance_slug_value != "localhost" {
             let bot_origin = format!("{default_scheme}://{instance_slug_value}:{port}");
             try_add(&instance_slug_value, &bot_origin, &[]);
@@ -232,7 +231,6 @@ pub(super) async fn complete_startup(
         session_metadata,
         session_share_store: _session_share_store,
         session_state_store,
-        agent_persona_store: _agent_persona_store,
         sandbox_router,
         tools_service,
         cron_service,
@@ -857,7 +855,7 @@ pub(super) async fn complete_startup(
                 chelix_config::ToolsConfigSource::Filesystem,
             )
             .with_on_event(on_spawn_event)
-            .with_agents_config(agents_config)
+            .with_agents_config(Arc::clone(&agents_config))
             .with_task_store(Arc::clone(&spawn_task_store));
             tool_registry.register(Box::new(spawn_tool));
         }
@@ -870,6 +868,7 @@ pub(super) async fn complete_startup(
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),
             config.clone(),
+            Arc::clone(&agents_config),
             chelix_config::ToolsConfigSource::Filesystem,
         )
         .with_session_state_store(Arc::clone(&session_state_store))

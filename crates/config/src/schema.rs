@@ -17,8 +17,6 @@ mod code_index;
 mod hooks;
 #[path = "schema/memory.rs"]
 mod memory;
-#[path = "schema/modes.rs"]
-mod modes;
 #[path = "schema/phone.rs"]
 mod phone;
 #[path = "schema/providers.rs"]
@@ -43,7 +41,6 @@ pub use {
     code_index::*,
     hooks::*,
     memory::*,
-    modes::*,
     phone::*,
     providers::*,
     runtime::*,
@@ -51,15 +48,6 @@ pub use {
     tools::*,
     voice::*,
 };
-
-/// Agent identity (name, emoji, theme).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AgentIdentity {
-    pub name: Option<String>,
-    pub emoji: Option<String>,
-    pub theme: Option<String>,
-}
 
 /// IANA timezone (e.g. `"Europe/Paris"`).
 ///
@@ -191,38 +179,37 @@ pub struct UserProfile {
     pub location: Option<GeoLocation>,
 }
 
-/// Resolved identity combining agent identity and user profile.
-/// Used as the API response for `identity_get` and in the gon data blob.
+/// Resolved presentation data for the configured default agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedIdentity {
     pub name: String,
     pub emoji: Option<String>,
-    pub theme: Option<String>,
     pub soul: Option<String>,
     pub user_name: Option<String>,
 }
 
 impl ResolvedIdentity {
-    pub fn from_config(cfg: &ChelixConfig) -> Self {
-        Self {
-            name: cfg.identity.name.clone().unwrap_or_else(|| "chelix".into()),
-            emoji: cfg.identity.emoji.clone(),
-            theme: cfg.identity.theme.clone(),
-            soul: None,
-            user_name: cfg.user.name.clone(),
+    pub fn from_config(config: &ChelixConfig) -> crate::Result<Self> {
+        let default_id = config.agents.default.as_str();
+        if default_id.trim().is_empty() {
+            return Err(crate::Error::message("agents.default is empty"));
         }
-    }
-}
-
-impl Default for ResolvedIdentity {
-    fn default() -> Self {
-        Self {
-            name: "chelix".into(),
-            emoji: None,
-            theme: None,
-            soul: None,
-            user_name: None,
+        let agent = config.agents.entries.get(default_id).ok_or_else(|| {
+            crate::Error::message(format!(
+                "default agent \"{default_id}\" is not defined under [agents]"
+            ))
+        })?;
+        if agent.name.trim().is_empty() {
+            return Err(crate::Error::message(format!(
+                "default agent \"{default_id}\" has an empty name"
+            )));
         }
+        Ok(Self {
+            name: agent.name.clone(),
+            emoji: agent.emoji.clone(),
+            soul: None,
+            user_name: config.user.name.clone(),
+        })
     }
 }
 
@@ -236,7 +223,6 @@ pub struct ChelixConfig {
     pub tools: ToolsConfig,
     pub sandbox: SandboxConfig,
     pub agents: AgentsConfig,
-    pub modes: ModesConfig,
     pub skills: SkillsConfig,
     pub mcp: McpConfig,
     pub channels: ChannelsConfig,
@@ -244,7 +230,6 @@ pub struct ChelixConfig {
     pub auth: AuthConfig,
     pub graphql: GraphqlConfig,
     pub metrics: MetricsConfig,
-    pub identity: AgentIdentity,
     pub user: UserProfile,
     pub hooks: Option<HooksConfig>,
     pub memory: MemoryEmbeddingConfig,
@@ -308,7 +293,7 @@ pub struct ExternalAgentConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentRuntimeLimitSource {
     GlobalTools,
-    AgentPreset,
+    Agent,
 }
 
 impl AgentRuntimeLimitSource {
@@ -316,7 +301,7 @@ impl AgentRuntimeLimitSource {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::GlobalTools => "global_tools",
-            Self::AgentPreset => "agent_preset",
+            Self::Agent => "agent",
         }
     }
 }
@@ -332,17 +317,17 @@ pub struct AgentRuntimeLimits {
 
 impl AgentRuntimeLimits {
     #[must_use]
-    pub fn resolve(tools: &ToolsConfig, preset: &AgentPreset) -> Self {
-        let (timeout_secs, timeout_source) = preset
+    pub fn resolve(tools: &ToolsConfig, agent: &AgentConfig) -> Self {
+        let (timeout_secs, timeout_source) = agent
             .timeout_secs
-            .map(|timeout_secs| (timeout_secs, AgentRuntimeLimitSource::AgentPreset))
+            .map(|timeout_secs| (timeout_secs, AgentRuntimeLimitSource::Agent))
             .unwrap_or((
                 tools.agent_timeout_secs,
                 AgentRuntimeLimitSource::GlobalTools,
             ));
-        let (max_tool_result_bytes, max_tool_result_bytes_source) = preset
+        let (max_tool_result_bytes, max_tool_result_bytes_source) = agent
             .max_tool_result_bytes
-            .map(|bytes| (bytes, AgentRuntimeLimitSource::AgentPreset))
+            .map(|bytes| (bytes, AgentRuntimeLimitSource::Agent))
             .unwrap_or((
                 tools.max_tool_result_bytes,
                 AgentRuntimeLimitSource::GlobalTools,
@@ -351,16 +336,16 @@ impl AgentRuntimeLimits {
         Self {
             timeout_secs,
             timeout_source,
-            max_tools_threshold: preset.max_tools_threshold,
+            max_tools_threshold: agent.max_tools_threshold,
             max_tool_result_bytes,
             max_tool_result_bytes_source,
         }
     }
 
     #[must_use]
-    pub fn resolve_for_spawned_agent(tools: &ToolsConfig, preset: &AgentPreset) -> Self {
-        let mut limits = Self::resolve(tools, preset);
-        if preset.timeout_secs.is_none() {
+    pub fn resolve_for_spawned_agent(tools: &ToolsConfig, agent: &AgentConfig) -> Self {
+        let mut limits = Self::resolve(tools, agent);
+        if agent.timeout_secs.is_none() {
             limits.timeout_secs = 0;
             limits.timeout_source = AgentRuntimeLimitSource::GlobalTools;
         }
@@ -370,17 +355,20 @@ impl AgentRuntimeLimits {
 
 impl ChelixConfig {
     pub fn agent_runtime_limits(&self, agent_id: &str) -> anyhow::Result<AgentRuntimeLimits> {
-        let preset = self
+        let agent = self
             .agents
-            .get_preset(agent_id)
-            .ok_or_else(|| anyhow::anyhow!("agent '{agent_id}' has no configured preset"))?;
-        Ok(AgentRuntimeLimits::resolve(&self.tools, preset))
+            .get(agent_id)
+            .ok_or_else(|| anyhow::anyhow!("agent '{agent_id}' is not configured"))?;
+        Ok(AgentRuntimeLimits::resolve(&self.tools, agent))
     }
 
     /// Returns `true` when both the agent name and user name have been set
     /// (i.e. the onboarding wizard has been completed).
     pub fn is_onboarded(&self) -> bool {
-        self.identity.name.is_some() && self.user.name.is_some()
+        self.agents
+            .default_agent()
+            .is_some_and(|agent| !agent.name.trim().is_empty())
+            && self.user.name.is_some()
     }
 }
 

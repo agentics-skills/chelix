@@ -58,22 +58,37 @@ export interface SandboxGonInfo {
 
 export type VaultStatus = "disabled" | "error" | "sealed" | "uninitialized" | "unsealed";
 
-// ── Identity ────────────────────────────────────────────────
+// ── Presentation ────────────────────────────────────────────
 
-/**
- * Resolved identity combining agent identity and user profile.
- * Mirrors `ResolvedIdentity` in `crates/config/src/schema.rs`.
- *
- * The `user_timezone` field is added by the onboarding service's
- * `identity_get` handler and is not on the Rust struct directly.
- */
+/** Default agent presentation combined with the user profile name. */
 export interface ResolvedIdentity {
 	name: string;
 	emoji?: string;
-	theme?: string;
-	soul?: string;
 	user_name?: string;
-	user_timezone?: string;
+}
+
+// ── Agents ──────────────────────────────────────────────────
+
+/** Agent entry injected from the canonical TOML agent registry. */
+export interface GonAgentEntry {
+	id: string;
+	name: string;
+	is_default: boolean;
+	max_tools_threshold: number;
+	emoji?: string | null;
+	description?: string | null;
+	model?: string | null;
+	soul?: string | null;
+	subagent_prompt?: string | null;
+	[key: string]: unknown;
+}
+
+export interface GonAgentsData {
+	default_id: string;
+	agents: GonAgentEntry[];
+	defaults: {
+		max_tools_threshold: number;
+	};
 }
 
 // ── Heartbeat ───────────────────────────────────────────────
@@ -227,7 +242,7 @@ export interface GonData {
 	claude_detected: boolean;
 	codex_detected: boolean;
 	sessions_recent: SessionMeta[];
-	agents: unknown[];
+	agents: GonAgentsData;
 	webhooks: unknown[];
 	webhook_profiles: unknown[];
 	auth_has_password: boolean;

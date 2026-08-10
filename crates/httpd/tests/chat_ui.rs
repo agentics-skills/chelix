@@ -10,17 +10,90 @@ use {
 };
 
 use {
+    async_trait::async_trait,
     chelix_gateway::{
         auth,
         chat::{DisabledModelsStore, LiveChatService, LiveModelService},
         methods::MethodRegistry,
-        services::GatewayServices,
+        services::{GatewayServices, OnboardingService, ServiceResult},
         state::GatewayState,
     },
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
 };
 
 use chelix_providers::ProviderRegistry;
+
+const TEST_CONFIG_TOML: &str = r#"
+[agents]
+default = "main"
+
+[agents.main]
+name = "Chelix"
+max_tools_threshold = 128
+"#;
+
+fn test_agents() -> chelix_config::AgentsConfig {
+    let mut agents = chelix_config::AgentsConfig {
+        default: "main".to_owned(),
+        ..Default::default()
+    };
+    agents
+        .entries
+        .insert("main".to_owned(), chelix_config::AgentConfig {
+            name: "Chelix".to_owned(),
+            ..Default::default()
+        });
+    agents
+}
+
+struct TestOnboardingService;
+
+#[async_trait]
+impl OnboardingService for TestOnboardingService {
+    async fn wizard_start(&self, _params: serde_json::Value) -> ServiceResult {
+        Ok(serde_json::json!({ "step": 0 }))
+    }
+
+    async fn wizard_next(&self, _params: serde_json::Value) -> ServiceResult {
+        Ok(serde_json::json!({ "step": 0, "done": true }))
+    }
+
+    async fn wizard_cancel(&self) -> ServiceResult {
+        Ok(serde_json::json!({}))
+    }
+
+    async fn wizard_status(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "active": true, "onboarded": false }))
+    }
+
+    async fn user_get(&self) -> ServiceResult {
+        Ok(serde_json::json!({
+            "name": null,
+            "timezone": null,
+            "location": null,
+        }))
+    }
+
+    async fn user_update(&self, _params: serde_json::Value) -> ServiceResult {
+        Err("not configured".into())
+    }
+
+    async fn claude_detect(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "detected": false }))
+    }
+
+    async fn claude_import(&self, _params: serde_json::Value) -> ServiceResult {
+        Err("not configured".into())
+    }
+
+    async fn codex_detect(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "detected": false }))
+    }
+
+    async fn codex_import(&self, _params: serde_json::Value) -> ServiceResult {
+        Err("not configured".into())
+    }
+}
 
 struct TestServer {
     addr: SocketAddr,
@@ -32,12 +105,14 @@ struct TestServer {
 async fn start_test_server() -> TestServer {
     let config_dir = tempfile::tempdir().unwrap();
     let data_dir = tempfile::tempdir().unwrap();
-    std::fs::write(config_dir.path().join("chelix.toml"), "").unwrap();
+    std::fs::write(config_dir.path().join("chelix.toml"), TEST_CONFIG_TOML).unwrap();
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop();
+    let services = GatewayServices::noop()
+        .with_agents_config(Arc::new(tokio::sync::RwLock::new(test_agents())))
+        .with_onboarding(Arc::new(TestOnboardingService));
     let state = GatewayState::new(resolved_auth, services);
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
@@ -75,7 +150,7 @@ async fn root_redirects_to_onboarding_when_not_onboarded() {
         .unwrap();
     assert_eq!(resp.status(), 200);
     let body = resp.text().await.unwrap();
-    assert!(body.contains("<title>chelix onboarding</title>"));
+    assert!(body.contains("<title>Chelix onboarding</title>"));
     assert!(body.contains("id=\"onboardingRoot\""));
 }
 
@@ -278,6 +353,9 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             Arc::clone(&session_store1),
             Arc::clone(&session_metadata1),
             chelix_config::ChelixConfig::default(),
+            Arc::new(tokio::sync::RwLock::new(
+                chelix_config::AgentsConfig::default(),
+            )),
             chelix_config::ToolsConfigSource::snapshot(
                 chelix_config::schema::ToolsConfig::default(),
             ),
@@ -311,6 +389,9 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         Arc::clone(&session_store2),
         Arc::clone(&session_metadata2),
         chelix_config::ChelixConfig::default(),
+        Arc::new(tokio::sync::RwLock::new(
+            chelix_config::AgentsConfig::default(),
+        )),
         chelix_config::ToolsConfigSource::snapshot(chelix_config::schema::ToolsConfig::default()),
     )));
 

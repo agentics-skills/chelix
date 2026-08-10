@@ -20,16 +20,10 @@ pub(super) struct FinalizeGatewayArgs<'a> {
     pub app: Router,
 }
 #[cfg(feature = "mdns")]
-pub(super) fn instance_slug(config: &chelix_config::ChelixConfig) -> String {
-    let mut raw_name = config.identity.name.clone();
-    if let Some(file_identity) = chelix_config::load_identity()
-        && file_identity.name.is_some()
-    {
-        raw_name = file_identity.name;
-    }
-
-    let base = raw_name
-        .unwrap_or_else(|| "chelix".to_string())
+pub(super) fn instance_slug(config: &chelix_config::ChelixConfig) -> crate::error::Result<String> {
+    let base = chelix_config::ResolvedIdentity::from_config(config)
+        .map_err(|error| crate::Error::Config(error.to_string()))?
+        .name
         .to_lowercase();
     let mut out = String::new();
     let mut last_dash = false;
@@ -51,10 +45,11 @@ pub(super) fn instance_slug(config: &chelix_config::ChelixConfig) -> String {
     }
     let out = out.trim_matches('-').to_string();
     if out.is_empty() {
-        "chelix".to_string()
-    } else {
-        out
+        return Err(crate::Error::Config(
+            "default agent name cannot produce an mDNS slug".to_string(),
+        ));
     }
+    Ok(out)
 }
 
 pub(super) async fn finalize_prepared_gateway(
@@ -849,11 +844,12 @@ pub async fn start_gateway(
             .and_then(|h| h.into_string().ok())
             .unwrap_or_else(|| "chelix".to_string());
         let instance = format!("Chelix on {host}");
+        let slug = instance_slug(config)?;
         match chelix_gateway::mdns::register(
             &instance,
             port,
             env!("CARGO_PKG_VERSION"),
-            Some(&instance_slug(config)),
+            Some(&slug),
         ) {
             Ok(daemon) => Some(daemon),
             Err(e) => {

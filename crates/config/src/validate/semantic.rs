@@ -317,31 +317,39 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     }
 
     // Tool-call thresholds must be positive to avoid rejecting every tool batch.
-    for (name, preset) in &config.agents.presets {
-        if preset.max_tools_threshold == 0 {
+    for (name, agent) in &config.agents.entries {
+        if agent.name.trim().is_empty() {
             diagnostics.push(Diagnostic {
                 severity: Severity::Error,
                 category: "invalid-value",
-                path: format!("agents.presets.{name}.max_tools_threshold"),
-                message: "agents.presets.<name>.max_tools_threshold must be at least 1".into(),
+                path: format!("agents.{name}.name"),
+                message: "agent name must not be empty".into(),
             });
         }
-        if let Some(ToolChoice::Tool { name: tool_name }) = &preset.tool_controls.tool_choice {
+        if agent.max_tools_threshold == 0 {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "invalid-value",
+                path: format!("agents.{name}.max_tools_threshold"),
+                message: "agents.<id>.max_tools_threshold must be at least 1".into(),
+            });
+        }
+        if let Some(ToolChoice::Tool { name: tool_name }) = &agent.tool_controls.tool_choice {
             if tool_name.trim().is_empty() {
                 diagnostics.push(Diagnostic {
                     severity: Severity::Error,
                     category: "invalid-value",
-                    path: format!("agents.presets.{name}.tool_controls.tool_choice.name"),
+                    path: format!("agents.{name}.tool_controls.tool_choice.name"),
                     message: "forced tool_choice requires a non-empty name".into(),
                 });
             }
-            if let Some(active_tools) = &preset.tool_controls.active_tools
+            if let Some(active_tools) = &agent.tool_controls.active_tools
                 && !active_tools.iter().any(|active| active == tool_name)
             {
                 diagnostics.push(Diagnostic {
                     severity: Severity::Error,
                     category: "invalid-value",
-                    path: format!("agents.presets.{name}.tool_controls"),
+                    path: format!("agents.{name}.tool_controls"),
                     message: format!(
                         "forced tool_choice `{tool_name}` must be included in active_tools"
                     ),
@@ -397,65 +405,37 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    // agents.default_preset should reference an existing preset key.
-    if let Some(default_preset) = config.agents.default_preset.as_deref()
-        && !config.agents.presets.contains_key(default_preset)
-    {
+    for agent_id in config.agents.entries.keys() {
+        if let Err(message) = crate::schema::validate_agent_id(agent_id) {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "invalid-value",
+                path: format!("agents.{agent_id}"),
+                message: format!("invalid agent id \"{agent_id}\": {message}"),
+            });
+        }
+    }
+
+    if config.agents.default.trim().is_empty() {
         diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "unknown-field",
-            path: "agents.default_preset".into(),
+            severity: Severity::Error,
+            category: "missing-field",
+            path: "agents.default".into(),
+            message: "agents.default must name a configured agent".into(),
+        });
+    } else if !config.agents.entries.contains_key(&config.agents.default) {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: "agents.default".into(),
             message: format!(
-                "default preset \"{default_preset}\" is not defined in agents.presets"
+                "default agent \"{}\" is not defined under [agents]",
+                config.agents.default
             ),
         });
     }
 
-    // Silent-misconfiguration trap: `[agents.presets.*]` tool policies apply
-    // ONLY to sub-agents spawned via `spawn_agent`. They do NOT filter tools
-    // for the main agent session — that is controlled exclusively by
-    // `[tools.policy]`. Users hardening their deployment often put a deny
-    // list under a preset and expect it to apply to the main session; it
-    // silently doesn't. Warn when at least one preset declares
-    // `tools.allow`/`tools.deny` while `[tools.policy]` is entirely empty.
-    {
-        let main_policy_empty = config.tools.policy.allow.is_empty()
-            && config.tools.policy.deny.is_empty()
-            && config.tools.policy.profile.is_none();
-        if main_policy_empty {
-            let mut offending: Vec<&str> = config
-                .agents
-                .presets
-                .iter()
-                .filter(|(_, preset)| {
-                    !preset.tools.allow.is_empty() || !preset.tools.deny.is_empty()
-                })
-                .map(|(name, _)| name.as_str())
-                .collect();
-            if !offending.is_empty() {
-                offending.sort_unstable();
-                let quoted: Vec<String> =
-                    offending.iter().map(|name| format!("\"{name}\"")).collect();
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Warning,
-                    category: "security",
-                    path: "agents.presets".into(),
-                    message: format!(
-                        "preset(s) [{}] declare tools.allow/tools.deny, but \
-                         [tools.policy] is empty. Preset tool policies apply \
-                         ONLY to sub-agents spawned via the spawn_agent tool; \
-                         they do NOT filter tools for the main agent session. \
-                         To allow/deny tools for the main session, set \
-                         tools.policy.allow, tools.policy.deny, or \
-                         tools.policy.profile.",
-                        quoted.join(", ")
-                    ),
-                });
-            }
-        }
-    }
-
-    // agents.presets.*.reasoning_effort is provider-defined. Runtime validates
+    // agents.*.reasoning_effort is provider-defined. Runtime validates
     // it against the selected model's resolved reasoning.supported_efforts.
 
     // Unknown tool_mode values on provider entries
@@ -892,7 +872,7 @@ pub(super) fn check_file_references(
         }
     }
 
-    // Agent preset MCP allow/deny server validation — warn on unknown server names.
+    // Per-agent MCP allow/deny server validation — warn on unknown server names.
     // Merge servers from both chelix.toml [mcp.servers] and the persistent
     // mcp-servers.json registry file so we don't false-positive on servers
     // added via the API.
@@ -909,19 +889,19 @@ pub(super) fn check_file_references(
     {
         known_mcp_servers.extend(servers.keys().cloned());
     }
-    for (preset_name, preset) in &config.agents.presets {
-        let servers = match &preset.mcp {
-            crate::schema::PresetMcpPolicy::Allow(s) | crate::schema::PresetMcpPolicy::Deny(s) => s,
-            crate::schema::PresetMcpPolicy::All => continue,
+    for (agent_id, agent) in &config.agents.entries {
+        let servers = match &agent.mcp {
+            crate::schema::AgentMcpPolicy::Allow(s) | crate::schema::AgentMcpPolicy::Deny(s) => s,
+            crate::schema::AgentMcpPolicy::All => continue,
         };
         for server in servers {
             if !known_mcp_servers.contains(server.as_str()) {
                 diagnostics.push(Diagnostic {
                     severity: Severity::Warning,
                     category: "agents",
-                    path: format!("agents.presets.{preset_name}.mcp"),
+                    path: format!("agents.{agent_id}.mcp"),
                     message: format!(
-                        "MCP server '{}' referenced in preset but not configured in [mcp.servers] or mcp-servers.json",
+                        "MCP server '{}' referenced by agent but not configured in [mcp.servers] or mcp-servers.json",
                         server
                     ),
                 });

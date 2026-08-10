@@ -521,7 +521,7 @@ function handleWelcomeAgentsResponse(
 	}
 	const parsed = parseAgentsListPayload(response.payload as Parameters<typeof parseAgentsListPayload>[0]);
 	const agents = (parsed.agents || []) as AgentInfo[];
-	const effectiveActive = activeAgentId || parsed.defaultId || "main";
+	const effectiveActive = activeAgentId || parsed.defaultId;
 	onActiveAgentResolved(renderWelcomeAgentOptions(container, agents, effectiveActive));
 }
 
@@ -563,7 +563,7 @@ function showWelcomeCard(): void {
 	if (emojiEl) emojiEl.textContent = botEmoji;
 	const nameEl = card.querySelector("[data-welcome-bot-name]") as HTMLElement | null;
 	if (nameEl) nameEl.textContent = botName;
-	const activeAgentId = sessionStore.activeSession.value?.agent_id || "main";
+	const activeAgentId = sessionStore.activeSession.value?.agent_id || "";
 	renderWelcomeAgentPicker(card, activeAgentId, (activeAgent) => {
 		if (!activeAgent) return;
 		if (emojiEl) emojiEl.textContent = activeAgent.emoji || "";

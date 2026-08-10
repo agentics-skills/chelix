@@ -16,7 +16,7 @@ use {
         },
         tool_registry::{ToolCatalogEntry, ToolRegistry},
     },
-    chelix_config::{AgentIdentity, DEFAULT_SOUL, UserProfile},
+    chelix_config::{AgentConfig, DEFAULT_SOUL, UserProfile},
     chelix_skills::types::SkillMetadata,
 };
 
@@ -91,7 +91,7 @@ pub fn build_system_prompt_with_session_runtime(
     native_tools: bool,
     project_context: Option<&str>,
     skills: &[SkillMetadata],
-    identity: Option<&AgentIdentity>,
+    agent: Option<&AgentConfig>,
     user: Option<&UserProfile>,
     soul_text: Option<&str>,
     boot_text: Option<&str>,
@@ -106,7 +106,7 @@ pub fn build_system_prompt_with_session_runtime(
         native_tools,
         project_context,
         skills,
-        identity,
+        agent,
         user,
         soul_text,
         boot_text,
@@ -126,7 +126,7 @@ pub fn build_system_prompt_with_session_runtime_details(
     native_tools: bool,
     project_context: Option<&str>,
     skills: &[SkillMetadata],
-    identity: Option<&AgentIdentity>,
+    agent: Option<&AgentConfig>,
     user: Option<&UserProfile>,
     soul_text: Option<&str>,
     boot_text: Option<&str>,
@@ -142,7 +142,7 @@ pub fn build_system_prompt_with_session_runtime_details(
         native_tools,
         project_context,
         skills,
-        identity,
+        agent,
         user,
         soul_text,
         boot_text,
@@ -159,7 +159,7 @@ pub fn build_system_prompt_with_session_runtime_details(
 /// Build a minimal system prompt with explicit runtime context.
 pub fn build_system_prompt_minimal_runtime(
     project_context: Option<&str>,
-    identity: Option<&AgentIdentity>,
+    agent: Option<&AgentConfig>,
     user: Option<&UserProfile>,
     soul_text: Option<&str>,
     boot_text: Option<&str>,
@@ -171,7 +171,7 @@ pub fn build_system_prompt_minimal_runtime(
 ) -> String {
     build_system_prompt_minimal_runtime_details(
         project_context,
-        identity,
+        agent,
         user,
         soul_text,
         boot_text,
@@ -188,7 +188,7 @@ pub fn build_system_prompt_minimal_runtime(
 /// Build a minimal system prompt with explicit runtime context and metadata.
 pub fn build_system_prompt_minimal_runtime_details(
     project_context: Option<&str>,
-    identity: Option<&AgentIdentity>,
+    agent: Option<&AgentConfig>,
     user: Option<&UserProfile>,
     soul_text: Option<&str>,
     boot_text: Option<&str>,
@@ -204,7 +204,7 @@ pub fn build_system_prompt_minimal_runtime_details(
         true,
         project_context,
         &[],
-        identity,
+        agent,
         user,
         soul_text,
         boot_text,
@@ -264,7 +264,7 @@ fn build_system_prompt_full(
     native_tools: bool,
     project_context: Option<&str>,
     skills: &[SkillMetadata],
-    identity: Option<&AgentIdentity>,
+    agent: Option<&AgentConfig>,
     user: Option<&UserProfile>,
     soul_text: Option<&str>,
     boot_text: Option<&str>,
@@ -295,8 +295,7 @@ fn build_system_prompt_full(
         "You are a helpful assistant. Answer questions clearly and concisely.\n\n"
     });
 
-    append_identity_and_user_sections(&mut prompt, identity, user, soul_text);
-    append_mode_section(&mut prompt, runtime_context);
+    append_agent_and_user_sections(&mut prompt, agent, user, soul_text);
     append_boot_section(&mut prompt, boot_text);
     append_project_context(&mut prompt, project_context);
     append_runtime_section(&mut prompt, runtime_context, include_tools);
@@ -351,25 +350,17 @@ fn append_documentation_section(
     }
 }
 
-fn append_identity_and_user_sections(
+fn append_agent_and_user_sections(
     prompt: &mut String,
-    identity: Option<&AgentIdentity>,
+    agent: Option<&AgentConfig>,
     user: Option<&UserProfile>,
     soul_text: Option<&str>,
 ) {
-    if let Some(id) = identity {
-        let mut parts = Vec::new();
-        match (id.name.as_deref(), id.emoji.as_deref()) {
-            (Some(name), Some(emoji)) => parts.push(format!("Your name is {name} {emoji}.")),
-            (Some(name), None) => parts.push(format!("Your name is {name}.")),
-            _ => {},
-        }
-        if let Some(theme) = id.theme.as_deref() {
-            parts.push(format!("Your theme: {theme}."));
-        }
-        if !parts.is_empty() {
-            prompt.push_str(&parts.join(" "));
-            prompt.push('\n');
+    if let Some(agent) = agent {
+        if let Some(emoji) = agent.emoji.as_deref() {
+            prompt.push_str(&format!("Your name is {} {emoji}.\n", agent.name));
+        } else {
+            prompt.push_str(&format!("Your name is {}.\n", agent.name));
         }
         prompt.push_str("\n## Soul\n\n");
         prompt.push_str(soul_text.unwrap_or(DEFAULT_SOUL));
@@ -379,28 +370,9 @@ fn append_identity_and_user_sections(
     if let Some(name) = user.and_then(|profile| profile.name.as_deref()) {
         prompt.push_str(&format!("The user's name is {name}.\n"));
     }
-    if identity.is_some() || user.is_some() {
+    if agent.is_some() || user.is_some() {
         prompt.push('\n');
     }
-}
-
-fn append_mode_section(prompt: &mut String, runtime_context: Option<&PromptRuntimeContext>) {
-    let Some(mode) = runtime_context.and_then(|ctx| ctx.mode.as_ref()) else {
-        return;
-    };
-    let mode_prompt = mode.prompt.trim();
-    if mode_prompt.is_empty() {
-        return;
-    }
-
-    prompt.push_str("## Active Mode\n\n");
-    prompt.push_str("Mode: ");
-    prompt.push_str(&mode.name);
-    prompt.push_str(" (");
-    prompt.push_str(&mode.id);
-    prompt.push_str(")\n\n");
-    prompt.push_str(mode_prompt);
-    prompt.push_str("\n\n");
 }
 
 fn append_boot_section(prompt: &mut String, boot_text: Option<&str>) {

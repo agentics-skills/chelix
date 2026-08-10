@@ -42,7 +42,6 @@
 - [Session State](session-state.md)
 - [Session Message Deletion](session-message-deletion.md)
 - [Slash Commands](commands.md)
-- [Modes](modes.md)
 - [Session Branching](session-branching.md)
 - [Compaction](compaction.md)
 - [Scheduling (Cron Jobs)](scheduling.md)
@@ -81,7 +80,7 @@
 - [Tool Registry](tool-registry.md)
 - [Managed Tools Service](tools-service.md)
 - [Tool Policy](tool-policy.md)
-- [Agent Presets](agent-presets.md)
+- [Agents](agents.md)
 - [Session Tools](session-tools.md)
 
 ---

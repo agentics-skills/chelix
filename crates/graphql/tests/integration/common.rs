@@ -95,10 +95,6 @@ impl chelix_service_traits::AgentService for MockAgent {
         self.0.call("agent.wait", params)
     }
 
-    async fn identity_get(&self) -> ServiceResult {
-        self.0.call("agent.identity.get", json!({}))
-    }
-
     async fn list(&self) -> ServiceResult {
         self.0.call("agents.list", json!({}))
     }
@@ -579,17 +575,12 @@ impl chelix_service_traits::OnboardingService for MockOnboarding {
         self.0.call("wizard.status", json!({}))
     }
 
-    async fn identity_get(&self) -> ServiceResult {
-        self.0.call("onboarding.identity.get", json!({}))
+    async fn user_get(&self) -> ServiceResult {
+        self.0.call("user.get", json!({}))
     }
 
-    async fn identity_update(&self, p: Value) -> ServiceResult {
-        self.0.call("agent.identity.update", p)
-    }
-
-    async fn identity_update_soul(&self, soul: Option<String>) -> ServiceResult {
-        self.0
-            .call("agent.identity.update_soul", json!({ "soul": soul }))
+    async fn user_update(&self, p: Value) -> ServiceResult {
+        self.0.call("user.update", p)
     }
 
     async fn claude_detect(&self) -> ServiceResult {
