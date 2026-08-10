@@ -51,7 +51,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
         "python-is-python3",
         "nodejs", // NodeSource 22.x (npm bundled)
         "ruby",
-        "golang-go",
     ]),
     ("Build tools", &[
         "build-essential",
@@ -152,18 +151,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
     ]),
     ("Newsgroups (NNTP)", &["tin", "slrn"]),
     ("Messaging APIs", &["python3-discord"]),
-];
-
-/// Go-based CLI tools installed via `go install` (not APT), surfaced as a
-/// separate section so the LLM knows they exist. These won't appear in
-/// `dpkg-query` output.
-const GO_PREINSTALLED_TOOLS: &[(&str, &str)] = &[
-    (
-        "gogcli",
-        "Google Suite CLI (Gmail, Calendar, Drive, Docs, Sheets, Contacts)",
-    ),
-    ("discrawl", "Discord guild archive and search"),
-    ("slacrawl", "Slack workspace archive and search"),
 ];
 
 /// Returns `true` for packages that are infrastructure/library deps and should
@@ -357,8 +344,6 @@ impl AgentTool for SandboxPackagesTool {
 
         let packages = &router.config().packages;
 
-        // Build categorized config list (empty list is fine — Go tools are
-        // still installed unconditionally via the Dockerfile).
         let grouped = categorize_packages(packages);
 
         let mut categories = serde_json::Map::new();
@@ -372,19 +357,6 @@ impl AgentTool for SandboxPackagesTool {
                         .map(|p| Value::String((*p).to_string()))
                         .collect(),
                 ),
-            );
-        }
-
-        // Include pre-installed Go tools that don't come from APT.
-        let go_tools: serde_json::Map<String, Value> = GO_PREINSTALLED_TOOLS
-            .iter()
-            .map(|(name, desc)| ((*name).to_string(), Value::String((*desc).to_string())))
-            .collect();
-        if !go_tools.is_empty() {
-            visible_total += go_tools.len();
-            categories.insert(
-                "Data archiving (Go binaries)".to_string(),
-                Value::Object(go_tools),
             );
         }
 
@@ -459,8 +431,7 @@ mod tests {
 
         let result = tool.execute(json!({})).await.unwrap();
 
-        let go_count = GO_PREINSTALLED_TOOLS.len();
-        assert_eq!(result["total"], 5 + go_count);
+        assert_eq!(result["total"], 5);
 
         let cats = result["categories"].as_object().unwrap();
         assert!(cats.contains_key("Networking"));
@@ -493,9 +464,18 @@ mod tests {
         // Only curl should remain (libvips-tools is filtered by is_infrastructure_package
         // because it starts with "lib")
         let cats = result["categories"].as_object().unwrap();
-        assert_eq!(result["total"], 1 + GO_PREINSTALLED_TOOLS.len());
+        assert_eq!(result["total"], 1);
         assert!(cats.contains_key("Networking"));
         assert!(!cats.contains_key("Image processing"));
+    }
+
+    #[tokio::test]
+    async fn test_empty_packages_yields_no_categories() {
+        let tool = make_tool(vec![]);
+        let result = tool.execute(json!({})).await.unwrap();
+
+        assert_eq!(result["total"], 0);
+        assert!(result["categories"].as_object().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -508,7 +488,7 @@ mod tests {
 
         let result = tool.execute(json!({})).await.unwrap();
 
-        assert_eq!(result["total"], 3 + GO_PREINSTALLED_TOOLS.len());
+        assert_eq!(result["total"], 3);
         let cats = result["categories"].as_object().unwrap();
         assert!(cats.contains_key("Other"));
 
@@ -522,18 +502,6 @@ mod tests {
         let tool = disabled_tool();
         let result = tool.execute(json!({})).await.unwrap();
         assert_eq!(result["error"], "Sandbox mode is Off");
-    }
-
-    #[tokio::test]
-    async fn test_empty_packages_still_shows_go_tools() {
-        let tool = make_tool(vec![]);
-        let result = tool.execute(json!({})).await.unwrap();
-
-        // No APT packages, but Go tools are always present.
-        let go_count = GO_PREINSTALLED_TOOLS.len();
-        assert_eq!(result["total"], go_count);
-        let cats = result["categories"].as_object().unwrap();
-        assert!(cats.contains_key("Data archiving (Go binaries)"));
     }
 
     #[test]
@@ -573,26 +541,6 @@ mod tests {
         assert!(!is_infrastructure_package("ffmpeg"));
         assert!(!is_infrastructure_package("pandoc"));
         assert!(!is_infrastructure_package("imagemagick"));
-    }
-
-    #[tokio::test]
-    async fn test_go_tools_surfaced_in_response() {
-        let tool = make_tool(vec!["curl".into()]);
-        let result = tool.execute(json!({})).await.unwrap();
-
-        let cats = result["categories"].as_object().unwrap();
-        assert!(
-            cats.contains_key("Data archiving (Go binaries)"),
-            "Go tools category missing from response"
-        );
-        let go_cat = cats["Data archiving (Go binaries)"].as_object().unwrap();
-        assert!(go_cat.contains_key("gogcli"));
-        assert!(go_cat.contains_key("discrawl"));
-        assert!(go_cat.contains_key("slacrawl"));
-
-        // total must include both APT packages and Go tools
-        let go_count = GO_PREINSTALLED_TOOLS.len();
-        assert_eq!(result["total"], 1 + go_count); // 1 APT (curl) + Go tools
     }
 
     #[test]

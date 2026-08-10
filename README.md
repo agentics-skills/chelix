@@ -127,8 +127,7 @@ or sandbox endpoint.
         │        │                        │
         │  ┌─────▼─────────────────────┐  │
         │  │    Provider Registry      │  │
-        │  │  Multiple providers       │  │
-        │  │      (Codex · Local)      │  │
+        │  │       OpenAI API          │  │
         │  └───────────────────────────┘  │
         ├─────────────────────────────────┤
         │  Sessions  │ Memory  │  Hooks   │
@@ -201,10 +200,6 @@ examples for supported container platforms.
 All cloud configs use `--no-tls` because the provider handles TLS termination.
 See [Cloud Deploy docs](docs/src/cloud-deploy.md) for generic settings and
 current platform examples.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=agentics-skills/chelix&type=date&legend=top-left)](https://www.star-history.com/#agentics-skills/chelix&type=date&legend=top-left)
 
 ## License
 

@@ -509,7 +509,6 @@ fn default_sandbox_packages() -> Vec<String> {
         "nodejs", // installed via NodeSource 22.x (npm bundled)
         "ruby",
         "ruby-dev",
-        "golang-go",
         "php-cli",
         "php-mbstring",
         "php-xml",

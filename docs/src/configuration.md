@@ -192,7 +192,6 @@ packages = [
     "python3-pip",
     "nodejs",
     "npm",
-    "golang-go",
 ]
 
 [[sandbox.mounts]]
@@ -496,7 +495,7 @@ home_persistence = "session"
 # shared_home_dir = "/path/to/shared-home"
 backend = "auto"
 network = "bridge"
-packages = ["curl", "git", "jq", "python3", "nodejs", "golang-go"]
+packages = ["curl", "git", "jq", "python3", "nodejs"]
 
 [memory]
 backend = "builtin"

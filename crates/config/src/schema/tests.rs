@@ -600,14 +600,19 @@ fn channels_all_channel_configs_includes_slack() {
 }
 
 #[test]
-fn sandbox_defaults_include_go_runtime() {
+fn sandbox_defaults_are_expected() {
     let sandbox = SandboxConfig::default();
     assert_eq!(sandbox.mode, SandboxMode::On);
-    assert!(sandbox.packages.iter().any(|pkg| pkg == "golang-go"));
     assert_eq!(sandbox.home_persistence, HomePersistenceConfig::Shared);
     assert!(sandbox.host_data_dir.is_none());
     assert!(sandbox.mounts.is_empty());
     assert_eq!(sandbox.workspace_sysmount, "ro");
+}
+
+#[test]
+fn sandbox_default_packages_exclude_go_runtime() {
+    let sandbox = SandboxConfig::default();
+    assert!(!sandbox.packages.iter().any(|pkg| pkg == "golang-go"));
 }
 
 #[test]
