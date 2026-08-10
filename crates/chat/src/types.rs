@@ -687,10 +687,11 @@ pub(crate) struct PromptMemoryStatus {
     pub file_source: Option<chelix_config::WorkspaceMarkdownSource>,
 }
 
-/// Pre-loaded persona data used to build the system prompt.
+/// Pre-loaded agent data used to build the system prompt.
 pub(crate) struct PromptPersona {
     pub config: chelix_config::ChelixConfig,
-    pub identity: chelix_config::AgentIdentity,
+    pub agent_id: String,
+    pub agent: chelix_config::AgentConfig,
     pub user: chelix_config::UserProfile,
     pub soul_text: Option<String>,
     pub boot_text: Option<String>,

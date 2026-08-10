@@ -21,8 +21,7 @@ use crate::{
     },
     prompt::{
         apply_request_runtime_context, build_prompt_runtime_context, discover_skills_if_enabled,
-        filter_skills_for_agent, resolve_channel_runtime_context, resolve_prompt_agent_id,
-        resolve_prompt_mode_context,
+        filter_skills_for_agent, resolve_channel_runtime_context,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -513,21 +512,17 @@ impl LiveChatService {
             run_id: Some(run_id.clone()),
         };
 
-        // Discover enabled skills/plugins for prompt injection (gated on
-        // `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&self.config).await;
-
-        // Load session metadata for MCP, agent, and prompt runtime context.
+        // Load one live agent-registry snapshot for the whole run.
         let session_entry = self.session_metadata.get(&session_key).await;
-        let session_agent_id = resolve_prompt_agent_id(session_entry.as_ref());
+        let persona = self
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .await
+            .map_err(ServiceError::message)?;
+        let session_agent_id = persona.agent_id.clone();
 
-        // Apply per-agent skill policy (allow/deny by name or category).
-        let discovered_skills =
-            if let Some(preset) = self.config.agents.get_preset(&session_agent_id) {
-                filter_skills_for_agent(discovered_skills, &preset.skills)
-            } else {
-                discovered_skills
-            };
+        // Discover enabled skills/plugins and apply the live per-agent policy.
+        let discovered_skills = discover_skills_if_enabled(&persona.config).await;
+        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
         info!(
             session = %session_key,
             skills_len = discovered_skills.len(),
@@ -539,15 +534,10 @@ impl LiveChatService {
             session = %session_key,
             agent_id = %session_agent_id,
             client_seq = ?client_seq,
-            "chat.send: loading persona"
+            "chat.send: persona loaded"
         );
-        let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
-            .await
-            .map_err(ServiceError::message)?;
-        let resolved_reasoning_effort = requested_reasoning_effort_override.or_else(|| {
-            resolved_turn_reasoning_effort(session_entry.as_ref(), &persona, &session_agent_id)
-        });
+        let resolved_reasoning_effort = requested_reasoning_effort_override
+            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona));
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);
@@ -586,7 +576,6 @@ impl LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        runtime_context.mode = resolve_prompt_mode_context(&persona.config, session_entry.as_ref());
         apply_request_runtime_context(
             &mut runtime_context.host,
             &params,

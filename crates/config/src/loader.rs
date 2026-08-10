@@ -206,19 +206,9 @@ pub fn data_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".chelix"))
 }
 
-/// Path to the workspace soul file.
-pub fn soul_path() -> PathBuf {
-    data_dir().join("SOUL.md")
-}
-
 /// Path to the workspace AGENTS markdown.
 pub fn agents_path() -> PathBuf {
     data_dir().join("AGENTS.md")
-}
-
-/// Path to the workspace identity file.
-pub fn identity_path() -> PathBuf {
-    data_dir().join("IDENTITY.md")
 }
 
 /// Path to the workspace user profile file.

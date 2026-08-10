@@ -15,7 +15,7 @@ use {
         },
         tool_registry::ToolRegistry,
     },
-    chelix_config::{AgentIdentity, UserProfile},
+    chelix_config::{AgentConfig, UserProfile},
     chelix_skills::types::SkillMetadata,
 };
 
@@ -194,12 +194,12 @@ fn test_documentation_section_falls_back_to_public_docs() {
 }
 
 #[test]
-fn test_identity_injected_into_prompt() {
+fn test_agent_injected_into_prompt() {
     let tools = ToolRegistry::new();
-    let identity = AgentIdentity {
-        name: Some("Momo".into()),
+    let agent = AgentConfig {
+        name: "Momo".into(),
         emoji: Some("🦜".into()),
-        theme: Some("cheerful parrot".into()),
+        ..Default::default()
     };
     let user = UserProfile {
         name: Some("Alice".into()),
@@ -211,7 +211,7 @@ fn test_identity_injected_into_prompt() {
         true,
         None,
         &[],
-        Some(&identity),
+        Some(&agent),
         Some(&user),
         None,
         None,
@@ -222,7 +222,6 @@ fn test_identity_injected_into_prompt() {
         None,
     );
     assert!(prompt.contains("Your name is Momo 🦜."));
-    assert!(prompt.contains("Your theme: cheerful parrot."));
     assert!(prompt.contains("The user's name is Alice."));
     assert!(prompt.contains("## Soul"));
     assert!(prompt.contains("Be genuinely helpful"));
@@ -231,8 +230,8 @@ fn test_identity_injected_into_prompt() {
 #[test]
 fn test_custom_soul_injected() {
     let tools = ToolRegistry::new();
-    let identity = AgentIdentity {
-        name: Some("Rex".into()),
+    let agent = AgentConfig {
+        name: "Rex".into(),
         ..Default::default()
     };
     let prompt = build_system_prompt_with_session_runtime(
@@ -240,7 +239,7 @@ fn test_custom_soul_injected() {
         true,
         None,
         &[],
-        Some(&identity),
+        Some(&agent),
         None,
         Some("You are a loyal companion who loves fetch."),
         None,
@@ -256,7 +255,7 @@ fn test_custom_soul_injected() {
 }
 
 #[test]
-fn test_no_identity_no_extra_lines() {
+fn test_no_agent_no_extra_lines() {
     let tools = ToolRegistry::new();
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
@@ -381,7 +380,6 @@ fn test_runtime_context_injected_when_provided() {
             workspace_path: Some("/home/chelix/.chelix".into()),
             network: Some("bridge".into()),
         }),
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -442,7 +440,6 @@ fn test_runtime_context_sandbox_without_sudo_omits_sudo_hint() {
             home: Some("/home/sandbox".into()),
             ..Default::default()
         }),
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -478,7 +475,6 @@ fn test_runtime_context_no_sandbox_uses_host_only_routing() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -517,7 +513,6 @@ fn test_runtime_context_no_sandbox_with_sudo_includes_sudo_hint() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -551,7 +546,6 @@ fn test_runtime_context_includes_location_when_set() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -588,7 +582,6 @@ fn test_runtime_context_includes_channel_surface_fields_when_set() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -625,7 +618,6 @@ fn test_runtime_context_omits_location_when_none() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -655,7 +647,6 @@ fn test_minimal_prompt_runtime_does_not_add_command_routing_block() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_minimal_runtime(
@@ -989,7 +980,6 @@ fn test_system_prompt_does_not_contain_datetime() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let prompt = build_system_prompt_with_session_runtime(
@@ -1021,7 +1011,6 @@ fn test_runtime_datetime_message_returns_time_when_present() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let msg = runtime_datetime_message(Some(&runtime));
@@ -1039,7 +1028,6 @@ fn test_runtime_datetime_message_falls_back_to_today() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
 
     let msg = runtime_datetime_message(Some(&runtime));
@@ -1051,7 +1039,6 @@ fn test_runtime_datetime_message_returns_none_without_time_or_date() {
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext::default(),
         sandbox: None,
-        mode: None,
     };
 
     assert!(runtime_datetime_message(Some(&runtime)).is_none());
@@ -1440,7 +1427,6 @@ fn test_prepend_datetime_to_text_content() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
     let content = UserContent::Text("Hello, what time is it?".into());
     let result = prepend_datetime_to_user_content(&content, Some(&runtime));
@@ -1463,7 +1449,6 @@ fn test_prepend_datetime_to_multimodal_content() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
     let content = UserContent::Multimodal(vec![
         ContentPart::Text("Describe this image".into()),
@@ -1510,7 +1495,6 @@ fn test_prepend_datetime_returns_none_without_time_or_date() {
     let runtime = PromptRuntimeContext {
         host: PromptHostRuntimeContext::default(),
         sandbox: None,
-        mode: None,
     };
     let content = UserContent::Text("Hello".into());
     assert!(prepend_datetime_to_user_content(&content, Some(&runtime)).is_none());
@@ -1524,7 +1508,6 @@ fn test_prepend_datetime_falls_back_to_today() {
             ..Default::default()
         },
         sandbox: None,
-        mode: None,
     };
     let content = UserContent::Text("What day is it?".into());
     let result = prepend_datetime_to_user_content(&content, Some(&runtime));

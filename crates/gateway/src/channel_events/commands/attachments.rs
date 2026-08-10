@@ -121,10 +121,55 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
                 .is_none_or(|value| value.is_empty())
         {
             let default_agent =
-                resolve_channel_agent_id(state, &session_key, meta.agent_id.as_deref()).await;
-            let _ = session_meta
+                match resolve_channel_agent_id(state, &session_key, meta.agent_id.as_deref()).await
+                {
+                    Ok(agent_id) => agent_id,
+                    Err(error) => {
+                        if let Some(done_tx) = typing_done {
+                            let _ = done_tx.send(());
+                        }
+                        error!(%error, "channel agent resolution failed");
+                        if let Some(outbound) = state.services.channel_outbound_arc() {
+                            let error_message = format!("⚠️ {error}");
+                            if let Err(send_error) = outbound
+                                .send_text(
+                                    &reply_to.account_id,
+                                    &reply_to.outbound_to(),
+                                    &error_message,
+                                    reply_to.message_id.as_deref(),
+                                )
+                                .await
+                            {
+                                warn!("failed to send error back to channel: {send_error}");
+                            }
+                        }
+                        return;
+                    },
+                };
+            if let Err(error) = session_meta
                 .set_agent_id(&session_key, Some(&default_agent))
-                .await;
+                .await
+            {
+                if let Some(done_tx) = typing_done {
+                    let _ = done_tx.send(());
+                }
+                error!(%error, "failed to set channel session agent");
+                if let Some(outbound) = state.services.channel_outbound_arc() {
+                    let error_message = format!("⚠️ {error}");
+                    if let Err(send_error) = outbound
+                        .send_text(
+                            &reply_to.account_id,
+                            &reply_to.outbound_to(),
+                            &error_message,
+                            reply_to.message_id.as_deref(),
+                        )
+                        .await
+                    {
+                        warn!("failed to send error back to channel: {send_error}");
+                    }
+                }
+                return;
+            }
         }
     }
 

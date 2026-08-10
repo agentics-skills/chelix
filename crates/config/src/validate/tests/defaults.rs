@@ -40,24 +40,26 @@ disabled = false
 }
 
 #[test]
-fn shadowed_defaults_skips_custom_keys() {
+fn shadowed_defaults_skips_user_owned_agents() {
     let user_toml = r#"
-[identity]
+[agents]
+default = "rex"
+
+[agents.rex]
 name = "Rex"
+max_tools_threshold = 128
 "#;
     let mut diagnostics = Vec::new();
     check_shadowed_defaults(user_toml, &mut diagnostics);
 
     let shadowed = diagnostics
         .iter()
-        .filter(|d| d.category == "shadowed-default")
+        .filter(|diagnostic| diagnostic.category == "shadowed-default")
         .count();
 
-    // identity.name is Optional and defaults to None (absent from serialized defaults)
-    // so it should not be flagged
     assert_eq!(
         shadowed, 0,
-        "custom keys should not generate shadowed-default diagnostics"
+        "user-owned agent fields must not generate shadowed-default diagnostics"
     );
 }
 

@@ -164,6 +164,13 @@ enabled = true
 #[test]
 fn env_section_passes_validation() {
     let toml = r#"
+[agents]
+default = "main"
+
+[agents.main]
+name = "Chelix"
+max_tools_threshold = 128
+
 [env]
 FIRECRAWL_API_KEY = "test-key"
 OPENROUTER_API_KEY = "sk-or-test"

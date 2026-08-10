@@ -216,14 +216,7 @@ fn memory_file_label_from_root(root: &Path, path: &Path) -> Option<String> {
 }
 
 fn agent_memory_file_label_for_path(path: &Path, agent_id: &str) -> Option<String> {
-    let workspace = chelix_config::agent_workspace_dir(agent_id);
-    memory_file_label_from_root(&workspace, path).or_else(|| {
-        if agent_id == "main" {
-            memory_file_label_from_root(&chelix_config::data_dir(), path)
-        } else {
-            None
-        }
-    })
+    memory_file_label_from_root(&chelix_config::agent_workspace_dir(agent_id), path)
 }
 
 fn global_memory_file_label_for_path(
@@ -444,22 +437,9 @@ pub(crate) fn resolve_agent_memory_target_path(
 pub(crate) fn is_path_in_agent_memory_scope(path: &Path, agent_id: &str) -> bool {
     let workspace = chelix_config::agent_workspace_dir(agent_id);
     let workspace_memory_dir = workspace.join("memory");
-    if path == workspace.join("MEMORY.md")
+    path == workspace.join("MEMORY.md")
         || path == workspace.join("memory.md")
         || path.starts_with(&workspace_memory_dir)
-    {
-        return true;
-    }
-
-    if agent_id != "main" {
-        return false;
-    }
-
-    let data_dir = chelix_config::data_dir();
-    let root_memory_dir = data_dir.join("memory");
-    path == data_dir.join("MEMORY.md")
-        || path == data_dir.join("memory.md")
-        || path.starts_with(&root_memory_dir)
 }
 
 pub struct AgentScopedMemoryWriter {

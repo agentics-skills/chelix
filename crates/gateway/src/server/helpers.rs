@@ -98,40 +98,41 @@ pub(crate) fn build_qmd_collections(
     collections
 }
 
-pub(crate) fn instance_slug(config: &chelix_config::ChelixConfig) -> String {
-    let mut raw_name = config.identity.name.clone();
-    if let Some(file_identity) = chelix_config::load_identity_for_agent("main")
-        && file_identity.name.is_some()
-    {
-        raw_name = file_identity.name;
-    }
+pub(crate) fn instance_slug(config: &chelix_config::ChelixConfig) -> anyhow::Result<String> {
+    let default_id = config.agents.default.trim();
+    let default_agent = config
+        .agents
+        .entries
+        .get(default_id)
+        .ok_or_else(|| anyhow::anyhow!("default agent `{default_id}` is not configured"))?;
 
-    let base = raw_name
-        .unwrap_or_else(|| "chelix".to_string())
-        .to_lowercase();
-    let mut out = String::new();
-    let mut last_dash = false;
-    for ch in base.chars() {
-        let mapped = if ch.is_ascii_alphanumeric() {
-            ch
-        } else {
-            '-'
-        };
-        if mapped == '-' {
-            if !last_dash {
+    let slugify = |value: &str| {
+        let mut out = String::new();
+        let mut last_dash = false;
+        for ch in value.to_lowercase().chars() {
+            let mapped = if ch.is_ascii_alphanumeric() {
+                ch
+            } else {
+                '-'
+            };
+            if mapped == '-' {
+                if !last_dash {
+                    out.push(mapped);
+                }
+                last_dash = true;
+            } else {
                 out.push(mapped);
+                last_dash = false;
             }
-            last_dash = true;
-        } else {
-            out.push(mapped);
-            last_dash = false;
         }
-    }
-    let out = out.trim_matches('-').to_string();
-    if out.is_empty() {
-        "chelix".to_string()
+        out.trim_matches('-').to_string()
+    };
+
+    let name_slug = slugify(&default_agent.name);
+    if name_slug.is_empty() {
+        Ok(slugify(default_id))
     } else {
-        out
+        Ok(name_slug)
     }
 }
 

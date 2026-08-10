@@ -10,13 +10,13 @@ use crate::{
     scalars::Json,
     services,
     types::{
-        AgentIdentity, BoolResult, ChannelInfo, ChannelSendersResult, ChatRawPrompt,
-        CommandApprovalConfig, CronJob, CronRunRecord, CronStatus, HealthInfo, HeartbeatStatus,
-        HookInfo, LogListResult, LogStatus, LogTailResult, McpServer, McpTool, MemoryConfig,
-        MemoryStatus, ModelInfo, Project, ProjectContext, ProviderInfo, SecurityScanResult,
-        SecurityStatus, SessionActiveResult, SessionBranch, SessionEntry, SessionShareResult,
-        SkillInfo, SkillRepo, StatusInfo, SttStatus, SystemPresence, TtsStatus, UsageCost,
-        UsageStatus, VoiceConfig, VoicewakeConfig, VoxtralRequirements,
+        BoolResult, ChannelInfo, ChannelSendersResult, ChatRawPrompt, CommandApprovalConfig,
+        CronJob, CronRunRecord, CronStatus, HealthInfo, HeartbeatStatus, HookInfo, LogListResult,
+        LogStatus, LogTailResult, McpServer, McpTool, MemoryConfig, MemoryStatus, ModelInfo,
+        Project, ProjectContext, ProviderInfo, SecurityScanResult, SecurityStatus,
+        SessionActiveResult, SessionBranch, SessionEntry, SessionShareResult, SkillInfo, SkillRepo,
+        StatusInfo, SttStatus, SystemPresence, TtsStatus, UsageCost, UsageStatus, VoiceConfig,
+        VoicewakeConfig, VoxtralRequirements,
     },
 };
 
@@ -721,12 +721,6 @@ impl AgentQuery {
         let s = services!(ctx);
         // Agent list includes dynamic config/capabilities per agent.
         from_service_json(s.agent.list().await)
-    }
-
-    /// Get agent identity.
-    async fn identity(&self, ctx: &Context<'_>) -> Result<AgentIdentity> {
-        let s = services!(ctx);
-        from_service(s.agent.identity_get().await)
     }
 }
 

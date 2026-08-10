@@ -17,7 +17,7 @@
 
 - **Server & Networking**
 - **Observability**
-- **Identity & User**
+- **User**
 - **Chat & Agents**
 - **Tools — Execution**
 - **Tools — Web & Data**
@@ -37,15 +37,16 @@
   - [`upstream_proxy`](#upstream-proxy)
 - **Observability**
   - [`metrics`](#metrics)
-- **Identity & User**
-  - [`identity`](#identity)
+- **User**
   - [`user`](#user)
 - **Chat & Agents**
   - [`chat`](#chat)
   - [`agents`](#agents)
-  - [`agents.presets.<name>`](#agentspresetsname)
-  - [`modes`](#modes)
-  - [`modes.presets.<name>`](#modespresetsname)
+  - [`agents.<id>`](#agentsid)
+  - [`agents.<id>.sessions`](#agentsidsessions)
+  - [`agents.<id>.memory`](#agentsidmemory)
+  - [`agents.<id>.mcp`](#agentsidmcp)
+  - [`agents.<id>.skills`](#agentsidskills)
   - [`skills`](#skills)
 - **Tools — Execution**
   - [`tools.execute_command`](#toolsexecute_command)
@@ -179,17 +180,7 @@ Metrics and observability configuration.
 
 ---
 
-## Identity & User
-
-### `identity` — AgentIdentity
-
-Agent identity (name, emoji, theme).
-
-| Key     | Type            | Default | Description                                              |
-| ------- | --------------- | ------- | -------------------------------------------------------- |
-| `name`  | optional string | —       | Agent display name. Falls back to `"chelix"` when unset. |
-| `emoji` | optional string | —       | Agent emoji icon.                                        |
-| `theme` | optional string | —       | Agent theme identifier.                                  |
+## User
 
 ### `user` — UserProfile
 
@@ -215,68 +206,69 @@ User profile collected during onboarding.
 
 ### `agents` — AgentsConfig
 
-| Key              | Type                 | Default          | Description                                                                                                        |
-| ---------------- | -------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `default_preset` | optional string      | `"research"`     | Default preset name used when `spawn_agent.preset` is omitted. Applies only to sub-agents.                         |
-| `presets`        | map of `AgentPreset` | built-in presets | Named agent presets, keyed by name. Built-ins: `main`, `research`, `coder`, `reviewer`, `qa`, `ux`, `docs`, `coordinator`. |
+| Key       | Type                 | Default  | Description                                                                                      |
+| --------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `default` | string               | required | Agent ID used by new sessions and by `spawn_agent` when its `agent` parameter is omitted.        |
+| `<id>`    | map of `AgentConfig` | `{}`     | User-owned agents keyed directly by ID. The configured `default` must reference one of these IDs. |
 
-### `agents.presets.<name>` — AgentPreset
+### `agents.<id>` — AgentConfig
 
-| Key                     | Type                                                                      | Default | Description                                                                                                                                                                                                                                      |
-| ----------------------- | ------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model`                 | optional string                                                           | `null`  | Optional model override for this preset.                                                                                                                                                                                                         |
-| `tools.allow`           | array                                                                     | `[]`    | Tools to allow (whitelist). If empty, all tools are allowed.                                                                                                                                                                                     |
-| `tools.deny`            | array                                                                     | `[]`    | Tools to deny (blacklist). Applied after `allow`.                                                                                                                                                                                                |
-| `tools.preload`         | array                                                                     | `[]`    | Tool schemas exposed immediately when global `tools.registry_mode` is `lazy`. Names are resolved after effective allow/deny filtering, so this list never grants tool access.                                                                    |
-| `delegate_only`         | bool                                                                      | `false` | Restrict sub-agent to delegation/session/task tools only.                                                                                                                                                                                        |
-| `system_prompt_suffix`  | optional string                                                           | `null`  | Extra instructions appended to the sub-agent system prompt.                                                                                                                                                                                      |
-| `max_tools_threshold`   | integer                                                                   | required | Maximum LLM-emitted tool calls in one agent-loop budget segment. Every recognized call counts, including `get_tool` and each sibling in a parallel batch. A batch that exceeds the remaining budget is rejected atomically. The budget resets for each user message and after context compaction. Must be at least `1`; built-in presets use `128`. |
-| `timeout_secs`          | optional integer                                                          | `null`  | Timeout in seconds for matching direct agent sessions and spawned sub-agents (`0` = no timeout). Direct sessions fall back to `tools.agent_timeout_secs`; spawned sub-agents preserve no-timeout behavior unless the preset sets `timeout_secs`. |
-| `max_tool_result_bytes` | optional integer                                                          | `null`  | Maximum in-context bytes per tool result before truncation for this agent. Falls back to `tools.max_tool_result_bytes`.                                                                                                                          |
-| `reasoning_effort`      | optional enum: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | `null`  | Reasoning/thinking effort level for models that support extended thinking (e.g. Claude Opus, OpenAI o-series).                                                                                                                                   |
-| `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`  | Session access policy for inter-agent communication.                                                                                                                                                                                             |
-| `memory`                | optional `PresetMemoryConfig`                                             | `null`  | Persistent per-agent memory configuration.                                                                                                                                                                                                       |
+| Key                     | Type                                                                      | Default  | Description                                                                                                                                                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                  | string                                                                    | required | Agent display name. Must not be empty.                                                                                                                                                                                        |
+| `emoji`                 | optional string                                                           | `null`   | Agent emoji identifier.                                                                                                                                                                                                      |
+| `description`           | optional string                                                           | `null`   | Short agent description.                                                                                                                                                                                                     |
+| `voice_persona_id`      | optional string                                                           | `null`   | Voice persona identifier.                                                                                                                                                                                                    |
+| `model`                 | optional string                                                           | `null`   | Model override for this agent.                                                                                                                                                                                               |
+| `tools.allow`           | array                                                                     | `[]`     | Tool whitelist. An empty list allows every tool not denied by another policy entry.                                                                                                                                          |
+| `tools.deny`            | array                                                                     | `[]`     | Tool deny list, applied after `allow`.                                                                                                                                                                                        |
+| `tools.preload`         | array                                                                     | `[]`     | Tool schemas exposed immediately in lazy registry mode. Names are resolved after effective policy filtering and do not grant access.                                                                                         |
+| `tool_controls`         | optional map                                                              | `null`   | Per-run `active_tools` and `tool_choice` defaults.                                                                                                                                                                            |
+| `max_tools_threshold`   | integer                                                                   | required | Maximum LLM-emitted tool calls in one agent-loop budget segment. Must be at least `1`.                                                                                                                                        |
+| `timeout_secs`          | optional integer                                                          | `null`   | Timeout in seconds for direct sessions and spawned runs using this agent. `0` disables the agent-specific timeout.                                                                                                            |
+| `max_tool_result_bytes` | optional integer                                                          | `null`   | Maximum in-context bytes per tool result for this agent. Falls back to `tools.max_tool_result_bytes`.                                                                                                                         |
+| `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`   | Session access policy for inter-agent communication.                                                                                                                                                                         |
+| `memory`                | optional `AgentMemoryConfig`                                              | `null`   | Persistent memory configuration for spawned runs.                                                                                                                                                                            |
+| `reasoning_effort`      | optional enum: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | `null`   | Reasoning/thinking effort for models that support it.                                                                                                                                                                        |
+| `mcp`                   | optional `AgentMcpPolicy`                                                 | `null`   | MCP server allow or deny policy.                                                                                                                                                                                             |
+| `skills`                | optional `AgentSkillPolicy`                                               | `null`   | Per-agent skill visibility policy.                                                                                                                                                                                           |
 
-### `agents.presets.<name>.identity` (`AgentIdentity`)
+Unknown fields in an agent table are rejected. Chat prompt text is stored in
+`<data_dir>/agents/<id>/SOUL.md`; the prompt used by `spawn_agent` is stored in
+`<data_dir>/agents/<id>/SUBAGENT.md`.
 
-| Key     | Type            | Default | Description             |
-| ------- | --------------- | ------- | ----------------------- |
-| `name`  | optional string | `null`  | Agent display name.     |
-| `emoji` | optional string | `null`  | Agent emoji identifier. |
-| `theme` | optional string | `null`  | Agent theme identifier. |
-
-### `agents.presets.<name>.sessions` (`SessionAccessPolicyConfig`)
+### `agents.<id>.sessions` (`SessionAccessPolicyConfig`)
 
 | Key            | Type            | Default | Description                                                         |
 | -------------- | --------------- | ------- | ------------------------------------------------------------------- |
 | `key_prefix`   | optional string | `null`  | Only see sessions with keys matching this prefix.                   |
-| `allowed_keys` | array           | `[]`    | Explicit session keys the agent can access (in addition to prefix). |
+| `allowed_keys` | array           | `[]`    | Explicit session keys this agent can access in addition to prefix.  |
 | `can_send`     | bool            | `true`  | Whether the agent can send messages to sessions.                    |
-| `cross_agent`  | bool            | `false` | Whether the agent can access sessions from other agents.            |
+| `cross_agent`  | bool            | `false` | Whether the agent can access sessions owned by other agents.        |
 
-### `agents.presets.<name>.memory` (`PresetMemoryConfig`)
+### `agents.<id>.memory` (`AgentMemoryConfig`)
 
-| Key         | Type                             | Default  | Description                                                                                                                                                          |
-| ----------- | -------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scope`     | enum: `user`, `project`, `local` | `"user"` | Memory scope: `user` stores in `~/.chelix/agent-memory/<preset>/`, `project` in `.chelix/agent-memory/<preset>/`, `local` in `.chelix/agent-memory-local/<preset>/`. |
-| `max_lines` | integer                          | `200`    | Maximum lines to load from `MEMORY.md`.                                                                                                                              |
+| Key         | Type                             | Default  | Description                                                                                                                                              |
+| ----------- | -------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scope`     | enum: `user`, `project`, `local` | `"user"` | Memory scope: `user` stores under `<data_dir>/agent-memory/<id>/`, `project` under `.chelix/agent-memory/<id>/`, and `local` under `.chelix/agent-memory-local/<id>/`. |
+| `max_lines` | integer                          | `200`    | Maximum lines loaded from `MEMORY.md`.                                                                                                                   |
 
-### `modes` — ModesConfig
+### `agents.<id>.mcp` (`AgentMcpPolicy`)
 
-Modes are temporary per-session prompt overlays selected with `/mode`. They do
-not create chat agents, change memory, or affect `spawn_agent` presets.
+| Key            | Type  | Default | Description                                                                                   |
+| -------------- | ----- | ------- | --------------------------------------------------------------------------------------------- |
+| `allow_servers` | array | absent  | Make only the listed MCP servers visible. An empty list blocks every MCP server.              |
+| `deny_servers`  | array | absent  | Make every MCP server except the listed servers visible.                                      |
 
-| Key       | Type                | Default          | Description                                                                                                                      |
-| --------- | ------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `presets` | map of `ModePreset` | built-in presets | Named mode presets. Built-ins: `concise`, `technical`, `creative`, `teacher`, `plan`, `build`, `review`, `research`, `elevated`. |
+`allow_servers` and `deny_servers` are mutually exclusive. Omitting both leaves
+all MCP servers visible.
 
-### `modes.presets.<name>` — ModePreset
+### `agents.<id>.skills` (`AgentSkillPolicy`)
 
-| Key           | Type            | Default | Description                                                                  |
-| ------------- | --------------- | ------- | ---------------------------------------------------------------------------- |
-| `name`        | optional string | `null`  | Display name shown in the UI and `/mode` list.                               |
-| `description` | optional string | `null`  | Short user-facing summary.                                                   |
-| `prompt`      | string          | `""`    | Prompt overlay injected into the active session while this mode is selected. |
+| Key     | Type           | Default | Description                                                          |
+| ------- | -------------- | ------- | -------------------------------------------------------------------- |
+| `allow` | optional array | absent  | Make only skills matching the listed names or categories visible.    |
+| `deny`  | optional array | absent  | Hide skills matching the listed names or categories.                 |
 
 ### `skills` — SkillsConfig
 
@@ -301,8 +293,8 @@ handling. The shared `tools.max_tool_result_bytes` limit controls the
 agent-facing in-context copy, while that complete value is persisted first and
 an oversized result receives a pointer to its `content.txt` or `content.json`
 file. Strings use `content.txt`; objects and arrays use `content.json` with
-`schema.json`. Agent presets can override the shared limit with
-`agents.presets.<name>.max_tool_result_bytes`.
+`schema.json`. An agent can override the shared limit with
+`agents.<id>.max_tool_result_bytes`.
 
 Tools must not truncate their own returned results. A tool can select its
 in-code truncation and persistence policies independently. Reading tools use
@@ -434,8 +426,8 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | agent_timeout_secs                             | integer       | `600`           | Maximum wall-clock seconds for an agent run (0 = no timeout).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | agent_max_auto_continues                       | integer       | `2`             | Maximum auto-continue nudges when the model stops mid-task (0 = disabled).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | agent_auto_continue_min_tool_calls             | integer       | `3`             | Minimum tool calls in the current run before auto-continue can trigger.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| max_tool_result_bytes                          | integer       | `50000` (50 KB) | Maximum in-context bytes for a single agent-facing tool result before truncation. Agent-facing values are persisted under `<data_dir>/sessions/tool-results/<session>/<call>/`; raw protocol metadata is not included. Strings use `content.txt`, while objects and arrays use `content.json` + `schema.json`. This format does not depend on result size. Truncated results end with a direct pointer to the persisted file so the agent can re-read it with `read_file` or `ripgrep`. Overridable per agent via `agents.presets.<name>.max_tool_result_bytes`. |
-| registry_mode                                  | string (enum) | `"full"`        | How tool schemas are presented to the model. One of: `full` (all schemas sent every turn), `lazy` (the full tool catalog is always advertised, but parameter schemas are deferred — `get_tool`, schemas listed in the active agent preset's `tools.preload`, and schemas fetched on demand by exact name are sent).                                                                                                                                                                                                                                                       |
+| max_tool_result_bytes                          | integer       | `50000` (50 KB) | Maximum in-context bytes for a single agent-facing tool result before truncation. Agent-facing values are persisted under `<data_dir>/sessions/tool-results/<session>/<call>/`; raw protocol metadata is not included. Strings use `content.txt`, while objects and arrays use `content.json` + `schema.json`. This format does not depend on result size. Truncated results end with a direct pointer to the persisted file so the agent can re-read it with `read_file` or `ripgrep`. Overridable per agent via `agents.<id>.max_tool_result_bytes`. |
+| registry_mode                                  | string (enum) | `"full"`        | How tool schemas are presented to the model. One of: `full` (all schemas sent every turn), `lazy` (the full tool catalog is always advertised, but parameter schemas are deferred — `get_tool`, schemas listed in the active agent's `tools.preload`, and schemas fetched on demand by exact name are sent).                                                                                                                                                                                                                                                       |
 | agent_loop_detector_window                     | integer       | `2`             | Window size for the tool-call reflex-loop detector. When this many consecutive model rounds contain equivalent failures (same tool and either the same normalized arguments or the same non-empty error), the runner injects a directive intervention message. Parallel sibling calls from one model response count as one round. Set to 0 to disable.                                                                                                                                                                                                                                                                                         |
 | agent_loop_detector_strip_tools_on_second_fire | bool          | `true`          | When the loop detector fires a second time (stage 2), strip the tool schema list for a single LLM turn so the model is forced to respond in text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 

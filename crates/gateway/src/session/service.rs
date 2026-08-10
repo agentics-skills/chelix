@@ -48,7 +48,7 @@ async fn is_archivable_entry(
 pub struct LiveSessionService {
     pub(super) store: Arc<SessionStore>,
     pub(super) metadata: Arc<SqliteSessionMetadata>,
-    pub(super) agent_persona_store: Option<Arc<AgentPersonaStore>>,
+    pub(super) agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     pub(super) voice_persona_store: Option<Arc<crate::voice_persona::VoicePersonaStore>>,
     pub(super) tts_service: Option<Arc<dyn TtsService>>,
     pub(super) share_store: Option<Arc<ShareStore>>,
@@ -65,11 +65,12 @@ impl LiveSessionService {
         store: Arc<SessionStore>,
         metadata: Arc<SqliteSessionMetadata>,
         sandbox_router: Arc<SandboxRouter>,
+        agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     ) -> Self {
         Self {
             store,
             metadata,
-            agent_persona_store: None,
+            agents_config,
             voice_persona_store: None,
             tts_service: None,
             share_store: None,
@@ -87,17 +88,36 @@ impl LiveSessionService {
         store: Arc<SessionStore>,
         metadata: Arc<SqliteSessionMetadata>,
         sandbox_router: Arc<SandboxRouter>,
+        agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     ) -> Self {
-        Self::from_router(store, metadata, sandbox_router)
+        Self::from_router(store, metadata, sandbox_router, agents_config)
     }
 
     #[cfg(test)]
     pub fn new(store: Arc<SessionStore>, metadata: Arc<SqliteSessionMetadata>) -> Self {
-        Self::from_router(store, metadata, Arc::new(SandboxRouter::disabled()))
+        let mut agents = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..Default::default()
+        };
+        agents
+            .entries
+            .insert("main".to_string(), chelix_config::AgentConfig {
+                name: "Chelix".to_string(),
+                ..Default::default()
+            });
+        Self::from_router(
+            store,
+            metadata,
+            Arc::new(SandboxRouter::disabled()),
+            Arc::new(tokio::sync::RwLock::new(agents)),
+        )
     }
 
-    pub fn with_agent_persona_store(mut self, store: Arc<AgentPersonaStore>) -> Self {
-        self.agent_persona_store = Some(store);
+    pub fn with_agents_config(
+        mut self,
+        agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+    ) -> Self {
+        self.agents_config = agents_config;
         self
     }
 
@@ -147,14 +167,18 @@ impl LiveSessionService {
         self
     }
 
-    pub(super) async fn default_agent_id(&self) -> String {
-        if let Some(ref store) = self.agent_persona_store {
-            return store
-                .default_id()
-                .await
-                .unwrap_or_else(|_| "main".to_string());
+    pub(super) async fn default_agent_id(&self) -> Result<String, ServiceError> {
+        let guard = self.agents_config.read().await;
+        if guard.default.trim().is_empty() {
+            return Err(ServiceError::message("agents.default is not configured"));
         }
-        "main".to_string()
+        if !guard.entries.contains_key(&guard.default) {
+            return Err(ServiceError::message(format!(
+                "default agent '{}' not found",
+                guard.default
+            )));
+        }
+        Ok(guard.default.clone())
     }
 
     /// Validate that assigning `parent_key` as the parent of `key` is legal:
@@ -203,86 +227,66 @@ impl LiveSessionService {
     pub(super) async fn resolve_agent_id_for_entry(
         &self,
         entry: &chelix_sessions::metadata::SessionEntry,
-        patch_if_invalid: bool,
-    ) -> String {
-        let fallback = self.default_agent_id().await;
+    ) -> Result<String, ServiceError> {
         let Some(agent_id) = entry
             .agent_id
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
         else {
-            return fallback;
+            return self.default_agent_id().await;
         };
 
-        if let Some(ref store) = self.agent_persona_store {
-            match store.get(agent_id).await {
-                Ok(Some(_)) => {
-                    return agent_id.to_string();
-                },
-                Ok(None) => {
-                    warn!(
-                        session = %entry.key,
-                        agent_id,
-                        fallback = %fallback,
-                        "session references unknown agent, falling back to default"
-                    );
-                },
-                Err(error) => {
-                    warn!(
-                        session = %entry.key,
-                        agent_id,
-                        fallback = %fallback,
-                        %error,
-                        "failed to resolve session agent, falling back to default"
-                    );
-                },
-            }
-        } else {
-            return agent_id.to_string();
+        if self
+            .agents_config
+            .read()
+            .await
+            .entries
+            .contains_key(agent_id)
+        {
+            return Ok(agent_id.to_string());
         }
 
-        if patch_if_invalid {
-            let _ = self
-                .metadata
-                .set_agent_id(&entry.key, Some(&fallback))
-                .await;
-        }
-        fallback
+        Err(ServiceError::message(format!(
+            "session '{}' references unknown agent '{agent_id}'",
+            entry.key
+        )))
     }
 
     async fn ensure_entry_agent_id(
         &self,
         key: &str,
         inherit_from_key: Option<&str>,
-    ) -> Option<chelix_sessions::metadata::SessionEntry> {
-        let entry = self.metadata.get(key).await?;
+    ) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
+        let entry = self
+            .metadata
+            .get(key)
+            .await
+            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))?;
         if entry
             .agent_id
             .as_deref()
             .is_some_and(|id| !id.trim().is_empty())
         {
-            let effective = self.resolve_agent_id_for_entry(&entry, true).await;
-            if entry.agent_id.as_deref() == Some(effective.as_str()) {
-                return Some(entry);
-            }
-            let mut updated = entry;
-            updated.agent_id = Some(effective);
-            return Some(updated);
+            self.resolve_agent_id_for_entry(&entry).await?;
+            return Ok(entry);
         }
 
         let fallback = if let Some(parent_key) = inherit_from_key {
             if let Some(parent) = self.metadata.get(parent_key).await {
-                self.resolve_agent_id_for_entry(&parent, false).await
+                self.resolve_agent_id_for_entry(&parent).await?
             } else {
-                self.default_agent_id().await
+                self.default_agent_id().await?
             }
         } else {
-            self.default_agent_id().await
+            self.default_agent_id().await?
         };
 
         let _ = self.metadata.set_agent_id(key, Some(&fallback)).await;
-        self.metadata.get(key).await
+        self.metadata
+            .get(key)
+            .await
+            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))
     }
 }
 
@@ -341,7 +345,7 @@ impl SessionService for LiveSessionService {
 
         let mut entries: Vec<Value> = Vec::with_capacity(all.len());
         for mut e in all {
-            let agent_id = self.resolve_agent_id_for_entry(&e, false).await;
+            let agent_id = self.resolve_agent_id_for_entry(&e).await?;
             // Check if this session is the active one for its channel binding.
             let active_channel = is_current_channel_session(&self.metadata, &e).await;
 
@@ -383,8 +387,6 @@ impl SessionService for LiveSessionService {
                 "archived": e.archived,
                 "agent_id": agent_id,
                 "agentId": agent_id,
-                "mode_id": e.mode_id,
-                "modeId": e.mode_id,
                 "external_agent_kind": e.external_agent_kind.map(|kind| kind.as_str()),
                 "externalAgentKind": e.external_agent_kind.map(|kind| kind.as_str()),
                 "externalSessionId": e.external_session_id,
@@ -427,10 +429,7 @@ impl SessionService for LiveSessionService {
             .upsert(key, None)
             .await
             .map_err(ServiceError::message)?;
-        let entry = self
-            .ensure_entry_agent_id(key, inherit_from_key)
-            .await
-            .ok_or_else(|| format!("session '{key}' not found after resolve"))?;
+        let entry = self.ensure_entry_agent_id(key, inherit_from_key).await?;
         if !include_history {
             if entry.message_count == 0
                 && let Some(ref hooks) = self.hook_registry
@@ -463,8 +462,6 @@ impl SessionService for LiveSessionService {
                     "forkPoint": entry.fork_point,
                     "agent_id": entry.agent_id,
                     "agentId": entry.agent_id,
-                    "mode_id": entry.mode_id,
-                    "modeId": entry.mode_id,
                     "external_agent_kind": entry.external_agent_kind.map(|kind| kind.as_str()),
                     "externalAgentKind": entry.external_agent_kind.map(|kind| kind.as_str()),
                     "externalSessionId": entry.external_session_id,
@@ -521,8 +518,6 @@ impl SessionService for LiveSessionService {
                 "forkPoint": entry.fork_point,
                 "agent_id": entry.agent_id,
                 "agentId": entry.agent_id,
-                "mode_id": entry.mode_id,
-                "modeId": entry.mode_id,
                 "version": entry.version,
             },
             "history": history,
@@ -569,13 +564,6 @@ impl SessionService for LiveSessionService {
                 .set_worktree_branch(key, worktree_branch)
                 .await;
         }
-        if let Some(mode_id_opt) = p.mode_id {
-            let mode_id = mode_id_opt.filter(|s| !s.is_empty());
-            self.metadata
-                .set_mode_id(key, mode_id.as_deref())
-                .await
-                .map_err(|e| ServiceError::message(e.to_string()))?;
-        }
         if let Some(mcp_disabled) = p.mcp_disabled {
             self.metadata.set_mcp_disabled(key, mcp_disabled).await;
         }
@@ -607,8 +595,6 @@ impl SessionService for LiveSessionService {
             "forkPoint": entry.fork_point,
             "agent_id": entry.agent_id,
             "agentId": entry.agent_id,
-            "mode_id": entry.mode_id,
-            "modeId": entry.mode_id,
             "version": entry.version,
         }))
     }

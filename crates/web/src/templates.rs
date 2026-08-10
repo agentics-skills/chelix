@@ -8,7 +8,7 @@ use {
         http::StatusCode,
         response::{Html, IntoResponse},
     },
-    chelix_gateway::{session_reasoning::preset_defaults_for_agent, state::GatewayState},
+    chelix_gateway::{session_reasoning::agent_defaults_for_agent, state::GatewayState},
     tracing::warn,
 };
 
@@ -87,7 +87,7 @@ pub(crate) struct GonData {
     codex_detected: bool,
     /// Small recent session snapshot for instant sidebar paint.
     sessions_recent: Vec<serde_json::Value>,
-    agents: Vec<serde_json::Value>,
+    agents: serde_json::Value,
     webhooks: Vec<serde_json::Value>,
     webhook_profiles: Vec<serde_json::Value>,
     auth_has_password: bool,
@@ -227,12 +227,12 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             .preview
             .as_deref()
             .map(|text| truncate_preview(text, SESSION_PREVIEW_MAX_CHARS));
-        let agent_id = entry.agent_id.clone().unwrap_or_else(|| "main".to_owned());
+        let agent_id = entry.agent_id.clone();
         let agent_id_camel = agent_id.clone();
-        let (preset_model, preset_reasoning) =
-            preset_defaults_for_agent(gw, Some(agent_id.as_str())).await;
-        let model = entry.model.clone().or(preset_model);
-        let reasoning_effort = entry.reasoning_effort.clone().or(preset_reasoning);
+        let (agent_model, agent_reasoning) =
+            agent_defaults_for_agent(gw, agent_id.as_deref()).await;
+        let model = entry.model.clone().or(agent_model);
+        let reasoning_effort = entry.reasoning_effort.clone().or(agent_reasoning);
 
         recent.push(serde_json::json!({
             "id": entry.id,
@@ -369,20 +369,13 @@ pub(crate) async fn build_nav_counts(gw: &GatewayState) -> NavCounts {
 
 // ── GonData builder ──────────────────────────────────────────────────────────
 
-pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
+pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> {
     const GON_SESSIONS_RECENT_LIMIT: usize = 30;
 
     let gon_start = std::time::Instant::now();
 
     let port = gw.port;
-    let identity = gw
-        .services
-        .onboarding
-        .identity_get()
-        .await
-        .ok()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    let identity = crate::resolve_default_agent_presentation(gw).await?;
     tracing::debug!(
         elapsed_ms = gon_start.elapsed().as_millis(),
         "gon: identity"
@@ -471,21 +464,53 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
 
     tracing::warn!(elapsed_ms = gon_start.elapsed().as_millis(), "gon: sandbox");
 
-    // Fetch agent personas for the gon data.
-    let agents: Vec<serde_json::Value> = if let Some(ref store) = gw.services.agent_persona_store {
-        store
-            .list()
-            .await
-            .ok()
-            .map(|list| {
-                list.into_iter()
-                    .map(|a| serde_json::to_value(a).unwrap_or_default())
-                    .collect()
-            })
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let agents_config = gw
+        .services
+        .agents_config
+        .as_ref()
+        .ok_or_else(|| crate::Error::message("agent configuration is not available"))?;
+    let guard = agents_config.read().await;
+    let default_id = guard.default.as_str();
+    if default_id.trim().is_empty() {
+        return Err(crate::Error::message("agents.default is empty"));
+    }
+    if !guard.entries.contains_key(default_id) {
+        return Err(crate::Error::message(format!(
+            "default agent \"{default_id}\" is not defined under [agents]"
+        )));
+    }
+    let mut sorted_agents = guard.entries.iter().collect::<Vec<_>>();
+    sorted_agents.sort_by_key(|(id, _)| *id);
+    let mut entries = Vec::with_capacity(sorted_agents.len());
+    for (id, agent) in sorted_agents {
+        let mut value = serde_json::to_value(agent).map_err(|error| {
+            crate::Error::message(format!("failed to serialize agent \"{id}\": {error}"))
+        })?;
+        let object = value.as_object_mut().ok_or_else(|| {
+            crate::Error::message(format!("agent \"{id}\" did not serialize to an object"))
+        })?;
+        object.insert("id".to_string(), serde_json::json!(id));
+        object.insert(
+            "is_default".to_string(),
+            serde_json::json!(id == default_id),
+        );
+        object.insert(
+            "soul".to_string(),
+            serde_json::json!(chelix_config::load_soul_for_agent(id)),
+        );
+        object.insert(
+            "subagent_prompt".to_string(),
+            serde_json::json!(chelix_config::load_subagent_prompt_for_agent(id)),
+        );
+        entries.push(value);
+    }
+    let agents = serde_json::json!({
+        "default_id": default_id,
+        "agents": entries,
+        "defaults": {
+            "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+        },
+    });
 
     tracing::warn!(elapsed_ms = gon_start.elapsed().as_millis(), "gon: agents");
 
@@ -502,7 +527,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
         tracing::warn!(elapsed_ms = total_ms, "gon: build_gon_data complete");
     }
 
-    GonData {
+    Ok(GonData {
         identity,
         version: gw.version.clone(),
         port,
@@ -556,7 +581,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> GonData {
                 "disabled".to_owned()
             }
         },
-    }
+    })
 }
 
 fn load_channels_offered_from_config_path(
@@ -722,12 +747,7 @@ pub(crate) fn build_share_meta(identity: &chelix_config::ResolvedIdentity) -> Sh
 }
 
 pub(crate) fn identity_name(identity: &chelix_config::ResolvedIdentity) -> &str {
-    let name = identity.name.trim();
-    if name.is_empty() {
-        "chelix"
-    } else {
-        name
-    }
+    identity.name.trim()
 }
 
 fn build_asset_prefix() -> String {
@@ -852,7 +872,15 @@ pub(crate) async fn render_spa_template(
         match tokio::time::timeout(std::time::Duration::from_secs(10), build_gon_data(gateway))
             .await
         {
-            Ok(gon) => gon,
+            Ok(Ok(gon)) => gon,
+            Ok(Err(error)) => {
+                tracing::error!(%error, "failed to build gon data");
+                return render_error_page(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorPageKind::InternalServerError,
+                    None,
+                );
+            },
             Err(_) => {
                 tracing::error!("build_gon_data timed out after 10s — possible deadlock");
                 return render_error_page(

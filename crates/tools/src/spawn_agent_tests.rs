@@ -1,7 +1,7 @@
 use {
     super::*,
     chelix_agents::model::{ChatMessage, CompletionResponse, StreamEvent, Usage},
-    chelix_config::schema::{AgentIdentity, PresetToolPolicy},
+    chelix_config::schema::AgentToolPolicy,
     std::{pin::Pin, sync::Mutex},
     tokio::sync::Notify,
     tokio_stream::Stream,
@@ -220,7 +220,10 @@ fn spawn_agent_tool(
         tool_registry,
         ToolsConfigSource::snapshot(ToolsConfig::default()),
     )
-    .with_agents_config(agents_config_with_presets(Some("research"), &[]))
+    .with_agents_config(agents_config("research", &[(
+        "research",
+        test_agent("Research"),
+    )]))
 }
 
 fn registry_with_tools(names: &[&str]) -> Arc<ToolRegistry> {
@@ -233,18 +236,25 @@ fn registry_with_tools(names: &[&str]) -> Arc<ToolRegistry> {
     Arc::new(registry)
 }
 
-fn agents_config_with_presets(
-    default_preset: Option<&str>,
-    presets: &[(&str, AgentPreset)],
+fn test_agent(name: &str) -> AgentConfig {
+    AgentConfig {
+        name: name.to_string(),
+        ..Default::default()
+    }
+}
+
+fn agents_config(
+    default: &str,
+    agents: &[(&str, AgentConfig)],
 ) -> Arc<tokio::sync::RwLock<AgentsConfig>> {
-    let mut cfg = AgentsConfig {
-        default_preset: default_preset.map(String::from),
+    let mut config = AgentsConfig {
+        default: default.to_string(),
         ..Default::default()
     };
-    for (name, preset) in presets {
-        cfg.presets.insert((*name).to_string(), preset.clone());
+    for (id, agent) in agents {
+        config.entries.insert((*id).to_string(), agent.clone());
     }
-    Arc::new(tokio::sync::RwLock::new(cfg))
+    Arc::new(tokio::sync::RwLock::new(config))
 }
 
 #[tokio::test]
@@ -550,8 +560,7 @@ async fn test_null_optional_array_params_are_treated_as_absent() {
         "deny_tools": null,
         "context": null,
         "model": null,
-        "preset": null,
-        "delegate_only": null,
+        "agent": null,
     });
     let result = spawn_tool.execute(params).await.unwrap();
     assert_eq!(result["text"], "done");
@@ -594,7 +603,6 @@ async fn test_build_sub_tools_applies_allow_and_deny() {
             "spawn_agent".to_string(),
         ],
         &["task_list".to_string()],
-        false,
     );
     assert!(filtered.get("execute_command").is_some());
     assert!(filtered.get("task_list").is_none());
@@ -603,179 +611,77 @@ async fn test_build_sub_tools_applies_allow_and_deny() {
 }
 
 #[tokio::test]
-async fn test_build_sub_tools_delegate_only_uses_delegate_set() {
-    let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = spawn_agent_tool(
-        make_empty_provider_registry(),
-        provider,
-        registry_with_tools(&[
-            "spawn_agent",
-            "spawn_status",
-            "spawn_result",
-            "spawn_list",
-            "cancel_spawn",
-            "sessions_list",
-            "sessions_history",
-            "sessions_send",
-            "task_list",
-            "execute_command",
-        ]),
-    );
-
-    let filtered = spawn_tool.build_sub_tools(&[], &[], true);
-    assert!(filtered.get("spawn_agent").is_some());
-    assert!(filtered.get("spawn_status").is_some());
-    assert!(filtered.get("spawn_result").is_some());
-    assert!(filtered.get("spawn_list").is_some());
-    assert!(filtered.get("cancel_spawn").is_some());
-    assert!(filtered.get("sessions_list").is_some());
-    assert!(filtered.get("sessions_history").is_some());
-    assert!(filtered.get("sessions_send").is_some());
-    assert!(filtered.get("task_list").is_some());
-    assert!(filtered.get("execute_command").is_none());
-}
-
-#[tokio::test]
-async fn test_delegate_only_injects_spawn_agent_with_shared_task_store() {
-    let (provider, _) = MockProvider::with_capture("nested result", "mock");
-    let store = Arc::new(SpawnTaskStore::default());
-    let registry = registry_with_tools(&["spawn_status", "spawn_result", "spawn_list"]);
-    let spawn_tool = spawn_agent_tool(make_empty_provider_registry(), provider, registry)
-        .with_task_store(Arc::clone(&store));
-
-    let filtered = spawn_tool.build_sub_tools(&[], &[], true);
-    let nested_spawn = filtered.get("spawn_agent").expect("injected spawn_agent");
-    let result = nested_spawn
-        .execute(serde_json::json!({
-            "task": "nested background task",
-            "nonblocking": true,
-            "_session_key": "session-a",
-        }))
-        .await
-        .unwrap();
-    let task_id = result["task_id"].as_str().unwrap();
-
-    let result_tool = SpawnResultTool::new(store);
-    let mut final_result = serde_json::Value::Null;
-    for _ in 0..20 {
-        final_result = result_tool
-            .execute(serde_json::json!({
-                "task_id": task_id,
-                "_session_key": "session-a",
-            }))
-            .await
-            .unwrap();
-        if final_result["status"] == "completed" {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-
-    assert_eq!(final_result["status"], "completed");
-    assert_eq!(final_result["text"], "nested result");
-}
-
-#[tokio::test]
-async fn test_resolve_preset_uses_explicit_name() {
+async fn test_resolve_agent_uses_explicit_id() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
     let spawn_tool = spawn_agent_tool(
         make_empty_provider_registry(),
         provider,
         Arc::new(ToolRegistry::new()),
     )
-    .with_agents_config(agents_config_with_presets(Some("default"), &[(
+    .with_agents_config(agents_config("default", &[(
         "research",
-        AgentPreset {
-            delegate_only: true,
-            ..Default::default()
-        },
+        test_agent("Research"),
     )]));
 
-    let (name, preset) = spawn_tool
-        .resolve_preset(&serde_json::json!({ "preset": "research" }))
+    let (id, agent) = spawn_tool
+        .resolve_agent(&serde_json::json!({ "agent": "research" }))
         .await
-        .expect("resolve preset");
-    assert_eq!(name, "research");
-    assert!(preset.delegate_only);
+        .expect("resolve agent");
+    assert_eq!(id, "research");
+    assert_eq!(agent.name, "Research");
 }
 
 #[tokio::test]
-async fn test_resolve_preset_uses_default_when_missing() {
+async fn test_resolve_agent_uses_default_when_missing() {
     let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = spawn_agent_tool(
-        make_empty_provider_registry(),
-        provider,
-        Arc::new(ToolRegistry::new()),
-    )
-    .with_agents_config(agents_config_with_presets(Some("default"), &[(
-        "default",
-        AgentPreset {
-            tools: PresetToolPolicy {
-                allow: vec!["task_list".to_string()],
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    )]));
-
-    let (name, preset) = spawn_tool
-        .resolve_preset(&serde_json::json!({}))
-        .await
-        .expect("resolve default preset");
-    assert_eq!(name, "default");
-    assert_eq!(preset.tools.allow, vec!["task_list".to_string()]);
-}
-
-#[tokio::test]
-async fn test_resolve_preset_errors_when_name_missing() {
-    let (provider, _) = MockProvider::with_capture("ok", "mock");
-    let spawn_tool = spawn_agent_tool(
-        make_empty_provider_registry(),
-        provider,
-        Arc::new(ToolRegistry::new()),
-    )
-    .with_agents_config(agents_config_with_presets(None, &[]));
-
-    let result = spawn_tool
-        .resolve_preset(&serde_json::json!({ "preset": "missing" }))
-        .await;
-    assert!(result.is_err());
-    assert!(
-        result
-            .err()
-            .map(|e| e.to_string().contains("not found"))
-            .unwrap_or(false)
-    );
-}
-
-#[test]
-fn test_identity_injected_into_system_prompt() {
-    let preset = AgentPreset {
-        identity: AgentIdentity {
-            name: Some("scout".into()),
-            emoji: Some("🔍".into()),
-            theme: Some("thorough".into()),
-        },
-        system_prompt_suffix: Some("Focus on accuracy.".into()),
+    let mut default_agent = test_agent("Default");
+    default_agent.tools = AgentToolPolicy {
+        allow: vec!["task_list".to_string()],
         ..Default::default()
     };
+    let spawn_tool = spawn_agent_tool(
+        make_empty_provider_registry(),
+        provider,
+        Arc::new(ToolRegistry::new()),
+    )
+    .with_agents_config(agents_config("default", &[("default", default_agent)]));
 
-    let prompt = build_sub_agent_prompt("find bugs", "in main.rs", Some(&preset), Some("scout"));
+    let (id, agent) = spawn_tool
+        .resolve_agent(&serde_json::json!({}))
+        .await
+        .expect("resolve default agent");
+    assert_eq!(id, "default");
+    assert_eq!(agent.tools.allow, vec!["task_list".to_string()]);
+}
 
-    assert!(prompt.contains("You are scout (🔍)"));
-    assert!(prompt.contains("Your style is thorough"));
-    assert!(prompt.contains("Task: find bugs"));
-    assert!(prompt.contains("Context: in main.rs"));
-    assert!(prompt.contains("Focus on accuracy."));
+#[tokio::test]
+async fn test_resolve_agent_errors_when_id_missing() {
+    let (provider, _) = MockProvider::with_capture("ok", "mock");
+    let spawn_tool = spawn_agent_tool(
+        make_empty_provider_registry(),
+        provider,
+        Arc::new(ToolRegistry::new()),
+    )
+    .with_agents_config(agents_config("default", &[]));
+
+    let result = spawn_tool
+        .resolve_agent(&serde_json::json!({ "agent": "missing" }))
+        .await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("not found"));
 }
 
 #[test]
-fn test_no_identity_uses_default_prompt() {
-    let prompt = build_sub_agent_prompt("do work", "", None, None);
+fn test_empty_subagent_prompt_adds_only_task_and_context() {
+    let prompt = build_sub_agent_prompt(
+        "find bugs",
+        "in main.rs",
+        &test_agent("Scout"),
+        "missing-test-agent",
+    );
 
-    assert!(prompt.contains("You are a sub-agent"));
-    assert!(prompt.contains("Task: do work"));
-    assert!(!prompt.contains("Context:"));
+    assert_eq!(prompt, "Task: find bugs\n\nContext: in main.rs");
+    assert!(!prompt.contains("You are"));
 }
 
 #[test]
@@ -880,14 +786,15 @@ async fn test_timeout_cancels_long_running_agent() {
         provider,
         Arc::new(ToolRegistry::new()),
     )
-    .with_agents_config(agents_config_with_presets(None, &[("slow", AgentPreset {
+    .with_agents_config(agents_config("slow", &[("slow", AgentConfig {
+        name: "Slow".to_string(),
         timeout_secs: Some(1),
         ..Default::default()
     })]));
 
     let params = serde_json::json!({
         "task": "do something slowly",
-        "preset": "slow",
+        "agent": "slow",
     });
     let result = spawn_tool.execute(params).await;
     assert!(result.is_err());

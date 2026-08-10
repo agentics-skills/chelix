@@ -37,10 +37,6 @@ export interface SessionMeta {
 	agent_id?: string;
 	/** CamelCase alias emitted alongside agent_id. */
 	agentId?: string;
-	/** Snake_case form emitted by the server. */
-	mode_id?: string | null;
-	/** CamelCase alias emitted alongside mode_id. */
-	modeId?: string | null;
 	external_agent_kind?: string | null;
 	externalAgentKind?: string | null;
 	externalSessionId?: string | null;

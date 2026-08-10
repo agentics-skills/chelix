@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use secrecy::ExposeSecret;
 
-use crate::{AgentIdentity, schema::ChelixConfig};
+use crate::schema::ChelixConfig;
 
 use super::*;
 
@@ -127,8 +127,12 @@ fn gh770_resubstitute_preserves_resolved_values() {
         &path,
         format!(
             r#"
-[identity]
+[agents]
+default = "rex"
+
+[agents.rex]
 name = "Rex"
+max_tools_threshold = 128
 
 [tools.web.firecrawl]
 api_key = "${{{var}}}"
@@ -138,7 +142,10 @@ api_key = "${{{var}}}"
     .expect("write config");
 
     let config = load_config(&path).expect("load config");
-    assert_eq!(config.identity.name.as_deref(), Some("Rex"));
+    assert_eq!(
+        config.agents.get("rex").map(|agent| agent.name.as_str()),
+        Some("Rex")
+    );
 
     let mut overrides = HashMap::new();
     overrides.insert(var.to_string(), expected.to_string());
@@ -146,7 +153,7 @@ api_key = "${{{var}}}"
 
     // Existing values must survive the round-trip.
     assert_eq!(
-        config.identity.name.as_deref(),
+        config.agents.get("rex").map(|agent| agent.name.as_str()),
         Some("Rex"),
         "non-placeholder values must survive resubstitution"
     );
@@ -216,14 +223,7 @@ fn defaults_toml_is_generated_and_parseable() {
         toml::from_str(&content).expect("defaults.toml should parse as valid ChelixConfig");
     // Verify it matches the built-in defaults.
     assert_eq!(config.tools.agent_timeout_secs, 600);
-    assert_eq!(
-        config
-            .agents
-            .get_preset("main")
-            .unwrap()
-            .max_tools_threshold,
-        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-    );
+    assert!(config.agents.entries.is_empty());
     assert!(config.tls.enabled);
 }
 
@@ -254,14 +254,7 @@ agent_timeout_secs = 120
     // User override applied.
     assert_eq!(config.tools.agent_timeout_secs, 120);
     // Defaults preserved.
-    assert_eq!(
-        config
-            .agents
-            .get_preset("main")
-            .unwrap()
-            .max_tools_threshold,
-        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-    );
+    assert!(config.agents.entries.is_empty());
     assert!(config.tls.enabled);
     assert!(!config.auth.disabled);
 }
@@ -269,16 +262,23 @@ agent_timeout_secs = 120
 #[test]
 fn merge_preserves_user_only_keys() {
     let defaults = crate::defaults::generate_defaults_toml().expect("generate defaults");
-    // User adds a custom provider entry (not in defaults).
+    // User adds an agent entry that is not present in managed defaults.
     let user = r#"
-[identity]
+[agents]
+default = "rex"
+
+[agents.rex]
 name = "Rex"
+max_tools_threshold = 128
 "#;
     let path = PathBuf::from("test.toml");
     let config =
         crate::defaults::merge_defaults_with_user_toml(&defaults, user, &path).expect("merge");
 
-    assert_eq!(config.identity.name.as_deref(), Some("Rex"));
+    assert_eq!(
+        config.agents.get("rex").map(|agent| agent.name.as_str()),
+        Some("Rex")
+    );
     // Defaults still present.
     assert!(config.tls.enabled);
 }
@@ -314,6 +314,34 @@ fn save_user_config_does_not_materialize_defaults() {
         !saved.contains("max_tools_threshold"),
         "defaults should not be materialized into user config"
     );
+}
+
+#[test]
+fn save_user_config_rejects_reserved_agent_ids_before_writing() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("chelix.toml");
+    let mut config = ChelixConfig::default();
+    config.agents.default = "main".to_string();
+    config
+        .agents
+        .entries
+        .insert("main".to_string(), crate::AgentConfig {
+            name: "Main".to_string(),
+            ..Default::default()
+        });
+    config
+        .agents
+        .entries
+        .insert("default".to_string(), crate::AgentConfig {
+            name: "Reserved".to_string(),
+            ..Default::default()
+        });
+
+    let error = save_user_config_to_path(&path, &config)
+        .expect_err("reserved agent id must be rejected before writing");
+
+    assert!(error.to_string().contains("agents.default"));
+    assert!(!path.exists());
 }
 
 #[test]
@@ -375,14 +403,7 @@ fn layered_load_user_override_wins_over_defaults() {
     // User override wins.
     assert_eq!(config.tools.agent_timeout_secs, 999);
     // Defaults inherited.
-    assert_eq!(
-        config
-            .agents
-            .get_preset("main")
-            .unwrap()
-            .max_tools_threshold,
-        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-    );
+    assert!(config.agents.entries.is_empty());
     assert!(config.tls.enabled);
 
     clear_config_dir();
@@ -407,14 +428,7 @@ fn upgrade_adds_new_defaults_automatically() {
     let config = discover_and_load().expect("load config");
     // Defaults should be inherited even though user didn't specify them.
     assert_eq!(config.tools.agent_timeout_secs, 600);
-    assert_eq!(
-        config
-            .agents
-            .get_preset("main")
-            .unwrap()
-            .max_tools_threshold,
-        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-    );
+    assert!(config.agents.entries.is_empty());
     assert!(config.heartbeat.enabled);
 
     clear_config_dir();
@@ -719,10 +733,8 @@ agent_timeout_secs = 600
     );
 }
 
-// ── Revert to built-in tests ─────────────────────────────────────────
-
 #[test]
-fn revert_preset_removes_override_and_restores_builtin() {
+fn deleting_agent_does_not_restore_it_from_managed_defaults() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     let config_path = dir.path().join("chelix.toml");
@@ -732,64 +744,40 @@ fn revert_preset_removes_override_and_restores_builtin() {
         r#"[server]
 port = 44444
 
-[agents.presets.research]
+[agents]
+default = "main"
+
+[agents.main]
+name = "Main"
+max_tools_threshold = 128
+
+[agents.research]
+name = "Research"
 max_tools_threshold = 7
 model = "openai/gpt-5.2"
-delegate_only = true
 "#,
     )
     .expect("write seed");
 
     set_config_dir(dir.path().to_path_buf());
-    let overridden = discover_and_load().expect("load overridden config");
-    assert_eq!(overridden.agents.presets["research"].max_tools_threshold, 7);
+    discover_and_load().expect("load configured agents");
 
-    update_config(|cfg| {
-        cfg.agents.presets.remove("research");
+    update_config(|config| {
+        config.agents.entries.remove("research");
     })
-    .expect("update_config");
+    .expect("delete agent");
 
+    crate::defaults::write_defaults_toml(dir.path()).expect("refresh managed defaults");
     let saved = std::fs::read_to_string(&config_path).expect("read saved");
-    assert!(
-        !saved.contains("[agents.presets.research]"),
-        "reverted override should be removed from user config"
-    );
-    assert!(saved.contains("port = 44444"), "port must survive revert");
+    assert!(!saved.contains("[agents.research]"));
+    assert!(saved.contains("[agents.main]"));
+    assert!(saved.contains("port = 44444"));
 
-    let reverted = discover_and_load().expect("load reverted config");
-    let built_in = &reverted.agents.presets["research"];
-    assert_eq!(
-        built_in.max_tools_threshold,
-        crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-    );
-    assert!(crate::schema::is_default_agent_preset("research", built_in));
+    let reloaded = discover_and_load().expect("reload after deletion");
+    assert!(reloaded.agents.entries.contains_key("main"));
+    assert!(!reloaded.agents.entries.contains_key("research"));
 
     clear_config_dir();
-}
-
-// ── Provenance tests ─────────────────────────────────────────────────
-
-#[test]
-fn preset_provenance_custom_preset() {
-    let mut config = ChelixConfig::default();
-    config
-        .agents
-        .presets
-        .insert("my-custom".to_string(), crate::AgentPreset {
-            identity: AgentIdentity {
-                name: Some("Custom".to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
-
-    let provenance = crate::defaults::compute_preset_provenance(&config.agents);
-    let custom = provenance.iter().find(|p| p.id == "my-custom");
-    assert!(custom.is_some(), "custom preset should be in provenance");
-    assert_eq!(
-        custom.map(|p| p.source),
-        Some(crate::defaults::ConfigSource::Custom)
-    );
 }
 
 #[test]
@@ -836,18 +824,18 @@ disabled = true
 }
 
 #[test]
-fn find_shadowed_defaults_ignores_custom_keys() {
+fn find_shadowed_defaults_ignores_user_owned_agents() {
     let user = r#"
-[identity]
+[agents]
+default = "rex"
+
+[agents.rex]
 name = "Rex"
+max_tools_threshold = 128
 "#;
     let shadowed = crate::defaults::find_shadowed_defaults(user);
-    // identity.name is not in defaults (it's Option<String> and defaults to None / absent)
-    // so it should not appear as shadowed
-    for key in &shadowed {
-        assert!(
-            key != "identity.name",
-            "custom key identity.name should not be flagged as shadowed"
-        );
-    }
+    assert!(
+        shadowed.iter().all(|key| !key.starts_with("agents.rex")),
+        "user-owned agent fields must not be managed defaults: {shadowed:?}"
+    );
 }

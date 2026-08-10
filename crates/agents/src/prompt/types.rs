@@ -76,20 +76,11 @@ pub struct PromptSandboxRuntimeContext {
     pub network: Option<String>,
 }
 
-/// Active session mode prompt overlay.
-#[derive(Debug, Clone)]
-pub struct PromptModeRuntimeContext {
-    pub id: String,
-    pub name: String,
-    pub prompt: String,
-}
-
 /// Combined runtime context injected into the system prompt.
 #[derive(Debug, Clone, Default)]
 pub struct PromptRuntimeContext {
     pub host: PromptHostRuntimeContext,
     pub sandbox: Option<PromptSandboxRuntimeContext>,
-    pub mode: Option<PromptModeRuntimeContext>,
 }
 
 #[derive(Debug, Clone, Copy)]

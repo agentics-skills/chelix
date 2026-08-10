@@ -26,15 +26,15 @@ import type { SectionItem, SectionNavigationItem } from "./sections/_shared";
 import {
 	activeSection,
 	activeSubPath,
-	fetchIdentity,
+	fetchUserProfile,
 	getContainerRef,
-	identity,
 	isMobileViewport,
 	loading,
 	mobileSidebarVisible,
 	setContainerRef,
 	setMounted,
 	setRerenderFn,
+	userProfile,
 } from "./sections/_shared";
 import { ConfigSection, GraphqlSection } from "./sections/ConfigSection";
 import { EnvironmentSection } from "./sections/EnvironmentSection";
@@ -413,7 +413,7 @@ function SettingsContent(props: SettingsContentProps): VNode {
 
 function SettingsPage(): VNode {
 	useEffect(() => {
-		fetchIdentity();
+		fetchUserProfile();
 	}, []);
 
 	const section = activeSection.value;
@@ -447,25 +447,24 @@ registerPrefix(
 		container.style.cssText = "flex-direction:row;padding:0;overflow:hidden;";
 		const parts = (param || "").replace(/:/g, "/").split("/").filter(Boolean);
 		const requestedSection = parts[0] || "";
-		const requestedSectionAlias = requestedSection === "identity" ? "profile" : requestedSection;
 		const subPath = parts.slice(1).join("/");
-		const isValidSection = requestedSectionAlias && getSectionItems().some((s) => s.id === requestedSectionAlias);
-		const section = isValidSection ? requestedSectionAlias : DEFAULT_SECTION;
-		activeSection.value = section;
+		const isValidSection = requestedSection && getSectionItems().some((item) => item.id === requestedSection);
+		const selectedSection = isValidSection ? requestedSection : DEFAULT_SECTION;
+		activeSection.value = selectedSection;
 		activeSubPath.value = isValidSection ? subPath : "";
 		mobileSidebarVisible.value = !isMobileViewport();
-		if (!isValidSection || requestedSectionAlias !== requestedSection) {
-			history.replaceState(null, "", settingsPath(section));
+		if (!isValidSection) {
+			history.replaceState(null, "", settingsPath(selectedSection));
 		}
 		render(<SettingsPage />, container);
-		fetchIdentity();
+		fetchUserProfile();
 	},
 	() => {
 		setMounted(false);
 		const ref = getContainerRef();
 		if (ref) render(null, ref);
 		setContainerRef(null);
-		identity.value = null;
+		userProfile.value = null;
 		loading.value = true;
 		activeSection.value = DEFAULT_SECTION;
 		activeSubPath.value = "";

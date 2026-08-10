@@ -1,94 +1,185 @@
-// ── Identity step (name, timezone) ───────────────────────────
+// ── User and default-agent setup step ───────────────────────
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { EmojiPicker } from "../../emoji-picker";
-import { get as getGon, refresh as refreshGon } from "../../gon";
+import { refresh as refreshGon } from "../../gon";
+import { parseAgentsListPayload, sendRpc } from "../../helpers";
 import { t } from "../../i18n";
-import { updateIdentity, validateIdentityFields } from "../../identity-utils";
 import { targetValue } from "../../typed-events";
+import type { RpcResponse } from "../../types/rpc";
 import { detectBrowserTimezone, ErrorPanel } from "../shared";
-import type { IdentityInfo } from "../types";
 
-type StringStateSetter = (value: string | ((previous: string) => string)) => void;
-
-function applyRefreshedValue(
-	value: string | undefined,
-	setter: StringStateSetter,
-	merge: (previous: string, refreshed: string) => string,
-): void {
-	if (value) setter((previous) => merge(previous, value));
+interface UnknownRecord {
+	[key: string]: unknown;
 }
 
-function hydrateIdentityState(
-	refreshed: IdentityInfo,
-	setUserName: StringStateSetter,
-	setName: StringStateSetter,
-	setEmoji: StringStateSetter,
-	setTheme: StringStateSetter,
-): void {
-	applyRefreshedValue(refreshed.user_name, setUserName, (previous, value) => previous || value);
-	applyRefreshedValue(refreshed.name, setName, (previous, value) =>
-		previous && previous !== "Chelix" ? previous : value,
-	);
-	applyRefreshedValue(refreshed.emoji, setEmoji, (previous, value) =>
-		previous && previous !== "\u{1f916}" ? previous : value,
-	);
-	applyRefreshedValue(refreshed.theme, setTheme, (previous, value) => previous || value);
+interface AgentEntry extends UnknownRecord {
+	id: string;
+	name: string;
+	emoji?: string | null;
+	soul?: string | null;
+	subagent_prompt?: string | null;
+}
+
+interface UserLocation {
+	latitude: number;
+	longitude: number;
+	place?: string | null;
+	updated_at?: number | null;
+}
+
+interface UserProfile {
+	name?: string | null;
+	timezone?: string | null;
+	location?: UserLocation | null;
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+	return typeof value === "object" && value !== null;
+}
+
+function toAgentEntry(value: UnknownRecord): AgentEntry | null {
+	const id = typeof value.id === "string" ? value.id : "";
+	const name = typeof value.name === "string" ? value.name : "";
+	if (!(id && name)) return null;
+	return { ...value, id, name };
+}
+
+function agentConfigForSave(agent: AgentEntry, name: string, emoji: string): UnknownRecord {
+	const { id: _id, is_default: _isDefault, soul: _soul, subagent_prompt: _subagentPrompt, ...config } = agent;
+	return {
+		...config,
+		name: name.trim(),
+		emoji: emoji.trim() || null,
+	};
+}
+
+function locationForSave(location: UserLocation | null | undefined): UnknownRecord | null {
+	if (!location) return null;
+	return {
+		latitude: location.latitude,
+		longitude: location.longitude,
+		place: location.place || null,
+	};
+}
+
+function validateFields(name: string, userName: string): string | null {
+	if (!name.trim()) return "Agent name is required.";
+	if (!userName.trim()) return "Your name is required.";
+	return null;
+}
+
+type IdentityLoadResult = { ok: true; agent: AgentEntry; user: UserProfile } | { ok: false; message: string };
+
+function parseIdentityLoadResult(
+	agentsResponse: RpcResponse<unknown>,
+	userResponse: RpcResponse<unknown>,
+): IdentityLoadResult {
+	if (!agentsResponse.ok) {
+		return { ok: false, message: agentsResponse.error?.message || "Failed to load agents" };
+	}
+	if (!userResponse.ok) {
+		return { ok: false, message: userResponse.error?.message || "Failed to load user profile" };
+	}
+
+	const parsed = parseAgentsListPayload(agentsResponse.payload as Parameters<typeof parseAgentsListPayload>[0]);
+	if (!parsed.defaultId) return { ok: false, message: "agents.default is empty" };
+
+	const defaultAgentValue = parsed.agents.find((entry) => entry.id === parsed.defaultId);
+	const defaultAgent = isRecord(defaultAgentValue) ? toAgentEntry(defaultAgentValue) : null;
+	if (!defaultAgent) {
+		return { ok: false, message: `Default agent "${parsed.defaultId}" is not defined under [agents]` };
+	}
+
+	return { ok: true, agent: defaultAgent, user: (userResponse.payload || {}) as UserProfile };
 }
 
 export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
-	const identityData = (getGon("identity") as IdentityInfo) || {};
-	const [userName, setUserName] = useState(identityData.user_name || "");
-	const [name, setName] = useState(identityData.name || "Chelix");
-	const [emoji, setEmoji] = useState(identityData.emoji || "\u{1f916}");
-	const [theme, setTheme] = useState(identityData.theme || "");
+	const [agent, setAgent] = useState<AgentEntry | null>(null);
+	const [user, setUser] = useState<UserProfile | null>(null);
+	const [userName, setUserName] = useState("");
+	const [name, setName] = useState("");
+	const [emoji, setEmoji] = useState("");
+	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-		refreshGon().then(() => {
+		Promise.all([sendRpc("agents.list", {}), sendRpc("user.get", {})]).then(([agentsResponse, userResponse]) => {
 			if (cancelled) return;
-			const refreshed = (getGon("identity") as IdentityInfo) || {};
-			hydrateIdentityState(refreshed, setUserName, setName, setEmoji, setTheme);
+			const result = parseIdentityLoadResult(agentsResponse, userResponse);
+			if (!result.ok) {
+				setError(result.message);
+				setLoading(false);
+				return;
+			}
+
+			setAgent(result.agent);
+			setUser(result.user);
+			setName(result.agent.name);
+			setEmoji(typeof result.agent.emoji === "string" ? result.agent.emoji : "");
+			setUserName(typeof result.user.name === "string" ? result.user.name : "");
+			setLoading(false);
 		});
 		return () => {
 			cancelled = true;
 		};
 	}, []);
 
-	function onSubmit(e: Event): void {
-		e.preventDefault();
-		const v = validateIdentityFields(name, userName);
-		if (!v.valid) {
-			setError(v.error);
+	async function onSubmit(event: Event): Promise<void> {
+		event.preventDefault();
+		const validationError = validateFields(name, userName);
+		if (validationError) {
+			setError(validationError);
 			return;
 		}
+		if (!(agent && user)) {
+			setError("Default agent or user profile is not loaded.");
+			return;
+		}
+
 		setError(null);
 		setSaving(true);
-		const userTimezone = detectBrowserTimezone();
-		updateIdentity({
-			name: name.trim(),
-			emoji: emoji.trim() || "",
-			theme: theme.trim() || "",
-			user_name: userName.trim(),
-			user_timezone: userTimezone || "",
-		}).then((res: { ok?: boolean; error?: { message?: string } } | null) => {
-			setSaving(false);
-			if (res?.ok) {
-				refreshGon();
-				onNext();
-			} else {
-				setError(res?.error?.message || "Failed to save");
-			}
+		const timezone = user.timezone || detectBrowserTimezone() || null;
+		const agentResponse = await sendRpc("agents.update", {
+			id: agent.id,
+			agent: agentConfigForSave(agent, name, emoji),
+			soul: agent.soul ?? "",
+			subagent_prompt: agent.subagent_prompt ?? "",
 		});
+		if (!agentResponse.ok) {
+			setSaving(false);
+			setError(agentResponse.error?.message || "Failed to save default agent");
+			return;
+		}
+
+		const userResponse = await sendRpc("user.update", {
+			name: userName.trim(),
+			timezone,
+			location: locationForSave(user.location),
+		});
+		setSaving(false);
+		if (!userResponse.ok) {
+			setError(userResponse.error?.message || "Failed to save user profile");
+			return;
+		}
+
+		await refreshGon();
+		onNext();
+	}
+
+	if (loading) {
+		return <div className="text-xs text-[var(--muted)]">Loading{"\u2026"}</div>;
 	}
 
 	return (
 		<div className="flex flex-col gap-4">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">{t("onboarding:identity.title")}</h2>
-			<p className="text-xs text-[var(--muted)] leading-relaxed">Tell us about yourself and customise your agent.</p>
+			<p className="text-xs text-[var(--muted)] leading-relaxed">
+				Tell us about yourself and customise your default agent.
+			</p>
 			<form onSubmit={onSubmit} className="flex flex-col gap-4">
 				<div>
 					<div className="text-xs text-[var(--muted)] mb-1">Your name *</div>
@@ -96,37 +187,25 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 						type="text"
 						className="provider-key-input w-full"
 						value={userName}
-						onInput={(e) => setUserName(targetValue(e))}
+						onInput={(event) => setUserName(targetValue(event))}
 						placeholder="e.g. Alice"
 						autofocus
 					/>
 				</div>
-				<div className="flex flex-col gap-3">
-					<div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:gap-x-4">
-						<div className="min-w-0">
-							<div className="text-xs text-[var(--muted)] mb-1">Agent name *</div>
-							<input
-								type="text"
-								className="provider-key-input w-full"
-								value={name}
-								onInput={(e) => setName(targetValue(e))}
-								placeholder="e.g. Rex"
-							/>
-						</div>
-						<div>
-							<div className="text-xs text-[var(--muted)] mb-1">Emoji</div>
-							<EmojiPicker value={emoji} onChange={setEmoji} />
-						</div>
-					</div>
-					<div>
-						<div className="text-xs text-[var(--muted)] mb-1">Theme</div>
+				<div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:gap-x-4">
+					<div className="min-w-0">
+						<div className="text-xs text-[var(--muted)] mb-1">Agent name *</div>
 						<input
 							type="text"
 							className="provider-key-input w-full"
-							value={theme}
-							onInput={(e) => setTheme(targetValue(e))}
-							placeholder="wise owl, chill fox, witty robot{'\u2026'}"
+							value={name}
+							onInput={(event) => setName(targetValue(event))}
+							placeholder="e.g. Rex"
 						/>
+					</div>
+					<div>
+						<div className="text-xs text-[var(--muted)] mb-1">Emoji</div>
+						<EmojiPicker value={emoji} onChange={setEmoji} />
 					</div>
 				</div>
 				{error && <ErrorPanel message={error} />}

@@ -18,6 +18,50 @@ pub mod terminal;
 
 pub use error::{Error, Result};
 
+pub(crate) async fn resolve_default_agent_presentation(
+    gateway: &chelix_gateway::state::GatewayState,
+) -> Result<chelix_config::ResolvedIdentity> {
+    let agents = gateway
+        .services
+        .agents_config
+        .as_ref()
+        .ok_or_else(|| Error::message("agent configuration is not available"))?;
+    let agents = agents.read().await;
+    let default_id = agents.default.as_str();
+    if default_id.trim().is_empty() {
+        return Err(Error::message("agents.default is empty"));
+    }
+    let agent = agents.entries.get(default_id).ok_or_else(|| {
+        Error::message(format!(
+            "default agent \"{default_id}\" is not defined under [agents]"
+        ))
+    })?;
+    if agent.name.trim().is_empty() {
+        return Err(Error::message(format!(
+            "default agent \"{default_id}\" has an empty name"
+        )));
+    }
+    let name = agent.name.clone();
+    let emoji = agent.emoji.clone();
+    drop(agents);
+
+    let user = gateway
+        .services
+        .onboarding
+        .user_get()
+        .await
+        .map_err(|error| Error::message(error.to_string()))?;
+    let user: chelix_config::UserProfile = serde_json::from_value(user)
+        .map_err(|error| Error::message(format!("invalid user profile: {error}")))?;
+
+    Ok(chelix_config::ResolvedIdentity {
+        name,
+        emoji,
+        soul: None,
+        user_name: user.name,
+    })
+}
+
 use {
     axum::{Router, routing::get},
     chelix_httpd::AppState,

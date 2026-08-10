@@ -52,17 +52,10 @@ const READ_METHODS: &[&str] = &[
     #[cfg(feature = "agent")]
     "agents.get",
     #[cfg(feature = "agent")]
-    "agents.identity.get",
-    #[cfg(feature = "agent")]
     "agents.files.list",
     #[cfg(feature = "agent")]
     "agents.files.get",
-    #[cfg(feature = "agent")]
-    "agents.preset.get",
-    #[cfg(feature = "agent")]
-    "agents.presets_list",
-    "modes.list",
-    "agent.identity.get",
+    "user.get",
     "skills.list",
     "skills.status",
     "skills.security.status",
@@ -131,8 +124,7 @@ const WRITE_METHODS: &[&str] = &[
     "chat.prompt_memory.refresh",
     "agent",
     "agent.wait",
-    "agent.identity.update",
-    "agent.identity.update_soul",
+    "user.update",
     #[cfg(feature = "agent")]
     "agents.create",
     #[cfg(feature = "agent")]
@@ -144,22 +136,7 @@ const WRITE_METHODS: &[&str] = &[
     #[cfg(feature = "agent")]
     "agents.set_session",
     #[cfg(feature = "agent")]
-    "agents.identity.update",
-    #[cfg(feature = "agent")]
-    "agents.identity.update_soul",
-    #[cfg(feature = "agent")]
     "agents.files.set",
-    #[cfg(feature = "agent")]
-    "agents.preset.create",
-    #[cfg(feature = "agent")]
-    "agents.preset.update",
-    #[cfg(feature = "agent")]
-    "agents.preset.delete",
-    #[cfg(feature = "agent")]
-    "agents.preset.revert",
-    #[cfg(feature = "agent")]
-    "agents.preset.save",
-    "modes.set_session",
     "wake",
     "talk.mode",
     "tts.enable",
@@ -552,57 +529,21 @@ mod tests {
     }
 
     #[test]
-    fn identity_get_requires_read() {
-        assert!(
-            authorize_method(
-                "agent.identity.get",
-                "operator",
-                &scopes(&["operator.read"])
-            )
-            .is_none()
-        );
+    fn user_get_requires_read() {
+        assert!(authorize_method("user.get", "operator", &scopes(&["operator.read"])).is_none());
         assert_error_code(
-            authorize_method("agent.identity.get", "operator", &scopes(&[])),
+            authorize_method("user.get", "operator", &scopes(&[])),
             "UNAUTHORIZED",
         );
     }
 
     #[test]
-    fn identity_update_requires_write() {
+    fn user_update_requires_write() {
         assert!(
-            authorize_method(
-                "agent.identity.update",
-                "operator",
-                &scopes(&["operator.write"])
-            )
-            .is_none()
+            authorize_method("user.update", "operator", &scopes(&["operator.write"])).is_none()
         );
         assert_error_code(
-            authorize_method(
-                "agent.identity.update",
-                "operator",
-                &scopes(&["operator.read"]),
-            ),
-            "UNAUTHORIZED",
-        );
-    }
-
-    #[test]
-    fn identity_update_soul_requires_write() {
-        assert!(
-            authorize_method(
-                "agent.identity.update_soul",
-                "operator",
-                &scopes(&["operator.write"])
-            )
-            .is_none()
-        );
-        assert_error_code(
-            authorize_method(
-                "agent.identity.update_soul",
-                "operator",
-                &scopes(&["operator.read"]),
-            ),
+            authorize_method("user.update", "operator", &scopes(&["operator.read"])),
             "UNAUTHORIZED",
         );
     }

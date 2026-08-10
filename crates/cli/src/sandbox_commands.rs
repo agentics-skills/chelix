@@ -2,7 +2,7 @@ use {anyhow::Result, clap::Subcommand};
 
 use chelix_tools::sandbox;
 
-fn sanitize_instance_slug(name: &str) -> String {
+fn sanitize_instance_slug(name: &str) -> Result<String> {
     let base = name.to_lowercase();
     let mut out = String::new();
     let mut last_dash = false;
@@ -24,21 +24,15 @@ fn sanitize_instance_slug(name: &str) -> String {
     }
     let out = out.trim_matches('-').to_string();
     if out.is_empty() {
-        "chelix".to_string()
-    } else {
-        out
+        anyhow::bail!("default agent name cannot produce a sandbox image prefix");
     }
+    Ok(out)
 }
 
-fn instance_sandbox_prefix(config: &chelix_config::ChelixConfig) -> String {
-    let mut identity_name = config.identity.name.clone();
-    if let Some(file_identity) = chelix_config::load_identity_for_agent("main")
-        && file_identity.name.is_some()
-    {
-        identity_name = file_identity.name;
-    }
-    let slug = sanitize_instance_slug(identity_name.as_deref().unwrap_or("chelix"));
-    format!("chelix-{slug}-sandbox")
+fn instance_sandbox_prefix(config: &chelix_config::ChelixConfig) -> Result<String> {
+    let identity = chelix_config::ResolvedIdentity::from_config(config)?;
+    let slug = sanitize_instance_slug(&identity.name)?;
+    Ok(format!("chelix-{slug}-sandbox"))
 }
 
 #[derive(Subcommand)]
@@ -81,7 +75,7 @@ async fn list() -> Result<()> {
 async fn build() -> Result<()> {
     let config = chelix_config::discover_and_load()?;
     let mut sandbox_config = sandbox::SandboxConfig::from(&config.sandbox);
-    sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config));
+    sandbox_config.container_prefix = Some(instance_sandbox_prefix(&config)?);
 
     let packages = sandbox_config.packages.clone();
     let base = sandbox_config
@@ -149,29 +143,36 @@ async fn clean() -> Result<()> {
 mod tests {
     use super::sanitize_instance_slug;
 
+    fn assert_slug(input: &str, expected: &str) {
+        match sanitize_instance_slug(input) {
+            Ok(actual) => assert_eq!(actual, expected),
+            Err(error) => panic!("unexpected slug error: {error}"),
+        }
+    }
+
     #[test]
     fn slug_lowercases_and_replaces_non_alnum() {
-        assert_eq!(sanitize_instance_slug("My Server"), "my-server");
+        assert_slug("My Server", "my-server");
     }
 
     #[test]
     fn slug_collapses_consecutive_dashes() {
-        assert_eq!(sanitize_instance_slug("a--b___c"), "a-b-c");
+        assert_slug("a--b___c", "a-b-c");
     }
 
     #[test]
     fn slug_trims_leading_trailing_dashes() {
-        assert_eq!(sanitize_instance_slug("--hello--"), "hello");
+        assert_slug("--hello--", "hello");
     }
 
     #[test]
-    fn slug_empty_falls_back_to_chelix() {
-        assert_eq!(sanitize_instance_slug(""), "chelix");
-        assert_eq!(sanitize_instance_slug("---"), "chelix");
+    fn slug_rejects_empty_values() {
+        assert!(sanitize_instance_slug("").is_err());
+        assert!(sanitize_instance_slug("---").is_err());
     }
 
     #[test]
     fn slug_preserves_alphanumeric() {
-        assert_eq!(sanitize_instance_slug("abc123"), "abc123");
+        assert_slug("abc123", "abc123");
     }
 }

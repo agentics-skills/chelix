@@ -8,7 +8,6 @@ use crate::{ServiceError, ServiceResult};
 pub trait AgentService: Send + Sync {
     async fn run(&self, params: Value) -> ServiceResult;
     async fn run_wait(&self, params: Value) -> ServiceResult;
-    async fn identity_get(&self) -> ServiceResult;
     async fn list(&self) -> ServiceResult;
 }
 
@@ -22,10 +21,6 @@ impl AgentService for NoopAgentService {
 
     async fn run_wait(&self, _params: Value) -> ServiceResult {
         Err("agent service not configured".into())
-    }
-
-    async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "name": "chelix", "avatar": null }))
     }
 
     async fn list(&self) -> ServiceResult {
@@ -801,9 +796,8 @@ pub trait OnboardingService: Send + Sync {
     async fn wizard_next(&self, params: Value) -> ServiceResult;
     async fn wizard_cancel(&self) -> ServiceResult;
     async fn wizard_status(&self) -> ServiceResult;
-    async fn identity_get(&self) -> ServiceResult;
-    async fn identity_update(&self, params: Value) -> ServiceResult;
-    async fn identity_update_soul(&self, soul: Option<String>) -> ServiceResult;
+    async fn user_get(&self) -> ServiceResult;
+    async fn user_update(&self, params: Value) -> ServiceResult;
     async fn claude_detect(&self) -> ServiceResult;
     async fn claude_import(&self, params: Value) -> ServiceResult;
     async fn codex_detect(&self) -> ServiceResult;
@@ -830,16 +824,12 @@ impl OnboardingService for NoopOnboardingService {
         Ok(serde_json::json!({ "active": false }))
     }
 
-    async fn identity_get(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "name": "chelix", "avatar": null }))
-    }
-
-    async fn identity_update(&self, _params: Value) -> ServiceResult {
+    async fn user_get(&self) -> ServiceResult {
         Err("onboarding service not configured".into())
     }
 
-    async fn identity_update_soul(&self, _soul: Option<String>) -> ServiceResult {
-        Ok(serde_json::json!({}))
+    async fn user_update(&self, _params: Value) -> ServiceResult {
+        Err("onboarding service not configured".into())
     }
 
     async fn claude_detect(&self) -> ServiceResult {

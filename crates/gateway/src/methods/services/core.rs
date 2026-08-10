@@ -1,8 +1,6 @@
 use super::*;
 
-use crate::session_reasoning::{
-    enrich_session_entry_for_ui, materialize_agent_preset_session_defaults,
-};
+use crate::session_reasoning::{enrich_session_entry_for_ui, materialize_agent_session_defaults};
 
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
@@ -987,7 +985,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .or_else(|| entry_obj.get("agentId"))
                         .and_then(|value| value.as_str())
                 {
-                    materialize_agent_preset_session_defaults(&ctx.state, key, agent_id).await;
+                    materialize_agent_session_defaults(&ctx.state, key, agent_id).await;
                 }
 
                 // Mark the session as seen so unread state clears.
@@ -1241,7 +1239,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
                         let persona = crate::voice_persona::resolve_persona(
                             vp_store,
-                            ctx.state.services.agent_persona_store.as_deref(),
+                            ctx.state.services.agents_config.as_deref(),
                             explicit_id,
                             session_key.as_deref(),
                             ctx.state.services.session_metadata.as_deref(),

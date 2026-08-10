@@ -398,7 +398,12 @@ function playVoiceTestAudio(payload: { audio: string; mimeType?: string; content
 async function runTtsVoiceTest(providerId: string): Promise<VoiceTestResult> {
 	try {
 		const identity = getGon("identity") as IdentityInfo | null;
-		const text = await fetchPhrase("onboarding", identity?.user_name || "friend", identity?.name || "Chelix");
+		const userName = identity?.user_name?.trim();
+		const agentName = identity?.name?.trim();
+		if (!(userName && agentName)) {
+			throw new Error("Default agent and user profile names are required for the TTS test");
+		}
+		const text = await fetchPhrase("onboarding", userName, agentName);
 		const response = (await testTts(text, providerId)) as {
 			ok?: boolean;
 			payload?: { audio?: string; mimeType?: string; content_type?: string };

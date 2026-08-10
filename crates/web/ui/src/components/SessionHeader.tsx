@@ -160,7 +160,7 @@ function initialAgentOptions(payload: ReturnType<typeof parseAgentsListPayload>)
 }
 
 function initialDefaultAgentId(payload: ReturnType<typeof parseAgentsListPayload>): string {
-	return typeof payload?.defaultId === "string" ? payload.defaultId : "main";
+	return typeof payload?.defaultId === "string" ? payload.defaultId : "";
 }
 
 function currentExternalAgent(agents: ExternalAgentInfo[], kind: string): ExternalAgentInfo | null {
@@ -631,7 +631,7 @@ export function SessionHeader({
 	const canStop = !isCron && replying;
 	const canArchive = !!session && isArchivableSession(session.toMeta());
 	const showArchivedSessions = sessionStore.showArchivedSessions.value;
-	const currentAgentId = session?.agent_id || defaultAgentId || "main";
+	const currentAgentId = session?.agent_id || defaultAgentId;
 	const currentExternalAgentKind = session?.external_agent_kind || "";
 	const selectedExternalAgent = currentExternalAgent(externalAgentOptions, currentExternalAgentKind);
 

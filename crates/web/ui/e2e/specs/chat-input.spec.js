@@ -21,15 +21,15 @@ async function waitForWsConnectedIfPossible(page) {
 
 async function setMockModels(page, models, selectedId) {
 	await page.evaluate(
-		async ([models, selectedId]) => {
+		async ([modelRecords, modelId]) => {
 			var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
 			if (!appScript) throw new Error("app module script not found");
 			var appUrl = new URL(appScript.src, window.location.origin);
 			var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
 			var store = await import(`${prefix}js/stores/model-store.js`);
 
-			store.select(selectedId);
-			store.setAll(models);
+			store.select(modelId);
+			store.setAll(modelRecords);
 		},
 		[models, selectedId],
 	);
@@ -540,7 +540,6 @@ test.describe("Chat input and slash commands", () => {
 			"/fast",
 			"/fork",
 			"/insights",
-			"/mode",
 			"/new",
 			"/reset",
 		]);
@@ -736,33 +735,6 @@ test.describe("Chat input and slash commands", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("/mode switches the active session mode", async ({ page }) => {
-		const chatInput = page.locator("#chatInput");
-		try {
-			await chatInput.fill("/mode concise");
-			await chatInput.press("Enter");
-			await expect(page.locator("#messages")).toContainText("Mode:", { timeout: 10_000 });
-			await expect
-				.poll(
-					async () => {
-						const response = await sendRpcFromPage(page, "sessions.list", {});
-						const payload = response?.payload;
-						const sessions = Array.isArray(payload)
-							? payload
-							: Array.isArray(payload?.sessions)
-								? payload.sessions
-								: [];
-						const main = sessions.find((session) => session?.key === "main");
-						return main?.mode_id || main?.modeId || "";
-					},
-					{ timeout: 10_000 },
-				)
-				.toBe("concise");
-		} finally {
-			await sendRpcFromPage(page, "modes.set_session", { session_key: "main", mode_id: null });
-		}
-	});
-
 	test("/btw sends an ephemeral no-tools side question", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await mockChatSendSync(page);
@@ -955,8 +927,17 @@ test.describe("Chat input and slash commands", () => {
 		await expect
 			.poll(async () => {
 				return await page.evaluate(async () => {
-					var appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
-					if (!appScript) throw new Error("app module script not found");
+					function requireAppScript() {
+						var script = document.querySelector('script[type="module"][src*="js/app.js"]');
+						if (!script) throw new Error("app module script not found");
+						return script;
+					}
+					function visibleText(element) {
+						if (!element || element.offsetParent === null) return "";
+						return element.textContent || "";
+					}
+
+					var appScript = requireAppScript();
 					var appUrl = new URL(appScript.src, window.location.origin);
 					var prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
 					var state = await import(`${prefix}js/state.js`);
@@ -980,7 +961,7 @@ test.describe("Chat input and slash commands", () => {
 					};
 					chatUi.updateTokenBar(budget);
 					var tokenBar = document.getElementById("tokenBar");
-					var normal = tokenBar && tokenBar.offsetParent !== null ? tokenBar.textContent || "" : "";
+					var normal = visibleText(tokenBar);
 					chatUi.updateTokenBar({
 						...budget,
 						promptTokens: 180000,
@@ -989,7 +970,7 @@ test.describe("Chat input and slash commands", () => {
 					});
 					return {
 						normal,
-						overBudget: tokenBar && tokenBar.offsetParent !== null ? tokenBar.textContent || "" : "",
+						overBudget: visibleText(tokenBar),
 					};
 				});
 			})

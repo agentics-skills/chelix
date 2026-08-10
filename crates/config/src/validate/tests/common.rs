@@ -88,18 +88,23 @@ allowed_models = ["legacy-model"]
 }
 
 #[test]
-fn empty_config_is_valid() {
+fn empty_config_requires_default_agent() {
     let result = validate_toml_str("");
-    assert!(
-        !result.has_errors(),
-        "empty config should be valid, got: {:?}",
-        result.diagnostics
-    );
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity == Severity::Error && diagnostic.path == "agents.default"
+    }));
 }
 
 #[test]
 fn full_valid_config_no_diagnostics() {
     let toml = r#"
+[agents]
+default = "main"
+
+[agents.main]
+name = "Chelix"
+max_tools_threshold = 128
+
 [server]
 bind = "127.0.0.1"
 port = 8080

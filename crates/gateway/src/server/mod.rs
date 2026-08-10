@@ -8,7 +8,7 @@
 // - prepare_core:   prepare_gateway_core entry point
 // - hooks:          hook discovery and seeding
 // - seed_content:   large const strings for seed files
-// - workspace:      workspace file seeding, persona sync
+// - workspace:      workspace file seeding and validation
 // - init_channels:    channel store/registry/plugin setup
 // - init_code_index:  code index config-only initialization
 // - init_memory:      memory system / embedding provider setup
@@ -41,5 +41,4 @@ pub use {
         claude_detected_for_ui, codex_detected_for_ui, start_browser_warmup_after_listener,
         sync_runtime_webauthn_host_and_notice,
     },
-    workspace::sync_persona_into_preset,
 };

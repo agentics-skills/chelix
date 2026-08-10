@@ -20,66 +20,56 @@ use crate::{
 use super::{MethodContext, MethodRegistry};
 
 async fn active_session_key_for_ctx(ctx: &MethodContext) -> Option<String> {
-    if let Some(session_key) = ctx
-        .params
-        .get("_session_key")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.trim().is_empty())
-    {
-        return Some(session_key.to_string());
-    }
-    let registry = ctx.state.client_registry.read().await;
-    registry.active_sessions.get(&ctx.client_conn_id).cloned()
+    ctx.state
+        .client_registry
+        .read()
+        .await
+        .active_sessions
+        .get(&ctx.client_conn_id)
+        .cloned()
 }
 
-async fn default_agent_id_for_ctx(ctx: &MethodContext) -> String {
-    if let Some(ref store) = ctx.state.services.agent_persona_store {
-        return store
-            .default_id()
-            .await
-            .unwrap_or_else(|_| "main".to_string());
+async fn default_agent_id_for_ctx(ctx: &MethodContext) -> Result<String, ErrorShape> {
+    let agents = ctx.state.services.agents_config.as_ref().ok_or_else(|| {
+        ErrorShape::new(
+            error_codes::UNAVAILABLE,
+            "agent configuration is not available",
+        )
+    })?;
+    let guard = agents.read().await;
+    if guard.default.trim().is_empty() {
+        return Err(ErrorShape::new(
+            error_codes::INTERNAL,
+            "agents.default is not configured",
+        ));
     }
-    "main".to_string()
+    if !guard.entries.contains_key(&guard.default) {
+        return Err(ErrorShape::new(
+            error_codes::INTERNAL,
+            format!("default agent '{}' not found", guard.default),
+        ));
+    }
+    Ok(guard.default.clone())
 }
 
 async fn agent_exists_for_ctx(ctx: &MethodContext, agent_id: &str) -> bool {
-    if let Some(ref store) = ctx.state.services.agent_persona_store {
-        return store.get(agent_id).await.ok().flatten().is_some();
-    }
-    // Without a persona store, only "main" is assumed valid.
-    agent_id == "main"
+    let Some(agents) = ctx.state.services.agents_config.as_ref() else {
+        return false;
+    };
+    agents.read().await.entries.contains_key(agent_id)
 }
 
-async fn resolve_session_agent_id_for_ctx(ctx: &MethodContext) -> String {
-    let default_id = default_agent_id_for_ctx(ctx).await;
-    let Some(session_key) = active_session_key_for_ctx(ctx).await else {
-        return default_id;
-    };
-    let Some(ref metadata) = ctx.state.services.session_metadata else {
-        return default_id;
-    };
-    let Some(entry) = metadata.get(&session_key).await else {
-        return default_id;
-    };
-    let Some(agent_id) = entry
-        .agent_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return default_id;
-    };
+async fn ensure_agent_exists_for_ctx(
+    ctx: &MethodContext,
+    agent_id: &str,
+) -> Result<(), ErrorShape> {
     if agent_exists_for_ctx(ctx, agent_id).await {
-        return agent_id.to_string();
+        return Ok(());
     }
-    warn!(
-        session = %session_key,
-        agent_id,
-        fallback = %default_id,
-        "session references unknown agent, falling back to default"
-    );
-    let _ = metadata.set_agent_id(&session_key, Some(&default_id)).await;
-    default_id
+    Err(ErrorShape::new(
+        error_codes::INVALID_REQUEST,
+        format!("agent '{agent_id}' not found"),
+    ))
 }
 
 #[cfg(feature = "agent")]
@@ -87,7 +77,7 @@ fn parse_agent_id_param(params: &serde_json::Value) -> Option<String> {
     params
         .get("agent_id")
         .or_else(|| params.get("id"))
-        .and_then(|v| v.as_str())
+        .and_then(|value| value.as_str())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
@@ -99,153 +89,17 @@ async fn resolve_requested_agent_id(
     params: &serde_json::Value,
 ) -> Result<String, ErrorShape> {
     if let Some(id) = parse_agent_id_param(params) {
-        if agent_exists_for_ctx(ctx, &id).await {
-            return Ok(id);
-        }
-        return Err(ErrorShape::new(
-            error_codes::INVALID_REQUEST,
-            format!("agent '{id}' not found"),
-        ));
+        ensure_agent_exists_for_ctx(ctx, &id).await?;
+        return Ok(id);
     }
-    Ok(default_agent_id_for_ctx(ctx).await)
+    default_agent_id_for_ctx(ctx).await
 }
 
-fn read_identity_payload_for_agent(agent_id: &str) -> Result<serde_json::Value, ErrorShape> {
-    let config = chelix_config::discover_and_load()
-        .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
-    let identity = chelix_config::load_identity_for_agent(agent_id).unwrap_or_default();
-    let user = chelix_config::resolve_user_profile_from_config(&config);
-    let resolved_name = identity
-        .name
-        .clone()
-        .unwrap_or_else(|| "chelix".to_string());
-    let identity_path = chelix_config::agent_workspace_dir(agent_id).join("IDENTITY.md");
-    let identity_text = std::fs::read_to_string(identity_path)
-        .ok()
-        .and_then(|content| chelix_config::extract_yaml_frontmatter(&content).map(str::to_string));
-    let soul = chelix_config::load_soul_for_agent(agent_id);
-    let user_name = user.name.clone();
-    let user_timezone = user.timezone.as_ref().map(|tz| tz.name().to_string());
-    Ok(serde_json::json!({
-        "name": resolved_name,
-        "emoji": identity.emoji.clone(),
-        "theme": identity.theme.clone(),
-        "user_name": user_name,
-        "user_timezone": user_timezone,
-        "identity": identity_text,
-        "identity_fields": {
-            "name": identity.name,
-            "emoji": identity.emoji,
-            "theme": identity.theme,
-        },
-        "soul": soul,
-    }))
-}
-
-fn write_soul_for_agent(agent_id: &str, soul: Option<String>) -> Result<(), ErrorShape> {
-    chelix_config::save_soul_for_agent(agent_id, soul.as_deref())
-        .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-    Ok(())
-}
-
-/// Write the `.onboarded` sentinel when both agent name and user name are
-/// present — mirrors the old `onboarding.identity_update()` behavior so the
-/// onboarding wizard doesn't re-appear after identity is saved.
-fn mark_onboarded_if_ready(
-    identity: &chelix_config::schema::AgentIdentity,
-    params: &serde_json::Value,
-) -> Result<(), ErrorShape> {
-    let has_agent_name = identity.name.as_ref().is_some_and(|n| !n.is_empty());
-    let has_user_name = params
-        .get("user_name")
-        .and_then(|v| v.as_str())
-        .is_some_and(|n| !n.is_empty())
-        || chelix_config::resolve_user_profile()
-            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?
-            .name
-            .as_ref()
-            .is_some_and(|n| !n.is_empty());
-
-    if has_agent_name && has_user_name {
-        let sentinel = chelix_config::data_dir().join(".onboarded");
-        std::fs::write(&sentinel, "")
-            .map_err(|error| ErrorShape::new(error_codes::UNAVAILABLE, error.to_string()))?;
-    }
-    Ok(())
-}
-
-/// Save user profile fields (user_name, user_timezone, user_location) from
-/// identity update params. These are persisted to `[user]` in `chelix.toml`
-/// and `USER.md`, independent of which agent is being updated.
-fn save_user_profile_fields(params: &serde_json::Value) -> Result<(), ErrorShape> {
-    let has_user_field = params.get("user_name").is_some()
-        || params.get("user_timezone").is_some()
-        || params.get("timezone").is_some()
-        || params.get("user_location").is_some()
-        || params.get("location").is_some();
-
-    if !has_user_field {
-        return Ok(());
-    }
-
-    // Build the updated user profile, then save to both chelix.toml and USER.md.
-    // We must NOT re-read via resolve_user_profile_from_config after saving to toml,
-    // because that would let the stale USER.md override the new values.
-    let saved_user = std::sync::Mutex::new(None);
-    chelix_config::update_config(|cfg| {
-        let mut user = cfg.user.clone();
-
-        if let Some(v) = params.get("user_name").and_then(|v| v.as_str()) {
-            user.name = if v.is_empty() {
-                None
-            } else {
-                Some(v.to_string())
-            };
-        }
-        if let Some(raw) = params
-            .get("user_timezone")
-            .or_else(|| params.get("timezone"))
-            .and_then(|v| v.as_str())
-        {
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                user.timezone = None;
-            } else if let Ok(tz) = trimmed.parse::<chelix_config::Timezone>() {
-                user.timezone = Some(tz);
-            }
-        }
-        if let Some(loc_val) = params
-            .get("user_location")
-            .or_else(|| params.get("location"))
-        {
-            if loc_val.is_null() {
-                user.location = None;
-            } else if let (Some(lat), Some(lon)) = (
-                loc_val.get("latitude").and_then(|v| v.as_f64()),
-                loc_val.get("longitude").and_then(|v| v.as_f64()),
-            ) {
-                let place = loc_val
-                    .get("place")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                user.location = Some(chelix_config::GeoLocation::now(lat, lon, place));
-            }
-        }
-
-        *saved_user.lock().unwrap_or_else(|e| e.into_inner()) = Some(user.clone());
-        cfg.user = user;
-    })
-    .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
-
-    // Persist to USER.md using the values we just built (not re-read from config).
-    if let Some(user) = saved_user.into_inner().unwrap_or(None) {
-        let config = chelix_config::discover_and_load()
-            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
-        chelix_config::save_user_with_mode(&user, config.memory.user_profile_write_mode)
-            .map_err(|error| ErrorShape::new(error_codes::UNAVAILABLE, error.to_string()))?;
-    }
-
-    Ok(())
+fn agent_not_found(agent_id: &str) -> ErrorShape {
+    ErrorShape::new(
+        error_codes::INVALID_REQUEST,
+        format!("agent '{agent_id}' not found"),
+    )
 }
 
 #[cfg(feature = "agent")]
@@ -402,11 +256,7 @@ fn parse_prompt_memory_mode(value: &str) -> Result<chelix_config::PromptMemoryMo
 }
 
 #[cfg(feature = "agent")]
-fn should_fallback_agent_file_to_root(agent_id: &str, relative_path: &Path) -> bool {
-    if agent_id == "main" {
-        return true;
-    }
-
+fn should_fallback_agent_file_to_root(relative_path: &Path) -> bool {
     matches!(relative_path.to_str(), Some("AGENTS.md") | Some("TOOLS.md"))
 }
 
@@ -420,7 +270,7 @@ fn resolve_agent_file_target(
         return Some((primary, "agent"));
     }
 
-    if should_fallback_agent_file_to_root(agent_id, relative_path) {
+    if should_fallback_agent_file_to_root(relative_path) {
         let fallback = chelix_config::data_dir().join(relative_path);
         if fallback.exists() {
             return Some((fallback, "root"));
@@ -455,17 +305,6 @@ fn workspace_prompt_file_status(
             truncated: original_chars > limit_chars,
         },
     })
-}
-
-#[cfg(feature = "agent")]
-fn workspace_prompt_files_status(agent_id: &str, limit_chars: usize) -> Vec<serde_json::Value> {
-    ["AGENTS.md", "TOOLS.md"]
-        .iter()
-        .filter_map(|file_name| {
-            workspace_prompt_file_status(agent_id, file_name, limit_chars)
-                .and_then(|status| serde_json::to_value(status).ok())
-        })
-        .collect()
 }
 
 #[cfg(feature = "agent")]
@@ -511,7 +350,6 @@ mod admin;
 mod agents;
 mod channels;
 mod core;
-mod modes;
 mod sessions;
 mod system;
 mod voice_personas;
@@ -519,7 +357,6 @@ mod voicecall;
 
 pub(super) fn register(reg: &mut MethodRegistry) {
     agents::register(reg);
-    modes::register(reg);
     sessions::register(reg);
     channels::register(reg);
     core::register(reg);
@@ -574,6 +411,17 @@ mod tests {
         },
         tempfile::TempDir,
     };
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn agent_root_fallback_is_independent_of_agent_id() {
+        assert!(should_fallback_agent_file_to_root(Path::new("AGENTS.md")));
+        assert!(should_fallback_agent_file_to_root(Path::new("TOOLS.md")));
+        assert!(!should_fallback_agent_file_to_root(Path::new("SOUL.md")));
+        assert!(!should_fallback_agent_file_to_root(Path::new(
+            "notes/plan.md"
+        )));
+    }
 
     struct MemoryConfigTestGuard {
         _lock: std::sync::MutexGuard<'static, ()>,

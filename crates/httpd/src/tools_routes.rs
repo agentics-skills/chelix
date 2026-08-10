@@ -214,28 +214,11 @@ pub async fn config_template(State(state): State<crate::server::AppState>) -> im
     .into_response()
 }
 
-/// Get provenance information for configuration values.
-///
-/// Returns info about which config values are built-in defaults, user
-/// overrides, or custom additions.
+/// Get user configuration keys that shadow managed defaults.
 pub async fn config_provenance(State(state): State<crate::server::AppState>) -> impl IntoResponse {
     if let Err(resp) = require_config_access(&state, None, false).await {
         return resp.into_response();
     }
-
-    let config = match chelix_config::discover_and_load() {
-        Ok(config) => config,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(config_error(CONFIG_LOAD_FAILED, error.to_string())),
-            )
-                .into_response();
-        },
-    };
-
-    // Preset provenance
-    let presets = chelix_config::defaults::compute_preset_provenance(&config.agents);
 
     // Shadowed defaults (keys in user config that shadow built-ins)
     let path = chelix_config::find_or_default_config_path();
@@ -248,7 +231,6 @@ pub async fn config_provenance(State(state): State<crate::server::AppState>) -> 
     };
 
     Json(serde_json::json!({
-        "presets": presets,
         "shadowed_keys": shadowed,
     }))
     .into_response()

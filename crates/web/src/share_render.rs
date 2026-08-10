@@ -128,12 +128,7 @@ pub(crate) struct ShareMeta {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn identity_name(identity: &chelix_config::ResolvedIdentity) -> &str {
-    let name = identity.name.trim();
-    if name.is_empty() {
-        "chelix"
-    } else {
-        name
-    }
+    identity.name.trim()
 }
 
 pub(crate) fn truncate_for_meta(text: &str, max: usize) -> String {
@@ -584,7 +579,7 @@ mod tests {
             name: "Chelix".to_owned(),
             user_name: Some("Tester".to_owned()),
             emoji: Some("\u{1F916}".to_owned()),
-            ..Default::default()
+            soul: None,
         }
     }
 
@@ -733,7 +728,7 @@ mod tests {
             name: "Chelix".to_owned(),
             user_name: Some("Fabien".to_owned()),
             emoji: Some("\u{1F916}".to_owned()),
-            ..Default::default()
+            soul: None,
         };
         let snapshot = ShareSnapshot {
             session_key: "s".to_string(),
@@ -757,22 +752,22 @@ mod tests {
             name: "Chelix".to_owned(),
             emoji: Some("\u{1F916}".to_owned()),
             user_name: Some("Fabien".to_owned()),
-            ..Default::default()
+            soul: None,
         };
         assert_eq!(share_user_label(&identity), "Fabien");
         assert_eq!(share_assistant_label(&identity), "\u{1F916} Chelix");
     }
 
     #[test]
-    fn share_labels_fallback_when_identity_fields_missing() {
+    fn share_labels_fallback_when_optional_identity_fields_are_missing() {
         let identity = chelix_config::ResolvedIdentity {
-            name: "   ".to_owned(),
-            user_name: Some("   ".to_owned()),
-            emoji: Some("   ".to_owned()),
-            ..Default::default()
+            name: "Chelix".to_owned(),
+            user_name: None,
+            emoji: None,
+            soul: None,
         };
         assert_eq!(share_user_label(&identity), "User");
-        assert_eq!(share_assistant_label(&identity), "chelix");
+        assert_eq!(share_assistant_label(&identity), "Chelix");
     }
 
     #[test]
@@ -781,7 +776,7 @@ mod tests {
             name: "Chelix".to_owned(),
             user_name: Some("Fabien".to_owned()),
             emoji: Some("\u{1F916}".to_owned()),
-            ..Default::default()
+            soul: None,
         };
         let snapshot = ShareSnapshot {
             session_key: "main".to_string(),

@@ -488,7 +488,7 @@ const DEFAULT_PERSONAS: &[DefaultPersona] = &[
 /// 4. None
 pub async fn resolve_persona(
     store: &VoicePersonaStore,
-    agent_persona_store: Option<&crate::agent_persona::AgentPersonaStore>,
+    agents_config: Option<&tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     explicit_persona_id: Option<&str>,
     session_key: Option<&str>,
     session_metadata: Option<&chelix_sessions::metadata::SqliteSessionMetadata>,
@@ -501,10 +501,10 @@ pub async fn resolve_persona(
     }
 
     // 2. Session's agent → agent's voice_persona_id.
-    if let (Some(key), Some(meta), Some(agent_store)) =
-        (session_key, session_metadata, agent_persona_store)
+    if let (Some(key), Some(meta), Some(agents_config)) =
+        (session_key, session_metadata, agents_config)
     {
-        let vp_id = resolve_agent_voice_persona_id(meta, agent_store, key).await;
+        let vp_id = resolve_agent_voice_persona_id(meta, agents_config, key).await;
         if let Some(ref id) = vp_id
             && let Ok(Some(r)) = store.get(id).await
         {
@@ -523,13 +523,20 @@ pub async fn resolve_persona(
 /// Look up the session's agent and return its voice_persona_id (if set).
 async fn resolve_agent_voice_persona_id(
     meta: &chelix_sessions::metadata::SqliteSessionMetadata,
-    agent_store: &crate::agent_persona::AgentPersonaStore,
+    agents_config: &tokio::sync::RwLock<chelix_config::AgentsConfig>,
     session_key: &str,
 ) -> Option<String> {
     let entry = meta.get(session_key).await?;
-    let agent_id = entry.agent_id.as_deref().filter(|s| !s.is_empty())?;
-    let agent = agent_store.get(agent_id).await.ok().flatten()?;
-    agent.voice_persona_id
+    let agent_id = entry
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())?;
+    agents_config
+        .read()
+        .await
+        .get(agent_id)
+        .and_then(|agent| agent.voice_persona_id.clone())
 }
 
 /// Apply persona overrides to a `SynthesizeRequest`.

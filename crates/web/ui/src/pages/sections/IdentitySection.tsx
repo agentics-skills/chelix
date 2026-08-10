@@ -1,25 +1,24 @@
 // ── User Profile section ─────────────────────────────────────
 //
 // User-level settings: your name, UI language, version display.
-// Agent identity (name, emoji, theme, soul) is now managed on the
-// Agents page via inline editing.
+// Agent configuration and prompts are managed on the Agents page.
 
 import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { SectionHeading, StatusMessage, SubHeading } from "../../components/forms/SectionLayout";
 import * as gon from "../../gon";
 import { refresh as refreshGon } from "../../gon";
+import { sendRpc } from "../../helpers";
 import { setLocale } from "../../i18n";
-import { updateIdentity } from "../../identity-utils";
 import { targetValue } from "../../typed-events";
-import type { IdentityData, RpcResponse } from "./_shared";
-import { identity, loading, rerender } from "./_shared";
+import type { RpcResponse, UserProfileData } from "./_shared";
+import { loading, rerender, userProfile } from "./_shared";
 
 export function IdentitySection(): VNode {
-	const id = identity.value;
+	const profile = userProfile.value;
 	const storedLocale = localStorage.getItem("chelix-locale");
 
-	const [userName, setUserName] = useState(id?.user_name || "");
+	const [userName, setUserName] = useState(profile?.name || "");
 	const [uiLanguage, setUiLanguage] = useState(storedLocale || "auto");
 	const [userNameSaving, setUserNameSaving] = useState(false);
 	const [languageSaving, setLanguageSaving] = useState(false);
@@ -30,10 +29,10 @@ export function IdentitySection(): VNode {
 	const userNameEditingRef = useRef(false);
 
 	useEffect(() => {
-		if (!id) return;
+		if (!profile) return;
 		if (userNameEditingRef.current) return;
-		setUserName(id.user_name || "");
-	}, [id]);
+		setUserName(profile.name || "");
+	}, [profile]);
 
 	const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	function flashSaved(): void {
@@ -56,7 +55,7 @@ export function IdentitySection(): VNode {
 
 	function onUserNameBlur(e: Event): void {
 		const trimmed = targetValue(e).trim();
-		const currentValue = (identity.value?.user_name || "").trim();
+		const currentValue = (userProfile.value?.name || "").trim();
 		if (trimmed === currentValue) {
 			userNameEditingRef.current = false;
 			return;
@@ -69,15 +68,31 @@ export function IdentitySection(): VNode {
 		setError(null);
 		setSaved(false);
 		setUserNameSaving(true);
-		updateIdentity({ user_name: trimmed }, { agentId: "main" }).then((res: RpcResponse) => {
+		const currentProfile = userProfile.value;
+		if (!currentProfile) {
+			setUserNameSaving(false);
+			userNameEditingRef.current = false;
+			setError("User profile is not loaded.");
+			return;
+		}
+		sendRpc("user.update", {
+			name: trimmed,
+			timezone: currentProfile.timezone || null,
+			location: currentProfile.location
+				? {
+						latitude: currentProfile.location.latitude,
+						longitude: currentProfile.location.longitude,
+						place: currentProfile.location.place || null,
+					}
+				: null,
+		}).then((res: RpcResponse) => {
 			setUserNameSaving(false);
 			userNameEditingRef.current = false;
 			if (res?.ok) {
-				const payload = res.payload as IdentityData;
-				identity.value = payload;
-				gon.set("identity", payload as import("../../types/gon").ResolvedIdentity);
+				const payload = (res.payload || {}) as UserProfileData;
+				userProfile.value = payload;
 				refreshGon();
-				setUserName(payload?.user_name || "");
+				setUserName(payload.name || "");
 				flashSaved();
 			} else {
 				setError(res?.error?.message || "Failed to save");

@@ -89,82 +89,10 @@ fn env_section_defaults_to_empty() {
 }
 
 #[test]
-fn agents_config_defaults_include_builtin_presets() {
+fn agents_config_defaults_are_empty() {
     let config: ChelixConfig = toml::from_str("").unwrap();
-    assert_eq!(config.agents.default_preset.as_deref(), Some("research"));
-    for name in [
-        "research",
-        "coder",
-        "reviewer",
-        "qa",
-        "ux",
-        "docs",
-        "coordinator",
-    ] {
-        assert!(
-            config.agents.presets.contains_key(name),
-            "missing builtin preset {name}"
-        );
-    }
-    assert!(
-        config
-            .agents
-            .presets
-            .get("coordinator")
-            .is_some_and(|preset| preset.delegate_only),
-        "coordinator should be delegation-only"
-    );
-}
-
-#[test]
-fn modes_config_defaults_include_builtin_presets() {
-    let config: ChelixConfig = toml::from_str("").unwrap();
-    for name in [
-        "concise",
-        "technical",
-        "creative",
-        "teacher",
-        "plan",
-        "build",
-        "review",
-        "research",
-        "elevated",
-    ] {
-        assert!(
-            config.modes.presets.contains_key(name),
-            "missing builtin mode {name}"
-        );
-    }
-}
-
-#[test]
-fn modes_config_parses_and_overrides_presets() {
-    let config: ChelixConfig = toml::from_str(
-        r#"
-[modes.presets.concise]
-name = "Tiny"
-description = "short replies"
-prompt = "Answer in one sentence."
-
-[modes.presets.custom]
-name = "Custom"
-description = "custom mode"
-prompt = "Use the custom overlay."
-"#,
-    )
-    .unwrap();
-
-    let concise = config.modes.get_preset("concise").unwrap();
-    assert_eq!(concise.name.as_deref(), Some("Tiny"));
-    assert_eq!(concise.prompt, "Answer in one sentence.");
-    assert!(config.modes.presets.contains_key("technical"));
-    assert_eq!(
-        config
-            .modes
-            .get_preset("custom")
-            .map(|mode| mode.prompt.as_str()),
-        Some("Use the custom overlay.")
-    );
+    assert!(config.agents.default.is_empty());
+    assert!(config.agents.entries.is_empty());
 }
 
 #[test]
@@ -247,85 +175,54 @@ token_url = "https://mcp.hubspot.com/oauth/v3/token"
 }
 
 #[test]
-fn agents_config_parses_presets() {
+fn agents_config_parses_flat_entries() {
     let toml = r#"
 [agents]
-default_preset = "research"
+default = "research"
 
-[agents.presets.research]
+[agents.research]
+name = "Scout"
+emoji = "🔍"
 model = "openai/gpt-5.2"
-delegate_only = false
-system_prompt_suffix = "Focus on evidence."
 max_tools_threshold = 10
 timeout_secs = 120
 
-[agents.presets.research.identity]
-name = "scout"
-emoji = "🔍"
-theme = "thorough"
-
-[agents.presets.research.tools]
+[agents.research.tools]
 allow = ["read_file", "ripgrep"]
 deny = ["execute_command"]
 preload = ["ripgrep"]
 "#;
     let config: ChelixConfig = toml::from_str(toml).unwrap();
-    assert_eq!(config.agents.default_preset.as_deref(), Some("research"));
-    let preset = config.agents.get_preset("research").unwrap();
-    assert_eq!(preset.model.as_deref(), Some("openai/gpt-5.2"));
-    assert_eq!(preset.tools.allow.len(), 2);
-    assert_eq!(preset.tools.deny, vec!["execute_command".to_string()]);
-    assert_eq!(preset.tools.preload, vec!["ripgrep".to_string()]);
-    assert!(!preset.delegate_only);
-    assert_eq!(
-        preset.system_prompt_suffix.as_deref(),
-        Some("Focus on evidence.")
-    );
-    assert_eq!(preset.identity.name.as_deref(), Some("scout"));
-    assert_eq!(preset.identity.emoji.as_deref(), Some("🔍"));
-    assert_eq!(preset.identity.theme.as_deref(), Some("thorough"));
-    assert_eq!(preset.max_tools_threshold, 10);
-    assert_eq!(preset.timeout_secs, Some(120));
+    assert_eq!(config.agents.default, "research");
+    let agent = config.agents.get("research").unwrap();
+    assert_eq!(agent.name, "Scout");
+    assert_eq!(agent.emoji.as_deref(), Some("🔍"));
+    assert_eq!(agent.model.as_deref(), Some("openai/gpt-5.2"));
+    assert_eq!(agent.tools.allow, vec!["read_file", "ripgrep"]);
+    assert_eq!(agent.tools.deny, vec!["execute_command"]);
+    assert_eq!(agent.tools.preload, vec!["ripgrep"]);
+    assert_eq!(agent.max_tools_threshold, 10);
+    assert_eq!(agent.timeout_secs, Some(120));
 }
 
 #[test]
-fn agents_config_merges_builtin_presets_with_user_presets() {
-    let toml = r#"
+fn agents_config_has_no_implicit_entries() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
 [agents]
-default_preset = "custom"
+default = "custom"
 
-[agents.presets.custom]
-system_prompt_suffix = "Custom work."
-max_tools_threshold = 128
-
-[agents.presets.custom.identity]
+[agents.custom]
 name = "Custom"
-
-[agents.presets.research]
-system_prompt_suffix = "User research override."
 max_tools_threshold = 128
+"#,
+    )
+    .unwrap();
 
-[agents.presets.research.identity]
-name = "Scout"
-"#;
-    let config: ChelixConfig = toml::from_str(toml).unwrap();
-
-    assert_eq!(config.agents.default_preset.as_deref(), Some("custom"));
-    assert!(config.agents.presets.contains_key("coder"));
-    assert_eq!(
-        config
-            .agents
-            .presets
-            .get("custom")
-            .and_then(|preset| preset.identity.name.as_deref()),
-        Some("Custom")
-    );
-    let research = config.agents.presets.get("research").unwrap();
-    assert_eq!(research.identity.name.as_deref(), Some("Scout"));
-    assert_eq!(
-        research.system_prompt_suffix.as_deref(),
-        Some("User research override.")
-    );
+    assert_eq!(config.agents.default, "custom");
+    assert_eq!(config.agents.entries.len(), 1);
+    assert!(config.agents.entries.contains_key("custom"));
+    assert!(!config.agents.entries.contains_key("coder"));
 }
 
 #[test]
@@ -1042,37 +939,40 @@ fn resolve_external_url_returns_none_when_both_unset() {
 #[test]
 fn mcp_policy_empty_toml_is_all() {
     let toml_str = r#"
-[agents.presets.test]
+[agents.test]
+name = "Test"
 max_tools_threshold = 128
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
-    let preset = config.agents.presets.get("test").unwrap();
-    assert!(preset.mcp.is_all());
+    let agent = config.agents.get("test").unwrap();
+    assert!(agent.mcp.is_all());
 }
 
 #[test]
 fn mcp_policy_empty_allow_is_not_all() {
     // allow_servers = [] should parse as Allow(vec![]), NOT as All.
     let toml_str = r#"
-[agents.presets.test]
+[agents.test]
+name = "Test"
 max_tools_threshold = 128
 
-[agents.presets.test.mcp]
+[agents.test.mcp]
 allow_servers = []
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
-    let preset = config.agents.presets.get("test").unwrap();
-    assert!(!preset.mcp.is_all());
-    assert_eq!(preset.mcp, PresetMcpPolicy::Allow(vec![]));
+    let agent = config.agents.get("test").unwrap();
+    assert!(!agent.mcp.is_all());
+    assert_eq!(agent.mcp, AgentMcpPolicy::Allow(vec![]));
 }
 
 #[test]
 fn mcp_policy_both_fields_is_error() {
     let toml_str = r#"
-[agents.presets.test]
+[agents.test]
+name = "Test"
 max_tools_threshold = 128
 
-[agents.presets.test.mcp]
+[agents.test.mcp]
 allow_servers = ["github"]
 deny_servers = ["home-assistant"]
 "#;
@@ -1087,25 +987,25 @@ deny_servers = ["home-assistant"]
 
 #[test]
 fn mcp_policy_roundtrip_allow() {
-    let policy = PresetMcpPolicy::Allow(vec!["github".into(), "memory".into()]);
+    let policy = AgentMcpPolicy::Allow(vec!["github".into(), "memory".into()]);
     let toml_str = toml::to_string_pretty(&policy).unwrap();
-    let parsed: PresetMcpPolicy = toml::from_str(&toml_str).unwrap();
+    let parsed: AgentMcpPolicy = toml::from_str(&toml_str).unwrap();
     assert_eq!(parsed, policy);
 }
 
 #[test]
 fn mcp_policy_roundtrip_deny() {
-    let policy = PresetMcpPolicy::Deny(vec!["home-assistant".into()]);
+    let policy = AgentMcpPolicy::Deny(vec!["home-assistant".into()]);
     let toml_str = toml::to_string_pretty(&policy).unwrap();
-    let parsed: PresetMcpPolicy = toml::from_str(&toml_str).unwrap();
+    let parsed: AgentMcpPolicy = toml::from_str(&toml_str).unwrap();
     assert_eq!(parsed, policy);
 }
 
 #[test]
 fn mcp_policy_roundtrip_all() {
-    let policy = PresetMcpPolicy::All;
+    let policy = AgentMcpPolicy::All;
     let toml_str = toml::to_string_pretty(&policy).unwrap();
-    let parsed: PresetMcpPolicy = toml::from_str(&toml_str).unwrap();
+    let parsed: AgentMcpPolicy = toml::from_str(&toml_str).unwrap();
     assert!(parsed.is_all());
 }
 
@@ -1126,8 +1026,8 @@ fn sandbox_mode_accepts_only_exact_binary_values() {
 }
 
 #[test]
-fn agent_preset_rejects_removed_sandbox_policy() {
-    let result: Result<AgentPreset, _> = toml::from_str(
+fn agent_rejects_removed_sandbox_policy() {
+    let result: Result<AgentConfig, _> = toml::from_str(
         r#"
 [sandbox]
 mode = "On"

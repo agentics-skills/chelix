@@ -15,8 +15,8 @@ Input:
 {}
 ```
 
-Output includes each agent `id`, `name`, `description`, optional persona fields,
-and preset model configuration. Use the returned `id` as `agent_id`.
+Output includes each agent `id`, `name`, `description`, optional display fields,
+and model configuration. Use the returned `id` as `agent_id`.
 
 ### `sessions_create`
 
@@ -40,7 +40,7 @@ Input:
 `agent_id` is mandatory. The tool does not apply an implicit default agent and
 does not fall back to another agent if the requested agent is missing.
 
-Omit `model_override` to use the selected agent's preset model. `model_override`
+Omit `model_override` to use the selected agent's configured model. `model_override`
 is for advanced intentional overrides only. When it is provided, both
 `model_override.model` and `model_override.reasoning_effort` are mandatory. The
 model must be the base ID shown in the chat model registry (`models.list`) and
@@ -58,9 +58,9 @@ separate session fields, for example:
 ```
 
 If `model` is omitted, the selected agent must have both
-`[agents.presets.<agent_id>].model` and
-`[agents.presets.<agent_id>].reasoning_effort` configured. Otherwise the tool
-returns an explicit error explaining which preset field is missing.
+`[agents.<agent_id>].model` and
+`[agents.<agent_id>].reasoning_effort` configured. Otherwise the tool returns
+an explicit error explaining which agent field is missing.
 
 Sessions created by an agent are automatically linked to the calling session as
 children (`parentSessionKey`), so the sessions sidebar renders them nested under
@@ -133,14 +133,14 @@ Omit `model_override` in `sessions_send` to use the target session model.
 
 ## Session Access Policy
 
-Configure policy in a preset to control what sessions a sub-agent can access:
+Configure policy on an agent to control which sessions it can access:
 
 ```toml
-[agents.presets.coordinator]
+[agents.coordinator]
 tools.allow = ["sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list", "spawn_agent"]
 sessions.can_send = true
 
-[agents.presets.observer]
+[agents.observer]
 tools.allow = ["sessions_list", "sessions_history", "sessions_search"]
 sessions.key_prefix = "agent:research:"
 sessions.can_send = false
@@ -166,7 +166,7 @@ context loss, and `cancel_spawn` to stop work that is no longer needed.
 
 Use `active_tools` and `tool_choice` to prevent model drift on small/cheap LLMs.
 These controls apply **per agent run** (not per iteration within a run) and are
-available on agent presets, `spawn_agent`, and `cron` `agentTurn` payloads.
+available on agents, `spawn_agent`, and `cron` `agentTurn` payloads.
 
 - `active_tools` filters the tool schemas visible to the agent.
 - `tool_choice` controls provider-level tool selection:
@@ -197,13 +197,13 @@ own tool controls:
 }
 ```
 
-Example preset defaults:
+Example agent defaults:
 
 ```toml
-[agents.presets.destination-router.tool_controls]
+[agents.destination-router.tool_controls]
 active_tools = ["classify_destination"]
 
-[agents.presets.destination-router.tool_controls.tool_choice]
+[agents.destination-router.tool_controls.tool_choice]
 type = "tool"
 name = "classify_destination"
 ```

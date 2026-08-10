@@ -5,4 +5,3 @@ mod cron;
 mod helpers;
 mod hooks;
 mod webauthn;
-mod workspace;

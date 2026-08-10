@@ -28,11 +28,92 @@ use {
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
 };
 
+const TEST_CONFIG_TOML: &str = r#"
+[agents]
+default = "main"
+
+[agents.main]
+name = "Chelix"
+max_tools_threshold = 128
+"#;
+
+fn test_config() -> chelix_config::ChelixConfig {
+    let mut config = chelix_config::ChelixConfig::default();
+    config.agents.default = "main".to_owned();
+    config
+        .agents
+        .entries
+        .insert("main".to_owned(), chelix_config::AgentConfig {
+            name: "Chelix".to_owned(),
+            ..Default::default()
+        });
+    config
+}
+
+fn write_test_config(config_dir: &std::path::Path) {
+    std::fs::write(config_dir.join("chelix.toml"), TEST_CONFIG_TOML).unwrap();
+}
+
+struct TestOnboardingService;
+
+#[async_trait]
+impl OnboardingService for TestOnboardingService {
+    async fn wizard_start(&self, _params: serde_json::Value) -> ServiceResult {
+        Ok(serde_json::json!({ "step": 0 }))
+    }
+
+    async fn wizard_next(&self, _params: serde_json::Value) -> ServiceResult {
+        Ok(serde_json::json!({ "step": 0, "done": true }))
+    }
+
+    async fn wizard_cancel(&self) -> ServiceResult {
+        Ok(serde_json::json!({}))
+    }
+
+    async fn wizard_status(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "active": false }))
+    }
+
+    async fn user_get(&self) -> ServiceResult {
+        Ok(serde_json::json!({
+            "name": null,
+            "timezone": null,
+            "location": null,
+        }))
+    }
+
+    async fn user_update(&self, _params: serde_json::Value) -> ServiceResult {
+        Err("not configured".into())
+    }
+
+    async fn claude_detect(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "detected": false }))
+    }
+
+    async fn claude_import(&self, _params: serde_json::Value) -> ServiceResult {
+        Err("not configured".into())
+    }
+
+    async fn codex_detect(&self) -> ServiceResult {
+        Ok(serde_json::json!({ "detected": false }))
+    }
+
+    async fn codex_import(&self, _params: serde_json::Value) -> ServiceResult {
+        Err("not configured".into())
+    }
+}
+
+fn with_test_web_services(services: GatewayServices) -> GatewayServices {
+    services
+        .with_agents_config(Arc::new(tokio::sync::RwLock::new(test_config().agents)))
+        .with_onboarding(Arc::new(TestOnboardingService))
+}
+
 fn sandbox_off_runtime() -> (
     chelix_config::ChelixConfig,
     Arc<chelix_tools::sandbox::SandboxRouter>,
 ) {
-    let mut config = chelix_config::ChelixConfig::default();
+    let mut config = test_config();
     config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
     (
         config,
@@ -130,7 +211,7 @@ async fn start_auth_server_impl_with_webauthn(
     // Isolate each test process with its own config/data directory so
     // concurrent nextest processes don't race on shared config files.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
+    write_test_config(tmp.path());
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     // Leak the TempDir so it outlives the test (cleaned up on process exit).
@@ -145,7 +226,7 @@ async fn start_auth_server_impl_with_webauthn(
     );
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop();
+    let services = with_test_web_services(GatewayServices::noop());
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
@@ -214,7 +295,7 @@ async fn start_localhost_server_with_vault() -> (
     Arc<chelix_vault::Vault>,
 ) {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
+    write_test_config(tmp.path());
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
@@ -235,7 +316,7 @@ async fn start_localhost_server_with_vault() -> (
     );
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop();
+    let services = with_test_web_services(GatewayServices::noop());
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
@@ -295,7 +376,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     Arc<chelix_sessions::store::SessionStore>,
 ) {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
+    write_test_config(tmp.path());
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     let sessions_dir = tmp.path().join("sessions");
@@ -318,7 +399,9 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop().with_session_store(Arc::clone(&session_store));
+    let services = with_test_web_services(
+        GatewayServices::noop().with_session_store(Arc::clone(&session_store)),
+    );
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(
         resolved_auth,
@@ -371,13 +454,13 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 /// Start a test server without a credential store (no auth).
 async fn start_noauth_server() -> SocketAddr {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("chelix.toml"), "").unwrap();
+    write_test_config(tmp.path());
     chelix_config::set_config_dir(tmp.path().to_path_buf());
     chelix_config::set_data_dir(tmp.path().to_path_buf());
     std::mem::forget(tmp);
 
     let resolved_auth = auth::resolve_auth(None, None);
-    let services = GatewayServices::noop();
+    let services = with_test_web_services(GatewayServices::noop());
     let state = GatewayState::new(resolved_auth, services);
     let methods = Arc::new(MethodRegistry::new());
     #[cfg(feature = "push-notifications")]
