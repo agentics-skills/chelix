@@ -113,8 +113,6 @@ fn print_report(sections: &[Section]) -> (usize, usize) {
 const PROVIDER_ENV_MAP: &[(&str, &str, bool)] = &[
     ("openai", "OPENAI_API_KEY", false),
     ("openrouter", "OPENROUTER_API_KEY", false),
-    ("moonshot", "MOONSHOT_API_KEY", false),
-    ("kimi-code", "KIMI_API_KEY", false),
 ];
 
 /// OAuth providers that don't use env var API keys.

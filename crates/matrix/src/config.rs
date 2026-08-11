@@ -391,7 +391,7 @@ mod tests {
                 "!room:example.com": { "model": "gpt-4.1" }
             },
             "user_overrides": {
-                "@alice:example.com": { "model": "kimi-k2.5" }
+                "@alice:example.com": { "model": "anthropic/claude-sonnet-4" }
             },
             "reply_to_message": true,
             "ack_reaction": "\u{1f440}",
@@ -416,7 +416,10 @@ mod tests {
         assert_eq!(cfg.edit_throttle_ms, 750);
         assert_eq!(cfg.stream_min_initial_chars, 45);
         assert_eq!(cfg.channel_model("!room:example.com"), Some("gpt-4.1"));
-        assert_eq!(cfg.user_model("@alice:example.com"), Some("kimi-k2.5"));
+        assert_eq!(
+            cfg.user_model("@alice:example.com"),
+            Some("anthropic/claude-sonnet-4")
+        );
 
         let value =
             serde_json::to_value(&cfg).unwrap_or_else(|error| panic!("serialize failed: {error}"));
@@ -486,7 +489,7 @@ mod tests {
         cfg.user_overrides
             .insert("@alice:example.com".into(), UserOverride {
                 model: Some("user-model".into()),
-                model_provider: Some("moonshot".into()),
+                model_provider: Some("openrouter".into()),
             });
 
         assert_eq!(

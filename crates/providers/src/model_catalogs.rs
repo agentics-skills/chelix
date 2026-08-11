@@ -46,17 +46,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         ..OpenAiCompatDef::DEFAULT
     },
     OpenAiCompatDef {
-        config_name: "moonshot",
-        env_key: "MOONSHOT_API_KEY",
-        env_base_url_key: "MOONSHOT_BASE_URL",
-        default_base_url: "https://api.moonshot.ai/v1",
-        capabilities: OpenAiProviderCapabilities {
-            default_reasoning_content_on_tool_messages: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        },
-        ..OpenAiCompatDef::DEFAULT
-    },
-    OpenAiCompatDef {
         config_name: "zai",
         env_key: "Z_API_KEY",
         env_base_url_key: "Z_BASE_URL",
@@ -175,7 +164,7 @@ mod tests {
         // provider registration in `registry/registration.rs` (e.g. a new
         // `register_*_providers` method gated behind a cargo feature), add its
         // config name here too.
-        provider_names.extend_from_slice(&["kimi-code", "openai-codex"]);
+        provider_names.push("openai-codex");
 
         for name in &provider_names {
             assert!(

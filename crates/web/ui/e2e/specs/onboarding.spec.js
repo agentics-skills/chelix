@@ -923,9 +923,7 @@ test.describe("Onboarding wizard", () => {
 		// several providers pre-configured locally.
 		const candidates = [
 			{ providerName: "OpenAI", linkName: "OpenAI Platform" },
-			{ providerName: "Kimi Code", linkName: "Kimi Code Console" },
 			{ providerName: "OpenRouter", linkName: "OpenRouter Settings" },
-			{ providerName: "Moonshot", linkName: "Moonshot Platform" },
 		];
 		let matched = false;
 		for (const candidate of candidates) {

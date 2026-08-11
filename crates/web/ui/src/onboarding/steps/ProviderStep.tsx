@@ -17,20 +17,12 @@ import {
 import { targetValue } from "../../typed-events";
 import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../../types/model";
 import { ErrorPanel } from "../shared";
-import type {
-	KeyHelp,
-	ModelSelectorRow,
-	OAuthInfo,
-	ProbeResult,
-	ProviderInfo,
-	RawModelRow,
-	ValidationResult,
-} from "../types";
+import type { KeyHelp, ModelSelectorRow, ProbeResult, ProviderInfo, RawModelRow, ValidationResult } from "../types";
 
 // ── Constants ───────────────────────────────────────────────
 
-const OPENAI_COMPATIBLE = ["openai", "openrouter", "moonshot"];
-const RECOMMENDED_PROVIDERS = new Set(["openai", "moonshot", "zai"]);
+const OPENAI_COMPATIBLE = ["openai", "openrouter"];
+const RECOMMENDED_PROVIDERS = new Set(["openai", "zai"]);
 
 const WS_RETRY_LIMIT = 75;
 const WS_RETRY_DELAY_MS = 200;
@@ -106,7 +98,6 @@ interface OnboardingProviderRowProps {
 	modelSearch: string;
 	setModelSearch: (v: string) => void;
 	oauthProvider: string | null;
-	oauthInfo: OAuthInfo | null;
 	oauthCallbackInput: string;
 	setOauthCallbackInput: (v: string) => void;
 	oauthSubmitting: boolean;
@@ -351,8 +342,6 @@ function ProviderModelForm(props: ProviderModelFormProps): VNode {
 }
 
 interface ProviderOAuthFormProps {
-	provider: ProviderInfo;
-	info: OAuthInfo | null;
 	callbackInput: string;
 	setCallbackInput: (value: string) => void;
 	submitting: boolean;
@@ -362,43 +351,28 @@ interface ProviderOAuthFormProps {
 }
 
 function ProviderOAuthForm(props: ProviderOAuthFormProps): VNode {
-	const deviceFlow = props.info?.status === "device";
 	return (
 		<div className="flex flex-col gap-2 mt-3 border-t border-[var(--border)] pt-3">
-			{deviceFlow ? (
-				<div className="text-sm text-[var(--text)]">
-					Open{" "}
-					<a href={props.info?.uri} target="_blank" className="text-[var(--accent)] underline">
-						{props.info?.uri}
-					</a>{" "}
-					and enter code:<strong className="font-mono ml-1">{props.info?.code}</strong>
-				</div>
-			) : (
-				<div className="text-sm text-[var(--muted)]">Waiting for authentication{"\u2026"}</div>
-			)}
-			{!deviceFlow && (
-				<>
-					<div className="text-xs text-[var(--muted)]">
-						If localhost callback fails, paste the redirect URL (or code#state) below.
-					</div>
-					<input
-						type="text"
-						className="provider-key-input w-full"
-						placeholder="http://localhost:1455/auth/callback?code=...&state=..."
-						value={props.callbackInput}
-						onInput={(event) => props.setCallbackInput(targetValue(event))}
-						disabled={props.submitting}
-					/>
-					<button
-						type="button"
-						className="provider-btn provider-btn-secondary provider-btn-sm self-start"
-						onClick={props.onSubmit}
-						disabled={props.submitting}
-					>
-						{props.submitting ? "Submitting..." : "Submit Callback"}
-					</button>
-				</>
-			)}
+			<div className="text-sm text-[var(--muted)]">Waiting for authentication{"\u2026"}</div>
+			<div className="text-xs text-[var(--muted)]">
+				If localhost callback fails, paste the redirect URL (or code#state) below.
+			</div>
+			<input
+				type="text"
+				className="provider-key-input w-full"
+				placeholder="http://localhost:1455/auth/callback?code=...&state=..."
+				value={props.callbackInput}
+				onInput={(event) => props.setCallbackInput(targetValue(event))}
+				disabled={props.submitting}
+			/>
+			<button
+				type="button"
+				className="provider-btn provider-btn-secondary provider-btn-sm self-start"
+				onClick={props.onSubmit}
+				disabled={props.submitting}
+			>
+				{props.submitting ? "Submitting..." : "Submit Callback"}
+			</button>
 			{props.error && <ErrorPanel message={props.error} />}
 			<button
 				type="button"
@@ -461,8 +435,6 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 			)}
 			{oauthForm && (
 				<ProviderOAuthForm
-					provider={props.provider}
-					info={props.oauthInfo}
 					callbackInput={props.oauthCallbackInput}
 					setCallbackInput={props.setOauthCallbackInput}
 					submitting={props.oauthSubmitting}
@@ -494,7 +466,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [apiKey, setApiKey] = useState("");
 	const [endpoint, setEndpoint] = useState("");
 	const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
-	const [oauthInfo, setOauthInfo] = useState<OAuthInfo | null>(null);
 	const [oauthCallbackInput, setOauthCallbackInput] = useState("");
 	const [oauthSubmitting, setOauthSubmitting] = useState(false);
 	const oauthTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -558,7 +529,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setApiKey("");
 		setEndpoint("");
 		setError(null);
-		setOauthInfo(null);
 		setOauthCallbackInput("");
 		setOauthSubmitting(false);
 		if (oauthTimerRef.current) {
@@ -730,34 +700,25 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 
 	function startOAuth(p: ProviderInfo): void {
 		setOauthProvider(p.name);
-		setOauthInfo({ status: "starting" });
 		setOauthCallbackInput("");
 		setOauthSubmitting(false);
-		startProviderOAuth(p.name).then(
-			(result: { status: string; authUrl?: string; verificationUrl?: string; userCode?: string; error?: string }) => {
-				if (result.status === "already") onOAuthAuthenticated(p.name);
-				else if (result.status === "browser") {
-					window.open(result.authUrl, "_blank");
-					setOauthInfo({ status: "waiting" });
-					pollOAuth(p);
-				} else if (result.status === "device") {
-					setOauthInfo({ status: "device", uri: result.verificationUrl, code: result.userCode });
-					pollOAuth(p);
-				} else {
-					setError(result.error || "Failed to start OAuth");
-					setOauthProvider(null);
-					setOauthInfo(null);
-					setOauthCallbackInput("");
-					setOauthSubmitting(false);
-				}
-			},
-		);
+		startProviderOAuth(p.name).then((result: { status: string; authUrl?: string; error?: string }) => {
+			if (result.status === "already") onOAuthAuthenticated(p.name);
+			else if (result.status === "browser") {
+				window.open(result.authUrl, "_blank");
+				pollOAuth(p);
+			} else {
+				setError(result.error || "Failed to start OAuth");
+				setOauthProvider(null);
+				setOauthCallbackInput("");
+				setOauthSubmitting(false);
+			}
+		});
 	}
 
 	async function onOAuthAuthenticated(providerName: string): Promise<void> {
 		const provModels = await loadModelsForProvider(providerName);
 		setOauthProvider(null);
-		setOauthInfo(null);
 		setOauthCallbackInput("");
 		setOauthSubmitting(false);
 		if (provModels.length > 0) {
@@ -780,7 +741,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				if (oauthTimerRef.current === oauthTimer) oauthTimerRef.current = null;
 				setError("OAuth timed out.");
 				setOauthProvider(null);
-				setOauthInfo(null);
 				setOauthCallbackInput("");
 				setOauthSubmitting(false);
 				return;
@@ -803,7 +763,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			oauthTimerRef.current = null;
 		}
 		setOauthProvider(null);
-		setOauthInfo(null);
 		setOauthCallbackInput("");
 		setOauthSubmitting(false);
 		setError(null);
@@ -858,7 +817,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				modelSearch={configuring === p.name ? modelSearch : ""}
 				setModelSearch={setModelSearch}
 				oauthProvider={oauthProvider}
-				oauthInfo={oauthInfo}
 				oauthCallbackInput={oauthCallbackInput}
 				setOauthCallbackInput={setOauthCallbackInput}
 				oauthSubmitting={oauthSubmitting}

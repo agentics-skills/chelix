@@ -1,7 +1,7 @@
 //! Shared helpers for OpenAI-compatible streaming with tools.
 //!
 //! This module provides reusable functions for parsing OpenAI-style SSE streams
-//! that include tool calls. Used by openai.rs and kimi_code.rs.
+//! that include tool calls. Used by the OpenAI-compatible transports.
 
 use std::collections::{HashMap, HashSet};
 
@@ -819,7 +819,6 @@ fn longest_tag_suffix(text: &str, tag: &str) -> usize {
 ///
 /// This handles the common OpenAI streaming format used by:
 /// - OpenAI API
-/// - Kimi Code API
 /// - Any other OpenAI-compatible API
 ///
 /// Content inside `<think>...</think>` tags is emitted as `ReasoningDelta`

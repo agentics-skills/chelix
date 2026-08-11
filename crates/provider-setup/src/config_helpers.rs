@@ -295,12 +295,10 @@ pub fn detect_auto_provider_sources_with_overrides(
             sources.push(format!("file:{}", path.display()));
         }
 
-        if (provider.auth_type == AuthType::Oauth || provider.name == "kimi-code")
-            && token_store.load(provider.name).is_some()
-        {
+        if provider.auth_type == AuthType::Oauth && token_store.load(provider.name).is_some() {
             sources.push(format!("file:{}", oauth_tokens_path.display()));
         }
-        if (provider.auth_type == AuthType::Oauth || provider.name == "kimi-code")
+        if provider.auth_type == AuthType::Oauth
             && home_token_store
                 .as_ref()
                 .is_some_and(|(store, _)| store.load(provider.name).is_some())
@@ -432,11 +430,11 @@ mod tests {
     fn config_with_saved_keys_merges() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("moonshot", "saved-key").unwrap();
+        store.save("openrouter", "saved-key").unwrap();
 
         let base = ProvidersConfig::default();
         let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
-        let entry = merged.get("moonshot").unwrap();
+        let entry = merged.get("openrouter").unwrap();
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
             Some("saved-key")
@@ -447,15 +445,15 @@ mod tests {
     fn config_with_saved_keys_does_not_override_existing() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("moonshot", "saved-key").unwrap();
+        store.save("openrouter", "saved-key").unwrap();
 
         let mut base = ProvidersConfig::default();
-        base.providers.insert("moonshot".into(), ProviderEntry {
+        base.providers.insert("openrouter".into(), ProviderEntry {
             api_key: Some(Secret::new("config-key".into())),
             ..Default::default()
         });
         let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
-        let entry = merged.get("moonshot").unwrap();
+        let entry = merged.get("openrouter").unwrap();
         // Config key takes precedence over saved key.
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),

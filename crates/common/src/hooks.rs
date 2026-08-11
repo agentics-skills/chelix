@@ -1019,8 +1019,8 @@ mod tests {
     fn after_llm_call_payload_event() {
         let payload = HookPayload::AfterLLMCall {
             session_key: "sess-1".into(),
-            provider: "moonshot".into(),
-            model: "kimi-k2.5".into(),
+            provider: "openrouter".into(),
+            model: "anthropic/claude-sonnet-4".into(),
             text: Some("Hello!".into()),
             tool_calls: vec![serde_json::json!({"name": "execute_command"})],
             input_tokens: 100,

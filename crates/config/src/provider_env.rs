@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn generic_provider_env_prefers_namespaced_keys() {
         let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "moonshot".to_string()),
+            ("PROVIDER".to_string(), "openrouter".to_string()),
             ("API_KEY".to_string(), "fallback-key".to_string()),
             ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
             ("CHELIX_API_KEY".to_string(), "primary-key".to_string()),
@@ -229,20 +229,20 @@ mod tests {
             Some("sk-test")
         );
         assert!(
-            generic_provider_api_key_from_source("moonshot", &env_overrides, |_| None).is_none()
+            generic_provider_api_key_from_source("openrouter", &env_overrides, |_| None).is_none()
         );
     }
 
     #[test]
     fn generic_provider_source_reports_actual_env_keys() {
         let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "moonshot".to_string()),
+            ("PROVIDER".to_string(), "openrouter".to_string()),
             ("API_KEY".to_string(), "sk-test".to_string()),
         ]);
 
         assert_eq!(
             generic_provider_env_source_for_provider_from_source(
-                "moonshot",
+                "openrouter",
                 &env_overrides,
                 |_| { None },
             )

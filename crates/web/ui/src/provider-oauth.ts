@@ -4,17 +4,11 @@ import type { RpcResponse } from "./types/rpc";
 interface OAuthStartPayload {
 	alreadyAuthenticated?: boolean;
 	authUrl?: string;
-	deviceFlow?: boolean;
-	verificationUriComplete?: string;
-	verificationUri?: string;
-	userCode?: string;
 }
 
 export interface OAuthStartResult {
-	status: "already" | "browser" | "device" | "error";
+	status: "already" | "browser" | "error";
 	authUrl?: string;
-	verificationUrl?: string;
-	userCode?: string;
 	error?: string;
 }
 
@@ -31,21 +25,6 @@ function normalizeOAuthStartResponse(res: RpcResponse<OAuthStartPayload> | null)
 		return {
 			status: "browser",
 			authUrl: payload.authUrl,
-		};
-	}
-
-	if (res?.ok && payload?.deviceFlow) {
-		const verificationUrl = payload.verificationUriComplete || payload.verificationUri;
-		if (!(verificationUrl && payload.userCode)) {
-			return {
-				status: "error",
-				error: "OAuth device flow response is missing verification data.",
-			};
-		}
-		return {
-			status: "device",
-			verificationUrl,
-			userCode: payload.userCode,
 		};
 	}
 

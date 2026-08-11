@@ -734,7 +734,7 @@ mod tests {
                 "C123": { "model": "gpt-4", "agent_id": "channel-agent" }
             },
             "user_overrides": {
-                "U456": { "model": "kimi-k2.5", "model_provider": "moonshot", "agent_id": "user-agent" }
+                "U456": { "model": "anthropic/claude-sonnet-4", "model_provider": "openrouter", "agent_id": "user-agent" }
             }
         });
         let cfg: DiscordAccountConfig =
@@ -742,8 +742,8 @@ mod tests {
         assert_eq!(cfg.channel_model("C123"), Some("gpt-4"));
         assert!(cfg.channel_model_provider("C123").is_none());
         assert_eq!(cfg.channel_agent_id("C123"), Some("channel-agent"));
-        assert_eq!(cfg.user_model("U456"), Some("kimi-k2.5"));
-        assert_eq!(cfg.user_model_provider("U456"), Some("moonshot"));
+        assert_eq!(cfg.user_model("U456"), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(cfg.user_model_provider("U456"), Some("openrouter"));
         assert_eq!(cfg.user_agent_id("U456"), Some("user-agent"));
 
         // Round-trip preserves overrides
@@ -751,7 +751,7 @@ mod tests {
         let cfg2: DiscordAccountConfig =
             serde_json::from_value(value).unwrap_or_else(|e| panic!("re-parse failed: {e}"));
         assert_eq!(cfg2.channel_model("C123"), Some("gpt-4"));
-        assert_eq!(cfg2.user_model("U456"), Some("kimi-k2.5"));
+        assert_eq!(cfg2.user_model("U456"), Some("anthropic/claude-sonnet-4"));
         assert_eq!(cfg2.channel_agent_id("C123"), Some("channel-agent"));
         assert_eq!(cfg2.user_agent_id("U456"), Some("user-agent"));
     }
@@ -848,7 +848,7 @@ mod tests {
                 {
                     "channel_name": "ticket-*",
                     "mention_mode": "always",
-                    "model": "kimi-k2.5",
+                    "model": "anthropic/claude-sonnet-4",
                     "agent_id": "support"
                 },
                 {

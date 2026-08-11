@@ -109,15 +109,14 @@ async fn providers_oauth_start_mutation_returns_typed_shape() {
     mock.set_response(
         "providers.oauth.start",
         json!({
-            "authUrl": "https://auth.example/start",
-            "deviceFlow": false
+            "authUrl": "https://auth.example/start"
         }),
     );
     let (schema, _) = build_test_schema(mock);
 
     let res = schema
         .execute(Request::new(
-            r#"mutation { providers { oauthStart(provider: "openai") { authUrl deviceFlow } } }"#,
+            r#"mutation { providers { oauthStart(provider: "openai") { authUrl } } }"#,
         ))
         .await;
 

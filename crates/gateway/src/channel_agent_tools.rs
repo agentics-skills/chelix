@@ -932,7 +932,7 @@ mod tests {
                 "allowlist": ["alice"],
                 "group_allowlist": ["chat-1"],
                 "model": "old-model",
-                "model_provider": "moonshot",
+                "model_provider": "openrouter",
                 "reply_to_message": false
             }),
         )]));
@@ -1021,7 +1021,7 @@ mod tests {
                 "channel_overrides": {
                     "chan-1": {
                         "model": "old-model",
-                        "model_provider": "moonshot"
+                        "model_provider": "openrouter"
                     }
                 }
             }),
@@ -1055,7 +1055,7 @@ mod tests {
         );
         assert_eq!(
             updated["config"]["channel_overrides"]["chan-1"]["model_provider"],
-            "moonshot"
+            "openrouter"
         );
     }
 

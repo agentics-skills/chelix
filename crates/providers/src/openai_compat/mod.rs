@@ -1,7 +1,7 @@
 //! Shared helpers for OpenAI-compatible streaming with tools.
 //!
 //! This module provides reusable functions for parsing OpenAI-style SSE streams
-//! that include tool calls. Used by openai.rs and kimi_code.rs.
+//! that include tool calls. Used by the OpenAI-compatible transports.
 
 mod provider;
 mod schema_normalization;

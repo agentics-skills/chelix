@@ -342,7 +342,7 @@ chelix-portable         = { path = "crates/portable" }
 chelix-projects         = { path = "crates/projects" }
 chelix-protocol         = { path = "crates/protocol" }
 chelix-provider-setup   = { path = "crates/provider-setup" }
-chelix-providers        = { features = ["provider-kimi-code", "provider-openai-codex"], path = "crates/providers" }
+chelix-providers        = { features = ["provider-openai-codex"], path = "crates/providers" }
 chelix-qmd              = { path = "crates/qmd" }
 chelix-secret-store     = { default-features = false, path = "crates/secret-store" }
 chelix-service-traits   = { path = "crates/service-traits" }

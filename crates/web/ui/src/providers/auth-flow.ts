@@ -659,23 +659,6 @@ export function showOAuthFlow(provider: ProviderInfo): void {
 				connectBtn.textContent = "Waiting for auth...";
 				manualWrap.classList.remove("hidden");
 				pollOAuthStatus(provider, finishOAuthOnce);
-			} else if (result.status === "device") {
-				connectBtn.textContent = "Waiting for auth...";
-				desc.classList.remove("text-error");
-				desc.textContent = "";
-				manualWrap.classList.add("hidden");
-				const linkEl = document.createElement("a");
-				linkEl.href = result.verificationUrl || "";
-				linkEl.target = "_blank";
-				linkEl.className = "oauth-link";
-				linkEl.textContent = result.verificationUrl || "";
-				const codeEl = document.createElement("strong");
-				codeEl.textContent = result.userCode || "";
-				desc.appendChild(document.createTextNode("Go to "));
-				desc.appendChild(linkEl);
-				desc.appendChild(document.createTextNode(" and enter code: "));
-				desc.appendChild(codeEl);
-				pollOAuthStatus(provider, finishOAuthOnce);
 			} else {
 				clearOAuthStatusTimer();
 				connectBtn.disabled = false;

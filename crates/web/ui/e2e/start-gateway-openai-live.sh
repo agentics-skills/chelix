@@ -61,10 +61,8 @@ fi
 export HOME="${HOME_DIR}"
 
 unset OPENROUTER_API_KEY
-unset MOONSHOT_API_KEY
 unset Z_API_KEY
 unset Z_CODE_API_KEY
-unset KIMI_API_KEY
 
 binary_is_stale() {
 	local binary="$1"

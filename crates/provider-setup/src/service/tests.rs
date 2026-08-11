@@ -254,7 +254,7 @@ async fn available_hides_configured_provider_outside_offered() {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
     };
-    config.providers.insert("moonshot".into(), ProviderEntry {
+    config.providers.insert("openrouter".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
         ..Default::default()
     });
@@ -274,7 +274,7 @@ async fn available_hides_configured_provider_outside_offered() {
         .expect("openai should be present");
 
     assert!(
-        !names.contains(&"moonshot"),
+        !names.contains(&"openrouter"),
         "providers outside offered should be hidden even when configured, got: {names:?}"
     );
     assert_eq!(openai_idx, 0);
@@ -494,13 +494,13 @@ async fn available_includes_default_base_urls() {
         Some("https://api.openai.com/v1")
     );
 
-    let kimi_code = arr
+    let openrouter = arr
         .iter()
-        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("kimi-code"))
-        .expect("kimi-code not found");
+        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("openrouter"))
+        .expect("openrouter not found");
     assert_eq!(
-        kimi_code.get("defaultBaseUrl").and_then(|u| u.as_str()),
-        Some("https://api.kimi.com/coding/v1")
+        openrouter.get("defaultBaseUrl").and_then(|u| u.as_str()),
+        Some("https://openrouter.ai/api/v1")
     );
 }
 
@@ -707,7 +707,7 @@ async fn oauth_start_stores_pending_state_for_registered_redirect_provider() {
 
     assert!(
         svc.pending_oauth.read().await.contains_key(&state),
-        "pending oauth map should track non-device flow state for manual completion"
+        "pending oauth map should track flow state for manual completion"
     );
 }
 
@@ -777,7 +777,7 @@ async fn oauth_complete_rejects_provider_mismatch_without_consuming_state() {
 
     let mismatch_result = svc
         .oauth_complete(serde_json::json!({
-            "provider": "kimi-code",
+            "provider": "openai",
             "callback": format!("http://localhost:1455/auth/callback?code=fake&state={state}"),
         }))
         .await;
@@ -822,7 +822,7 @@ async fn save_key_accepts_new_providers() {
     let _svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let providers = known_providers();
-    for name in ["openrouter", "moonshot", "zai", "zai-code", "kimi-code"] {
+    for name in ["openrouter", "zai", "zai-code"] {
         let known = providers
             .iter()
             .find(|p| p.name == name && p.auth_type == AuthType::ApiKey);
@@ -848,7 +848,7 @@ async fn available_includes_new_providers() {
         .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
         .collect();
 
-    for expected in ["openrouter", "moonshot", "zai", "zai-code", "kimi-code"] {
+    for expected in ["openrouter", "zai", "zai-code"] {
         assert!(
             names.contains(&expected),
             "{expected} not found in available providers: {names:?}"

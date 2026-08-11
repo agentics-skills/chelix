@@ -324,10 +324,6 @@ pub mod oauth {
     pub const TOKEN_REFRESH_TOTAL: &str = "chelix_oauth_token_refresh_total";
     /// Token refresh failures by provider
     pub const TOKEN_REFRESH_FAILURES_TOTAL: &str = "chelix_oauth_token_refresh_failures_total";
-    /// Device flow attempts by provider
-    pub const DEVICE_FLOW_ATTEMPTS_TOTAL: &str = "chelix_oauth_device_flow_attempts_total";
-    /// Device flow errors by provider and type
-    pub const DEVICE_FLOW_ERRORS_TOTAL: &str = "chelix_oauth_device_flow_errors_total";
     /// Code exchange operations
     pub const CODE_EXCHANGE_TOTAL: &str = "chelix_oauth_code_exchange_total";
     /// Code exchange errors

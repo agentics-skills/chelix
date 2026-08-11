@@ -316,7 +316,7 @@ pub enum RunnerEvent {
 /// 2. Strips surrounding double quotes (some models quote tool names)
 /// 3. Strips `functions_` prefix (OpenAI legacy artifact from some models)
 /// 4. Strips trailing `_\d+` suffix (parallel-call indexing from some models,
-///    e.g. Kimi K2.5 via OpenRouter sends `execute_command_2`, `browser_4`)
+///    e.g. a model via OpenRouter sends `execute_command_2`, `browser_4`)
 pub(crate) fn sanitize_tool_name(name: &str) -> Cow<'_, str> {
     let trimmed = name.trim();
     let unquoted = trimmed

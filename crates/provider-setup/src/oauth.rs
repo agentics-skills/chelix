@@ -1,5 +1,4 @@
-//! OAuth helpers: redirect URI normalization, Codex CLI token parsing,
-//! token import, provider-specific headers, and verification URI building.
+//! OAuth helpers: redirect URI normalization, Codex CLI token parsing, and token import.
 
 use std::path::{Path, PathBuf};
 
@@ -119,43 +118,6 @@ pub fn import_detected_oauth_tokens(
     }
 }
 
-// ── Provider-specific OAuth helpers ────────────────────────────────────────
-
-/// Build provider-specific extra headers for device-flow OAuth calls.
-pub(crate) fn build_provider_headers(provider: &str) -> Option<reqwest::header::HeaderMap> {
-    match provider {
-        "kimi-code" => Some(chelix_oauth::kimi_headers()),
-        _ => None,
-    }
-}
-
-/// Some providers require visiting a URL that already embeds the user_code.
-/// Prefer provider-returned `verification_uri_complete`; otherwise synthesize
-/// one for known providers.
-pub(crate) fn build_verification_uri_complete(
-    provider: &str,
-    verification_uri: &str,
-    user_code: &str,
-    provided_complete: Option<String>,
-) -> Option<String> {
-    if let Some(complete) = provided_complete
-        && !complete.trim().is_empty()
-    {
-        return Some(complete);
-    }
-
-    if provider == "kimi-code" {
-        let sep = if verification_uri.contains('?') {
-            "&"
-        } else {
-            "?"
-        };
-        return Some(format!("{verification_uri}{sep}user_code={user_code}"));
-    }
-
-    None
-}
-
 // ── Token presence check ───────────────────────────────────────────────────
 
 pub(crate) fn has_oauth_tokens_for_provider(
@@ -195,7 +157,6 @@ mod tests {
             resource: None,
             scopes: Vec::new(),
             extra_auth_params: Vec::new(),
-            device_flow: false,
         }
     }
 
@@ -253,60 +214,6 @@ mod tests {
     }
 
     #[test]
-    fn verification_uri_complete_prefers_provider_payload() {
-        let complete = build_verification_uri_complete(
-            "kimi-code",
-            "https://auth.kimi.com/device",
-            "ABCD-1234",
-            Some("https://auth.kimi.com/device?user_code=ABCD-1234".into()),
-        );
-        assert_eq!(
-            complete.as_deref(),
-            Some("https://auth.kimi.com/device?user_code=ABCD-1234")
-        );
-    }
-
-    #[test]
-    fn verification_uri_complete_synthesizes_for_kimi() {
-        let complete = build_verification_uri_complete(
-            "kimi-code",
-            "https://auth.kimi.com/device",
-            "ABCD-1234",
-            None,
-        );
-        assert_eq!(
-            complete.as_deref(),
-            Some("https://auth.kimi.com/device?user_code=ABCD-1234")
-        );
-    }
-
-    #[test]
-    fn verification_uri_complete_synthesizes_with_existing_query() {
-        let complete = build_verification_uri_complete(
-            "kimi-code",
-            "https://auth.kimi.com/device?lang=en",
-            "ABCD-1234",
-            None,
-        );
-        assert_eq!(
-            complete.as_deref(),
-            Some("https://auth.kimi.com/device?lang=en&user_code=ABCD-1234")
-        );
-    }
-
-    #[test]
-    fn provider_headers_include_kimi_device_headers() {
-        let headers = build_provider_headers("kimi-code").expect("expected kimi-code headers");
-        assert!(headers.get("X-Msh-Platform").is_some());
-        assert!(headers.get("X-Msh-Device-Id").is_some());
-    }
-
-    #[test]
-    fn provider_headers_are_none_for_non_kimi() {
-        assert!(build_provider_headers("openai-codex").is_none());
-    }
-
-    #[test]
     fn codex_cli_auth_has_access_token_requires_tokens_access_token() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("auth.json");
@@ -328,12 +235,12 @@ mod tests {
         let home = TokenStore::with_path(temp.path().join("home-oauth.json"));
 
         assert!(!has_oauth_tokens_for_provider(
-            "kimi-code",
+            "openai-codex",
             &primary,
             Some(&home)
         ));
 
-        home.save("kimi-code", &OAuthTokens {
+        home.save("openai-codex", &OAuthTokens {
             access_token: Secret::new("home-token".to_string()),
             refresh_token: None,
             id_token: None,
@@ -343,7 +250,7 @@ mod tests {
         .expect("save home token");
 
         assert!(has_oauth_tokens_for_provider(
-            "kimi-code",
+            "openai-codex",
             &primary,
             Some(&home)
         ));

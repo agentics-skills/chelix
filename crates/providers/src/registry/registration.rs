@@ -100,7 +100,6 @@ impl ProviderRegistry {
         registry.register_openai_compatible(config, env_overrides, discovery);
         registry.register_custom(config, discovery);
         registry.register_openai_codex(config, discovery);
-        registry.register_kimi_code(config, env_overrides, discovery);
         registry
     }
 
@@ -350,53 +349,6 @@ impl ProviderRegistry {
     fn register_openai_codex(
         &mut self,
         _config: &ProvidersConfig,
-        _discovery: &DiscoveryResult,
-    ) -> usize {
-        0
-    }
-
-    #[cfg(feature = "provider-kimi-code")]
-    fn register_kimi_code(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
-    ) -> usize {
-        if !config.is_enabled("kimi-code") {
-            return 0;
-        }
-        let api_key = resolve_api_key(config, "kimi-code", "KIMI_API_KEY", env_overrides);
-        if api_key.is_none() && !crate::kimi_code::has_stored_tokens() {
-            return 0;
-        }
-        let base_url = config
-            .get("kimi-code")
-            .and_then(|entry| entry.base_url.clone())
-            .or_else(|| env_value(env_overrides, "KIMI_BASE_URL"))
-            .unwrap_or_else(|| "https://api.kimi.com/coding/v1".into());
-        let provider_name = provider_label(config, "kimi-code");
-        let models = resolved_models(config, discovery, "kimi-code");
-
-        self.register_resolved(&provider_name, models, move |model_id| {
-            if let Some(key) = api_key.as_ref() {
-                Arc::new(crate::kimi_code::KimiCodeProvider::new_with_api_key(
-                    key.clone(),
-                    model_id.to_string(),
-                    base_url.clone(),
-                ))
-            } else {
-                Arc::new(crate::kimi_code::KimiCodeProvider::new(
-                    model_id.to_string(),
-                ))
-            }
-        })
-    }
-
-    #[cfg(not(feature = "provider-kimi-code"))]
-    fn register_kimi_code(
-        &mut self,
-        _config: &ProvidersConfig,
-        _env_overrides: &HashMap<String, String>,
         _discovery: &DiscoveryResult,
     ) -> usize {
         0
