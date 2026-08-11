@@ -1050,12 +1050,10 @@ mod tests {
             .match_header("authorization", "Bearer read-token")
             .match_body(mockito::Matcher::Json(serde_json::json!({
                 "filePath": "/workspace/src/main.rs",
-                "offset": 10,
-                "limit": 5,
-                "ranges": [],
-                "includeLineNumbers": false,
-                "numberBlankLines": false,
-                "includeRangeHeaders": false
+                "read": {
+                    "offset": 10,
+                    "limit": 5
+                }
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -1072,12 +1070,12 @@ mod tests {
         let result = service
             .read_file("session:read", ReadFileRequest {
                 file_path: "/workspace/src/main.rs".into(),
-                offset: Some(10),
-                limit: Some(5),
-                ranges: Vec::new(),
-                include_line_numbers: false,
-                number_blank_lines: false,
-                include_range_headers: false,
+                read: chelix_protocol::ReadFileOperation::OffsetLimit(
+                    chelix_protocol::ReadFileOffsetLimitOperation {
+                        offset: 10,
+                        limit: 5,
+                    },
+                ),
             })
             .await
             .unwrap_or_else(|error| panic!("read file call failed: {error}"));

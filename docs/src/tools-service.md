@@ -150,7 +150,7 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`14`.
+`15`.
 
 | Method | Path                  | Purpose                                           |
 | ------ | --------------------- | ------------------------------------------------- |
@@ -186,6 +186,45 @@ wire decoder disagree. The nested schema, Rust enum, agent-facing schema, and
 HTTP payload must describe the same physical JSON forms. Root-level composite
 keywords are not supported by the provider schema normalizer; nested
 compositions are preserved.
+
+### Read file execution contract
+
+`POST /v1/read-file` requires `filePath` and a nested `read` object. For an
+offset/limit read, `read` contains required `offset` and `limit` fields.
+Positive offsets are 1-indexed; `offset = -1` selects tail mode:
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "read": {
+    "offset": 1,
+    "limit": 2000
+  }
+}
+```
+
+For a range read, `read` contains a non-empty `ranges` array and its rendering
+options:
+
+```json
+{
+  "filePath": "/workspace/file.txt",
+  "read": {
+    "ranges": [
+      {
+        "startLine": 10,
+        "endLine": 20
+      }
+    ],
+    "includeLineNumbers": true,
+    "numberBlankLines": true,
+    "includeRangeHeaders": true
+  }
+}
+```
+
+Binary files use offset/limit reads with positive offsets as 1-indexed byte
+positions.
 
 ### Edit file execution contract
 
@@ -377,7 +416,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 Candidates are discovered once for each container generation and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
-selects the first endpoint whose health response reports protocol version `14`.
+selects the first endpoint whose health response reports protocol version `15`.
 
 This supports both gateway topologies:
 

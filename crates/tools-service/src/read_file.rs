@@ -5,7 +5,10 @@
 
 use {
     anyhow::{Context, Result, anyhow, bail},
-    chelix_protocol::{ReadFileRange, ReadFileRequest},
+    chelix_protocol::{
+        ReadFileOffsetLimitOperation, ReadFileOperation, ReadFileRange, ReadFileRangesOperation,
+        ReadFileRequest, ReadFileRequestValidationError,
+    },
     content_inspector::inspect,
     std::{collections::VecDeque, path::Path},
     tokio::{
@@ -18,7 +21,6 @@ use {
 const BINARY_INSPECTION_BYTES: usize = 515;
 const MAX_BINARY_HEXDUMP_BYTES: u64 = 512;
 const BYTES_PER_HEXDUMP_ROW: usize = 16;
-const DEFAULT_BINARY_READ_BYTES: u64 = 128;
 const MAX_LINES_PER_READ: u64 = 2_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,25 +215,28 @@ pub(crate) async fn run_tool(request: ReadFileRequest) -> Result<String> {
         .with_context(|| format!("failed to read file '{}'", path.display()))?;
     prefix.truncate(prefix_len);
     if inspect(&prefix).is_binary() {
-        return read_binary(file, metadata.len(), &request, path).await;
+        let ReadFileOperation::OffsetLimit(read) = &request.read else {
+            return Err(ReadFileRequestValidationError::BinaryRangesUnsupported.into());
+        };
+        return read_binary(file, metadata.len(), read, path).await;
     }
 
     file.seek(SeekFrom::Start(0))
         .await
         .with_context(|| format!("failed to seek file '{}'", path.display()))?;
-    if request.ranges.is_empty() {
-        return read_text_offset_or_tail(file, &request, path).await;
+    match &request.read {
+        ReadFileOperation::OffsetLimit(read) => read_text_offset_or_tail(file, read, path).await,
+        ReadFileOperation::Ranges(read) => read_text_ranges(file, read, path).await,
     }
-    read_text_ranges(file, &request, path).await
 }
 
 async fn read_binary(
     mut file: File,
     total_bytes: u64,
-    request: &ReadFileRequest,
+    read: &ReadFileOffsetLimitOperation,
     path: &Path,
 ) -> Result<String> {
-    let (start_byte, end_byte, truncated) = binary_byte_range(total_bytes, request)?;
+    let (start_byte, end_byte, truncated) = binary_byte_range(total_bytes, read)?;
     file.seek(SeekFrom::Start(start_byte))
         .await
         .with_context(|| format!("failed to seek file '{}'", path.display()))?;
@@ -251,10 +256,12 @@ async fn read_binary(
     ))
 }
 
-fn binary_byte_range(total_bytes: u64, request: &ReadFileRequest) -> Result<(u64, u64, bool)> {
-    let limit = request.limit.map(u64::try_from).transpose()?;
-    if request.offset == Some(-1) {
-        let requested_length = limit.unwrap_or(1);
+fn binary_byte_range(
+    total_bytes: u64,
+    read: &ReadFileOffsetLimitOperation,
+) -> Result<(u64, u64, bool)> {
+    let requested_length = u64::try_from(read.limit)?;
+    if read.offset == -1 {
         let effective_length = requested_length.min(MAX_BINARY_HEXDUMP_BYTES);
         let start_byte = total_bytes.saturating_sub(effective_length);
         return Ok((
@@ -264,12 +271,9 @@ fn binary_byte_range(total_bytes: u64, request: &ReadFileRequest) -> Result<(u64
         ));
     }
 
-    let requested_start = request.offset.map(u64::try_from).transpose()?.unwrap_or(0);
-    let requested_length = if request.offset.is_some() && limit.is_some() {
-        limit.unwrap_or(DEFAULT_BINARY_READ_BYTES)
-    } else {
-        DEFAULT_BINARY_READ_BYTES
-    };
+    let requested_start = u64::try_from(read.offset)?
+        .checked_sub(1)
+        .context("read.offset must be a positive 1-indexed byte position")?;
     let requested_end = requested_start
         .checked_add(requested_length)
         .context("requested binary byte range exceeds the supported range")?;
@@ -288,18 +292,16 @@ fn binary_byte_range(total_bytes: u64, request: &ReadFileRequest) -> Result<(u64
 
 async fn read_text_offset_or_tail(
     file: File,
-    request: &ReadFileRequest,
+    read: &ReadFileOffsetLimitOperation,
     path: &Path,
 ) -> Result<String> {
-    if request.offset == Some(-1) {
-        return read_text_tail(file, request, path).await;
+    if read.offset == -1 {
+        return read_text_tail(file, read, path).await;
     }
 
-    let start_line = request.offset.map(u64::try_from).transpose()?.unwrap_or(1);
-    let requested_limit = request.limit.map(u64::try_from).transpose()?;
-    let effective_limit = requested_limit
-        .unwrap_or(MAX_LINES_PER_READ)
-        .min(MAX_LINES_PER_READ);
+    let start_line = u64::try_from(read.offset)?;
+    let requested_limit = u64::try_from(read.limit)?;
+    let effective_limit = requested_limit.min(MAX_LINES_PER_READ);
     let selection_end = start_line
         .checked_add(effective_limit - 1)
         .context("requested line range exceeds the supported range")?;
@@ -334,17 +336,20 @@ async fn read_text_offset_or_tail(
 
     let end_line = selection_end.min(total_lines);
     let mut output = render_text_lines(&selected);
-    if requested_limit != Some(effective_limit) && end_line < total_lines {
+    if requested_limit != effective_limit && end_line < total_lines {
         output.push_str(&format!(
-            "\n[File content truncated at line {end_line}. Use read_file with offset/limit parameters to view more.]"
+            "\n[File content truncated at line {end_line}. Use read_file with read.offset and read.limit to view more.]"
         ));
     }
     Ok(output)
 }
 
-async fn read_text_tail(file: File, request: &ReadFileRequest, path: &Path) -> Result<String> {
-    let requested_limit = request.limit.map(u64::try_from).transpose()?.unwrap_or(1);
-    let effective_limit = requested_limit.min(MAX_LINES_PER_READ);
+async fn read_text_tail(
+    file: File,
+    read: &ReadFileOffsetLimitOperation,
+    path: &Path,
+) -> Result<String> {
+    let effective_limit = u64::try_from(read.limit)?.min(MAX_LINES_PER_READ);
     let retained_limit = usize::try_from(effective_limit + 1)
         .context("tail line limit exceeds the supported range")?;
     let mut reader = LogicalLineReader::new(file);
@@ -375,8 +380,12 @@ async fn read_text_tail(file: File, request: &ReadFileRequest, path: &Path) -> R
     Ok(render_text_lines(retained.make_contiguous()))
 }
 
-async fn read_text_ranges(file: File, request: &ReadFileRequest, path: &Path) -> Result<String> {
-    let requested_ranges = request
+async fn read_text_ranges(
+    file: File,
+    read: &ReadFileRangesOperation,
+    path: &Path,
+) -> Result<String> {
+    let requested_ranges = read
         .ranges
         .iter()
         .map(RequestedRange::try_from)
@@ -427,7 +436,7 @@ async fn read_text_ranges(file: File, request: &ReadFileRequest, path: &Path) ->
                 .iter()
                 .map(|line| {
                     let blank = line.text.is_empty();
-                    if request.include_line_numbers && (!blank || request.number_blank_lines) {
+                    if read.include_line_numbers && (!blank || read.number_blank_lines) {
                         format!("{}\t{}", line.number, line.text)
                     } else {
                         line.text.clone()
@@ -435,7 +444,7 @@ async fn read_text_ranges(file: File, request: &ReadFileRequest, path: &Path) ->
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            if !request.include_range_headers {
+            if !read.include_range_headers {
                 return line_output;
             }
             let header = format!("--- lines {}-{end_line} ---", range.start_line);
@@ -446,7 +455,7 @@ async fn read_text_ranges(file: File, request: &ReadFileRequest, path: &Path) ->
             }
         })
         .collect::<Vec<_>>();
-    Ok(blocks.join(if request.include_range_headers {
+    Ok(blocks.join(if read.include_range_headers {
         "\n\n"
     } else {
         "\n"
@@ -506,15 +515,22 @@ fn whitespace_file_message(path: &Path) -> String {
 mod tests {
     use super::*;
 
-    fn request(path: &Path) -> ReadFileRequest {
+    fn offset_request(path: &Path, offset: i64, limit: i64) -> ReadFileRequest {
         ReadFileRequest {
             file_path: path.to_string_lossy().into_owned(),
-            offset: None,
-            limit: None,
-            ranges: Vec::new(),
-            include_line_numbers: false,
-            number_blank_lines: false,
-            include_range_headers: false,
+            read: ReadFileOperation::OffsetLimit(ReadFileOffsetLimitOperation { offset, limit }),
+        }
+    }
+
+    fn ranges_request(path: &Path, ranges: Vec<ReadFileRange>) -> ReadFileRequest {
+        ReadFileRequest {
+            file_path: path.to_string_lossy().into_owned(),
+            read: ReadFileOperation::Ranges(ReadFileRangesOperation {
+                ranges,
+                include_line_numbers: false,
+                number_blank_lines: false,
+                include_range_headers: false,
+            }),
         }
     }
 
@@ -526,18 +542,14 @@ mod tests {
             .await
             .unwrap();
 
-        let mut input = request(&path);
-        input.offset = Some(2);
-        input.limit = Some(4);
         assert_eq!(
-            run_tool(input).await.unwrap(),
+            run_tool(offset_request(&path, 2, 4)).await.unwrap(),
             "line 2\r\n\r\nline 4\r\nline 5"
         );
-
-        let mut input = request(&path);
-        input.offset = Some(-1);
-        input.limit = Some(2);
-        assert_eq!(run_tool(input).await.unwrap(), "line 4\r\nline 5");
+        assert_eq!(
+            run_tool(offset_request(&path, -1, 2)).await.unwrap(),
+            "line 4\r\nline 5"
+        );
     }
 
     #[tokio::test]
@@ -547,20 +559,24 @@ mod tests {
         tokio::fs::write(&path, "line 1\nline 2\n\nline 4\nline 5")
             .await
             .unwrap();
-        let mut input = request(&path);
-        input.ranges = vec![
-            ReadFileRange {
-                start_line: 4,
-                end_line: Some(2),
-            },
-            ReadFileRange {
-                start_line: 5,
-                end_line: None,
-            },
-        ];
-        input.include_line_numbers = true;
-        input.number_blank_lines = true;
-        input.include_range_headers = true;
+        let input = ReadFileRequest {
+            file_path: path.to_string_lossy().into_owned(),
+            read: ReadFileOperation::Ranges(ReadFileRangesOperation {
+                ranges: vec![
+                    ReadFileRange {
+                        start_line: 4,
+                        end_line: Some(2),
+                    },
+                    ReadFileRange {
+                        start_line: 5,
+                        end_line: None,
+                    },
+                ],
+                include_line_numbers: true,
+                number_blank_lines: true,
+                include_range_headers: true,
+            }),
+        };
 
         assert_eq!(
             run_tool(input).await.unwrap(),
@@ -577,11 +593,13 @@ mod tests {
         tokio::fs::write(&whitespace, " \t\r\n").await.unwrap();
 
         assert_eq!(
-            run_tool(request(&empty)).await.unwrap(),
+            run_tool(offset_request(&empty, 1, 2_000)).await.unwrap(),
             empty_file_message(&empty)
         );
         assert_eq!(
-            run_tool(request(&whitespace)).await.unwrap(),
+            run_tool(offset_request(&whitespace, 1, 2_000))
+                .await
+                .unwrap(),
             whitespace_file_message(&whitespace)
         );
     }
@@ -594,25 +612,39 @@ mod tests {
             .await
             .unwrap();
 
-        let mut input = request(&path);
-        input.offset = Some(1);
-        input.limit = Some(8);
-        let output = run_tool(input).await.unwrap();
+        let output = run_tool(offset_request(&path, 2, 7)).await.unwrap();
         assert!(output.contains("00000001"));
         assert!(output.contains("5a 00 03"));
         assert!(output.contains('Z'));
 
-        let mut input = request(&path);
-        input.offset = Some(-1);
-        input.limit = Some(2);
-        let output = run_tool(input).await.unwrap();
+        let output = run_tool(offset_request(&path, -1, 2)).await.unwrap();
         assert!(output.contains("00000006"));
         assert!(output.contains("ff fe"));
         assert!(!output.contains("4d 5a"));
     }
 
     #[tokio::test]
-    async fn marks_only_implicit_or_capped_text_reads_as_truncated() {
+    async fn rejects_ranges_for_binary_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("sample.bin");
+        tokio::fs::write(&path, [0x4d, 0x5a, 0x00, 0x03])
+            .await
+            .unwrap();
+
+        let error = run_tool(ranges_request(&path, vec![ReadFileRange {
+            start_line: 1,
+            end_line: None,
+        }]))
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<ReadFileRequestValidationError>(),
+            Some(&ReadFileRequestValidationError::BinaryRangesUnsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn marks_only_capped_text_reads_as_truncated() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("large.txt");
         let content = (1..=2_005)
@@ -621,16 +653,14 @@ mod tests {
             .join("\n");
         tokio::fs::write(&path, content).await.unwrap();
 
-        let output = run_tool(request(&path)).await.unwrap();
+        let output = run_tool(offset_request(&path, 1, 2_001)).await.unwrap();
         assert!(output.contains("line 2000"));
         assert!(!output.contains("line 2001"));
         assert!(output.ends_with(
-            "[File content truncated at line 2000. Use read_file with offset/limit parameters to view more.]"
+            "[File content truncated at line 2000. Use read_file with read.offset and read.limit to view more.]"
         ));
 
-        let mut explicit = request(&path);
-        explicit.limit = Some(2_000);
-        let output = run_tool(explicit).await.unwrap();
+        let output = run_tool(offset_request(&path, 1, 2_000)).await.unwrap();
         assert!(!output.contains("[File content truncated"));
     }
 
@@ -640,37 +670,34 @@ mod tests {
         let path = directory.path().join("sample.txt");
         tokio::fs::write(&path, "one\ntwo").await.unwrap();
 
-        let mut invalid_offset = request(&path);
-        invalid_offset.offset = Some(3);
         assert!(
-            run_tool(invalid_offset)
+            run_tool(offset_request(&path, 3, 1))
                 .await
                 .unwrap_err()
                 .to_string()
                 .contains("Invalid offset 3")
         );
 
-        let mut invalid_range = request(&path);
-        invalid_range.ranges = vec![ReadFileRange {
-            start_line: 3,
-            end_line: None,
-        }];
         assert!(
-            run_tool(invalid_range)
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid ranges[0].startLine 3")
+            run_tool(ranges_request(&path, vec![ReadFileRange {
+                start_line: 3,
+                end_line: None,
+            }]))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid ranges[0].startLine 3")
         );
 
-        let relative = ReadFileRequest {
-            file_path: "relative.txt".into(),
-            ..request(&path)
-        };
+        let relative = offset_request(Path::new("relative.txt"), 1, 2_000);
         assert_eq!(
             run_tool(relative).await.unwrap_err().to_string(),
             "filePath must be absolute."
         );
-        assert!(run_tool(request(directory.path())).await.is_err());
+        assert!(
+            run_tool(offset_request(directory.path(), 1, 2_000))
+                .await
+                .is_err()
+        );
     }
 }
