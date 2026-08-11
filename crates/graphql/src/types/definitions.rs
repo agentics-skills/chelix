@@ -440,15 +440,7 @@ pub struct ProviderOAuthStartResult {
     #[serde(default)]
     pub auth_url: Option<String>,
     #[serde(default)]
-    pub device_flow: Option<bool>,
-    #[serde(default)]
     pub already_authenticated: Option<bool>,
-    #[serde(default)]
-    pub user_code: Option<String>,
-    #[serde(default)]
-    pub verification_uri: Option<String>,
-    #[serde(default)]
-    pub verification_uri_complete: Option<String>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]

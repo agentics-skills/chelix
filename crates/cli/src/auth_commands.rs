@@ -1,7 +1,7 @@
 use {
     anyhow::Result,
     chelix_oauth::{
-        CallbackServer, OAuthFlow, TokenStore, callback_port, device_flow, load_oauth_config,
+        CallbackServer, OAuthFlow, TokenStore, callback_port, load_oauth_config,
         parse_callback_input,
     },
     clap::Subcommand,
@@ -54,10 +54,6 @@ async fn login(provider: &str) -> Result<()> {
     let config = load_oauth_config(provider)
         .ok_or_else(|| anyhow::anyhow!("unknown OAuth provider: {provider}"))?;
 
-    if config.device_flow {
-        return login_device_flow(provider, &config).await;
-    }
-
     let port = callback_port(&config);
     let flow = OAuthFlow::new(config);
     let req = flow.start()?;
@@ -108,52 +104,6 @@ fn extract_pasted_callback_code(input: &str, expected_state: &str) -> Result<Str
     }
 
     Ok(parsed.code)
-}
-
-async fn login_device_flow(provider: &str, config: &chelix_oauth::OAuthConfig) -> Result<()> {
-    let client = reqwest::Client::new();
-
-    // Build extra headers for providers that need them (e.g. Kimi Code).
-    let extra_headers = build_provider_headers(provider);
-    let extra = extra_headers.as_ref();
-
-    let device_resp = device_flow::request_device_code_with_headers(&client, config, extra).await?;
-
-    // Prefer verification_uri_complete (auto-includes user code).
-    let open_url = device_resp
-        .verification_uri_complete
-        .as_deref()
-        .unwrap_or(&device_resp.verification_uri);
-
-    println!("Opening browser for device authorization...");
-    println!("Your code: {}", device_resp.user_code);
-    if open::that(open_url).is_err() {
-        println!("Could not open browser. Please visit:\n{open_url}");
-    }
-
-    println!("Waiting for authorization...");
-    let tokens = device_flow::poll_for_token_with_headers(
-        &client,
-        config,
-        &device_resp.device_code,
-        device_resp.interval,
-        extra,
-    )
-    .await?;
-
-    let store = TokenStore::new();
-    store.save(provider, &tokens)?;
-
-    println!("Successfully logged in to {provider}");
-    Ok(())
-}
-
-/// Build provider-specific extra headers for the device flow.
-fn build_provider_headers(provider: &str) -> Option<reqwest::header::HeaderMap> {
-    match provider {
-        "kimi-code" => Some(chelix_oauth::kimi_headers()),
-        _ => None,
-    }
 }
 
 fn status() -> Result<()> {

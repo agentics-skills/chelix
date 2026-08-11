@@ -132,7 +132,6 @@ async fn oauth_flow_exchange_sends_resource_indicator_when_configured() {
         resource: Some(resource.into()),
         scopes: vec![],
         extra_auth_params: vec![],
-        device_flow: false,
     });
 
     let tokens = flow.exchange("code-123", "verifier-123").await.unwrap();
@@ -167,7 +166,6 @@ async fn oauth_flow_exchange_sends_client_secret_when_configured() {
         resource: None,
         scopes: vec![],
         extra_auth_params: vec![],
-        device_flow: false,
     });
 
     let tokens = flow.exchange("code-123", "verifier-123").await.unwrap();

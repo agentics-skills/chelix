@@ -378,7 +378,7 @@ fn providers_config_offered_controls_enablement() {
         ..ProvidersConfig::default()
     };
     assert!(config.is_enabled("openai"));
-    assert!(!config.is_enabled("moonshot"));
+    assert!(!config.is_enabled("openrouter"));
 }
 
 #[test]
@@ -404,7 +404,7 @@ fn providers_config_invalid_names_match_runtime_behavior() {
     ]);
     assert!(!config.is_enabled("claude"));
     assert!(!config.is_enabled("unsupported"));
-    assert!(!config.is_enabled("moonshot"));
+    assert!(!config.is_enabled("openrouter"));
     assert!(!config.is_enabled("openai_codex"));
     assert!(!config.is_enabled("openai-codex"));
 }
@@ -717,7 +717,7 @@ fn full_config_with_tool_mode() {
 enabled = true
 tool_mode = "text"
 
-[providers.moonshot]
+[providers.zai]
 enabled = true
 tool_mode = "native"
 "#;
@@ -727,7 +727,7 @@ tool_mode = "native"
         ToolMode::Text
     );
     assert_eq!(
-        config.providers.get("moonshot").unwrap().tool_mode,
+        config.providers.get("zai").unwrap().tool_mode,
         ToolMode::Native
     );
 }

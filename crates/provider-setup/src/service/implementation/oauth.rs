@@ -1,5 +1,4 @@
-//! OAuth flow management — `oauth_start`, `oauth_complete`, `oauth_status`,
-//! and device-flow implementations.
+//! OAuth flow management — `oauth_start`, `oauth_complete`, and `oauth_status`.
 
 use std::sync::Arc;
 
@@ -7,8 +6,7 @@ use {serde_json::Value, tracing::info};
 
 use {
     chelix_oauth::{
-        CallbackServer, OAuthFlow, callback_port, device_flow, load_oauth_config,
-        normalize_loopback_redirect,
+        CallbackServer, OAuthFlow, callback_port, load_oauth_config, normalize_loopback_redirect,
     },
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{ServiceError, ServiceResult},
@@ -16,97 +14,10 @@ use {
 
 use {
     super::{LiveProviderSetupService, support::PendingOAuthFlow},
-    crate::oauth::{
-        build_provider_headers, build_verification_uri_complete, has_oauth_tokens,
-        normalize_loaded_redirect_uri,
-    },
+    crate::oauth::{has_oauth_tokens, normalize_loaded_redirect_uri},
 };
 
 impl LiveProviderSetupService {
-    /// Start a device-flow OAuth for providers that support it.
-    /// Returns `{ "userCode": "...", "verificationUri": "..." }` for the UI to display.
-    async fn oauth_start_device_flow(
-        &self,
-        provider_name: String,
-        oauth_config: chelix_oauth::OAuthConfig,
-    ) -> ServiceResult {
-        let client = reqwest::Client::new();
-        let extra_headers = build_provider_headers(&provider_name);
-        let device_resp = device_flow::request_device_code_with_headers(
-            &client,
-            &oauth_config,
-            extra_headers.as_ref(),
-        )
-        .await
-        .map_err(ServiceError::message)?;
-
-        let user_code = device_resp.user_code.clone();
-        let verification_uri = device_resp.verification_uri.clone();
-        let verification_uri_complete = build_verification_uri_complete(
-            &provider_name,
-            &verification_uri,
-            &user_code,
-            device_resp.verification_uri_complete.clone(),
-        );
-        let device_code = device_resp.device_code.clone();
-        let interval = device_resp.interval;
-
-        // Spawn background task to poll for the token
-        let token_store = self.token_store.clone();
-        let registry = Arc::clone(&self.registry);
-        let config = self.effective_config()?;
-        let env_overrides = self.env_overrides.clone();
-        let poll_headers = extra_headers.clone();
-        tokio::spawn(async move {
-            let poll_extra = poll_headers.as_ref();
-            match device_flow::poll_for_token_with_headers(
-                &client,
-                &oauth_config,
-                &device_code,
-                interval,
-                poll_extra,
-            )
-            .await
-            {
-                Ok(tokens) => {
-                    if let Err(e) = token_store.save(&provider_name, &tokens) {
-                        tracing::error!(
-                            provider = %provider_name,
-                            error = %e,
-                            "failed to save device-flow OAuth tokens"
-                        );
-                        return;
-                    }
-                    let new_registry = ProviderRegistry::discover(&config, &env_overrides).await;
-                    let provider_summary = new_registry.provider_summary();
-                    let model_count = new_registry.list_models().len();
-                    let mut reg = registry.write().await;
-                    *reg = new_registry;
-                    info!(
-                        provider = %provider_name,
-                        provider_summary = %provider_summary,
-                        models = model_count,
-                        "device-flow OAuth complete, rebuilt provider registry"
-                    );
-                },
-                Err(e) => {
-                    tracing::error!(
-                        provider = %provider_name,
-                        error = %e,
-                        "device-flow OAuth polling failed"
-                    );
-                },
-            }
-        });
-
-        Ok(serde_json::json!({
-            "deviceFlow": true,
-            "userCode": user_code,
-            "verificationUri": verification_uri,
-            "verificationUriComplete": verification_uri_complete,
-        }))
-    }
-
     pub(super) async fn oauth_start_inner(&self, params: Value) -> ServiceResult {
         let provider_name = params
             .get("provider")
@@ -147,12 +58,6 @@ impl LiveProviderSetupService {
             return Ok(serde_json::json!({
                 "alreadyAuthenticated": true,
             }));
-        }
-
-        if oauth_config.device_flow {
-            return self
-                .oauth_start_device_flow(provider_name, oauth_config)
-                .await;
         }
 
         let has_registered_redirect = !oauth_config.redirect_uri.is_empty();

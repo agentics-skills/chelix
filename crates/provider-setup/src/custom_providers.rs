@@ -133,7 +133,7 @@ mod tests {
         assert!(is_custom_provider("custom-together-ai"));
         assert!(is_custom_provider("custom-openrouter-ai"));
         assert!(!is_custom_provider("openai"));
-        assert!(!is_custom_provider("moonshot"));
+        assert!(!is_custom_provider("openrouter"));
     }
 
     #[test]

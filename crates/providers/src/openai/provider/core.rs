@@ -41,7 +41,6 @@ impl OpenAiProvider {
             tool_mode_override: None,
             reasoning_effort: None,
             cache_retention: chelix_config::CacheRetention::Short,
-            reasoning_content_override: None,
             capabilities: OpenAiProviderCapabilities::DEFAULT,
             probe_timeout_secs: None,
         }
@@ -77,12 +76,6 @@ impl OpenAiProvider {
         self
     }
 
-    #[must_use]
-    pub fn with_reasoning_content(mut self, required: bool) -> Self {
-        self.reasoning_content_override = Some(required);
-        self
-    }
-
     /// Set the completion-based probe timeout override (seconds).
     #[must_use]
     pub fn with_probe_timeout_secs(mut self, secs: Option<u64>) -> Self {
@@ -106,7 +99,6 @@ impl OpenAiProvider {
             tool_mode_override: self.tool_mode_override,
             reasoning_effort: self.reasoning_effort.clone(),
             cache_retention: self.cache_retention,
-            reasoning_content_override: self.reasoning_content_override,
             capabilities: self.capabilities,
             probe_timeout_secs: self.probe_timeout_secs,
         }

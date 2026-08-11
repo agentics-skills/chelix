@@ -124,13 +124,12 @@ port = {port}                           # Port number (auto-generated for this i
 # tables, every discovered model with complete metadata is accepted.
 
 # [providers]
-# offered = ["openai-codex", "openai", "openrouter", "moonshot", "zai"]
+# offered = ["openai-codex", "openai", "openrouter", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
 #   "openai", "deepinfra",
-#   "openrouter", "moonshot", "zai", "zai-code", "alibaba-coding",
-#   "openai-codex", "kimi-code"
+#   "openrouter", "zai", "zai-code", "alibaba-coding", "openai-codex"
 
 # ── OpenAI ────────────────────────────────────────────────────
 # [providers.openai]
@@ -157,14 +156,6 @@ port = {port}                           # Port number (auto-generated for this i
 # api_key = "..."                             # Or set OPENROUTER_API_KEY env var
 # base_url = "https://openrouter.ai/api/v1"
 # [providers.openrouter.models."anthropic/claude-3.5-sonnet"]
-
-# ── Moonshot (Kimi) ─────────────────────────────────────────
-# [providers.moonshot]
-# enabled = true
-# api_key = "..."                             # Or set MOONSHOT_API_KEY env var
-# base_url = "https://api.moonshot.ai/v1"
-# alias = "moonshot"
-# [providers.moonshot.models."kimi-k2.5"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # COMPLETE MODEL METADATA EXAMPLE
@@ -204,7 +195,7 @@ port = {port}                           # Port number (auto-generated for this i
                                       #   "live-reload"            - Re-read MEMORY.md before each turn
                                       #   "frozen-at-session-start" - Freeze the first MEMORY.md snapshot per session
 # workspace_file_max_chars = 32000  # Optional: per-file prompt cap for AGENTS.md / TOOLS.md before truncation.
-# priority_models = ["gpt-5.3", "kimi-k2.5"]  # Optional cross-provider selector order
+# priority_models = ["gpt-5.3", "anthropic/claude-sonnet-4"]  # Optional cross-provider selector order
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS

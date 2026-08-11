@@ -295,7 +295,7 @@ impl LiveProviderSetupService {
             return true;
         }
         // For OAuth providers, check token store
-        if provider.auth_type == AuthType::Oauth || provider.name == "kimi-code" {
+        if provider.auth_type == AuthType::Oauth {
             if self.token_store.load(provider.name).is_some() {
                 return true;
             }

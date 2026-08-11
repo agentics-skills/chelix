@@ -25,9 +25,6 @@ pub struct OAuthConfig {
     /// Extra query parameters to include in the authorization URL.
     #[serde(default)]
     pub extra_auth_params: Vec<(String, String)>,
-    /// If true, use the GitHub device-flow instead of PKCE authorization code flow.
-    #[serde(default)]
-    pub device_flow: bool,
 }
 
 /// Stored OAuth tokens.

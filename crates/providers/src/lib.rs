@@ -5,8 +5,6 @@ pub mod config_helpers;
 pub mod discovered_model;
 pub mod error;
 pub mod http;
-#[cfg(feature = "provider-kimi-code")]
-pub mod kimi_code;
 pub mod model_capabilities;
 pub mod model_catalogs;
 pub mod model_id;

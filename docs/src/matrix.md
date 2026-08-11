@@ -376,8 +376,8 @@ otp_self_approval = true
 otp_cooldown_secs = 300
 
 [channels.matrix.my-bot.channel_overrides."!ops:example.com"]
-model = "kimi-k2.5"
-model_provider = "moonshot"
+model = "anthropic/claude-sonnet-4"
+model_provider = "openrouter"
 
 [channels.matrix.my-bot.user_overrides."@alice:example.com"]
 model = "o3"

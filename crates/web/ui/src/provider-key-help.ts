@@ -27,14 +27,6 @@ const KEY_SOURCE_BY_PROVIDER: Record<string, KeySource> = {
 		url: "https://openrouter.ai/settings/keys",
 		label: "OpenRouter Settings",
 	},
-	moonshot: {
-		url: "https://platform.moonshot.ai/console/api-keys",
-		label: "Moonshot Platform",
-	},
-	"kimi-code": {
-		url: "https://www.kimi.com/code/console",
-		label: "Kimi Code Console",
-	},
 };
 
 export function providerApiKeyHelp(provider: ProviderInfo | null): ApiKeyHelp | null {

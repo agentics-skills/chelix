@@ -368,16 +368,16 @@ mod tests {
     fn key_store_save_and_load() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        assert!(store.load("moonshot").is_none());
-        store.save("moonshot", "test-123").unwrap();
-        assert_eq!(store.load("moonshot").unwrap(), "test-123");
+        assert!(store.load("openrouter").is_none());
+        store.save("openrouter", "test-123").unwrap();
+        assert_eq!(store.load("openrouter").unwrap(), "test-123");
         // Overwrite
-        store.save("moonshot", "new-key").unwrap();
-        assert_eq!(store.load("moonshot").unwrap(), "new-key");
+        store.save("openrouter", "new-key").unwrap();
+        assert_eq!(store.load("openrouter").unwrap(), "new-key");
         // Multiple providers
         store.save("openai", "sk-openai").unwrap();
         assert_eq!(store.load("openai").unwrap(), "sk-openai");
-        assert_eq!(store.load("moonshot").unwrap(), "new-key");
+        assert_eq!(store.load("openrouter").unwrap(), "new-key");
         let all = store.load_all();
         assert_eq!(all.len(), 2);
     }
@@ -404,11 +404,11 @@ mod tests {
     fn key_store_remove() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("moonshot", "test-key").unwrap();
+        store.save("openrouter", "test-key").unwrap();
         store.save("openai", "sk-openai").unwrap();
-        assert!(store.load("moonshot").is_some());
-        store.remove("moonshot").unwrap();
-        assert!(store.load("moonshot").is_none());
+        assert!(store.load("openrouter").is_some());
+        store.remove("openrouter").unwrap();
+        assert!(store.load("openrouter").is_none());
         // Other keys unaffected
         assert_eq!(store.load("openai").unwrap(), "sk-openai");
         // Removing non-existent key is fine
@@ -481,10 +481,10 @@ mod tests {
 
         store
             .save_config(
-                "moonshot",
-                Some("moonshot-key".into()),
-                Some("https://api.moonshot.ai/v1".into()),
-                Some(model_map(&["kimi-k2.5"])),
+                "openrouter",
+                Some("openrouter-key".into()),
+                Some("https://openrouter.ai/api/v1".into()),
+                Some(model_map(&["anthropic/claude-sonnet-4"])),
             )
             .unwrap();
 
@@ -497,18 +497,20 @@ mod tests {
             )
             .unwrap();
 
-        // Update only OpenAI models; Moonshot should remain unchanged.
+        // Update only OpenAI models; OpenRouter should remain unchanged.
         store
             .save_config("openai", None, None, Some(model_map(&["gpt-5"])))
             .unwrap();
 
-        let moonshot = store.load_config("moonshot").unwrap();
-        assert_eq!(moonshot.api_key.as_deref(), Some("moonshot-key"));
+        let openrouter = store.load_config("openrouter").unwrap();
+        assert_eq!(openrouter.api_key.as_deref(), Some("openrouter-key"));
         assert_eq!(
-            moonshot.base_url.as_deref(),
-            Some("https://api.moonshot.ai/v1")
+            openrouter.base_url.as_deref(),
+            Some("https://openrouter.ai/api/v1")
         );
-        assert_eq!(model_ids(&moonshot.models), vec!["kimi-k2.5"]);
+        assert_eq!(model_ids(&openrouter.models), vec![
+            "anthropic/claude-sonnet-4"
+        ]);
 
         let openai = store.load_config("openai").unwrap();
         assert_eq!(openai.api_key.as_deref(), Some("sk-openai"));
@@ -527,7 +529,11 @@ mod tests {
         let mut handles = Vec::new();
         for (provider, key, models) in [
             ("openai", "sk-openai", model_map(&["gpt-5"])),
-            ("moonshot", "moonshot-key", model_map(&["kimi-k2.5"])),
+            (
+                "openrouter",
+                "openrouter-key",
+                model_map(&["anthropic/claude-sonnet-4"]),
+            ),
         ] {
             let store = store.clone();
             handles.push(std::thread::spawn(move || {
@@ -545,7 +551,7 @@ mod tests {
 
         let all = store.load_all_configs();
         assert!(all.contains_key("openai"));
-        assert!(all.contains_key("moonshot"));
+        assert!(all.contains_key("openrouter"));
     }
 
     #[test]
@@ -580,7 +586,7 @@ mod tests {
         let path = dir.path().join("keys.json");
 
         let old_data = serde_json::json!({
-            "moonshot": "old-key",
+            "openrouter": "old-key",
             "openai": "sk-openai-old"
         });
         std::fs::write(&path, serde_json::to_string(&old_data).unwrap()).unwrap();
@@ -617,10 +623,13 @@ mod tests {
 
     #[test]
     fn models_param_requires_canonical_object_and_preserves_order() {
-        let models = model_map(&["gpt-5.2", "kimi-k2.5"]);
+        let models = model_map(&["gpt-5.2", "anthropic/claude-sonnet-4"]);
         let params = serde_json::json!({ "models": models });
         let parsed = parse_models_param(&params).unwrap().unwrap();
-        assert_eq!(model_ids(&parsed), vec!["gpt-5.2", "kimi-k2.5"]);
+        assert_eq!(model_ids(&parsed), vec![
+            "gpt-5.2",
+            "anthropic/claude-sonnet-4"
+        ]);
 
         let legacy = serde_json::json!({ "models": ["gpt-5.2"] });
         assert!(parse_models_param(&legacy).is_err());

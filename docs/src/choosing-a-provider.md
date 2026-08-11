@@ -9,7 +9,6 @@ by Chelix so you can pick the best fit for your use case.
 | -------------------------- | ------------- | ------------------------------------------------------------------------------------- |
 | **Widest model range**     | OpenAI        | GPT-5.5, GPT-4.1, o3/o4-mini reasoning models, image generation                       |
 | **Best membership option** | OpenAI        | GPT-5.5 is a top-quality model and can be available through memberships               |
-| **Long-context workloads** | Moonshot      | Kimi models support long-context workflows                                            |
 | **Coding plan**            | Z.AI Coding   | Dedicated coding models and billing endpoint                                          |
 
 ## Provider Comparison
@@ -20,7 +19,6 @@ by Chelix so you can pick the best fit for your use case.
 | **OpenRouter**     | Any (aggregator)              | Varies   | Yes       | Varies  | Varies            | Varies | Access 100+ models with one key                     |
 | **Z.AI (Zhipu)**   | GLM-4, GLM-4 Air              | Full     | Yes       | 128K    | $                 | Fast   | GLM-4 series, competitive quality                   |
 | **Z.AI Coding**    | CodeGeeX, GLM-4 Code          | Full     | Yes       | 128K    | $                 | Fast   | Optimized for code tasks                            |
-| **Moonshot**       | Kimi                          | Full     | Yes       | 200K    | $                 | Medium | Long context, Chinese/English                       |
 | **OpenAI Codex**   | Codex models                  | Full     | Yes       | Varies  | $$                | Fast   | OAuth-based, code-focused                           |
 
 ### Price Tier Legend
@@ -37,8 +35,7 @@ by Chelix so you can pick the best fit for your use case.
 
 ### For personal projects or experimentation
 
-Start with an existing **OpenAI** or **OpenAI Codex** account, or use
-**Moonshot** for long-context workflows.
+Start with an existing **OpenAI** or **OpenAI Codex** account.
 
 ### For production agent workflows
 

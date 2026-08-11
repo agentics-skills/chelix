@@ -24,12 +24,10 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     // OpenAI-compatible providers (table-driven)
     "alibaba-coding",
     "deepinfra",
-    "moonshot",
     "openrouter",
     "zai",
     "zai-code",
     // Feature-gated providers
-    "kimi-code",
     "openai-codex",
 ];
 

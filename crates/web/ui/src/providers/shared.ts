@@ -33,7 +33,7 @@ export function els(): ProviderModalElements {
 
 // ── Constants ───────────────────────────────────────────────
 
-export const OPENAI_COMPATIBLE_PROVIDERS: string[] = ["openai", "openrouter", "moonshot"];
+export const OPENAI_COMPATIBLE_PROVIDERS: string[] = ["openai", "openrouter"];
 
 // ── OAuth status timer ──────────────────────────────────────
 

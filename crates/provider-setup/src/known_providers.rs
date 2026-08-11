@@ -88,16 +88,6 @@ pub fn known_providers() -> Vec<KnownProvider> {
             local_only: false,
         },
         KnownProvider {
-            name: "moonshot",
-            display_name: "Moonshot",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("MOONSHOT_API_KEY"),
-            default_base_url: Some("https://api.moonshot.cn/v1"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
             name: "zai",
             display_name: "Z.AI",
             auth_type: AuthType::ApiKey,
@@ -113,16 +103,6 @@ pub fn known_providers() -> Vec<KnownProvider> {
             auth_type: AuthType::ApiKey,
             env_key: Some("Z_CODE_API_KEY"),
             default_base_url: Some("https://api.z.ai/api/coding/paas/v4"),
-            requires_model: false,
-            key_optional: false,
-            local_only: false,
-        },
-        KnownProvider {
-            name: "kimi-code",
-            display_name: "Kimi Code",
-            auth_type: AuthType::ApiKey,
-            env_key: Some("KIMI_API_KEY"),
-            default_base_url: Some("https://api.kimi.com/coding/v1"),
             requires_model: false,
             key_optional: false,
             local_only: false,
@@ -203,20 +183,16 @@ mod tests {
         let names: Vec<&str> = providers.iter().map(|p| p.name).collect();
         // OpenAI-compatible providers
         assert!(names.contains(&"openrouter"), "missing openrouter");
-        assert!(names.contains(&"moonshot"), "missing moonshot");
         assert!(names.contains(&"zai"), "missing zai");
         assert!(names.contains(&"zai-code"), "missing zai-code");
-        assert!(names.contains(&"kimi-code"), "missing kimi-code");
     }
 
     #[test]
     fn new_api_key_providers_have_correct_env_keys() {
         let expected = [
             ("openrouter", "OPENROUTER_API_KEY"),
-            ("moonshot", "MOONSHOT_API_KEY"),
             ("zai", "Z_API_KEY"),
             ("zai-code", "Z_CODE_API_KEY"),
-            ("kimi-code", "KIMI_API_KEY"),
         ];
         let providers = known_providers();
         for (name, env_key) in expected {

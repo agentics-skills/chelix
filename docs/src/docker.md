@@ -375,7 +375,7 @@ services:
 ```
 
 `CHELIX_PROVIDER` must be a Chelix provider name such as `openai`, `openrouter`,
-or `moonshot`. The shorter aliases `PROVIDER` and
+or `zai`. The shorter aliases `PROVIDER` and
 `API_KEY` also work, but the `CHELIX_*` names are preferred because they are
 less likely to collide with other containers.
 

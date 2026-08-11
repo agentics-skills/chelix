@@ -135,7 +135,7 @@ impl LiveProviderSetupService {
             }
 
             // Remove OAuth tokens
-            if known.auth_type == AuthType::Oauth || provider_name == "kimi-code" {
+            if known.auth_type == AuthType::Oauth {
                 let _ = self.token_store.delete(provider_name);
             }
 

@@ -961,7 +961,7 @@ mod tests {
             "channel_overrides": {
                 "C123": {
                     "model": "old-model",
-                    "model_provider": "moonshot"
+                    "model_provider": "openrouter"
                 }
             }
         });
@@ -977,7 +977,7 @@ mod tests {
         assert_eq!(merged["channel_overrides"]["C123"]["model"], "new-model");
         assert_eq!(
             merged["channel_overrides"]["C123"]["model_provider"],
-            "moonshot"
+            "openrouter"
         );
     }
 

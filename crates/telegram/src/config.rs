@@ -86,12 +86,12 @@ pub struct TelegramAccountConfig {
     /// progress message. Older progress is discarded from the visible tail.
     pub stream_progress_max_chars: usize,
 
-    /// Default model ID for this bot's sessions (e.g. "kimi-k2.5").
+    /// Default model ID for this bot's sessions (e.g. "anthropic/claude-sonnet-4").
     /// When set, channel messages use this model instead of the first registered provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 
-    /// Provider name associated with `model` (e.g. "moonshot").
+    /// Provider name associated with `model` (e.g. "openrouter").
     /// Stored alongside the model ID for display and debugging; the registry
     /// resolves the provider from the model ID at runtime.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -379,22 +379,22 @@ mod tests {
                 "-100123": { "model": "gpt-4", "agent_id": "group-agent" }
             },
             "user_overrides": {
-                "456": { "model": "kimi-k2.5", "model_provider": "moonshot", "agent_id": "user-agent" }
+                "456": { "model": "anthropic/claude-sonnet-4", "model_provider": "openrouter", "agent_id": "user-agent" }
             }
         });
         let cfg: TelegramAccountConfig = serde_json::from_value(json).unwrap();
         assert_eq!(cfg.channel_model("-100123"), Some("gpt-4"));
         assert!(cfg.channel_model_provider("-100123").is_none());
         assert_eq!(cfg.channel_agent_id("-100123"), Some("group-agent"));
-        assert_eq!(cfg.user_model("456"), Some("kimi-k2.5"));
-        assert_eq!(cfg.user_model_provider("456"), Some("moonshot"));
+        assert_eq!(cfg.user_model("456"), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(cfg.user_model_provider("456"), Some("openrouter"));
         assert_eq!(cfg.user_agent_id("456"), Some("user-agent"));
 
         // Round-trip preserves overrides
         let value = serde_json::to_value(&cfg).unwrap();
         let cfg2: TelegramAccountConfig = serde_json::from_value(value).unwrap();
         assert_eq!(cfg2.channel_model("-100123"), Some("gpt-4"));
-        assert_eq!(cfg2.user_model("456"), Some("kimi-k2.5"));
+        assert_eq!(cfg2.user_model("456"), Some("anthropic/claude-sonnet-4"));
         assert_eq!(cfg2.channel_agent_id("-100123"), Some("group-agent"));
         assert_eq!(cfg2.user_agent_id("456"), Some("user-agent"));
     }

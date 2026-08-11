@@ -7,12 +7,6 @@ export interface ValidationResult {
 	message: string | null;
 }
 
-export interface OAuthInfo {
-	status: string;
-	uri?: string;
-	code?: string;
-}
-
 export interface IdentityInfo {
 	user_name?: string;
 	name?: string;

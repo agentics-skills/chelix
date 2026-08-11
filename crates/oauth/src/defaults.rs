@@ -5,17 +5,6 @@ use crate::{config_dir::chelix_config_dir, types::OAuthConfig};
 /// Default OAuth configurations for known providers.
 fn builtin_defaults() -> HashMap<String, OAuthConfig> {
     let mut m = HashMap::new();
-    m.insert("kimi-code".into(), OAuthConfig {
-        client_id: "17e5f671-d194-4dfb-9706-5516cb48c098".into(),
-        client_secret: None,
-        auth_url: "https://auth.kimi.com/api/oauth/device_authorization".into(),
-        token_url: "https://auth.kimi.com/api/oauth/token".into(),
-        redirect_uri: String::new(),
-        resource: None,
-        scopes: vec![],
-        extra_auth_params: vec![],
-        device_flow: true,
-    });
     m.insert("openai-codex".into(), OAuthConfig {
         client_id: "app_EMoamEEZ73f0CkXaXp7hrann".into(),
         client_secret: None,
@@ -33,7 +22,6 @@ fn builtin_defaults() -> HashMap<String, OAuthConfig> {
             ("id_token_add_organizations".into(), "true".into()),
             ("codex_cli_simplified_flow".into(), "true".into()),
         ],
-        device_flow: false,
     });
     m
 }
@@ -98,21 +86,7 @@ mod tests {
     #[test]
     fn load_openai_codex_config() {
         let config = load_oauth_config("openai-codex").expect("should have openai-codex");
-        assert!(!config.device_flow);
         assert!(!config.redirect_uri.is_empty());
-    }
-
-    #[test]
-    fn load_kimi_code_config() {
-        let config = load_oauth_config("kimi-code").expect("should have kimi-code");
-        assert_eq!(config.client_id, "17e5f671-d194-4dfb-9706-5516cb48c098");
-        assert!(config.device_flow);
-        assert!(config.redirect_uri.is_empty());
-        assert_eq!(
-            config.auth_url,
-            "https://auth.kimi.com/api/oauth/device_authorization"
-        );
-        assert_eq!(config.token_url, "https://auth.kimi.com/api/oauth/token");
     }
 
     #[test]
@@ -123,13 +97,6 @@ mod tests {
     #[test]
     fn callback_port_with_redirect_uri() {
         let config = load_oauth_config("openai-codex").unwrap();
-        assert_eq!(callback_port(&config), 1455);
-    }
-
-    #[test]
-    fn callback_port_empty_redirect_uri_uses_default() {
-        let config = load_oauth_config("kimi-code").unwrap();
-        assert!(config.redirect_uri.is_empty());
         assert_eq!(callback_port(&config), 1455);
     }
 }

@@ -23,7 +23,7 @@ export DEEPGRAM_API_KEY=""
 # ── Web search ───────────────────────────────────────────────────
 
 # ── Restrict offered providers (optional) ────────────────────────
-# export CHELIX_PROVIDERS__OFFERED='["openai","moonshot","openrouter"]'
+# export CHELIX_PROVIDERS__OFFERED='["openai","openrouter"]'
 
 # ── Skip onboarding entirely (optional) ─────────────────────────
 # export SKIP_ONBOARDING=1

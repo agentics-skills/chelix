@@ -72,13 +72,6 @@ impl OpenAiProvider {
         }
     }
 
-    fn requires_reasoning_content_on_tool_messages(&self) -> bool {
-        if let Some(explicit) = self.reasoning_content_override {
-            return explicit;
-        }
-        self.capabilities.default_reasoning_content_on_tool_messages
-    }
-
     /// Convert raw tool schemas into the provider-compatible Chat
     /// Completions format.
     pub(super) fn prepare_chat_tools(
@@ -149,16 +142,11 @@ impl OpenAiProvider {
         &self,
         messages: &[ChatMessage],
     ) -> Vec<serde_json::Value> {
-        let needs_reasoning_content = self.requires_reasoning_content_on_tool_messages();
         let mut remapped_tool_call_ids = HashMap::new();
         let mut used_tool_call_ids = HashSet::new();
         let mut out = Vec::with_capacity(messages.len());
 
         for message in messages {
-            let assistant_reasoning = match message {
-                ChatMessage::Assistant { reasoning, .. } => reasoning.as_deref(),
-                _ => None,
-            };
             let mut value = message.to_openai_value();
 
             if let Some(tool_calls) = value
@@ -194,36 +182,6 @@ impl OpenAiProvider {
                         )
                     });
                 value["tool_call_id"] = serde_json::Value::String(mapped_id);
-            }
-
-            if needs_reasoning_content {
-                let is_assistant =
-                    value.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
-                let has_tool_calls = value
-                    .get("tool_calls")
-                    .and_then(serde_json::Value::as_array)
-                    .is_some_and(|calls| !calls.is_empty());
-
-                if is_assistant && has_tool_calls {
-                    let reasoning_content = assistant_reasoning
-                        .filter(|reasoning| !reasoning.trim().is_empty())
-                        .map(str::to_string)
-                        .or_else(|| {
-                            value
-                                .get("content")
-                                .and_then(serde_json::Value::as_str)
-                                .map(str::to_string)
-                        })
-                        .unwrap_or_default();
-
-                    if value.get("content").is_none() {
-                        value["content"] = serde_json::Value::String(String::new());
-                    }
-
-                    if value.get("reasoning_content").is_none() {
-                        value["reasoning_content"] = serde_json::Value::String(reasoning_content);
-                    }
-                }
             }
 
             out.push(value);
@@ -447,18 +405,6 @@ mod tests {
         assert_eq!(messages[1]["role"], "user");
     }
 
-    // ── reasoning_content overrides ─────────────────────────────────
-
-    #[test]
-    fn reasoning_content_override_true_enables_reasoning() {
-        let p = provider("kimi-k2.5", "moonshot", "https://api.moonshot.ai/v1")
-            .with_reasoning_content(true);
-        assert!(
-            p.requires_reasoning_content_on_tool_messages(),
-            "reasoning_content_override=true must enable reasoning_content"
-        );
-    }
-
     #[test]
     fn openrouter_cache_control_is_capability_driven() {
         let p = provider(
@@ -503,105 +449,6 @@ mod tests {
 
         assert_eq!(messages[0]["content"], "sys");
         assert_eq!(messages[1]["content"], "hello");
-    }
-
-    #[test]
-    fn provider_defaults_to_no_reasoning_content() {
-        let p = provider("custom-model", "custom", "https://example.invalid/v1");
-        assert!(
-            !p.requires_reasoning_content_on_tool_messages(),
-            "providers should not add reasoning_content by default"
-        );
-    }
-
-    #[test]
-    fn moonshot_direct_auto_detects_reasoning_content() {
-        let p = provider("kimi-k2.5", "moonshot", "https://api.moonshot.ai/v1").with_capabilities(
-            OpenAiProviderCapabilities {
-                default_reasoning_content_on_tool_messages: true,
-                ..OpenAiProviderCapabilities::DEFAULT
-            },
-        );
-        assert!(p.requires_reasoning_content_on_tool_messages());
-    }
-
-    // ── Wire-format tests ───────────────────────────────────────────
-
-    /// Kimi with reasoning_content=true must inject `reasoning_content` into
-    /// assistant messages that carry tool calls.
-    #[test]
-    fn kimi_injects_reasoning_content_on_tool_call_messages() {
-        let p = provider("kimi-k2.5", "moonshot", "https://api.moonshot.ai/v1")
-            .with_reasoning_content(true);
-
-        let messages = vec![
-            ChatMessage::user("What's the weather?"),
-            ChatMessage::assistant_with_tools(Some("thinking about weather".to_string()), vec![
-                chelix_agents::model::ToolCall {
-                    id: "call_123".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: serde_json::json!({"location": "Berlin"}),
-                    argument_diagnostic: None,
-                },
-            ]),
-            ChatMessage::tool("call_123", r#"{"temperature": 20}"#),
-        ];
-
-        let serialized = p.serialize_messages_for_request(&messages);
-        assert_eq!(serialized.len(), 3);
-
-        let assistant_msg = &serialized[1];
-        assert_eq!(assistant_msg["role"], "assistant");
-        assert!(
-            assistant_msg.get("reasoning_content").is_some(),
-            "assistant tool-call message must have reasoning_content, got: {assistant_msg}"
-        );
-    }
-
-    #[test]
-    fn explicit_policy_replays_persisted_tool_reasoning_content() {
-        let p = provider("deepseek-v4-flash", "custom", "https://example.invalid/v1")
-            .with_reasoning_content(true);
-        let persisted = vec![
-            serde_json::json!({"role": "user", "content": "What is the weather?"}),
-            serde_json::json!({
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [{
-                    "id": "call_959",
-                    "type": "function",
-                    "function": {
-                        "name": "get_weather",
-                        "arguments": "{\"location\":\"Berlin\"}"
-                    }
-                }]
-            }),
-            serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call_959",
-                "tool_name": "get_weather",
-                "success": true,
-                "result": {"temperature": 20},
-                "reasoning": "Need live weather before answering."
-            }),
-            serde_json::json!({"role": "assistant", "content": "It is 20 C."}),
-            serde_json::json!({"role": "user", "content": "What about tomorrow?"}),
-        ];
-        let messages = chelix_agents::model::values_to_chat_messages(&persisted);
-
-        let serialized = p.serialize_messages_for_request(&messages);
-
-        let Some(assistant_tool_message) = serialized.iter().find(|message| {
-            message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
-                && message.get("tool_calls").is_some()
-        }) else {
-            panic!("assistant tool-call message should be serialized");
-        };
-        assert_eq!(
-            assistant_tool_message["reasoning_content"],
-            "Need live weather before answering."
-        );
-        assert_eq!(assistant_tool_message["content"], "");
     }
 
     /// OpenAI provider must preserve the (sanitized) `name` field.

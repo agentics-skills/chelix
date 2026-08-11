@@ -214,7 +214,6 @@ impl McpOAuthProvider {
             resource,
             scopes: Vec::new(),
             extra_auth_params: Vec::new(),
-            device_flow: false,
         };
 
         let flow = OAuthFlow::new(config);
@@ -286,7 +285,6 @@ impl McpOAuthProvider {
             resource: Some(resource),
             scopes,
             extra_auth_params: Vec::new(),
-            device_flow: false,
         };
         let resource_display = config
             .resource

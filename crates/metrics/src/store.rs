@@ -393,7 +393,7 @@ mod tests {
         let mut point = make_point(1000, 10);
         point
             .by_provider
-            .insert("moonshot".to_string(), ProviderTokens {
+            .insert("openrouter".to_string(), ProviderTokens {
                 input_tokens: 500,
                 output_tokens: 200,
                 completions: 5,
@@ -413,7 +413,7 @@ mod tests {
         let history = store.load_history(0, 100).await.unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].by_provider.len(), 2);
-        assert_eq!(history[0].by_provider["moonshot"].input_tokens, 500);
+        assert_eq!(history[0].by_provider["openrouter"].input_tokens, 500);
         assert_eq!(history[0].by_provider["openai"].errors, 1);
     }
 
