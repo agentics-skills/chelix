@@ -284,7 +284,6 @@ fn parse_tool_call_json(content: &str) -> Option<ToolCall> {
         name,
         arguments,
         argument_diagnostic: None,
-        metadata: None,
     })
 }
 

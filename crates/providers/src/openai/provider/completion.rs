@@ -479,7 +479,6 @@ impl OpenAiProvider {
                     name,
                     arguments: decoded.arguments,
                     argument_diagnostic: decoded.diagnostic,
-                    metadata: None,
                 })
             })
             .collect();

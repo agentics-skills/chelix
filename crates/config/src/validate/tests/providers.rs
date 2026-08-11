@@ -117,7 +117,7 @@ enabled = true
 #[test]
 fn valid_known_providers_are_accepted() {
     let toml = r#"
-[providers.gemini]
+[providers.moonshot]
 enabled = true
 
 [providers.openai]

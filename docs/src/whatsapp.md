@@ -96,8 +96,8 @@ automated deployments or when you want to pre-configure settings before pairing.
 
 [channels.whatsapp."my-whatsapp"]
 dm_policy = "open"
-model = "gemini/gemini-2.5-pro"
-model_provider = "gemini"
+model = "kimi-k2.5"
+model_provider = "moonshot"
 ```
 
 Start Chelix and the account will begin the pairing process. The QR code is
@@ -110,8 +110,8 @@ paired = true
 display_name = "John's iPhone"
 phone_number = "+15551234567"
 dm_policy = "open"
-model = "gemini/gemini-2.5-pro"
-model_provider = "gemini"
+model = "kimi-k2.5"
+model_provider = "moonshot"
 ```
 
 ## Configuration Reference
@@ -146,8 +146,8 @@ Each WhatsApp account is a named entry under `[channels.whatsapp]`:
 paired = true
 display_name = "John's iPhone"
 phone_number = "+15551234567"
-model = "gemini/gemini-2.5-pro"
-model_provider = "gemini"
+model = "kimi-k2.5"
+model_provider = "moonshot"
 agent_id = "personal"
 dm_policy = "allowlist"
 allowlist = ["alice", "bob", "+15559876543"]
@@ -180,7 +180,7 @@ agent_id = "support"
 agent_id = "triage"
 
 [channels.whatsapp."work-bot.user_overrides"."15551234567@s.whatsapp.net"]
-model = "gemini/gemini-2.5-pro"
+model = "kimi-k2.5"
 agent_id = "research"
 ```
 

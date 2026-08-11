@@ -432,11 +432,11 @@ mod tests {
     fn config_with_saved_keys_merges() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("gemini", "saved-key").unwrap();
+        store.save("moonshot", "saved-key").unwrap();
 
         let base = ProvidersConfig::default();
         let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
-        let entry = merged.get("gemini").unwrap();
+        let entry = merged.get("moonshot").unwrap();
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
             Some("saved-key")
@@ -447,15 +447,15 @@ mod tests {
     fn config_with_saved_keys_does_not_override_existing() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("gemini", "saved-key").unwrap();
+        store.save("moonshot", "saved-key").unwrap();
 
         let mut base = ProvidersConfig::default();
-        base.providers.insert("gemini".into(), ProviderEntry {
+        base.providers.insert("moonshot".into(), ProviderEntry {
             api_key: Some(Secret::new("config-key".into())),
             ..Default::default()
         });
         let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
-        let entry = merged.get("gemini").unwrap();
+        let entry = merged.get("moonshot").unwrap();
         // Config key takes precedence over saved key.
         assert_eq!(
             entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),

@@ -79,10 +79,6 @@ impl OpenAiProvider {
         self.capabilities.default_reasoning_content_on_tool_messages
     }
 
-    fn requires_gemini_tool_call_extra_content(&self) -> bool {
-        self.capabilities.requires_gemini_tool_call_extra_content
-    }
-
     /// Convert raw tool schemas into the provider-compatible Chat
     /// Completions format.
     pub(super) fn prepare_chat_tools(
@@ -154,7 +150,6 @@ impl OpenAiProvider {
         messages: &[ChatMessage],
     ) -> Vec<serde_json::Value> {
         let needs_reasoning_content = self.requires_reasoning_content_on_tool_messages();
-        let needs_gemini_tool_call_extra_content = self.requires_gemini_tool_call_extra_content();
         let mut remapped_tool_call_ids = HashMap::new();
         let mut used_tool_call_ids = HashSet::new();
         let mut out = Vec::with_capacity(messages.len());
@@ -182,15 +177,6 @@ impl OpenAiProvider {
                         &mut used_tool_call_ids,
                     );
                     tool_call["id"] = serde_json::Value::String(mapped_id);
-
-                    if needs_gemini_tool_call_extra_content
-                        && let Some(thought_signature) = tool_call
-                            .as_object_mut()
-                            .and_then(|obj| obj.remove("thought_signature"))
-                    {
-                        tool_call["extra_content"]["google"]["thought_signature"] =
-                            thought_signature;
-                    }
                 }
             } else if value.get("role").and_then(serde_json::Value::as_str) == Some("tool")
                 && let Some(tool_call_id) = value
@@ -474,64 +460,6 @@ mod tests {
     }
 
     #[test]
-    fn gemini_serializes_thought_signature_as_extra_content() {
-        let p = provider(
-            "gemini-3.1-flash-lite",
-            "gemini",
-            "https://generativelanguage.googleapis.com/v1beta/openai",
-        )
-        .with_capabilities(OpenAiProviderCapabilities {
-            requires_gemini_tool_call_extra_content: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        });
-        let mut metadata = serde_json::Map::new();
-        metadata.insert("thought_signature".to_string(), serde_json::json!("sig123"));
-        let messages =
-            p.serialize_messages_for_request(&[ChatMessage::assistant_with_tools(None, vec![
-                chelix_agents::model::ToolCall {
-                    id: "call_1".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: serde_json::json!({"location": "London"}),
-                    argument_diagnostic: None,
-                    metadata: Some(metadata),
-                },
-            ])]);
-
-        let tool_call = &messages[0]["tool_calls"][0];
-        assert!(tool_call.get("thought_signature").is_none());
-        assert_eq!(
-            tool_call["extra_content"]["google"]["thought_signature"],
-            "sig123"
-        );
-    }
-
-    #[test]
-    fn custom_provider_with_gemini_url_does_not_get_gemini_extra_content() {
-        let p = provider(
-            "gemini-3.1-flash-lite",
-            "custom-gemini",
-            "https://generativelanguage.googleapis.com/v1beta/openai",
-        );
-        let mut metadata = serde_json::Map::new();
-        metadata.insert("thought_signature".to_string(), serde_json::json!("sig123"));
-
-        let messages =
-            p.serialize_messages_for_request(&[ChatMessage::assistant_with_tools(None, vec![
-                chelix_agents::model::ToolCall {
-                    id: "call_1".to_string(),
-                    name: "get_weather".to_string(),
-                    arguments: serde_json::json!({"location": "London"}),
-                    argument_diagnostic: None,
-                    metadata: Some(metadata),
-                },
-            ])]);
-
-        let tool_call = &messages[0]["tool_calls"][0];
-        assert_eq!(tool_call["thought_signature"], "sig123");
-        assert!(tool_call.get("extra_content").is_none());
-    }
-
-    #[test]
     fn openrouter_cache_control_is_capability_driven() {
         let p = provider(
             "anthropic/claude-sonnet-4-20250514",
@@ -614,7 +542,6 @@ mod tests {
                     name: "get_weather".to_string(),
                     arguments: serde_json::json!({"location": "Berlin"}),
                     argument_diagnostic: None,
-                    metadata: None,
                 },
             ]),
             ChatMessage::tool("call_123", r#"{"temperature": 20}"#),

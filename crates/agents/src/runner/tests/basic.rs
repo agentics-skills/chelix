@@ -378,7 +378,6 @@ impl LlmProvider for ToolCallContextStreamingProvider {
                     id: "call_runtime_context".into(),
                     name: "capture_context".into(),
                     index: 0,
-                    metadata: None,
                 },
                 StreamEvent::ToolCallArgumentsDelta {
                     index: 0,
@@ -957,7 +956,6 @@ impl LlmProvider for NonStreamingUsageProvider {
                     name: "echo_tool".into(),
                     arguments: serde_json::json!({"text": "hi"}),
                     argument_diagnostic: None,
-                    metadata: None,
                 }],
                 usage: Usage {
                     input_tokens: 100,
@@ -1079,7 +1077,6 @@ impl LlmProvider for CommandSimulatingProvider {
                     name: "execute_command".into(),
                     arguments: serde_json::json!({"command": "echo hello"}),
                     argument_diagnostic: None,
-                    metadata: None,
                 }],
                 usage: Usage {
                     input_tokens: 10,
@@ -1243,7 +1240,6 @@ impl LlmProvider for HookModifiedCommandProvider {
                     name: "execute_command".into(),
                     arguments: serde_json::json!({"command": "echo should-not-run"}),
                     argument_diagnostic: None,
-                    metadata: None,
                 }],
                 usage: Usage::default(),
             })

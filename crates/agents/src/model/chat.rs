@@ -196,22 +196,14 @@ impl ChatMessage {
                     let tc_json: Vec<serde_json::Value> = tool_calls
                         .iter()
                         .map(|tc| {
-                            let mut tc_val = serde_json::json!({
+                            serde_json::json!({
                                 "id": tc.id,
                                 "type": "function",
                                 "function": {
                                     "name": tc.name,
                                     "arguments": tc.arguments.to_string(),
                                 }
-                            });
-                            if let Some(ref meta) = tc.metadata
-                                && let Some(obj) = tc_val.as_object_mut()
-                            {
-                                for (k, v) in meta {
-                                    obj.insert(k.clone(), v.clone());
-                                }
-                            }
-                            tc_val
+                            })
                         })
                         .collect();
                     let mut msg = serde_json::json!({

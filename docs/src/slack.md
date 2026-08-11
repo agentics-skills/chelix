@@ -125,8 +125,8 @@ group_policy = "open"
 mention_mode = "mention"
 allowlist = ["U0123456789", "U9876543210"]
 channel_allowlist = ["C0123456789"]
-model = "gemini-2.5-pro"
-model_provider = "gemini"
+model = "kimi-k2.5"
+model_provider = "moonshot"
 stream_mode = "edit_in_place"
 edit_throttle_ms = 500
 thread_replies = true
@@ -137,8 +137,8 @@ model = "gpt-4o"
 
 # Per-user override: use a specific model/provider for a Slack user
 [channels.slack.my-bot.user_overrides.U0123456789]
-model = "gemini-2.5-pro"
-model_provider = "gemini"
+model = "kimi-k2.5"
+model_provider = "moonshot"
 ```
 
 ### Events API Mode

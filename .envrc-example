@@ -9,7 +9,6 @@ export CHELIX_USER__NAME=""                    # your name
 
 # ── LLM Provider API keys ────────────────────────────────────────
 export OPENAI_API_KEY=""
-export GEMINI_API_KEY=""                       # Google Gemini (or use GOOGLE_API_KEY)
 export OPENROUTER_API_KEY=""
 
 # ── Voice: TTS ───────────────────────────────────────────────────
@@ -24,7 +23,7 @@ export DEEPGRAM_API_KEY=""
 # ── Web search ───────────────────────────────────────────────────
 
 # ── Restrict offered providers (optional) ────────────────────────
-# export CHELIX_PROVIDERS__OFFERED='["openai","gemini","openrouter"]'
+# export CHELIX_PROVIDERS__OFFERED='["openai","moonshot","openrouter"]'
 
 # ── Skip onboarding entirely (optional) ─────────────────────────
 # export SKIP_ONBOARDING=1

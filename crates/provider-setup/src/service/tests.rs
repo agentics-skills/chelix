@@ -212,7 +212,7 @@ async fn available_respects_offered_order() {
         &HashMap::new(),
     )));
     let config = ProvidersConfig {
-        offered: vec!["openai-codex".into(), "openai".into(), "gemini".into()],
+        offered: vec!["openai-codex".into(), "openai".into(), "openrouter".into()],
         ..ProvidersConfig::default()
     };
     let svc = live_provider_setup_service(registry, config, None);
@@ -233,13 +233,13 @@ async fn available_respects_offered_order() {
         .iter()
         .position(|name| *name == "openai")
         .expect("openai should be present");
-    let gemini_idx = names
+    let openrouter_idx = names
         .iter()
-        .position(|name| *name == "gemini")
-        .expect("gemini should be present");
+        .position(|name| *name == "openrouter")
+        .expect("openrouter should be present");
 
     assert!(
-        openai_codex_idx < openai_idx && openai_idx < gemini_idx,
+        openai_codex_idx < openai_idx && openai_idx < openrouter_idx,
         "offered provider order should be preserved, got: {names:?}"
     );
 }
@@ -254,7 +254,7 @@ async fn available_hides_configured_provider_outside_offered() {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
     };
-    config.providers.insert("gemini".into(), ProviderEntry {
+    config.providers.insert("moonshot".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
         ..Default::default()
     });
@@ -274,7 +274,7 @@ async fn available_hides_configured_provider_outside_offered() {
         .expect("openai should be present");
 
     assert!(
-        !names.contains(&"gemini"),
+        !names.contains(&"moonshot"),
         "providers outside offered should be hidden even when configured, got: {names:?}"
     );
     assert_eq!(openai_idx, 0);

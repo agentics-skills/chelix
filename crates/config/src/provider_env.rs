@@ -122,7 +122,6 @@ pub fn normalize_provider_name(value: &str) -> Option<String> {
     }
 
     let canonical = match normalized.as_str() {
-        "google" | "google-gemini" => "gemini",
         "z-ai" | "z.ai" | "zhipu" | "zhipu-ai" => "zai",
         "zai-code" | "zai-coding" | "zhipu-code" => "zai-code",
         "alibaba" | "alibaba-coding" | "dashscope-coding" => "alibaba-coding",
@@ -153,7 +152,7 @@ mod tests {
     #[test]
     fn generic_provider_env_prefers_namespaced_keys() {
         let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "gemini".to_string()),
+            ("PROVIDER".to_string(), "moonshot".to_string()),
             ("API_KEY".to_string(), "fallback-key".to_string()),
             ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
             ("CHELIX_API_KEY".to_string(), "primary-key".to_string()),
@@ -166,19 +165,6 @@ mod tests {
         assert_eq!(resolved.provider_var, "CHELIX_PROVIDER");
         assert_eq!(resolved.api_key.expose_secret(), "primary-key");
         assert_eq!(resolved.api_key_var, "CHELIX_API_KEY");
-    }
-
-    #[test]
-    fn generic_provider_env_normalizes_common_aliases() {
-        let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "google".to_string()),
-            ("API_KEY".to_string(), "test-key".to_string()),
-        ]);
-
-        let Some(resolved) = generic_provider_env_from_source(&env_overrides, |_| None) else {
-            panic!("generic provider env should resolve");
-        };
-        assert_eq!(resolved.provider, "gemini");
     }
 
     #[test]
@@ -242,20 +228,24 @@ mod tests {
                 .map(|value| value.as_str()),
             Some("sk-test")
         );
-        assert!(generic_provider_api_key_from_source("gemini", &env_overrides, |_| None).is_none());
+        assert!(
+            generic_provider_api_key_from_source("moonshot", &env_overrides, |_| None).is_none()
+        );
     }
 
     #[test]
     fn generic_provider_source_reports_actual_env_keys() {
         let env_overrides = HashMap::from([
-            ("PROVIDER".to_string(), "gemini".to_string()),
+            ("PROVIDER".to_string(), "moonshot".to_string()),
             ("API_KEY".to_string(), "sk-test".to_string()),
         ]);
 
         assert_eq!(
-            generic_provider_env_source_for_provider_from_source("gemini", &env_overrides, |_| {
-                None
-            },)
+            generic_provider_env_source_for_provider_from_source(
+                "moonshot",
+                &env_overrides,
+                |_| { None },
+            )
             .as_deref(),
             Some("env:PROVIDER+API_KEY")
         );
@@ -268,8 +258,6 @@ mod tests {
         use crate::schema::KNOWN_PROVIDER_NAMES;
 
         let aliases = [
-            "google",
-            "google-gemini",
             "z-ai",
             "z.ai",
             "zhipu",

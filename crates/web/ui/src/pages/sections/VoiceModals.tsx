@@ -287,7 +287,7 @@ function PersonaPromptFields({ draft, onChange }: { draft: PersonaDraft; onChang
 		<>
 			<hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "4px 0" }} />
 			<p className="text-xs text-[var(--muted)]" style={{ margin: 0 }}>
-				Voice direction — controls tone on providers that support instructions (OpenAI gpt-4o-mini-tts, Gemini TTS).
+				Voice direction — controls tone on providers that support instructions (OpenAI gpt-4o-mini-tts).
 			</p>
 			<PersonaField
 				label="Character Profile"

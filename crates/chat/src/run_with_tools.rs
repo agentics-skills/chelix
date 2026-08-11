@@ -114,7 +114,6 @@ async fn persist_tool_segment(
                 tool_call.id.clone(),
                 tool_call.name.clone(),
                 Some(tool_call.arguments.clone()),
-                tool_call.metadata.clone(),
             )
         })
         .collect();
@@ -401,7 +400,6 @@ pub(crate) async fn run_with_tools(
                     id,
                     name,
                     arguments,
-                    metadata: _,
                     iteration_tool_calls,
                     iteration_usage,
                 } => {

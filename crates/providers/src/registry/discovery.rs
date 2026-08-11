@@ -220,9 +220,5 @@ pub(crate) fn resolve_compatible_api_key(
     if !definition.requires_api_key {
         return key.or_else(|| Some(secrecy::Secret::new(definition.config_name.into())));
     }
-    if definition.config_name == "gemini" {
-        return key
-            .or_else(|| env_value(env_overrides, "GOOGLE_API_KEY").map(secrecy::Secret::new));
-    }
     key
 }

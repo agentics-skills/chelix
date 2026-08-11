@@ -376,8 +376,8 @@ otp_self_approval = true
 otp_cooldown_secs = 300
 
 [channels.matrix.my-bot.channel_overrides."!ops:example.com"]
-model = "gemini-2.5-pro"
-model_provider = "gemini"
+model = "kimi-k2.5"
+model_provider = "moonshot"
 
 [channels.matrix.my-bot.user_overrides."@alice:example.com"]
 model = "o3"

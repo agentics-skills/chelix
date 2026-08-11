@@ -626,8 +626,8 @@ mod tests {
     #[test]
     fn test_provider_included() {
         let raw = "Connection timed out";
-        let result = parse_chat_error(raw, Some("gemini"));
-        assert_eq!(result["provider"], "gemini");
+        let result = parse_chat_error(raw, Some("moonshot"));
+        assert_eq!(result["provider"], "moonshot");
     }
 
     #[test]

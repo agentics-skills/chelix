@@ -91,7 +91,7 @@ pub enum ToolRegistryMode {
 ///
 /// ```toml
 /// [auxiliary]
-/// title_generation = "openrouter/google/gemini-2.5-flash"
+/// title_generation = "openrouter/openai/gpt-5-mini"
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]

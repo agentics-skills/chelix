@@ -121,7 +121,6 @@ fn stream_events(round: ScriptedRound) -> Vec<StreamEvent> {
                     id: tool_call.id,
                     name: tool_call.name,
                     index,
-                    metadata: tool_call.metadata,
                 });
                 events.push(StreamEvent::ToolCallArgumentsDelta {
                     index,
@@ -174,7 +173,6 @@ fn call(id: &str, name: &str, arguments: serde_json::Value) -> ToolCall {
         name: name.to_string(),
         arguments,
         argument_diagnostic: None,
-        metadata: None,
     }
 }
 

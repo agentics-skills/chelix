@@ -543,7 +543,6 @@ impl LlmProvider for OpenAiCodexProvider {
                 name: fn_call_names[i].clone(),
                 arguments: decoded.arguments,
                 argument_diagnostic: decoded.diagnostic,
-                metadata: None,
             });
         }
 
@@ -742,7 +741,7 @@ impl LlmProvider for OpenAiCodexProvider {
                                 current_tool_index += 1;
                                 current_tool_has_arg_delta = false;
                                 tool_calls.insert(index, (id.clone(), name.clone()));
-                                yield StreamEvent::ToolCallStart { id, name, index, metadata: None };
+                                yield StreamEvent::ToolCallStart { id, name, index };
                             }
                             "response.function_call_arguments.delta" => {
                                 if let Some(delta) = evt["delta"].as_str()
@@ -1057,7 +1056,6 @@ mod tests {
                 name: "get_time".to_string(),
                 arguments: serde_json::json!({}),
                 argument_diagnostic: None,
-                metadata: None,
             }]),
             ChatMessage::tool("call_1", "12:00"),
         ];
@@ -1188,7 +1186,6 @@ mod tests {
                 name: "browser_screenshot".to_string(),
                 arguments: serde_json::json!({}),
                 argument_diagnostic: None,
-                metadata: None,
             }]),
             ChatMessage::tool("call_screenshot", &tool_output),
             ChatMessage::assistant("Here is the screenshot."),

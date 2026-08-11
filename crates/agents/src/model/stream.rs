@@ -27,8 +27,6 @@ pub enum StreamEvent {
         name: String,
         /// Index of this tool call in the response (0-based).
         index: usize,
-        /// Provider-specific metadata (e.g. Gemini `thought_signature`).
-        metadata: Option<serde_json::Map<String, serde_json::Value>>,
     },
     /// Streaming delta for tool call arguments (JSON fragment).
     ToolCallArgumentsDelta {
@@ -48,12 +46,12 @@ pub enum StreamEvent {
     Error(String),
 }
 
-/// LLM provider trait (OpenAI, Google, and other supported backends).
+/// LLM provider trait.
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     fn name(&self) -> &str;
 
-    /// Model identifier (e.g. "gpt-5.2", "gemini-2.5-pro").
+    /// Model identifier (e.g. "gpt-5.2").
     fn id(&self) -> &str;
 
     async fn complete(

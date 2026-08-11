@@ -327,12 +327,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                         cb(RunnerEvent::ThinkingText(accumulated_reasoning.clone()));
                     }
                 },
-                StreamEvent::ToolCallStart {
-                    id,
-                    name,
-                    index,
-                    metadata,
-                } => {
+                StreamEvent::ToolCallStart { id, name, index } => {
                     let vec_pos = tool_calls.len();
                     debug!(tool = %name, id = %id, stream_index = index, vec_pos, "tool call started in stream");
                     tool_calls.push(ToolCall {
@@ -340,7 +335,6 @@ pub async fn run_agent_loop_streaming_with_limits(
                         name,
                         arguments: serde_json::json!({}),
                         argument_diagnostic: None,
-                        metadata,
                     });
                     stream_idx_to_vec_pos.insert(index, vec_pos);
                     tool_call_args.insert(index, String::new());
@@ -757,7 +751,6 @@ pub async fn run_agent_loop_streaming_with_limits(
                             id: tc.id.clone(),
                             name: tc.name.clone(),
                             arguments: public_tool_arguments(&args),
-                            metadata: tc.metadata.clone(),
                             iteration_tool_calls: iteration_tool_calls.clone(),
                             iteration_usage: iteration_usage.clone(),
                         });

@@ -23,10 +23,6 @@ const KEY_SOURCE_BY_PROVIDER: Record<string, KeySource> = {
 		url: "https://platform.openai.com/api-keys",
 		label: "OpenAI Platform",
 	},
-	gemini: {
-		url: "https://aistudio.google.com/app/apikey",
-		label: "Google AI Studio",
-	},
 	openrouter: {
 		url: "https://openrouter.ai/settings/keys",
 		label: "OpenRouter Settings",

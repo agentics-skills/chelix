@@ -30,7 +30,7 @@ import type {
 // ── Constants ───────────────────────────────────────────────
 
 const OPENAI_COMPATIBLE = ["openai", "openrouter", "moonshot"];
-const RECOMMENDED_PROVIDERS = new Set(["openai", "gemini", "zai"]);
+const RECOMMENDED_PROVIDERS = new Set(["openai", "moonshot", "zai"]);
 
 const WS_RETRY_LIMIT = 75;
 const WS_RETRY_DELAY_MS = 200;

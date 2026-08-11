@@ -128,7 +128,7 @@ port = {port}                           # Port number (auto-generated for this i
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
 # show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
-#   "openai", "gemini", "deepinfra",
+#   "openai", "deepinfra",
 #   "openrouter", "moonshot", "zai", "zai-code", "alibaba-coding",
 #   "openai-codex", "kimi-code"
 
@@ -142,16 +142,6 @@ port = {port}                           # Port number (auto-generated for this i
 # alias = "openai"
 # [providers.openai.models."gpt-5.3"]
 # [providers.openai.models."gpt-5.2"]
-
-# ── Google Gemini ─────────────────────────────────────────────
-# [providers.gemini]
-# enabled = true
-# api_key = "..."                             # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var
-# fetch_models = true
-# base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-# alias = "gemini"
-# [providers.gemini.models."gemini-2.5-flash"]
-# [providers.gemini.models."gemini-2.5-pro"]
 
 # ── DeepInfra ─────────────────────────────────────────────────
 # [providers.deepinfra]
@@ -214,7 +204,7 @@ port = {port}                           # Port number (auto-generated for this i
                                       #   "live-reload"            - Re-read MEMORY.md before each turn
                                       #   "frozen-at-session-start" - Freeze the first MEMORY.md snapshot per session
 # workspace_file_max_chars = 32000  # Optional: per-file prompt cap for AGENTS.md / TOOLS.md before truncation.
-# priority_models = ["gpt-5.2", "gemini-2.5-pro"]  # Optional cross-provider selector order
+# priority_models = ["gpt-5.3", "kimi-k2.5"]  # Optional cross-provider selector order
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
@@ -223,8 +213,8 @@ port = {port}                           # Port number (auto-generated for this i
 # more capable model.
 #
 # [auxiliary]
-# title_generation = "openrouter/google/gemini-2.5-flash"  # Model for session titles
-# vision = "openrouter/google/gemini-2.5-flash"            # Model for vision/image tasks
+# title_generation = "openrouter/openai/gpt-5-mini"  # Model for session titles
+# vision = "openrouter/openai/gpt-5-mini"            # Model for vision/image tasks
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AGENTS

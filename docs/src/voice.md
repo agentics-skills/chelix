@@ -372,7 +372,6 @@ RPC API.
 | Provider                       | Instructions support | Notes                                                                                |
 | ------------------------------ | -------------------- | ------------------------------------------------------------------------------------ |
 | OpenAI (`gpt-4o-mini-tts`)     | Full                 | Persona prompt rendered as `instructions` field                                      |
-| Google Gemini TTS (`gemini-*`) | Full                 | Persona prompt as `system_instruction`; set `model = "gemini-2.5-flash-preview-tts"` |
 | ElevenLabs                     | Partial              | Uses provider binding overrides (voice_id, stability)                                |
 | Google Cloud TTS v1            | Partial              | Uses provider binding overrides (voice, speaking_rate, pitch)                        |
 | Piper / Coqui                  | None                 | Local providers ignore instructions                                                  |

@@ -112,7 +112,6 @@ fn print_report(sections: &[Section]) -> (usize, usize) {
 /// (provider_name, env_var, is_key_optional)
 const PROVIDER_ENV_MAP: &[(&str, &str, bool)] = &[
     ("openai", "OPENAI_API_KEY", false),
-    ("gemini", "GEMINI_API_KEY", false),
     ("openrouter", "OPENROUTER_API_KEY", false),
     ("moonshot", "MOONSHOT_API_KEY", false),
     ("kimi-code", "KIMI_API_KEY", false),
@@ -542,8 +541,7 @@ fn check_providers(config: &ChelixConfig) -> Section {
             .iter()
             .find(|(pname, ..)| *pname == name.as_str());
 
-        let has_env_key = env_info.is_some_and(|(_, env, _)| std::env::var(env).is_ok())
-            || (name == "gemini" && std::env::var("GOOGLE_API_KEY").is_ok());
+        let has_env_key = env_info.is_some_and(|(_, env, _)| std::env::var(env).is_ok());
         let is_optional = env_info.is_some_and(|(_, _, opt)| *opt);
 
         if has_config_key || has_env_key {

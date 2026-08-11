@@ -5,17 +5,15 @@ pub use chelix_config::schema::{AgentToolControls, ReasoningEffort, ToolChoice};
 
 mod types;
 pub use types::{
-    CompletionResponse, MAX_CAPTURED_PROVIDER_RAW_EVENTS, TOOL_CALL_METADATA_KEYS, ToolCall,
-    ToolCallArgumentDiagnostic, ToolCallArgumentSource, Usage, push_capped_provider_raw_event,
+    CompletionResponse, MAX_CAPTURED_PROVIDER_RAW_EVENTS, ToolCall, ToolCallArgumentDiagnostic,
+    ToolCallArgumentSource, Usage, push_capped_provider_raw_event,
 };
 
 mod chat;
 pub use chat::{ChatMessage, ContentPart, UserContent};
 
 mod convert;
-pub use convert::{
-    extract_tool_call_metadata, provider_values_to_chat_messages, values_to_chat_messages,
-};
+pub use convert::{provider_values_to_chat_messages, values_to_chat_messages};
 
 mod options;
 pub use options::CompletionOptions;
@@ -297,7 +295,6 @@ mod tests {
             name: "execute_command".into(),
             arguments: serde_json::json!({"cmd": "ls"}),
             argument_diagnostic: None,
-            metadata: None,
         }]);
         let val = msg.to_openai_value();
         assert_eq!(val["role"], "assistant");
@@ -534,7 +531,6 @@ mod tests {
                     name: "execute_command".to_string(),
                     arguments: serde_json::json!({}),
                     argument_diagnostic: None,
-                    metadata: None,
                 }],
                 reasoning: None,
             },
@@ -558,7 +554,6 @@ mod tests {
                     "type": null
                 }),
                 argument_diagnostic: None,
-                metadata: None,
             }],
             reasoning: None,
         }];
@@ -974,128 +969,5 @@ mod tests {
             },
             _ => panic!("expected User message"),
         }
-    }
-
-    // ── ToolCall metadata round-trip ────────────────────────────────
-
-    #[test]
-    fn to_openai_value_metadata_serialization() {
-        // With metadata: thought_signature appears at tool-call level.
-        let mut meta = serde_json::Map::new();
-        meta.insert("thought_signature".into(), "sig123".into());
-        let msg = ChatMessage::assistant_with_tools(None, vec![ToolCall {
-            id: "call_1".into(),
-            name: "execute_command".into(),
-            arguments: serde_json::json!({"cmd": "ls"}),
-            argument_diagnostic: None,
-            metadata: Some(meta),
-        }]);
-        let tcs = msg.to_openai_value()["tool_calls"]
-            .as_array()
-            .unwrap()
-            .clone();
-        assert_eq!(tcs[0]["thought_signature"], "sig123");
-        assert_eq!(tcs[0]["id"], "call_1");
-        // Without metadata: no extra fields.
-        let msg2 = ChatMessage::assistant_with_tools(None, vec![ToolCall {
-            id: "call_2".into(),
-            name: "execute_command".into(),
-            arguments: serde_json::json!({}),
-            argument_diagnostic: None,
-            metadata: None,
-        }]);
-        let tcs2 = msg2.to_openai_value()["tool_calls"]
-            .as_array()
-            .unwrap()
-            .clone();
-        assert!(tcs2[0].get("thought_signature").is_none());
-    }
-
-    #[test]
-    fn values_to_chat_messages_metadata_extraction() {
-        // Present: extracted into ToolCall.metadata.
-        let with = vec![serde_json::json!({
-            "role": "assistant", "content": null,
-            "tool_calls": [{"id": "c1", "thought_signature": "sig_abc",
-                            "function": {"name": "execute_command", "arguments": "{}"}}]
-        })];
-        let msgs = values_to_chat_messages(&with);
-        match &msgs[0] {
-            ChatMessage::Assistant { tool_calls, .. } => {
-                let meta = tool_calls[0].metadata.as_ref().expect("metadata present");
-                assert_eq!(meta["thought_signature"], "sig_abc");
-            },
-            other => panic!("expected Assistant, got {other:?}"),
-        }
-        // Persisted sessions store provider fields under tool_calls[].metadata.
-        let persisted = vec![serde_json::json!({
-            "role": "assistant", "content": null,
-            "tool_calls": [{"id": "c1", "metadata": {"thought_signature": "sig_persisted"},
-                            "function": {"name": "execute_command", "arguments": "{}"}}]
-        })];
-        match &values_to_chat_messages(&persisted)[0] {
-            ChatMessage::Assistant { tool_calls, .. } => {
-                let meta = tool_calls[0].metadata.as_ref().expect("metadata present");
-                assert_eq!(meta["thought_signature"], "sig_persisted");
-            },
-            other => panic!("expected Assistant, got {other:?}"),
-        }
-        // Absent: metadata is None.
-        let without = vec![serde_json::json!({
-            "role": "assistant",
-            "tool_calls": [{"id": "c1", "function": {"name": "execute_command", "arguments": "{}"}}]
-        })];
-        match &values_to_chat_messages(&without)[0] {
-            ChatMessage::Assistant { tool_calls, .. } => assert!(tool_calls[0].metadata.is_none()),
-            other => panic!("expected Assistant, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn metadata_round_trip_through_openai_value() {
-        let mut meta = serde_json::Map::new();
-        meta.insert("thought_signature".into(), "sig_round".into());
-        let original = [ChatMessage::Assistant {
-            content: None,
-            tool_calls: vec![ToolCall {
-                id: "call_1".into(),
-                name: "execute_command".into(),
-                arguments: serde_json::json!({}),
-                argument_diagnostic: None,
-                metadata: Some(meta),
-            }],
-            reasoning: None,
-        }];
-        let values: Vec<serde_json::Value> = original.iter().map(|m| m.to_openai_value()).collect();
-        match &values_to_chat_messages(&values)[0] {
-            ChatMessage::Assistant { tool_calls, .. } => {
-                let meta = tool_calls[0].metadata.as_ref().expect("metadata lost");
-                assert_eq!(meta["thought_signature"], "sig_round");
-            },
-            other => panic!("expected Assistant, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn extract_tool_call_metadata_filters_unknown_keys() {
-        let tc = serde_json::json!({
-            "id": "call_1", "thought_signature": "sig",
-            "unknown_field": "ignored", "function": {"name": "execute_command"}
-        });
-        let meta = extract_tool_call_metadata(&tc).expect("should extract");
-        assert_eq!(meta.len(), 1);
-        assert_eq!(meta["thought_signature"], "sig");
-    }
-
-    #[test]
-    fn extract_tool_call_metadata_reads_gemini_extra_content() {
-        let tc = serde_json::json!({
-            "id": "call_1",
-            "extra_content": {"google": {"thought_signature": "sig_google"}},
-            "function": {"name": "execute_command"}
-        });
-
-        let meta = extract_tool_call_metadata(&tc).expect("should extract");
-        assert_eq!(meta["thought_signature"], "sig_google");
     }
 }

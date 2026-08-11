@@ -221,9 +221,21 @@ async function moveToChannelStep(page) {
 	return isVisible(channelHeading);
 }
 
-async function advanceVisibleOnboardingStep(page) {
-	if (await clickFirstVisibleButton(page, { name: "Skip for now", exact: true })) return true;
-	return clickFirstVisibleButton(page, { name: "Continue", exact: true });
+async function advanceTowardChannelStep(page, channelHeading) {
+	if (await isVisible(channelHeading)) return true;
+
+	const userNameInput = page.getByPlaceholder("e.g. Alice");
+	if (await isVisible(userNameInput)) {
+		await userNameInput.fill("E2E User");
+		const agentNameInput = page.getByPlaceholder("e.g. Rex");
+		if (await isVisible(agentNameInput)) await agentNameInput.fill("E2E Bot");
+		await clickFirstVisibleButton(page, { name: "Continue", exact: true });
+		return false;
+	}
+
+	if (await clickFirstVisibleButton(page, { name: "Skip for now", exact: true })) return false;
+	await clickFirstVisibleButton(page, { name: "Continue", exact: true });
+	return false;
 }
 
 async function moveToIdentityStep(page) {
@@ -687,28 +699,10 @@ test.describe("Onboarding wizard", () => {
 		// Navigate to "Connect a Channel" by repeatedly clicking Skip/Continue.
 		const channelHeading = page.getByRole("heading", { name: "Connect a Channel", exact: true });
 		await expect
-			.poll(
-				async () => {
-					if (await isVisible(channelHeading)) return true;
-					// Skip or advance whatever step is on screen.
-					// All skip buttons say "Skip for now" (via i18n).
-					const skipBtn = page.getByRole("button", { name: "Skip for now", exact: true }).first();
-					const continueBtn = page.getByRole("button", { name: "Continue", exact: true }).first();
-					const userNameInput = page.getByPlaceholder("e.g. Alice");
-					if (await isVisible(userNameInput)) {
-						await userNameInput.fill("E2E User");
-						const agentNameInput = page.getByPlaceholder("e.g. Rex");
-						if (await isVisible(agentNameInput)) await agentNameInput.fill("E2E Bot");
-						if (await isVisible(continueBtn)) await continueBtn.click();
-					} else if (await isVisible(skipBtn)) {
-						await skipBtn.click();
-					} else if (await isVisible(continueBtn)) {
-						await continueBtn.click();
-					}
-					return false;
-				},
-				{ timeout: 60_000, intervals: [1000] },
-			)
+			.poll(() => advanceTowardChannelStep(page, channelHeading), {
+				timeout: 60_000,
+				intervals: [1000],
+			})
 			.toBeTruthy();
 		if (!(await isVisible(channelHeading))) {
 			test.skip(true, "could not reach channel step in this onboarding flow");
@@ -930,7 +924,6 @@ test.describe("Onboarding wizard", () => {
 		const candidates = [
 			{ providerName: "OpenAI", linkName: "OpenAI Platform" },
 			{ providerName: "Kimi Code", linkName: "Kimi Code Console" },
-			{ providerName: "Google Gemini", linkName: "Google AI Studio" },
 			{ providerName: "OpenRouter", linkName: "OpenRouter Settings" },
 			{ providerName: "Moonshot", linkName: "Moonshot Platform" },
 		];
@@ -1137,6 +1130,39 @@ test.describe("Onboarding wizard", () => {
 			const state = await import(`${prefix}js/state.js`);
 			const wsOpen = typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
 			window.__voiceOnboardingSaveSettingsRequest = null;
+			function voiceOnboardingResponse(req) {
+				if (req.method === "voice.config.save_settings") {
+					window.__voiceOnboardingSaveSettingsRequest = req.params || null;
+					return { ok: true, payload: { ok: true } };
+				}
+				if (req.method === "voice.provider.toggle") return { ok: true, payload: { ok: true } };
+				if (req.method === "voice.providers.all") {
+					return {
+						ok: true,
+						payload: {
+							stt: [
+								{
+									id: "whisper",
+									name: "OpenAI Whisper",
+									type: "stt",
+									category: "cloud",
+									description: "Best accuracy, handles accents and background noise",
+									available: true,
+									enabled: true,
+									keySource: "config",
+									settings: { baseUrl: "http://127.0.0.1:8001/v1" },
+									capabilities: { baseUrl: true },
+								},
+							],
+							tts: [],
+						},
+					};
+				}
+				return {
+					ok: false,
+					error: { message: `unexpected rpc in onboarding voice test: ${req.method}` },
+				};
+			}
 			state.setConnected(true);
 			state.setWs({
 				readyState: wsOpen,
@@ -1144,38 +1170,7 @@ test.describe("Onboarding wizard", () => {
 					const req = JSON.parse(raw || "{}");
 					const resolver = state.pending[req.id];
 					if (!resolver) return;
-					if (req.method === "voice.config.save_settings") {
-						window.__voiceOnboardingSaveSettingsRequest = req.params || null;
-						resolver({ ok: true, payload: { ok: true } });
-					} else if (req.method === "voice.provider.toggle") {
-						resolver({ ok: true, payload: { ok: true } });
-					} else if (req.method === "voice.providers.all") {
-						resolver({
-							ok: true,
-							payload: {
-								stt: [
-									{
-										id: "whisper",
-										name: "OpenAI Whisper",
-										type: "stt",
-										category: "cloud",
-										description: "Best accuracy, handles accents and background noise",
-										available: true,
-										enabled: true,
-										keySource: "config",
-										settings: { baseUrl: "http://127.0.0.1:8001/v1" },
-										capabilities: { baseUrl: true },
-									},
-								],
-								tts: [],
-							},
-						});
-					} else {
-						resolver({
-							ok: false,
-							error: { message: `unexpected rpc in onboarding voice test: ${req.method}` },
-						});
-					}
+					resolver(voiceOnboardingResponse(req));
 					delete state.pending[req.id];
 				},
 			});

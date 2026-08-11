@@ -260,7 +260,6 @@ pub(crate) fn build_persisted_tool_call(
     tool_call_id: impl Into<String>,
     tool_name: impl Into<String>,
     arguments: Option<Value>,
-    metadata: Option<serde_json::Map<String, Value>>,
 ) -> PersistedToolCall {
     PersistedToolCall {
         id: tool_call_id.into(),
@@ -271,7 +270,6 @@ pub(crate) fn build_persisted_tool_call(
                 .unwrap_or_else(|| serde_json::json!({}))
                 .to_string(),
         },
-        metadata,
     }
 }
 
@@ -1302,7 +1300,6 @@ mod tests {
                 "tool-1",
                 "execute_command",
                 Some(serde_json::json!({"command": "true"})),
-                None,
             )]),
             Some(&Usage {
                 input_tokens: 10,
@@ -1391,7 +1388,6 @@ mod tests {
                 "tool-1",
                 "execute_command",
                 Some(serde_json::json!({"command": "true"})),
-                None,
             )]),
             reasoning: Some("Initial reasoning.".to_string()),
             llm_api_response: None,

@@ -216,7 +216,7 @@ impl OpenAiProvider {
                         let index = responses_output_index(&evt, current_tool_index);
                         current_tool_index = current_tool_index.max(index + 1);
                         tool_calls.insert(index, (id.clone(), name.clone()));
-                        yield StreamEvent::ToolCallStart { id, name, index, metadata: None };
+                        yield StreamEvent::ToolCallStart { id, name, index };
                     }
                     "response.function_call_arguments.delta" => {
                         if let Some(delta) = evt["delta"].as_str()

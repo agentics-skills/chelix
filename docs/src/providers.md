@@ -10,7 +10,6 @@ Configure providers through the web UI or directly in configuration files.
 | Provider             | Config Name  | Env Variable         | Features                                                         |
 | -------------------- | ------------ | -------------------- | ---------------------------------------------------------------- |
 | **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision, model discovery                        |
-| **Google Gemini**    | `gemini`     | `GEMINI_API_KEY`     | Streaming, tools, vision, model discovery                        |
 | **OpenRouter**       | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools, model discovery                                |
 | **Moonshot (Kimi)**  | `moonshot`   | `MOONSHOT_API_KEY`   | Streaming, tools, model discovery                                |
 | **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools, model discovery                                |
@@ -107,7 +106,7 @@ Configure providers in `chelix.toml`:
 
 ```toml
 [providers]
-offered = ["openai", "gemini"]
+offered = ["openai", "openrouter"]
 
 [providers.openai]
 enabled = true
@@ -115,15 +114,6 @@ stream_transport = "sse"              # "sse", "websocket", or "auto"
 
 [providers.openai.models."gpt-5.3"]
 [providers.openai.models."gpt-5.2"]
-
-[providers.gemini]
-enabled = true
-# api_key = "..."                     # Or set GEMINI_API_KEY / GOOGLE_API_KEY env var
-# fetch_models = true                 # Discover models from the API
-# base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-
-[providers.gemini.models."gemini-2.5-flash"]
-[providers.gemini.models."gemini-2.5-pro"]
 
 [chat]
 priority_models = ["gpt-5.2"]
@@ -165,26 +155,6 @@ Each provider supports these options:
 | `tool_mode`        | `"auto"` | `"auto"`, `"native"`, `"text"`, or `"off"` |
 
 ## Provider Setup
-
-### Google Gemini
-
-Google Gemini uses an API key from
-[Google AI Studio](https://aistudio.google.com/).
-
-1. Get an API key from Google AI Studio.
-2. Set `GEMINI_API_KEY` in your environment (or use `GOOGLE_API_KEY`).
-3. Gemini models appear automatically in the model picker.
-
-```toml
-[providers.gemini]
-enabled = true
-
-[providers.gemini.models."gemini-2.5-flash"]
-[providers.gemini.models."gemini-2.5-pro"]
-```
-
-Gemini supports native tool calling, vision/multimodal inputs, streaming, and
-automatic model discovery.
 
 ### OpenAI
 

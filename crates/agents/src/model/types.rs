@@ -14,9 +14,6 @@ pub struct ToolCall {
     pub name: String,
     pub arguments: serde_json::Value,
     pub argument_diagnostic: Option<ToolCallArgumentDiagnostic>,
-    /// Provider-specific opaque metadata to round-trip (e.g. Gemini `thought_signature`).
-    /// Only allowlisted keys are extracted; see [`TOOL_CALL_METADATA_KEYS`].
-    pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,9 +62,6 @@ impl ToolCallArgumentDiagnostic {
         detail
     }
 }
-
-/// Keys extracted from provider tool-call JSON into [`ToolCall::metadata`].
-pub const TOOL_CALL_METADATA_KEYS: &[&str] = &["thought_signature"];
 
 #[derive(Debug, Clone, Default)]
 pub struct Usage {

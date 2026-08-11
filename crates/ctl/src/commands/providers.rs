@@ -13,7 +13,7 @@ pub enum ProvidersCommand {
     List,
     /// Save an API key for a provider.
     SaveKey {
-        /// Provider name (e.g. openai, gemini, openrouter).
+        /// Provider name (e.g. openai, moonshot, openrouter).
         #[arg(long)]
         provider: String,
         /// API key value.
