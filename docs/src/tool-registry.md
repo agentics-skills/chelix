@@ -190,18 +190,18 @@ interruption after writing starts can leave partially updated content.
 
 ### `read_file`
 
-`read_file` requires an absolute `filePath`. Text files can be read by a
-1-indexed `offset` plus `limit`, by tail mode (`offset = -1`), or by multiple
-inclusive `ranges`. Range output can include source line numbers, line numbers
-for blank lines, and range headers. A text read returns at most 2,000 lines in
-offset/limit mode; an implicit or capped limit adds an explicit continuation
-message.
+`read_file` requires an absolute `filePath` and a nested `read` object. An
+offset/limit read has required `offset` and `limit` fields. Positive offsets are
+1-indexed, and `offset = -1` selects tail mode. A range read has a non-empty
+`ranges` array of inclusive text line ranges and can include source line
+numbers, line numbers for blank lines, and range headers.
 
-Binary files return a hexadecimal dump. `offset` and `limit` become byte
-parameters, tail mode reads the final bytes, and one call returns at most 512
-bytes. Empty and whitespace-only text files return explicit messages. Invalid
-parameters, missing files, directories, unreadable files, and relative paths
-are tool errors.
+A text offset/limit read returns at most 2,000 lines. A positive-offset read
+whose requested limit exceeds that cap includes a continuation message. Binary
+files return a hexadecimal dump, use positive offsets as 1-indexed byte
+positions, and return at most 512 bytes. Empty and whitespace-only text files
+return explicit messages. Invalid parameters, missing files, directories,
+unreadable files, and relative paths are tool errors.
 
 ### `read_media`
 

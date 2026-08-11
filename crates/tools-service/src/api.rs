@@ -476,7 +476,10 @@ mod tests {
         let base_url = spawn_api().await;
         let response = reqwest::Client::new()
             .post(format!("{base_url}{TOOLS_SERVICE_READ_FILE_PATH}"))
-            .json(&serde_json::json!({ "filePath": "/tmp/file.txt" }))
+            .json(&serde_json::json!({
+                "filePath": "/tmp/file.txt",
+                "read": { "offset": 1, "limit": 1 }
+            }))
             .send()
             .await
             .unwrap_or_else(|error| panic!("request failed: {error}"));
@@ -794,8 +797,7 @@ mod tests {
             .bearer_auth("test-token")
             .json(&serde_json::json!({
                 "filePath": path,
-                "offset": 2,
-                "limit": 2
+                "read": { "offset": 2, "limit": 2 }
             }))
             .send()
             .await
@@ -812,7 +814,8 @@ mod tests {
             .post(format!("{base_url}{TOOLS_SERVICE_READ_FILE_PATH}"))
             .bearer_auth("test-token")
             .json(&serde_json::json!({
-                "filePath": "/definitely/not/a/real/read-file-path"
+                "filePath": "/definitely/not/a/real/read-file-path",
+                "read": { "offset": 1, "limit": 1 }
             }))
             .send()
             .await

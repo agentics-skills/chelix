@@ -32,64 +32,88 @@ impl AgentTool for ReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read the contents of a file. Line numbers are 1-indexed. This tool limits each text read to 2000 lines and each binary hexadecimal dump to 512 bytes. Use exactly one mode: offset/limit or ranges; using both is invalid. In offset/limit mode, use a positive offset to start at a specific line, or use offset=-1 for tail mode where limit controls how many final lines to read. Other negative offsets and offset=0 are invalid. Binary files use offset and limit as byte ranges; offset=-1 reads the last limit bytes. In ranges mode, read multiple inclusive line ranges in one call, optionally include line numbers, number blank lines, and add range headers."
+        "Read a file by offset and limit or by inclusive text line ranges. The path must be absolute. Positive offsets and line numbers are 1-indexed; offset=-1 selects tail mode. Offset/limit text reads return at most 2000 lines, and binary reads return at most 512 bytes."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["filePath"],
+            "required": ["filePath", "read"],
             "properties": {
                 "filePath": {
                     "type": "string",
                     "minLength": 1,
                     "description": "The absolute path of the file to read."
                 },
-                "offset": {
-                    "type": "integer",
-                    "description": "Optional: a positive 1-based line number to start reading from, or -1 for tail mode. In tail mode, limit controls how many final lines are returned; if limit is omitted, only the final line is returned. Binary files use byte offsets; offset=-1 reads the last limit bytes. Offset 0 and negative offsets other than -1 are invalid. Do not use with ranges. If not specified, the file will be read from the beginning."
-                },
-                "limit": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Optional: the maximum number of lines to read in offset/limit mode. With offset=-1, this is the number of final lines to return. Binary files use this as a byte count. Do not use with ranges."
-                },
-                "ranges": {
-                    "type": "array",
-                    "description": "Optional: multiple inclusive line ranges to read in one call. Use ranges mode only when both offset and limit are omitted; using ranges with offset or limit is invalid.",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["startLine"],
-                        "properties": {
-                            "startLine": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "description": "The inclusive 1-based start line for this range."
-                            },
-                            "endLine": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "description": "Optional inclusive 1-based end line for this range. If omitted, only startLine is read."
+                "read": {
+                    "description": "The read operation.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["offset", "limit"],
+                            "properties": {
+                                "offset": {
+                                    "type": "integer",
+                                    "oneOf": [
+                                        { "const": -1 },
+                                        { "minimum": 1 }
+                                    ],
+                                    "description": "A positive 1-based line or byte position, or -1 for tail mode. Use 1 to read from the beginning."
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "description": "The maximum number of lines or bytes to read. In tail mode, the number of final lines or bytes to return."
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ranges"],
+                            "properties": {
+                                "ranges": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "description": "Inclusive text line ranges.",
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": ["startLine"],
+                                        "properties": {
+                                            "startLine": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "description": "The inclusive 1-based start line for this range."
+                                            },
+                                            "endLine": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "description": "Optional inclusive 1-based end line for this range. If omitted, only startLine is read."
+                                            }
+                                        }
+                                    }
+                                },
+                                "includeLineNumbers": {
+                                    "type": "boolean",
+                                    "default": false,
+                                    "description": "Whether to include source line numbers in the result."
+                                },
+                                "numberBlankLines": {
+                                    "type": "boolean",
+                                    "default": false,
+                                    "description": "Whether blank lines receive line numbers when includeLineNumbers is true."
+                                },
+                                "includeRangeHeaders": {
+                                    "type": "boolean",
+                                    "default": false,
+                                    "description": "Whether to add a header like '--- lines 10-20 ---' before each range."
+                                }
                             }
                         }
-                    }
-                },
-                "includeLineNumbers": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Optional: when using ranges mode, include source line numbers in the result. Ignored when offset or limit is provided."
-                },
-                "numberBlankLines": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Optional: when using ranges mode with includeLineNumbers, also include line numbers for blank lines. Ignored when offset or limit is provided."
-                },
-                "includeRangeHeaders": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Optional: when using ranges mode, add text headers like '--- lines 10-20 ---' before each range block. Ignored when offset or limit is provided."
+                    ]
                 }
             }
         })
@@ -170,16 +194,26 @@ mod tests {
     }
 
     #[test]
-    fn exposes_name_schema_and_non_persistent_result_policy() {
+    fn exposes_strict_nested_read_schema_and_non_persistent_result_policy() {
         let tool = ReadFileTool::new(client("http://127.0.0.1:1".into(), "unused"));
 
         assert_eq!(tool.name(), "read_file");
         let schema = tool.parameters_schema();
-        assert_eq!(schema["required"], json!(["filePath"]));
+        assert_eq!(schema["required"], json!(["filePath", "read"]));
         assert_eq!(schema["additionalProperties"], false);
         assert_eq!(schema["properties"]["filePath"]["type"], "string");
+
+        let variants = schema["properties"]["read"]["oneOf"]
+            .as_array()
+            .unwrap_or_else(|| panic!("read must expose oneOf variants"));
+        assert_eq!(variants.len(), 2);
+        assert_eq!(variants[0]["required"], json!(["offset", "limit"]));
+        assert_eq!(variants[0]["additionalProperties"], false);
+        assert_eq!(variants[1]["required"], json!(["ranges"]));
+        assert_eq!(variants[1]["additionalProperties"], false);
+        assert_eq!(variants[1]["properties"]["ranges"]["minItems"], 1);
         assert_eq!(
-            schema["properties"]["ranges"]["items"]["required"],
+            variants[1]["properties"]["ranges"]["items"]["required"],
             json!(["startLine"])
         );
         assert_eq!(tool.truncation(&json!({})), Truncation::Off);
@@ -190,15 +224,28 @@ mod tests {
     }
 
     #[test]
-    fn parse_input_rejects_null_unknown_and_invalid_public_fields() {
+    fn parse_input_rejects_missing_empty_malformed_mixed_and_legacy_read_forms() {
         for invalid in [
-            json!({ "filePath": "/tmp/file", "offset": null }),
-            json!({ "filePath": "/tmp/file", "obsolete": true }),
-            json!({ "filePath": "/tmp/file", "offset": 0 }),
+            json!({ "filePath": "/tmp/file" }),
+            json!({ "filePath": "/tmp/file", "read": null }),
+            json!({ "filePath": "/tmp/file", "read": "" }),
+            json!({ "filePath": "/tmp/file", "read": {} }),
+            json!({ "filePath": "/tmp/file", "read": { "offset": 1 } }),
+            json!({ "filePath": "/tmp/file", "read": { "limit": 2 } }),
             json!({
                 "filePath": "/tmp/file",
-                "limit": 2,
-                "ranges": [{ "startLine": 1 }]
+                "read": { "offset": 1, "limit": 2, "ranges": [{ "startLine": 1 }] }
+            }),
+            json!({ "filePath": "/tmp/file", "read": { "ranges": [] } }),
+            json!({ "filePath": "/tmp/file", "offset": 1, "limit": 2 }),
+            json!({
+                "filePath": "/tmp/file",
+                "read": { "offset": 0, "limit": 2 }
+            }),
+            json!({
+                "filePath": "/tmp/file",
+                "read": { "offset": 1, "limit": 2 },
+                "obsolete": true
             }),
         ] {
             assert!(parse_input(invalid).is_err());
@@ -209,16 +256,21 @@ mod tests {
     fn parse_input_strips_only_internal_context() {
         let input = parse_input(json!({
             "filePath": "/workspace/file.txt",
-            "offset": -1,
-            "limit": 2,
+            "read": {
+                "offset": -1,
+                "limit": 2
+            },
             "_session_key": "session:test",
             "_channel": { "surface": "web" }
         }))
         .unwrap_or_else(|error| panic!("parse failed: {error}"));
 
         assert_eq!(input.file_path, "/workspace/file.txt");
-        assert_eq!(input.offset, Some(-1));
-        assert_eq!(input.limit, Some(2));
+        assert_eq!(
+            serde_json::to_value(input.read)
+                .unwrap_or_else(|error| panic!("read operation encode failed: {error}")),
+            json!({ "offset": -1, "limit": 2 })
+        );
     }
 
     #[tokio::test]
@@ -229,12 +281,10 @@ mod tests {
             .match_header("authorization", "Bearer read-token")
             .match_body(mockito::Matcher::Json(json!({
                 "filePath": "/workspace/file.txt",
-                "offset": 2,
-                "limit": 2,
-                "ranges": [],
-                "includeLineNumbers": false,
-                "numberBlankLines": false,
-                "includeRangeHeaders": false
+                "read": {
+                    "offset": 2,
+                    "limit": 2
+                }
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -247,8 +297,10 @@ mod tests {
         let result = tool
             .execute(json!({
                 "filePath": "/workspace/file.txt",
-                "offset": 2,
-                "limit": 2,
+                "read": {
+                    "offset": 2,
+                    "limit": 2
+                },
                 "_session_key": "session:test"
             }))
             .await
@@ -270,7 +322,10 @@ mod tests {
             .create_async()
             .await;
         let result = ReadFileTool::new(client(server.url(), "test-token"))
-            .execute(json!({ "filePath": "/workspace/missing.txt" }))
+            .execute(json!({
+                "filePath": "/workspace/missing.txt",
+                "read": { "offset": 1, "limit": 2000 }
+            }))
             .await;
         let error = match result {
             Ok(_) => panic!("expected tools service failure"),

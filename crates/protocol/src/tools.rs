@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 14;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 15;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_EDIT_FILE_PATH: &str = "/v1/edit-file";
@@ -246,19 +246,26 @@ pub struct ReadFileRange {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadFileRequest {
     pub file_path: String,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_present_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub offset: Option<i64>,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_present_option",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub limit: Option<i64>,
-    #[serde(default)]
+    pub read: ReadFileOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ReadFileOperation {
+    OffsetLimit(ReadFileOffsetLimitOperation),
+    Ranges(ReadFileRangesOperation),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadFileOffsetLimitOperation {
+    pub offset: i64,
+    pub limit: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadFileRangesOperation {
     pub ranges: Vec<ReadFileRange>,
     #[serde(default)]
     pub include_line_numbers: bool,
@@ -274,27 +281,31 @@ impl ReadFileRequest {
         if self.file_path.trim().is_empty() {
             return Err(ReadFileRequestValidationError::EmptyFilePath);
         }
-        if let Some(offset) = self.offset {
-            if offset == 0 {
-                return Err(ReadFileRequestValidationError::ZeroOffset);
-            }
-            if offset < -1 {
-                return Err(ReadFileRequestValidationError::InvalidNegativeOffset);
-            }
-        }
-        if self.limit.is_some_and(|limit| limit < 1) {
-            return Err(ReadFileRequestValidationError::InvalidLimit);
-        }
-        if !self.ranges.is_empty() && (self.offset.is_some() || self.limit.is_some()) {
-            return Err(ReadFileRequestValidationError::MixedReadModes);
-        }
-        for (index, range) in self.ranges.iter().enumerate() {
-            if range.start_line < 1 {
-                return Err(ReadFileRequestValidationError::InvalidRangeStart(index));
-            }
-            if range.end_line.is_some_and(|end_line| end_line < 1) {
-                return Err(ReadFileRequestValidationError::InvalidRangeEnd(index));
-            }
+        match &self.read {
+            ReadFileOperation::OffsetLimit(read) => {
+                if read.offset == 0 {
+                    return Err(ReadFileRequestValidationError::ZeroOffset);
+                }
+                if read.offset < -1 {
+                    return Err(ReadFileRequestValidationError::InvalidNegativeOffset);
+                }
+                if read.limit < 1 {
+                    return Err(ReadFileRequestValidationError::InvalidLimit);
+                }
+            },
+            ReadFileOperation::Ranges(read) => {
+                if read.ranges.is_empty() {
+                    return Err(ReadFileRequestValidationError::EmptyRanges);
+                }
+                for (index, range) in read.ranges.iter().enumerate() {
+                    if range.start_line < 1 {
+                        return Err(ReadFileRequestValidationError::InvalidRangeStart(index));
+                    }
+                    if range.end_line.is_some_and(|end_line| end_line < 1) {
+                        return Err(ReadFileRequestValidationError::InvalidRangeEnd(index));
+                    }
+                }
+            },
         }
         Ok(())
     }
@@ -305,20 +316,22 @@ pub enum ReadFileRequestValidationError {
     #[error("filePath must be a non-empty string.")]
     EmptyFilePath,
     #[error(
-        "offset must not be 0. Omit offset to read from the beginning, use a positive offset to read from a 1-indexed line or byte, or use -1 for tail mode."
+        "read.offset must not be 0. Use 1 to read from the beginning, a larger positive value for a 1-indexed line or byte, or -1 for tail mode."
     )]
     ZeroOffset,
     #[error(
-        "offset must be a positive integer or -1 for tail mode. Other negative offsets are not supported."
+        "read.offset must be a positive integer or -1 for tail mode. Other negative offsets are not supported."
     )]
     InvalidNegativeOffset,
-    #[error("limit must be a positive integer.")]
+    #[error("read.limit must be a positive integer.")]
     InvalidLimit,
-    #[error("Use either offset/limit or ranges, not both.")]
-    MixedReadModes,
-    #[error("ranges[{0}].startLine must be a positive integer.")]
+    #[error("read.ranges must contain at least one range.")]
+    EmptyRanges,
+    #[error("read.ranges is not supported for binary files; use read.offset and read.limit.")]
+    BinaryRangesUnsupported,
+    #[error("read.ranges[{0}].startLine must be a positive integer.")]
     InvalidRangeStart(usize),
-    #[error("ranges[{0}].endLine must be a positive integer.")]
+    #[error("read.ranges[{0}].endLine must be a positive integer.")]
     InvalidRangeEnd(usize),
 }
 
@@ -1215,35 +1228,61 @@ mod tests {
     }
 
     #[test]
-    fn read_file_messages_round_trip_with_camel_case_fields() {
-        let request = ReadFileRequest {
+    fn read_file_messages_round_trip_with_nested_read_operations() {
+        for request in [
+            ReadFileRequest {
+                file_path: "/workspace/src/main.rs".into(),
+                read: ReadFileOperation::OffsetLimit(ReadFileOffsetLimitOperation {
+                    offset: 1,
+                    limit: 200,
+                }),
+            },
+            ReadFileRequest {
+                file_path: "/workspace/src/main.rs".into(),
+                read: ReadFileOperation::Ranges(ReadFileRangesOperation {
+                    ranges: vec![ReadFileRange {
+                        start_line: 12,
+                        end_line: Some(20),
+                    }],
+                    include_line_numbers: true,
+                    number_blank_lines: false,
+                    include_range_headers: true,
+                }),
+            },
+        ] {
+            let json = serde_json::to_value(&request)
+                .unwrap_or_else(|error| panic!("read file request encode failed: {error}"));
+            let decoded: ReadFileRequest = serde_json::from_value(json)
+                .unwrap_or_else(|error| panic!("read file request decode failed: {error}"));
+            assert_eq!(decoded, request);
+            assert!(decoded.validate().is_ok());
+        }
+
+        let ranges = ReadFileRequest {
             file_path: "/workspace/src/main.rs".into(),
-            offset: None,
-            limit: None,
-            ranges: vec![ReadFileRange {
-                start_line: 12,
-                end_line: Some(20),
-            }],
-            include_line_numbers: true,
-            number_blank_lines: false,
-            include_range_headers: true,
+            read: ReadFileOperation::Ranges(ReadFileRangesOperation {
+                ranges: vec![ReadFileRange {
+                    start_line: 12,
+                    end_line: Some(20),
+                }],
+                include_line_numbers: true,
+                number_blank_lines: false,
+                include_range_headers: true,
+            }),
         };
-        let json = serde_json::to_value(&request)
-            .unwrap_or_else(|error| panic!("read file request encode failed: {error}"));
         assert_eq!(
-            json,
+            serde_json::to_value(ranges)
+                .unwrap_or_else(|error| panic!("read file request encode failed: {error}")),
             serde_json::json!({
                 "filePath": "/workspace/src/main.rs",
-                "ranges": [{ "startLine": 12, "endLine": 20 }],
-                "includeLineNumbers": true,
-                "numberBlankLines": false,
-                "includeRangeHeaders": true
+                "read": {
+                    "ranges": [{ "startLine": 12, "endLine": 20 }],
+                    "includeLineNumbers": true,
+                    "numberBlankLines": false,
+                    "includeRangeHeaders": true
+                }
             })
         );
-        let decoded: ReadFileRequest = serde_json::from_value(json)
-            .unwrap_or_else(|error| panic!("read file request decode failed: {error}"));
-        assert_eq!(decoded, request);
-        assert!(decoded.validate().is_ok());
 
         let response = ReadFileResponse {
             result: "12\tfn main() {}".into(),
@@ -1255,51 +1294,103 @@ mod tests {
     }
 
     #[test]
-    fn read_file_request_rejects_null_unknown_and_invalid_values() {
+    fn read_file_request_rejects_missing_malformed_mixed_and_legacy_operations() {
         for invalid in [
-            serde_json::json!({ "filePath": "/tmp/file", "offset": null }),
-            serde_json::json!({ "filePath": "/tmp/file", "limit": null }),
-            serde_json::json!({ "filePath": "/tmp/file", "ranges": null }),
+            serde_json::json!({ "filePath": "/tmp/file" }),
+            serde_json::json!({ "filePath": "/tmp/file", "read": null }),
+            serde_json::json!({ "filePath": "/tmp/file", "read": "" }),
+            serde_json::json!({ "filePath": "/tmp/file", "read": {} }),
             serde_json::json!({
                 "filePath": "/tmp/file",
-                "ranges": [{ "startLine": 1, "endLine": null }]
+                "read": { "offset": 1 }
             }),
-            serde_json::json!({ "filePath": "/tmp/file", "obsolete": true }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": { "limit": 10 }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": { "offset": null, "limit": 10 }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": { "ranges": null }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": { "ranges": [{ "startLine": 1, "endLine": null }] }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": {
+                    "offset": 1,
+                    "limit": 10,
+                    "ranges": [{ "startLine": 1 }]
+                }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": { "offset": 1, "limit": 10, "obsolete": true }
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "offset": 1,
+                "limit": 10
+            }),
+            serde_json::json!({
+                "filePath": "/tmp/file",
+                "read": { "offset": 1, "limit": 10 },
+                "obsolete": true
+            }),
         ] {
             assert!(serde_json::from_value::<ReadFileRequest>(invalid).is_err());
         }
+    }
 
+    #[test]
+    fn read_file_request_rejects_invalid_operation_values() {
         let invalid = [
             (
-                serde_json::json!({ "filePath": " " }),
+                serde_json::json!({
+                    "filePath": " ",
+                    "read": { "offset": 1, "limit": 10 }
+                }),
                 "filePath must be a non-empty string.",
             ),
             (
-                serde_json::json!({ "filePath": "/tmp/file", "offset": 0 }),
-                "offset must not be 0.",
-            ),
-            (
-                serde_json::json!({ "filePath": "/tmp/file", "offset": -2 }),
-                "offset must be a positive integer or -1",
-            ),
-            (
-                serde_json::json!({ "filePath": "/tmp/file", "limit": 0 }),
-                "limit must be a positive integer.",
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "read": { "offset": 0, "limit": 10 }
+                }),
+                "read.offset must not be 0.",
             ),
             (
                 serde_json::json!({
                     "filePath": "/tmp/file",
-                    "offset": 1,
-                    "ranges": [{ "startLine": 1 }]
+                    "read": { "offset": -2, "limit": 10 }
                 }),
-                "Use either offset/limit or ranges, not both.",
+                "read.offset must be a positive integer or -1",
             ),
             (
                 serde_json::json!({
                     "filePath": "/tmp/file",
-                    "ranges": [{ "startLine": 0 }]
+                    "read": { "offset": 1, "limit": 0 }
                 }),
-                "ranges[0].startLine must be a positive integer.",
+                "read.limit must be a positive integer.",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "read": { "ranges": [] }
+                }),
+                "read.ranges must contain at least one range.",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "read": { "ranges": [{ "startLine": 0 }] }
+                }),
+                "read.ranges[0].startLine must be a positive integer.",
             ),
         ];
         for (value, expected) in invalid {
