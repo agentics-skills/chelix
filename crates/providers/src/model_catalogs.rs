@@ -88,17 +88,6 @@ pub(crate) const OPENAI_COMPAT_PROVIDERS: &[OpenAiCompatDef] = &[
         },
         ..OpenAiCompatDef::DEFAULT
     },
-    OpenAiCompatDef {
-        config_name: "gemini",
-        env_key: "GEMINI_API_KEY",
-        env_base_url_key: "GEMINI_BASE_URL",
-        default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-        capabilities: OpenAiProviderCapabilities {
-            requires_gemini_tool_call_extra_content: true,
-            ..OpenAiProviderCapabilities::DEFAULT
-        },
-        ..OpenAiCompatDef::DEFAULT
-    },
 ];
 
 #[cfg(test)]

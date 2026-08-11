@@ -36,10 +36,9 @@ writes to memory via file-writing tools (either dedicated or general-purpose).
 | ------------------- | ----------------------------------- | ----------------------------- |
 | **Local GGUF**      | EmbeddingGemma-300M via llama-cpp-2 | Auto-download GGUF (~0.6 GB)  |
 | **OpenAI**          | text-embedding-3-small              | Via API key                   |
-| **Gemini**          | Not available                       | Via API key                   |
 | **Voyage**          | Not available                       | Via API key                   |
 | **Custom endpoint** | OpenAI-compatible                   | Not listed                    |
-| **Batch embedding** | OpenAI batch API (50% cost saving)  | OpenAI, Gemini, Voyage batch  |
+| **Batch embedding** | OpenAI batch API (50% cost saving)  | OpenAI and Voyage batch       |
 | **Fallback chain**  | Auto-detect + circuit breaker       | Auto-select in priority order |
 | **Offline support** | Yes (local embeddings)              | Yes (local embeddings)        |
 
@@ -199,7 +198,7 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 
 - **CLI memory commands** (`status`, `index`, `search`) for debugging
 - **Session pruning** (cache-TTL based trimming of old tool results)
-- **Gemini and Voyage embedding providers**
+- **Voyage embedding provider**
 - **Per-agent memory isolation** for multi-agent setups
 - **Automatic re-indexing on embedding provider/model change** (fingerprint
   detection)

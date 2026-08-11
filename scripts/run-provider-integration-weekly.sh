@@ -88,7 +88,6 @@ run_provider_test moonshot moonshot_integration MOONSHOT_API_KEY
 run_provider_test openai openai_integration OPENAI_API_KEY
 run_provider_test openrouter openrouter_integration OPENROUTER_API_KEY
 run_provider_test kimi-code kimi_code_integration KIMI_API_KEY
-run_provider_test gemini gemini_integration GEMINI_API_KEY
 run_provider_test zai zai_integration Z_API_KEY
 
 run_step "provider-e2e-scenarios" ./scripts/run-provider-e2e-daily.sh

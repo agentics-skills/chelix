@@ -18,7 +18,6 @@ pub(crate) enum ResponsesWebSocketPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct OpenAiProviderCapabilities {
-    pub(crate) requires_gemini_tool_call_extra_content: bool,
     pub(crate) default_reasoning_content_on_tool_messages: bool,
     pub(crate) requires_single_leading_system_message: bool,
     pub(crate) cache_control_policy: CacheControlPolicy,
@@ -27,7 +26,6 @@ pub(crate) struct OpenAiProviderCapabilities {
 
 impl OpenAiProviderCapabilities {
     pub(crate) const DEFAULT: Self = Self {
-        requires_gemini_tool_call_extra_content: false,
         default_reasoning_content_on_tool_messages: false,
         requires_single_leading_system_message: false,
         cache_control_policy: CacheControlPolicy::None,

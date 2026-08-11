@@ -230,7 +230,6 @@ fn incident_batch() -> Vec<ToolCall> {
             name: "memory_search".to_string(),
             arguments: serde_json::json!({"query": "code checker preferences"}),
             argument_diagnostic: None,
-            metadata: None,
         },
         execute_command_call("execute_round_1_a", "code_checker|code checker|codeChecker"),
         execute_command_call(
@@ -246,7 +245,6 @@ fn execute_command_call(id: &str, command: &str) -> ToolCall {
         name: "execute_command".to_string(),
         arguments: serde_json::json!({"command": command}),
         argument_diagnostic: None,
-        metadata: None,
     }
 }
 
@@ -259,7 +257,6 @@ fn stream_events(round: ProviderRound) -> Vec<StreamEvent> {
                     id: tool_call.id,
                     name: tool_call.name,
                     index,
-                    metadata: None,
                 });
                 events.push(StreamEvent::ToolCallArgumentsDelta {
                     index,

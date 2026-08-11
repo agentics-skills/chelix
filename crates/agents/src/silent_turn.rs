@@ -403,7 +403,6 @@ mod tests {
                             "content": "# Memories\n\nUser prefers Rust over Python."
                         }),
                         argument_diagnostic: None,
-                        metadata: None,
                     }],
                     usage: Usage {
                         input_tokens: 100,

@@ -71,7 +71,6 @@ fn normalize_nullable_enum_none_sentinel_to_null() {
             "country": "None"
         }),
         argument_diagnostic: None,
-        metadata: None,
     }];
 
     normalize_tool_call_arguments_from_schemas(&mut tool_calls, &tools);
@@ -97,7 +96,6 @@ fn normalize_preserves_literal_none_enum_value() {
         name: "set_mode".to_string(),
         arguments: serde_json::json!({ "mode": "None" }),
         argument_diagnostic: None,
-        metadata: None,
     }];
 
     normalize_tool_call_arguments_from_schemas(&mut tool_calls, &tools);
@@ -123,7 +121,6 @@ fn normalize_null_only_empty_string_to_null() {
         name: "serialization_probe".to_string(),
         arguments: serde_json::json!({ "kind": "", "label": "" }),
         argument_diagnostic: None,
-        metadata: None,
     }];
 
     normalize_tool_call_arguments_from_schemas(&mut tool_calls, &tools);
@@ -156,7 +153,6 @@ fn normalize_array_schema_decodes_json_string_array() {
             "allow_tools": "[\"list_directory\",\"read_file\"]"
         }),
         argument_diagnostic: None,
-        metadata: None,
     }];
 
     normalize_tool_call_arguments_from_schemas(&mut tool_calls, &tools);

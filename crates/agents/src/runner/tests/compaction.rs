@@ -350,7 +350,6 @@ fn tool_call(id: &str) -> crate::model::ToolCall {
         name: "read".to_string(),
         arguments: serde_json::json!({}),
         argument_diagnostic: None,
-        metadata: None,
     }
 }
 

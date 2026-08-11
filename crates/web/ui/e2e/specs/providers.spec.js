@@ -15,9 +15,9 @@ function modelMetadata(model) {
 	};
 }
 
-async function mockProviderModelContract(page, models, providers) {
+async function mockProviderModelContract(page, modelFixtures, providerFixtures) {
 	await page.addInitScript(
-		({ models, providers }) => {
+		({ models: injectedModels, providers: injectedProviders }) => {
 			window.__providerModelRequests = [];
 			const originalSend = WebSocket.prototype.send;
 
@@ -34,11 +34,11 @@ async function mockProviderModelContract(page, models, providers) {
 				try {
 					const request = JSON.parse(data);
 					if (request?.method === "models.list" || request?.method === "models.list_all") {
-						respond(this, request.id, models);
+						respond(this, request.id, injectedModels);
 						return;
 					}
 					if (request?.method === "providers.available") {
-						respond(this, request.id, providers);
+						respond(this, request.id, injectedProviders);
 						return;
 					}
 					if (request?.method === "models.test" || request?.method === "providers.save_models") {
@@ -52,7 +52,7 @@ async function mockProviderModelContract(page, models, providers) {
 				return originalSend.call(this, data);
 			};
 		},
-		{ models, providers },
+		{ models: modelFixtures, providers: providerFixtures },
 	);
 }
 
@@ -144,7 +144,7 @@ test.describe("Provider setup page", () => {
 		const providerNames = page.locator("#providerModalBody .provider-item .provider-item-name");
 		await expect(providerNames.first()).toBeVisible();
 		const names = await providerNames.allTextContents();
-		const preferredOrder = ["OpenAI Codex", "OpenAI", "Google Gemini"];
+		const preferredOrder = ["OpenAI Codex", "OpenAI", "OpenRouter"];
 		const expectedVisible = preferredOrder.filter((name) => names.includes(name));
 		const actualVisible = names.filter((name) => expectedVisible.includes(name));
 		expect(actualVisible).toEqual(expectedVisible);

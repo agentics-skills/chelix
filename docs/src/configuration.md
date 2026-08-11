@@ -104,12 +104,12 @@ agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
 ## LLM Providers
 
 Configure providers through the web UI or directly in `chelix.toml`. API keys
-can be set via environment variables (e.g. `OPENAI_API_KEY`,
-`GEMINI_API_KEY`) or in the config file.
+can be set via environment variables (e.g. `OPENAI_API_KEY` or
+`OPENROUTER_API_KEY`) or in the config file.
 
 ```toml
 [providers]
-offered = ["openai", "gemini"]
+offered = ["openai", "openrouter"]
 
 [providers.openai]
 enabled = true
@@ -117,12 +117,6 @@ stream_transport = "sse"        # "sse", "websocket", or "auto"
 
 [providers.openai.models."gpt-5.3"]
 [providers.openai.models."gpt-5.2"]
-
-[providers.gemini]
-enabled = true
-
-[providers.gemini.models."gemini-2.5-flash"]
-[providers.gemini.models."gemini-2.5-pro"]
 
 [chat]
 priority_models = ["gpt-5.2"]
@@ -487,7 +481,7 @@ max_tools_threshold = 128
 agent_timeout_secs = 600
 
 [providers]
-offered = ["openai", "gemini"]
+offered = ["openai", "openrouter"]
 
 [sandbox]
 mode = "On"

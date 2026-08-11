@@ -593,7 +593,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                                 ("api_key", Leaf),
                                 ("language_code", Leaf),
                                 ("voice", Leaf),
-                                ("model", Leaf),
                                 ("speaking_rate", Leaf),
                                 ("pitch", Leaf),
                             ])),

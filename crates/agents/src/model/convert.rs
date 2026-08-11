@@ -3,38 +3,8 @@ use crate::multimodal::parse_data_uri;
 use super::{
     chat::{ChatMessage, ContentPart, UserContent},
     decode_tool_call_arguments_with_diagnostic,
-    types::{TOOL_CALL_METADATA_KEYS, ToolCall},
+    types::ToolCall,
 };
-
-/// Extract allowlisted metadata keys from a tool-call JSON object.
-///
-/// Returns `None` when no metadata keys are present, keeping the common path
-/// allocation-free.
-#[must_use]
-pub fn extract_tool_call_metadata(
-    tc: &serde_json::Value,
-) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let obj = tc.as_object()?;
-    let nested = obj.get("metadata").and_then(serde_json::Value::as_object);
-    let gemini = obj
-        .get("extra_content")
-        .and_then(|extra| extra.get("google"))
-        .and_then(serde_json::Value::as_object);
-    let meta: serde_json::Map<_, _> = TOOL_CALL_METADATA_KEYS
-        .iter()
-        .filter_map(|&k| {
-            obj.get(k)
-                .or_else(|| nested.and_then(|metadata| metadata.get(k)))
-                .or_else(|| gemini.and_then(|metadata| metadata.get(k)))
-                .map(|v| (k.to_string(), v.clone()))
-        })
-        .collect();
-    if meta.is_empty() {
-        None
-    } else {
-        Some(meta)
-    }
-}
 
 fn document_absolute_path_from_media_ref(media_ref: &str) -> String {
     use std::path::Path;
@@ -228,13 +198,11 @@ fn values_to_chat_messages_inner(
                                 let decoded = decode_tool_call_arguments_with_diagnostic(
                                     tc["function"].get("arguments"),
                                 );
-                                let metadata = extract_tool_call_metadata(tc);
                                 Some(ToolCall {
                                     id,
                                     name,
                                     arguments: decoded.arguments,
                                     argument_diagnostic: decoded.diagnostic,
-                                    metadata,
                                 })
                             })
                             .collect()

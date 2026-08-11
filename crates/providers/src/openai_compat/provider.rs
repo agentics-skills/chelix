@@ -9,7 +9,7 @@ use {
     anyhow::{Context, Result},
     chelix_agents::model::{
         ChatMessage, CompletionResponse, StreamEvent, ToolCall, Usage, UserContent,
-        decode_tool_call_arguments_with_diagnostic, extract_tool_call_metadata,
+        decode_tool_call_arguments_with_diagnostic,
     },
     serde::Serialize,
     tracing::trace,
@@ -255,13 +255,11 @@ pub fn parse_tool_calls(message: &serde_json::Value) -> Vec<ToolCall> {
                     let name = tc["function"]["name"].as_str()?.to_string();
                     let decoded =
                         decode_tool_call_arguments_with_diagnostic(tc["function"].get("arguments"));
-                    let metadata = extract_tool_call_metadata(tc);
                     Some(ToolCall {
                         id,
                         name,
                         arguments: decoded.arguments,
                         argument_diagnostic: decoded.diagnostic,
-                        metadata,
                     })
                 })
                 .collect()
@@ -877,12 +875,10 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
                 state
                     .tool_calls
                     .insert(index, (id.to_string(), name.to_string(), String::new()));
-                let metadata = extract_tool_call_metadata(tc);
                 events.push(StreamEvent::ToolCallStart {
                     id: id.to_string(),
                     name: name.to_string(),
                     index,
-                    metadata,
                 });
             }
 
@@ -1064,7 +1060,6 @@ pub fn process_responses_sse_line(
                     id,
                     name,
                     index,
-                    metadata: None,
                 }])
             } else {
                 ResponsesSseLineResult::Events(vec![raw])
@@ -1187,7 +1182,6 @@ pub fn parse_responses_completion(resp: &serde_json::Value) -> CompletionRespons
                         name,
                         arguments: decoded.arguments,
                         argument_diagnostic: decoded.diagnostic,
-                        metadata: None,
                     });
                 },
                 _ => {},

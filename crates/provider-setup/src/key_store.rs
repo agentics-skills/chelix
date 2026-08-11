@@ -368,16 +368,16 @@ mod tests {
     fn key_store_save_and_load() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        assert!(store.load("gemini").is_none());
-        store.save("gemini", "test-123").unwrap();
-        assert_eq!(store.load("gemini").unwrap(), "test-123");
+        assert!(store.load("moonshot").is_none());
+        store.save("moonshot", "test-123").unwrap();
+        assert_eq!(store.load("moonshot").unwrap(), "test-123");
         // Overwrite
-        store.save("gemini", "new-key").unwrap();
-        assert_eq!(store.load("gemini").unwrap(), "new-key");
+        store.save("moonshot", "new-key").unwrap();
+        assert_eq!(store.load("moonshot").unwrap(), "new-key");
         // Multiple providers
         store.save("openai", "sk-openai").unwrap();
         assert_eq!(store.load("openai").unwrap(), "sk-openai");
-        assert_eq!(store.load("gemini").unwrap(), "new-key");
+        assert_eq!(store.load("moonshot").unwrap(), "new-key");
         let all = store.load_all();
         assert_eq!(all.len(), 2);
     }
@@ -404,11 +404,11 @@ mod tests {
     fn key_store_remove() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        store.save("gemini", "test-key").unwrap();
+        store.save("moonshot", "test-key").unwrap();
         store.save("openai", "sk-openai").unwrap();
-        assert!(store.load("gemini").is_some());
-        store.remove("gemini").unwrap();
-        assert!(store.load("gemini").is_none());
+        assert!(store.load("moonshot").is_some());
+        store.remove("moonshot").unwrap();
+        assert!(store.load("moonshot").is_none());
         // Other keys unaffected
         assert_eq!(store.load("openai").unwrap(), "sk-openai");
         // Removing non-existent key is fine
@@ -481,10 +481,10 @@ mod tests {
 
         store
             .save_config(
-                "gemini",
-                Some("gemini-key".into()),
-                Some("https://generativelanguage.googleapis.com/v1beta/openai".into()),
-                Some(model_map(&["gemini-2.5-pro"])),
+                "moonshot",
+                Some("moonshot-key".into()),
+                Some("https://api.moonshot.ai/v1".into()),
+                Some(model_map(&["kimi-k2.5"])),
             )
             .unwrap();
 
@@ -497,18 +497,18 @@ mod tests {
             )
             .unwrap();
 
-        // Update only OpenAI models; Gemini should remain unchanged.
+        // Update only OpenAI models; Moonshot should remain unchanged.
         store
             .save_config("openai", None, None, Some(model_map(&["gpt-5"])))
             .unwrap();
 
-        let gemini = store.load_config("gemini").unwrap();
-        assert_eq!(gemini.api_key.as_deref(), Some("gemini-key"));
+        let moonshot = store.load_config("moonshot").unwrap();
+        assert_eq!(moonshot.api_key.as_deref(), Some("moonshot-key"));
         assert_eq!(
-            gemini.base_url.as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta/openai")
+            moonshot.base_url.as_deref(),
+            Some("https://api.moonshot.ai/v1")
         );
-        assert_eq!(model_ids(&gemini.models), vec!["gemini-2.5-pro"]);
+        assert_eq!(model_ids(&moonshot.models), vec!["kimi-k2.5"]);
 
         let openai = store.load_config("openai").unwrap();
         assert_eq!(openai.api_key.as_deref(), Some("sk-openai"));
@@ -527,7 +527,7 @@ mod tests {
         let mut handles = Vec::new();
         for (provider, key, models) in [
             ("openai", "sk-openai", model_map(&["gpt-5"])),
-            ("gemini", "gemini-key", model_map(&["gemini-2.5-pro"])),
+            ("moonshot", "moonshot-key", model_map(&["kimi-k2.5"])),
         ] {
             let store = store.clone();
             handles.push(std::thread::spawn(move || {
@@ -545,7 +545,7 @@ mod tests {
 
         let all = store.load_all_configs();
         assert!(all.contains_key("openai"));
-        assert!(all.contains_key("gemini"));
+        assert!(all.contains_key("moonshot"));
     }
 
     #[test]
@@ -580,7 +580,7 @@ mod tests {
         let path = dir.path().join("keys.json");
 
         let old_data = serde_json::json!({
-            "gemini": "old-key",
+            "moonshot": "old-key",
             "openai": "sk-openai-old"
         });
         std::fs::write(&path, serde_json::to_string(&old_data).unwrap()).unwrap();
@@ -617,10 +617,10 @@ mod tests {
 
     #[test]
     fn models_param_requires_canonical_object_and_preserves_order() {
-        let models = model_map(&["gpt-5.2", "gemini-2.5-pro"]);
+        let models = model_map(&["gpt-5.2", "kimi-k2.5"]);
         let params = serde_json::json!({ "models": models });
         let parsed = parse_models_param(&params).unwrap().unwrap();
-        assert_eq!(model_ids(&parsed), vec!["gpt-5.2", "gemini-2.5-pro"]);
+        assert_eq!(model_ids(&parsed), vec!["gpt-5.2", "kimi-k2.5"]);
 
         let legacy = serde_json::json!({ "models": ["gpt-5.2"] });
         assert!(parse_models_param(&legacy).is_err());

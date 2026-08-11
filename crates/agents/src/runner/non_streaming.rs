@@ -609,7 +609,6 @@ pub async fn run_agent_loop_with_context_and_limits(
                             id: tc.id.clone(),
                             name: tc.name.clone(),
                             arguments: public_tool_arguments(&args),
-                            metadata: tc.metadata.clone(),
                             iteration_tool_calls: iteration_tool_calls.clone(),
                             iteration_usage: iteration_usage.clone(),
                         });

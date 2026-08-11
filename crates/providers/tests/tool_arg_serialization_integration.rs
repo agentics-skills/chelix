@@ -267,7 +267,7 @@ async fn openrouter_google_serialization_scenarios_non_streaming() {
         base_url_env: None,
         default_base_url: "https://openrouter.ai/api/v1",
         model_env: "SERIALIZATION_TEST_OPENROUTER_GOOGLE_MODEL",
-        default_model: "google/gemini-2.5-flash",
+        default_model: "openai/gpt-5-mini",
     };
     let Some(provider) = configured_provider(&config) else {
         return;

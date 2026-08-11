@@ -137,7 +137,6 @@ pub struct RunnerToolCall {
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
-    pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl From<&ToolCall> for RunnerToolCall {
@@ -146,7 +145,6 @@ impl From<&ToolCall> for RunnerToolCall {
             id: tool_call.id.clone(),
             name: tool_call.name.clone(),
             arguments: tool_call.arguments.clone(),
-            metadata: tool_call.metadata.clone(),
         }
     }
 }
@@ -236,7 +234,6 @@ pub enum RunnerEvent {
         id: String,
         name: String,
         arguments: serde_json::Value,
-        metadata: Option<serde_json::Map<String, serde_json::Value>>,
         /// Full tool-call batch belonging to the same assistant message.
         iteration_tool_calls: Arc<[RunnerToolCall]>,
         /// Exact provider usage for the LLM iteration that emitted the batch.
