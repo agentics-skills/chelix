@@ -135,23 +135,6 @@ fn check_providers_disabled_skipped() {
 }
 
 #[test]
-fn check_providers_oauth_skipped() {
-    let mut config = ChelixConfig::default();
-    config.providers.providers.insert(
-        "openai-codex".to_string(),
-        chelix_config::schema::ProviderEntry::default(),
-    );
-
-    let section = check_providers(&config);
-    let codex_item = section
-        .items
-        .iter()
-        .find(|i| i.message.contains("openai-codex"));
-    assert!(codex_item.is_some());
-    assert_eq!(codex_item.unwrap().status, Status::Skip);
-}
-
-#[test]
 fn check_mcp_servers_empty() {
     let config = ChelixConfig::default();
     let section = check_mcp_servers(&config);

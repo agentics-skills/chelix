@@ -150,9 +150,8 @@ VOLUME ["/home/chelix/.config/chelix", "/home/chelix/.chelix", "/home/chelix/.np
 
 USER root
 
-# Expose gateway port (HTTPS), HTTP port for CA certificate download (gateway port + 1),
-# and OAuth callback port (used by providers with pre-registered redirect URIs).
-# EXPOSE 13131 13132 1455
+# Expose gateway port (HTTPS) and HTTP port for CA certificate download (gateway port + 1).
+# EXPOSE 13131 13132
 
 # Bind 0.0.0.0 so Docker port forwarding works (localhost only binds to
 # the container's loopback, making the port unreachable from the host).

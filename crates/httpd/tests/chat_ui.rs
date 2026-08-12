@@ -85,14 +85,6 @@ impl OnboardingService for TestOnboardingService {
     async fn claude_import(&self, _params: serde_json::Value) -> ServiceResult {
         Err("not configured".into())
     }
-
-    async fn codex_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn codex_import(&self, _params: serde_json::Value) -> ServiceResult {
-        Err("not configured".into())
-    }
 }
 
 struct TestServer {
@@ -396,8 +388,8 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     )));
 
     // Verify chat override is active — chat.send should use the LiveChatService,
-    // not the noop. If no providers are configured it errors; if Codex tokens
-    // exist on this machine it may succeed (returns a runId).
+    // not the noop. If no providers are configured it errors; otherwise it may
+    // succeed and return a runId.
     let chat = state2.chat();
     let result = chat.send(serde_json::json!({ "text": "hello" })).await;
     match result {
@@ -405,6 +397,6 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             !e.to_string().contains("chat not configured"),
             "expected LiveChatService (not noop), got: {e}"
         ),
-        Ok(_) => { /* providers found (e.g. Codex tokens on this machine) — OK */ },
+        Ok(_) => { /* A configured provider was found. */ },
     }
 }

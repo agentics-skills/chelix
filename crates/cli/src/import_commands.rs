@@ -1,31 +1,17 @@
-//! CLI subcommand for importing data from external AI tools.
+//! CLI subcommand for importing data from Claude Code and Claude Desktop.
 
 use clap::Subcommand;
 
-#[derive(clap::ValueEnum, Clone, Debug)]
-pub enum ImportSource {
-    /// Import from Claude Code and Claude Desktop.
-    Claude,
-    /// Import from Codex CLI.
-    Codex,
-}
-
 #[derive(Subcommand)]
 pub enum ImportAction {
-    /// Detect available import sources and show what can be imported.
+    /// Detect Claude data and show what can be imported.
     Detect {
-        /// Only detect a specific source.
-        #[arg(short, long)]
-        source: Option<ImportSource>,
         /// Emit structured JSON output.
         #[arg(long)]
         json: bool,
     },
-    /// Import all categories from detected sources.
+    /// Import all categories from Claude.
     All {
-        /// Only import from a specific source.
-        #[arg(short, long)]
-        source: Option<ImportSource>,
         /// Dry-run: show what would be imported without writing anything.
         #[arg(long)]
         dry_run: bool,
@@ -33,11 +19,8 @@ pub enum ImportAction {
         #[arg(long)]
         json: bool,
     },
-    /// Import specific categories from a source.
+    /// Import specific categories from Claude.
     Select {
-        /// Source to import from (required for selective import).
-        #[arg(short, long)]
-        source: ImportSource,
         /// Comma-separated list of categories to import.
         #[arg(short, long, value_delimiter = ',')]
         categories: Vec<String>,
@@ -52,45 +35,28 @@ pub enum ImportAction {
 
 pub async fn handle_import(action: ImportAction) -> anyhow::Result<()> {
     match action {
-        ImportAction::Detect { source, json } => handle_detect(source, json),
-        ImportAction::All {
-            source,
-            dry_run,
-            json,
-        } => handle_import_all(source, dry_run, json),
+        ImportAction::Detect { json } => handle_detect(json),
+        ImportAction::All { dry_run, json } => handle_import_all(dry_run, json),
         ImportAction::Select {
-            source,
             categories,
             dry_run,
             json,
-        } => handle_import_select(source, &categories, dry_run, json),
+        } => handle_import_select(&categories, dry_run, json),
     }
 }
 
-// ── Detection ────────────────────────────────────────────────────────────────
-
-fn handle_detect(source: Option<ImportSource>, json_output: bool) -> anyhow::Result<()> {
+fn handle_detect(json_output: bool) -> anyhow::Result<()> {
     let mut results = serde_json::Map::new();
-    let mut any_found = false;
-
-    if source.is_none() || matches!(source, Some(ImportSource::Claude)) {
-        let found = detect_claude(json_output, &mut results);
-        any_found |= found;
-    }
-
-    if source.is_none() || matches!(source, Some(ImportSource::Codex)) {
-        let found = detect_codex(json_output, &mut results);
-        any_found |= found;
-    }
+    let found = detect_claude(json_output, &mut results);
 
     if json_output {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::Value::Object(results))?
         );
-    } else if !any_found {
+    } else if !found {
         println!("No import sources detected.");
-        println!("Checked: Claude Code (~/.claude/), Codex CLI (~/.codex/)");
+        println!("Checked: Claude Code (~/.claude/)");
     }
 
     Ok(())
@@ -156,78 +122,19 @@ fn detect_claude(
     }
 }
 
-#[cfg_attr(not(feature = "codex-import"), allow(unused_variables))]
-fn detect_codex(
-    json_output: bool,
-    results: &mut serde_json::Map<String, serde_json::Value>,
-) -> bool {
-    #[cfg(feature = "codex-import")]
-    {
-        let Some(detection) = chelix_codex_import::detect::detect() else {
-            if !json_output {
-                println!("Codex CLI: not detected");
-            }
-            results.insert("codex".to_string(), serde_json::json!({"detected": false}));
-            return false;
-        };
-
-        let mcp_count = chelix_codex_import::mcp_servers::count_mcp_servers(&detection);
-
-        if json_output {
-            results.insert(
-                "codex".to_string(),
-                serde_json::json!({
-                    "detected": true,
-                    "home_dir": detection.home_dir.display().to_string(),
-                    "mcp_servers_count": mcp_count,
-                    "has_memory": detection.instructions_path.is_some(),
-                }),
-            );
-        } else {
-            println!("Codex CLI: detected at {}", detection.home_dir.display());
-            print_scan_item(
-                "  MCP Servers",
-                mcp_count > 0,
-                Some(format!("{mcp_count} server(s)")),
-            );
-            print_scan_item("  Memory", detection.instructions_path.is_some(), None);
-            println!();
-        }
-        true
-    }
-    #[cfg(not(feature = "codex-import"))]
-    {
-        false
-    }
-}
-
-// ── Import All ───────────────────────────────────────────────────────────────
-
-fn handle_import_all(
-    source: Option<ImportSource>,
-    dry_run: bool,
-    json_output: bool,
-) -> anyhow::Result<()> {
+fn handle_import_all(dry_run: bool, json_output: bool) -> anyhow::Result<()> {
     if dry_run {
-        return handle_detect(source, json_output);
+        return handle_detect(json_output);
     }
 
     let data_dir = chelix_config::data_dir();
-
-    let mut all_results = serde_json::Map::new();
-
-    if source.is_none() || matches!(source, Some(ImportSource::Claude)) {
-        import_claude_all(&data_dir, json_output, &mut all_results)?;
-    }
-
-    if source.is_none() || matches!(source, Some(ImportSource::Codex)) {
-        import_codex_all(&data_dir, json_output, &mut all_results)?;
-    }
+    let mut results = serde_json::Map::new();
+    import_claude_all(&data_dir, json_output, &mut results)?;
 
     if json_output {
         println!(
             "{}",
-            serde_json::to_string_pretty(&serde_json::Value::Object(all_results))?
+            serde_json::to_string_pretty(&serde_json::Value::Object(results))?
         );
     }
 
@@ -255,14 +162,15 @@ fn import_claude_all(
 
         let mcp_path = data_dir.join("mcp-servers.json");
         let skills_dir = data_dir.join("skills");
-
         let categories = vec![
             chelix_claude_import::mcp_servers::import_mcp_servers(&detection, &mcp_path),
             chelix_claude_import::skills::import_skills(&detection, &skills_dir),
             chelix_claude_import::memory::import_memory(&detection, data_dir),
         ];
-
-        let total: usize = categories.iter().map(|c| c.items_imported).sum();
+        let total: usize = categories
+            .iter()
+            .map(|category| category.items_imported)
+            .sum();
 
         if json_output {
             results.insert(
@@ -279,70 +187,17 @@ fn import_claude_all(
     Ok(())
 }
 
-#[cfg_attr(not(feature = "codex-import"), allow(unused_variables))]
-fn import_codex_all(
-    data_dir: &std::path::Path,
-    json_output: bool,
-    results: &mut serde_json::Map<String, serde_json::Value>,
-) -> anyhow::Result<()> {
-    #[cfg(feature = "codex-import")]
-    {
-        let Some(detection) = chelix_codex_import::detect::detect() else {
-            if !json_output {
-                println!("Codex CLI: not detected, skipping");
-            }
-            return Ok(());
-        };
-
-        if !json_output {
-            println!(
-                "Importing from Codex CLI at {} ...",
-                detection.home_dir.display()
-            );
-        }
-
-        let mcp_path = data_dir.join("mcp-servers.json");
-
-        let categories = vec![
-            chelix_codex_import::mcp_servers::import_mcp_servers(&detection, &mcp_path),
-            chelix_codex_import::memory::import_memory(&detection, data_dir),
-        ];
-
-        let total: usize = categories.iter().map(|c| c.items_imported).sum();
-
-        if json_output {
-            results.insert(
-                "codex".to_string(),
-                serde_json::json!({
-                    "categories": categories,
-                    "total_imported": total,
-                }),
-            );
-        } else {
-            print_report("Codex CLI", &categories);
-        }
-    }
-    Ok(())
-}
-
-// ── Selective Import ─────────────────────────────────────────────────────────
-
 fn handle_import_select(
-    source: ImportSource,
     categories: &[String],
     dry_run: bool,
     json_output: bool,
 ) -> anyhow::Result<()> {
     if dry_run {
-        return handle_detect(Some(source), json_output);
+        return handle_detect(json_output);
     }
 
     let data_dir = chelix_config::data_dir();
-
-    match source {
-        ImportSource::Claude => import_claude_select(categories, &data_dir, json_output),
-        ImportSource::Codex => import_codex_select(categories, &data_dir, json_output),
-    }
+    import_claude_select(categories, &data_dir, json_output)
 }
 
 #[cfg_attr(not(feature = "claude-import"), allow(unused_variables))]
@@ -357,14 +212,16 @@ fn import_claude_select(
             anyhow::bail!("No Claude Code installation found");
         };
 
-        let cats: Vec<String> = categories.iter().map(|c| c.trim().to_lowercase()).collect();
-
+        let categories: Vec<String> = categories
+            .iter()
+            .map(|category| category.trim().to_lowercase())
+            .collect();
         let mcp_path = data_dir.join("mcp-servers.json");
         let skills_dir = data_dir.join("skills");
-
         let mut reports = Vec::new();
-        for cat in &cats {
-            match cat.as_str() {
+
+        for category in &categories {
+            match category.as_str() {
                 "mcp_servers" | "mcp-servers" | "mcp" => {
                     reports.push(chelix_claude_import::mcp_servers::import_mcp_servers(
                         &detection, &mcp_path,
@@ -386,7 +243,7 @@ fn import_claude_select(
         }
 
         if json_output {
-            let total: usize = reports.iter().map(|c| c.items_imported).sum();
+            let total: usize = reports.iter().map(|category| category.items_imported).sum();
             print_json(serde_json::json!({
                 "source": "claude",
                 "categories": reports,
@@ -402,57 +259,6 @@ fn import_claude_select(
     Ok(())
 }
 
-#[cfg_attr(not(feature = "codex-import"), allow(unused_variables))]
-fn import_codex_select(
-    categories: &[String],
-    data_dir: &std::path::Path,
-    json_output: bool,
-) -> anyhow::Result<()> {
-    #[cfg(feature = "codex-import")]
-    {
-        let Some(detection) = chelix_codex_import::detect::detect() else {
-            anyhow::bail!("No Codex CLI installation found");
-        };
-
-        let cats: Vec<String> = categories.iter().map(|c| c.trim().to_lowercase()).collect();
-        let mcp_path = data_dir.join("mcp-servers.json");
-
-        let mut reports = Vec::new();
-        for cat in &cats {
-            match cat.as_str() {
-                "mcp_servers" | "mcp-servers" | "mcp" => {
-                    reports.push(chelix_codex_import::mcp_servers::import_mcp_servers(
-                        &detection, &mcp_path,
-                    ));
-                },
-                "memory" => {
-                    reports.push(chelix_codex_import::memory::import_memory(
-                        &detection, data_dir,
-                    ));
-                },
-                other => eprintln!("Warning: unknown category '{other}' for codex, skipping"),
-            }
-        }
-
-        if json_output {
-            let total: usize = reports.iter().map(|c| c.items_imported).sum();
-            print_json(serde_json::json!({
-                "source": "codex",
-                "categories": reports,
-                "total_imported": total,
-            }))?;
-        } else {
-            print_report("Codex CLI", &reports);
-        }
-    }
-    #[cfg(not(feature = "codex-import"))]
-    anyhow::bail!("codex-import feature is not enabled");
-    #[allow(unreachable_code)]
-    Ok(())
-}
-
-// ── Output helpers ───────────────────────────────────────────────────────────
-
 fn print_json(value: serde_json::Value) -> anyhow::Result<()> {
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
@@ -465,7 +271,7 @@ fn print_scan_item(name: &str, available: bool, detail: Option<String>) {
         "-"
     };
     match detail {
-        Some(d) if available => println!("  [{status}] {name}: {d}"),
+        Some(detail) if available => println!("  [{status}] {name}: {detail}"),
         _ => println!("  [{status}] {name}"),
     }
 }
@@ -473,8 +279,8 @@ fn print_scan_item(name: &str, available: bool, detail: Option<String>) {
 fn print_report(source: &str, categories: &[impl AsReport]) {
     println!();
     println!("{source} import complete:");
-    for cat in categories {
-        let (name, status, imported, updated, skipped, warnings, errors) = cat.as_report();
+    for category in categories {
+        let (name, status, imported, updated, skipped, warnings, errors) = category.as_report();
         let icon = match status {
             "success" => "+",
             "partial" => "~",
@@ -488,17 +294,16 @@ fn print_report(source: &str, categories: &[impl AsReport]) {
         } else {
             println!("  [{icon}] {name}: {imported} imported, {skipped} skipped");
         }
-        for w in warnings {
-            println!("      warning: {w}");
+        for warning in warnings {
+            println!("      warning: {warning}");
         }
-        for e in errors {
-            println!("      error: {e}");
+        for error in errors {
+            println!("      error: {error}");
         }
     }
     println!();
 }
 
-/// Trait to unify report printing across different report types.
 trait AsReport {
     fn as_report(&self) -> (&str, &str, usize, usize, usize, &[String], &[String]);
 }

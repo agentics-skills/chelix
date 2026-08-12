@@ -25,7 +25,7 @@ You'll see output like:
 
 You need an LLM provider configured to chat. The fastest options:
 
-### Option A: API Key
+### Configure an API Key
 
 1. Set an API key as an environment variable and restart Chelix:
 
@@ -36,12 +36,6 @@ You need an LLM provider configured to chat. The fastest options:
 2. Models appear automatically in the model picker.
 
 Or configure via the web UI: **Settings** → **Providers** → enter your API key.
-
-### Option B: OpenAI Codex OAuth
-
-1. In Chelix, go to **Settings** → **Providers**
-2. Click **OpenAI Codex** → **Connect**
-3. Complete the OAuth flow
 
 See [Providers](providers.md) for the full list of supported providers.
 

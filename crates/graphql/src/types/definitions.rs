@@ -436,15 +436,6 @@ pub struct ModelInfo {
 
 #[derive(Debug, SimpleObject, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProviderOAuthStartResult {
-    #[serde(default)]
-    pub auth_url: Option<String>,
-    #[serde(default)]
-    pub already_authenticated: Option<bool>,
-}
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct McpOAuthStartResult {
     #[serde(default)]
     pub ok: Option<bool>,

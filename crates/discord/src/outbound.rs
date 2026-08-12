@@ -871,13 +871,13 @@ mod tests {
     fn logbook_html_to_discord_blockquote() {
         let html = "<blockquote expandable>\n\
                      \u{1f4cb} <b>Activity log</b>\n\
-                     \u{2022} Using GPT 5.2 Codex (Codex/OAuth). Use /model to change.\n\
+                     \u{2022} Using GPT 5.2. Use /model to change.\n\
                      </blockquote>";
         let result = html_suffix_to_discord(html);
         let trimmed = result.trim();
         assert_eq!(
             trimmed,
-            "> \u{1f4cb} **Activity log**\n> \u{2022} Using GPT 5.2 Codex (Codex/OAuth). Use /model to change."
+            "> \u{1f4cb} **Activity log**\n> \u{2022} Using GPT 5.2. Use /model to change."
         );
     }
 

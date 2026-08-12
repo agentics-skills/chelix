@@ -596,12 +596,6 @@ pub(super) async fn complete_startup(
                 state.services.channel_store.clone(),
             ),
         ));
-        #[cfg(feature = "provider-openai-codex")]
-        if chelix_providers::openai_codex::has_stored_tokens() {
-            tool_registry.register(Box::new(
-                chelix_tools::image_generation::GenerateImageTool::new(),
-            ));
-        }
         #[cfg(feature = "firecrawl")]
         if let Some(t) =
             chelix_tools::firecrawl::FirecrawlScrapeTool::from_config(&config.tools.web.firecrawl)

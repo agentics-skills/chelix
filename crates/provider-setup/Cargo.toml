@@ -7,7 +7,6 @@ version.workspace    = true
 [dependencies]
 async-trait           = { workspace = true }
 chelix-config         = { workspace = true }
-chelix-oauth          = { workspace = true }
 chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-vault          = { optional = true, workspace = true }

@@ -241,19 +241,6 @@
   padding: 4px 16px;
 }
 
-.error-countdown {
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-  align-self: center;
-  font-size: 0.75rem;
-}
-
-.error-countdown.reset-ready {
-  color: var(--success, #22c55e);
-  font-weight: 600;
-}
-
 /* ── Thinking ── */
 
 .msg.thinking {

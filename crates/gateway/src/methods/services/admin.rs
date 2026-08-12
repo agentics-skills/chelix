@@ -1305,35 +1305,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
-    // ── Codex import ───────────────────────────────────────────────────
-
-    reg.register(
-        "codex.detect",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .codex_detect()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "codex.import",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .codex_import(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
     // ── Logs ────────────────────────────────────────────────────────────────
 
     reg.register(

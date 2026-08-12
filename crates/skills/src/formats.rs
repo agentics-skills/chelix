@@ -27,8 +27,6 @@ pub enum PluginFormat {
     Skill,
     /// Claude Code plugin: `.claude-plugin/plugin.json` + `agents/`, `commands/`, `skills/` dirs.
     ClaudeCode,
-    /// Codex plugin: `codex-plugin.json` or `.codex/plugin.json` (future).
-    Codex,
     /// Fallback: `.md` files treated as generic skill prompts.
     Generic,
 }
@@ -38,7 +36,6 @@ impl std::fmt::Display for PluginFormat {
         match self {
             Self::Skill => write!(f, "skill"),
             Self::ClaudeCode => write!(f, "claude_code"),
-            Self::Codex => write!(f, "codex"),
             Self::Generic => write!(f, "generic"),
         }
     }
@@ -456,7 +453,6 @@ pub fn scan_with_adapter(
     match format {
         PluginFormat::Skill => None, // handled by existing scan_repo_skills
         PluginFormat::ClaudeCode => Some(ClaudeCodeAdapter.scan_skills(repo_dir)),
-        PluginFormat::Codex => None, // not yet implemented
         PluginFormat::Generic => None,
     }
 }
@@ -490,7 +486,6 @@ mod tests {
     fn test_plugin_format_display() {
         assert_eq!(PluginFormat::Skill.to_string(), "skill");
         assert_eq!(PluginFormat::ClaudeCode.to_string(), "claude_code");
-        assert_eq!(PluginFormat::Codex.to_string(), "codex");
         assert_eq!(PluginFormat::Generic.to_string(), "generic");
     }
 

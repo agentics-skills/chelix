@@ -115,9 +115,6 @@ const PROVIDER_ENV_MAP: &[(&str, &str, bool)] = &[
     ("openrouter", "OPENROUTER_API_KEY", false),
 ];
 
-/// OAuth providers that don't use env var API keys.
-const OAUTH_PROVIDERS: &[&str] = &["openai-codex"];
-
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 pub async fn handle_doctor() -> Result<()> {
@@ -517,15 +514,6 @@ fn check_providers(config: &ChelixConfig) -> Section {
     for (name, entry) in &config.providers.providers {
         if !entry.enabled {
             section.push(Status::Skip, format!("{name}: disabled"));
-            continue;
-        }
-
-        // OAuth providers — skip env var check
-        if OAUTH_PROVIDERS.contains(&name.as_str()) {
-            section.push(
-                Status::Skip,
-                format!("{name}: OAuth (check via auth login)"),
-            );
             continue;
         }
 

@@ -125,7 +125,6 @@ export function showCustomProviderForm(): void {
 							const customProvider: ProviderInfo = {
 								name: providerName,
 								displayName: displayName,
-								authType: "api-key",
 								configured: true,
 								defaultBaseUrl: url,
 								baseUrl: url,

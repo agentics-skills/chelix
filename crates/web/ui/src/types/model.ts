@@ -63,7 +63,6 @@ export interface ModelInfo extends ModelMetadata {
 export interface ProviderInfo {
 	name: string;
 	displayName: string;
-	authType: string;
 	configured: boolean;
 	defaultBaseUrl: string | null;
 	baseUrl: string | null;

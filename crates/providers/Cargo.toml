@@ -4,9 +4,6 @@ name                 = "chelix-providers"
 repository.workspace = true
 version.workspace    = true
 
-[features]
-provider-openai-codex = ["dep:base64", "dep:chelix-oauth"]
-
 [dependencies]
 anyhow            = { workspace = true }
 async-stream      = { workspace = true }
@@ -26,10 +23,6 @@ tokio             = { workspace = true }
 tokio-stream      = { workspace = true }
 tokio-tungstenite = { workspace = true }
 tracing           = { workspace = true }
-
-# Optional LLM provider crates
-base64       = { optional = true, workspace = true }
-chelix-oauth = { optional = true, workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }

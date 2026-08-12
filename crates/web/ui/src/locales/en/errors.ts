@@ -5,10 +5,6 @@ export default {
 	generic: {
 		title: "Error",
 	},
-	usageLimitReached: {
-		title: "Usage limit reached",
-		detail: "Your {{planType}} plan limit has been reached.",
-	},
 	rateLimited: {
 		title: "Rate limited",
 		detail: "Too many requests. Please wait a moment.",
@@ -23,10 +19,6 @@ export default {
 		detail: "The upstream provider returned an error.",
 	},
 	chat: {
-		usageLimitReached: {
-			title: "Usage limit reached",
-			detail: "Your {{planType}} plan limit has been reached.",
-		},
 		billingExhausted: {
 			title: "Insufficient quota",
 			detail: "Your account quota is exhausted. Add funds or switch providers and try again.",
@@ -115,10 +107,6 @@ export default {
 		ENV_UPDATE_FAILED: "Failed to update environment variable.",
 		ENV_DELETE_FAILED: "Failed to delete environment variable.",
 		ENV_NOT_FOUND: "Environment variable not found.",
-	},
-	countdown: {
-		resetReady: "Limit should be reset now \u2014 try again!",
-		resetsIn: "Resets in {{time}}",
 	},
 	copyFailed: "Copy failed. Copy the link manually.",
 };

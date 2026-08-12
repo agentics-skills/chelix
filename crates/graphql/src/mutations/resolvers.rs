@@ -10,8 +10,8 @@ use crate::{
     scalars::Json,
     services,
     types::{
-        BoolResult, McpOAuthStartResult, ModelTestResult, ProviderOAuthStartResult,
-        SessionShareResult, TranscriptionResult, TtsConvertResult,
+        BoolResult, McpOAuthStartResult, ModelTestResult, SessionShareResult, TranscriptionResult,
+        TtsConvertResult,
     },
 };
 
@@ -649,24 +649,6 @@ impl ProviderMutation {
     async fn add_custom(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
         from_service(s.provider_setup.add_custom(input.0).await)
-    }
-
-    async fn oauth_start(
-        &self,
-        ctx: &Context<'_>,
-        provider: String,
-    ) -> Result<ProviderOAuthStartResult> {
-        let s = services!(ctx);
-        from_service(
-            s.provider_setup
-                .oauth_start(serde_json::json!({ "provider": provider }))
-                .await,
-        )
-    }
-
-    async fn oauth_complete(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.oauth_complete(input.0).await)
     }
 }
 

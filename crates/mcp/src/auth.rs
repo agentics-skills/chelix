@@ -1060,8 +1060,8 @@ mod tests {
     async fn start_web_oauth_flow_rewrites_loopback_redirect() {
         let mut server = mockito::Server::new_async().await;
         let base = server.url();
-        let https_redirect = "https://localhost:1455/auth/callback";
-        let http_redirect = "http://localhost:1455/auth/callback";
+        let https_redirect = "https://localhost:9876/auth/callback";
+        let http_redirect = "http://localhost:9876/auth/callback";
 
         let resource_meta = server
             .mock("GET", "/mcp/.well-known/oauth-protected-resource")

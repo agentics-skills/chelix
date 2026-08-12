@@ -1,8 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use {
-    chelix_oauth::{
-        OAuthConfig, OAuthFlow, TokenStore, callback_port, load_oauth_config, pkce::generate_pkce,
-    },
+    chelix_oauth::{OAuthConfig, OAuthFlow, TokenStore, pkce::generate_pkce},
     mockito::Matcher,
     secrecy::{ExposeSecret, Secret},
 };
@@ -33,37 +31,27 @@ fn pkce_is_deterministic_sha256() {
     assert_eq!(pkce.challenge, expected);
 }
 
-#[test]
-fn load_oauth_config_returns_openai_codex_defaults() {
-    let config = load_oauth_config("openai-codex").expect("should have builtin defaults");
-    assert_eq!(config.client_id, "app_EMoamEEZ73f0CkXaXp7hrann");
-    assert_eq!(config.auth_url, "https://auth.openai.com/oauth/authorize");
-    assert_eq!(config.token_url, "https://auth.openai.com/oauth/token");
-    assert_eq!(config.redirect_uri, "http://localhost:1455/auth/callback");
-    assert!(config.scopes.contains(&"openid".to_string()));
-    assert!(config.scopes.contains(&"offline_access".to_string()));
-}
-
-#[test]
-fn load_oauth_config_returns_none_for_unknown() {
-    assert!(load_oauth_config("nonexistent-provider").is_none());
-}
-
-#[test]
-fn callback_port_parses_from_redirect_uri() {
-    let config = load_oauth_config("openai-codex").unwrap();
-    assert_eq!(callback_port(&config), 1455);
+fn test_oauth_config() -> OAuthConfig {
+    OAuthConfig {
+        client_id: "client-123".into(),
+        client_secret: None,
+        auth_url: "https://auth.example.com/oauth/authorize".into(),
+        token_url: "https://auth.example.com/oauth/token".into(),
+        redirect_uri: "http://localhost:9876/auth/callback".into(),
+        resource: None,
+        scopes: vec!["read".into(), "write".into()],
+        extra_auth_params: vec![],
+    }
 }
 
 #[test]
 fn oauth_flow_start_builds_valid_url() {
-    let config = load_oauth_config("openai-codex").unwrap();
-    let flow = OAuthFlow::new(config);
+    let flow = OAuthFlow::new(test_oauth_config());
     let req = flow.start().unwrap();
 
     let url = url::Url::parse(&req.url).expect("should be valid URL");
     assert_eq!(url.scheme(), "https");
-    assert_eq!(url.host_str(), Some("auth.openai.com"));
+    assert_eq!(url.host_str(), Some("auth.example.com"));
     assert_eq!(url.path(), "/oauth/authorize");
 
     let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
@@ -73,31 +61,21 @@ fn oauth_flow_start_builds_valid_url() {
     );
     assert_eq!(
         params.get("client_id").map(|v| v.as_ref()),
-        Some("app_EMoamEEZ73f0CkXaXp7hrann")
+        Some("client-123")
     );
     assert_eq!(
         params.get("code_challenge_method").map(|v| v.as_ref()),
         Some("S256")
     );
-    assert_eq!(
-        params.get("id_token_add_organizations").map(|v| v.as_ref()),
-        Some("true")
-    );
-    assert_eq!(
-        params.get("codex_cli_simplified_flow").map(|v| v.as_ref()),
-        Some("true")
-    );
-    assert_eq!(params.get("originator").map(|v| v.as_ref()), Some("pi"));
     assert!(params.contains_key("state"));
     assert!(params.contains_key("code_challenge"));
-    assert!(params.get("scope").unwrap().contains("openid"));
-    assert!(params.get("scope").unwrap().contains("offline_access"));
+    assert!(params.get("scope").unwrap().contains("read"));
+    assert!(params.get("scope").unwrap().contains("write"));
 }
 
 #[test]
 fn oauth_flow_start_generates_unique_state() {
-    let config = load_oauth_config("openai-codex").unwrap();
-    let flow = OAuthFlow::new(config);
+    let flow = OAuthFlow::new(test_oauth_config());
     let req1 = flow.start().unwrap();
     let req2 = flow.start().unwrap();
     assert_ne!(req1.state, req2.state);
@@ -128,7 +106,7 @@ async fn oauth_flow_exchange_sends_resource_indicator_when_configured() {
         client_secret: None,
         auth_url: format!("{}/authorize", server.url()),
         token_url: format!("{}{}", server.url(), token_path),
-        redirect_uri: "http://127.0.0.1:1455/auth/callback".into(),
+        redirect_uri: "http://127.0.0.1:9876/auth/callback".into(),
         resource: Some(resource.into()),
         scopes: vec![],
         extra_auth_params: vec![],
@@ -162,7 +140,7 @@ async fn oauth_flow_exchange_sends_client_secret_when_configured() {
         client_secret: Some(Secret::new("secret-456".into())),
         auth_url: format!("{}/authorize", server.url()),
         token_url: format!("{}{}", server.url(), token_path),
-        redirect_uri: "http://127.0.0.1:1455/auth/callback".into(),
+        redirect_uri: "http://127.0.0.1:9876/auth/callback".into(),
         resource: None,
         scopes: vec![],
         extra_auth_params: vec![],
@@ -208,7 +186,3 @@ fn token_store_roundtrip() {
     store.delete("test-provider").unwrap();
     assert!(store.load("test-provider").is_none());
 }
-
-// NOTE: env var override test is omitted because env vars are process-global
-// and would interfere with parallel tests. The override logic is straightforward
-// (std::env::var check in defaults.rs) and covered by code review.

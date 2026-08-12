@@ -990,7 +990,6 @@ test.describe("Onboarding wizard", () => {
 							{
 								name: "openai",
 								displayName: "OpenAI",
-								authType: "api-key",
 								configured: false,
 								defaultBaseUrl: "https://api.openai.com/v1",
 								baseUrl: null,
@@ -1002,7 +1001,6 @@ test.describe("Onboarding wizard", () => {
 							{
 								name: "perplexity",
 								displayName: "Perplexity",
-								authType: "api-key",
 								configured: true,
 								defaultBaseUrl: "https://api.perplexity.ai",
 								baseUrl: null,
@@ -1014,7 +1012,6 @@ test.describe("Onboarding wizard", () => {
 							{
 								name: "together",
 								displayName: "Together AI",
-								authType: "api-key",
 								configured: false,
 								defaultBaseUrl: "https://api.together.xyz/v1",
 								baseUrl: null,

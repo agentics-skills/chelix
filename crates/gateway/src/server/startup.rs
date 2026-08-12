@@ -148,13 +148,3 @@ pub fn claude_detected_for_ui() -> bool {
 pub fn claude_detected_for_ui() -> bool {
     false
 }
-
-#[cfg(feature = "codex-import")]
-pub fn codex_detected_for_ui() -> bool {
-    chelix_codex_import::detect::detect().is_some()
-}
-
-#[cfg(not(feature = "codex-import"))]
-pub fn codex_detected_for_ui() -> bool {
-    false
-}

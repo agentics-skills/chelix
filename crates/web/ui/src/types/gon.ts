@@ -240,7 +240,6 @@ export interface GonData {
 	routes: SpaRoutes;
 	started_at: number;
 	claude_detected: boolean;
-	codex_detected: boolean;
 	sessions_recent: SessionMeta[];
 	agents: GonAgentsData;
 	webhooks: unknown[];

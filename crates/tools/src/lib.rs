@@ -19,8 +19,6 @@ pub mod error;
 #[cfg(feature = "firecrawl")]
 pub mod firecrawl;
 pub mod image_cache;
-#[cfg(feature = "provider-openai-codex")]
-pub mod image_generation;
 pub mod list_directory;
 pub mod location;
 pub mod map;

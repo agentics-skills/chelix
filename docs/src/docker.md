@@ -11,7 +11,6 @@ docker run -d \
   --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v chelix-config:/home/chelix/.config/chelix \
   -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -31,7 +30,6 @@ provider so you can skip the browser setup wizard entirely.
 | ----- | ------------------------------------------------------------------------------------------------ |
 | 13131 | Gateway (HTTPS by default, HTTP with `--no-tls`) — web UI, API, WebSocket                        |
 | 13132 | HTTP — CA certificate download for local TLS trust                                               |
-| 1455  | OAuth callback — required for OpenAI Codex and other providers with pre-registered redirect URIs |
 
 ### Trusting the TLS certificate
 
@@ -104,7 +102,6 @@ docker run -d \
   --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v ./config:/home/chelix/.config/chelix \
   -v ./data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -158,7 +155,6 @@ docker run -d \
   --network=chelix-sandbox-net \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v chelix-config:/home/chelix/.config/chelix \
   -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -218,7 +214,6 @@ services:
     ports:
       - "13131:13131"
       - "13132:13132"
-      - "1455:1455" # OAuth callback (OpenAI Codex, etc.)
     volumes:
       - ./config:/home/chelix/.config/chelix
       - ./data:/home/chelix/.chelix
@@ -280,7 +275,6 @@ docker run -d \
   --add-host=host.docker.internal:host-gateway \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v chelix-config:/home/chelix/.config/chelix \
   -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \
@@ -301,7 +295,6 @@ podman run -d \
   --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v chelix-config:/home/chelix/.config/chelix \
   -v chelix-data:/home/chelix/.chelix \
   -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock \
@@ -312,7 +305,6 @@ podman run -d \
   --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v chelix-config:/home/chelix/.config/chelix \
   -v chelix-data:/home/chelix/.chelix \
   -v /run/podman/podman.sock:/var/run/docker.sock \
@@ -344,7 +336,6 @@ docker run -d \
   --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -e CHELIX_CONFIG_DIR=/config \
   -e CHELIX_DATA_DIR=/data \
   -v ./config:/config \
@@ -479,28 +470,6 @@ logs:
 ```bash
 docker logs chelix 2>&1 | grep -i setup
 ```
-
-### OAuth authentication error (OpenAI Codex)
-
-If clicking **Connect** for OpenAI Codex shows "unknown_error" on OpenAI's page,
-port 1455 is not reachable from your browser. Make sure you published it:
-
-```bash
--p 1455:1455
-```
-
-If you're running Chelix on a remote server (cloud VM, VPS) and accessing it
-over the network, `localhost:1455` on the browser side points to your local
-machine — not the server. In that case, authenticate via the CLI instead:
-
-```bash
-docker exec -it chelix chelix auth login --provider openai-codex
-```
-
-The CLI opens a browser on the machine where you run the command and handles the
-OAuth callback locally. If automatic callback capture fails, Chelix prompts you
-to paste the callback URL (or `code#state`) into the terminal. Tokens are saved
-to the config volume and picked up by the running gateway automatically.
 
 ### Permission denied on bind mounts
 

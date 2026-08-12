@@ -24,7 +24,6 @@ services:
     ports:
       - "13131:13131"
       - "13132:13132"
-      - "1455:1455"   # OAuth callback (OpenAI Codex, etc.)
     environment:
       # Uncomment for unattended setup.
       # CHELIX_PASSWORD: change-me

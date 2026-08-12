@@ -8,7 +8,6 @@ import { sendRpc } from "../../helpers";
 import type { RpcResponse } from "./_shared";
 import { ChelixDataSection } from "./ChelixDataSection";
 import { ClaudeImportSection } from "./ClaudeImportSection";
-import { CodexImportSection } from "./CodexImportSection";
 
 interface ImportTabDef {
 	id: string;
@@ -27,12 +26,6 @@ function countClaude(p: Record<string, unknown>): number {
 	return n;
 }
 
-function countCodex(p: Record<string, unknown>): number {
-	let n = Number(p.mcp_servers_count) || 0;
-	if (p.has_memory) n++;
-	return n;
-}
-
 /** Build tab definitions at render time so gon.get() reads current state. */
 function getAllTabs(): ImportTabDef[] {
 	return [
@@ -43,14 +36,6 @@ function getAllTabs(): ImportTabDef[] {
 			detected: gon.get("claude_detected") === true,
 			detectRpc: "claude.detect",
 			countFn: countClaude,
-		},
-		{
-			id: "codex",
-			label: "Codex CLI",
-			icon: <span className="icon icon-code" />,
-			detected: gon.get("codex_detected") === true,
-			detectRpc: "codex.detect",
-			countFn: countCodex,
 		},
 	];
 }
@@ -111,8 +96,6 @@ function renderTab(id: string): VNode | null {
 			return <ChelixDataSection />;
 		case "claude":
 			return <ClaudeImportSection />;
-		case "codex":
-			return <CodexImportSection />;
 		default:
 			return null;
 	}

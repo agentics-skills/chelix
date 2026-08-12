@@ -9,14 +9,12 @@ use secrecy::{ExposeSecret, Secret};
 
 use {
     chelix_config::schema::{ModelConfigMap, ProvidersConfig},
-    chelix_oauth::TokenStore,
     chelix_service_traits::{ServiceError, ServiceResult},
 };
 
 use crate::{
     key_store::{KeyStore, ProviderConfig},
-    known_providers::{AuthType, known_providers},
-    oauth::{codex_cli_auth_has_access_token, codex_cli_auth_path},
+    known_providers::known_providers,
 };
 
 // ── Config directory helpers ───────────────────────────────────────────────
@@ -33,12 +31,6 @@ pub(crate) fn home_key_store() -> Option<(KeyStore, PathBuf)> {
     let dir = home_config_dir_if_different()?;
     let path = dir.join("provider_keys.json");
     Some((KeyStore::with_path(path.clone()), path))
-}
-
-pub(crate) fn home_token_store() -> Option<(TokenStore, PathBuf)> {
-    let dir = home_config_dir_if_different()?;
-    let path = dir.join("oauth_tokens.json");
-    Some((TokenStore::with_path(path.clone()), path))
 }
 
 pub(crate) fn home_provider_config() -> ServiceResult<Option<(ProvidersConfig, PathBuf)>> {
@@ -228,14 +220,10 @@ pub fn detect_auto_provider_sources_with_overrides(
 ) -> ServiceResult<Vec<AutoDetectedProviderSource>> {
     let is_cloud = deploy_platform.is_some();
     let key_store = KeyStore::new();
-    let token_store = TokenStore::new();
     let home_key_store = home_key_store();
-    let home_token_store = home_token_store();
     let home_provider_config = home_provider_config()?;
     let config_dir = current_config_dir();
     let provider_keys_path = config_dir.join("provider_keys.json");
-    let oauth_tokens_path = config_dir.join("oauth_tokens.json");
-    let codex_path = codex_cli_auth_path();
 
     let mut seen = BTreeSet::new();
     let mut detected = Vec::new();
@@ -248,16 +236,12 @@ pub fn detect_auto_provider_sources_with_overrides(
     }) {
         let mut sources = Vec::new();
 
-        if let Some(env_key) = provider.env_key
-            && env_value_with_overrides(env_overrides, env_key).is_some()
-        {
+        let env_key = provider.env_key;
+        if env_value_with_overrides(env_overrides, env_key).is_some() {
             sources.push(format!("env:{env_key}"));
         }
-        if provider.auth_type == AuthType::ApiKey
-            && let Some(source) = chelix_config::generic_provider_env_source_for_provider(
-                provider.name,
-                env_overrides,
-            )
+        if let Some(source) =
+            chelix_config::generic_provider_env_source_for_provider(provider.name, env_overrides)
         {
             sources.push(source);
         }
@@ -291,27 +275,6 @@ pub fn detect_auto_provider_sources_with_overrides(
             .as_ref()
             .is_some_and(|(store, _)| store.load(provider.name).is_some())
             && let Some((_, path)) = home_key_store.as_ref()
-        {
-            sources.push(format!("file:{}", path.display()));
-        }
-
-        if provider.auth_type == AuthType::Oauth && token_store.load(provider.name).is_some() {
-            sources.push(format!("file:{}", oauth_tokens_path.display()));
-        }
-        if provider.auth_type == AuthType::Oauth
-            && home_token_store
-                .as_ref()
-                .is_some_and(|(store, _)| store.load(provider.name).is_some())
-            && let Some((_, path)) = home_token_store.as_ref()
-        {
-            sources.push(format!("file:{}", path.display()));
-        }
-
-        if provider.name == "openai-codex"
-            && codex_path
-                .as_deref()
-                .is_some_and(codex_cli_auth_has_access_token)
-            && let Some(path) = codex_path.as_ref()
         {
             sources.push(format!("file:{}", path.display()));
         }

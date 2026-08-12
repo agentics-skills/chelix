@@ -20,7 +20,7 @@ import { updateNavCounts } from "./nav-counts";
 import * as _channelsPage from "./pages/ChannelsPage";
 import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
-import { openModelSelectorForProvider, showApiKeyForm, showOAuthFlow } from "./providers/auth-flow";
+import { openModelSelectorForProvider, showApiKeyForm } from "./providers/auth-flow";
 import { showCustomProviderForm } from "./providers/custom-provider";
 import { closeProviderModal, openProviderModal } from "./providers/shared";
 import { initPWA } from "./pwa";
@@ -59,7 +59,6 @@ import * as _wsConnect from "./ws-connect";
 const providerE2eBridge = {
 	openModelSelectorForProvider,
 	showApiKeyForm,
-	showOAuthFlow,
 	showCustomProviderForm,
 	closeProviderModal,
 	openProviderModal,

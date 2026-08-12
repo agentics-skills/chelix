@@ -568,12 +568,6 @@ impl ProviderQuery {
         let s = services!(ctx);
         from_service(s.provider_setup.available().await)
     }
-
-    /// Get OAuth status.
-    async fn oauth_status(&self, ctx: &Context<'_>) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.oauth_status(serde_json::json!({})).await)
-    }
 }
 
 // ── MCP ─────────────────────────────────────────────────────────────────────

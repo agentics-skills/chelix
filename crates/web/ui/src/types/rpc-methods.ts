@@ -108,8 +108,6 @@ export interface RpcMethodMap {
 	// ── External imports ────────────────────────────────────────
 	"claude.detect": unknown;
 	"claude.import": unknown;
-	"codex.detect": unknown;
-	"codex.import": unknown;
 
 	// ── Projects ────────────────────────────────────────────────
 	"projects.complete_path": unknown;
@@ -121,9 +119,6 @@ export interface RpcMethodMap {
 	// ── Providers ───────────────────────────────────────────────
 	"providers.add_custom": unknown;
 	"providers.available": ProviderInfo[];
-	"providers.oauth.complete": unknown;
-	"providers.oauth.start": unknown;
-	"providers.oauth.status": unknown;
 	"providers.remove_key": unknown;
 	"providers.save_key": unknown;
 	"providers.save_models": unknown;

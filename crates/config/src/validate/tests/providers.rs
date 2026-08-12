@@ -44,7 +44,7 @@ enabled = true
 fn providers_offered_key_not_treated_as_provider_name() {
     let toml = r#"
 [providers]
-offered = ["openai", "openai-codex"]
+offered = ["openai", "openrouter"]
 "#;
     let result = validate_toml_str(toml);
     let offered_warning = result
@@ -75,7 +75,13 @@ offered = ["openai", "unsupported-provider"]
 
 #[test]
 fn noncanonical_offered_provider_names_are_rejected() {
-    for name in ["claude", "google", "alibaba", "openai_codex"] {
+    for name in [
+        "claude",
+        "google",
+        "alibaba",
+        "openai_codex",
+        "openai-codex",
+    ] {
         let toml = format!(
             r#"
 [providers]

@@ -11,10 +11,8 @@ use chelix_service_traits::{ServiceError, ServiceResult};
 use {
     super::{LiveProviderSetupService, support::ProviderSetupTiming},
     crate::{
-        custom_providers::is_custom_provider,
-        key_store::parse_models_param,
-        known_providers::{AuthType, known_providers},
-        provider_base_url::validate_provider_base_url,
+        custom_providers::is_custom_provider, key_store::parse_models_param,
+        known_providers::known_providers, provider_base_url::validate_provider_base_url,
     },
 };
 
@@ -37,20 +35,13 @@ impl LiveProviderSetupService {
         // Custom providers bypass known_providers() validation.
         let is_custom = is_custom_provider(provider_name);
         if !is_custom {
-            // Validate provider name - allow both api-key and local providers
             let known = known_providers();
             let provider = known
                 .iter()
-                .find(|p| {
-                    p.name == provider_name
-                        && (p.auth_type == AuthType::ApiKey || p.auth_type == AuthType::Local)
-                })
+                .find(|provider| provider.name == provider_name)
                 .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
 
-            // API key is required for api-key providers unless the provider
-            // marks the key as optional (local backends).
-            if provider.auth_type == AuthType::ApiKey && !provider.key_optional && api_key.is_none()
-            {
+            if !provider.key_optional && api_key.is_none() {
                 return Err("missing 'apiKey' parameter".into());
             }
         } else if api_key.is_none() {
@@ -122,22 +113,14 @@ impl LiveProviderSetupService {
             self.set_provider_enabled(provider_name, false)?;
         } else {
             let providers = known_providers();
-            let known = providers
+            providers
                 .iter()
-                .find(|p| p.name == provider_name)
+                .find(|provider| provider.name == provider_name)
                 .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
 
-            // Remove persisted API key
-            if known.auth_type == AuthType::ApiKey {
-                self.key_store
-                    .remove(provider_name)
-                    .map_err(ServiceError::message)?;
-            }
-
-            // Remove OAuth tokens
-            if known.auth_type == AuthType::Oauth {
-                let _ = self.token_store.delete(provider_name);
-            }
+            self.key_store
+                .remove(provider_name)
+                .map_err(ServiceError::message)?;
 
             // Persist explicit disable so auto-detected/global credentials do not
             // immediately re-enable the provider on next rebuild.

@@ -70,7 +70,7 @@ Top-level query fields include:
 - `voicewake`, `device`
 
 Top-level mutation fields follow the same namespace pattern (for example:
-`chat.send`, `config.set`, `cron.add`, `providers.oauthStart`, `mcp.reauth`).
+`chat.send`, `config.set`, `cron.add`, `providers.saveKey`, `mcp.reauth`).
 
 Subscriptions include:
 

@@ -8,7 +8,6 @@ interface KeySource {
 interface ProviderInfo {
 	name: string;
 	displayName: string;
-	authType: string;
 	keyOptional?: boolean;
 }
 
@@ -30,7 +29,7 @@ const KEY_SOURCE_BY_PROVIDER: Record<string, KeySource> = {
 };
 
 export function providerApiKeyHelp(provider: ProviderInfo | null): ApiKeyHelp | null {
-	if (!provider || provider.authType !== "api-key") return null;
+	if (!provider) return null;
 
 	if (provider.keyOptional) {
 		return {

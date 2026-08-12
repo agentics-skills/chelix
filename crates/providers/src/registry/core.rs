@@ -16,7 +16,6 @@ use {
 };
 
 use crate::{
-    config_helpers::subscription_preference_rank,
     model_capabilities::ModelInfo,
     model_id::{namespaced_model_id, raw_model_id},
 };
@@ -161,11 +160,10 @@ impl ProviderRegistry {
         let raw = raw_model_id(model_id);
         self.models
             .iter()
-            .enumerate()
-            .filter(|(_, model)| raw_model_id(&model.id) == raw)
-            .filter(|(_, model)| provider_hint.is_none_or(|hint| model.provider == hint))
-            .min_by_key(|(index, model)| (subscription_preference_rank(&model.provider), *index))
-            .map(|(_, model)| model.id.clone())
+            .filter(|model| raw_model_id(&model.id) == raw)
+            .filter(|model| provider_hint.is_none_or(|hint| model.provider == hint))
+            .map(|model| model.id.clone())
+            .next()
     }
 
     /// Register one fully resolved model and its wire transport.
@@ -216,10 +214,7 @@ impl ProviderRegistry {
 
     pub fn first(&self) -> Option<Arc<dyn LlmProvider>> {
         self.models
-            .iter()
-            .enumerate()
-            .min_by_key(|(index, model)| (subscription_preference_rank(&model.provider), *index))
-            .map(|(_, model)| model)
+            .first()
             .and_then(|model| self.providers.get(&model.id))
             .cloned()
     }
@@ -228,15 +223,9 @@ impl ProviderRegistry {
     pub fn first_with_tools(&self) -> Option<Arc<dyn LlmProvider>> {
         self.models
             .iter()
-            .enumerate()
-            .filter_map(|(index, model)| {
-                self.providers
-                    .get(&model.id)
-                    .map(|provider| (index, model, provider))
-            })
-            .filter(|(_, _, provider)| provider.supports_tools())
-            .min_by_key(|(index, model, _)| (subscription_preference_rank(&model.provider), *index))
-            .map(|(_, _, provider)| Arc::clone(provider))
+            .filter_map(|model| self.providers.get(&model.id))
+            .find(|provider| provider.supports_tools())
+            .cloned()
             .or_else(|| self.first())
     }
 

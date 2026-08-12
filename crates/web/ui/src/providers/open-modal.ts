@@ -6,7 +6,7 @@
 
 import { sendRpc } from "../helpers";
 import type { RpcResponse } from "../types/rpc";
-import { showApiKeyForm, showOAuthFlow } from "./auth-flow";
+import { showApiKeyForm } from "./auth-flow";
 import { showCustomProviderForm } from "./custom-provider";
 import { els } from "./shared";
 import type { ProviderInfo } from "./types";
@@ -55,22 +55,10 @@ export function openProviderModalImpl(): void {
 				customBadge.className = "provider-item-badge api-key";
 				customBadge.textContent = "Custom";
 				badges.appendChild(customBadge);
-			} else {
-				const badge = document.createElement("span");
-				badge.className = `provider-item-badge ${p.authType}`;
-				if (p.authType === "oauth") {
-					badge.textContent = "OAuth";
-				} else {
-					badge.textContent = "API Key";
-				}
-				badges.appendChild(badge);
 			}
 			item.appendChild(badges);
 
-			item.addEventListener("click", () => {
-				if (p.authType === "api-key") showApiKeyForm(p);
-				else if (p.authType === "oauth") showOAuthFlow(p);
-			});
+			item.addEventListener("click", () => showApiKeyForm(p));
 			m.body.appendChild(item);
 		});
 

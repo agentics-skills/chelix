@@ -7,8 +7,7 @@ use {chelix_config::schema::ProvidersConfig, futures::future::join_all, secrecy:
 use crate::{
     DiscoveredModel,
     config_helpers::{
-        configured_models_for_provider, env_value, oauth_discovery_enabled, resolve_api_key,
-        should_fetch_models,
+        configured_models_for_provider, env_value, resolve_api_key, should_fetch_models,
     },
     model_catalogs::OPENAI_COMPAT_PROVIDERS,
     openai,
@@ -52,7 +51,6 @@ pub async fn discover_models(
     push_openai_discovery(&mut tasks, config, env_overrides, &filter_matches);
     push_openai_compatible_discoveries(&mut tasks, config, env_overrides, &filter_matches);
     push_custom_discoveries(&mut tasks, config, &filter_matches);
-    push_oauth_discoveries(&mut tasks, config, &filter_matches);
 
     let names: Vec<String> = tasks.iter().map(|(name, _)| name.clone()).collect();
     let futures = tasks.into_iter().map(|(_, future)| future);
@@ -182,28 +180,6 @@ fn push_custom_discoveries(
             )),
         ));
     }
-}
-
-fn push_oauth_discoveries(
-    tasks: &mut Vec<(String, DiscoveryFuture)>,
-    config: &ProvidersConfig,
-    filter_matches: &impl Fn(&str) -> bool,
-) {
-    #[cfg(feature = "provider-openai-codex")]
-    if filter_matches("openai-codex")
-        && oauth_discovery_enabled(config, "openai-codex")
-        && should_fetch_models(config, "openai-codex")
-        && crate::openai_codex::has_stored_tokens()
-    {
-        tasks.push((
-            "openai-codex".into(),
-            Box::pin(crate::openai_codex::fetch_models()),
-        ));
-    }
-
-    let _ = tasks;
-    let _ = config;
-    let _ = filter_matches;
 }
 
 pub(crate) fn resolve_compatible_api_key(

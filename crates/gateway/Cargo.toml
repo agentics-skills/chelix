@@ -17,7 +17,6 @@ chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
 chelix-claude-import    = { optional = true, workspace = true }
 chelix-code-index       = { workspace = true }
-chelix-codex-import     = { optional = true, workspace = true }
 chelix-common           = { workspace = true }
 chelix-config           = { workspace = true }
 chelix-cron             = { workspace = true }
@@ -30,7 +29,6 @@ chelix-mcp-agent-bridge = { workspace = true }
 chelix-media            = { workspace = true }
 chelix-memory           = { workspace = true }
 chelix-metrics          = { optional = true, workspace = true }
-chelix-oauth            = { workspace = true }
 chelix-onboarding       = { workspace = true }
 chelix-plugins          = { workspace = true }
 chelix-projects         = { workspace = true }
@@ -93,14 +91,12 @@ bundled-skills = [
 caldav = ["dep:chelix-caldav"]
 claude-import = ["dep:chelix-claude-import"]
 code-index-builtin = ["chelix-code-index/builtin"]
-codex-import = ["dep:chelix-codex-import"]
 default = [
   "agent",
   "bundled-skills",
   "caldav",
   "claude-import",
   "code-index-builtin",
-  "codex-import",
   "discord",
   "file-watcher",
   "firecrawl",
@@ -110,7 +106,6 @@ default = [
   "mdns",
   "metrics",
   "prometheus",
-  "provider-openai-codex",
   "push-notifications",
   "qmd",
   "signal",
@@ -144,10 +139,6 @@ metrics = [
   "dep:chelix-metrics",
 ]
 prometheus = ["chelix-metrics/prometheus", "metrics"]
-provider-openai-codex = [
-  "chelix-providers/provider-openai-codex",
-  "chelix-tools/provider-openai-codex",
-]
 push-notifications = ["chelix-chat/push-notifications", "dep:chrono", "dep:p256", "dep:web-push"]
 qmd = ["chelix-code-index/qmd", "dep:chelix-qmd"]
 signal = ["dep:chelix-signal"]

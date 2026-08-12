@@ -15,7 +15,6 @@ anyhow               = { workspace = true }
 chelix-agents        = { workspace = true }
 chelix-browser       = { workspace = true }
 chelix-claude-import = { optional = true, workspace = true }
-chelix-codex-import  = { optional = true, workspace = true }
 chelix-common        = { workspace = true }
 chelix-config        = { workspace = true }
 chelix-cron          = { workspace = true }
@@ -23,7 +22,6 @@ chelix-gateway       = { workspace = true }
 chelix-httpd         = { workspace = true }
 chelix-import-core   = { workspace = true }
 chelix-memory        = { workspace = true }
-chelix-oauth         = { workspace = true }
 chelix-onboarding    = { workspace = true }
 chelix-plugins       = { workspace = true }
 chelix-portable      = { workspace = true }
@@ -34,7 +32,6 @@ chelix-tools         = { workspace = true }
 chelix-web           = { optional = true, workspace = true }
 clap                 = { workspace = true }
 dotenvy              = { workspace = true }
-open                 = { workspace = true }
 openssl              = { workspace = true }
 reqwest              = { workspace = true }
 secrecy              = { workspace = true }
@@ -72,7 +69,6 @@ full = [
   "claude-import",
   "code-index-builtin",
   "code-splitter",
-  "codex-import",
   "discord",
   "file-watcher",
   "firecrawl",
@@ -99,7 +95,6 @@ full = [
   "mdns",
   "metrics",
   "prometheus",
-  "provider-openai-codex",
   "push-notifications",
   "qmd",
   "signal",
@@ -140,14 +135,12 @@ lang-typescript    = ["chelix-memory/lang-typescript"]
 # jemalloc is intentionally unavailable on linux/aarch64 to avoid runtime
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
 claude-import         = ["chelix-gateway/claude-import", "dep:chelix-claude-import"]
-codex-import          = ["chelix-gateway/codex-import", "dep:chelix-codex-import"]
 lightweight           = ["jemalloc", "tls", "web-ui"]
 local-embeddings      = ["chelix-gateway/local-embeddings"]
 matrix                = ["chelix-httpd/matrix"]
 mdns                  = ["chelix-gateway/mdns"]
 metrics               = ["chelix-httpd/metrics", "chelix-web?/metrics"]
 prometheus            = ["chelix-httpd/prometheus"]
-provider-openai-codex = ["chelix-gateway/provider-openai-codex"]
 push-notifications    = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]
 qmd                   = ["chelix-gateway/qmd"]
 signal                = ["chelix-httpd/signal"]

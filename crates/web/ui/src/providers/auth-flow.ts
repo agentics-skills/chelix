@@ -1,9 +1,8 @@
-// ── Provider auth flows: OAuth, API key form, model selector ──
+// ── Provider API key flow and model selector ─────────────────
 
 import { sendRpc } from "../helpers";
 import { fetchModels } from "../models";
 import { providerApiKeyHelp } from "../provider-key-help";
-import { completeProviderOAuth, startProviderOAuth } from "../provider-oauth";
 import type { TestModelResult } from "../provider-validation";
 import {
 	humanizeProbeError,
@@ -19,7 +18,6 @@ import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../type
 import type { RpcResponse } from "../types/rpc";
 import {
 	bindValidationProgressEvents,
-	clearOAuthStatusTimer,
 	closeProviderModal,
 	completeValidationProgress,
 	createValidationProgress,
@@ -29,7 +27,6 @@ import {
 	openProviderModal,
 	resetValidationProgress,
 	setFormError,
-	setOAuthStatusTimer,
 	setValidationProgress,
 	shouldUseCustomProviderForOpenAi,
 } from "./shared";
@@ -545,184 +542,6 @@ function saveAndFinishProvider(
 	};
 	completeProviderSave(request).catch((error: Error) => {
 		showProviderSaveError(error.message || "Failed to save credentials.");
-	});
-}
-
-// ── OAuth flow ───────────────────────────────────────────────
-
-export function showOAuthFlow(provider: ProviderInfo): void {
-	const m = els();
-	m.title.textContent = provider.displayName;
-	m.body.textContent = "";
-
-	const wrapper = document.createElement("div");
-	wrapper.className = "provider-key-form";
-
-	const desc = document.createElement("div");
-	desc.className = "text-xs text-[var(--muted)]";
-	desc.textContent = `Click below to authenticate with ${provider.displayName} via OAuth.`;
-	wrapper.appendChild(desc);
-
-	const manualWrap = document.createElement("div");
-	manualWrap.className = "flex flex-col gap-2 mt-2 hidden";
-
-	const manualHint = document.createElement("div");
-	manualHint.className = "text-xs text-[var(--muted)]";
-	manualHint.textContent = "If localhost callback fails, paste the redirect URL (or code#state) below.";
-	manualWrap.appendChild(manualHint);
-
-	const manualInput = document.createElement("input");
-	manualInput.type = "text";
-	manualInput.className = "provider-key-input w-full";
-	manualInput.placeholder = "http://localhost:1455/auth/callback?code=...&state=...";
-	manualWrap.appendChild(manualInput);
-
-	const manualBtns = document.createElement("div");
-	manualBtns.className = "btn-row";
-	const manualSubmitBtn = document.createElement("button");
-	manualSubmitBtn.className = "provider-btn provider-btn-secondary";
-	manualSubmitBtn.textContent = "Submit Callback";
-	manualBtns.appendChild(manualSubmitBtn);
-	manualWrap.appendChild(manualBtns);
-	wrapper.appendChild(manualWrap);
-
-	const btns = document.createElement("div");
-	btns.className = "btn-row";
-
-	const backBtn = document.createElement("button");
-	backBtn.className = "provider-btn provider-btn-secondary";
-	backBtn.textContent = "Back";
-	backBtn.addEventListener("click", () => {
-		clearOAuthStatusTimer();
-		openProviderModal();
-	});
-	btns.appendChild(backBtn);
-
-	const connectBtn = document.createElement("button");
-	connectBtn.className = "provider-btn";
-	connectBtn.textContent = "Connect";
-	let oauthCompleted = false;
-
-	function finishOAuthOnce(): void {
-		if (oauthCompleted) return;
-		oauthCompleted = true;
-		clearOAuthStatusTimer();
-		showOAuthModelSelector(provider);
-	}
-
-	function setManualSubmitting(submitting: boolean): void {
-		manualSubmitBtn.disabled = submitting;
-		manualInput.disabled = submitting;
-		manualSubmitBtn.textContent = submitting ? "Submitting..." : "Submit Callback";
-	}
-
-	manualSubmitBtn.addEventListener("click", () => {
-		const callback = manualInput.value.trim();
-		if (!callback) {
-			desc.classList.add("text-error");
-			desc.textContent = "Paste the callback URL (or code#state) to continue.";
-			return;
-		}
-		setManualSubmitting(true);
-		completeProviderOAuth(provider.name, callback)
-			.then((res: RpcResponse) => {
-				if (res?.ok) {
-					connectBtn.textContent = "Connected";
-					desc.classList.remove("text-error");
-					desc.textContent = `${provider.displayName} connected successfully!`;
-					finishOAuthOnce();
-					return;
-				}
-				desc.classList.add("text-error");
-				desc.textContent = res?.error?.message || "Failed to complete OAuth callback.";
-			})
-			.catch((error: Error) => {
-				desc.classList.add("text-error");
-				desc.textContent = error?.message || "Failed to complete OAuth callback.";
-			})
-			.finally(() => {
-				setManualSubmitting(false);
-			});
-	});
-
-	connectBtn.addEventListener("click", () => {
-		connectBtn.disabled = true;
-		connectBtn.textContent = "Starting...";
-		startProviderOAuth(provider.name).then((result) => {
-			if (result.status === "already") {
-				connectBtn.textContent = "Connected";
-				desc.classList.remove("text-error");
-				desc.textContent = `${provider.displayName} is already connected (imported credentials found).`;
-				finishOAuthOnce();
-			} else if (result.status === "browser") {
-				window.open(result.authUrl, "_blank");
-				connectBtn.textContent = "Waiting for auth...";
-				manualWrap.classList.remove("hidden");
-				pollOAuthStatus(provider, finishOAuthOnce);
-			} else {
-				clearOAuthStatusTimer();
-				connectBtn.disabled = false;
-				connectBtn.textContent = "Connect";
-				manualWrap.classList.add("hidden");
-				desc.textContent = result.error || "Failed to start OAuth";
-				desc.classList.add("text-error");
-			}
-		});
-	});
-	btns.appendChild(connectBtn);
-	wrapper.appendChild(btns);
-	m.body.appendChild(wrapper);
-}
-
-function pollOAuthStatus(provider: ProviderInfo, onAuthenticated: () => void): void {
-	const m = els();
-	let attempts = 0;
-	const maxAttempts = 60;
-	clearOAuthStatusTimer();
-	setOAuthStatusTimer(
-		setInterval(() => {
-			attempts++;
-			if (attempts > maxAttempts) {
-				clearOAuthStatusTimer();
-				m.body.textContent = "";
-				const timeout = document.createElement("div");
-				timeout.className = "text-xs text-[var(--error)]";
-				timeout.textContent = "OAuth timed out. Please try again.";
-				m.body.appendChild(timeout);
-				return;
-			}
-			sendRpc("providers.oauth.status", { provider: provider.name }).then((res: RpcResponse) => {
-				if (res?.ok && res.payload && (res.payload as Record<string, unknown>).authenticated) {
-					clearOAuthStatusTimer();
-					if (typeof onAuthenticated === "function") {
-						onAuthenticated();
-						return;
-					}
-					showOAuthModelSelector(provider);
-				}
-			});
-		}, 2000),
-	);
-}
-
-function showOAuthModelSelector(provider: ProviderInfo): void {
-	sendRpc<ModelEntry[]>("models.list", {}).then((modelsRes: RpcResponse<ModelEntry[]>) => {
-		const allModels: ModelEntry[] = modelsRes?.ok ? (modelsRes.payload as ModelEntry[]) || [] : [];
-		const provModels = allModels.filter((entry: ModelEntry) => entry.provider === provider.name);
-
-		if (provModels.length > 0) {
-			showModelSelector(provider, provModels, null, null, true);
-		} else {
-			fetchModels();
-			if (S.refreshProvidersPage) S.refreshProvidersPage();
-			const modal = els();
-			modal.body.textContent = "";
-			const status = document.createElement("div");
-			status.className = "provider-status";
-			status.textContent = `${provider.displayName} connected successfully!`;
-			modal.body.appendChild(status);
-			setTimeout(closeProviderModal, 1500);
-		}
 	});
 }
 

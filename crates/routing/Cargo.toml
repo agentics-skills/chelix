@@ -5,14 +5,9 @@ version.workspace = true
 
 [dependencies]
 chelix-common   = { workspace = true }
-chelix-metrics  = { optional = true, workspace = true }
 chelix-sessions = { workspace = true }
 serde_json      = { workspace = true }
 thiserror       = { workspace = true }
-
-[features]
-default = []
-metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

@@ -143,11 +143,6 @@ pub async fn prepare_gateway_core(
                     "llm auto-detected provider source"
                 );
             }
-            let import_token_store = chelix_oauth::TokenStore::new();
-            crate::provider_setup::import_detected_oauth_tokens(
-                &auto_detected_provider_sources,
-                &import_token_store,
-            );
         }
     }
 
@@ -277,8 +272,7 @@ pub async fn prepare_gateway_core(
         crate::provider_setup::ProviderConfigPersistence::Filesystem,
     )
     .with_env_overrides(config_env_overrides.clone())
-    .with_error_parser(crate::chat_error::parse_chat_error)
-    .with_callback_bind_addr(bind.to_string());
+    .with_error_parser(crate::chat_error::parse_chat_error);
     provider_setup.set_priority_models(live_model_service.priority_models_handle());
     let provider_setup_service = Arc::new(provider_setup);
     services.provider_setup =
