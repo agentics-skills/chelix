@@ -93,13 +93,14 @@ impl OpenAiProvider {
             "model": self.model,
             "input": input,
             "max_output_tokens": 1,
+            "store": false,
         });
 
         if let Some(instructions) = instructions {
             body["instructions"] = serde_json::Value::String(instructions);
         }
 
-        self.apply_reasoning_effort_responses(&mut body);
+        self.apply_reasoning_responses(&mut body);
 
         debug!(model = %self.model, "openai responses probe request");
         trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai responses probe request body");
@@ -340,6 +341,7 @@ impl OpenAiProvider {
             "model": self.model,
             "input": input,
             "stream": true,
+            "store": false,
         });
         if let Some(instructions) = instructions {
             body["instructions"] = serde_json::Value::String(instructions);
@@ -351,7 +353,7 @@ impl OpenAiProvider {
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_output_tokens"] = serde_json::json!(max_output_tokens);
         }
-        self.apply_reasoning_effort_responses(&mut body);
+        self.apply_reasoning_responses(&mut body);
 
         debug!(
             model = %self.model,

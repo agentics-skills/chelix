@@ -1,6 +1,7 @@
 use {
     anyhow::Result,
     base64::Engine,
+    chelix_common::ReasoningContent,
     rand::Rng,
     sha2::{Digest, Sha256},
 };
@@ -78,7 +79,7 @@ pub struct SharedMessage {
     pub role: SharedMessageRole,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<String>,
+    pub reasoning: Option<ReasoningContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_data_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

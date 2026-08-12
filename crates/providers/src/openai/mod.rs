@@ -47,6 +47,10 @@ pub struct OpenAiProvider {
     tool_mode_override: Option<chelix_config::ToolMode>,
     /// Optional reasoning effort level for o-series models.
     reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
+    /// Resolved Responses API reasoning summary detail for this model.
+    reasoning_summary: Option<chelix_common::ReasoningSummary>,
+    /// Resolved Responses API reasoning payloads requested for this model.
+    reasoning_include: Vec<chelix_common::ReasoningInclude>,
     /// Prompt cache retention policy (used for OpenRouter Anthropic passthrough).
     cache_retention: chelix_config::CacheRetention,
     /// Explicit provider behavior policies. Never inferred from provider name or URL.

@@ -35,8 +35,12 @@ impl LiveSessionService {
                 .as_millis() as u64,
             messages: {
                 let mut shared_messages = Vec::new();
-                for msg in &history {
-                    if let Some(shared) = to_shared_message(msg, key, self.store.as_ref()).await {
+                for (message_index, msg) in history.iter().enumerate() {
+                    if let Some(shared) =
+                        to_shared_message(msg, message_index, key, self.store.as_ref())
+                            .await
+                            .map_err(ServiceError::message)?
+                    {
                         shared_messages.push(shared);
                     }
                 }

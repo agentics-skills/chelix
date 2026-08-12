@@ -40,6 +40,8 @@ impl OpenAiProvider {
             wire_api: WireApi::ChatCompletions,
             tool_mode_override: None,
             reasoning_effort: None,
+            reasoning_summary: None,
+            reasoning_include: Vec::new(),
             cache_retention: chelix_config::CacheRetention::Short,
             capabilities: OpenAiProviderCapabilities::DEFAULT,
             probe_timeout_secs: None,
@@ -76,6 +78,17 @@ impl OpenAiProvider {
         self
     }
 
+    /// Apply the fully resolved per-model reasoning metadata.
+    #[must_use]
+    pub fn with_reasoning_metadata(
+        mut self,
+        reasoning: &chelix_common::ModelReasoningMetadata,
+    ) -> Self {
+        self.reasoning_summary = reasoning.summary;
+        self.reasoning_include = reasoning.include.clone();
+        self
+    }
+
     /// Set the completion-based probe timeout override (seconds).
     #[must_use]
     pub fn with_probe_timeout_secs(mut self, secs: Option<u64>) -> Self {
@@ -98,6 +111,8 @@ impl OpenAiProvider {
             wire_api: self.wire_api,
             tool_mode_override: self.tool_mode_override,
             reasoning_effort: self.reasoning_effort.clone(),
+            reasoning_summary: self.reasoning_summary,
+            reasoning_include: self.reasoning_include.clone(),
             cache_retention: self.cache_retention,
             capabilities: self.capabilities,
             probe_timeout_secs: self.probe_timeout_secs,
@@ -144,13 +159,25 @@ impl OpenAiProvider {
         }
     }
 
-    /// Apply `reasoning_effort` for the **Responses** API (used by
-    /// `stream_with_tools_websocket()`).
-    ///
-    /// Format: `"reasoning": { "effort": "high" }` (nested object).
-    pub(crate) fn apply_reasoning_effort_responses(&self, body: &mut serde_json::Value) {
+    /// Apply the resolved reasoning options for the Responses API only.
+    pub(crate) fn apply_reasoning_responses(&self, body: &mut serde_json::Value) {
+        let mut reasoning = serde_json::Map::new();
         if let Some(effort) = self.reasoning_effort_str() {
-            body["reasoning"] = serde_json::json!({ "effort": effort });
+            reasoning.insert("effort".to_string(), serde_json::json!(effort));
+        }
+        if let Some(summary) = self.reasoning_summary {
+            reasoning.insert("summary".to_string(), serde_json::json!(summary.as_str()));
+        }
+        if !reasoning.is_empty() {
+            body["reasoning"] = serde_json::Value::Object(reasoning);
+        }
+        if !self.reasoning_include.is_empty() {
+            body["include"] = serde_json::Value::Array(
+                self.reasoning_include
+                    .iter()
+                    .map(|include| serde_json::json!(include.as_str()))
+                    .collect(),
+            );
         }
     }
 
@@ -378,7 +405,34 @@ pub(crate) fn apply_openai_chat_tool_choice(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use {super::*, chelix_agents::model::ReasoningEffort, std::sync::Arc};
+    use {
+        super::*,
+        chelix_agents::model::ReasoningEffort,
+        chelix_common::{ModelReasoningMetadata, ReasoningInclude, ReasoningSummary},
+        std::sync::Arc,
+    };
+
+    #[test]
+    fn chat_completions_reasoning_does_not_include_responses_options() {
+        let provider = OpenAiProvider::new_with_name(
+            secrecy::Secret::new("test-key".to_string()),
+            "gpt-5.2".to_string(),
+            "https://api.openai.com/v1".to_string(),
+            "openai".to_string(),
+        )
+        .with_reasoning_metadata(&ModelReasoningMetadata {
+            supported_efforts: vec![ReasoningEffort::from("high")],
+            summary: Some(ReasoningSummary::Detailed),
+            include: vec![ReasoningInclude::EncryptedContent],
+        });
+        let mut body = serde_json::json!({});
+
+        provider.apply_reasoning_effort_chat(&mut body);
+
+        assert!(body.get("reasoning").is_none());
+        assert!(body.get("include").is_none());
+        assert!(body.get("reasoning_effort").is_none());
+    }
 
     #[test]
     fn reasoning_effort_can_be_set_on_openai_compatible_provider() {

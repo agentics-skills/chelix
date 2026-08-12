@@ -28,8 +28,8 @@ test.describe("Chat abort", () => {
 			},
 		});
 
-		var thinkingIndicator = page.locator("#thinkingIndicator");
-		await expect(thinkingIndicator).toBeVisible({ timeout: 5_000 });
+		var activeReasoningPart = page.locator(".msg.assistant.reasoning-stream .msg-reasoning.is-streaming");
+		await expect(activeReasoningPart).toBeVisible({ timeout: 5_000 });
 
 		var stopBtn = page.locator("#sendBtn");
 		await expect(stopBtn).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("Chat abort", () => {
 		await expect(stopBtn).toHaveAttribute("data-stop-session-key", "main");
 		await expect(stopBtn).toHaveAttribute("title", "Stop generation");
 		await expect(stopBtn.locator(".icon-stop")).toHaveCount(1);
-		await expect(page.locator("#thinkingIndicator .thinking-stop-btn")).toHaveCount(0);
+		await expect(page.locator(".msg-reasoning .thinking-stop-btn")).toHaveCount(0);
 
 		expect(pageErrors).toEqual([]);
 	});
@@ -54,8 +54,8 @@ test.describe("Chat abort", () => {
 			},
 		});
 
-		var thinkingIndicator = page.locator("#thinkingIndicator");
-		await expect(thinkingIndicator).toBeVisible({ timeout: 5_000 });
+		var activeReasoningPart = page.locator(".msg.assistant.reasoning-stream .msg-reasoning.is-streaming");
+		await expect(activeReasoningPart).toBeVisible({ timeout: 5_000 });
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
@@ -66,7 +66,7 @@ test.describe("Chat abort", () => {
 			},
 		});
 
-		await expect(thinkingIndicator).toHaveCount(0, { timeout: 5_000 });
+		await expect(activeReasoningPart).toHaveCount(0, { timeout: 5_000 });
 		await expect(page.locator("#sendBtn")).toHaveAttribute("data-mode", "send");
 		await expect(page.locator("#sendBtn")).toHaveAttribute("title", "Send");
 
@@ -114,7 +114,7 @@ test.describe("Chat abort", () => {
 			},
 		});
 
-		await expect(page.locator("#thinkingIndicator")).toHaveCount(0, { timeout: 5_000 });
+		await expect(page.locator(".msg.assistant.reasoning-stream")).toHaveCount(0, { timeout: 5_000 });
 		await expect(page.locator(".msg.assistant")).toContainText("Partial answer");
 
 		const cachedHistory = await page.evaluate(async () => {
@@ -310,7 +310,9 @@ test.describe("Chat abort", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("abort after a completed tool renders standalone metadata without an empty assistant bubble", async ({ page }) => {
+	test("abort after a completed tool renders standalone metadata without an empty assistant bubble", async ({
+		page,
+	}) => {
 		const pageErrors = watchPageErrors(page);
 		await expectRpcOk(page, "chat.clear", {});
 		await expectRpcOk(page, "system-event", {

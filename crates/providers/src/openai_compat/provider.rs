@@ -194,41 +194,41 @@ pub fn to_responses_input(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
             ChatMessage::Assistant {
                 content,
                 tool_calls,
+                responses_reasoning,
                 ..
             } => {
-                if !tool_calls.is_empty() {
-                    let mut items: Vec<serde_json::Value> = tool_calls
-                        .iter()
-                        .map(|tc| {
-                            serde_json::json!({
-                                "type": "function_call",
-                                "call_id": tc.id,
-                                "name": tc.name,
-                                "arguments": tc.arguments.to_string(),
-                            })
+                let mut items: Vec<serde_json::Value> = responses_reasoning
+                    .iter()
+                    .filter(|item| item.id.starts_with("rs"))
+                    .map(|item| {
+                        serde_json::json!({
+                            "type": "reasoning",
+                            "id": item.id,
+                            "summary": [],
+                            "encrypted_content": item.encrypted_content,
                         })
-                        .collect();
-                    if let Some(text) = content
-                        && !text.is_empty()
-                    {
-                        items.insert(
-                            0,
-                            serde_json::json!({
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [{"type": "output_text", "text": text}]
-                            }),
-                        );
-                    }
-                    items
-                } else {
-                    let text = content.as_deref().unwrap_or("");
-                    vec![serde_json::json!({
+                    })
+                    .collect();
+
+                if let Some(text) = content
+                    && (!text.is_empty() || tool_calls.is_empty())
+                {
+                    items.push(serde_json::json!({
                         "type": "message",
                         "role": "assistant",
                         "content": [{"type": "output_text", "text": text}]
-                    })]
+                    }));
                 }
+
+                items.extend(tool_calls.iter().map(|tc| {
+                    serde_json::json!({
+                        "type": "function_call",
+                        "call_id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments.to_string(),
+                    })
+                }));
+                items
             },
             ChatMessage::Tool {
                 tool_call_id,
@@ -663,7 +663,7 @@ pub enum SseLineResult {
 /// unsuccessful terminal events. The caller must not finalize a failed stream
 /// with [`StreamEvent::Done`].
 #[derive(Debug)]
-pub enum ResponsesSseLineResult {
+pub enum ResponsesEventResult {
     /// No actionable event (invalid JSON or an unrecognized event type).
     Skip,
     /// Non-terminal events to yield.
@@ -1009,33 +1009,69 @@ pub struct ResponsesStreamState {
     pub output_tokens: u32,
     pub cache_read_tokens: u32,
     pub cache_write_tokens: u32,
+    /// Reasoning summary parts already emitted from streaming events.
+    pub streamed_reasoning_summary_parts: HashSet<(String, usize, usize)>,
 }
 
-/// Process a single SSE data line from a Responses API stream.
-///
-/// Returns [`ResponsesSseLineResult`] indicating whether to skip, yield events,
-/// or stop without converting a provider error into a successful completion.
-///
-/// Handles the event types emitted by the Responses API:
-/// - `response.output_text.delta` → text delta + `ProviderRaw`
-/// - `response.output_item.added` (type=function_call) → tool call start + `ProviderRaw`
-/// - `response.function_call_arguments.delta` → tool call arguments delta + `ProviderRaw`
-/// - `response.function_call_arguments.done` → tool call complete + `ProviderRaw`
-/// - `response.completed` → `ProviderRaw`, parse usage, successful terminal
-/// - `error` / `response.failed` / `response.incomplete` → error + `ProviderRaw`, failed terminal
-pub fn process_responses_sse_line(
-    data: &str,
-    state: &mut ResponsesStreamState,
-) -> ResponsesSseLineResult {
-    if data == "[DONE]" {
-        return ResponsesSseLineResult::Completed(Vec::new());
+fn responses_reasoning_events(
+    item: &serde_json::Value,
+    output_index: Option<usize>,
+    state: &ResponsesStreamState,
+) -> Vec<StreamEvent> {
+    if item.get("type").and_then(serde_json::Value::as_str) != Some("reasoning") {
+        return Vec::new();
     }
-
-    let Ok(evt) = serde_json::from_str::<serde_json::Value>(data) else {
-        return ResponsesSseLineResult::Skip;
+    let Some(id) = item.get("id").and_then(serde_json::Value::as_str) else {
+        return Vec::new();
     };
 
-    // Emit ProviderRaw for every parsed event, mirroring the Chat Completions path.
+    let mut events = Vec::new();
+    if let Some(output_index) = output_index {
+        for (summary_index, text) in item
+            .get("summary")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
+            .enumerate()
+        {
+            let part_key = (id.to_string(), output_index, summary_index);
+            if !state.streamed_reasoning_summary_parts.contains(&part_key) {
+                events.push(StreamEvent::ResponsesReasoningPartDone {
+                    item_id: id.to_string(),
+                    output_index,
+                    summary_index,
+                    text: text.to_string(),
+                });
+            }
+        }
+    }
+
+    if let Some(encrypted_content) = item
+        .get("encrypted_content")
+        .and_then(serde_json::Value::as_str)
+        && id.starts_with("rs")
+        && !encrypted_content.is_empty()
+    {
+        events.push(StreamEvent::ResponsesReasoningItem(
+            chelix_common::ResponsesReasoningItem {
+                id: id.to_string(),
+                encrypted_content: encrypted_content.to_string(),
+            },
+        ));
+    }
+
+    events
+}
+
+/// Process one parsed event from a Responses API stream.
+///
+/// Both SSE and WebSocket transports call this function so Responses event
+/// semantics cannot diverge between transports.
+pub fn process_responses_event(
+    evt: serde_json::Value,
+    state: &mut ResponsesStreamState,
+) -> ResponsesEventResult {
     let raw = StreamEvent::ProviderRaw(evt.clone());
 
     match evt["type"].as_str().unwrap_or("") {
@@ -1043,9 +1079,56 @@ pub fn process_responses_sse_line(
             if let Some(delta) = evt["delta"].as_str()
                 && !delta.is_empty()
             {
-                ResponsesSseLineResult::Events(vec![raw, StreamEvent::Delta(delta.to_string())])
+                ResponsesEventResult::Events(vec![raw, StreamEvent::Delta(delta.to_string())])
             } else {
-                ResponsesSseLineResult::Events(vec![raw])
+                ResponsesEventResult::Events(vec![raw])
+            }
+        },
+        "response.reasoning_summary_text.delta" => {
+            if let (Some(item_id), Some(output_index), Some(summary_index), Some(delta)) = (
+                evt["item_id"].as_str(),
+                evt["output_index"].as_u64().map(|index| index as usize),
+                evt["summary_index"].as_u64().map(|index| index as usize),
+                evt["delta"].as_str(),
+            ) && !item_id.is_empty()
+                && !delta.is_empty()
+            {
+                state.streamed_reasoning_summary_parts.insert((
+                    item_id.to_string(),
+                    output_index,
+                    summary_index,
+                ));
+                ResponsesEventResult::Events(vec![raw, StreamEvent::ResponsesReasoningDelta {
+                    item_id: item_id.to_string(),
+                    output_index,
+                    summary_index,
+                    delta: delta.to_string(),
+                }])
+            } else {
+                ResponsesEventResult::Events(vec![raw])
+            }
+        },
+        "response.reasoning_summary_part.done" => {
+            if let (Some(item_id), Some(output_index), Some(summary_index), Some(text)) = (
+                evt["item_id"].as_str(),
+                evt["output_index"].as_u64().map(|index| index as usize),
+                evt["summary_index"].as_u64().map(|index| index as usize),
+                evt["part"]["text"].as_str(),
+            ) && !item_id.is_empty()
+            {
+                state.streamed_reasoning_summary_parts.insert((
+                    item_id.to_string(),
+                    output_index,
+                    summary_index,
+                ));
+                ResponsesEventResult::Events(vec![raw, StreamEvent::ResponsesReasoningPartDone {
+                    item_id: item_id.to_string(),
+                    output_index,
+                    summary_index,
+                    text: text.to_string(),
+                }])
+            } else {
+                ResponsesEventResult::Events(vec![raw])
             }
         },
         "response.output_item.added" => {
@@ -1055,14 +1138,24 @@ pub fn process_responses_sse_line(
                 let index = responses_output_index(&evt, state.current_tool_index);
                 state.current_tool_index = state.current_tool_index.max(index + 1);
                 state.tool_calls.insert(index, (id.clone(), name.clone()));
-                ResponsesSseLineResult::Events(vec![raw, StreamEvent::ToolCallStart {
+                ResponsesEventResult::Events(vec![raw, StreamEvent::ToolCallStart {
                     id,
                     name,
                     index,
                 }])
             } else {
-                ResponsesSseLineResult::Events(vec![raw])
+                ResponsesEventResult::Events(vec![raw])
             }
+        },
+        "response.output_item.done" => {
+            let mut events = vec![raw];
+            let output_index = evt["output_index"].as_u64().map(|index| index as usize);
+            events.extend(responses_reasoning_events(
+                &evt["item"],
+                output_index,
+                state,
+            ));
+            ResponsesEventResult::Events(events)
         },
         "response.function_call_arguments.delta" => {
             if let Some(delta) = evt["delta"].as_str()
@@ -1070,20 +1163,20 @@ pub fn process_responses_sse_line(
             {
                 let index =
                     responses_output_index(&evt, state.current_tool_index.saturating_sub(1));
-                ResponsesSseLineResult::Events(vec![raw, StreamEvent::ToolCallArgumentsDelta {
+                ResponsesEventResult::Events(vec![raw, StreamEvent::ToolCallArgumentsDelta {
                     index,
                     delta: delta.to_string(),
                 }])
             } else {
-                ResponsesSseLineResult::Events(vec![raw])
+                ResponsesEventResult::Events(vec![raw])
             }
         },
         "response.function_call_arguments.done" => {
             let index = responses_output_index(&evt, state.current_tool_index.saturating_sub(1));
             if state.completed_tool_calls.insert(index) {
-                ResponsesSseLineResult::Events(vec![raw, StreamEvent::ToolCallComplete { index }])
+                ResponsesEventResult::Events(vec![raw, StreamEvent::ToolCallComplete { index }])
             } else {
-                ResponsesSseLineResult::Events(vec![raw])
+                ResponsesEventResult::Events(vec![raw])
             }
         },
         "response.completed" => {
@@ -1097,7 +1190,7 @@ pub fn process_responses_sse_line(
                 state.cache_read_tokens = parsed.cache_read_tokens;
                 state.cache_write_tokens = parsed.cache_write_tokens;
             }
-            ResponsesSseLineResult::Completed(vec![raw])
+            ResponsesEventResult::Completed(vec![raw])
         },
         "error" | "response.failed" => {
             let msg = evt["error"]["message"]
@@ -1105,7 +1198,7 @@ pub fn process_responses_sse_line(
                 .or_else(|| evt["response"]["error"]["message"].as_str())
                 .or_else(|| evt["message"].as_str())
                 .unwrap_or("unknown error");
-            ResponsesSseLineResult::Failed(vec![raw, StreamEvent::Error(msg.to_string())])
+            ResponsesEventResult::Failed(vec![raw, StreamEvent::Error(msg.to_string())])
         },
         "response.incomplete" => {
             let msg = evt["response"]["incomplete_details"]["reason"]
@@ -1118,10 +1211,24 @@ pub fn process_responses_sse_line(
                 })
                 .or_else(|| evt["message"].as_str().map(ToString::to_string))
                 .unwrap_or_else(|| "response incomplete".to_string());
-            ResponsesSseLineResult::Failed(vec![raw, StreamEvent::Error(msg)])
+            ResponsesEventResult::Failed(vec![raw, StreamEvent::Error(msg)])
         },
-        _ => ResponsesSseLineResult::Events(vec![raw]),
+        _ => ResponsesEventResult::Events(vec![raw]),
     }
+}
+
+/// Decode and process one SSE data line from a Responses API stream.
+pub fn process_responses_sse_line(
+    data: &str,
+    state: &mut ResponsesStreamState,
+) -> ResponsesEventResult {
+    if data == "[DONE]" {
+        return ResponsesEventResult::Completed(Vec::new());
+    }
+    let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
+        return ResponsesEventResult::Skip;
+    };
+    process_responses_event(event, state)
 }
 
 /// Generate the final events when a Responses API stream ends.

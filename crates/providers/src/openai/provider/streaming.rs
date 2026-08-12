@@ -7,7 +7,7 @@ use tracing::{debug, trace};
 use crate::{
     http::{retry_after_ms_from_headers, with_retry_after_marker},
     openai_compat::{
-        ResponsesSseLineResult, ResponsesStreamState, SseLineResult, StreamingToolState,
+        ResponsesEventResult, ResponsesStreamState, SseLineResult, StreamingToolState,
         finalize_responses_stream, finalize_stream, process_openai_sse_line,
         process_responses_sse_line, split_responses_instructions_and_input, to_responses_api_tools,
     },
@@ -32,6 +32,7 @@ impl OpenAiProvider {
                 "model": self.model,
                 "input": input,
                 "stream": true,
+                "store": false,
             });
 
             if let Some(instructions) = instructions {
@@ -52,7 +53,7 @@ impl OpenAiProvider {
                 return;
             }
 
-            self.apply_reasoning_effort_responses(&mut body);
+            self.apply_reasoning_responses(&mut body);
 
             debug!(
                 model = %self.model,
@@ -122,25 +123,25 @@ impl OpenAiProvider {
                     };
 
                     match process_responses_sse_line(data, &mut state) {
-                        ResponsesSseLineResult::Completed(events) => {
+                        ResponsesEventResult::Completed(events) => {
                             for event in events {
                                 yield event;
                             }
                             stream_done = true;
                             break;
                         }
-                        ResponsesSseLineResult::Failed(events) => {
+                        ResponsesEventResult::Failed(events) => {
                             for event in events {
                                 yield event;
                             }
                             return;
                         }
-                        ResponsesSseLineResult::Events(events) => {
+                        ResponsesEventResult::Events(events) => {
                             for event in events {
                                 yield event;
                             }
                         }
-                        ResponsesSseLineResult::Skip => {}
+                        ResponsesEventResult::Skip => {}
                     }
                 }
                 if stream_done {
@@ -157,23 +158,23 @@ impl OpenAiProvider {
                         .or_else(|| line.strip_prefix("data:"))
                 {
                     match process_responses_sse_line(data, &mut state) {
-                        ResponsesSseLineResult::Completed(events) => {
+                        ResponsesEventResult::Completed(events) => {
                             for event in events {
                                 yield event;
                             }
                         }
-                        ResponsesSseLineResult::Failed(events) => {
+                        ResponsesEventResult::Failed(events) => {
                             for event in events {
                                 yield event;
                             }
                             return;
                         }
-                        ResponsesSseLineResult::Events(events) => {
+                        ResponsesEventResult::Events(events) => {
                             for event in events {
                                 yield event;
                             }
                         }
-                        ResponsesSseLineResult::Skip => {}
+                        ResponsesEventResult::Skip => {}
                     }
                 }
             }
@@ -331,10 +332,14 @@ impl OpenAiProvider {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use {
-        axum::{Router, body::Body, http::header::CONTENT_TYPE, response::Response, routing::post},
-        chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent},
+        axum::{
+            Json, Router, body::Body, http::header::CONTENT_TYPE, response::Response, routing::post,
+        },
+        chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort, StreamEvent},
+        chelix_common::{ModelReasoningMetadata, ReasoningInclude, ReasoningSummary},
         futures::StreamExt,
         secrecy::Secret,
+        std::sync::Arc,
     };
 
     use super::OpenAiProvider;
@@ -370,6 +375,64 @@ mod tests {
             .stream(vec![ChatMessage::user("hello")])
             .collect()
             .await
+    }
+
+    #[tokio::test]
+    async fn responses_sse_sends_resolved_reasoning_metadata_and_stateless_flags() {
+        let (request_tx, mut request_rx) = tokio::sync::mpsc::unbounded_channel();
+        let app = Router::new().route(
+            "/v1/responses",
+            post(move |Json(request): Json<serde_json::Value>| {
+                let request_tx = request_tx.clone();
+                async move {
+                    request_tx.send(request).unwrap();
+                    Response::builder()
+                        .header(CONTENT_TYPE, "text/event-stream")
+                        .body(Body::from("data: [DONE]\n\n"))
+                        .unwrap()
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let provider = Arc::new(
+            OpenAiProvider::new(
+                Secret::new("test-key".to_string()),
+                "gpt-5.4".to_string(),
+                format!("http://{addr}"),
+            )
+            .with_wire_api(chelix_config::schema::WireApi::Responses)
+            .with_reasoning_metadata(&ModelReasoningMetadata {
+                supported_efforts: vec![ReasoningEffort::from("high")],
+                summary: Some(ReasoningSummary::Detailed),
+                include: vec![ReasoningInclude::EncryptedContent],
+            }),
+        )
+        .with_reasoning_effort(ReasoningEffort::from("high"))
+        .unwrap();
+
+        let events: Vec<_> = provider
+            .stream(vec![ChatMessage::user("hello")])
+            .collect()
+            .await;
+        let request = request_rx.recv().await.unwrap();
+
+        assert!(matches!(events.as_slice(), [StreamEvent::Done(_)]));
+        assert_eq!(request["stream"], true);
+        assert_eq!(request["store"], false);
+        assert_eq!(
+            request["reasoning"],
+            serde_json::json!({"effort": "high", "summary": "detailed"})
+        );
+        assert_eq!(
+            request["include"],
+            serde_json::json!(["reasoning.encrypted_content"])
+        );
     }
 
     #[tokio::test]

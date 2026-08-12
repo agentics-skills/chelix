@@ -736,6 +736,40 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
+	test("switch payload restores structured active reasoning parts", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "session:active-reasoning", messageCount: 1 },
+			historyOmitted: false,
+			history: [{ role: "user", content: "analyze the sources", historyIndex: 0 }],
+			replying: true,
+			thinkingText: [
+				"**Analyzing source scope**\nReviewing the request",
+				"**Checking source quality**\nComparing the evidence",
+			],
+		});
+
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("session:active-reasoning");
+		});
+
+		const reasoningItems = page.locator(".msg.assistant.reasoning-stream .msg-reasoning-item");
+		await expect(reasoningItems).toHaveCount(2);
+		await expect(reasoningItems.nth(0)).toContainText("Analyzing source scope");
+		await expect(reasoningItems.nth(1)).toContainText("Checking source quality");
+		expect(pageErrors).toEqual([]);
+	});
+
 	test("switch payload restores active running tool calls", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
@@ -1090,7 +1124,7 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("thinking text is preserved as reasoning disclosure when tool call follows", async ({ page }) => {
+	test("reasoning stays in its assistant iteration when a tool call follows", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await navigateAndWait(page, "/chats/main");
 		await waitForWsConnected(page);
@@ -1098,33 +1132,41 @@ test.describe("WebSocket connection lifecycle", () => {
 
 		await expectRpcOk(page, "chat.clear", {});
 
-		// 1. thinking indicator appears
+		// 1. A persistent streaming assistant reasoning part appears.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: { sessionKey: "main", state: "thinking", runId: "run-think-tool" },
 		});
-		await expect(page.locator("#thinkingIndicator")).toBeVisible();
+		const liveSegment = page.locator(".msg.assistant.reasoning-stream");
+		await expect(liveSegment.locator(".msg-reasoning.is-streaming")).toBeVisible();
 
-		// 2. thinking text arrives
+		// 2. Reasoning text updates the same assistant segment.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {
 				sessionKey: "main",
 				state: "thinking_text",
 				runId: "run-think-tool",
-				text: "I need to search the web for recent news",
+				text: [
+					"**Analyzing recent sources**\nI need to search the web",
+					"**Tracing source reliability**\nI need to compare recent news",
+				],
 			},
 		});
-		await expect(page.locator("#thinkingIndicator .thinking-text")).toContainText("I need to search the web");
+		const liveReasoningItems = liveSegment.locator(".msg-reasoning-item");
+		await expect(liveReasoningItems).toHaveCount(2);
+		await expect(liveReasoningItems.nth(0)).toContainText("Analyzing recent sources");
+		await expect(liveReasoningItems.nth(1)).toContainText("Tracing source reliability");
 
-		// 3. thinking_done — indicator should NOT be removed yet
+		// 3. Completed reasoning remains in place and collapses.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: { sessionKey: "main", state: "thinking_done", runId: "run-think-tool" },
 		});
-		await expect(page.locator("#thinkingIndicator")).toBeVisible();
+		await expect(liveSegment).toBeVisible();
+		await expect(liveSegment.locator(".msg-reasoning")).not.toHaveAttribute("open", "");
 
-		// 4. tool_call_start — thinking text is preserved as disclosure, indicator removed
+		// 4. Tool start binds the segment to the persisted assistant iteration.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {
@@ -1134,16 +1176,33 @@ test.describe("WebSocket connection lifecycle", () => {
 				toolCallId: "tc-ripgrep-1",
 				toolName: "ripgrep",
 				arguments: { pattern: "SandboxBackend" },
+				messageIndex: 999997,
+				assistantMessage: {
+					role: "assistant",
+					content: "",
+					reasoning: [
+						"**Analyzing recent sources**\nI need to search the web",
+						"**Tracing source reliability**\nI need to compare recent news",
+					],
+					tool_calls: [
+						{
+							id: "tc-ripgrep-1",
+							function: { name: "ripgrep", arguments: '{"pattern":"SandboxBackend"}' },
+						},
+					],
+				},
 			},
 		});
-		await expect(page.locator("#thinkingIndicator")).toHaveCount(0);
-		// Reasoning disclosure is inside the tool card
+		const persistedSegment = page.locator('.msg.assistant[data-history-index="999997"]');
+		const persistedReasoningItems = persistedSegment.locator(".msg-reasoning-item");
+		await expect(persistedReasoningItems).toHaveCount(2);
+		await expect(persistedReasoningItems.nth(0)).toContainText("Analyzing recent sources");
+		await expect(persistedReasoningItems.nth(1)).toContainText("Tracing source reliability");
 		const toolCard = page.locator("#tool-run-think-tool-tc-ripgrep-1");
 		await expect(toolCard).toBeVisible();
-		await expect(toolCard.locator(".msg-reasoning")).toBeVisible();
-		await expect(toolCard.locator(".msg-reasoning-body")).toContainText("I need to search the web for recent news");
+		await expect(toolCard.locator(".msg-reasoning")).toHaveCount(0);
 
-		// 5. final with same reasoning should NOT duplicate the disclosure
+		// 5. The next provider iteration owns its own reasoning disclosure.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
 			payload: {
@@ -1154,11 +1213,17 @@ test.describe("WebSocket connection lifecycle", () => {
 				model: "test-model",
 				provider: "test-provider",
 				replyMedium: "text",
-				reasoning: "I need to search the web for recent news",
+				reasoning: [
+					"**Analyzing final evidence**\nReviewing the tool output",
+					"**Preparing the response**\nSelecting the relevant stories",
+				],
 			},
 		});
-		// Only one reasoning disclosure should exist (the preserved one, not a duplicate)
-		await expect(page.locator(".msg-reasoning")).toHaveCount(1);
+		await expect(page.locator(".msg.assistant > .msg-reasoning")).toHaveCount(2);
+		const finalReasoningItems = page.locator('.msg.assistant[data-history-index="999998"] .msg-reasoning-item');
+		await expect(finalReasoningItems).toHaveCount(2);
+		await expect(finalReasoningItems.nth(0)).toContainText("Analyzing final evidence");
+		await expect(finalReasoningItems.nth(1)).toContainText("Preparing the response");
 		expect(pageErrors).toEqual([]);
 	});
 

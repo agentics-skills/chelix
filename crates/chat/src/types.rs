@@ -140,7 +140,7 @@ pub(crate) struct ChatFinalBroadcast {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_warning: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<String>,
+    pub reasoning: Option<chelix_common::ReasoningContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
 }
@@ -173,7 +173,8 @@ pub(crate) struct AssistantTurnOutput {
     pub request_cache_read_tokens: u32,
     pub request_cache_write_tokens: u32,
     pub audio_path: Option<String>,
-    pub reasoning: Option<String>,
+    pub reasoning: Option<chelix_common::ReasoningContent>,
+    pub responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
     pub llm_api_response: Option<Value>,
 }
 
@@ -193,7 +194,7 @@ pub(crate) fn build_chat_final_broadcast(
     tool_calls_made: Option<usize>,
     audio: Option<String>,
     audio_warning: Option<String>,
-    reasoning: Option<String>,
+    reasoning: Option<chelix_common::ReasoningContent>,
     seq: Option<u64>,
 ) -> ChatFinalBroadcast {
     let total = usage.total_fields();
@@ -232,7 +233,8 @@ pub(crate) fn build_assistant_turn_output(
     usage: UsageSnapshot,
     duration_ms: u64,
     audio_path: Option<String>,
-    reasoning: Option<String>,
+    reasoning: Option<chelix_common::ReasoningContent>,
+    responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
     llm_api_response: Option<Value>,
 ) -> AssistantTurnOutput {
     let total = usage.total_fields();
@@ -251,6 +253,7 @@ pub(crate) fn build_assistant_turn_output(
         request_cache_write_tokens: request.cache_write_tokens,
         audio_path,
         reasoning,
+        responses_reasoning,
         llm_api_response,
     }
 }
@@ -335,30 +338,12 @@ pub(crate) fn session_token_usage_from_messages(messages: &[Value]) -> SessionTo
 mod tests {
     use {
         super::{
-            ReplyMedium, UsageSnapshot, assistant_message_is_visible, build_assistant_turn_output,
-            build_chat_final_broadcast, session_token_usage_from_messages,
+            ReplyMedium, UsageSnapshot, build_assistant_turn_output, build_chat_final_broadcast,
+            session_token_usage_from_messages,
         },
         chelix_agents::model::Usage,
+        chelix_common::ReasoningContent,
     };
-
-    #[test]
-    fn assistant_message_with_tool_calls_is_visible() {
-        let msg = serde_json::json!({
-            "role": "assistant",
-            "content": "",
-            "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "execute_command", "arguments": "{}"}}]
-        });
-        assert!(assistant_message_is_visible(&msg));
-    }
-
-    #[test]
-    fn empty_assistant_message_without_tool_calls_is_hidden() {
-        let msg = serde_json::json!({
-            "role": "assistant",
-            "content": "",
-        });
-        assert!(!assistant_message_is_visible(&msg));
-    }
 
     #[test]
     fn session_token_usage_tracks_cached_tokens() {
@@ -429,7 +414,7 @@ mod tests {
             Some(1),
             None,
             None,
-            Some("thinking".to_string()),
+            Some(ReasoningContent::Text("thinking".to_string())),
             Some(42),
         );
 
@@ -462,7 +447,8 @@ mod tests {
             ),
             250,
             None,
-            Some("thinking".to_string()),
+            Some(ReasoningContent::Text("thinking".to_string())),
+            Vec::new(),
             None,
         );
 
@@ -471,29 +457,6 @@ mod tests {
         assert_eq!(output.request_cache_read_tokens, 850);
         assert_eq!(output.request_cache_write_tokens, 2);
     }
-}
-
-#[must_use]
-pub(crate) fn assistant_message_is_visible(message: &Value) -> bool {
-    if message.get("role").and_then(Value::as_str) != Some("assistant") {
-        return true;
-    }
-
-    // Keep assistant messages that carry tool calls (even with empty content).
-    if message
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .is_some_and(|arr| !arr.is_empty())
-    {
-        return true;
-    }
-
-    ["content", "reasoning"].iter().any(|field| {
-        message
-            .get(*field)
-            .and_then(Value::as_str)
-            .is_some_and(|text| !text.trim().is_empty())
-    })
 }
 
 pub(crate) fn now_ms() -> u64 {

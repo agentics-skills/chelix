@@ -324,7 +324,10 @@ async fn full_budget_still_allows_a_final_text_only_model_round() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Final answer after the full tool budget.");
+    assert_eq!(
+        result.output.text,
+        "Final answer after the full tool budget."
+    );
     assert_eq!(result.tool_calls_made, 1);
     assert_eq!(result.iterations, 2);
 }
@@ -398,7 +401,7 @@ async fn lazy_get_tool_and_revealed_target_each_consume_one_unit() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Lazy flow complete.");
+    assert_eq!(result.output.text, "Lazy flow complete.");
     assert_eq!(result.tool_calls_made, 2);
     assert_eq!(executions.load(Ordering::SeqCst), 1);
 }

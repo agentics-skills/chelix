@@ -16,12 +16,6 @@ export function clearChatEmptyState(): void {
 	S.chatMsgBox.classList.remove("chat-messages-empty");
 }
 
-// ── Thinking UI helpers ───────────────────────────────────────
-
-export function makeThinkingDots(): Element {
-	return S.cloneRequiredTemplateRoot("tpl-thinking-dots");
-}
-
 // ── Session helpers ───────────────────────────────────────────
 
 export function updateSessionRunId(sessionKey: string, runId: string | undefined): void {
@@ -65,28 +59,18 @@ export function moveFirstQueuedToChat(): void {
  */
 export function setSafeMarkdownHtml(el: HTMLElement, text: string): void {
 	const rendered = renderMarkdown(text);
+	const reasoning = Array.from(el.children).find((child) => child.classList.contains("msg-reasoning"));
 	const actionBar = Array.from(el.children).find((child) => child.classList.contains("msg-action-bar"));
+	if (reasoning) reasoning.remove();
 	if (actionBar) actionBar.remove();
 	el.textContent = "";
 	const wrapper = document.createElement("span");
 	wrapper.insertAdjacentHTML("afterbegin", rendered);
 	while (wrapper.firstChild) el.appendChild(wrapper.firstChild);
+	if (reasoning) el.prepend(reasoning);
 	if (actionBar) el.appendChild(actionBar);
 }
 
 export function hasNonWhitespaceContent(text: string | null | undefined): boolean {
 	return String(text || "").trim().length > 0;
-}
-
-// ── Reasoning dedup ───────────────────────────────────────────
-
-/** Check whether a reasoning disclosure with the given text already exists in
- * the chat box (from a previous preserveThinkingAsDisclosure call). */
-export function isReasoningAlreadyShown(text: string | null | undefined): boolean {
-	if (!(S.chatMsgBox && text)) return false;
-	const normalized = text.trim();
-	for (const el of S.chatMsgBox.querySelectorAll(".msg-reasoning-body")) {
-		if (el.textContent?.trim() === normalized) return true;
-	}
-	return false;
 }

@@ -7,7 +7,6 @@ import {
 	chatAddMsg,
 	chatAddMsgWithImages,
 	highlightAndScroll,
-	removeThinking,
 	scrollChatToBottom,
 	stripChannelPrefix,
 	syncChatFollowStateFromPosition,
@@ -30,7 +29,6 @@ import {
 	appendToolCardContextBudget,
 	appendToolCardError,
 	createToolCallCard,
-	getToolCardDetailsContainer,
 	isCommandToolName,
 	renderToolCardError,
 	renderToolCardResult,
@@ -38,7 +36,8 @@ import {
 } from "../tool-call-card";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage } from "../types/session";
-import type { CheckpointHistoryMessage, ContextBudgetMetadata, ToolResult } from "../types/ws-events";
+import type { CheckpointHistoryMessage, ContextBudgetMetadata, ReasoningContent, ToolResult } from "../types/ws-events";
+import { hasVisibleReasoning } from "../types/ws-events";
 import { showToast } from "../ui";
 
 import { setSessionAgent } from "./session-agent";
@@ -61,7 +60,6 @@ interface ToolResultMsg extends HistoryMessage {
 	result?: ToolResult | string;
 	error?: string;
 	rejected?: boolean;
-	reasoning?: string;
 	run_id?: string;
 	contextBudget?: ContextBudgetMetadata;
 }
@@ -76,7 +74,7 @@ interface AssistantMsg extends HistoryMessage {
 	cacheReadTokens?: number;
 	cacheWriteTokens?: number;
 	durationMs?: number;
-	reasoning?: string;
+	reasoning?: ReasoningContent;
 	audio?: string;
 	tts_provider?: string;
 	run_id?: string;
@@ -260,7 +258,7 @@ function isTerminalAssistantMessage(msg: AssistantMsg): boolean {
 }
 
 function hasVisibleAssistantContent(msg: AssistantMsg): boolean {
-	return Boolean(msg.content?.trim() || msg.reasoning?.trim() || msg.audio);
+	return Boolean(msg.content?.trim() || hasVisibleReasoning(msg.reasoning) || msg.audio);
 }
 
 function applyTerminalAssistantUsage(msg: AssistantMsg, isTerminal: boolean): void {
@@ -296,7 +294,9 @@ function renderAssistantMessageBody(msg: AssistantMsg): HTMLElement | null {
 	const messageEl = msg.audio
 		? renderAssistantAudioMessage(msg)
 		: chatAddMsg("assistant", renderMarkdown(msg.content || ""), true);
-	if (messageEl && msg.reasoning) appendReasoningDisclosure(messageEl, msg.reasoning);
+	if (messageEl && msg.reasoning) {
+		appendReasoningDisclosure(messageEl, msg.reasoning, { expanded: false, streaming: false });
+	}
 	return messageEl;
 }
 
@@ -370,7 +370,6 @@ function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
 	});
 	appendToolResultSections(card, msg, rejected, a2uiArgumentsError);
 	appendA2uiToolSurface(card, msg, rejected, success);
-	if (msg.reasoning) appendReasoningDisclosure(getToolCardDetailsContainer(card), msg.reasoning);
 	if (S.chatMsgBox) S.chatMsgBox.appendChild(card);
 	return card;
 }
@@ -383,13 +382,7 @@ function makeThinkingDots(): HTMLElement {
 	return element;
 }
 
-export function postHistoryLoadActions(
-	key: string,
-	searchContext: SearchContext | null,
-	msgEls: (HTMLElement | null)[],
-	thinkingText: string | null,
-	skipAutoScroll: boolean,
-): void {
+function refreshHistoryContext(): void {
 	sendRpc("chat.context", {}).then((ctxRes) => {
 		if (ctxRes?.ok && ctxRes.payload) {
 			const p = ctxRes.payload;
@@ -408,32 +401,59 @@ export function postHistoryLoadActions(
 		updateTokenBar();
 	});
 	updateTokenBar();
+}
 
+function scrollAfterHistoryLoad(
+	searchContext: SearchContext | null,
+	msgEls: (HTMLElement | null)[],
+	skipAutoScroll: boolean,
+): void {
 	if (!skipAutoScroll && searchContext?.query && S.chatMsgBox) {
 		highlightAndScroll(msgEls, searchContext.messageIndex, searchContext.query);
-	} else if (skipAutoScroll) {
+		return;
+	}
+	if (skipAutoScroll) {
 		syncChatFollowStateFromPosition();
-	} else {
-		scrollChatToBottom(true);
+		return;
 	}
+	scrollChatToBottom(true);
+}
 
+function restoreActiveAssistantSegment(
+	key: string,
+	thinkingText: ReasoningContent | null,
+	skipAutoScroll: boolean,
+): void {
 	const session = sessionStore.getByKey(key);
-	if (session?.replying.value && S.chatMsgBox) {
-		removeThinking();
-		const thinkEl = document.createElement("div");
-		thinkEl.className = "msg assistant thinking";
-		thinkEl.id = "thinkingIndicator";
-		if (thinkingText) {
-			const textEl = document.createElement("span");
-			textEl.className = "thinking-text";
-			textEl.textContent = thinkingText;
-			thinkEl.appendChild(textEl);
-		} else {
-			thinkEl.appendChild(makeThinkingDots());
+	if (!(session?.replying.value && S.chatMsgBox)) return;
+	const activeText = session.streamText.value;
+	let segment = S.streamEl;
+	if (!(segment && segment.parentNode === S.chatMsgBox)) {
+		segment = document.createElement("div");
+		segment.className = "msg assistant reasoning-stream";
+		appendReasoningDisclosure(segment, thinkingText || "", { expanded: true, streaming: true });
+		if (activeText) {
+			const text = document.createElement("span");
+			text.insertAdjacentHTML("afterbegin", renderMarkdown(activeText));
+			while (text.firstChild) segment.appendChild(text.firstChild);
 		}
-		S.chatMsgBox.appendChild(thinkEl);
-		if (!skipAutoScroll) scrollChatToBottom(true);
+		S.chatMsgBox.appendChild(segment);
+		S.setStreamEl(segment);
 	}
+	S.setStreamText(activeText);
+	if (!skipAutoScroll) scrollChatToBottom(true);
+}
+
+export function postHistoryLoadActions(
+	key: string,
+	searchContext: SearchContext | null,
+	msgEls: (HTMLElement | null)[],
+	thinkingText: ReasoningContent | null,
+	skipAutoScroll: boolean,
+): void {
+	refreshHistoryContext();
+	scrollAfterHistoryLoad(searchContext, msgEls, skipAutoScroll);
+	restoreActiveAssistantSegment(key, thinkingText, skipAutoScroll);
 }
 
 /** No-op -- the Preact SessionHeader component auto-updates from signals. */
@@ -718,7 +738,7 @@ export function renderHistory(
 	key: string,
 	history: HistoryMessage[],
 	searchContext: SearchContext | null,
-	thinkingText: string | null,
+	thinkingText: ReasoningContent | null,
 	totalCountHint: number | null,
 	skipAutoScroll: boolean,
 ): void {

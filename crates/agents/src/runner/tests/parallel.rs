@@ -59,7 +59,7 @@ async fn test_parallel_tool_execution() {
         .await
         .unwrap();
 
-    assert_eq!(result.text, "All done");
+    assert_eq!(result.output.text, "All done");
     assert_eq!(result.tool_calls_made, 3);
 
     let evts = events.lock().unwrap();
@@ -132,7 +132,7 @@ async fn test_parallel_tool_one_fails() {
         .await
         .unwrap();
 
-    assert_eq!(result.text, "All done");
+    assert_eq!(result.output.text, "All done");
     assert_eq!(result.tool_calls_made, 3);
 
     let evts = events.lock().unwrap();
@@ -195,7 +195,7 @@ async fn test_parallel_execution_is_concurrent() {
         .unwrap();
     let elapsed = start.elapsed();
 
-    assert_eq!(result.text, "All done");
+    assert_eq!(result.output.text, "All done");
     assert_eq!(result.tool_calls_made, 3);
     assert!(
         elapsed < std::time::Duration::from_millis(250),

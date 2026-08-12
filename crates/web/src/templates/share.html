@@ -715,7 +715,11 @@ main {
             {% when Some with (reasoning) %}
               <details class="msg-reasoning">
                 <summary class="msg-reasoning-summary">Reasoning</summary>
-                <div class="msg-reasoning-body">{{ reasoning }}</div>
+                <div class="msg-reasoning-body">
+                  {% for reasoning_part in reasoning %}
+                    <div class="msg-reasoning-item markdown-content">{{ reasoning_part }}</div>
+                  {% endfor %}
+                </div>
               </details>
             {% when None %}
           {% endmatch %}

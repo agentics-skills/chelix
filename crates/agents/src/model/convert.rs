@@ -1,10 +1,50 @@
 use crate::multimodal::parse_data_uri;
 
+/// Failure to reconstruct provider input from persisted or hook-modified JSON.
+#[derive(Debug, thiserror::Error)]
+pub enum ChatMessageConversionError {
+    /// Visible reasoning content could not be decoded.
+    #[error("message at index {message_index} has invalid reasoning: {source}")]
+    Reasoning {
+        message_index: usize,
+        #[source]
+        source: serde_json::Error,
+    },
+    /// `responsesReasoning` was present with a non-array value.
+    #[error("assistant message at index {message_index} has non-array responsesReasoning")]
+    ResponsesReasoningCollection { message_index: usize },
+    /// One opaque Responses reasoning item could not be decoded.
+    #[error(
+        "assistant message at index {message_index} has invalid responsesReasoning item at index {item_index}: {source}"
+    )]
+    ResponsesReasoningItem {
+        message_index: usize,
+        item_index: usize,
+        #[source]
+        source: serde_json::Error,
+    },
+}
+
 use super::{
     chat::{ChatMessage, ContentPart, UserContent},
     decode_tool_call_arguments_with_diagnostic,
     types::ToolCall,
 };
+
+fn decode_reasoning(
+    value: Option<&serde_json::Value>,
+    message_index: usize,
+) -> Result<Option<chelix_common::ReasoningContent>, ChatMessageConversionError> {
+    let Some(value) = value.filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let reasoning = serde_json::from_value::<chelix_common::ReasoningContent>(value.clone())
+        .map_err(|source| ChatMessageConversionError::Reasoning {
+            message_index,
+            source,
+        })?;
+    Ok((!reasoning.is_blank()).then_some(reasoning))
+}
 
 fn document_absolute_path_from_media_ref(media_ref: &str) -> String {
     use std::path::Path;
@@ -25,7 +65,9 @@ fn document_absolute_path_from_media_ref(media_ref: &str) -> String {
 /// Metadata fields (`created_at`, `model`, `provider`, `inputTokens`,
 /// `outputTokens`, `channel`) are silently dropped — they only exist in
 /// the persisted JSON, not in `ChatMessage`.
-pub fn values_to_chat_messages(values: &[serde_json::Value]) -> Vec<ChatMessage> {
+pub fn values_to_chat_messages(
+    values: &[serde_json::Value],
+) -> Result<Vec<ChatMessage>, ChatMessageConversionError> {
     values_to_chat_messages_inner(values, true)
 }
 
@@ -34,14 +76,16 @@ pub fn values_to_chat_messages(values: &[serde_json::Value]) -> Vec<ChatMessage>
 ///
 /// Hook-modified LLM payloads are already provider-bound, so preserve their
 /// tool messages exactly instead of applying session-store orphan filtering.
-pub fn provider_values_to_chat_messages(values: &[serde_json::Value]) -> Vec<ChatMessage> {
+pub fn provider_values_to_chat_messages(
+    values: &[serde_json::Value],
+) -> Result<Vec<ChatMessage>, ChatMessageConversionError> {
     values_to_chat_messages_inner(values, false)
 }
 
 fn values_to_chat_messages_inner(
     values: &[serde_json::Value],
     filter_orphan_tool_results: bool,
-) -> Vec<ChatMessage> {
+) -> Result<Vec<ChatMessage>, ChatMessageConversionError> {
     // A summarization checkpoint replaces its summarized prefix while keeping
     // the unsummarized triggering tail in its original order. The tail remains
     // physically before the append-only checkpoint and starts at the absolute
@@ -49,31 +93,38 @@ fn values_to_chat_messages_inner(
     let latest_checkpoint = values
         .iter()
         .rposition(|val| val["role"].as_str() == Some("checkpoint"));
-    let ordered_values: Vec<&serde_json::Value> = if let Some(checkpoint_index) = latest_checkpoint
-    {
-        let tail_start = values[checkpoint_index]["messagesSummarized"]
-            .as_u64()
-            .and_then(|value| usize::try_from(value).ok())
-            .filter(|start| *start <= checkpoint_index)
-            .unwrap_or(checkpoint_index);
-        std::iter::once(&values[checkpoint_index])
-            .chain(
-                values[tail_start..checkpoint_index]
-                    .iter()
-                    .filter(|value| value["role"].as_str() != Some("checkpoint")),
-            )
-            .chain(values[checkpoint_index + 1..].iter())
-            .collect()
-    } else {
-        values.iter().collect()
-    };
+    let ordered_values: Vec<(usize, &serde_json::Value)> =
+        if let Some(checkpoint_index) = latest_checkpoint {
+            let tail_start = values[checkpoint_index]["messagesSummarized"]
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .filter(|start| *start <= checkpoint_index)
+                .unwrap_or(checkpoint_index);
+            std::iter::once((checkpoint_index, &values[checkpoint_index]))
+                .chain(
+                    values[tail_start..checkpoint_index]
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, value)| value["role"].as_str() != Some("checkpoint"))
+                        .map(|(offset, value)| (tail_start + offset, value)),
+                )
+                .chain(
+                    values[checkpoint_index + 1..]
+                        .iter()
+                        .enumerate()
+                        .map(|(offset, value)| (checkpoint_index + 1 + offset, value)),
+                )
+                .collect()
+        } else {
+            values.iter().enumerate().collect()
+        };
     let mut messages = Vec::with_capacity(ordered_values.len());
     // Track tool_call IDs emitted by assistant messages so we only include
     // tool/tool_result messages that have a matching assistant tool_call.
     // Orphan tool results would cause provider API errors.
     let mut pending_tool_call_ids: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    for (i, val) in ordered_values.into_iter().enumerate() {
+    for (i, val) in ordered_values {
         let Some(role) = val["role"].as_str() else {
             tracing::warn!(index = i, "skipping message with missing/invalid role");
             continue;
@@ -184,10 +235,31 @@ fn values_to_chat_messages_inner(
             },
             "assistant" => {
                 let content = val["content"].as_str().map(|s| s.to_string());
-                let reasoning = val["reasoning"].as_str().and_then(|s| {
-                    let trimmed = s.trim();
-                    (!trimmed.is_empty()).then(|| trimmed.to_string())
-                });
+                let reasoning = decode_reasoning(val.get("reasoning"), i)?;
+                let responses_reasoning = match val.get("responsesReasoning") {
+                    None => Vec::new(),
+                    Some(serde_json::Value::Array(items)) => items
+                        .iter()
+                        .enumerate()
+                        .map(|(item_index, item)| {
+                            serde_json::from_value::<chelix_common::ResponsesReasoningItem>(
+                                item.clone(),
+                            )
+                            .map_err(|source| {
+                                ChatMessageConversionError::ResponsesReasoningItem {
+                                    message_index: i,
+                                    item_index,
+                                    source,
+                                }
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                    Some(_) => {
+                        return Err(ChatMessageConversionError::ResponsesReasoningCollection {
+                            message_index: i,
+                        });
+                    },
+                };
                 let tool_calls: Vec<ToolCall> = val["tool_calls"]
                     .as_array()
                     .map(|tcs| {
@@ -215,6 +287,7 @@ fn values_to_chat_messages_inner(
                     content,
                     tool_calls,
                     reasoning,
+                    responses_reasoning,
                 });
             },
             "tool" => {
@@ -240,10 +313,7 @@ fn values_to_chat_messages_inner(
                     tracing::debug!(tool_call_id, "skipping orphan tool_result message");
                     continue;
                 }
-                if let Some(reasoning) = val["reasoning"].as_str().and_then(|s| {
-                    let trimmed = s.trim();
-                    (!trimmed.is_empty()).then(|| trimmed.to_string())
-                }) {
+                if let Some(reasoning) = decode_reasoning(val.get("reasoning"), i)? {
                     attach_reasoning_to_assistant_tool_call(
                         &mut messages,
                         &tool_call_id,
@@ -282,13 +352,13 @@ fn values_to_chat_messages_inner(
             },
         }
     }
-    messages
+    Ok(messages)
 }
 
 fn attach_reasoning_to_assistant_tool_call(
     messages: &mut [ChatMessage],
     tool_call_id: &str,
-    tool_reasoning: String,
+    tool_reasoning: chelix_common::ReasoningContent,
 ) {
     for message in messages.iter_mut().rev() {
         let ChatMessage::Assistant {
@@ -333,6 +403,10 @@ mod checkpoint_tests {
             serde_json::json!({
                 "role": "assistant",
                 "content": "working",
+                "responsesReasoning": [{
+                    "id": "rs_checkpoint_tail",
+                    "encryptedContent": "opaque-checkpoint-tail"
+                }],
                 "tool_calls": [{
                     "id": "call-2",
                     "function": {"name": "read_file", "arguments": "{}"}
@@ -353,7 +427,8 @@ mod checkpoint_tests {
             serde_json::json!({"role": "user", "content": "after"}),
         ];
 
-        let messages = values_to_chat_messages(&values);
+        let messages = values_to_chat_messages(&values)
+            .unwrap_or_else(|error| panic!("valid checkpoint history: {error}"));
 
         assert_eq!(messages.len(), 4);
         assert!(matches!(
@@ -363,7 +438,14 @@ mod checkpoint_tests {
         ));
         assert!(matches!(
             &messages[1],
-            ChatMessage::Assistant { tool_calls, .. } if tool_calls[0].id == "call-2"
+            ChatMessage::Assistant {
+                tool_calls,
+                responses_reasoning,
+                ..
+            } if tool_calls[0].id == "call-2"
+                && responses_reasoning.len() == 1
+                && responses_reasoning[0].id == "rs_checkpoint_tail"
+                && responses_reasoning[0].encrypted_content == "opaque-checkpoint-tail"
         ));
         assert!(
             matches!(&messages[2], ChatMessage::Tool { tool_call_id, .. } if tool_call_id == "call-2")

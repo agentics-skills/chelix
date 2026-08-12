@@ -361,7 +361,10 @@ pub trait ChatService: Send + Sync {
         Vec::new()
     }
 
-    async fn active_thinking_text(&self, _session_key: &str) -> Option<String> {
+    async fn active_thinking_text(
+        &self,
+        _session_key: &str,
+    ) -> Option<chelix_common::ReasoningContent> {
         None
     }
 

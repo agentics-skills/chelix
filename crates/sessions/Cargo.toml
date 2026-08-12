@@ -4,14 +4,15 @@ name              = "chelix-sessions"
 version.workspace = true
 
 [dependencies]
-fd-lock    = { workspace = true }
-serde      = { workspace = true }
-serde_json = { workspace = true }
-sqlx       = { workspace = true }
-thiserror  = { workspace = true }
-tokio      = { workspace = true }
-tracing    = { workspace = true }
-uuid       = { workspace = true }
+chelix-common = { workspace = true }
+fd-lock       = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+sqlx          = { workspace = true }
+thiserror     = { workspace = true }
+tokio         = { workspace = true }
+tracing       = { workspace = true }
+uuid          = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

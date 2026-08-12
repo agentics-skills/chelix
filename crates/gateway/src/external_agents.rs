@@ -659,6 +659,7 @@ impl ExternalAgentChatService {
             request_cache_write_tokens: None,
             tool_calls: None,
             reasoning: None,
+            responses_reasoning: Vec::new(),
             llm_api_response: None,
             audio: None,
             seq,
@@ -820,7 +821,10 @@ impl ChatService for ExternalAgentChatService {
         self.inner.active_session_keys().await
     }
 
-    async fn active_thinking_text(&self, session_key: &str) -> Option<String> {
+    async fn active_thinking_text(
+        &self,
+        session_key: &str,
+    ) -> Option<chelix_common::ReasoningContent> {
         self.inner.active_thinking_text(session_key).await
     }
 

@@ -1,16 +1,20 @@
 use std::sync::Arc;
 
 use {
-    chelix_auth::{AuthMode, CredentialStore, ResolvedAuth},
+    chelix_auth::{AuthConfigPersistence, AuthMode, CredentialStore, ResolvedAuth},
     sqlx::SqlitePool,
 };
 
 #[tokio::test]
 async fn sync_runtime_webauthn_host_registers_new_origin() {
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let credential_store = Arc::new(CredentialStore::new(pool).await.unwrap());
     let mut config = chelix_config::ChelixConfig::default();
     config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
+    let credential_store = Arc::new(
+        CredentialStore::with_config(pool, &config.auth, AuthConfigPersistence::MemoryOnly)
+            .await
+            .unwrap(),
+    );
     let gateway = crate::state::GatewayState::with_options(
         ResolvedAuth {
             mode: AuthMode::Token,

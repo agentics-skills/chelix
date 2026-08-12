@@ -115,7 +115,8 @@ pub(crate) async fn generate_title_for_session(
         provider
     };
 
-    let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
+    let chat_msgs = chelix_agents::model::values_to_chat_messages(&history)
+        .context("failed to reconstruct session history for title generation")?;
     let title = chelix_agents::title::generate_title(provider, &chat_msgs).await?;
     // Persist the title as the session label and read back the
     // entry atomically so the broadcast version is consistent.

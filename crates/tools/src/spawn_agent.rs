@@ -564,7 +564,7 @@ impl AgentTool for SpawnAgentTool {
                         let tool_calls_made = result.tool_calls_made;
                         (
                             SpawnTaskUpdate {
-                                text: Some(result.text),
+                                text: Some(result.output.text),
                                 iterations,
                                 tool_calls_made,
                                 error: None,
@@ -710,7 +710,7 @@ impl AgentTool for SpawnAgentTool {
         );
 
         Ok(serde_json::json!({
-            "text": result.text,
+            "text": result.output.text,
             "iterations": result.iterations,
             "tool_calls_made": result.tool_calls_made,
             "model": model_id,

@@ -147,7 +147,7 @@ impl ProviderRegistry {
         mut build_provider: F,
     ) -> usize
     where
-        F: FnMut(&str) -> Arc<dyn LlmProvider>,
+        F: FnMut(&ResolvedModel) -> Arc<dyn LlmProvider>,
     {
         let pending: Vec<ResolvedModel> = models
             .into_iter()
@@ -155,7 +155,7 @@ impl ProviderRegistry {
             .collect();
         let count = pending.len();
         pending.into_iter().for_each(|model| {
-            let provider = build_provider(&model.id);
+            let provider = build_provider(&model);
             self.register(
                 ModelInfo {
                     id: model.id,
@@ -190,15 +190,16 @@ impl ProviderRegistry {
         let models = resolved_models(config, discovery, "openai");
         let transport_provider_name = provider_name.clone();
 
-        self.register_resolved(&provider_name, models, move |model_id| {
+        self.register_resolved(&provider_name, models, move |model| {
             Arc::new(configure_openai_transport(
                 openai::OpenAiProvider::new_with_name(
                     key.clone(),
-                    model_id.to_string(),
+                    model.id.clone(),
                     base_url.clone(),
                     transport_provider_name.clone(),
                 )
-                .with_capabilities(capabilities),
+                .with_capabilities(capabilities)
+                .with_reasoning_metadata(&model.metadata.reasoning),
                 &entry,
             ))
         })
@@ -254,15 +255,16 @@ impl ProviderRegistry {
         let capabilities = definition.capabilities;
         let transport_provider_name = provider_name.clone();
 
-        self.register_resolved(&provider_name, models, move |model_id| {
+        self.register_resolved(&provider_name, models, move |model| {
             Arc::new(configure_openai_transport(
                 openai::OpenAiProvider::new_with_name(
                     key.clone(),
-                    model_id.to_string(),
+                    model.id.clone(),
                     base_url.clone(),
                     transport_provider_name.clone(),
                 )
-                .with_capabilities(capabilities),
+                .with_capabilities(capabilities)
+                .with_reasoning_metadata(&model.metadata.reasoning),
                 &entry,
             ))
         })
@@ -299,14 +301,15 @@ impl ProviderRegistry {
         let entry = entry.clone();
         let models = resolved_models(config, discovery, name);
 
-        self.register_resolved(name, models, move |model_id| {
+        self.register_resolved(name, models, move |model| {
             Arc::new(configure_openai_transport(
                 openai::OpenAiProvider::new_with_name(
                     api_key.clone(),
-                    model_id.to_string(),
+                    model.id.clone(),
                     base_url.clone(),
                     name.to_string(),
-                ),
+                )
+                .with_reasoning_metadata(&model.metadata.reasoning),
                 &entry,
             ))
         })

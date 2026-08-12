@@ -20,7 +20,7 @@ pub use {
     message::{ContentBlock, MessageContent, PersistedMessage, UserDocument},
     store::SearchResult,
     tool_results::{PersistedToolResult, ToolResultStore},
-    ui_history::filter_ui_history,
+    ui_history::{filter_ui_history, redact_backend_only_provider_state},
 };
 
 /// Run database migrations for the sessions crate.

@@ -88,7 +88,13 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
             return;
         },
     };
-    let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
+    let chat_msgs = match chelix_agents::model::values_to_chat_messages(&history) {
+        Ok(messages) => messages,
+        Err(error) => {
+            warn!(%error, "session summary: failed to reconstruct session history");
+            return;
+        },
+    };
     let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> = Arc::new(
         chelix_chat::AgentScopedMemoryWriter::new(Arc::clone(mm), agent_id, write_mode),
     );

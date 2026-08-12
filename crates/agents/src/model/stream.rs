@@ -17,8 +17,32 @@ pub enum StreamEvent {
     Delta(String),
     /// Raw provider event payload (for debugging API responses).
     ProviderRaw(serde_json::Value),
-    /// Reasoning/planning text delta (not user-visible final answer text).
+    /// Reasoning/planning text delta from non-Responses transports.
     ReasoningDelta(String),
+    /// OpenAI Responses reasoning-summary text for one source-defined part.
+    ResponsesReasoningDelta {
+        /// Provider reasoning item ID.
+        item_id: String,
+        /// Position of the reasoning item in the response output.
+        output_index: usize,
+        /// Position of the summary part within the reasoning item.
+        summary_index: usize,
+        /// Summary text delta.
+        delta: String,
+    },
+    /// Marks one OpenAI Responses reasoning-summary part complete.
+    ResponsesReasoningPartDone {
+        /// Provider reasoning item ID.
+        item_id: String,
+        /// Position of the reasoning item in the response output.
+        output_index: usize,
+        /// Position of the summary part within the reasoning item.
+        summary_index: usize,
+        /// Authoritative completed summary part text.
+        text: String,
+    },
+    /// Opaque OpenAI Responses reasoning state for the next stateless request.
+    ResponsesReasoningItem(chelix_common::ResponsesReasoningItem),
     /// A tool call has started (content_block_start with tool_use).
     ToolCallStart {
         /// Tool call ID from the provider.

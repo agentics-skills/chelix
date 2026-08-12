@@ -16,8 +16,9 @@ use chelix_common::hooks::{HookAction, HookPayload, HookRegistry};
 
 use crate::{
     model::{
-        AgentToolControls, ChatMessage, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
-        UserContent, decode_tool_call_arguments_from_str, push_capped_provider_raw_event,
+        AgentToolControls, ChatMessage, LlmProvider, ReasoningAccumulator, StreamEvent, ToolCall,
+        ToolChoice, Usage, UserContent, decode_tool_call_arguments_from_str,
+        push_capped_provider_raw_event,
     },
     response_sanitizer::{clean_response, recover_tool_calls_from_content},
     tool_arg_validator::validate_tool_args,
@@ -27,14 +28,14 @@ use crate::{
 };
 
 use super::{
-    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, FinalTextSource,
-    MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall, ToolCallBudget,
-    UsageAccumulator, apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
-    channel_binding_from_tool_context, dispatch_after_llm_call_hook,
-    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, enrich_tool_arguments,
-    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
-    is_substantive_answer_text, log_tool_argument_diagnostic, public_tool_arguments,
-    record_answer_text, resolve_tool_lookup,
+    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
+    FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall,
+    ToolCallBudget, UsageAccumulator, apply_before_llm_call_modify_payload,
+    apply_loop_detector_intervention, channel_binding_from_tool_context,
+    dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
+    enrich_tool_arguments, fallback_final_text_source, find_empty_tool_name_call, finish_agent_run,
+    has_named_tool_call, is_substantive_answer_text, log_tool_argument_diagnostic,
+    public_tool_arguments, record_answer_text, resolve_tool_lookup,
     retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
     sanitize_tool_name, streaming_tool_call_message_content,
     tool_result::persist_and_truncate,
@@ -243,7 +244,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                     )));
                 },
                 Ok(HookAction::ModifyPayload(modified_payload)) => {
-                    apply_before_llm_call_modify_payload(&mut messages, modified_payload);
+                    apply_before_llm_call_modify_payload(&mut messages, modified_payload)?;
                 },
                 Ok(HookAction::Continue) => {},
                 Err(e) => {
@@ -295,7 +296,8 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         // Accumulate answer text, reasoning text, and tool calls from the stream.
         let mut accumulated_text = String::new();
-        let mut accumulated_reasoning = String::new();
+        let mut accumulated_reasoning = ReasoningAccumulator::default();
+        let mut responses_reasoning = Vec::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
         // Map streaming index -> accumulated JSON args string.
         let mut tool_call_args: std::collections::HashMap<usize, String> =
@@ -322,9 +324,60 @@ pub async fn run_agent_loop_streaming_with_limits(
                     push_capped_provider_raw_event(&mut raw_llm_responses, raw);
                 },
                 StreamEvent::ReasoningDelta(text) => {
-                    accumulated_reasoning.push_str(&text);
+                    accumulated_reasoning.append_text(&text);
+                    if let Some(cb) = on_event
+                        && let Some(chelix_common::ReasoningContent::Text(text)) =
+                            accumulated_reasoning.content()
+                    {
+                        cb(RunnerEvent::ThinkingText(text));
+                    }
+                },
+                StreamEvent::ResponsesReasoningDelta {
+                    item_id,
+                    output_index,
+                    summary_index,
+                    delta,
+                } => {
+                    accumulated_reasoning.append_responses_delta(
+                        &item_id,
+                        output_index,
+                        summary_index,
+                        &delta,
+                    );
                     if let Some(cb) = on_event {
-                        cb(RunnerEvent::ThinkingText(accumulated_reasoning.clone()));
+                        cb(RunnerEvent::ResponsesReasoningDelta {
+                            item_id,
+                            output_index,
+                            summary_index,
+                            delta,
+                        });
+                    }
+                },
+                StreamEvent::ResponsesReasoningPartDone {
+                    item_id,
+                    output_index,
+                    summary_index,
+                    text,
+                } => {
+                    accumulated_reasoning.complete_responses_part(
+                        &item_id,
+                        output_index,
+                        summary_index,
+                        text.clone(),
+                    );
+                    if let Some(cb) = on_event {
+                        cb(RunnerEvent::ResponsesReasoningPartDone {
+                            item_id,
+                            output_index,
+                            summary_index,
+                            text,
+                        });
+                    }
+                },
+                StreamEvent::ResponsesReasoningItem(item) => {
+                    responses_reasoning.push(item.clone());
+                    if let Some(cb) = on_event {
+                        cb(RunnerEvent::ResponsesReasoningItem(item));
                     }
                 },
                 StreamEvent::ToolCallStart { id, name, index } => {
@@ -499,7 +552,11 @@ pub async fn run_agent_loop_streaming_with_limits(
         {
             malformed_retry_count += 1;
             info!("detected malformed tool call in stream, requesting retry");
-            messages.push(ChatMessage::assistant(&accumulated_text));
+            messages.push(
+                ChatMessage::assistant(&accumulated_text)
+                    .with_reasoning(accumulated_reasoning.content())
+                    .with_responses_reasoning(responses_reasoning),
+            );
             messages.push(ChatMessage::user(MALFORMED_TOOL_RETRY_PROMPT));
             continue;
         }
@@ -532,9 +589,12 @@ pub async fn run_agent_loop_streaming_with_limits(
                     &mut last_answer_text,
                     &mut last_answer_tool_call_id,
                     &accumulated_text,
-                    &accumulated_reasoning,
                 );
-                messages.push(ChatMessage::assistant(retry_text.unwrap_or_default()));
+                messages.push(
+                    ChatMessage::assistant(retry_text.unwrap_or_default())
+                        .with_reasoning(accumulated_reasoning.content())
+                        .with_responses_reasoning(responses_reasoning),
+                );
                 messages.push(ChatMessage::user(empty_tool_name_retry_prompt(tc)));
                 continue;
             }
@@ -562,7 +622,10 @@ pub async fn run_agent_loop_streaming_with_limits(
             // and we haven't exhausted nudges, ask it to keep going. Suppress
             // the nudge when the model already produced a substantive final
             // answer — nudging in that case risks losing the answer (GH #628).
+            let has_reasoning_output =
+                !accumulated_reasoning.is_empty() || !responses_reasoning.is_empty();
             if !is_substantive_answer_text(&accumulated_text)
+                && !has_reasoning_output
                 && tool_call_budget.used() > 0
                 && tool_call_budget.used() >= auto_continue_min_tool_calls
                 && auto_continue_count < max_auto_continues
@@ -577,21 +640,42 @@ pub async fn run_agent_loop_streaming_with_limits(
                         iteration: iterations,
                     });
                 }
-                if !accumulated_text.is_empty() {
-                    messages.push(ChatMessage::assistant(&accumulated_text));
+                let reasoning = accumulated_reasoning.content();
+                if !accumulated_text.is_empty()
+                    || reasoning.is_some()
+                    || !responses_reasoning.is_empty()
+                {
+                    messages.push(
+                        ChatMessage::assistant_with_tools(
+                            (!accumulated_text.is_empty()).then(|| accumulated_text.clone()),
+                            Vec::new(),
+                        )
+                        .with_reasoning(reasoning)
+                        .with_responses_reasoning(responses_reasoning),
+                    );
                 }
                 messages.push(ChatMessage::user(AUTO_CONTINUE_NUDGE));
                 continue;
             }
 
-            // When the final iteration produced no text but a previous iteration
-            // streamed answer text alongside tool calls, use that as the response.
-            let used_fallback_text = accumulated_text.is_empty() && !last_answer_text.is_empty();
-            let final_text = if used_fallback_text {
-                std::mem::take(&mut last_answer_text)
-            } else {
-                accumulated_text
+            let current_output = AssistantIterationOutput {
+                text: accumulated_text,
+                reasoning: accumulated_reasoning.content(),
+                responses_reasoning,
             };
+            // A previous tool iteration can own the display answer only when the
+            // current provider iteration returned no output parts at all.
+            let used_fallback_text =
+                !current_output.has_provider_output() && !last_answer_text.is_empty();
+            let final_output = if used_fallback_text {
+                AssistantIterationOutput {
+                    text: std::mem::take(&mut last_answer_text),
+                    ..AssistantIterationOutput::default()
+                }
+            } else {
+                current_output
+            };
+            let final_text = final_output.text.clone();
             if used_fallback_text {
                 let streamed_final_text = clean_response(&final_text);
                 if let Some(cb) = on_event
@@ -606,7 +690,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 "streaming agent loop complete — returning text"
             );
             return Ok(finish_agent_run(
-                final_text,
+                final_output,
                 if used_fallback_text {
                     fallback_final_text_source(last_answer_tool_call_id)
                 } else {
@@ -619,34 +703,18 @@ pub async fn run_agent_loop_streaming_with_limits(
             ));
         }
 
-        // Append assistant message with tool calls.
-        //
-        // When the model emits explicit reasoning (extended thinking), use
-        // that as the planning text and emit it as ThinkingText for the UI.
-        // When there is only regular text alongside tool calls (no separate
-        // reasoning), preserve it on the message for history but do NOT emit
-        // it as ThinkingText — it was already streamed as TextDelta and is
-        // likely the actual answer (e.g. a search result table produced
-        // before a `browser close` cleanup call).
-        let (text_for_msg, is_actual_reasoning) = if !accumulated_reasoning.is_empty() {
-            (Some(accumulated_reasoning), true)
-        } else if !accumulated_text.is_empty() {
+        // Persist every output part on the assistant frame owned by this
+        // provider iteration before executing its tool calls.
+        let text_for_msg = (!accumulated_text.is_empty()).then(|| accumulated_text.clone());
+        let reasoning_for_msg = accumulated_reasoning.content();
+        if let Some(ref text) = text_for_msg {
             record_answer_text(
                 &mut last_answer_text,
                 &mut last_answer_tool_call_id,
-                Some(&accumulated_text),
+                Some(text),
                 &tool_calls,
             );
-            (Some(accumulated_text), false)
-        } else {
-            (None, false)
-        };
-        if let Some(ref text) = text_for_msg
-            && let Some(cb) = on_event
-        {
-            if is_actual_reasoning {
-                cb(RunnerEvent::ThinkingText(text.clone()));
-            } else {
+            if let Some(cb) = on_event {
                 cb(RunnerEvent::ProgressText(text.clone()));
             }
         }
@@ -654,10 +722,11 @@ pub async fn run_agent_loop_streaming_with_limits(
             compaction_continuation_start = messages.len();
         }
         continuation_tool_rounds += 1;
-        messages.push(ChatMessage::assistant_with_tools(
-            text_for_msg,
-            tool_calls.clone(),
-        ));
+        messages.push(
+            ChatMessage::assistant_with_tools(text_for_msg, tool_calls.clone())
+                .with_reasoning(reasoning_for_msg)
+                .with_responses_reasoning(responses_reasoning),
+        );
 
         // Execute tool calls concurrently.
         let iteration_tool_calls: Arc<[RunnerToolCall]> =

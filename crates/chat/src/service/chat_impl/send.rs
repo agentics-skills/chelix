@@ -299,6 +299,7 @@ impl LiveChatService {
             client_seq = ?client_seq,
             "chat.send: history loaded"
         );
+        let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
 
         // Update metadata.
         let _ = self.session_metadata.upsert(&session_key, None).await;
@@ -789,7 +790,7 @@ impl LiveChatService {
                         &model_id,
                         &user_content,
                         &provider_name,
-                        &history,
+                        &chat_history,
                         &session_key_clone,
                         &session_agent_id_clone,
                         resolved_reasoning_effort.clone(),
@@ -800,6 +801,7 @@ impl LiveChatService {
                         sender_name,
                         Some(&session_store),
                         client_seq,
+                        Some(Arc::clone(&active_thinking_text)),
                         Some(Arc::clone(&active_partial_assistant)),
                         &terminal_runs,
                     )
@@ -817,6 +819,7 @@ impl LiveChatService {
                         &user_content,
                         &provider_name,
                         &history,
+                        &chat_history,
                         &session_key_clone,
                         &session_agent_id_clone,
                         resolved_reasoning_effort.clone(),
@@ -930,7 +933,16 @@ impl LiveChatService {
                             Vec::new()
                         };
                     if !recent.is_empty() {
-                        let chat_msgs = values_to_chat_messages(&recent);
+                        let chat_msgs = match values_to_chat_messages(&recent) {
+                            Ok(messages) => messages,
+                            Err(error) => {
+                                tracing::warn!(
+                                    %error,
+                                    "periodic memory extraction: failed to reconstruct recent history"
+                                );
+                                return;
+                            },
+                        };
                         let agent_id = session_agent_id_clone.clone();
                         let mm = Arc::clone(mm);
                         let prov = Arc::clone(&provider_for_extraction);

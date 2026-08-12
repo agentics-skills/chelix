@@ -1,4 +1,7 @@
-use super::types::ToolCall;
+use {
+    super::types::ToolCall,
+    chelix_common::{ReasoningContent, ResponsesReasoningItem},
+};
 
 // ── Typed chat messages ─────────────────────────────────────────────────────
 
@@ -20,7 +23,8 @@ pub enum ChatMessage {
     Assistant {
         content: Option<String>,
         tool_calls: Vec<ToolCall>,
-        reasoning: Option<String>,
+        reasoning: Option<ReasoningContent>,
+        responses_reasoning: Vec<ResponsesReasoningItem>,
     },
     Tool {
         tool_call_id: String,
@@ -95,6 +99,7 @@ impl ChatMessage {
             content: Some(content.into()),
             tool_calls: vec![],
             reasoning: None,
+            responses_reasoning: vec![],
         }
     }
 
@@ -104,7 +109,36 @@ impl ChatMessage {
             content,
             tool_calls,
             reasoning: None,
+            responses_reasoning: vec![],
         }
+    }
+
+    /// Attach visible reasoning content to an assistant message.
+    #[must_use]
+    pub fn with_reasoning(mut self, reasoning: Option<ReasoningContent>) -> Self {
+        if let Self::Assistant {
+            reasoning: current, ..
+        } = &mut self
+        {
+            *current = reasoning;
+        }
+        self
+    }
+
+    /// Attach opaque OpenAI Responses reasoning state to an assistant message.
+    #[must_use]
+    pub fn with_responses_reasoning(
+        mut self,
+        responses_reasoning: Vec<ResponsesReasoningItem>,
+    ) -> Self {
+        if let Self::Assistant {
+            responses_reasoning: current,
+            ..
+        } = &mut self
+        {
+            *current = responses_reasoning;
+        }
+        self
     }
 
     /// Create a tool result message.

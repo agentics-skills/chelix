@@ -57,11 +57,88 @@ pub enum ReasoningSummary {
     Detailed,
 }
 
+impl ReasoningSummary {
+    /// Exact OpenAI Responses wire value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Concise => "concise",
+            Self::Detailed => "detailed",
+        }
+    }
+}
+
 /// Additional reasoning payload requested from an OpenAI-compatible endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ReasoningInclude {
     #[serde(rename = "reasoning.encrypted_content")]
     EncryptedContent,
+}
+
+impl ReasoningInclude {
+    /// Exact OpenAI Responses wire value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::EncryptedContent => "reasoning.encrypted_content",
+        }
+    }
+}
+
+/// Visible reasoning content shown with an assistant message.
+///
+/// Providers with one continuous reasoning stream use `Text`. OpenAI Responses
+/// summaries use `Parts` so provider-defined summary boundaries survive
+/// streaming, persistence, and rendering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ReasoningContent {
+    Text(String),
+    Parts(Vec<String>),
+}
+
+impl ReasoningContent {
+    /// Whether every visible reasoning fragment is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Text(text) => text.is_empty(),
+            Self::Parts(parts) => parts.iter().all(String::is_empty),
+        }
+    }
+
+    /// Whether every visible reasoning fragment contains only whitespace.
+    #[must_use]
+    pub fn is_blank(&self) -> bool {
+        match self {
+            Self::Text(text) => text.trim().is_empty(),
+            Self::Parts(parts) => parts.iter().all(|part| part.trim().is_empty()),
+        }
+    }
+}
+
+impl From<String> for ReasoningContent {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<Vec<String>> for ReasoningContent {
+    fn from(value: Vec<String>) -> Self {
+        Self::Parts(value)
+    }
+}
+
+/// Opaque OpenAI Responses reasoning state returned for stateless replay.
+///
+/// The summary text is stored separately for display. Only the provider-issued
+/// ID and encrypted payload are sent back to a Responses endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResponsesReasoningItem {
+    pub id: String,
+    pub encrypted_content: String,
 }
 
 /// Partial reasoning metadata supplied by configuration or model discovery.

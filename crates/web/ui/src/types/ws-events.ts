@@ -29,6 +29,18 @@ export enum WsEventName {
 
 // ── Payload interfaces ───────────────────────────────────────
 
+export type ReasoningContent = string | string[];
+
+export function hasVisibleReasoning(content: ReasoningContent | null | undefined): boolean {
+	return Array.isArray(content)
+		? content.some((part) => part.trim().length > 0)
+		: typeof content === "string" && content.trim().length > 0;
+}
+
+export function isReasoningContent(value: unknown): value is ReasoningContent {
+	return typeof value === "string" || (Array.isArray(value) && value.every((part) => typeof part === "string"));
+}
+
 export interface ToolResult {
 	stdout?: string;
 	stderr?: string;
@@ -121,7 +133,7 @@ export interface AssistantHistoryMessage {
 	requestCacheReadTokens?: number;
 	requestCacheWriteTokens?: number;
 	tool_calls?: unknown[];
-	reasoning?: string;
+	reasoning?: ReasoningContent;
 	audio?: string;
 	run_id?: string;
 	created_at?: number;
@@ -158,7 +170,7 @@ export interface ChannelInfo {
 
 export interface PartialMessage {
 	content?: string;
-	reasoning?: string;
+	reasoning?: ReasoningContent;
 	reasoningEffort?: string;
 	model?: string;
 	provider?: string;
@@ -181,7 +193,7 @@ export interface ChatPayload {
 	state?: string;
 	sessionKey?: string;
 	runId?: string;
-	text?: string;
+	text?: ReasoningContent;
 	model?: string;
 	reasoningEffort?: string;
 	provider?: string;
@@ -194,7 +206,7 @@ export interface ChatPayload {
 	requestOutputTokens?: number;
 	requestCacheReadTokens?: number;
 	requestCacheWriteTokens?: number;
-	reasoning?: string;
+	reasoning?: ReasoningContent;
 	audio?: string;
 	audioWarning?: string | null;
 	replyMedium?: string;
@@ -293,7 +305,7 @@ export interface StreamMeta {
 export interface AbortedPartialState {
 	partial: PartialMessage | null;
 	partialText: string;
-	partialReasoning: string;
+	partialReasoning: ReasoningContent;
 	hasVisiblePartial: boolean;
 	hasTerminalToolBatch: boolean;
 }

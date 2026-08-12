@@ -12,7 +12,7 @@ pub use {
     error::{ChelixError, Error, FromMessage, Result},
     model::{
         ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, ModelReasoningMetadata,
-        PartialModelMetadata, PartialReasoningMetadata, ReasoningEffort, ReasoningInclude,
-        ReasoningSummary,
+        PartialModelMetadata, PartialReasoningMetadata, ReasoningContent, ReasoningEffort,
+        ReasoningInclude, ReasoningSummary, ResponsesReasoningItem,
     },
 };

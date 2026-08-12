@@ -16,7 +16,7 @@ use {
 use {
     chelix_agents::{
         ChatMessage, UserContent,
-        model::{StreamEvent, push_capped_provider_raw_event, values_to_chat_messages},
+        model::{ReasoningAccumulator, StreamEvent, push_capped_provider_raw_event},
         prompt::{PromptRuntimeContext, build_system_prompt_minimal_runtime_details},
     },
     chelix_sessions::store::SessionStore,
@@ -145,7 +145,7 @@ pub(crate) async fn run_streaming(
     model_id: &str,
     user_content: &UserContent,
     provider_name: &str,
-    history_raw: &[Value],
+    chat_history: &[ChatMessage],
     session_key: &str,
     _agent_id: &str,
     session_reasoning_effort: Option<String>,
@@ -156,6 +156,7 @@ pub(crate) async fn run_streaming(
     sender_name: Option<String>,
     session_store: Option<&Arc<SessionStore>>,
     client_seq: Option<u64>,
+    active_thinking_text: Option<Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>>,
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
 ) -> Option<AssistantTurnOutput> {
@@ -234,8 +235,7 @@ pub(crate) async fn run_streaming(
 
     let mut messages: Vec<ChatMessage> = Vec::new();
     messages.push(ChatMessage::system(system_prompt));
-    // Convert persisted JSON history to typed ChatMessages for the LLM provider.
-    messages.extend(values_to_chat_messages(history_raw));
+    messages.extend_from_slice(chat_history);
     messages.push(ChatMessage::User {
         content: effective_user_content,
         name: sender_name,
@@ -253,7 +253,8 @@ pub(crate) async fn run_streaming(
 
         let mut stream = provider.stream(messages.clone());
         let mut accumulated = String::new();
-        let mut accumulated_reasoning = String::new();
+        let mut accumulated_reasoning = ReasoningAccumulator::default();
+        let mut responses_reasoning = Vec::new();
         let mut raw_llm_responses: Vec<Value> = Vec::new();
 
         while let Some(event) = stream.next().await {
@@ -304,11 +305,20 @@ pub(crate) async fn run_streaming(
                     broadcast(state, "chat", payload, BroadcastOpts::default()).await;
                 },
                 StreamEvent::ReasoningDelta(delta) => {
-                    accumulated_reasoning.push_str(&delta);
+                    accumulated_reasoning.append_text(&delta);
+                    let reasoning = accumulated_reasoning.content();
+                    if let Some(ref map) = active_thinking_text
+                        && let Some(ref reasoning) = reasoning
+                    {
+                        map.write()
+                            .await
+                            .insert(session_key.to_string(), reasoning.clone());
+                    }
                     if let Some(ref map) = active_partial_assistant
                         && let Some(draft) = map.write().await.get_mut(session_key)
+                        && let Some(chelix_common::ReasoningContent::Text(ref text)) = reasoning
                     {
-                        draft.set_reasoning(&accumulated_reasoning);
+                        draft.set_reasoning(text);
                     }
                     broadcast(
                         state,
@@ -317,11 +327,105 @@ pub(crate) async fn run_streaming(
                             "runId": run_id,
                             "sessionKey": session_key,
                             "state": "thinking_text",
-                            "text": accumulated_reasoning.clone(),
+                            "text": reasoning,
                         }),
                         BroadcastOpts::default(),
                     )
                     .await;
+                },
+                StreamEvent::ResponsesReasoningDelta {
+                    item_id,
+                    output_index,
+                    summary_index,
+                    delta,
+                } => {
+                    accumulated_reasoning.append_responses_delta(
+                        &item_id,
+                        output_index,
+                        summary_index,
+                        &delta,
+                    );
+                    let reasoning = accumulated_reasoning.content();
+                    if let Some(ref map) = active_thinking_text
+                        && let Some(ref reasoning) = reasoning
+                    {
+                        map.write()
+                            .await
+                            .insert(session_key.to_string(), reasoning.clone());
+                    }
+                    if let Some(ref map) = active_partial_assistant
+                        && let Some(draft) = map.write().await.get_mut(session_key)
+                    {
+                        draft.append_responses_reasoning(
+                            &item_id,
+                            output_index,
+                            summary_index,
+                            &delta,
+                        );
+                    }
+                    broadcast(
+                        state,
+                        "chat",
+                        serde_json::json!({
+                            "runId": run_id,
+                            "sessionKey": session_key,
+                            "state": "thinking_text",
+                            "text": reasoning,
+                        }),
+                        BroadcastOpts::default(),
+                    )
+                    .await;
+                },
+                StreamEvent::ResponsesReasoningPartDone {
+                    item_id,
+                    output_index,
+                    summary_index,
+                    text,
+                } => {
+                    accumulated_reasoning.complete_responses_part(
+                        &item_id,
+                        output_index,
+                        summary_index,
+                        text.clone(),
+                    );
+                    let reasoning = accumulated_reasoning.content();
+                    if let Some(ref map) = active_thinking_text
+                        && let Some(ref reasoning) = reasoning
+                    {
+                        map.write()
+                            .await
+                            .insert(session_key.to_string(), reasoning.clone());
+                    }
+                    if let Some(ref map) = active_partial_assistant
+                        && let Some(draft) = map.write().await.get_mut(session_key)
+                    {
+                        draft.complete_responses_reasoning(
+                            &item_id,
+                            output_index,
+                            summary_index,
+                            text,
+                        );
+                    }
+                    broadcast(
+                        state,
+                        "chat",
+                        serde_json::json!({
+                            "runId": run_id,
+                            "sessionKey": session_key,
+                            "state": "thinking_text",
+                            "text": reasoning,
+                        }),
+                        BroadcastOpts::default(),
+                    )
+                    .await;
+                },
+                StreamEvent::ResponsesReasoningItem(item) => {
+                    responses_reasoning.push(item.clone());
+                    if let Some(ref map) = active_partial_assistant
+                        && let Some(draft) = map.write().await.get_mut(session_key)
+                    {
+                        draft.push_responses_reasoning(item);
+                    }
                 },
                 StreamEvent::ProviderRaw(raw) => {
                     push_capped_provider_raw_event(&mut raw_llm_responses, raw);
@@ -372,10 +476,11 @@ pub(crate) async fn run_streaming(
                     }
 
                     let is_silent = accumulated.trim().is_empty();
-                    let reasoning = {
-                        let trimmed = accumulated_reasoning.trim();
-                        (!trimmed.is_empty()).then(|| trimmed.to_string())
-                    };
+                    let reasoning = accumulated_reasoning
+                        .content()
+                        .filter(|reasoning| !reasoning.is_blank());
+                    let has_provider_output =
+                        !is_silent || reasoning.is_some() || !responses_reasoning.is_empty();
                     let streamed_target_keys =
                         if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                             dispatcher.finish().await;
@@ -395,7 +500,7 @@ pub(crate) async fn run_streaming(
 
                     // Detect provider failures: silent stream with zero tokens
                     // means the LLM never produced output (e.g. network_error).
-                    if is_silent && usage.output_tokens == 0 {
+                    if !has_provider_output && usage.output_tokens == 0 {
                         warn!(
                             run_id,
                             "empty stream with zero tokens — treating as provider error"
@@ -481,6 +586,7 @@ pub(crate) async fn run_streaming(
                         duration_ms,
                         audio_path.clone(),
                         reasoning.clone(),
+                        responses_reasoning,
                         llm_api_response,
                     );
                     if let (Some(store), Some(drafts)) =
@@ -615,7 +721,8 @@ pub(crate) async fn run_streaming(
                 StreamEvent::Error(msg) => {
                     let provider_error_obj = parse_chat_error(&msg, Some(provider_name));
                     let has_no_streamed_content = accumulated.trim().is_empty()
-                        && accumulated_reasoning.trim().is_empty()
+                        && accumulated_reasoning.is_blank()
+                        && responses_reasoning.is_empty()
                         && raw_llm_responses.is_empty();
                     if has_no_streamed_content
                         && let Some(delay_ms) = next_stream_retry_delay_ms(

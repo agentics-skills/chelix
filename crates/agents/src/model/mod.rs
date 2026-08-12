@@ -13,10 +13,15 @@ mod chat;
 pub use chat::{ChatMessage, ContentPart, UserContent};
 
 mod convert;
-pub use convert::{provider_values_to_chat_messages, values_to_chat_messages};
+pub use convert::{
+    ChatMessageConversionError, provider_values_to_chat_messages, values_to_chat_messages,
+};
 
 mod options;
 pub use options::CompletionOptions;
+
+mod reasoning;
+pub use reasoning::ReasoningAccumulator;
 
 mod stream;
 pub use stream::{LlmProvider, StreamEvent};
@@ -316,13 +321,68 @@ mod tests {
     // ── values_to_chat_messages ──────────────────────────────────────
 
     #[test]
+    fn malformed_responses_reasoning_collection_reports_physical_message_index() {
+        let values = vec![
+            serde_json::json!({"role": "user", "content": "old"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "tail",
+                "responsesReasoning": "invalid"
+            }),
+            serde_json::json!({
+                "role": "checkpoint",
+                "summary": "summary",
+                "messagesSummarized": 1
+            }),
+        ];
+
+        let error = values_to_chat_messages(&values).expect_err("malformed collection must fail");
+
+        assert!(matches!(
+            error,
+            ChatMessageConversionError::ResponsesReasoningCollection { message_index: 1 }
+        ));
+    }
+
+    #[test]
+    fn malformed_responses_reasoning_item_reports_physical_message_and_item_indexes() {
+        let values = vec![
+            serde_json::json!({"role": "user", "content": "old"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "tail",
+                "responsesReasoning": [
+                    {"id": "rs_valid", "encryptedContent": "opaque-valid"},
+                    {"id": "rs_invalid"}
+                ]
+            }),
+            serde_json::json!({
+                "role": "checkpoint",
+                "summary": "summary",
+                "messagesSummarized": 1
+            }),
+        ];
+
+        let error = values_to_chat_messages(&values).expect_err("malformed item must fail");
+
+        assert!(matches!(
+            error,
+            ChatMessageConversionError::ResponsesReasoningItem {
+                message_index: 1,
+                item_index: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn convert_basic_messages() {
         let values = vec![
             serde_json::json!({"role": "system", "content": "sys"}),
             serde_json::json!({"role": "user", "content": "hi"}),
             serde_json::json!({"role": "assistant", "content": "hello"}),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 3);
         assert!(matches!(&msgs[0], ChatMessage::System { content } if content == "sys"));
         assert!(
@@ -345,7 +405,7 @@ mod tests {
             "outputTokens": 5,
             "channel": "web"
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         // The ChatMessage has no metadata fields — they're dropped.
         let val = msgs[0].to_openai_value();
@@ -370,7 +430,7 @@ mod tests {
                 "media_ref": "media/session_abc/report.pdf"
             }]
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::User {
@@ -406,7 +466,7 @@ mod tests {
                 }
             ]
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::User {
@@ -435,13 +495,14 @@ mod tests {
                 }
             }]
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::Assistant {
                 content,
                 tool_calls,
                 reasoning,
+                ..
             } => {
                 assert_eq!(content.as_deref(), Some("thinking"));
                 assert_eq!(tool_calls.len(), 1);
@@ -471,7 +532,7 @@ mod tests {
                 }
             }]
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::Assistant { tool_calls, .. } => {
@@ -501,7 +562,7 @@ mod tests {
                 "content": "result data"
             }),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);
         assert!(
             matches!(&msgs[1], ChatMessage::Tool { tool_call_id, content } if tool_call_id == "call_1" && content == "result data")
@@ -515,7 +576,7 @@ mod tests {
             serde_json::json!({"role": "user", "content": "valid"}),
             serde_json::json!({"role": 42}),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
     }
 
@@ -533,11 +594,12 @@ mod tests {
                     argument_diagnostic: None,
                 }],
                 reasoning: None,
+                responses_reasoning: vec![],
             },
             ChatMessage::tool("call_1", "result"),
         ];
         let values: Vec<serde_json::Value> = original.iter().map(|m| m.to_openai_value()).collect();
-        let roundtripped = values_to_chat_messages(&values);
+        let roundtripped = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(roundtripped.len(), 4);
     }
 
@@ -556,9 +618,10 @@ mod tests {
                 argument_diagnostic: None,
             }],
             reasoning: None,
+            responses_reasoning: vec![],
         }];
         let values: Vec<serde_json::Value> = original.iter().map(|m| m.to_openai_value()).collect();
-        let roundtripped = values_to_chat_messages(&values);
+        let roundtripped = values_to_chat_messages(&values).expect("valid message history");
         match &roundtripped[0] {
             ChatMessage::Assistant { tool_calls, .. } => {
                 assert_eq!(tool_calls[0].arguments["offset"], 0);
@@ -581,7 +644,7 @@ mod tests {
             serde_json::json!({"role": "user", "content": injected_content}),
             serde_json::json!({"role": "assistant", "content": "real response"}),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2, "should produce exactly 2 messages, not more");
         // First message must be User containing the full injected text.
         match &msgs[0] {
@@ -620,7 +683,7 @@ mod tests {
             }),
             serde_json::json!({"role": "assistant", "content": "done"}),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 4);
         assert!(matches!(&msgs[0], ChatMessage::User { .. }));
         assert!(matches!(&msgs[1], ChatMessage::Assistant { .. }));
@@ -642,7 +705,7 @@ mod tests {
             }),
             serde_json::json!({"role": "assistant", "content": "done"}),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);
         assert!(matches!(&msgs[0], ChatMessage::User { .. }));
         assert!(matches!(&msgs[1], ChatMessage::Assistant { .. }));
@@ -660,10 +723,11 @@ mod tests {
             serde_json::json!({"role": "assistant", "content": "done"}),
         ];
 
-        let session_msgs = values_to_chat_messages(&values);
+        let session_msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(session_msgs.len(), 2);
 
-        let provider_msgs = provider_values_to_chat_messages(&values);
+        let provider_msgs =
+            provider_values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(provider_msgs.len(), 3);
         assert!(matches!(
             &provider_msgs[1],
@@ -681,7 +745,7 @@ mod tests {
             serde_json::json!({"role": "notice", "content": "shared cutoff marker"}),
             serde_json::json!({"role": "assistant", "content": "after"}),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);
         assert!(matches!(&msgs[0], ChatMessage::User { .. }));
         assert!(matches!(&msgs[1], ChatMessage::Assistant { .. }));
@@ -706,7 +770,7 @@ mod tests {
                 "result": {"stdout": "file.txt", "exit_code": 0}
             }),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);
         match &msgs[1] {
             ChatMessage::Tool {
@@ -740,15 +804,57 @@ mod tests {
                 "reasoning": "I should inspect the directory first."
             }),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
 
         match &msgs[0] {
             ChatMessage::Assistant { reasoning, .. } => assert_eq!(
-                reasoning.as_deref(),
-                Some("I should inspect the directory first.")
+                reasoning,
+                &Some(chelix_common::ReasoningContent::Text(
+                    "I should inspect the directory first.".to_string(),
+                ))
             ),
             other => panic!("expected Assistant, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn convert_assistant_reasoning_parts_preserves_source_boundaries() {
+        let values = vec![serde_json::json!({
+            "role": "assistant",
+            "content": "answer",
+            "reasoning": ["**Analyzing request**", "**Tracing response**"]
+        })];
+
+        let messages = values_to_chat_messages(&values).expect("valid reasoning parts");
+
+        assert!(matches!(
+            &messages[0],
+            ChatMessage::Assistant {
+                reasoning: Some(chelix_common::ReasoningContent::Parts(parts)),
+                ..
+            } if parts == &["**Analyzing request**", "**Tracing response**"]
+        ));
+    }
+
+    #[test]
+    fn convert_rejects_invalid_reasoning_member_with_physical_index() {
+        let values = vec![
+            serde_json::json!({"role": "user", "content": "hello"}),
+            serde_json::json!({"role": "assistant", "content": "answer"}),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "broken",
+                "reasoning": ["valid", 42]
+            }),
+        ];
+
+        let error = values_to_chat_messages(&values).expect_err("invalid reasoning must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("message at index 2 has invalid reasoning")
+        );
     }
 
     #[test]
@@ -770,7 +876,7 @@ mod tests {
                 "error": "command not found"
             }),
         ];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);
         match &msgs[1] {
             ChatMessage::Tool {
@@ -925,7 +1031,7 @@ mod tests {
                 "channel_type": "telegram"
             }
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::User { name, .. } => {
@@ -945,7 +1051,7 @@ mod tests {
                 "channel_type": "discord"
             }
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::User { name, .. } => {
@@ -961,7 +1067,7 @@ mod tests {
             "role": "user",
             "content": "web message"
         })];
-        let msgs = values_to_chat_messages(&values);
+        let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 1);
         match &msgs[0] {
             ChatMessage::User { name, .. } => {

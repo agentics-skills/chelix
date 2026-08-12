@@ -81,12 +81,18 @@ pub struct BroadcastOpts {
 /// guards. Droppable events use best-effort delivery; mandatory events wait
 /// for bounded queue capacity and disconnect an unresponsive client instead
 /// of silently losing protocol state.
+fn redact_broadcast_payload(mut payload: serde_json::Value) -> serde_json::Value {
+    chelix_sessions::redact_backend_only_provider_state(&mut payload);
+    payload
+}
+
 pub async fn broadcast(
     state: &Arc<GatewayState>,
     event: &str,
     payload: serde_json::Value,
     opts: BroadcastOpts,
 ) {
+    let payload = redact_broadcast_payload(payload);
     let seq = state.broadcaster.next_seq();
     let stream = opts.stream.clone();
     let done = opts.done.then_some(true);
@@ -242,7 +248,44 @@ pub async fn broadcast_tick(
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::tick_mem_payload;
+    use super::{redact_broadcast_payload, tick_mem_payload};
+
+    #[test]
+    fn live_broadcast_payload_redacts_nested_backend_provider_state() {
+        let payload = redact_broadcast_payload(serde_json::json!({
+            "assistantMessage": {
+                "reasoning": "visible",
+                "responsesReasoning": [{
+                    "id": "rs_live",
+                    "encryptedContent": "opaque-live"
+                }]
+            },
+            "partialMessage": {
+                "llmApiResponse": [{
+                    "item": {
+                        "id": "rs_live",
+                        "encrypted_content": "opaque-live"
+                    }
+                }]
+            }
+        }));
+
+        assert_eq!(payload["assistantMessage"]["reasoning"], "visible");
+        assert!(
+            payload["assistantMessage"]
+                .get("responsesReasoning")
+                .is_none()
+        );
+        assert!(
+            payload["partialMessage"]["llmApiResponse"][0]["item"]
+                .get("encrypted_content")
+                .is_none()
+        );
+        assert_eq!(
+            payload["partialMessage"]["llmApiResponse"][0]["item"]["id"],
+            "rs_live"
+        );
+    }
 
     #[test]
     fn tick_mem_payload_includes_memory_fields() {

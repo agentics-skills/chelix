@@ -432,8 +432,8 @@ test.describe("Session management", () => {
 		const sessionKey = sessionPath.replace(/^\/chats\//, "").replace(/\//g, ":");
 		await waitForChatSessionReady(page);
 
-		// No thinking indicator initially
-		await expect(page.locator("#thinkingIndicator")).toHaveCount(0);
+		// No active assistant reasoning part initially.
+		await expect(page.locator(".msg.assistant.reasoning-stream")).toHaveCount(0);
 
 		// Trigger thinking state via system-event
 		await expectRpcOk(page, "system-event", {
@@ -445,8 +445,10 @@ test.describe("Session management", () => {
 			},
 		});
 
-		// Thinking indicator appears and the composer send button becomes stop.
-		await expect(page.locator("#thinkingIndicator")).toBeVisible({ timeout: 5_000 });
+		// The active assistant reasoning part appears and the composer send button becomes stop.
+		await expect(page.locator(".msg.assistant.reasoning-stream .msg-reasoning.is-streaming")).toBeVisible({
+			timeout: 5_000,
+		});
 		const stopBtn = page.locator("#sendBtn");
 		await expect(stopBtn).toBeVisible({ timeout: 5_000 });
 		await expect(stopBtn).toHaveAttribute("data-mode", "stop");
@@ -931,20 +933,23 @@ test.describe("Session management", () => {
 			.poll(
 				() =>
 					page.evaluate(async (key) => {
-						var store = window.__chelix_stores?.sessionStore;
+						async function loadSessions() {
+							const response = await fetch("/api/sessions");
+							const data = await response.json();
+							return Array.isArray(data) ? data : data?.sessions || [];
+						}
+
+						const store = window.__chelix_stores?.sessionStore;
 						if (!store) return 1;
 						if (!store.getByKey(key)) return 0;
 						// Session still in store — kick a manual refresh
 						// in case the internal fetchSessions was blocked.
 						try {
-							var resp = await fetch("/api/sessions");
-							var data = await resp.json();
-							var sessions = Array.isArray(data) ? data : data?.sessions || [];
-							store.setAll(sessions);
+							store.setAll(await loadSessions());
 						} catch {
 							return 1;
 						}
-						return store.getByKey(key) ? 1 : 0;
+						return Number(Boolean(store.getByKey(key)));
 					}, cronKey),
 				{ timeout: 15_000 },
 			)

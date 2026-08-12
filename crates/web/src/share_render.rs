@@ -7,7 +7,10 @@ use {
     chrono::{Local, TimeZone, Utc},
 };
 
-use chelix_gateway::share_store::{ShareSnapshot, ShareVisibility, SharedMessageRole};
+use {
+    chelix_common::ReasoningContent,
+    chelix_gateway::share_store::{ShareSnapshot, ShareVisibility, SharedMessageRole},
+};
 
 // ---------------------------------------------------------------------------
 // Public entry points
@@ -95,7 +98,7 @@ pub(crate) struct ShareMessageView {
     pub role_class: &'static str,
     pub role_label: String,
     pub content: String,
-    pub reasoning: Option<String>,
+    pub reasoning: Option<Vec<String>>,
     pub audio_data_url: Option<String>,
     pub image_preview_data_url: Option<String>,
     pub image_link_data_url: Option<String>,
@@ -220,6 +223,20 @@ fn share_assistant_label(identity: &chelix_config::ResolvedIdentity) -> String {
     }
 }
 
+fn share_reasoning_parts(reasoning: &ReasoningContent) -> Option<Vec<String>> {
+    let parts = match reasoning {
+        ReasoningContent::Text(text) => vec![text.trim().to_string()],
+        ReasoningContent::Parts(parts) => {
+            parts.iter().map(|part| part.trim().to_string()).collect()
+        },
+    };
+    let visible_parts = parts
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    (!visible_parts.is_empty()).then_some(visible_parts)
+}
+
 fn image_dimensions_from_data_url(data_url: &str) -> Option<(u32, u32)> {
     let (meta, body) = data_url.split_once(',')?;
     if !meta.starts_with("data:image/") || !meta.contains(";base64") {
@@ -334,12 +351,7 @@ pub(crate) fn map_share_message_views(
                 role_class,
                 role_label,
                 content: msg.content.clone(),
-                reasoning: msg
-                    .reasoning
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(ToOwned::to_owned),
+                reasoning: msg.reasoning.as_ref().and_then(share_reasoning_parts),
                 audio_data_url: msg.audio_data_url.clone(),
                 image_preview_data_url,
                 image_link_data_url,
@@ -661,7 +673,7 @@ mod tests {
             role_class: "assistant",
             role_label: "\u{1F916} Chelix".to_string(),
             content: "Audio response".to_string(),
-            reasoning: Some("Step 1\nStep 2".to_string()),
+            reasoning: Some(vec!["Step 1".to_string(), "Step 2".to_string()]),
             audio_data_url: Some("data:audio/ogg;base64,T2dnUw==".to_string()),
             image_preview_data_url: Some("data:image/png;base64,ZmFrZQ==".to_string()),
             image_link_data_url: Some("data:image/png;base64,ZmFrZQ==".to_string()),
@@ -720,6 +732,12 @@ mod tests {
         assert!(html.contains("src=\"/assets/icons/map-openstreetmap.svg\""));
         assert!(html.contains("class=\"msg-reasoning\""));
         assert!(html.contains("Reasoning"));
+        assert_eq!(
+            html.matches("msg-reasoning-item markdown-content").count(),
+            2
+        );
+        assert!(html.contains("Step 1"));
+        assert!(html.contains("Step 2"));
     }
 
     #[test]
