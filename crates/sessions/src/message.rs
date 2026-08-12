@@ -136,9 +136,16 @@ pub enum PersistedMessage {
         request_cache_write_tokens: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<Vec<PersistedToolCall>>,
-        /// Optional provider reasoning/planning text (not final answer text).
+        /// Optional provider reasoning/planning content (not final answer text).
         #[serde(skip_serializing_if = "Option::is_none")]
-        reasoning: Option<String>,
+        reasoning: Option<chelix_common::ReasoningContent>,
+        /// Opaque OpenAI Responses reasoning state used for stateless replay.
+        #[serde(
+            rename = "responsesReasoning",
+            default,
+            skip_serializing_if = "Vec::is_empty"
+        )]
+        responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
         /// Raw provider API payload captured during streaming for debugging.
         #[serde(rename = "llmApiResponse", skip_serializing_if = "Option::is_none")]
         llm_api_response: Option<serde_json::Value>,
@@ -178,9 +185,9 @@ pub enum PersistedMessage {
         /// tool that executed and failed, which the UI renders differently.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rejected: bool,
-        /// Provider reasoning/thinking text that preceded this tool call.
+        /// Provider reasoning/thinking content that preceded this tool call.
         #[serde(skip_serializing_if = "Option::is_none")]
-        reasoning: Option<String>,
+        reasoning: Option<chelix_common::ReasoningContent>,
         /// Exact automatic-checkpoint calculation used before the LLM
         /// iteration that produced this tool call.
         #[serde(rename = "contextBudget", skip_serializing_if = "Option::is_none")]
@@ -326,6 +333,7 @@ impl PersistedMessage {
             request_cache_write_tokens: None,
             tool_calls: None,
             reasoning: None,
+            responses_reasoning: vec![],
             llm_api_response: None,
             audio,
             seq: None,
@@ -410,7 +418,7 @@ impl PersistedMessage {
         success: bool,
         result: Option<serde_json::Value>,
         error: Option<String>,
-        reasoning: Option<String>,
+        reasoning: Option<chelix_common::ReasoningContent>,
     ) -> Self {
         Self::ToolResult {
             tool_call_id: tool_call_id.into(),
@@ -556,6 +564,7 @@ mod tests {
             request_cache_write_tokens: Some(4),
             tool_calls: None,
             reasoning: None,
+            responses_reasoning: vec![],
             llm_api_response: None,
             audio: None,
             seq: None,
@@ -577,6 +586,39 @@ mod tests {
         assert_eq!(json["requestCacheReadTokens"], 90);
         assert_eq!(json["requestCacheWriteTokens"], 4);
         assert!(json.get("audio").is_none());
+    }
+
+    #[test]
+    fn assistant_reasoning_parts_roundtrip_without_flattening() {
+        let mut original =
+            PersistedMessage::assistant("response", "gpt-5", "openai", 100, 50, None);
+        let expected = chelix_common::ReasoningContent::Parts(vec![
+            "**Analyzing recent sources**\nChecking current reports.".to_string(),
+            "**Tracing source reliability**\nComparing primary sources.".to_string(),
+        ]);
+        match &mut original {
+            PersistedMessage::Assistant { reasoning, .. } => {
+                *reasoning = Some(expected.clone());
+            },
+            _ => panic!("expected Assistant message"),
+        }
+
+        let json = original.to_value();
+        assert_eq!(
+            json["reasoning"],
+            serde_json::json!([
+                "**Analyzing recent sources**\nChecking current reports.",
+                "**Tracing source reliability**\nComparing primary sources."
+            ])
+        );
+
+        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
+        match parsed {
+            PersistedMessage::Assistant { reasoning, .. } => {
+                assert_eq!(reasoning, Some(expected));
+            },
+            _ => panic!("expected Assistant message"),
+        }
     }
 
     #[test]
@@ -875,6 +917,7 @@ mod tests {
             request_cache_write_tokens: Some(0),
             tool_calls: None,
             reasoning: None,
+            responses_reasoning: vec![],
             llm_api_response: None,
             audio: None,
             seq: None,
@@ -1081,7 +1124,9 @@ mod tests {
             true,
             Some(serde_json::json!({"stdout": "results", "exit_code": 0})),
             None,
-            Some("I need to locate sandbox backend references".to_string()),
+            Some(chelix_common::ReasoningContent::Text(
+                "I need to locate sandbox backend references".to_string(),
+            )),
         );
         let json = original.to_value();
         assert_eq!(
@@ -1098,9 +1143,45 @@ mod tests {
             } => {
                 assert_eq!(tool_call_id, "call_5");
                 assert_eq!(
-                    reasoning.as_deref(),
-                    Some("I need to locate sandbox backend references")
+                    reasoning,
+                    Some(chelix_common::ReasoningContent::Text(
+                        "I need to locate sandbox backend references".to_string(),
+                    ))
                 );
+            },
+            _ => panic!("expected ToolResult message"),
+        }
+    }
+
+    #[test]
+    fn tool_result_with_reasoning_parts_roundtrips_without_flattening() {
+        let expected = chelix_common::ReasoningContent::Parts(vec![
+            "**Locating references**\nSearching the codebase.".to_string(),
+            "**Reviewing matches**\nChecking the relevant files.".to_string(),
+        ]);
+        let original = PersistedMessage::tool_result_with_reasoning(
+            "call_parts",
+            "ripgrep",
+            Some(serde_json::json!({"pattern": "ReasoningContent"})),
+            true,
+            Some(serde_json::json!({"stdout": "results", "exit_code": 0})),
+            None,
+            Some(expected.clone()),
+        );
+
+        let json = original.to_value();
+        assert_eq!(
+            json["reasoning"],
+            serde_json::json!([
+                "**Locating references**\nSearching the codebase.",
+                "**Reviewing matches**\nChecking the relevant files."
+            ])
+        );
+
+        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
+        match parsed {
+            PersistedMessage::ToolResult { reasoning, .. } => {
+                assert_eq!(reasoning, Some(expected));
             },
             _ => panic!("expected ToolResult message"),
         }

@@ -101,23 +101,26 @@ The chat service's `run_with_tools()` function:
    `crates/agents/src/runner/streaming.rs`
 3. Broadcasts events to connected clients as JSON frames
 
-Event types broadcast to the UI:
+Runner event handling in the chat service:
 
-| RunnerEvent             | WebSocket State                       |
-| ----------------------- | ------------------------------------- |
-| `Thinking`              | `thinking`                            |
-| `ThinkingDone`          | `thinking_done`                       |
-| `ThinkingText(text)`    | `thinking_text`                       |
-| `TextDelta(text)`       | `delta` with `text` field             |
-| `ToolCallStart`         | `tool_call_start`                     |
-| `ToolCallEnd`           | `tool_call_end`                       |
-| `ToolCallRejected`      | `tool_call_end` with `rejected: true` |
-| `Iteration(n)`          | `iteration`                           |
-| `SubAgentStart`         | `sub_agent_start`                     |
-| `SubAgentEnd`           | `sub_agent_end`                       |
-| `AutoContinue`          | `notice` ("Auto-continue")            |
-| `RetryingAfterError`    | `retrying`                            |
-| `LoopInterventionFired` | `notice` ("Loop detected")            |
+| RunnerEvent                         | Chat service handling                                      |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `Thinking`                          | Broadcasts `thinking`                                      |
+| `ThinkingDone`                      | Broadcasts `thinking_done`                                 |
+| `ThinkingText(text)`                | Broadcasts `thinking_text`                                 |
+| `ResponsesReasoningDelta { ... }`   | Broadcasts `thinking_text` with accumulated source parts   |
+| `ResponsesReasoningPartDone { ... }` | Broadcasts `thinking_text` with the authoritative part text |
+| `ResponsesReasoningItem(item)`      | Persists backend-only opaque replay state; not broadcast    |
+| `TextDelta(text)`                   | Broadcasts `delta` with `text` field                       |
+| `ToolCallStart`                     | Broadcasts `tool_call_start`                               |
+| `ToolCallEnd`                       | Broadcasts `tool_call_end`                                 |
+| `ToolCallRejected`                  | Broadcasts `tool_call_end` with `rejected: true`           |
+| `Iteration(n)`                      | Broadcasts `iteration`                                     |
+| `SubAgentStart`                     | Broadcasts `sub_agent_start`                               |
+| `SubAgentEnd`                       | Broadcasts `sub_agent_end`                                 |
+| `AutoContinue`                      | Broadcasts `notice` ("Auto-continue")                      |
+| `RetryingAfterError`                | Broadcasts `retrying`                                      |
+| `LoopInterventionFired`             | Broadcasts `notice` ("Loop detected")                      |
 
 The runner injects the exact provider tool-call ID into the hidden
 `_tool_call_id` execution context before implementation validation and restores

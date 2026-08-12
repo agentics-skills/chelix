@@ -28,7 +28,7 @@ use {
     },
     chelix_config::ToolMode,
     chelix_service_traits::{ChatService, ServiceError, ServiceResult},
-    chelix_sessions::{ContentBlock, MessageContent, PersistedMessage},
+    chelix_sessions::{ContentBlock, MessageContent, PersistedMessage, filter_ui_history},
     chelix_tools::policy::{PolicyContext, ToolPolicy},
 };
 
@@ -232,6 +232,7 @@ impl ChatService for LiveChatService {
         if !ephemeral && !history.is_empty() {
             history.pop();
         }
+        let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
 
         let run_id = uuid::Uuid::new_v4().to_string();
         let state = Arc::clone(&self.state);
@@ -323,7 +324,7 @@ impl ChatService for LiveChatService {
                 &model_id,
                 &user_content,
                 &provider_name,
-                &history,
+                &chat_history,
                 &session_key,
                 &session_agent_id,
                 resolved_reasoning_effort.clone(),
@@ -334,6 +335,7 @@ impl ChatService for LiveChatService {
                 None, // send_sync: no sender name
                 (!ephemeral).then_some(&self.session_store),
                 None, // send_sync: no client seq
+                (!ephemeral).then(|| Arc::clone(&self.active_thinking_text)),
                 (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &terminal_runs,
             )
@@ -351,6 +353,7 @@ impl ChatService for LiveChatService {
                 &user_content,
                 &provider_name,
                 &history,
+                &chat_history,
                 &session_key,
                 &session_agent_id,
                 resolved_reasoning_effort.clone(),
@@ -624,13 +627,7 @@ impl ChatService for LiveChatService {
             .read(&session_key)
             .await
             .map_err(ServiceError::message)?;
-        // Filter out empty assistant messages — they are kept in storage for LLM
-        // history coherence but should not be shown in the UI.
-        let visible: Vec<Value> = messages
-            .into_iter()
-            .filter(assistant_message_is_visible)
-            .collect();
-        Ok(serde_json::json!(visible))
+        Ok(serde_json::json!(filter_ui_history(messages)))
     }
 
     async fn inject(&self, _params: Value) -> ServiceResult {
@@ -1291,7 +1288,7 @@ impl ChatService for LiveChatService {
         // `values_to_chat_messages` handles `tool_result` → `tool` conversion.
         let mut messages = Vec::with_capacity(1 + history.len());
         messages.push(ChatMessage::system(system_prompt));
-        messages.extend(values_to_chat_messages(&history));
+        messages.extend(values_to_chat_messages(&history).map_err(ServiceError::message)?);
 
         let openai_messages: Vec<Value> = messages.iter().map(|m| m.to_openai_value()).collect();
         let message_count = openai_messages.len();
@@ -1368,7 +1365,10 @@ impl ChatService for LiveChatService {
             .collect()
     }
 
-    async fn active_thinking_text(&self, session_key: &str) -> Option<String> {
+    async fn active_thinking_text(
+        &self,
+        session_key: &str,
+    ) -> Option<chelix_common::ReasoningContent> {
         self.active_thinking_text
             .read()
             .await

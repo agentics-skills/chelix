@@ -314,6 +314,7 @@ async fn non_streaming_runner_counts_incident_batch_as_one_model_round() {
 
     assert!(
         result
+            .output
             .text
             .starts_with("Recovered after the forced text turn.")
     );
@@ -349,6 +350,7 @@ async fn streaming_runner_counts_incident_batch_as_one_model_round() {
 
     assert!(
         result
+            .output
             .text
             .starts_with("Recovered after the forced text turn.")
     );

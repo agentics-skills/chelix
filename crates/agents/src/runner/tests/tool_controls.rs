@@ -42,7 +42,7 @@ async fn active_tools_hides_unselected_tool() {
 
     // The tool call was attempted (counts as 1) but rejected.
     // The model then responded with text on the next iteration.
-    assert_eq!(result.text, "Done!");
+    assert_eq!(result.output.text, "Done!");
     assert_eq!(result.tool_calls_made, 1);
     assert_eq!(result.iterations, 2);
 }
@@ -74,7 +74,7 @@ async fn active_tools_allows_selected_tool() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Done!");
+    assert_eq!(result.output.text, "Done!");
     assert_eq!(result.tool_calls_made, 1);
 }
 
@@ -109,7 +109,7 @@ async fn tool_choice_none_forces_text_only() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "text-only");
+    assert_eq!(result.output.text, "text-only");
     assert_eq!(result.tool_calls_made, 0);
 }
 
@@ -180,7 +180,7 @@ async fn tool_choice_auto_with_active_tools_succeeds() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Done!");
+    assert_eq!(result.output.text, "Done!");
     assert_eq!(result.tool_calls_made, 1);
 }
 
@@ -244,6 +244,6 @@ async fn no_tool_context_runs_normally() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Done!");
+    assert_eq!(result.output.text, "Done!");
     assert_eq!(result.tool_calls_made, 1);
 }

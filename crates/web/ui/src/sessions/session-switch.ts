@@ -1,6 +1,6 @@
 // ── Session switching: switch, restore, refresh ─────────────────
 
-import { chatAddMsg, removeThinking, setComposerStopButton, updateTokenBar } from "../chat-ui";
+import { chatAddMsg, setComposerStopButton, updateTokenBar } from "../chat-ui";
 import { sendRpc } from "../helpers";
 import { updateSessionProjectSelect } from "../project-combo";
 import { sessionPath } from "../router";
@@ -15,7 +15,7 @@ import {
 import { insertSessionInOrder, Session, sessionStore } from "../stores/session-store";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage, SessionMeta } from "../types/session";
-import type { ChatPayload, ToolCallPayload } from "../types/ws-events";
+import type { ChatPayload, ReasoningContent, ToolCallPayload } from "../types/ws-events";
 import { handleToolCallStartDom } from "../ws/tool-helpers";
 
 import {
@@ -68,7 +68,7 @@ interface SwitchPayload {
 	historyDroppedCount?: number;
 	historyOmitted?: boolean;
 	replying?: boolean;
-	thinkingText?: string;
+	thinkingText?: ReasoningContent;
 	voicePending?: boolean;
 	activeToolCalls?: ToolCallPayload[];
 	hasMore?: boolean;
@@ -208,8 +208,10 @@ function applyReplyingStateFromSwitchPayload(key: string, payload: SwitchPayload
 		S.setVoicePending(false);
 		if (voiceSession) voiceSession.voicePending.value = false;
 	}
-	if (!replying && key === sessionStore.activeSessionKey.value) {
-		removeThinking();
+	if (!replying && key === sessionStore.activeSessionKey.value && S.streamEl?.classList.contains("reasoning-stream")) {
+		S.streamEl.remove();
+		S.setStreamEl(null);
+		S.setStreamText("");
 	}
 	if (key === sessionStore.activeSessionKey.value) {
 		setComposerStopButton(replying, key);

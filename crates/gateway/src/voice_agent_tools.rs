@@ -282,6 +282,30 @@ fn write_tool_audio_file(file_name: &str, bytes: &[u8]) -> Result<String> {
 mod tests {
     use {super::*, crate::services::ServiceResult};
 
+    struct DataDirTestGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        _data_dir: tempfile::TempDir,
+    }
+
+    impl DataDirTestGuard {
+        fn new() -> Self {
+            let lock = crate::config_override_test_lock();
+            let data_dir = tempfile::tempdir()
+                .unwrap_or_else(|error| panic!("data tempdir should be created: {error}"));
+            chelix_config::set_data_dir(data_dir.path().to_path_buf());
+            Self {
+                _lock: lock,
+                _data_dir: data_dir,
+            }
+        }
+    }
+
+    impl Drop for DataDirTestGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_data_dir();
+        }
+    }
+
     struct MockTts;
 
     #[async_trait]
@@ -349,6 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn speak_tool_returns_media_path() {
+        let _guard = DataDirTestGuard::new();
         let tool = SpeakTool::new(Arc::new(MockTts));
         let out = tool
             .execute(json!({ "text": "hello world", "format": "ogg" }))

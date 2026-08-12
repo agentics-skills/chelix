@@ -15,8 +15,8 @@ use {
 
 use {
     chelix_agents::{
-        AgentRunError, UserContent,
-        model::{AgentToolControls, values_to_chat_messages},
+        AgentRunError, ChatMessage, UserContent,
+        model::{AgentToolControls, ReasoningAccumulator},
         prompt::{
             PromptRuntimeContext, build_system_prompt_minimal_runtime_details,
             build_system_prompt_with_session_runtime_details,
@@ -172,6 +172,7 @@ pub(crate) async fn run_with_tools(
     user_content: &UserContent,
     provider_name: &str,
     history_raw: &[Value],
+    chat_history: &[ChatMessage],
     session_key: &str,
     agent_id: &str,
     session_reasoning_effort: Option<String>,
@@ -185,7 +186,7 @@ pub(crate) async fn run_with_tools(
     session_store: Option<&Arc<SessionStore>>,
     mcp_disabled: bool,
     client_seq: Option<u64>,
-    active_thinking_text: Option<Arc<RwLock<HashMap<String, String>>>>,
+    active_thinking_text: Option<Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>>,
     active_tool_calls: Option<Arc<RwLock<HashMap<String, Vec<ActiveToolCall>>>>>,
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     active_event_forwarders: &Arc<
@@ -371,9 +372,10 @@ pub(crate) async fn run_with_tools(
         // Tool calls are persisted as one assistant frame per LLM iteration
         // before their cards are broadcast. ToolCallEnd persists only results.
         let mut tool_args_map: HashMap<String, Value> = HashMap::new();
-        // Track reasoning text that should be persisted with the first tool call after thinking.
-        let mut tool_reasoning_map: HashMap<String, String> = HashMap::new();
-        let mut latest_reasoning = String::new();
+        // Track reasoning content that belongs to the first tool call after thinking.
+        let mut tool_reasoning_map: HashMap<String, chelix_common::ReasoningContent> =
+            HashMap::new();
+        let mut latest_reasoning = ReasoningAccumulator::default();
         let mut persisted_tool_batches: HashMap<String, (usize, Value)> = HashMap::new();
         let mut forwarder_error = None;
         while let Some(event) = event_rx.recv().await {
@@ -463,9 +465,8 @@ pub(crate) async fn run_with_tools(
                     }
 
                     // Attach reasoning to the first tool call after thinking.
-                    if !latest_reasoning.is_empty() {
-                        tool_reasoning_map
-                            .insert(id.clone(), std::mem::take(&mut latest_reasoning));
+                    if let Some(reasoning) = std::mem::take(&mut latest_reasoning).content() {
+                        tool_reasoning_map.insert(id.clone(), reasoning);
                     }
 
                     // Send tool status to channels (Telegram, etc.)
@@ -773,9 +774,12 @@ pub(crate) async fn run_with_tools(
                     payload
                 },
                 RunnerEvent::ThinkingText(text) => {
-                    latest_reasoning = text.clone();
-                    if let Some(ref map) = active_thinking_text {
-                        map.write().await.insert(sk.clone(), text.clone());
+                    latest_reasoning.set_text(&text);
+                    let reasoning = latest_reasoning.content();
+                    if let Some(ref map) = active_thinking_text
+                        && let Some(ref reasoning) = reasoning
+                    {
+                        map.write().await.insert(sk.clone(), reasoning.clone());
                     }
                     if let Some(ref map) = active_partial_for_events
                         && let Some(draft) = map.write().await.get_mut(&sk)
@@ -786,9 +790,89 @@ pub(crate) async fn run_with_tools(
                         "runId": run_id,
                         "sessionKey": sk,
                         "state": "thinking_text",
-                        "text": text,
+                        "text": reasoning,
                         "seq": seq,
                     })
+                },
+                RunnerEvent::ResponsesReasoningDelta {
+                    item_id,
+                    output_index,
+                    summary_index,
+                    delta,
+                } => {
+                    latest_reasoning.append_responses_delta(
+                        &item_id,
+                        output_index,
+                        summary_index,
+                        &delta,
+                    );
+                    let reasoning = latest_reasoning.content();
+                    if let Some(ref map) = active_thinking_text
+                        && let Some(ref reasoning) = reasoning
+                    {
+                        map.write().await.insert(sk.clone(), reasoning.clone());
+                    }
+                    if let Some(ref map) = active_partial_for_events
+                        && let Some(draft) = map.write().await.get_mut(&sk)
+                    {
+                        draft.append_responses_reasoning(
+                            &item_id,
+                            output_index,
+                            summary_index,
+                            &delta,
+                        );
+                    }
+                    serde_json::json!({
+                        "runId": run_id,
+                        "sessionKey": sk,
+                        "state": "thinking_text",
+                        "text": reasoning,
+                        "seq": seq,
+                    })
+                },
+                RunnerEvent::ResponsesReasoningPartDone {
+                    item_id,
+                    output_index,
+                    summary_index,
+                    text,
+                } => {
+                    latest_reasoning.complete_responses_part(
+                        &item_id,
+                        output_index,
+                        summary_index,
+                        text.clone(),
+                    );
+                    let reasoning = latest_reasoning.content();
+                    if let Some(ref map) = active_thinking_text
+                        && let Some(ref reasoning) = reasoning
+                    {
+                        map.write().await.insert(sk.clone(), reasoning.clone());
+                    }
+                    if let Some(ref map) = active_partial_for_events
+                        && let Some(draft) = map.write().await.get_mut(&sk)
+                    {
+                        draft.complete_responses_reasoning(
+                            &item_id,
+                            output_index,
+                            summary_index,
+                            text,
+                        );
+                    }
+                    serde_json::json!({
+                        "runId": run_id,
+                        "sessionKey": sk,
+                        "state": "thinking_text",
+                        "text": reasoning,
+                        "seq": seq,
+                    })
+                },
+                RunnerEvent::ResponsesReasoningItem(item) => {
+                    if let Some(ref map) = active_partial_for_events
+                        && let Some(draft) = map.write().await.get_mut(&sk)
+                    {
+                        draft.push_responses_reasoning(item);
+                    }
+                    continue;
                 },
                 RunnerEvent::TextDelta(text) => {
                     let message_index = match (store.as_ref(), active_partial_for_events.as_ref()) {
@@ -1022,7 +1106,6 @@ pub(crate) async fn run_with_tools(
             broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
         }
         EventForwarderResult {
-            reasoning: latest_reasoning,
             tool_segment_indices: persisted_tool_batches
                 .into_iter()
                 .map(|(tool_call_id, (index, _))| (tool_call_id, index))
@@ -1035,13 +1118,10 @@ pub(crate) async fn run_with_tools(
         .await
         .insert(session_key.to_string(), event_forwarder);
 
-    // Convert persisted JSON history to typed ChatMessages for the LLM provider.
-    let chat_history = values_to_chat_messages(history_raw);
-
     let hist = if chat_history.is_empty() {
         None
     } else {
-        Some(chat_history)
+        Some(chat_history.to_vec())
     };
 
     // Fold datetime into the user message content so the message array before
@@ -1259,17 +1339,12 @@ pub(crate) async fn run_with_tools(
     let event_result =
         LiveChatService::wait_for_event_forwarder(active_event_forwarders, session_key).await;
     let EventForwarderResult {
-        reasoning: reasoning_text,
         tool_segment_indices,
         error: forwarder_error,
     } = event_result;
     let result = match forwarder_error {
         Some(error) => Err(AgentRunError::Other(anyhow::anyhow!(error))),
         None => result,
-    };
-    let reasoning = {
-        let trimmed = reasoning_text.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_string())
     };
     let streamed_target_keys = if let Some(ref dispatcher) = channel_stream_dispatcher {
         let mut dispatcher = dispatcher.lock().await;
@@ -1287,10 +1362,18 @@ pub(crate) async fn run_with_tools(
             let tool_calls_made = result.tool_calls_made;
             let usage = result.usage;
             let request_usage = result.request_usage;
+            let terminal_output = result.output;
+            let responses_reasoning = terminal_output.responses_reasoning;
             let llm_api_response = (!result.raw_llm_responses.is_empty())
                 .then_some(Value::Array(result.raw_llm_responses));
-            let display_text = result.text;
+            let display_text = terminal_output.text;
+            let terminal_reasoning = terminal_output.reasoning;
             let is_silent = display_text.trim().is_empty();
+            let has_terminal_provider_output = !is_silent
+                || terminal_reasoning
+                    .as_ref()
+                    .is_some_and(|reasoning| !reasoning.is_blank())
+                || !responses_reasoning.is_empty();
 
             info!(
                 run_id,
@@ -1305,7 +1388,7 @@ pub(crate) async fn run_with_tools(
             // produced means the LLM never processed the request (e.g.
             // network_error finish_reason).  Surface as an error so the
             // UI renders a visible error card instead of showing nothing.
-            if is_silent && usage.output_tokens == 0 && tool_calls_made == 0 {
+            if !has_terminal_provider_output && usage.output_tokens == 0 && tool_calls_made == 0 {
                 warn!(
                     run_id,
                     "empty response with zero tokens — treating as provider error"
@@ -1429,7 +1512,8 @@ pub(crate) async fn run_with_tools(
                 UsageSnapshot::new(usage.clone(), Some(request_usage.clone())),
                 run_started.elapsed().as_millis() as u64,
                 audio_path.clone(),
-                reasoning.clone(),
+                terminal_reasoning.clone(),
+                responses_reasoning,
                 llm_api_response,
             );
             if let Some(store) = session_store {
@@ -1512,7 +1596,7 @@ pub(crate) async fn run_with_tools(
                 Some(tool_calls_made),
                 audio_path.clone(),
                 audio_warning,
-                reasoning.clone(),
+                terminal_reasoning.clone(),
                 client_seq,
             );
             #[allow(clippy::unwrap_used)] // serializing known-valid struct

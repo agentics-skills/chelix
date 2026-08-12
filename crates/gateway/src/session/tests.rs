@@ -245,18 +245,21 @@ mod tests {
         });
 
         assert!(
-            to_shared_message(&system_msg, "main", &store)
+            to_shared_message(&system_msg, 0, "main", &store)
                 .await
+                .expect("convert system message")
                 .is_none()
         );
         assert!(
-            to_shared_message(&notice_msg, "main", &store)
+            to_shared_message(&notice_msg, 1, "main", &store)
                 .await
+                .expect("convert notice message")
                 .is_none()
         );
         assert!(
-            to_shared_message(&assistant_msg, "main", &store)
+            to_shared_message(&assistant_msg, 2, "main", &store)
                 .await
+                .expect("convert assistant message")
                 .is_some()
         );
     }
@@ -276,8 +279,9 @@ mod tests {
             "audio": "media/main/voice-input.webm",
         });
 
-        let shared = to_shared_message(&user_audio_msg, "main", &store)
+        let shared = to_shared_message(&user_audio_msg, 0, "main", &store)
             .await
+            .expect("convert user message")
             .expect("shared message");
 
         assert!(matches!(shared.role, SharedMessageRole::User));
@@ -306,8 +310,9 @@ mod tests {
             "audio": "media/main/voice-output.ogg",
         });
 
-        let shared = to_shared_message(&assistant_audio_msg, "main", &store)
+        let shared = to_shared_message(&assistant_audio_msg, 0, "main", &store)
             .await
+            .expect("convert assistant message")
             .expect("shared message");
 
         assert!(matches!(shared.role, SharedMessageRole::Assistant));
@@ -331,14 +336,63 @@ mod tests {
             "reasoning": "step one\nstep two",
         });
 
-        let shared = to_shared_message(&assistant_msg, "main", &store)
+        let shared = to_shared_message(&assistant_msg, 0, "main", &store)
             .await
+            .expect("convert assistant message")
             .expect("shared message");
 
         assert!(matches!(shared.role, SharedMessageRole::Assistant));
         assert!(shared.content.is_empty());
-        assert_eq!(shared.reasoning.as_deref(), Some("step one\nstep two"));
+        assert_eq!(
+            shared.reasoning,
+            Some(ReasoningContent::Text("step one\nstep two".to_string()))
+        );
         assert!(shared.audio_data_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn to_shared_message_preserves_reasoning_parts() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        let assistant_msg = serde_json::json!({
+            "role": "assistant",
+            "content": "",
+            "reasoning": ["**Analyzing request**", "**Tracing response**"],
+        });
+
+        let shared = to_shared_message(&assistant_msg, 7, "main", &store)
+            .await
+            .expect("convert assistant message")
+            .expect("shared message");
+
+        assert_eq!(
+            shared.reasoning,
+            Some(ReasoningContent::Parts(vec![
+                "**Analyzing request**".to_string(),
+                "**Tracing response**".to_string(),
+            ]))
+        );
+    }
+
+    #[tokio::test]
+    async fn to_shared_message_rejects_invalid_reasoning_with_physical_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        let assistant_msg = serde_json::json!({
+            "role": "assistant",
+            "content": "answer",
+            "reasoning": ["valid", 42],
+        });
+
+        let error = to_shared_message(&assistant_msg, 9, "main", &store)
+            .await
+            .expect_err("invalid reasoning must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("message at index 9 has invalid reasoning")
+        );
     }
 
     #[tokio::test]
@@ -369,8 +423,9 @@ mod tests {
             },
         });
 
-        let shared = to_shared_message(&tool_msg, "main", &store)
+        let shared = to_shared_message(&tool_msg, 0, "main", &store)
             .await
+            .expect("convert tool result")
             .expect("shared tool_result message");
 
         assert!(matches!(shared.role, SharedMessageRole::ToolResult));
@@ -474,8 +529,9 @@ mod tests {
             },
         });
 
-        let shared = to_shared_message(&tool_msg, "main", &store)
+        let shared = to_shared_message(&tool_msg, 0, "main", &store)
             .await
+            .expect("convert tool result")
             .expect("shared execute_command tool result");
         assert_eq!(shared.tool_name.as_deref(), Some("execute_command"));
         assert_eq!(
@@ -503,8 +559,9 @@ mod tests {
             },
         });
 
-        let shared = to_shared_message(&tool_msg, "main", &store)
+        let shared = to_shared_message(&tool_msg, 0, "main", &store)
             .await
+            .expect("convert tool result")
             .expect("shared execute_command tool result");
 
         assert_eq!(shared.tool_name.as_deref(), Some("execute_command"));

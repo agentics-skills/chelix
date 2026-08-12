@@ -1,6 +1,30 @@
 //! Shared UI history filtering for JSONL session records.
 
-use serde_json::Value;
+use {chelix_common::ReasoningContent, serde_json::Value};
+
+fn has_visible_reasoning(value: Option<&Value>) -> bool {
+    value
+        .and_then(|value| serde_json::from_value::<ReasoningContent>(value.clone()).ok())
+        .is_some_and(|reasoning| !reasoning.is_blank())
+}
+
+/// Remove provider replay state before a value crosses a UI or API boundary.
+pub fn redact_backend_only_provider_state(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            object.remove("responsesReasoning");
+            object.remove("encrypted_content");
+            object.remove("encryptedContent");
+            object
+                .values_mut()
+                .for_each(redact_backend_only_provider_state);
+        },
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(redact_backend_only_provider_state),
+        _ => {},
+    }
+}
 
 /// Filter persisted history for UI delivery while preserving physical indexes.
 ///
@@ -17,10 +41,7 @@ pub fn filter_ui_history(messages: Vec<Value>) -> Vec<Value> {
                     .get("content")
                     .and_then(Value::as_str)
                     .is_some_and(|content| !content.trim().is_empty());
-                let has_reasoning = message
-                    .get("reasoning")
-                    .and_then(Value::as_str)
-                    .is_some_and(|reasoning| !reasoning.trim().is_empty());
+                let has_reasoning = has_visible_reasoning(message.get("reasoning"));
                 let has_audio = message
                     .get("audio")
                     .and_then(Value::as_str)
@@ -33,6 +54,7 @@ pub fn filter_ui_history(messages: Vec<Value>) -> Vec<Value> {
                     return None;
                 }
             }
+            redact_backend_only_provider_state(&mut message);
             if let Some(object) = message.as_object_mut() {
                 object.insert("historyIndex".to_string(), serde_json::json!(history_index));
             }
@@ -44,7 +66,7 @@ pub fn filter_ui_history(messages: Vec<Value>) -> Vec<Value> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::filter_ui_history;
+    use super::{filter_ui_history, redact_backend_only_provider_state};
 
     #[test]
     fn keeps_empty_assistant_tool_frames_with_physical_history_index() {
@@ -75,11 +97,95 @@ mod tests {
     fn keeps_reasoning_and_audio_only_assistant_frames() {
         let filtered = filter_ui_history(vec![
             serde_json::json!({ "role": "assistant", "reasoning": "plan" }),
+            serde_json::json!({
+                "role": "assistant",
+                "reasoning": [
+                    "**Analyzing sources**\nReviewing the request.",
+                    "**Checking evidence**\nComparing the results."
+                ]
+            }),
             serde_json::json!({ "role": "assistant", "audio": "media/reply.ogg" }),
         ]);
 
-        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered.len(), 3);
         assert_eq!(filtered[0]["historyIndex"], 0);
+        assert_eq!(
+            filtered[1]["reasoning"],
+            serde_json::json!([
+                "**Analyzing sources**\nReviewing the request.",
+                "**Checking evidence**\nComparing the results."
+            ])
+        );
         assert_eq!(filtered[1]["historyIndex"], 1);
+        assert_eq!(filtered[2]["historyIndex"], 2);
+    }
+
+    #[test]
+    fn redacts_opaque_responses_state_from_ui_history() {
+        let filtered = filter_ui_history(vec![serde_json::json!({
+            "role": "assistant",
+            "content": "answer",
+            "reasoning": "visible reasoning",
+            "responsesReasoning": [{
+                "id": "rs_123",
+                "encryptedContent": "opaque-state"
+            }],
+            "llmApiResponse": [{
+                "type": "response.output_item.done",
+                "item": {
+                    "type": "reasoning",
+                    "id": "rs_123",
+                    "summary": [{"type": "summary_text", "text": "visible reasoning"}],
+                    "encrypted_content": "opaque-state"
+                }
+            }]
+        })]);
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0]["reasoning"], "visible reasoning");
+        assert!(filtered[0].get("responsesReasoning").is_none());
+        assert!(
+            filtered[0]["llmApiResponse"][0]["item"]
+                .get("encrypted_content")
+                .is_none()
+        );
+        assert_eq!(filtered[0]["llmApiResponse"][0]["item"]["id"], "rs_123");
+    }
+
+    #[test]
+    fn redacts_nested_backend_state_from_live_payload_shape() {
+        let mut payload = serde_json::json!({
+            "assistantMessage": {
+                "responsesReasoning": [{
+                    "id": "rs_live",
+                    "encryptedContent": "opaque-live"
+                }]
+            },
+            "partialMessage": {
+                "llmApiResponse": [{
+                    "item": {
+                        "id": "rs_live",
+                        "encrypted_content": "opaque-live"
+                    }
+                }]
+            }
+        });
+
+        redact_backend_only_provider_state(&mut payload);
+
+        assert!(
+            payload["assistantMessage"]
+                .get("responsesReasoning")
+                .is_none()
+        );
+        assert!(
+            payload["partialMessage"]["llmApiResponse"][0]["item"]
+                .get("encrypted_content")
+                .is_none()
+        );
+        assert_eq!(
+            payload["partialMessage"]["llmApiResponse"][0]["item"]["id"],
+            "rs_live"
+        );
     }
 }

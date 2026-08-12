@@ -6,7 +6,6 @@ import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
 	chatAddMsg,
-	removeThinking,
 	smartScrollToBottom,
 	stripChannelPrefix,
 } from "../chat-ui";
@@ -30,8 +29,14 @@ import {
 	setToolCardStatus,
 	toolCallIds,
 } from "../tool-call-card";
-import type { AbortedPartialState, ChatPayload, ToolCallPayload, ToolResult } from "../types/ws-events";
-import { clearChatEmptyState, hasNonWhitespaceContent, isReasoningAlreadyShown, setSafeMarkdownHtml } from "./shared";
+import {
+	type AbortedPartialState,
+	type ChatPayload,
+	hasVisibleReasoning,
+	type ToolCallPayload,
+	type ToolResult,
+} from "../types/ws-events";
+import { clearChatEmptyState, hasNonWhitespaceContent, setSafeMarkdownHtml } from "./shared";
 
 // ── Pending tool call end tracking ────────────────────────────
 
@@ -204,17 +209,7 @@ export function clearStaleRunningToolCards(): void {
 	}
 }
 
-// ── Tool call start (with thinking text extraction) ───────────
-
-/** Extract thinking text from the indicator before it is removed. Returns the
- * trimmed text or null if the indicator has no thinking content. */
-function extractThinkingText(): string | null {
-	const indicator = document.getElementById("thinkingIndicator");
-	if (!indicator) return null;
-	const textEl = indicator.querySelector(".thinking-text");
-	const text = textEl?.textContent?.trim();
-	return text || null;
-}
+// ── Tool call start ───────────────────────────────────────────
 
 /** Close the live assistant segment that precedes a tool card.
  *
@@ -237,18 +232,24 @@ function applyCanonicalAssistantSegment(
 	assistantMessage: ChatPayload["assistantMessage"],
 	historyIndex: number | undefined,
 	sessionKey: string,
-	fallbackText = "",
 ): void {
 	const text = assistantMessage?.content || "";
 	const reasoning = assistantMessage?.reasoning || "";
-	if (hasNonWhitespaceContent(text)) setSafeMarkdownHtml(segment, text);
+	setSafeMarkdownHtml(segment, text);
+	segment.classList.remove("reasoning-stream");
+	segment.querySelector(".thinking-status")?.remove();
+	const disclosure = segment.querySelector(".msg-reasoning");
+	if (hasVisibleReasoning(reasoning)) {
+		appendReasoningDisclosure(segment, reasoning, { expanded: false, streaming: false });
+	} else {
+		disclosure?.remove();
+	}
 	if (Number.isInteger(historyIndex)) segment.dataset.historyIndex = String(historyIndex);
-	if (reasoning && !isReasoningAlreadyShown(reasoning)) appendReasoningDisclosure(segment, reasoning);
 	appendMessageActions({
 		messageEl: segment,
 		sessionKey,
 		messageIndex: historyIndex,
-		text: text || fallbackText,
+		text,
 		hasAudio: Boolean(assistantMessage?.audio),
 	});
 }
@@ -262,7 +263,7 @@ function closeCurrentStreamSegment(
 	const streamElement = S.streamEl;
 	if (!streamElement) return false;
 	if (hasCanonicalContent) {
-		applyCanonicalAssistantSegment(streamElement, assistantMessage, historyIndex, sessionKey, S.streamText);
+		applyCanonicalAssistantSegment(streamElement, assistantMessage, historyIndex, sessionKey);
 	} else {
 		streamElement.remove();
 	}
@@ -278,7 +279,7 @@ export function closeLiveAssistantSegment(
 ): void {
 	const canonicalText = assistantMessage?.content || "";
 	const canonicalReasoning = assistantMessage?.reasoning || "";
-	const hasCanonicalContent = hasNonWhitespaceContent(canonicalText) || hasNonWhitespaceContent(canonicalReasoning);
+	const hasCanonicalContent = hasNonWhitespaceContent(canonicalText) || hasVisibleReasoning(canonicalReasoning);
 	if (closeCurrentStreamSegment(assistantMessage, assistantHistoryIndex, sessionKey, hasCanonicalContent)) return;
 	if (!hasCanonicalContent) return;
 	const segment =
@@ -288,9 +289,6 @@ export function closeLiveAssistantSegment(
 }
 
 export function handleToolCallStartDom(p: ChatPayload, eventSession: string): void {
-	const thinkingText = extractThinkingText();
-	removeThinking();
-	const canonicalReasoning = p.assistantMessage?.reasoning || "";
 	closeLiveAssistantSegment(p.assistantMessage, p.messageIndex, eventSession);
 	const cardId = toolCallCardId(p);
 	const existingCard = document.getElementById(cardId) as HTMLElement | null;
@@ -326,10 +324,6 @@ export function handleToolCallStartDom(p: ChatPayload, eventSession: string): vo
 			interactive: true,
 		});
 	}
-	// Preserve thinking text as a reasoning disclosure inside the tool card
-	if (thinkingText && !canonicalReasoning) {
-		appendReasoningDisclosure(getToolCardDetailsContainer(card), thinkingText);
-	}
 	clearChatEmptyState();
 	S.chatMsgBox?.appendChild(card);
 	const endKey = toolCallEventKey(eventSession, p);
@@ -350,7 +344,7 @@ export function renderChannelUserMessage(p: ChatPayload, _eventSession: string):
 	const chanLastIdx = chanSession ? chanSession.lastHistoryIndex.value : S.lastHistoryIndex;
 	if (p.messageIndex !== undefined && p.messageIndex <= chanLastIdx) return;
 
-	const cleanText = stripChannelPrefix(p.text || "");
+	const cleanText = stripChannelPrefix(typeof p.text === "string" ? p.text : "");
 	const sessionKey = p.sessionKey || S.activeSessionKey;
 	const audioFilename = p.channel?.audio_filename;
 	let el: HTMLElement | null;
@@ -402,7 +396,7 @@ function persistedAssistantMessage(historyIndex: number | undefined): HTMLElemen
 	return S.chatMsgBox?.querySelector(`.msg.assistant[data-history-index="${historyIndex}"]`) as HTMLElement | null;
 }
 
-function renderFinalText(finalText: string, historyIndex: number | undefined): HTMLElement | null {
+function renderFinalSegment(finalText: string, historyIndex: number | undefined): HTMLElement | null {
 	if (S.streamEl) {
 		setSafeMarkdownHtml(S.streamEl, finalText);
 		return S.streamEl;
@@ -411,16 +405,18 @@ function renderFinalText(finalText: string, historyIndex: number | undefined): H
 }
 
 export function resolveFinalMessageEl(p: ChatPayload): HTMLElement | null {
-	const finalText = String(p.text || "");
-	if (!hasNonWhitespaceContent(finalText)) {
+	const finalText = typeof p.text === "string" ? p.text : "";
+	const finalReasoning = p.reasoning || "";
+	if (!(hasNonWhitespaceContent(finalText) || hasVisibleReasoning(finalReasoning))) {
 		removeStreamElement();
 		return null;
 	}
-	if (isPureToolOutputEcho(finalText, S.lastToolOutput)) {
+	if (isPureToolOutputEcho(finalText, S.lastToolOutput) && !hasVisibleReasoning(finalReasoning)) {
 		removeStreamElement();
 		return null;
 	}
-	return renderFinalText(finalText, p.messageIndex);
+	const visibleText = isPureToolOutputEcho(finalText, S.lastToolOutput) ? "" : finalText;
+	return renderFinalSegment(visibleText, p.messageIndex);
 }
 
 // ── Terminal metadata ─────────────────────────────────────────
@@ -464,15 +460,20 @@ function ensureAbortedPartialElement(p: ChatPayload, partialState: AbortedPartia
 		assignPartialHistoryIndex(element, p.messageIndex);
 		return element;
 	}
-	if (!hasNonWhitespaceContent(partialState.partialReasoning)) return element;
-	element ||= chatAddMsg("assistant", "", false);
+	if (!hasVisibleReasoning(partialState.partialReasoning)) return element;
+	element ||= S.streamEl || chatAddMsg("assistant", "", false);
 	assignPartialHistoryIndex(element, p.messageIndex);
 	return element;
 }
 
 function finalizeAbortedPartial(p: ChatPayload, partialState: AbortedPartialState, partialElement: HTMLElement): void {
-	if (partialState.partialReasoning && !isReasoningAlreadyShown(partialState.partialReasoning)) {
-		appendReasoningDisclosure(partialElement, partialState.partialReasoning);
+	partialElement.classList.remove("reasoning-stream");
+	partialElement.querySelector(".thinking-status")?.remove();
+	const disclosure = partialElement.querySelector(".msg-reasoning");
+	if (hasVisibleReasoning(partialState.partialReasoning)) {
+		appendReasoningDisclosure(partialElement, partialState.partialReasoning, { expanded: false, streaming: false });
+	} else {
+		disclosure?.remove();
 	}
 	appendMessageActions({
 		messageEl: partialElement,

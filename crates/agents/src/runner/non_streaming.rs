@@ -21,14 +21,14 @@ use crate::{
 };
 
 use super::{
-    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, FinalTextSource,
-    MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall, ToolCallBudget,
-    UsageAccumulator, apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
-    channel_binding_from_tool_context, dispatch_after_llm_call_hook,
-    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, enrich_tool_arguments,
-    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
-    is_substantive_answer_text, log_tool_argument_diagnostic, public_tool_arguments,
-    record_answer_text, resolve_tool_lookup,
+    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
+    FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall,
+    ToolCallBudget, UsageAccumulator, apply_before_llm_call_modify_payload,
+    apply_loop_detector_intervention, channel_binding_from_tool_context,
+    dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
+    enrich_tool_arguments, fallback_final_text_source, find_empty_tool_name_call, finish_agent_run,
+    has_named_tool_call, is_substantive_answer_text, log_tool_argument_diagnostic,
+    public_tool_arguments, record_answer_text, resolve_tool_lookup,
     retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
     sanitize_tool_name,
     tool_result::persist_and_truncate,
@@ -227,7 +227,7 @@ pub async fn run_agent_loop_with_context_and_limits(
                     )));
                 },
                 Ok(HookAction::ModifyPayload(modified_payload)) => {
-                    apply_before_llm_call_modify_payload(&mut messages, modified_payload);
+                    apply_before_llm_call_modify_payload(&mut messages, modified_payload)?;
                 },
                 Ok(HookAction::Continue) => {},
                 Err(e) => {
@@ -473,7 +473,10 @@ pub async fn run_agent_loop_with_context_and_limits(
                 "agent loop complete — returning text"
             );
             return Ok(finish_agent_run(
-                text,
+                AssistantIterationOutput {
+                    text,
+                    ..AssistantIterationOutput::default()
+                },
                 if used_fallback_text {
                     fallback_final_text_source(last_answer_tool_call_id)
                 } else {

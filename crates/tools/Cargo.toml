@@ -4,10 +4,10 @@ name              = "chelix-tools"
 version.workspace = true
 
 [features]
-bundled-skills        = ["chelix-skills/bundled-skills"]
-default               = ["firecrawl", "metrics"]
-firecrawl             = []
-metrics               = ["dep:chelix-metrics"]
+bundled-skills = ["chelix-skills/bundled-skills"]
+default        = ["firecrawl", "metrics"]
+firecrawl      = []
+metrics        = ["dep:chelix-metrics"]
 
 [dependencies]
 anyhow                = { workspace = true }

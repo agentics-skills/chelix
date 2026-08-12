@@ -14,7 +14,7 @@ use {
 };
 
 use {
-    chelix_common::hooks::HookRegistry,
+    chelix_common::{ReasoningContent, hooks::HookRegistry},
     chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
@@ -273,10 +273,18 @@ fn message_text_for_share(msg: &Value) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-fn message_reasoning_for_share(msg: &Value) -> Option<String> {
-    let reasoning = msg.get("reasoning").and_then(|v| v.as_str())?;
-    let trimmed = reasoning.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+fn message_reasoning_for_share(
+    msg: &Value,
+    message_index: usize,
+) -> anyhow::Result<Option<ReasoningContent>> {
+    let Some(value) = msg.get("reasoning").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let reasoning =
+        serde_json::from_value::<ReasoningContent>(value.clone()).map_err(|source| {
+            anyhow::anyhow!("message at index {message_index} has invalid reasoning: {source}")
+        })?;
+    Ok((!reasoning.is_blank()).then_some(reasoning))
 }
 
 fn media_filename(path: &str) -> Option<&str> {
@@ -736,14 +744,15 @@ fn tool_result_text_for_share(msg: &Value) -> Option<String> {
 
 async fn to_shared_message(
     msg: &Value,
+    message_index: usize,
     session_key: &str,
     store: &SessionStore,
-) -> Option<SharedMessage> {
+) -> anyhow::Result<Option<SharedMessage>> {
     let role = match msg.get("role").and_then(|v| v.as_str()) {
         Some("user") => SharedMessageRole::User,
         Some("assistant") => SharedMessageRole::Assistant,
         Some("tool_result") => SharedMessageRole::ToolResult,
-        _ => return None,
+        _ => return Ok(None),
     };
 
     let content = match role {
@@ -754,7 +763,7 @@ async fn to_shared_message(
         SharedMessageRole::System | SharedMessageRole::Notice => String::new(),
     };
     let reasoning = match role {
-        SharedMessageRole::Assistant => message_reasoning_for_share(msg),
+        SharedMessageRole::Assistant => message_reasoning_for_share(msg, message_index)?,
         SharedMessageRole::User
         | SharedMessageRole::ToolResult
         | SharedMessageRole::System
@@ -826,7 +835,7 @@ async fn to_shared_message(
         && image.is_none()
         && map_links.is_none()
     {
-        return None;
+        return Ok(None);
     }
     let created_at = value_u64(msg, "created_at");
     let model = if role == SharedMessageRole::Assistant {
@@ -844,7 +853,7 @@ async fn to_shared_message(
         None
     };
 
-    Some(SharedMessage {
+    Ok(Some(SharedMessage {
         role,
         content,
         reasoning,
@@ -858,7 +867,7 @@ async fn to_shared_message(
         created_at,
         model,
         provider,
-    })
+    }))
 }
 
 mod maintenance;

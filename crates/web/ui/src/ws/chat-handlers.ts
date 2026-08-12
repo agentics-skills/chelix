@@ -5,7 +5,6 @@ import {
 	chatAddErrorCard,
 	chatAddErrorMsg,
 	chatAddMsg,
-	removeThinking,
 	setComposerStopButton,
 	smartScrollToBottom,
 	updateTokenBar,
@@ -33,12 +32,11 @@ import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metada
 import { terminalContextTokens } from "../terminal-usage";
 import { resolveAssistantTurnEnd, toolCallIds } from "../tool-call-card";
 import type { HistoryMessage } from "../types/session";
-import type { AbortedPartialState, ChatPayload, ToolCallPayload } from "../types/ws-events";
+import type { AbortedPartialState, ChatPayload, ReasoningContent, ToolCallPayload } from "../types/ws-events";
+import { hasVisibleReasoning, isReasoningContent } from "../types/ws-events";
 import {
 	clearChatEmptyState,
 	hasNonWhitespaceContent,
-	isReasoningAlreadyShown,
-	makeThinkingDots,
 	moveFirstQueuedToChat,
 	setSafeMarkdownHtml,
 	updateSessionHistoryIndex,
@@ -94,18 +92,48 @@ function assistantHistoryMessage(message: NonNullable<ToolCallPayload["assistant
 	};
 }
 
+function createLiveAssistantSegment(): HTMLElement {
+	clearChatEmptyState();
+	const segment = document.createElement("div");
+	segment.className = "msg assistant reasoning-stream";
+	S.chatMsgBox?.appendChild(segment);
+	S.setStreamEl(segment);
+	S.setStreamText("");
+	return segment;
+}
+
+function activeAssistantSegment(): HTMLElement {
+	return S.streamEl || createLiveAssistantSegment();
+}
+
+function liveReasoningContent(segment: HTMLElement): ReasoningContent {
+	const encoded = segment.querySelector<HTMLElement>(".msg-reasoning-body")?.dataset.reasoning;
+	if (!encoded) return "";
+	try {
+		const value: unknown = JSON.parse(encoded);
+		return isReasoningContent(value) ? value : "";
+	} catch {
+		return "";
+	}
+}
+
+function finishLiveReasoning(segment: HTMLElement, reasoningContent?: ReasoningContent): void {
+	segment.querySelector(".thinking-status")?.remove();
+	segment.classList.remove("reasoning-stream");
+	const reasoning = reasoningContent ?? liveReasoningContent(segment);
+	if (hasVisibleReasoning(reasoning) || segment.querySelector(".msg-reasoning")) {
+		appendReasoningDisclosure(segment, reasoning, { expanded: false, streaming: false });
+	}
+}
+
 function handleChatThinking(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
 	setSessionReplying(eventSession, true);
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(true, eventSession);
-	removeThinking();
-	clearChatEmptyState();
-	const thinkEl = document.createElement("div");
-	thinkEl.className = "msg assistant thinking";
-	thinkEl.id = "thinkingIndicator";
-	thinkEl.appendChild(makeThinkingDots());
-	S.chatMsgBox?.appendChild(thinkEl);
+	const segment = activeAssistantSegment();
+	segment.classList.add("reasoning-stream");
+	appendReasoningDisclosure(segment, liveReasoningContent(segment), { expanded: true, streaming: true });
 	smartScrollToBottom();
 }
 
@@ -114,24 +142,15 @@ function handleChatThinkingText(p: ChatPayload, isActive: boolean, isChatPage: b
 	setSessionReplying(eventSession, true);
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(true, eventSession);
-	const indicator = document.getElementById("thinkingIndicator");
-	if (indicator) {
-		while (indicator.firstChild) indicator.removeChild(indicator.firstChild);
-		const textEl = document.createElement("span");
-		textEl.className = "thinking-text";
-		textEl.textContent = p.text || "";
-		indicator.appendChild(textEl);
-		smartScrollToBottom();
-	}
+	const segment = activeAssistantSegment();
+	segment.querySelector(".thinking-status")?.remove();
+	appendReasoningDisclosure(segment, isReasoningContent(p.text) ? p.text : "", { expanded: true, streaming: true });
+	smartScrollToBottom();
 }
 
 function handleChatThinkingDone(_p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
-	// Don't remove the thinking indicator here. It will be removed by either:
-	// - handleChatDelta (when text starts streaming)
-	// - handleChatToolCallStart (which preserves thinking text as a disclosure)
-	// - handleChatFinal / handleChatError (cleanup)
-	// This keeps the thinking text visible until we know whether to preserve it.
-	void (isActive && isChatPage);
+	if (!(isActive && isChatPage)) return;
+	if (S.streamEl) finishLiveReasoning(S.streamEl);
 }
 
 function handleChatVoicePending(_p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -141,7 +160,7 @@ function handleChatVoicePending(_p: ChatPayload, isActive: boolean, isChatPage: 
 	if (!(isActive && isChatPage)) return;
 	// Dual-write to global state for backward compat
 	S.setVoicePending(true);
-	// Keep the existing thinking dots visible -- no separate voice indicator.
+	// Keep the active reasoning part visible while audio is prepared.
 }
 
 function handleChatToolCallStart(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -214,7 +233,6 @@ function renderToolCallEnd(p: ChatPayload, eventSession: string): void {
 	// A rejected call has no `tool_call_start`, so nothing has closed the live
 	// assistant segment yet.
 	if (p.rejected === true) {
-		removeThinking();
 		closeLiveAssistantSegment(p.assistantMessage, p.assistantMessageIndex, eventSession);
 	}
 	const toolCard =
@@ -245,7 +263,7 @@ function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: bo
 		eventSession,
 		{
 			role: "user",
-			content: p.text || "",
+			content: typeof p.text === "string" ? p.text : "",
 			channel: p.channel || null,
 			audio: cachedAudio,
 			created_at: Date.now(),
@@ -280,7 +298,7 @@ function handleChatUserMessage(p: ChatPayload, isActive: boolean, isChatPage: bo
 		eventSession,
 		{
 			role: "user",
-			content: p.text || "",
+			content: typeof p.text === "string" ? p.text : "",
 			created_at: Date.now(),
 		},
 		p.messageIndex,
@@ -292,12 +310,12 @@ function handleChatUserMessage(p: ChatPayload, isActive: boolean, isChatPage: bo
 	if (!(isChatPage && isActive)) return;
 	// Safe: renderMarkdown calls esc() first -- all user input is
 	// HTML-escaped before formatting tags are applied.
-	chatAddMsg("user", renderMarkdown(p.text || ""), true);
+	chatAddMsg("user", renderMarkdown(typeof p.text === "string" ? p.text : ""), true);
 }
 
 function handleChatDelta(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
-	if (!p.text) return;
+	if (typeof p.text !== "string" || !p.text) return;
 	// Update per-session signal
 	const session = sessionStore.getByKey(eventSession);
 	if (session) session.streamText.value += p.text;
@@ -308,22 +326,10 @@ function handleChatDelta(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 		return;
 	}
 	// Skip leading whitespace before any real content has been streamed.
-	// Some providers emit newlines between thinking and content; rendering
-	// them would create an empty assistant div that lingers if a tool call
-	// follows immediately.  We must check this BEFORE removeThinking() so
-	// the thinking text is still available for handleChatToolCallStart to
-	// extract into a reasoning disclosure on the tool card.
+	// The active reasoning part remains available for a following tool call.
 	if (!(S.streamEl || p.text.trim())) return;
-	removeThinking();
-	let streamElement = S.streamEl;
-	if (!streamElement) {
-		S.setStreamText("");
-		streamElement = document.createElement("div");
-		streamElement.className = "msg assistant";
-		S.setStreamEl(streamElement);
-		clearChatEmptyState();
-		S.chatMsgBox?.appendChild(streamElement);
-	}
+	const streamElement = activeAssistantSegment();
+	streamElement.classList.remove("reasoning-stream");
 	S.setStreamText(S.streamText + p.text);
 	setSafeMarkdownHtml(streamElement, S.streamText);
 	if (Number.isInteger(p.messageIndex)) {
@@ -344,12 +350,12 @@ interface FinalMessageContext {
 }
 
 function finalMessageContext(payload: ChatPayload): FinalMessageContext {
-	const text = String(payload.text || "");
+	const text = typeof payload.text === "string" ? payload.text : "";
 	return {
 		text,
 		hasVisibleContent:
 			hasNonWhitespaceContent(text) ||
-			hasNonWhitespaceContent(payload.reasoning || "") ||
+			hasVisibleReasoning(payload.reasoning) ||
 			hasNonWhitespaceContent(payload.audio || ""),
 	};
 }
@@ -391,7 +397,6 @@ function cacheFinalMessage(payload: ChatPayload, eventSession: string, context: 
 
 function prepareFinalMessageDom(): void {
 	setComposerStopButton(false);
-	removeThinking();
 	clearStaleRunningToolCards();
 }
 
@@ -403,8 +408,15 @@ function appendFinalText(messageElement: HTMLElement, text: string): void {
 	messageElement.appendChild(textWrap);
 }
 
-function appendFinalReasoning(messageElement: HTMLElement, reasoning: string | undefined): void {
-	if (reasoning && !isReasoningAlreadyShown(reasoning)) appendReasoningDisclosure(messageElement, reasoning);
+function applyFinalReasoning(messageElement: HTMLElement, reasoning: ReasoningContent | undefined): void {
+	messageElement.classList.remove("reasoning-stream");
+	messageElement.querySelector(".thinking-status")?.remove();
+	const disclosure = messageElement.querySelector(".msg-reasoning");
+	if (hasVisibleReasoning(reasoning)) {
+		appendReasoningDisclosure(messageElement, reasoning, { expanded: false, streaming: false });
+	} else {
+		disclosure?.remove();
+	}
 }
 
 function renderVoicePendingFinal(payload: ChatPayload, text: string): HTMLElement {
@@ -424,7 +436,7 @@ function renderVoicePendingFinal(payload: ChatPayload, text: string): HTMLElemen
 		}
 	}
 	appendFinalText(messageElement, text);
-	appendFinalReasoning(messageElement, payload.reasoning);
+	applyFinalReasoning(messageElement, payload.reasoning);
 	smartScrollToBottom();
 	return messageElement;
 }
@@ -440,24 +452,21 @@ function renderStreamedVoiceAudio(payload: ChatPayload, text: string, messageEle
 	);
 	const audioSource = sessionMediaUrl(payload.sessionKey || S.activeSessionKey, payload.audio || "");
 	console.debug("[audio] rendering persisted audio (streamed):", payload.audio);
+	const reasoning = messageElement.querySelector(":scope > .msg-reasoning");
+	if (reasoning) reasoning.remove();
 	messageElement.textContent = "";
+	if (reasoning) messageElement.appendChild(reasoning);
 	if (audioSource) renderAudioPlayer(messageElement, audioSource, true);
 	appendFinalText(messageElement, text);
 }
 
 function renderStreamedFinal(payload: ChatPayload, text: string): HTMLElement | null {
 	let messageElement = resolveFinalMessageEl(payload);
-	const reasoningAlreadyShown = Boolean(payload.reasoning && isReasoningAlreadyShown(payload.reasoning));
-	if (!messageElement && payload.reasoning && !reasoningAlreadyShown) {
-		messageElement = chatAddMsg("assistant", "", false);
-	}
-	if (messageElement && payload.reasoning && !reasoningAlreadyShown) {
-		appendReasoningDisclosure(messageElement, payload.reasoning);
-	}
 	if (payload.replyMedium === "voice" && payload.audio) {
 		messageElement ||= chatAddMsg("assistant", "", false);
 		if (messageElement) renderStreamedVoiceAudio(payload, text, messageElement);
 	}
+	if (messageElement) applyFinalReasoning(messageElement, payload.reasoning);
 	return messageElement;
 }
 
@@ -656,26 +665,57 @@ function handleChatRetrying(p: ChatPayload, isActive: boolean, isChatPage: boole
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(true, eventSession);
 
-	let indicator = document.getElementById("thinkingIndicator");
-	if (!indicator) {
-		removeThinking();
-		indicator = document.createElement("div");
-		indicator.className = "msg assistant thinking";
-		indicator.id = "thinkingIndicator";
-		indicator.appendChild(makeThinkingDots());
-		clearChatEmptyState();
-		S.chatMsgBox?.appendChild(indicator);
+	const segment = activeAssistantSegment();
+	let status = segment.querySelector<HTMLElement>(".thinking-status");
+	if (!status) {
+		status = document.createElement("div");
+		status.className = "thinking-status";
+		segment.appendChild(status);
 	}
-
-	while (indicator.firstChild) indicator.removeChild(indicator.firstChild);
-	const textEl = document.createElement("span");
-	textEl.className = "thinking-text";
-	textEl.textContent = retryStatusText(p);
-	indicator.appendChild(textEl);
+	status.textContent = retryStatusText(p);
 	smartScrollToBottom();
 }
 
 // ── Error / abort / notice / clear ────────────────────────────
+
+function renderChatErrorMessage(p: ChatPayload): void {
+	if (p.error?.title) {
+		chatAddErrorCard(localizeStructuredError(p.error) as Parameters<typeof chatAddErrorCard>[0]);
+		return;
+	}
+	chatAddErrorMsg(p.message || "unknown");
+}
+
+function appendErrorContinueButton(p: ChatPayload): void {
+	if (!p.error?.canContinue) return;
+	const lastCard = S.chatMsgBox?.querySelector(".error-card:last-child") as HTMLElement | null;
+	const body = lastCard?.querySelector(".error-body");
+	if (!body) return;
+	const button = document.createElement("button");
+	button.className = "provider-btn error-continue-btn";
+	button.textContent = t("errors:chat.continue", "Continue");
+	button.onclick = () => {
+		button.disabled = true;
+		button.textContent = t("errors:chat.continuing", "Continuing...");
+		(S.chatInput as HTMLInputElement).value = t("errors:chat.continueMessage", "Please continue where you left off.");
+		// Trigger send by clicking the chat send button (sendChat is local to ChatPage)
+		S.chatSendBtn?.click();
+	};
+	body.appendChild(button);
+}
+
+function renderActiveChatError(p: ChatPayload, partialState: AbortedPartialState): void {
+	setComposerStopButton(false);
+	clearStaleRunningToolCards();
+	if (!partialState.hasVisiblePartial) S.streamEl?.remove();
+	renderAbortedPartialInDom(p, partialState);
+	renderChatErrorMessage(p);
+	appendErrorContinueButton(p);
+	S.setStreamEl(null);
+	S.setStreamText("");
+	S.setVoicePending(false);
+	moveFirstQueuedToChat();
+}
 
 function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	clearPendingToolCallEndsForSession(eventSession);
@@ -684,59 +724,24 @@ function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean,
 	const partialState = getAbortedPartialState(p);
 	const errSession = sessionStore.getByKey(eventSession);
 	cacheAbortedPartial(eventSession, p, errSession, partialState);
-	if (errSession) errSession.resetStreamState();
-	if ((partialState.hasVisiblePartial || partialState.hasTerminalToolBatch) && !isActive) {
-		setSessionUnread(eventSession, true);
-	}
-	if (!(isActive && isChatPage)) {
-		S.setVoicePending(false);
+	errSession?.resetStreamState();
+	if (hasAbortedPartial(partialState) && !isActive) setSessionUnread(eventSession, true);
+	if (isActive && isChatPage) {
+		renderActiveChatError(p, partialState);
 		return;
 	}
-	setComposerStopButton(false);
-	removeThinking();
-	clearStaleRunningToolCards();
-	renderAbortedPartialInDom(p, partialState);
-	if (p.error?.title) {
-		chatAddErrorCard(localizeStructuredError(p.error) as Parameters<typeof chatAddErrorCard>[0]);
-	} else {
-		chatAddErrorMsg(p.message || "unknown");
-	}
-	// Add a continue button when a new user message can start a fresh tool-call budget.
-	if (p.error?.canContinue) {
-		const lastCard = S.chatMsgBox?.querySelector(".error-card:last-child") as HTMLElement | null;
-		if (lastCard) {
-			const btn = document.createElement("button");
-			btn.className = "provider-btn error-continue-btn";
-			btn.textContent = t("errors:chat.continue", "Continue");
-			btn.onclick = () => {
-				btn.disabled = true;
-				btn.textContent = t("errors:chat.continuing", "Continuing...");
-				(S.chatInput as HTMLInputElement).value = t(
-					"errors:chat.continueMessage",
-					"Please continue where you left off.",
-				);
-				// Trigger send by clicking the chat send button (sendChat is local to ChatPage)
-				S.chatSendBtn?.click();
-			};
-			const body = lastCard.querySelector(".error-body");
-			if (body) body.appendChild(btn);
-		}
-	}
-	S.setStreamEl(null);
-	S.setStreamText("");
 	S.setVoicePending(false);
-	moveFirstQueuedToChat();
 }
 
 function getAbortedPartialState(p: ChatPayload): AbortedPartialState {
 	const partial = p.partialMessage && typeof p.partialMessage === "object" ? p.partialMessage : null;
 	const partialText = String(partial?.content || "");
-	const partialReasoning = String(partial?.reasoning || "");
+	const partialReasoning = partial?.reasoning || "";
 	return {
 		partial,
 		partialText,
 		partialReasoning,
-		hasVisiblePartial: hasNonWhitespaceContent(partialText) || hasNonWhitespaceContent(partialReasoning),
+		hasVisiblePartial: hasNonWhitespaceContent(partialText) || hasVisibleReasoning(partialReasoning),
 		hasTerminalToolBatch: partial?.durationMs !== undefined && toolCallIds(partial.tool_calls).length > 0,
 	};
 }
@@ -803,8 +808,8 @@ function updateAbortedTokenState(partialState: AbortedPartialState): void {
 
 function finalizeActiveAbort(p: ChatPayload, partialState: AbortedPartialState): void {
 	setComposerStopButton(false);
-	removeThinking();
 	clearStaleRunningToolCards();
+	if (!partialState.hasVisiblePartial) S.streamEl?.remove();
 	renderAbortedPartialInDom(p, partialState);
 	S.setStreamEl(null);
 	S.setStreamText("");

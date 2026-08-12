@@ -14,7 +14,7 @@ use {
 };
 
 use {
-    chelix_agents::tool_registry::ToolRegistry,
+    chelix_agents::{model::ReasoningAccumulator, tool_registry::ToolRegistry},
     chelix_providers::ProviderRegistry,
     chelix_service_traits::SessionMutationCoordinator,
     chelix_sessions::{
@@ -72,7 +72,8 @@ pub struct ActiveToolCall {
 #[derive(Debug, Clone)]
 pub(crate) struct ActiveAssistantDraft {
     content: String,
-    reasoning: String,
+    reasoning: ReasoningAccumulator,
+    responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
     model: String,
     provider: String,
     reasoning_effort: Option<String>,
@@ -83,7 +84,6 @@ pub(crate) struct ActiveAssistantDraft {
 
 #[derive(Default)]
 pub(crate) struct EventForwarderResult {
-    pub(crate) reasoning: String,
     pub(crate) tool_segment_indices: HashMap<String, usize>,
     pub(crate) error: Option<String>,
 }
@@ -98,7 +98,8 @@ impl ActiveAssistantDraft {
     ) -> Self {
         Self {
             content: String::new(),
-            reasoning: String::new(),
+            reasoning: ReasoningAccumulator::default(),
+            responses_reasoning: Vec::new(),
             model: model.to_string(),
             provider: provider.to_string(),
             reasoning_effort,
@@ -115,8 +116,33 @@ impl ActiveAssistantDraft {
     }
 
     pub(crate) fn set_reasoning(&mut self, reasoning: &str) {
-        self.reasoning.clear();
-        self.reasoning.push_str(reasoning);
+        self.reasoning.set_text(reasoning);
+    }
+
+    pub(crate) fn append_responses_reasoning(
+        &mut self,
+        item_id: &str,
+        output_index: usize,
+        summary_index: usize,
+        delta: &str,
+    ) {
+        self.reasoning
+            .append_responses_delta(item_id, output_index, summary_index, delta);
+    }
+
+    pub(crate) fn complete_responses_reasoning(
+        &mut self,
+        item_id: &str,
+        output_index: usize,
+        summary_index: usize,
+        text: String,
+    ) {
+        self.reasoning
+            .complete_responses_part(item_id, output_index, summary_index, text);
+    }
+
+    pub(crate) fn push_responses_reasoning(&mut self, item: chelix_common::ResponsesReasoningItem) {
+        self.responses_reasoning.push(item);
     }
 
     pub(crate) fn message_index(&self) -> Option<usize> {
@@ -133,8 +159,10 @@ impl ActiveAssistantDraft {
         )
     }
 
-    pub(crate) fn has_visible_content(&self) -> bool {
-        !self.content.trim().is_empty() || !self.reasoning.trim().is_empty()
+    pub(crate) fn has_provider_output(&self) -> bool {
+        !self.content.trim().is_empty()
+            || !self.reasoning.is_empty()
+            || !self.responses_reasoning.is_empty()
     }
 
     fn has_visible_text(&self) -> bool {
@@ -146,7 +174,6 @@ impl ActiveAssistantDraft {
         tool_calls: Option<Vec<PersistedToolCall>>,
         usage: Option<&chelix_agents::model::Usage>,
     ) -> PersistedMessage {
-        let reasoning = self.reasoning.trim();
         PersistedMessage::Assistant {
             content: self.content.clone(),
             created_at: Some(now_ms()),
@@ -163,7 +190,8 @@ impl ActiveAssistantDraft {
             request_cache_read_tokens: usage.map(|usage| usage.cache_read_tokens),
             request_cache_write_tokens: usage.map(|usage| usage.cache_write_tokens),
             tool_calls,
-            reasoning: (!reasoning.is_empty()).then(|| reasoning.to_string()),
+            reasoning: self.reasoning.content(),
+            responses_reasoning: self.responses_reasoning.clone(),
             llm_api_response: None,
             audio: None,
             seq: self.seq,
@@ -234,7 +262,7 @@ pub(crate) async fn persist_active_assistant_draft(
     let Some(draft) = drafts.get_mut(session_key) else {
         return Ok(None);
     };
-    if !draft.has_visible_content() {
+    if !draft.has_provider_output() {
         drafts.remove(session_key);
         return Ok(None);
     }
@@ -298,6 +326,7 @@ pub(crate) fn build_persisted_assistant_message(
         request_cache_write_tokens: Some(assistant_output.request_cache_write_tokens),
         tool_calls: None,
         reasoning: assistant_output.reasoning,
+        responses_reasoning: assistant_output.responses_reasoning,
         llm_api_response: assistant_output.llm_api_response,
         audio: assistant_output.audio_path,
         seq,
@@ -345,6 +374,7 @@ pub(crate) fn finalize_persisted_assistant_message(
         reasoning_effort,
         tool_calls,
         reasoning,
+        responses_reasoning,
         seq,
         run_id,
         ..
@@ -369,7 +399,8 @@ pub(crate) fn finalize_persisted_assistant_message(
         request_cache_read_tokens: Some(assistant_output.request_cache_read_tokens),
         request_cache_write_tokens: Some(assistant_output.request_cache_write_tokens),
         tool_calls,
-        reasoning: assistant_output.reasoning.or(reasoning),
+        reasoning,
+        responses_reasoning,
         llm_api_response: assistant_output.llm_api_response,
         audio: assistant_output.audio_path,
         seq,
@@ -417,9 +448,10 @@ pub struct LiveChatService {
     pub(in crate::service) message_queue: Arc<RwLock<HashMap<String, Vec<QueuedMessage>>>>,
     /// Per-session last-seen client sequence number for ordering diagnostics.
     pub(in crate::service) last_client_seq: Arc<RwLock<HashMap<String, u64>>>,
-    /// Per-session accumulated thinking text for active runs, so it can be
+    /// Per-session accumulated thinking content for active runs, so it can be
     /// returned in `sessions.switch` after a page reload.
-    pub(in crate::service) active_thinking_text: Arc<RwLock<HashMap<String, String>>>,
+    pub(in crate::service) active_thinking_text:
+        Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>,
     /// Per-session active tool calls for `chat.peek` snapshot.
     pub(in crate::service) active_tool_calls: Arc<RwLock<HashMap<String, Vec<ActiveToolCall>>>>,
     /// Per-session streamed assistant content buffered so an abort can persist
@@ -1096,7 +1128,10 @@ mod tests {
                 request_cache_read_tokens: 850,
                 request_cache_write_tokens: 2,
                 audio_path: None,
-                reasoning: Some("thinking".to_string()),
+                reasoning: Some(chelix_common::ReasoningContent::Text(
+                    "thinking".to_string(),
+                )),
+                responses_reasoning: Vec::new(),
                 llm_api_response: None,
             },
             Some("gpt-4.1".to_string()),
@@ -1206,6 +1241,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn opaque_only_active_partial_is_persisted() {
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
+        let store = SessionStore::new(directory.path().to_path_buf());
+        store
+            .append(
+                "main",
+                &serde_json::json!({ "role": "user", "content": "hello" }),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("user message persists: {error}"));
+        let mut draft = ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7));
+        draft.push_responses_reasoning(chelix_common::ResponsesReasoningItem {
+            id: "rs_partial".to_string(),
+            encrypted_content: "opaque-partial".to_string(),
+        });
+        let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
+
+        let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "main")
+            .await
+            .unwrap_or_else(|error| panic!("opaque partial persistence succeeds: {error}"))
+            .unwrap_or_else(|| panic!("opaque partial is persisted"));
+
+        assert_eq!(persisted_index, 1);
+        assert_eq!(partial["content"], "");
+        assert!(partial.get("reasoning").is_none());
+        assert_eq!(partial["responsesReasoning"][0]["id"], "rs_partial");
+        assert_eq!(
+            partial["responsesReasoning"][0]["encryptedContent"],
+            "opaque-partial"
+        );
+        assert!(!drafts.read().await.contains_key("main"));
+        let history = store
+            .read("main")
+            .await
+            .unwrap_or_else(|error| panic!("session history reads: {error}"));
+        assert_eq!(history.len(), 2);
+        assert_eq!(
+            history[persisted_index]["responsesReasoning"][0]["id"],
+            "rs_partial"
+        );
+    }
+
+    #[tokio::test]
     async fn persist_final_assistant_segment_returns_its_physical_history_index() {
         let directory = tempfile::tempdir()
             .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
@@ -1230,7 +1309,10 @@ mod tests {
             request_cache_read_tokens: 2,
             request_cache_write_tokens: 1,
             audio_path: None,
-            reasoning: Some("streamed reasoning".to_string()),
+            reasoning: Some(chelix_common::ReasoningContent::Text(
+                "streamed reasoning".to_string(),
+            )),
+            responses_reasoning: Vec::new(),
             llm_api_response: None,
         };
 
@@ -1285,7 +1367,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_segment_finalization_preserves_canonical_content_and_tool_calls() {
+    fn tool_segment_finalization_preserves_canonical_output_and_run_raw_payload() {
         let mut draft = ActiveAssistantDraft::new(
             "run-1",
             "gpt-4.1",
@@ -1295,6 +1377,10 @@ mod tests {
         );
         draft.append_text("Text before tool.");
         draft.set_reasoning("Initial reasoning.");
+        draft.push_responses_reasoning(chelix_common::ResponsesReasoningItem {
+            id: "rs_tool_segment".to_string(),
+            encrypted_content: "opaque-tool-segment".to_string(),
+        });
         let segment = draft.to_persisted_message(
             Some(vec![build_persisted_tool_call(
                 "tool-1",
@@ -1311,7 +1397,7 @@ mod tests {
 
         let finalized = finalize_persisted_assistant_message(
             AssistantTurnOutput {
-                text: "Text before tool.".to_string(),
+                text: "Foreign terminal text.".to_string(),
                 persisted_message_index: Some(1),
                 input_tokens: 30,
                 output_tokens: 8,
@@ -1323,8 +1409,14 @@ mod tests {
                 request_cache_read_tokens: 9,
                 request_cache_write_tokens: 2,
                 audio_path: None,
-                reasoning: Some("Final reasoning.".to_string()),
-                llm_api_response: None,
+                reasoning: Some(chelix_common::ReasoningContent::Text(
+                    "Foreign terminal reasoning.".to_string(),
+                )),
+                responses_reasoning: vec![chelix_common::ResponsesReasoningItem {
+                    id: "rs_foreign_terminal".to_string(),
+                    encrypted_content: "opaque-foreign-terminal".to_string(),
+                }],
+                llm_api_response: Some(serde_json::json!([{"foreign": "terminal"}])),
             },
             segment,
         );
@@ -1342,6 +1434,8 @@ mod tests {
                 duration_ms,
                 tool_calls,
                 reasoning,
+                responses_reasoning,
+                llm_api_response,
                 seq,
                 run_id,
                 ..
@@ -1359,7 +1453,22 @@ mod tests {
                     tool_calls.as_ref().map(|calls| calls[0].id.as_str()),
                     Some("tool-1")
                 );
-                assert_eq!(reasoning.as_deref(), Some("Final reasoning."));
+                assert_eq!(
+                    reasoning,
+                    Some(chelix_common::ReasoningContent::Text(
+                        "Initial reasoning.".to_string(),
+                    ))
+                );
+                assert_eq!(responses_reasoning.len(), 1);
+                assert_eq!(responses_reasoning[0].id, "rs_tool_segment");
+                assert_eq!(
+                    responses_reasoning[0].encrypted_content,
+                    "opaque-tool-segment"
+                );
+                assert_eq!(
+                    llm_api_response,
+                    Some(serde_json::json!([{"foreign": "terminal"}]))
+                );
                 assert_eq!(seq, Some(7));
                 assert_eq!(run_id.as_deref(), Some("run-1"));
             },
@@ -1389,7 +1498,10 @@ mod tests {
                 "execute_command",
                 Some(serde_json::json!({"command": "true"})),
             )]),
-            reasoning: Some("Initial reasoning.".to_string()),
+            reasoning: Some(chelix_common::ReasoningContent::Text(
+                "Initial reasoning.".to_string(),
+            )),
+            responses_reasoning: vec![],
             llm_api_response: None,
             audio: None,
             seq: Some(7),
@@ -1417,7 +1529,12 @@ mod tests {
                 assert_eq!(cache_write_tokens, Some(3));
                 assert_eq!(duration_ms, Some(250));
                 assert_eq!(tool_calls.as_ref().map(Vec::len), Some(1));
-                assert_eq!(reasoning.as_deref(), Some("Initial reasoning."));
+                assert_eq!(
+                    reasoning,
+                    Some(chelix_common::ReasoningContent::Text(
+                        "Initial reasoning.".to_string(),
+                    ))
+                );
             },
             _ => panic!("expected assistant message"),
         }

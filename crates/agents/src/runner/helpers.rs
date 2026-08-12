@@ -5,7 +5,10 @@ use std::{borrow::Cow, sync::Arc};
 use tracing::{info, warn};
 
 use {
-    chelix_common::hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry},
+    chelix_common::{
+        ReasoningContent,
+        hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry},
+    },
     chelix_sessions::message::ContextBudgetMetadata,
 };
 
@@ -105,12 +108,31 @@ pub(crate) fn should_trigger_automatic_checkpoint(
     limits.automatic_checkpointing && context_budget.compaction_required && !safe_checkpoint_resume
 }
 
+/// Assistant output owned by one provider iteration.
+#[derive(Debug, Clone, Default)]
+pub struct AssistantIterationOutput {
+    pub text: String,
+    pub reasoning: Option<ReasoningContent>,
+    pub responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
+}
+
+impl AssistantIterationOutput {
+    pub(crate) fn has_provider_output(&self) -> bool {
+        !self.text.is_empty()
+            || self
+                .reasoning
+                .as_ref()
+                .is_some_and(|reasoning| !reasoning.is_empty())
+            || !self.responses_reasoning.is_empty()
+    }
+}
+
 /// Result of running the agent loop.
 #[derive(Debug)]
 pub struct AgentRunResult {
-    pub text: String,
-    /// Whether terminal text is new output or already belongs to the
-    /// assistant message that introduced tool calls.
+    pub output: AssistantIterationOutput,
+    /// Whether terminal output is new or already belongs to the assistant
+    /// message that introduced tool calls.
     pub final_text_source: FinalTextSource,
     pub iterations: usize,
     pub tool_calls_made: usize,
@@ -254,6 +276,22 @@ pub enum RunnerEvent {
     },
     /// LLM returned reasoning/status text alongside tool calls.
     ThinkingText(String),
+    /// OpenAI Responses reasoning-summary text for one source-defined part.
+    ResponsesReasoningDelta {
+        item_id: String,
+        output_index: usize,
+        summary_index: usize,
+        delta: String,
+    },
+    /// Marks one OpenAI Responses reasoning-summary part complete.
+    ResponsesReasoningPartDone {
+        item_id: String,
+        output_index: usize,
+        summary_index: usize,
+        text: String,
+    },
+    /// Opaque OpenAI Responses reasoning state for stateless replay.
+    ResponsesReasoningItem(chelix_common::ResponsesReasoningItem),
     TextDelta(String),
     /// Text from an iteration that continued into tool calls.
     ProgressText(String),
@@ -460,20 +498,18 @@ pub(crate) fn log_tool_argument_diagnostic(
 pub(crate) fn apply_before_llm_call_modify_payload(
     messages: &mut Vec<ChatMessage>,
     modified_payload: serde_json::Value,
-) {
-    let Some(modified_messages) = modified_payload
+) -> anyhow::Result<()> {
+    let modified_messages = modified_payload
         .get("messages")
         .and_then(serde_json::Value::as_array)
         .or_else(|| modified_payload.as_array())
-    else {
-        warn!("BeforeLLMCall ModifyPayload missing messages array");
-        return;
-    };
+        .ok_or_else(|| anyhow::anyhow!("BeforeLLMCall ModifyPayload missing messages array"))?;
 
-    let parsed = provider_values_to_chat_messages(modified_messages);
+    let parsed = provider_values_to_chat_messages(modified_messages)?;
     if parsed.is_empty() {
-        warn!("BeforeLLMCall ModifyPayload produced no valid messages; keeping original");
-        return;
+        return Err(anyhow::anyhow!(
+            "BeforeLLMCall ModifyPayload produced no valid messages"
+        ));
     }
 
     *messages = parsed;
@@ -481,6 +517,7 @@ pub(crate) fn apply_before_llm_call_modify_payload(
         messages_count = messages.len(),
         "BeforeLLMCall ModifyPayload applied"
     );
+    Ok(())
 }
 
 pub(crate) async fn dispatch_after_llm_call_hook(
@@ -560,15 +597,16 @@ pub(crate) async fn dispatch_before_agent_start_hook(
 }
 
 pub(crate) fn finish_agent_run(
-    final_text: String,
+    mut output: AssistantIterationOutput,
     final_text_source: FinalTextSource,
     iterations: usize,
     tool_calls_made: usize,
     usage_accumulator: &UsageAccumulator,
     raw_llm_responses: Vec<serde_json::Value>,
 ) -> AgentRunResult {
+    output.text = clean_response(&output.text);
     AgentRunResult {
-        text: clean_response(&final_text),
+        output,
         final_text_source,
         iterations,
         tool_calls_made,
@@ -641,18 +679,14 @@ pub(crate) fn streaming_tool_call_message_content(
     last_answer_text: &mut String,
     last_answer_tool_call_id: &mut Option<String>,
     accumulated_text: &str,
-    accumulated_reasoning: &str,
 ) -> Option<String> {
     *last_answer_tool_call_id = None;
-    if !accumulated_reasoning.is_empty() {
-        Some(accumulated_reasoning.to_string())
-    } else if !accumulated_text.is_empty() {
-        last_answer_text.clear();
-        last_answer_text.push_str(accumulated_text);
-        Some(accumulated_text.to_string())
-    } else {
-        None
+    if accumulated_text.is_empty() {
+        return None;
     }
+    last_answer_text.clear();
+    last_answer_text.push_str(accumulated_text);
+    Some(accumulated_text.to_string())
 }
 
 #[must_use]
@@ -834,7 +868,6 @@ mod tests {
             &mut last_answer_text,
             &mut last_answer_tool_call_id,
             "retry text",
-            "",
         );
 
         assert_eq!(retry_message.as_deref(), Some("retry text"));

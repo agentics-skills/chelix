@@ -1,11 +1,13 @@
 use super::*;
 
+use chelix_common::ReasoningContent;
+
 use crate::session_reasoning::{enrich_session_entry_for_ui, materialize_agent_session_defaults};
 
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     replying: bool,
-    thinking_text: Option<String>,
+    thinking_text: Option<ReasoningContent>,
     tool_calls: Vec<serde_json::Value>,
     voice_pending: bool,
 ) {
@@ -13,8 +15,14 @@ fn insert_session_activity_snapshot(
     if !replying {
         return;
     }
-    if let Some(text) = thinking_text {
-        obj.insert("thinkingText".to_string(), serde_json::Value::String(text));
+    if let Some(reasoning) = thinking_text {
+        let value = match reasoning {
+            ReasoningContent::Text(text) => serde_json::Value::String(text),
+            ReasoningContent::Parts(parts) => {
+                serde_json::Value::Array(parts.into_iter().map(serde_json::Value::String).collect())
+            },
+        };
+        obj.insert("thinkingText".to_string(), value);
     }
     if !tool_calls.is_empty() {
         obj.insert(
@@ -1404,7 +1412,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use super::insert_session_activity_snapshot;
+    use super::{ReasoningContent, insert_session_activity_snapshot};
 
     #[test]
     fn session_activity_snapshot_includes_active_tool_calls_only_when_replying() {
@@ -1413,7 +1421,7 @@ mod tests {
         insert_session_activity_snapshot(
             &mut obj,
             true,
-            Some("working".to_string()),
+            Some(ReasoningContent::Text("working".to_string())),
             vec![serde_json::json!({
                 "runId": "run-1",
                 "toolCallId": "tool-1",
@@ -1443,13 +1451,34 @@ mod tests {
     }
 
     #[test]
+    fn session_activity_snapshot_preserves_structured_reasoning_parts() {
+        let mut obj = serde_json::Map::new();
+
+        insert_session_activity_snapshot(
+            &mut obj,
+            true,
+            Some(ReasoningContent::Parts(vec![
+                "Analyzing".to_string(),
+                "Tracing".to_string(),
+            ])),
+            Vec::new(),
+            false,
+        );
+
+        assert_eq!(
+            obj.get("thinkingText"),
+            Some(&serde_json::json!(["Analyzing", "Tracing"]))
+        );
+    }
+
+    #[test]
     fn session_activity_snapshot_omits_active_fields_when_idle() {
         let mut obj = serde_json::Map::new();
 
         insert_session_activity_snapshot(
             &mut obj,
             false,
-            Some("stale".to_string()),
+            Some(ReasoningContent::Text("stale".to_string())),
             vec![serde_json::json!({"toolName": "execute_command"})],
             true,
         );

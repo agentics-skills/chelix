@@ -55,7 +55,10 @@ pub(in crate::channel_events) async fn handle_btw(
     // Read recent session history for context (last ~20 messages).
     let context_msgs = if let Some(ref store) = state.services.session_store {
         let history = store.read(session_key).await.unwrap_or_default();
-        let chat_msgs = chelix_agents::model::values_to_chat_messages(&history);
+        let chat_msgs =
+            chelix_agents::model::values_to_chat_messages(&history).map_err(|error| {
+                ChannelError::unavailable(format!("failed to reconstruct session history: {error}"))
+            })?;
         let tail_start = chat_msgs.len().saturating_sub(20);
         chat_msgs[tail_start..].to_vec()
     } else {

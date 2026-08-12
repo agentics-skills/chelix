@@ -202,7 +202,10 @@ pub(crate) async fn summarize_session(
         .await
         .map_err(|source| Error::external("failed to read session history", source))?;
     let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
-    messages.extend(values_to_chat_messages(&history));
+    messages.extend(
+        values_to_chat_messages(&history)
+            .map_err(|source| Error::external("failed to reconstruct provider context", source))?,
+    );
     summarize_session_from_prompt(store, session_key, provider, messages, &[], tools).await
 }
 
@@ -336,7 +339,9 @@ pub(crate) async fn reload_checkpoint_context(
         )));
     }
 
-    let context = values_to_chat_messages(&history);
+    let context = values_to_chat_messages(&history).map_err(|source| {
+        Error::external("failed to reconstruct reloaded checkpoint context", source)
+    })?;
     if context.is_empty() {
         return Err(Error::message(
             "reloaded checkpoint produced an empty provider context",
@@ -707,7 +712,8 @@ mod tests {
         for message in &history {
             store.append("preserved-tail", message).await.unwrap();
         }
-        let continuation = values_to_chat_messages(&history[2..]);
+        let continuation =
+            values_to_chat_messages(&history[2..]).expect("valid continuation history");
         let provider = MockProvider::new(Some("compacted prefix"));
 
         let outcome = summarize_session_from_prompt(
@@ -843,6 +849,7 @@ mod tests {
         }
         let continuation = vec![
             values_to_chat_messages(&history[1..2])
+                .expect("valid continuation history")
                 .into_iter()
                 .next()
                 .unwrap(),
@@ -895,7 +902,8 @@ mod tests {
         for message in &history {
             store.append("enriched-user-tail", message).await.unwrap();
         }
-        let mut continuation = values_to_chat_messages(&history[2..]);
+        let mut continuation =
+            values_to_chat_messages(&history[2..]).expect("valid continuation history");
         continuation[0] =
             ChatMessage::user("[Current date and time: 2026-05-01 12:00 UTC]\ncurrent request");
         let provider = MockProvider::new(Some("compacted prefix"));
@@ -968,7 +976,7 @@ mod tests {
             .unwrap();
 
         let history = store.read("s4").await.unwrap();
-        let context = values_to_chat_messages(&history);
+        let context = values_to_chat_messages(&history).expect("valid compacted history");
         // Checkpoint summary + tail only; pre-checkpoint messages excluded.
         assert_eq!(context.len(), 2);
         match &context[0] {

@@ -96,7 +96,10 @@ impl ChatService for GraphqlChatServiceProxy {
         self.state.chat().active_session_keys().await
     }
 
-    async fn active_thinking_text(&self, session_key: &str) -> Option<String> {
+    async fn active_thinking_text(
+        &self,
+        session_key: &str,
+    ) -> Option<chelix_common::ReasoningContent> {
         self.state.chat().active_thinking_text(session_key).await
     }
 

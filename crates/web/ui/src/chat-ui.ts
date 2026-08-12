@@ -1,8 +1,8 @@
 // ── Chat UI ─────────────────────────────────────────────────
 
-import { formatTokens, parseErrorMessage, renderDocument, sendRpc } from "./helpers";
+import { formatTokens, parseErrorMessage, renderDocument, renderMarkdown, sendRpc } from "./helpers";
 import * as S from "./state";
-import type { ContextBudgetMetadata } from "./types/ws-events";
+import type { ContextBudgetMetadata, ReasoningContent } from "./types/ws-events";
 
 interface ErrorCardData {
 	icon?: string;
@@ -254,31 +254,56 @@ export function appendChannelFooter(el: HTMLElement, channel: ChannelFooterInfo)
 	el.appendChild(ft);
 }
 
-export function removeThinking(): void {
-	const el = document.getElementById("thinkingIndicator");
-	if (el) el.remove();
+interface ReasoningDisclosureOptions {
+	expanded?: boolean;
+	streaming?: boolean;
+}
+
+function normalizedReasoningParts(reasoning: ReasoningContent | null | undefined): string[] {
+	const parts = Array.isArray(reasoning) ? reasoning : [reasoning || ""];
+	return parts.map((part) => part.trim()).filter(Boolean);
 }
 
 export function appendReasoningDisclosure(
 	messageEl: HTMLElement | null,
-	reasoningText: string | null | undefined,
+	reasoning: ReasoningContent | null | undefined,
+	options: ReasoningDisclosureOptions = {},
 ): HTMLDetailsElement | null {
 	if (!messageEl) return null;
-	const normalized = String(reasoningText || "").trim();
-	if (!normalized) return null;
-	const existing = messageEl.querySelector(".msg-reasoning");
-	if (existing) existing.remove();
-	const details = document.createElement("details");
-	details.className = "msg-reasoning";
-	const summary = document.createElement("summary");
-	summary.className = "msg-reasoning-summary";
-	summary.textContent = "Reasoning";
-	details.appendChild(summary);
-	const body = document.createElement("div");
-	body.className = "msg-reasoning-body";
-	body.textContent = normalized;
-	details.appendChild(body);
-	messageEl.appendChild(details);
+	const parts = normalizedReasoningParts(reasoning);
+	const streaming = options.streaming === true;
+	let details = messageEl.querySelector<HTMLDetailsElement>(".msg-reasoning");
+	if (!(parts.length > 0 || streaming || details)) return null;
+	if (!details) {
+		details = document.createElement("details");
+		details.className = "msg-reasoning";
+		const summary = document.createElement("summary");
+		summary.className = "msg-reasoning-summary";
+		details.appendChild(summary);
+		const body = document.createElement("div");
+		body.className = "msg-reasoning-body";
+		details.appendChild(body);
+		if (messageEl.classList.contains("assistant")) messageEl.prepend(details);
+		else messageEl.appendChild(details);
+	}
+
+	details.open = options.expanded ?? false;
+	details.classList.toggle("is-streaming", streaming);
+	const summary = details.querySelector<HTMLElement>(".msg-reasoning-summary");
+	if (summary) summary.textContent = streaming ? "Thinking" : "Reasoning";
+	const body = details.querySelector<HTMLElement>(".msg-reasoning-body");
+	if (body) {
+		body.dataset.reasoning = JSON.stringify(reasoning ?? "");
+		body.hidden = parts.length === 0;
+		body.textContent = "";
+		for (const part of parts) {
+			const item = document.createElement("div");
+			item.className = "msg-reasoning-item markdown-content";
+			// Safe: renderMarkdown escapes source text before adding formatting tags.
+			item.insertAdjacentHTML("afterbegin", renderMarkdown(part));
+			body.appendChild(item);
+		}
+	}
 	return details;
 }
 

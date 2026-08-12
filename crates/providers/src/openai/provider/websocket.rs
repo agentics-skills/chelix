@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    pin::Pin,
-};
+use std::pin::Pin;
 
 use {
     futures::{SinkExt, StreamExt},
@@ -13,13 +10,13 @@ use tracing::{debug, trace};
 
 use crate::{
     openai_compat::{
-        parse_openai_compat_usage, responses_output_index, split_responses_instructions_and_input,
-        to_responses_api_tools,
+        ResponsesEventResult, ResponsesStreamState, finalize_responses_stream,
+        process_responses_event, split_responses_instructions_and_input, to_responses_api_tools,
     },
     ws_pool,
 };
 
-use chelix_agents::model::{AgentToolControls, ChatMessage, StreamEvent, Usage};
+use chelix_agents::model::{AgentToolControls, ChatMessage, StreamEvent};
 
 use {super::OpenAiProvider, crate::openai::ResponsesWebSocketPolicy};
 
@@ -144,7 +141,7 @@ impl OpenAiProvider {
                 return;
             }
 
-            self.apply_reasoning_effort_responses(&mut response_payload);
+            self.apply_reasoning_responses(&mut response_payload);
 
             let create_event = serde_json::json!({
                 "type": "response.create",
@@ -167,13 +164,7 @@ impl OpenAiProvider {
                 return;
             }
 
-            let mut input_tokens: u32 = 0;
-            let mut output_tokens: u32 = 0;
-            let mut cache_read_tokens: u32 = 0;
-            let mut cache_write_tokens: u32 = 0;
-            let mut current_tool_index: usize = 0;
-            let mut tool_calls: HashMap<usize, (String, String)> = HashMap::new();
-            let mut completed_tool_calls: HashSet<usize> = HashSet::new();
+            let mut state = ResponsesStreamState::default();
             let mut clean_completion = false;
 
             while let Some(frame) = ws_stream.next().await {
@@ -186,94 +177,40 @@ impl OpenAiProvider {
                             return;
                         }
                         continue;
-                    }
+                    },
                     Ok(Message::Close(_)) => break,
                     Ok(_) => continue,
                     Err(err) => {
                         yield StreamEvent::Error(err.to_string());
                         return;
-                    }
+                    },
                 };
 
-                let Ok(evt) = serde_json::from_str::<serde_json::Value>(&text) else {
+                let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) else {
                     continue;
                 };
-                trace!(event = %evt, "openai websocket event");
+                trace!(event = %event, "openai websocket event");
 
-                match evt["type"].as_str().unwrap_or("") {
-                    "response.output_text.delta" => {
-                        if let Some(delta) = evt["delta"].as_str()
-                            && !delta.is_empty()
-                        {
-                            yield StreamEvent::Delta(delta.to_string());
-                        }
-                    }
-                    "response.output_item.added"
-                        if evt["item"]["type"].as_str() == Some("function_call") =>
-                    {
-                        let id = evt["item"]["call_id"].as_str().unwrap_or("").to_string();
-                        let name = evt["item"]["name"].as_str().unwrap_or("").to_string();
-                        let index = responses_output_index(&evt, current_tool_index);
-                        current_tool_index = current_tool_index.max(index + 1);
-                        tool_calls.insert(index, (id.clone(), name.clone()));
-                        yield StreamEvent::ToolCallStart { id, name, index };
-                    }
-                    "response.function_call_arguments.delta" => {
-                        if let Some(delta) = evt["delta"].as_str()
-                            && !delta.is_empty()
-                        {
-                            let index = responses_output_index(&evt, current_tool_index.saturating_sub(1));
-                            yield StreamEvent::ToolCallArgumentsDelta {
-                                index,
-                                delta: delta.to_string(),
-                            };
-                        }
-                    }
-                    "response.function_call_arguments.done" => {
-                        let index = responses_output_index(&evt, current_tool_index.saturating_sub(1));
-                        if completed_tool_calls.insert(index) {
-                            yield StreamEvent::ToolCallComplete { index };
-                        }
-                    }
-                    "response.completed" => {
-                        if let Some(usage) = evt.get("response").and_then(|response| response.get("usage")) {
-                            let parsed = parse_openai_compat_usage(usage);
-                            input_tokens = parsed.input_tokens;
-                            output_tokens = parsed.output_tokens;
-                            cache_read_tokens = parsed.cache_read_tokens;
-                            cache_write_tokens = parsed.cache_write_tokens;
-                        }
-                        let mut pending: Vec<usize> = tool_calls.keys().copied().collect();
-                        pending.sort_unstable();
-                        for index in pending {
-                            if completed_tool_calls.insert(index) {
-                                yield StreamEvent::ToolCallComplete { index };
-                            }
+                match process_responses_event(event, &mut state) {
+                    ResponsesEventResult::Completed(events) => {
+                        for event in events {
+                            yield event;
                         }
                         clean_completion = true;
                         break;
-                    }
-                    "error" | "response.failed" => {
-                        let msg = evt["error"]["message"]
-                            .as_str()
-                            .or_else(|| evt["response"]["error"]["message"].as_str())
-                            .or_else(|| evt["message"].as_str())
-                            .unwrap_or("unknown error");
-                        yield StreamEvent::Error(msg.to_string());
+                    },
+                    ResponsesEventResult::Failed(events) => {
+                        for event in events {
+                            yield event;
+                        }
                         return;
-                    }
-                    _ => {}
-                }
-            }
-
-            // Emit any remaining tool-call completions (fallback for broken streams).
-            if !clean_completion {
-                let mut pending: Vec<usize> = tool_calls.keys().copied().collect();
-                pending.sort_unstable();
-                for index in pending {
-                    if completed_tool_calls.insert(index) {
-                        yield StreamEvent::ToolCallComplete { index };
-                    }
+                    },
+                    ResponsesEventResult::Events(events) => {
+                        for event in events {
+                            yield event;
+                        }
+                    },
+                    ResponsesEventResult::Skip => {},
                 }
             }
 
@@ -284,12 +221,9 @@ impl OpenAiProvider {
                     .await;
             }
 
-            yield StreamEvent::Done(Usage {
-                input_tokens,
-                output_tokens,
-                cache_read_tokens,
-                cache_write_tokens,
-            });
+            for event in finalize_responses_stream(&mut state) {
+                yield event;
+            }
         })
     }
 }

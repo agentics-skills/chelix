@@ -13,8 +13,8 @@ mod tests;
 
 pub use {
     helpers::{
-        AgentLoopLimits, AgentRunError, AgentRunResult, ContextCompactionRequest, FinalTextSource,
-        OnEvent, RunnerEvent, RunnerToolCall,
+        AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
+        ContextCompactionRequest, FinalTextSource, OnEvent, RunnerEvent, RunnerToolCall,
     },
     non_streaming::{run_agent, run_agent_loop_with_context_and_limits},
     streaming::run_agent_loop_streaming_with_limits,

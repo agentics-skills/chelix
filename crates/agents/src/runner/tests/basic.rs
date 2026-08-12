@@ -102,7 +102,7 @@ async fn test_simple_text_response() {
     let result = run_agent_loop(provider, &tools, "You are a test bot.", &uc, None, None)
         .await
         .unwrap();
-    assert_eq!(result.text, "Hello!");
+    assert_eq!(result.output.text, "Hello!");
     assert_eq!(result.iterations, 1);
     assert_eq!(result.tool_calls_made, 0);
 }
@@ -192,7 +192,7 @@ async fn test_non_streaming_runner_does_not_use_tools_path_for_empty_schema_list
     .await
     .unwrap();
 
-    assert_eq!(result.text, "no tools");
+    assert_eq!(result.output.text, "no tools");
     assert_eq!(
         provider
             .complete_calls
@@ -300,7 +300,7 @@ async fn test_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "no tools");
+    assert_eq!(result.output.text, "no tools");
     assert_eq!(
         provider
             .stream_calls
@@ -313,6 +313,178 @@ async fn test_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
             .load(std::sync::atomic::Ordering::SeqCst),
         0
     );
+}
+
+#[derive(Clone, Copy)]
+enum TerminalResponsesOutput {
+    VisibleReasoning,
+    OpaqueReasoning,
+}
+
+struct IterationOwnedResponsesProvider {
+    stream_calls: std::sync::atomic::AtomicUsize,
+    terminal_output: TerminalResponsesOutput,
+}
+
+#[async_trait]
+impl LlmProvider for IterationOwnedResponsesProvider {
+    fn name(&self) -> &str {
+        "iteration-owned-responses"
+    }
+
+    fn id(&self) -> &str {
+        "iteration-owned-responses-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[serde_json::Value],
+    ) -> Result<CompletionResponse> {
+        anyhow::bail!("streaming runner must not call complete")
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::iter(self.terminal_events()))
+    }
+
+    fn stream_with_tools_and_options(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+        _options: AgentToolControls,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        let call = self
+            .stream_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            return Box::pin(tokio_stream::iter(vec![
+                StreamEvent::Delta("Answer owned by the tool iteration.".into()),
+                StreamEvent::ToolCallStart {
+                    id: "call_iteration_owned".into(),
+                    name: "echo_tool".into(),
+                    index: 0,
+                },
+                StreamEvent::ToolCallArgumentsDelta {
+                    index: 0,
+                    delta: r#"{"text":"hello"}"#.into(),
+                },
+                StreamEvent::ToolCallComplete { index: 0 },
+                StreamEvent::Done(Usage::default()),
+            ]));
+        }
+        Box::pin(tokio_stream::iter(self.terminal_events()))
+    }
+}
+
+impl IterationOwnedResponsesProvider {
+    fn terminal_events(&self) -> Vec<StreamEvent> {
+        let mut events = match self.terminal_output {
+            TerminalResponsesOutput::VisibleReasoning => {
+                vec![StreamEvent::ResponsesReasoningDelta {
+                    item_id: "rs_terminal".into(),
+                    output_index: 0,
+                    summary_index: 0,
+                    delta: "Terminal iteration reasoning.".into(),
+                }]
+            },
+            TerminalResponsesOutput::OpaqueReasoning => {
+                vec![StreamEvent::ResponsesReasoningItem(
+                    chelix_common::ResponsesReasoningItem {
+                        id: "rs_terminal".into(),
+                        encrypted_content: "opaque-terminal".into(),
+                    },
+                )]
+            },
+        };
+        events.push(StreamEvent::Done(Usage::default()));
+        events
+    }
+}
+
+async fn run_iteration_owned_responses_provider(
+    terminal_output: TerminalResponsesOutput,
+) -> AgentRunResult {
+    let provider = Arc::new(IterationOwnedResponsesProvider {
+        stream_calls: std::sync::atomic::AtomicUsize::new(0),
+        terminal_output,
+    });
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(EchoTool));
+
+    run_agent_loop_streaming(
+        provider,
+        &tools,
+        "You are a test bot.",
+        &UserContent::text("Use the tool."),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn test_reasoning_only_terminal_iteration_is_a_new_segment() {
+    let result =
+        run_iteration_owned_responses_provider(TerminalResponsesOutput::VisibleReasoning).await;
+
+    assert_eq!(result.output.text, "");
+    assert_eq!(
+        result.output.reasoning,
+        Some(chelix_common::ReasoningContent::Parts(vec![
+            "Terminal iteration reasoning.".to_string(),
+        ]))
+    );
+    assert!(result.output.responses_reasoning.is_empty());
+    assert_eq!(
+        result.final_text_source,
+        super::super::FinalTextSource::NewSegment
+    );
+    assert_eq!(result.iterations, 2);
+}
+
+#[tokio::test]
+async fn test_opaque_only_terminal_iteration_is_a_new_segment() {
+    let result =
+        run_iteration_owned_responses_provider(TerminalResponsesOutput::OpaqueReasoning).await;
+
+    assert_eq!(result.output.text, "");
+    assert!(result.output.reasoning.is_none());
+    assert_eq!(result.output.responses_reasoning.len(), 1);
+    assert_eq!(result.output.responses_reasoning[0].id, "rs_terminal");
+    assert_eq!(
+        result.output.responses_reasoning[0].encrypted_content,
+        "opaque-terminal"
+    );
+    assert_eq!(
+        result.final_text_source,
+        super::super::FinalTextSource::NewSegment
+    );
+    assert_eq!(result.iterations, 2);
 }
 
 struct ToolCallContextStreamingProvider {
@@ -461,7 +633,7 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     .unwrap();
 
     assert_eq!(
-        result.text,
+        result.output.text,
         "The streaming tool context test completed successfully."
     );
     let captured = captured.lock().unwrap();
@@ -500,7 +672,7 @@ async fn test_non_streaming_runner_dispatches_before_agent_start_hook() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Hello!");
+    assert_eq!(result.output.text, "Hello!");
     let payloads = payloads.lock().unwrap();
     assert_eq!(payloads.len(), 1);
     assert!(matches!(
@@ -625,7 +797,7 @@ async fn test_before_llm_call_modify_payload_updates_non_streaming_messages() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "ok");
+    assert_eq!(result.output.text, "ok");
     let messages = recorded_messages.lock().unwrap();
     assert!(matches!(
         messages.first(),
@@ -658,7 +830,7 @@ async fn test_before_llm_call_modify_payload_updates_streaming_messages() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "ok");
+    assert_eq!(result.output.text, "ok");
     let messages = recorded_messages.lock().unwrap();
     assert!(matches!(
         messages.first(),
@@ -667,14 +839,16 @@ async fn test_before_llm_call_modify_payload_updates_streaming_messages() {
 }
 
 #[test]
-fn test_before_llm_call_modify_payload_keeps_original_when_invalid() {
+fn test_before_llm_call_modify_payload_rejects_invalid_messages() {
     let mut messages = vec![ChatMessage::system("original system")];
 
-    apply_before_llm_call_modify_payload(
+    let error = apply_before_llm_call_modify_payload(
         &mut messages,
         serde_json::json!({"messages": [{"role": "invalid", "content": "ignored"}]}),
-    );
+    )
+    .expect_err("invalid hook messages must fail");
 
+    assert!(error.to_string().contains("no valid messages"));
     assert_eq!(messages.len(), 1);
     assert!(matches!(
         messages.first(),
@@ -824,7 +998,7 @@ async fn test_streaming_runner_emits_final_text_chunks_live() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "cached reply");
+    assert_eq!(result.output.text, "cached reply");
     let final_chunks: Vec<String> = events
         .lock()
         .unwrap()
@@ -861,7 +1035,7 @@ async fn test_streaming_runner_preserves_cache_usage() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "cached reply");
+    assert_eq!(result.output.text, "cached reply");
     assert_eq!(result.iterations, 1);
     assert_eq!(result.tool_calls_made, 0);
     assert_eq!(result.usage.input_tokens, 13_047);
@@ -899,7 +1073,7 @@ async fn test_streaming_runner_dispatches_before_agent_start_hook() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "cached reply");
+    assert_eq!(result.output.text, "cached reply");
     let payloads = payloads.lock().unwrap();
     assert_eq!(payloads.len(), 1);
     assert!(matches!(
@@ -999,7 +1173,7 @@ async fn test_non_streaming_runner_preserves_total_and_request_cache_usage() {
         .await
         .unwrap();
 
-    assert_eq!(result.text, "Done with cache.");
+    assert_eq!(result.output.text, "Done with cache.");
     assert_eq!(result.iterations, 2);
     assert_eq!(result.tool_calls_made, 1);
     assert_eq!(result.usage.input_tokens, 140);
@@ -1025,7 +1199,7 @@ async fn test_tool_call_loop() {
         .await
         .unwrap();
 
-    assert_eq!(result.text, "Done!");
+    assert_eq!(result.output.text, "Done!");
     assert_eq!(result.iterations, 2);
     assert_eq!(result.tool_calls_made, 1);
 }
@@ -1146,7 +1320,11 @@ async fn test_execute_command_tool_end_to_end() {
     .await
     .unwrap();
 
-    assert!(result.text.contains("hello"), "got: {}", result.text);
+    assert!(
+        result.output.text.contains("hello"),
+        "got: {}",
+        result.output.text
+    );
     assert_eq!(result.iterations, 2);
     assert_eq!(result.tool_calls_made, 1);
 
@@ -1312,7 +1490,7 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
     .await
     .unwrap();
 
-    assert_eq!(result.text, "Hook rewrite was rejected.");
+    assert_eq!(result.output.text, "Hook rewrite was rejected.");
     assert_eq!(result.tool_calls_made, 1);
 
     let evts = events.lock().unwrap();
@@ -1376,7 +1554,11 @@ async fn test_text_based_tool_calling() {
     .await
     .unwrap();
 
-    assert!(result.text.contains("hello"), "got: {}", result.text);
+    assert!(
+        result.output.text.contains("hello"),
+        "got: {}",
+        result.output.text
+    );
     assert_eq!(result.iterations, 2, "should take 2 iterations");
     assert_eq!(result.tool_calls_made, 1, "should execute 1 tool call");
 
@@ -1506,7 +1688,11 @@ async fn test_native_text_function_tool_calling_non_streaming() {
     .await
     .unwrap();
 
-    assert!(result.text.contains("pwd"), "got: {}", result.text);
+    assert!(
+        result.output.text.contains("pwd"),
+        "got: {}",
+        result.output.text
+    );
     assert_eq!(result.iterations, 2, "should take 2 iterations");
     assert_eq!(result.tool_calls_made, 1, "should execute 1 tool call");
 
@@ -1587,7 +1773,7 @@ async fn test_vision_provider_tool_result_sanitized() {
     let result = run_agent_loop(provider, &tools, "You are a test bot.", &uc, None, None)
         .await
         .unwrap();
-    assert_eq!(result.text, "Screenshot processed successfully");
+    assert_eq!(result.output.text, "Screenshot processed successfully");
     assert_eq!(result.tool_calls_made, 1);
 }
 

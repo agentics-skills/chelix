@@ -406,7 +406,7 @@ async fn checkpoint_resume_does_not_repeat_original_user_message() {
     .await
     .expect("checkpoint resume should complete");
 
-    assert_eq!(result.text, "continued");
+    assert_eq!(result.output.text, "continued");
     let seen = provider
         .seen_messages
         .lock()

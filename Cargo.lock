@@ -2137,6 +2137,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chelix-common",
  "chelix-protocol",
  "serde_json",
  "thiserror 2.0.18",
@@ -2148,6 +2149,7 @@ dependencies = [
 name = "chelix-sessions"
 version = "0.1.0"
 dependencies = [
+ "chelix-common",
  "fd-lock",
  "serde",
  "serde_json",
@@ -2438,6 +2440,7 @@ dependencies = [
  "axum-extra",
  "base64 0.22.1",
  "chelix-channels",
+ "chelix-common",
  "chelix-config",
  "chelix-cron",
  "chelix-gateway",
