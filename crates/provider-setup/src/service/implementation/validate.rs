@@ -17,7 +17,7 @@ use {
         config_helpers::normalize_provider_name,
         custom_providers::{is_custom_provider, validation_provider_name_for_endpoint},
         key_store::parse_models_param,
-        known_providers::{AuthType, KnownProvider, known_providers},
+        known_providers::{KnownProvider, known_providers},
         provider_base_url::validate_provider_base_url,
     },
 };
@@ -59,15 +59,12 @@ impl LiveProviderSetupService {
                 .iter()
                 .find(|p| p.name == provider_name)
                 .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
-            // API key is required for api-key providers unless the provider
-            // marks the key as optional (local backends).
-            if info.auth_type == AuthType::ApiKey && !info.key_optional && api_key.is_none() {
+            if !info.key_optional && api_key.is_none() {
                 return Err("missing 'apiKey' parameter".into());
             }
             Some(KnownProvider {
                 name: info.name,
                 display_name: info.display_name,
-                auth_type: info.auth_type,
                 env_key: info.env_key,
                 default_base_url: info.default_base_url,
                 requires_model: info.requires_model,

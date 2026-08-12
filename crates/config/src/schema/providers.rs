@@ -27,22 +27,7 @@ pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
     "openrouter",
     "zai",
     "zai-code",
-    // Feature-gated providers
-    "openai-codex",
 ];
-
-/// OAuth provider configuration (e.g. openai-codex).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OAuthProviderConfig {
-    pub client_id: String,
-    pub auth_url: String,
-    pub token_url: String,
-    pub redirect_uri: String,
-    #[serde(default)]
-    pub scopes: Vec<String>,
-    #[serde(default)]
-    pub callback_port: u16,
-}
 
 /// LLM provider configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -384,28 +384,27 @@ fn providers_config_offered_controls_enablement() {
 #[test]
 fn providers_config_offered_matches_canonical_names_case_insensitively() {
     let config = ProvidersConfig {
-        offered: vec![" OpenAI-Codex ".into()],
+        offered: vec![" OpenRouter ".into()],
         ..ProvidersConfig::default()
     };
-    assert!(config.is_enabled("openai-codex"));
-    assert!(!config.is_enabled("openai_codex"));
+    assert!(config.is_enabled("openrouter"));
+    assert!(!config.is_enabled("open_router"));
 }
 
 #[test]
 fn providers_config_invalid_names_match_runtime_behavior() {
     let config = ProvidersConfig {
-        offered: vec!["claude".into(), "unsupported".into(), "openai_codex".into()],
+        offered: vec!["claude".into(), "unsupported".into(), "openai-codex".into()],
         ..ProvidersConfig::default()
     };
     assert_eq!(config.invalid_provider_names(), vec![
         ("providers.offered[0]".into(), "claude".into()),
         ("providers.offered[1]".into(), "unsupported".into()),
-        ("providers.offered[2]".into(), "openai_codex".into()),
+        ("providers.offered[2]".into(), "openai-codex".into()),
     ]);
     assert!(!config.is_enabled("claude"));
     assert!(!config.is_enabled("unsupported"));
     assert!(!config.is_enabled("openrouter"));
-    assert!(!config.is_enabled("openai_codex"));
     assert!(!config.is_enabled("openai-codex"));
 }
 
@@ -765,12 +764,12 @@ enabled = true
 base_url = "https://gmn.example.com/v1"
 wire_api = "responses"
 
-[providers.custom-mn.models."gpt-5.3-codex"]
+[providers.custom-mn.models."gpt-5.3"]
 context_length = 400000
 max_input_tokens = 272000
 max_output_tokens = 128000
 
-[providers.custom-mn.models."gpt-5.3-codex".reasoning]
+[providers.custom-mn.models."gpt-5.3".reasoning]
 supported_efforts = ["low", "medium", "high"]
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();

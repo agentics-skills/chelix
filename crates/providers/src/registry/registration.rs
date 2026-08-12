@@ -5,12 +5,12 @@ use std::{collections::HashMap, sync::Arc};
 use {
     chelix_agents::model::LlmProvider,
     chelix_common::ModelConfigMap,
-    chelix_config::schema::{ProviderEntry, ProviderStreamTransport, ProvidersConfig},
+    chelix_config::schema::{ProviderEntry, ProvidersConfig},
     secrecy::ExposeSecret,
 };
 
 use crate::{
-    config_helpers::{env_value, oauth_discovery_enabled, resolve_api_key},
+    config_helpers::{env_value, resolve_api_key},
     discovered_model::{ResolvedModel, resolve_models},
     model_capabilities::ModelInfo,
     model_catalogs::{OPENAI_COMPAT_PROVIDERS, OpenAiCompatDef},
@@ -99,7 +99,6 @@ impl ProviderRegistry {
         registry.register_openai(config, env_overrides, discovery);
         registry.register_openai_compatible(config, env_overrides, discovery);
         registry.register_custom(config, discovery);
-        registry.register_openai_codex(config, discovery);
         registry
     }
 
@@ -134,11 +133,6 @@ impl ProviderRegistry {
                 self.remove_provider(name);
                 self.register_one_custom(config, discovery, name);
             }
-        }
-        #[cfg(feature = "provider-openai-codex")]
-        if discovery.models.contains_key("openai-codex") {
-            self.remove_provider(&provider_label(config, "openai-codex"));
-            self.register_openai_codex(config, discovery);
         }
         self.models
             .iter()
@@ -316,42 +310,6 @@ impl ProviderRegistry {
                 &entry,
             ))
         })
-    }
-
-    #[cfg(feature = "provider-openai-codex")]
-    fn register_openai_codex(
-        &mut self,
-        config: &ProvidersConfig,
-        discovery: &DiscoveryResult,
-    ) -> usize {
-        if !oauth_discovery_enabled(config, "openai-codex")
-            || !crate::openai_codex::has_stored_tokens()
-        {
-            return 0;
-        }
-        let provider_name = provider_label(config, "openai-codex");
-        let transport = config
-            .get("openai-codex")
-            .map(|entry| entry.stream_transport)
-            .unwrap_or(ProviderStreamTransport::Sse);
-        let models = resolved_models(config, discovery, "openai-codex");
-        self.register_resolved(&provider_name, models, move |model_id| {
-            Arc::new(
-                crate::openai_codex::OpenAiCodexProvider::new_with_transport(
-                    model_id.to_string(),
-                    transport,
-                ),
-            )
-        })
-    }
-
-    #[cfg(not(feature = "provider-openai-codex"))]
-    fn register_openai_codex(
-        &mut self,
-        _config: &ProvidersConfig,
-        _discovery: &DiscoveryResult,
-    ) -> usize {
-        0
     }
 }
 

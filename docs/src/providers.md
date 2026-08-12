@@ -14,12 +14,6 @@ Configure providers through the web UI or directly in configuration files.
 | **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools, model discovery                                |
 | **Z.AI Coding Plan** | `zai-code`   | `Z_CODE_API_KEY`     | Streaming, tools, model discovery (Coding plan billing endpoint) |
 
-### OAuth Providers
-
-| Provider         | Config Name    | Notes                 |
-| ---------------- | -------------- | --------------------- |
-| **OpenAI Codex** | `openai-codex` | OAuth flow via web UI |
-
 ### Custom OpenAI-Compatible
 
 Any OpenAI-compatible endpoint can be added with a `custom-` prefix. This is
@@ -159,40 +153,6 @@ Each provider supports these options:
 
 1. Get an API key from [platform.openai.com](https://platform.openai.com/).
 2. Set `OPENAI_API_KEY` in your environment.
-
-### OpenAI Codex
-
-OpenAI Codex uses OAuth-based access.
-
-1. Go to **Settings** → **Providers** → **OpenAI Codex**.
-2. Click **Connect** and complete the auth flow.
-3. Choose a Codex model.
-
-If the browser cannot reach `localhost:1455`, Chelix now supports a manual
-fallback in both **Settings** and **Onboarding**: paste the callback URL (or
-`code#state`) into the OAuth panel and submit it.
-
-```admonish note title="Docker and cloud deployments"
-The OAuth flow redirects your browser to `localhost:1455`. In Docker, make sure
-port 1455 is published (`-p 1455:1455`). On cloud platforms where `localhost`
-cannot reach the server, authenticate via the CLI instead:
-
-~~~bash
-# Docker
-docker exec -it chelix chelix auth login --provider openai-codex
-~~~
-
-The CLI opens a browser on your machine and handles the callback locally. If
-automatic callback capture fails, the CLI prompts you to paste the callback URL
-(or `code#state`) directly in the terminal.
-Tokens are saved to the config volume and picked up by the gateway automatically.
-```
-
-Once OpenAI Codex OAuth is connected, agents can use the built-in
-`generate_image` tool to create `gpt-image-2` images without an
-`OPENAI_API_KEY`. Generated images are delivered through the same channel media
-path as screenshots, so supported chat channels receive the image as a native
-attachment.
 
 ## Switching Models
 

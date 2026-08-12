@@ -9,10 +9,6 @@ pub mod model_capabilities;
 pub mod model_catalogs;
 pub mod model_id;
 pub mod openai;
-#[cfg(feature = "provider-openai-codex")]
-pub mod openai_codex;
-#[cfg(feature = "provider-openai-codex")]
-pub mod openai_codex_image;
 pub mod openai_compat;
 pub mod registry;
 pub mod ws_pool;
@@ -24,8 +20,8 @@ pub use client::{init_shared_http_client, shared_http_client};
 
 #[allow(unused_imports)]
 pub(crate) use config_helpers::{
-    configured_models_for_provider, env_value, normalize_unique_models, oauth_discovery_enabled,
-    resolve_api_key, should_fetch_models, subscription_preference_rank,
+    configured_models_for_provider, env_value, normalize_unique_models, resolve_api_key,
+    should_fetch_models,
 };
 #[allow(unused_imports)]
 pub(crate) use http::{retry_after_ms_from_headers, with_retry_after_marker};

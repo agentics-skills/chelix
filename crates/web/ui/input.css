@@ -265,17 +265,6 @@
     font-size: 0.8rem;
     opacity: 0.85;
   }
-  .error-countdown {
-    flex-shrink: 0;
-    font-size: 0.75rem;
-    color: var(--muted);
-    white-space: nowrap;
-    align-self: center;
-  }
-  .error-countdown.reset-ready {
-    color: var(--success, #22c55e);
-    font-weight: 600;
-  }
   .msg.thinking {
     background: var(--assistant-bg);
     border: 1px solid var(--assistant-border);

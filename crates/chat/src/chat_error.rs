@@ -28,7 +28,6 @@ pub fn parse_agent_run_error(
             "The next batch requests {requested} tool calls after {used} of {threshold} have been used. Send a new message to continue."
         ),
         None,
-        None,
         Some(serde_json::json!({
             "threshold": threshold,
             "used": used,
@@ -48,8 +47,7 @@ pub fn parse_agent_run_error(
 }
 
 /// Parse a raw error string into a structured error object with `type`, `icon`,
-/// `title`, `detail`, and optionally `provider`, `resetsAt`, and
-/// `retryAfterMs` fields.
+/// `title`, `detail`, and optionally `provider` and `retryAfterMs` fields.
 pub fn parse_chat_error(raw: &str, provider_name: Option<&str>) -> Value {
     let mut error = try_parse_known_error(raw);
 
@@ -64,7 +62,7 @@ pub fn parse_chat_error(raw: &str, provider_name: Option<&str>) -> Value {
 
 fn try_parse_known_error(raw: &str) -> Value {
     if raw.starts_with("agent run timed out after ") {
-        return build_error("timeout", "", "Timed out", raw, None, None, None);
+        return build_error("timeout", "", "Timed out", raw, None, None);
     }
 
     let http_status = extract_http_status(raw);
@@ -74,24 +72,6 @@ fn try_parse_known_error(raw: &str) -> Value {
         && let Ok(parsed) = serde_json::from_str::<Value>(&raw[start..])
     {
         let err_obj = parsed.get("error").unwrap_or(&parsed);
-
-        // Usage limit
-        if matches_type_or_message(err_obj, "usage_limit_reached", "usage limit") {
-            let plan_type = err_obj
-                .get("plan_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("current");
-            let resets_at = extract_resets_at(err_obj);
-            return build_error(
-                "usage_limit_reached",
-                "",
-                "Usage limit reached",
-                &format!("Your {} plan limit has been reached.", plan_type),
-                resets_at,
-                None,
-                Some(serde_json::json!({ "planType": plan_type })),
-            );
-        }
 
         // Billing / quota exhaustion (not transient rate limiting).
         if is_insufficient_quota_error(err_obj, raw) {
@@ -103,7 +83,6 @@ fn try_parse_known_error(raw: &str) -> Value {
                 "\u{26A0}\u{FE0F}",
                 "Insufficient quota",
                 detail,
-                None,
                 None,
                 None,
             );
@@ -118,14 +97,12 @@ fn try_parse_known_error(raw: &str) -> Value {
                 .get("message")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Too many requests. Please wait a moment.");
-            let resets_at = extract_resets_at(err_obj);
             let retry_after_ms = extract_retry_after_ms(raw, err_obj);
             return build_error(
                 "rate_limit_exceeded",
                 "\u{26A0}\u{FE0F}",
                 "Rate limited",
                 detail,
-                resets_at,
                 retry_after_ms,
                 None,
             );
@@ -142,21 +119,12 @@ fn try_parse_known_error(raw: &str) -> Value {
                 msg,
                 None,
                 None,
-                None,
             );
         }
 
         // Generic JSON error with a message field
         if let Some(msg) = err_obj.get("message").and_then(|v| v.as_str()) {
-            return build_error(
-                "api_error",
-                "\u{26A0}\u{FE0F}",
-                "Error",
-                msg,
-                None,
-                None,
-                None,
-            );
+            return build_error("api_error", "\u{26A0}\u{FE0F}", "Error", msg, None, None);
         }
     }
 
@@ -167,7 +135,6 @@ fn try_parse_known_error(raw: &str) -> Value {
             "\u{26A0}\u{FE0F}",
             "Insufficient quota",
             raw,
-            None,
             None,
             None,
         );
@@ -183,7 +150,6 @@ fn try_parse_known_error(raw: &str) -> Value {
                     "Your session may have expired or credentials are invalid.",
                     None,
                     None,
-                    None,
                 );
             },
             404 => {
@@ -192,7 +158,6 @@ fn try_parse_known_error(raw: &str) -> Value {
                     "\u{26A0}\u{FE0F}",
                     "Model not found",
                     "The requested model was not found. Check that the model name is correct and is available at the endpoint.",
-                    None,
                     None,
                     None,
                 );
@@ -204,7 +169,6 @@ fn try_parse_known_error(raw: &str) -> Value {
                     "",
                     "Rate limited",
                     "Too many requests. Please wait a moment and try again.",
-                    None,
                     retry_after_ms,
                     None,
                 );
@@ -215,7 +179,6 @@ fn try_parse_known_error(raw: &str) -> Value {
                     "\u{1F6A8}",
                     "Server error",
                     "The upstream provider returned an error. Please try again later.",
-                    None,
                     None,
                     None,
                 );
@@ -232,20 +195,11 @@ fn try_parse_known_error(raw: &str) -> Value {
             raw,
             None,
             None,
-            None,
         );
     }
 
     // Default: pass through raw message.
-    build_error(
-        "unknown",
-        "\u{26A0}\u{FE0F}",
-        "Error",
-        raw,
-        None,
-        None,
-        None,
-    )
+    build_error("unknown", "\u{26A0}\u{FE0F}", "Error", raw, None, None)
 }
 
 fn extract_message(obj: &Value) -> Option<&str> {
@@ -329,10 +283,6 @@ fn is_insufficient_quota_error(obj: &Value, raw: &str) -> bool {
     }
 
     raw.to_ascii_lowercase().contains("insufficient_quota")
-}
-
-fn extract_resets_at(obj: &Value) -> Option<u64> {
-    obj.get("resets_at").and_then(|v| v.as_u64())
 }
 
 fn parse_retry_delay_ms_from_fragment(
@@ -419,7 +369,6 @@ fn build_error(
     icon: &str,
     title: &str,
     detail: &str,
-    resets_at: Option<u64>,
     retry_after_ms: Option<u64>,
     detail_params: Option<Value>,
 ) -> Value {
@@ -440,10 +389,6 @@ fn build_error(
         if let Some(params) = detail_params {
             map.insert("detail_params".into(), params);
         }
-        if let Some(ts) = resets_at {
-            // Send as milliseconds for the frontend.
-            map.insert("resetsAt".into(), Value::Number((ts * 1000).into()));
-        }
         if let Some(delay) = retry_after_ms {
             map.insert("retryAfterMs".into(), Value::Number(delay.into()));
         }
@@ -453,10 +398,6 @@ fn build_error(
 
 fn translation_keys_for(error_type: &str) -> (Option<&'static str>, Option<&'static str>) {
     match error_type {
-        "usage_limit_reached" => (
-            Some("errors:chat.usageLimitReached.title"),
-            Some("errors:chat.usageLimitReached.detail"),
-        ),
         "rate_limit_exceeded" => (
             Some("errors:chat.rateLimited.title"),
             Some("errors:chat.rateLimited.detail"),
@@ -493,28 +434,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_usage_limit_json() {
-        let raw = r#"Provider error: {"error":{"type":"usage_limit_reached","plan_type":"plus","resets_at":1769972721,"message":"Usage limit reached"}}"#;
-        let result = parse_chat_error(raw, Some("openai-codex"));
-        assert_eq!(result["type"], "usage_limit_reached");
-        assert_eq!(result["title"], "Usage limit reached");
-        assert!(result["detail"].as_str().unwrap().contains("plus"));
-        assert_eq!(result["title_key"], "errors:chat.usageLimitReached.title");
-        assert_eq!(result["detail_key"], "errors:chat.usageLimitReached.detail");
-        assert_eq!(result["detail_params"]["planType"], "plus");
-        assert_eq!(result["resetsAt"], 1769972721000u64);
-        assert_eq!(result["provider"], "openai-codex");
-    }
-
-    #[test]
     fn test_rate_limit_json() {
-        let raw = r#"{"type":"rate_limit_exceeded","message":"Rate limit exceeded, retry after 30s","resets_at":1700000000}"#;
+        let raw =
+            r#"{"type":"rate_limit_exceeded","message":"Rate limit exceeded, retry after 30s"}"#;
         let result = parse_chat_error(raw, None);
         assert_eq!(result["type"], "rate_limit_exceeded");
         assert_eq!(result["title"], "Rate limited");
         assert_eq!(result["title_key"], "errors:chat.rateLimited.title");
         assert_eq!(result["detail_key"], "errors:chat.rateLimited.detail");
-        assert_eq!(result["resetsAt"], 1700000000000u64);
         assert_eq!(result["retryAfterMs"], 30000u64);
     }
 
@@ -631,13 +558,6 @@ mod tests {
     }
 
     #[test]
-    fn test_no_resets_at_when_absent() {
-        let raw = r#"{"type":"rate_limit_exceeded","message":"slow down"}"#;
-        let result = parse_chat_error(raw, None);
-        assert!(result.get("resetsAt").is_none());
-    }
-
-    #[test]
     fn test_retry_after_seconds_field_maps_to_retry_after_ms() {
         let raw = r#"{"type":"rate_limit_exceeded","message":"slow down","retry_after_seconds":9}"#;
         let result = parse_chat_error(raw, None);
@@ -645,19 +565,11 @@ mod tests {
     }
 
     #[test]
-    fn test_usage_limit_message_substring() {
-        let raw = r#"{"message":"You have hit the usage limit for your plan"}"#;
-        let result = parse_chat_error(raw, None);
-        assert_eq!(result["type"], "usage_limit_reached");
-    }
-
-    #[test]
     fn test_unsupported_model_from_detail() {
-        let raw = r#"openai-codex API error HTTP 400: {"detail":"The 'gpt-5.3' model is not supported when using Codex with a ChatGPT account."}"#;
-        let result = parse_chat_error(raw, Some("openai-codex"));
+        let raw = r#"Provider API error HTTP 400: {"detail":"The 'gpt-5.3' model is not supported for this account."}"#;
+        let result = parse_chat_error(raw, None);
         assert_eq!(result["type"], "unsupported_model");
         assert_eq!(result["title"], "Model not supported");
-        assert_eq!(result["provider"], "openai-codex");
     }
 
     #[test]

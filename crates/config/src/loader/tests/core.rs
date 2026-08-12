@@ -26,8 +26,8 @@ fn parse_env_value_string() {
 #[test]
 fn parse_env_value_json_array() {
     assert_eq!(
-        parse_env_value("[\"openai\",\"openai-codex\"]"),
-        serde_json::json!(["openai", "openai-codex"])
+        parse_env_value("[\"openai\",\"openrouter\"]"),
+        serde_json::json!(["openai", "openrouter"])
     );
 }
 
@@ -135,10 +135,10 @@ fn apply_env_overrides_mcp_request_timeout() {
 fn apply_env_overrides_providers_offered_array() {
     let vars = vec![(
         "CHELIX_PROVIDERS__OFFERED".into(),
-        "[\"openai\",\"openai-codex\"]".into(),
+        "[\"openai\",\"openrouter\"]".into(),
     )];
     let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
-    assert_eq!(config.providers.offered, vec!["openai", "openai-codex"]);
+    assert_eq!(config.providers.offered, vec!["openai", "openrouter"]);
 }
 
 #[test]
@@ -157,7 +157,13 @@ fn apply_env_overrides_rejects_unknown_offered_provider() {
 
 #[test]
 fn apply_env_overrides_rejects_noncanonical_offered_provider_names() {
-    for name in ["claude", "google", "alibaba", "openai_codex"] {
+    for name in [
+        "claude",
+        "google",
+        "alibaba",
+        "openai_codex",
+        "openai-codex",
+    ] {
         let vars = vec![("CHELIX_PROVIDERS__OFFERED".into(), format!("[\"{name}\"]"))];
         let error =
             apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
@@ -184,7 +190,13 @@ fn parse_config_rejects_unknown_provider_section() {
 
 #[test]
 fn parse_config_rejects_noncanonical_offered_provider_names() {
-    for name in ["claude", "google", "alibaba", "openai_codex"] {
+    for name in [
+        "claude",
+        "google",
+        "alibaba",
+        "openai_codex",
+        "openai-codex",
+    ] {
         let raw = format!("[providers]\noffered = [\"{name}\"]\n");
         let error = parse_config(&raw, std::path::Path::new("chelix.toml"))
             .expect_err("noncanonical offered provider must fail");

@@ -24,7 +24,6 @@ interface ParsedError {
 	icon: string;
 	title: string;
 	detail: string;
-	resetsAt: number | null;
 	provider?: string;
 }
 
@@ -34,7 +33,6 @@ interface StructuredError {
 	detail?: string;
 	message?: string;
 	provider?: string;
-	resetsAt?: number | null;
 	title_key?: string;
 	detail_key?: string;
 	title_params?: Record<string, unknown>;
@@ -438,18 +436,13 @@ export function formatBytes(b: number): string {
 	return `${b} B`;
 }
 
-function getResetsAtMs(errObj: Record<string, unknown>): number | null {
-	return (errObj.resetsAt as number | null) || (errObj.resets_at ? (errObj.resets_at as number) * 1000 : null);
-}
-
-function classifyStructuredError(errObj: Record<string, unknown>, resetsAt: number | null): ParsedError | null {
+function classifyStructuredError(errObj: Record<string, unknown>): ParsedError | null {
 	if (!(errObj.title_key || errObj.detail_key)) return null;
 	const result = localizeStructuredError({
 		icon: (errObj.icon as string) || "\u26A0\uFE0F",
 		title: (errObj.title as string) || t("errors:generic.title"),
 		detail: (errObj.detail as string) || (errObj.message as string) || "",
 		provider: errObj.provider as string | undefined,
-		resetsAt: resetsAt,
 		title_key: errObj.title_key as string | undefined,
 		detail_key: errObj.detail_key as string | undefined,
 		title_params: errObj.title_params as Record<string, unknown> | undefined,
@@ -461,25 +454,10 @@ function classifyStructuredError(errObj: Record<string, unknown>, resetsAt: numb
 		title: result.title || t("errors:generic.title"),
 		detail: result.detail || "",
 		provider: result.provider,
-		resetsAt: result.resetsAt ?? null,
 	};
 }
 
-function classifyUsageLimitError(errObj: Record<string, unknown>, resetsAt: number | null): ParsedError | null {
-	if (
-		!(errObj.type === "usage_limit_reached" || (errObj.message && String(errObj.message).indexOf("usage limit") !== -1))
-	) {
-		return null;
-	}
-	return {
-		icon: "",
-		title: t("errors:usageLimitReached.title"),
-		detail: t("errors:usageLimitReached.detail", { planType: (errObj.plan_type as string) || "current" }),
-		resetsAt: resetsAt,
-	};
-}
-
-function classifyRateLimitError(errObj: Record<string, unknown>, resetsAt: number | null): ParsedError | null {
+function classifyRateLimitError(errObj: Record<string, unknown>): ParsedError | null {
 	if (
 		!(errObj.type === "rate_limit_exceeded" || (errObj.message && String(errObj.message).indexOf("rate limit") !== -1))
 	) {
@@ -489,18 +467,15 @@ function classifyRateLimitError(errObj: Record<string, unknown>, resetsAt: numbe
 		icon: "\u26A0\uFE0F",
 		title: t("errors:rateLimited.title"),
 		detail: (errObj.message as string) || t("errors:rateLimited.detail"),
-		resetsAt: resetsAt,
 	};
 }
 
 function classifyJsonErrorObj(errObj: Record<string, unknown>): ParsedError | null {
-	const resetsAt = getResetsAtMs(errObj);
 	return (
-		classifyStructuredError(errObj, resetsAt) ||
-		classifyUsageLimitError(errObj, resetsAt) ||
-		classifyRateLimitError(errObj, resetsAt) ||
+		classifyStructuredError(errObj) ||
+		classifyRateLimitError(errObj) ||
 		(errObj.message
-			? { icon: "\u26A0\uFE0F", title: t("errors:generic.title"), detail: errObj.message as string, resetsAt: null }
+			? { icon: "\u26A0\uFE0F", title: t("errors:generic.title"), detail: errObj.message as string }
 			: null)
 	);
 }
@@ -525,21 +500,18 @@ function parseHttpStatusError(message: string): ParsedError | null {
 			icon: "\uD83D\uDD12",
 			title: t("errors:authError.title"),
 			detail: t("errors:authError.detail"),
-			resetsAt: null,
 		};
 	if (code === 429)
 		return {
 			icon: "",
 			title: t("errors:rateLimited.title"),
 			detail: t("errors:rateLimited.detailShort"),
-			resetsAt: null,
 		};
 	if (code >= 500)
 		return {
 			icon: "\uD83D\uDEA8",
 			title: t("errors:serverError.title"),
 			detail: t("errors:serverError.detail"),
-			resetsAt: null,
 		};
 	return null;
 }
@@ -551,26 +523,8 @@ export function parseErrorMessage(message: string): ParsedError {
 			icon: "\u26A0\uFE0F",
 			title: t("errors:generic.title"),
 			detail: message,
-			resetsAt: null,
 		}
 	);
-}
-
-export function updateCountdown(el: HTMLElement, resetsAtMs: number): boolean {
-	const now = Date.now();
-	const diff = resetsAtMs - now;
-	if (diff <= 0) {
-		el.textContent = t("errors:countdown.resetReady");
-		el.className = "error-countdown reset-ready";
-		return true;
-	}
-	const hours = Math.floor(diff / 3600000);
-	const mins = Math.floor((diff % 3600000) / 60000);
-	const parts: string[] = [];
-	if (hours > 0) parts.push(`${hours}h`);
-	parts.push(`${mins}m`);
-	el.textContent = t("errors:countdown.resetsIn", { time: parts.join(" ") });
-	return false;
 }
 
 function summarizeCommandTool(args: ToolCallArgs): string {

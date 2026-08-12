@@ -2,12 +2,11 @@
 
 use {
     super::*,
-    crate::{KeyStore, known_providers::AuthType},
+    crate::KeyStore,
     chelix_config::schema::{
         ModelConfigMap, ModelModality, PartialModelMetadata, PartialReasoningMetadata,
         ProviderEntry, ProvidersConfig,
     },
-    chelix_oauth::{OAuthTokens, TokenStore},
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{NoopProviderSetupService, ProviderSetupService},
     std::{collections::HashMap, sync::Arc},
@@ -110,16 +109,14 @@ async fn disabled_provider_is_not_reported_configured() {
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let provider = known_providers()
         .into_iter()
-        .find(|p| p.name == "openai-codex")
-        .expect("openai-codex should exist");
+        .find(|p| p.name == "openai")
+        .expect("openai should exist");
 
     let mut config = ProvidersConfig::default();
-    config
-        .providers
-        .insert("openai-codex".into(), ProviderEntry {
-            enabled: false,
-            ..Default::default()
-        });
+    config.providers.insert("openai".into(), ProviderEntry {
+        enabled: false,
+        ..Default::default()
+    });
 
     assert!(!svc.is_provider_configured(&provider, &config));
 }
@@ -138,7 +135,6 @@ async fn live_service_lists_providers() {
     let first = &arr[0];
     assert!(first.get("name").is_some());
     assert!(first.get("displayName").is_some());
-    assert!(first.get("authType").is_some());
     assert!(first.get("configured").is_some());
     // New fields for endpoint and model configuration
     assert!(first.get("defaultBaseUrl").is_some());
@@ -212,7 +208,7 @@ async fn available_respects_offered_order() {
         &HashMap::new(),
     )));
     let config = ProvidersConfig {
-        offered: vec!["openai-codex".into(), "openai".into(), "openrouter".into()],
+        offered: vec!["openrouter".into(), "openai".into(), "zai".into()],
         ..ProvidersConfig::default()
     };
     let svc = live_provider_setup_service(registry, config, None);
@@ -225,21 +221,21 @@ async fn available_respects_offered_order() {
         .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
         .collect();
 
-    let openai_codex_idx = names
-        .iter()
-        .position(|name| *name == "openai-codex")
-        .expect("openai-codex should be present");
-    let openai_idx = names
-        .iter()
-        .position(|name| *name == "openai")
-        .expect("openai should be present");
     let openrouter_idx = names
         .iter()
         .position(|name| *name == "openrouter")
         .expect("openrouter should be present");
+    let openai_idx = names
+        .iter()
+        .position(|name| *name == "openai")
+        .expect("openai should be present");
+    let zai_idx = names
+        .iter()
+        .position(|name| *name == "zai")
+        .expect("zai should be present");
 
     assert!(
-        openai_codex_idx < openai_idx && openai_idx < openrouter_idx,
+        openrouter_idx < openai_idx && openai_idx < zai_idx,
         "offered provider order should be preserved, got: {names:?}"
     );
 }
@@ -278,48 +274,6 @@ async fn available_hides_configured_provider_outside_offered() {
         "providers outside offered should be hidden even when configured, got: {names:?}"
     );
     assert_eq!(openai_idx, 0);
-}
-
-#[tokio::test]
-async fn available_includes_subscription_provider_with_oauth_token_outside_offered() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let token_store = TokenStore::with_path(dir.path().join("oauth_tokens.json"));
-    token_store
-        .save("openai-codex", &OAuthTokens {
-            access_token: Secret::new("token".to_string()),
-            refresh_token: None,
-            id_token: None,
-            account_id: None,
-            expires_at: None,
-        })
-        .expect("save oauth token");
-
-    let key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
-    let config = ProvidersConfig {
-        offered: vec!["openai".into()],
-        ..ProvidersConfig::default()
-    };
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let mut svc = live_provider_setup_service(registry, config, None);
-    svc.token_store = token_store;
-    svc.key_store = key_store;
-
-    let result = svc.available().await.unwrap();
-    let arr = result
-        .as_array()
-        .expect("providers.available should return array");
-    let codex = arr
-        .iter()
-        .find(|v| v.get("name").and_then(|n| n.as_str()) == Some("openai-codex"))
-        .expect("openai-codex should be present when oauth token exists");
-    assert_eq!(
-        codex.get("configured").and_then(|v| v.as_bool()),
-        Some(true)
-    );
 }
 
 #[tokio::test]
@@ -619,201 +573,6 @@ async fn validate_key_rejects_custom_completion_endpoint_base_url() {
 }
 
 #[tokio::test]
-async fn oauth_start_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .oauth_start(serde_json::json!({"provider": "nonexistent"}))
-        .await;
-    assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn oauth_start_ignores_redirect_uri_override_for_registered_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let result = svc
-        .oauth_start(serde_json::json!({
-            "provider": "openai-codex",
-            "redirectUri": "https://example.com/auth/callback",
-        }))
-        .await
-        .expect("oauth start should succeed");
-
-    if result
-        .get("alreadyAuthenticated")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        return;
-    }
-    let auth_url = result
-        .get("authUrl")
-        .and_then(|v| v.as_str())
-        .expect("missing authUrl");
-    let parsed = reqwest::Url::parse(auth_url).expect("authUrl should be a valid URL");
-    let redirect = parsed
-        .query_pairs()
-        .find(|(k, _)| k == "redirect_uri")
-        .map(|(_, v)| v.into_owned());
-
-    // openai-codex has a pre-registered redirect_uri; client override is ignored.
-    assert_eq!(
-        redirect.as_deref(),
-        Some("http://localhost:1455/auth/callback")
-    );
-}
-
-#[tokio::test]
-async fn oauth_start_stores_pending_state_for_registered_redirect_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let result = svc
-        .oauth_start(serde_json::json!({
-            "provider": "openai-codex",
-        }))
-        .await
-        .expect("oauth start should succeed");
-
-    if result
-        .get("alreadyAuthenticated")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        return;
-    }
-
-    let auth_url = result
-        .get("authUrl")
-        .and_then(|v| v.as_str())
-        .expect("missing authUrl");
-    let parsed = reqwest::Url::parse(auth_url).expect("authUrl should be a valid URL");
-    let state = parsed
-        .query_pairs()
-        .find(|(k, _)| k == "state")
-        .map(|(_, v)| v.into_owned())
-        .expect("oauth authUrl should include state");
-
-    assert!(
-        svc.pending_oauth.read().await.contains_key(&state),
-        "pending oauth map should track flow state for manual completion"
-    );
-}
-
-#[tokio::test]
-async fn oauth_complete_accepts_callback_input_parameter() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let result = svc
-        .oauth_complete(serde_json::json!({
-            "callback": "http://localhost:1455/auth/callback?code=fake&state=missing",
-        }))
-        .await;
-
-    let err = result.expect_err("missing state should fail");
-    assert!(
-        err.to_string().contains("unknown or expired OAuth state"),
-        "expected parsed callback to reach pending-state validation, got: {err}"
-    );
-}
-
-#[tokio::test]
-async fn oauth_complete_rejects_provider_mismatch_without_consuming_state() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let start_result = match svc
-        .oauth_start(serde_json::json!({
-            "provider": "openai-codex",
-        }))
-        .await
-    {
-        Ok(value) => value,
-        Err(error) => panic!("oauth start should succeed: {error}"),
-    };
-
-    if start_result
-        .get("alreadyAuthenticated")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        return;
-    }
-
-    let auth_url = match start_result.get("authUrl").and_then(|v| v.as_str()) {
-        Some(value) => value,
-        None => panic!("missing authUrl"),
-    };
-    let parsed = match reqwest::Url::parse(auth_url) {
-        Ok(value) => value,
-        Err(error) => panic!("authUrl should be valid: {error}"),
-    };
-    let state = match parsed
-        .query_pairs()
-        .find(|(k, _)| k == "state")
-        .map(|(_, v)| v.into_owned())
-    {
-        Some(value) => value,
-        None => panic!("oauth authUrl should include state"),
-    };
-
-    let mismatch_result = svc
-        .oauth_complete(serde_json::json!({
-            "provider": "openai",
-            "callback": format!("http://localhost:1455/auth/callback?code=fake&state={state}"),
-        }))
-        .await;
-    let mismatch_error = match mismatch_result {
-        Ok(_) => panic!("provider mismatch should fail"),
-        Err(error) => error,
-    };
-
-    assert!(
-        mismatch_error
-            .to_string()
-            .contains("provider mismatch for OAuth state"),
-        "unexpected mismatch error: {mismatch_error}"
-    );
-    assert!(
-        svc.pending_oauth.read().await.contains_key(&state),
-        "provider mismatch should not consume pending OAuth state"
-    );
-}
-
-#[tokio::test]
-async fn oauth_status_returns_not_authenticated() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .oauth_status(serde_json::json!({"provider": "openai-codex"}))
-        .await
-        .unwrap();
-    // Might or might not have tokens depending on environment
-    assert!(result.get("authenticated").is_some());
-}
-
-#[tokio::test]
 async fn save_key_accepts_new_providers() {
     let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
         &ProvidersConfig::default(),
@@ -823,9 +582,7 @@ async fn save_key_accepts_new_providers() {
 
     let providers = known_providers();
     for name in ["openrouter", "zai", "zai-code"] {
-        let known = providers
-            .iter()
-            .find(|p| p.name == name && p.auth_type == AuthType::ApiKey);
+        let known = providers.iter().find(|p| p.name == name);
         assert!(
             known.is_some(),
             "{name} should be a recognized api-key provider"

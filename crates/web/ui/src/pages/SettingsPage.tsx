@@ -189,7 +189,7 @@ function getVisibleSections(): SectionItem[] {
 	return sections.filter((section) => {
 		if (!("id" in section)) return true;
 		if (section.id === "graphql" && !gon.get("graphql_enabled")) return false;
-		if (section.id === "import" && !gon.get("claude_detected") && !gon.get("codex_detected")) return false;
+		if (section.id === "import" && !gon.get("claude_detected")) return false;
 		if (section.id === "vault" && (!vs || vs === "disabled")) return false;
 		return true;
 	});

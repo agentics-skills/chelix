@@ -6,7 +6,6 @@ version.workspace = true
 [dependencies]
 anyhow         = { workspace = true }
 chelix-common  = { workspace = true }
-chelix-metrics = { optional = true, workspace = true }
 chrono-tz      = { workspace = true }
 directories    = { workspace = true }
 secrecy        = { workspace = true }
@@ -21,7 +20,6 @@ tracing        = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

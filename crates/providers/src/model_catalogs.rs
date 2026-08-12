@@ -156,16 +156,6 @@ mod tests {
             provider_names.push(def.config_name);
         }
 
-        // Feature-gated providers (always check names, regardless of feature).
-        //
-        // NOTE: This list must be maintained manually because `#[cfg(feature)]`
-        // attributes make it impossible to discover these names at test time
-        // when the feature is disabled.  When adding a new feature-gated
-        // provider registration in `registry/registration.rs` (e.g. a new
-        // `register_*_providers` method gated behind a cargo feature), add its
-        // config name here too.
-        provider_names.push("openai-codex");
-
         for name in &provider_names {
             assert!(
                 KNOWN_PROVIDER_NAMES.contains(name),

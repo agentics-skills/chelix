@@ -4,7 +4,6 @@ name              = "chelix-oauth"
 version.workspace = true
 
 [dependencies]
-axum           = { workspace = true }
 base64         = { workspace = true }
 chelix-common  = { workspace = true }
 chelix-config  = { workspace = true }

@@ -144,7 +144,7 @@ test.describe("Provider setup page", () => {
 		const providerNames = page.locator("#providerModalBody .provider-item .provider-item-name");
 		await expect(providerNames.first()).toBeVisible();
 		const names = await providerNames.allTextContents();
-		const preferredOrder = ["OpenAI Codex", "OpenAI", "OpenRouter"];
+		const preferredOrder = ["OpenAI", "OpenRouter"];
 		const expectedVisible = preferredOrder.filter((name) => names.includes(name));
 		const actualVisible = names.filter((name) => expectedVisible.includes(name));
 		expect(actualVisible).toEqual(expectedVisible);
@@ -229,7 +229,6 @@ test.describe("Provider setup page", () => {
 		const provider = {
 			name: "openai",
 			displayName: "OpenAI",
-			authType: "api-key",
 			configured: true,
 			defaultBaseUrl: "https://api.openai.com/v1",
 			baseUrl: null,

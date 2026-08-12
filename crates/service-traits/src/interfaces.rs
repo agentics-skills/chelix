@@ -800,8 +800,6 @@ pub trait OnboardingService: Send + Sync {
     async fn user_update(&self, params: Value) -> ServiceResult;
     async fn claude_detect(&self) -> ServiceResult;
     async fn claude_import(&self, params: Value) -> ServiceResult;
-    async fn codex_detect(&self) -> ServiceResult;
-    async fn codex_import(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopOnboardingService;
@@ -837,14 +835,6 @@ impl OnboardingService for NoopOnboardingService {
     }
 
     async fn claude_import(&self, _params: Value) -> ServiceResult {
-        Err("onboarding service not configured".into())
-    }
-
-    async fn codex_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn codex_import(&self, _params: Value) -> ServiceResult {
         Err("onboarding service not configured".into())
     }
 }
@@ -1007,9 +997,6 @@ impl LogsService for NoopLogsService {
 pub trait ProviderSetupService: Send + Sync {
     async fn available(&self) -> ServiceResult;
     async fn save_key(&self, params: Value) -> ServiceResult;
-    async fn oauth_start(&self, params: Value) -> ServiceResult;
-    async fn oauth_complete(&self, params: Value) -> ServiceResult;
-    async fn oauth_status(&self, params: Value) -> ServiceResult;
     async fn remove_key(&self, params: Value) -> ServiceResult;
     async fn validate_key(&self, params: Value) -> ServiceResult;
     async fn save_models(&self, params: Value) -> ServiceResult;
@@ -1025,18 +1012,6 @@ impl ProviderSetupService for NoopProviderSetupService {
     }
 
     async fn save_key(&self, _p: Value) -> ServiceResult {
-        Err("provider setup not configured".into())
-    }
-
-    async fn oauth_start(&self, _p: Value) -> ServiceResult {
-        Err("provider setup not configured".into())
-    }
-
-    async fn oauth_complete(&self, _p: Value) -> ServiceResult {
-        Err("provider setup not configured".into())
-    }
-
-    async fn oauth_status(&self, _p: Value) -> ServiceResult {
         Err("provider setup not configured".into())
     }
 

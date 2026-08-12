@@ -872,7 +872,7 @@ pub(super) fn parse_env_value(val: &str) -> serde_json::Value {
     let trimmed = val.trim();
 
     // Support JSON arrays/objects for list-like env overrides, e.g.
-    // CHELIX_PROVIDERS__OFFERED='["openai","openai-codex"]' or '[]'.
+    // CHELIX_PROVIDERS__OFFERED='["openai","openrouter"]' or '[]'.
     if ((trimmed.starts_with('[') && trimmed.ends_with(']'))
         || (trimmed.starts_with('{') && trimmed.ends_with('}')))
         && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed)

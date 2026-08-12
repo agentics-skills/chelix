@@ -1,7 +1,6 @@
 mod catalog;
 pub mod provider;
 
-pub(crate) use catalog::parse_models_value;
 pub use {crate::DiscoveredModel, catalog::fetch_models_from_api};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

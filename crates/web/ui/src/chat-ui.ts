@@ -1,6 +1,6 @@
 // ── Chat UI ─────────────────────────────────────────────────
 
-import { formatTokens, parseErrorMessage, renderDocument, sendRpc, updateCountdown } from "./helpers";
+import { formatTokens, parseErrorMessage, renderDocument, sendRpc } from "./helpers";
 import * as S from "./state";
 import type { ContextBudgetMetadata } from "./types/ws-events";
 
@@ -9,7 +9,6 @@ interface ErrorCardData {
 	title: string;
 	detail?: string;
 	provider?: string;
-	resetsAt?: number | null;
 }
 
 interface ImageAttachment {
@@ -318,19 +317,7 @@ export function chatAddErrorCard(err: ErrorCardData): void {
 		body.appendChild(prov);
 	}
 
-	const resetsAt = err.resetsAt;
-	if (resetsAt) {
-		const countdown = document.createElement("div");
-		countdown.className = "error-countdown";
-		el.appendChild(body);
-		el.appendChild(countdown);
-		updateCountdown(countdown, resetsAt);
-		const timer = setInterval(() => {
-			if (updateCountdown(countdown, resetsAt)) clearInterval(timer);
-		}, 1000);
-	} else {
-		el.appendChild(body);
-	}
+	el.appendChild(body);
 
 	S.chatMsgBox.appendChild(el);
 	smartScrollToBottom();

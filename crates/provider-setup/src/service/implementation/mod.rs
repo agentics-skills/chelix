@@ -1,6 +1,6 @@
 //! `LiveProviderSetupService` — the runtime implementation of
-//! `ProviderSetupService` that manages provider credentials, OAuth flows,
-//! key validation, and provider registry rebuilds.
+//! `ProviderSetupService` that manages provider credentials, key validation,
+//! and provider registry rebuilds.
 
 #[path = "../support.rs"]
 mod support;
@@ -8,7 +8,6 @@ mod support;
 mod available;
 mod credentials;
 mod custom;
-mod oauth;
 mod service;
 mod validate;
 

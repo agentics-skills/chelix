@@ -1,28 +1,7 @@
-use {
-    anyhow::Result,
-    chelix_oauth::{
-        CallbackServer, OAuthFlow, TokenStore, callback_port, load_oauth_config,
-        parse_callback_input,
-    },
-    clap::Subcommand,
-};
+use {anyhow::Result, clap::Subcommand};
 
 #[derive(Subcommand)]
 pub enum AuthAction {
-    /// Log in to a provider via OAuth.
-    Login {
-        /// Provider name (e.g. "openai-codex").
-        #[arg(long)]
-        provider: String,
-    },
-    /// Show authentication status for all providers.
-    Status,
-    /// Log out from a provider.
-    Logout {
-        /// Provider name (e.g. "openai-codex").
-        #[arg(long)]
-        provider: String,
-    },
     /// Reset gateway authentication (remove password, sessions, passkeys, API keys).
     ResetPassword,
     /// Reset the user profile (triggers onboarding on next start).
@@ -41,105 +20,10 @@ pub enum AuthAction {
 
 pub async fn handle_auth(action: AuthAction) -> Result<()> {
     match action {
-        AuthAction::Login { provider } => login(&provider).await,
-        AuthAction::Status => status(),
-        AuthAction::Logout { provider } => logout(&provider),
         AuthAction::ResetPassword => reset_password().await,
         AuthAction::ResetProfile => reset_profile(),
         AuthAction::CreateApiKey { label, scopes } => create_api_key(&label, scopes).await,
     }
-}
-
-async fn login(provider: &str) -> Result<()> {
-    let config = load_oauth_config(provider)
-        .ok_or_else(|| anyhow::anyhow!("unknown OAuth provider: {provider}"))?;
-
-    let port = callback_port(&config);
-    let flow = OAuthFlow::new(config);
-    let req = flow.start()?;
-
-    println!("Opening browser for authentication...");
-    if open::that(&req.url).is_err() {
-        println!("Could not open browser. Please visit:\n{}", req.url);
-    }
-
-    println!("Waiting for callback on http://127.0.0.1:{port}/auth/callback ...");
-    println!(
-        "If this callback cannot be reached, you'll be prompted to paste the redirect URL manually."
-    );
-    let code = match CallbackServer::wait_for_code(port, req.state.clone(), "127.0.0.1").await {
-        Ok(code) => code,
-        Err(error) => {
-            println!("Automatic OAuth callback failed: {error}");
-            println!("Paste the full callback URL (or code#state), then press Enter:");
-            read_pasted_callback_code(&req.state)?
-        },
-    };
-
-    println!("Exchanging code for tokens...");
-    let tokens = flow.exchange(&code, &req.pkce.verifier).await?;
-
-    let store = TokenStore::new();
-    store.save(provider, &tokens)?;
-
-    println!("Successfully logged in to {provider}");
-    Ok(())
-}
-
-fn read_pasted_callback_code(expected_state: &str) -> Result<String> {
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    extract_pasted_callback_code(&input, expected_state)
-}
-
-fn extract_pasted_callback_code(input: &str, expected_state: &str) -> Result<String> {
-    let parsed = parse_callback_input(input).map_err(|error| {
-        anyhow::anyhow!(
-            "invalid callback input; expected URL, query string, or code#state: {error}"
-        )
-    })?;
-
-    if parsed.state != expected_state {
-        anyhow::bail!("OAuth state mismatch in pasted callback");
-    }
-
-    Ok(parsed.code)
-}
-
-fn status() -> Result<()> {
-    let store = TokenStore::new();
-    let providers = store.list();
-    if providers.is_empty() {
-        println!("No authenticated providers.");
-        return Ok(());
-    }
-    for provider in providers {
-        if let Some(tokens) = store.load(&provider) {
-            let expiry = tokens.expires_at.map_or("unknown".to_string(), |ts| {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                if ts > now {
-                    let remaining = ts - now;
-                    let hours = remaining / 3600;
-                    let mins = (remaining % 3600) / 60;
-                    format!("valid ({hours}h {mins}m remaining)")
-                } else {
-                    "expired".to_string()
-                }
-            });
-            println!("{provider} [{expiry}]");
-        }
-    }
-    Ok(())
-}
-
-fn logout(provider: &str) -> Result<()> {
-    let store = TokenStore::new();
-    store.delete(provider)?;
-    println!("Logged out from {provider}");
-    Ok(())
 }
 
 fn reset_profile() -> Result<()> {
@@ -231,7 +115,7 @@ async fn create_api_key(label: &str, scopes_str: Option<String>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_pasted_callback_code, reset_password_success_lines};
+    use super::reset_password_success_lines;
 
     #[test]
     fn reset_password_message_describes_disabled_auth_state() {
@@ -244,29 +128,5 @@ mod tests {
             lines[1],
             "Authentication is now disabled. Open Settings > Security to set a password or passkey to re-enable it."
         );
-    }
-
-    #[test]
-    fn pasted_callback_code_state_mismatch_is_rejected() {
-        let result = extract_pasted_callback_code(
-            "http://localhost:1455/auth/callback?code=abc&state=state-a",
-            "state-b",
-        );
-        let err = match result {
-            Ok(code) => panic!("state mismatch should fail, got code: {code}"),
-            Err(error) => error,
-        };
-
-        assert!(err.to_string().contains("state mismatch"));
-    }
-
-    #[test]
-    fn pasted_callback_code_extracts_code_when_state_matches() {
-        let result = extract_pasted_callback_code("abc123#state-ok", "state-ok");
-        let code = match result {
-            Ok(code) => code,
-            Err(error) => panic!("matching state should succeed: {error}"),
-        };
-        assert_eq!(code, "abc123");
     }
 }

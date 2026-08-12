@@ -59,7 +59,6 @@ impl LiveProviderSetupService {
                     serde_json::json!({
                         "name": provider.name,
                         "displayName": provider.display_name,
-                        "authType": provider.auth_type.as_str(),
                         "configured": configured,
                         "defaultBaseUrl": provider.default_base_url,
                         "baseUrl": base_url,
@@ -95,7 +94,6 @@ impl LiveProviderSetupService {
                 serde_json::json!({
                     "name": name,
                     "displayName": display_name,
-                    "authType": "api-key",
                     "configured": true,
                     "defaultBaseUrl": base_url,
                     "baseUrl": base_url,

@@ -569,13 +569,6 @@ pub(crate) fn normalize_provider_key(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
-pub(crate) fn subscription_provider_rank(provider_name: &str) -> usize {
-    match normalize_provider_key(provider_name).as_str() {
-        "openai-codex" => 0,
-        _ => 1,
-    }
-}
-
 /// Returns `true` if the model matches the allowlist patterns.
 /// An empty pattern list means all models are allowed.
 /// Matching is case-insensitive against the full model ID, raw model ID, and

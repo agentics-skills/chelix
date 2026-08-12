@@ -50,7 +50,6 @@ SPECIAL_PROJECTS=(
 	auth
 	onboarding
 	onboarding-auth
-	oauth
 )
 
 if [ -n "${CHELIX_E2E_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}" ]; then

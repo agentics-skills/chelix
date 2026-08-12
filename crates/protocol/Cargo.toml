@@ -4,14 +4,12 @@ name              = "chelix-protocol"
 version.workspace = true
 
 [dependencies]
-chelix-metrics = { optional = true, workspace = true }
 serde          = { workspace = true }
 serde_json     = { workspace = true }
 thiserror      = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

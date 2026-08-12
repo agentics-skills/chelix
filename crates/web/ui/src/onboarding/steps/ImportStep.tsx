@@ -1,6 +1,6 @@
 // ── Tabbed import step for onboarding ────────────────────────
 //
-// Wraps detected Claude Code and Codex import sources behind a tab bar,
+// Wraps detected Claude Code imports for onboarding.
 // reusing the settings import section components.
 
 import type { VNode } from "preact";
@@ -9,7 +9,6 @@ import { TabBar } from "../../components/forms/Tabs";
 import { get as getGon } from "../../gon";
 import { sendRpc } from "../../helpers";
 import { ClaudeImportSection } from "../../pages/sections/ClaudeImportSection";
-import { CodexImportSection } from "../../pages/sections/CodexImportSection";
 import { ensureWsConnected } from "../shared";
 
 const WS_RETRY_LIMIT = 75;
@@ -32,12 +31,6 @@ function countClaude(p: Record<string, unknown>): number {
 	return n;
 }
 
-function countCodex(p: Record<string, unknown>): number {
-	let n = Number(p.mcp_servers_count) || 0;
-	if (p.has_memory) n++;
-	return n;
-}
-
 /** Build tab definitions at render time so getGon() reads current state. */
 function getAllTabs(): ImportTabDef[] {
 	return [
@@ -48,14 +41,6 @@ function getAllTabs(): ImportTabDef[] {
 			detected: getGon("claude_detected") === true,
 			detectRpc: "claude.detect",
 			countFn: countClaude,
-		},
-		{
-			id: "codex",
-			label: "Codex CLI",
-			icon: <span className="icon icon-code" />,
-			detected: getGon("codex_detected") === true,
-			detectRpc: "codex.detect",
-			countFn: countCodex,
 		},
 	];
 }
@@ -164,8 +149,6 @@ function renderTab(id: string): VNode | null {
 	switch (id) {
 		case "claude":
 			return <ClaudeImportSection />;
-		case "codex":
-			return <CodexImportSection />;
 		default:
 			return null;
 	}

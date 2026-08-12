@@ -180,7 +180,6 @@ docker run -d \
   --name chelix \
   -p 13131:13131 \
   -p 13132:13132 \
-  -p 1455:1455 \
   -v chelix-config:/home/chelix/.config/chelix \
   -v chelix-data:/home/chelix/.chelix \
   -v /var/run/docker.sock:/var/run/docker.sock \

@@ -590,14 +590,6 @@ impl chelix_service_traits::OnboardingService for MockOnboarding {
     async fn claude_import(&self, p: Value) -> ServiceResult {
         self.0.call("claude.import", p)
     }
-
-    async fn codex_detect(&self) -> ServiceResult {
-        self.0.call("codex.detect", json!({}))
-    }
-
-    async fn codex_import(&self, p: Value) -> ServiceResult {
-        self.0.call("codex.import", p)
-    }
 }
 
 #[async_trait::async_trait]
@@ -699,18 +691,6 @@ impl chelix_service_traits::ProviderSetupService for MockProviderSetup {
 
     async fn save_key(&self, p: Value) -> ServiceResult {
         self.0.call("providers.save_key", p)
-    }
-
-    async fn oauth_start(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.oauth.start", p)
-    }
-
-    async fn oauth_complete(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.oauth.complete", p)
-    }
-
-    async fn oauth_status(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.oauth.status", p)
     }
 
     async fn remove_key(&self, p: Value) -> ServiceResult {

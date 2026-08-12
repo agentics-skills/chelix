@@ -647,7 +647,7 @@ function OnboardingPage(): VNode {
 		);
 	}
 
-	const importDetected = getGon("claude_detected") === true || getGon("codex_detected") === true;
+	const importDetected = getGon("claude_detected") === true;
 	const plan = buildOnboardingPlan(step, authNeeded, voiceAvailable, importDetected);
 
 	function goNext(): void {

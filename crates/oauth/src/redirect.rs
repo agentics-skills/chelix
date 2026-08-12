@@ -1,9 +1,8 @@
 //! Redirect URI normalization helpers.
 //!
-//! Centralizes the RFC 8252 §7.3/§8.3 loopback rewrite so both MCP OAuth
-//! (RFC 7591 dynamic client registration) and provider OAuth produce
-//! authorization-server-compatible URIs regardless of the scheme the
-//! browser started on.
+//! Centralizes the RFC 8252 §7.3/§8.3 loopback rewrite for MCP OAuth
+//! (RFC 7591 dynamic client registration), producing authorization-server-compatible
+//! URIs regardless of the scheme the browser started on.
 
 use {
     tracing::debug,
@@ -17,7 +16,7 @@ use {
 /// `https://localhost` during RFC 7591 dynamic client registration with
 /// `invalid_redirect_uri`, and some also reject it during the authorization
 /// request. Chelix serves the web UI over TLS, so the origin-derived
-/// callback arrives as `https://localhost:<port>/auth/callback`.
+/// MCP callback arrives as `https://localhost:<port>/auth/callback`.
 ///
 /// The main TLS listener's peek-based HTTP→HTTPS redirect (see
 /// `chelix_tls::serve_tls_with_http_redirect`) transparently bounces the
@@ -70,8 +69,8 @@ mod tests {
     #[test]
     fn rewrites_https_localhost() {
         assert_eq!(
-            normalize_loopback_redirect("https://localhost:1455/auth/callback"),
-            "http://localhost:1455/auth/callback",
+            normalize_loopback_redirect("https://localhost:9876/auth/callback"),
+            "http://localhost:9876/auth/callback",
         );
     }
 
@@ -86,24 +85,24 @@ mod tests {
     #[test]
     fn rewrites_https_ipv4_loopback() {
         assert_eq!(
-            normalize_loopback_redirect("https://127.0.0.1:1455/auth/callback"),
-            "http://127.0.0.1:1455/auth/callback",
+            normalize_loopback_redirect("https://127.0.0.1:9876/auth/callback"),
+            "http://127.0.0.1:9876/auth/callback",
         );
     }
 
     #[test]
     fn rewrites_https_ipv6_loopback() {
         assert_eq!(
-            normalize_loopback_redirect("https://[::1]:1455/auth/callback"),
-            "http://[::1]:1455/auth/callback",
+            normalize_loopback_redirect("https://[::1]:9876/auth/callback"),
+            "http://[::1]:9876/auth/callback",
         );
     }
 
     #[test]
     fn rewrites_https_localhost_case_insensitive() {
         assert_eq!(
-            normalize_loopback_redirect("https://LocalHost:1455/auth/callback"),
-            "http://localhost:1455/auth/callback",
+            normalize_loopback_redirect("https://LocalHost:9876/auth/callback"),
+            "http://localhost:9876/auth/callback",
         );
     }
 
@@ -114,32 +113,32 @@ mod tests {
             "https://chelix.lan/auth/callback",
         );
         assert_eq!(
-            normalize_loopback_redirect("https://chelix.example.com:1455/auth/callback"),
-            "https://chelix.example.com:1455/auth/callback",
+            normalize_loopback_redirect("https://chelix.example.com:9876/auth/callback"),
+            "https://chelix.example.com:9876/auth/callback",
         );
     }
 
     #[test]
     fn preserves_non_loopback_ipv4() {
         assert_eq!(
-            normalize_loopback_redirect("https://192.168.1.10:1455/auth/callback"),
-            "https://192.168.1.10:1455/auth/callback",
+            normalize_loopback_redirect("https://192.168.1.10:9876/auth/callback"),
+            "https://192.168.1.10:9876/auth/callback",
         );
     }
 
     #[test]
     fn preserves_http_scheme() {
         assert_eq!(
-            normalize_loopback_redirect("http://localhost:1455/auth/callback"),
-            "http://localhost:1455/auth/callback",
+            normalize_loopback_redirect("http://localhost:9876/auth/callback"),
+            "http://localhost:9876/auth/callback",
         );
     }
 
     #[test]
     fn preserves_query_and_path() {
         assert_eq!(
-            normalize_loopback_redirect("https://localhost:1455/auth/callback?foo=bar"),
-            "http://localhost:1455/auth/callback?foo=bar",
+            normalize_loopback_redirect("https://localhost:9876/auth/callback?foo=bar"),
+            "http://localhost:9876/auth/callback?foo=bar",
         );
     }
 

@@ -134,7 +134,7 @@ export function init(): Promise<void> {
 /**
  * Global translation function for imperative DOM code.
  *   t("common:actions.save")
- *   t("errors:usageLimitReached.title", { planType: "free" })
+ *   t("errors:rateLimited.title")
  *
  * Namespace can be specified with colon prefix or via the `ns` option.
  */

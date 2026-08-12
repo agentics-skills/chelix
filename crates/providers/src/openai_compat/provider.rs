@@ -114,7 +114,7 @@ pub fn to_openai_tools(tools: &[serde_json::Value]) -> Result<Vec<serde_json::Va
 /// { "type": "function", "name": "...", "parameters": {...}, "strict": false }
 /// ```
 ///
-/// This is the format used by OpenAI Codex and the Responses API.
+/// This is the format used by the Responses API.
 ///
 /// Preserves the tool's declared `required` fields so optional properties
 /// remain optional on the wire.

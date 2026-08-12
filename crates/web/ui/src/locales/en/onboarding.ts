@@ -101,12 +101,6 @@ export default {
 		validationError: "Validation failed.",
 		failedToSave: "Failed to save credentials.",
 		modelTestFailed: "Model test failed. Check your model ID.",
-		oauth: "OAuth",
-		local: "Local",
-		oauthOpenUri: "Open {{uri}} and enter code:",
-		oauthWaiting: "Waiting for authentication\u2026",
-		failedToStartOAuth: "Failed to start OAuth",
-		oauthTimedOut: "OAuth timed out. Please try again.",
 	},
 
 	// ── Voice step ───────────────────────────────────────────

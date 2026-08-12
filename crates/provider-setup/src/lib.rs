@@ -6,7 +6,6 @@ mod config_helpers;
 mod custom_providers;
 mod key_store;
 mod known_providers;
-mod oauth;
 mod provider_base_url;
 mod service;
 
@@ -29,7 +28,6 @@ pub use {
         detect_auto_provider_sources_with_overrides, has_explicit_provider_settings,
     },
     key_store::{KeyStore, ProviderConfig},
-    known_providers::{AuthType, KnownProvider, known_providers},
-    oauth::import_detected_oauth_tokens,
+    known_providers::{KnownProvider, known_providers},
     service::{ErrorParser, LiveProviderSetupService, ProviderConfigPersistence},
 };

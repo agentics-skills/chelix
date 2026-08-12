@@ -22,7 +22,6 @@ import { ConfirmDialog, requestConfirm } from "../ui";
 interface ProviderGroup {
 	provider: string;
 	providerDisplayName: string;
-	authType: string;
 	models: ModelInfo[];
 }
 
@@ -198,7 +197,6 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 		groups.set(provider.name, {
 			provider: provider.name,
 			providerDisplayName: provider.displayName,
-			authType: provider.authType,
 			models: [],
 		});
 	}
@@ -210,7 +208,6 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 			groups.set(key, {
 				provider: key,
 				providerDisplayName: provider?.displayName || key,
-				authType: provider?.authType || "api-key",
 				models: [],
 			});
 		}
@@ -276,20 +273,6 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 			))}
 		</dl>
 	);
-}
-
-interface ProviderAuthBadgeProps {
-	authType: string;
-}
-
-function providerAuthLabel(authType: string): string {
-	if (authType === "oauth") return t("providers:oauth");
-	if (authType === "local") return t("providers:local");
-	return t("providers:apiKey");
-}
-
-function ProviderAuthBadge({ authType }: ProviderAuthBadgeProps): VNode {
-	return <span className={`provider-item-badge ${authType}`}>{providerAuthLabel(authType)}</span>;
 }
 
 interface ProviderActionsProps {
@@ -519,7 +502,6 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 			<div className="flex items-center justify-between gap-3">
 				<div className="flex items-center gap-2 min-w-0">
 					<h3 className="text-base font-semibold text-[var(--text-strong)] truncate">{group.providerDisplayName}</h3>
-					<ProviderAuthBadge authType={group.authType} />
 				</div>
 				<ProviderActions
 					hasModels={group.models.length > 0}

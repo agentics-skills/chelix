@@ -93,14 +93,6 @@ impl OnboardingService for TestOnboardingService {
     async fn claude_import(&self, _params: serde_json::Value) -> ServiceResult {
         Err("not configured".into())
     }
-
-    async fn codex_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn codex_import(&self, _params: serde_json::Value) -> ServiceResult {
-        Err("not configured".into())
-    }
 }
 
 fn with_test_web_services(services: GatewayServices) -> GatewayServices {

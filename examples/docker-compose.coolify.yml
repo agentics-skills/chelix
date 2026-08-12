@@ -20,8 +20,6 @@ services:
     image: ghcr.io/agentics-skills/chelix:latest
     restart: unless-stopped
     user: "0:0"
-    ports:
-      - "1455:1455"   # OAuth callback (OpenAI Codex, etc.)
     command:
       - --bind
       - 0.0.0.0

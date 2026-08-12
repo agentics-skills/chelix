@@ -694,14 +694,6 @@ impl OnboardingService for MockOnboardingService {
     async fn claude_import(&self, _params: serde_json::Value) -> ServiceResult {
         Err("not configured".into())
     }
-
-    async fn codex_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn codex_import(&self, _params: serde_json::Value) -> ServiceResult {
-        Err("not configured".into())
-    }
 }
 
 /// Start a test server with a mock onboarding service.

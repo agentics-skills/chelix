@@ -28,7 +28,7 @@ use crate::{
     types::{
         BroadcastOpts, broadcast, normalize_model_key, now_ms, probe_max_parallel_per_provider,
         provider_filter_from_params, provider_matches_filter, push_provider_model,
-        subscription_provider_rank, suggest_model_ids,
+        suggest_model_ids,
     },
 };
 
@@ -505,10 +505,6 @@ impl LiveModelService {
                     a.display_name
                         .to_lowercase()
                         .cmp(&b.display_name.to_lowercase())
-                })
-                .then_with(|| {
-                    subscription_provider_rank(&a.provider)
-                        .cmp(&subscription_provider_rank(&b.provider))
                 })
                 .then_with(|| idx_a.cmp(idx_b))
         });

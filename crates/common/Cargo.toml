@@ -5,7 +5,6 @@ version.workspace = true
 
 [dependencies]
 async-trait    = { workspace = true }
-chelix-metrics = { optional = true, workspace = true }
 futures        = { workspace = true }
 indexmap       = { workspace = true }
 ipnet          = { workspace = true }
@@ -20,7 +19,6 @@ url            = { workspace = true }
 
 [features]
 default = []
-metrics = ["dep:chelix-metrics"]
 
 [lints]
 workspace = true

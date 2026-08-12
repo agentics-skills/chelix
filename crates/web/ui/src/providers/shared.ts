@@ -35,22 +35,8 @@ export function els(): ProviderModalElements {
 
 export const OPENAI_COMPATIBLE_PROVIDERS: string[] = ["openai", "openrouter"];
 
-// ── OAuth status timer ──────────────────────────────────────
-
-let oauthStatusTimer: ReturnType<typeof setInterval> | null = null;
-
-export function clearOAuthStatusTimer(): void {
-	if (!oauthStatusTimer) return;
-	clearInterval(oauthStatusTimer);
-	oauthStatusTimer = null;
-}
-
-export function setOAuthStatusTimer(timer: ReturnType<typeof setInterval>): void {
-	oauthStatusTimer = timer;
-}
-
 // Lazy import to avoid circular dependency at module level.
-// openProviderModal needs showApiKeyForm/showOAuthFlow/showCustomProviderForm,
+// openProviderModal needs showApiKeyForm/showCustomProviderForm,
 // and those modules need openProviderModal for "Back" buttons.
 export function openProviderModal(): void {
 	// Dynamic import breaks the cycle.
@@ -58,7 +44,6 @@ export function openProviderModal(): void {
 }
 
 export function closeProviderModal(): void {
-	clearOAuthStatusTimer();
 	els().modal.classList.add("hidden");
 }
 

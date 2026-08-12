@@ -846,45 +846,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "providers.oauth.start",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .provider_setup
-                    .oauth_start(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "providers.oauth.status",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .provider_setup
-                    .oauth_status(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "providers.oauth.complete",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .provider_setup
-                    .oauth_complete(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
         "providers.save_models",
         Box::new(|ctx| {
             Box::pin(async move {

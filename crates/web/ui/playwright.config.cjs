@@ -61,7 +61,6 @@ function defaultSpecFiles() {
 		/onboarding-openai\.spec\.js$/,
 		/onboarding-auth\.spec\.js$/,
 		/openai-live\.spec\.js$/,
-		/oauth\.spec\.js$/,
 		/remote-sandbox-live\.spec\.js$/,
 	];
 	return readdirSync(path.join(__dirname, "e2e/specs"))
@@ -137,8 +136,6 @@ const onboardingBaseURL = process.env.CHELIX_E2E_ONBOARDING_BASE_URL || `http://
 const onboardingAuthPort = resolvePort("CHELIX_E2E_ONBOARDING_AUTH_PORT", usedPorts);
 const onboardingAuthBaseURL = `http://127.0.0.1:${onboardingAuthPort}`;
 
-const oauthPort = resolvePort("CHELIX_E2E_OAUTH_PORT", usedPorts);
-const oauthBaseURL = `http://127.0.0.1:${oauthPort}`;
 const openaiLivePort = resolvePort("CHELIX_E2E_OPENAI_LIVE_PORT", usedPorts);
 const openaiLiveBaseURL = process.env.CHELIX_E2E_OPENAI_LIVE_BASE_URL || `http://127.0.0.1:${openaiLivePort}`;
 const openAiLiveKey = process.env.CHELIX_E2E_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "";
@@ -154,7 +151,6 @@ const defaultProjectIgnore = [
 	/onboarding-openai\.spec/,
 	/onboarding-auth\.spec/,
 	/openai-live\.spec/,
-	/oauth\.spec/,
 	/remote-sandbox-live\.spec/,
 ];
 const defaultProjects = (() => {
@@ -228,15 +224,6 @@ const projects = defaultProjects.concat(
 					testMatch: /onboarding-auth\.spec/,
 					use: {
 						baseURL: onboardingAuthBaseURL,
-					},
-				}
-			: null,
-		includeProject("oauth")
-			? {
-					name: "oauth",
-					testMatch: /oauth\.spec/,
-					use: {
-						baseURL: oauthBaseURL,
 					},
 				}
 			: null,
@@ -331,19 +318,6 @@ const webServer = defaultWebServers.concat(
 					env: {
 						...process.env,
 						CHELIX_E2E_ONBOARDING_AUTH_PORT: onboardingAuthPort,
-					},
-				}
-			: null,
-		includeProject("oauth")
-			? {
-					command: "./e2e/start-gateway-oauth.sh",
-					cwd: __dirname,
-					url: `${oauthBaseURL}/health`,
-					reuseExistingServer: reuseExistingServer,
-					timeout: 60_000,
-					env: {
-						...process.env,
-						CHELIX_E2E_OAUTH_PORT: oauthPort,
 					},
 				}
 			: null,

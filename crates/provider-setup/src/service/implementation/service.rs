@@ -26,20 +26,17 @@ use {
 
 pub use super::support::ErrorParser;
 use {
-    super::support::{PendingOAuthFlow, default_error_parser},
+    super::support::default_error_parser,
     crate::{
         SetupBroadcaster,
         config_helpers::{
-            config_with_saved_keys, env_value_with_overrides, home_key_store, home_token_store,
+            config_with_saved_keys, env_value_with_overrides, home_key_store,
             set_provider_enabled_in_config,
         },
         key_store::KeyStore,
-        known_providers::{AuthType, KnownProvider},
-        oauth::has_oauth_tokens,
+        known_providers::KnownProvider,
     },
 };
-
-use chelix_oauth::TokenStore;
 
 // ── LiveProviderSetupService ───────────────────────────────────────────────
 
@@ -54,9 +51,7 @@ pub struct LiveProviderSetupService {
     pub(crate) config: Arc<Mutex<ProvidersConfig>>,
     config_persistence: ProviderConfigPersistence,
     broadcaster: Arc<OnceCell<Arc<dyn SetupBroadcaster>>>,
-    pub(crate) token_store: TokenStore,
     pub(crate) key_store: KeyStore,
-    pub(crate) pending_oauth: Arc<RwLock<HashMap<String, PendingOAuthFlow>>>,
     /// When set, local-only providers are hidden from
     /// the available list because they cannot run on cloud VMs.
     pub(crate) deploy_platform: Option<String>,
@@ -70,10 +65,6 @@ pub struct LiveProviderSetupService {
     pub(crate) env_overrides: HashMap<String, String>,
     /// Injected error parser for interpreting provider API errors.
     pub(crate) error_parser: ErrorParser,
-    /// Address the OAuth callback server binds to. Defaults to `127.0.0.1`
-    /// for local development; set to `0.0.0.0` in Docker / remote
-    /// deployments so the callback port is reachable from the host.
-    pub(crate) callback_bind_addr: String,
 }
 
 impl LiveProviderSetupService {
@@ -88,15 +79,12 @@ impl LiveProviderSetupService {
             config: Arc::new(Mutex::new(config)),
             config_persistence,
             broadcaster: Arc::new(OnceCell::new()),
-            token_store: TokenStore::new(),
             key_store: KeyStore::new(),
-            pending_oauth: Arc::new(RwLock::new(HashMap::new())),
             deploy_platform,
             priority_models: None,
             registry_rebuild_seq: Arc::new(AtomicU64::new(0)),
             env_overrides: HashMap::new(),
             error_parser: default_error_parser,
-            callback_bind_addr: "127.0.0.1".to_string(),
         }
     }
 
@@ -108,16 +96,6 @@ impl LiveProviderSetupService {
     /// Set a custom error parser for interpreting provider API errors.
     pub fn with_error_parser(mut self, parser: ErrorParser) -> Self {
         self.error_parser = parser;
-        self
-    }
-
-    /// Set the bind address for the OAuth callback server.
-    ///
-    /// Defaults to `127.0.0.1`. Pass `0.0.0.0` when the gateway is
-    /// bound to all interfaces (e.g. Docker) so the OAuth callback port
-    /// is reachable from the host.
-    pub fn with_callback_bind_addr(mut self, addr: String) -> Self {
-        self.callback_bind_addr = addr;
         self
     }
 
@@ -248,29 +226,15 @@ impl LiveProviderSetupService {
         provider: &KnownProvider,
         active_config: &ProvidersConfig,
     ) -> bool {
-        // Disabled providers (by offered allowlist or explicit enabled=false)
-        // should not show as configured, except subscription-backed OAuth
-        // providers with valid local tokens.
         if !active_config.is_enabled(provider.name) {
-            let subscription_with_tokens = provider.name == "openai-codex"
-                && active_config
-                    .get(provider.name)
-                    .is_none_or(|entry| entry.enabled)
-                && has_oauth_tokens(provider.name, &self.token_store);
-            if !subscription_with_tokens {
-                return false;
-            }
+            return false;
         }
 
-        // Check if the provider has an API key set via env
-        if let Some(env_key) = provider.env_key
-            && env_value_with_overrides(&self.env_overrides, env_key).is_some()
-        {
+        if env_value_with_overrides(&self.env_overrides, provider.env_key).is_some() {
             return true;
         }
-        if provider.auth_type == AuthType::ApiKey
-            && chelix_config::generic_provider_api_key_from_env(provider.name, &self.env_overrides)
-                .is_some()
+        if chelix_config::generic_provider_api_key_from_env(provider.name, &self.env_overrides)
+            .is_some()
         {
             return true;
         }
@@ -293,28 +257,6 @@ impl LiveProviderSetupService {
             .is_some_and(|(store, _)| store.load(provider.name).is_some())
         {
             return true;
-        }
-        // For OAuth providers, check token store
-        if provider.auth_type == AuthType::Oauth {
-            if self.token_store.load(provider.name).is_some() {
-                return true;
-            }
-            if home_token_store()
-                .as_ref()
-                .is_some_and(|(store, _)| store.load(provider.name).is_some())
-            {
-                return true;
-            }
-            // Match provider-registry behavior: openai-codex may be inferred from
-            // Codex CLI auth at ~/.codex/auth.json.
-            if provider.name == "openai-codex"
-                && crate::oauth::codex_cli_auth_path()
-                    .as_deref()
-                    .is_some_and(crate::oauth::codex_cli_auth_has_access_token)
-            {
-                return true;
-            }
-            return false;
         }
         false
     }
@@ -340,20 +282,8 @@ impl ProviderSetupService for LiveProviderSetupService {
         self.save_key_inner(params).await
     }
 
-    async fn oauth_start(&self, params: Value) -> ServiceResult {
-        self.oauth_start_inner(params).await
-    }
-
-    async fn oauth_complete(&self, params: Value) -> ServiceResult {
-        self.oauth_complete_inner(params).await
-    }
-
     async fn remove_key(&self, params: Value) -> ServiceResult {
         self.remove_key_inner(params).await
-    }
-
-    async fn oauth_status(&self, params: Value) -> ServiceResult {
-        self.oauth_status_inner(params).await
     }
 
     async fn validate_key(&self, params: Value) -> ServiceResult {

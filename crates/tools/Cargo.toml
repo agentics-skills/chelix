@@ -5,10 +5,9 @@ version.workspace = true
 
 [features]
 bundled-skills        = ["chelix-skills/bundled-skills"]
-default               = ["firecrawl", "metrics", "provider-openai-codex"]
+default               = ["firecrawl", "metrics"]
 firecrawl             = []
 metrics               = ["dep:chelix-metrics"]
-provider-openai-codex = ["chelix-providers/provider-openai-codex"]
 
 [dependencies]
 anyhow                = { workspace = true }

@@ -12,7 +12,6 @@ default-members = [
   "crates/claude-import",
   "crates/cli",
   "crates/code-index",
-  "crates/codex-import",
   "crates/common",
   "crates/config",
   "crates/cron",
@@ -70,7 +69,6 @@ members = [
   "crates/claude-import",
   "crates/cli",
   "crates/code-index",
-  "crates/codex-import",
   "crates/common",
   "crates/config",
   "crates/cron",
@@ -205,7 +203,6 @@ hmac               = "0.12"
 llama-cpp-2        = "0.1"
 matrix-sdk         = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
 mockito            = "1.7"
-open               = "5.3"
 # Not called directly: pulled in transitively (native-tls, ece/web-push,
 # webauthn-attestation-ca) and declared here only to unify the `vendored`
 # feature, which builds OpenSSL from source. Required for cross-compiling the
@@ -318,7 +315,6 @@ chelix-channels         = { path = "crates/channels" }
 chelix-chat             = { path = "crates/chat" }
 chelix-claude-import    = { path = "crates/claude-import" }
 chelix-code-index       = { path = "crates/code-index" }
-chelix-codex-import     = { path = "crates/codex-import" }
 chelix-common           = { path = "crates/common" }
 chelix-config           = { path = "crates/config" }
 chelix-cron             = { path = "crates/cron" }
@@ -342,7 +338,7 @@ chelix-portable         = { path = "crates/portable" }
 chelix-projects         = { path = "crates/projects" }
 chelix-protocol         = { path = "crates/protocol" }
 chelix-provider-setup   = { path = "crates/provider-setup" }
-chelix-providers        = { features = ["provider-openai-codex"], path = "crates/providers" }
+chelix-providers        = { path = "crates/providers" }
 chelix-qmd              = { path = "crates/qmd" }
 chelix-secret-store     = { default-features = false, path = "crates/secret-store" }
 chelix-service-traits   = { path = "crates/service-traits" }

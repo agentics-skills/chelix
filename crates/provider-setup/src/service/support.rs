@@ -45,10 +45,3 @@ pub type ErrorParser = fn(&str, Option<&str>) -> Value;
 pub(crate) fn default_error_parser(raw: &str, _provider: Option<&str>) -> Value {
     serde_json::json!({ "type": "unknown", "detail": raw })
 }
-
-#[derive(Clone)]
-pub(crate) struct PendingOAuthFlow {
-    pub(crate) provider_name: String,
-    pub(crate) oauth_config: chelix_oauth::OAuthConfig,
-    pub(crate) verifier: String,
-}
