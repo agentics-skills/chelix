@@ -96,16 +96,6 @@ impl AgentTool for ReadFileTool {
                                         }
                                     }
                                 },
-                                "includeLineNumbers": {
-                                    "type": "boolean",
-                                    "default": false,
-                                    "description": "Whether to include source line numbers in the result."
-                                },
-                                "numberBlankLines": {
-                                    "type": "boolean",
-                                    "default": false,
-                                    "description": "Whether blank lines receive line numbers when includeLineNumbers is true."
-                                },
                                 "includeRangeHeaders": {
                                     "type": "boolean",
                                     "default": false,
@@ -114,6 +104,16 @@ impl AgentTool for ReadFileTool {
                             }
                         }
                     ]
+                },
+                "includeLineNumbers": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether to include source line numbers in the result."
+                },
+                "numberBlankLines": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether blank lines receive line numbers when includeLineNumbers is true."
                 }
             }
         })
@@ -202,6 +202,11 @@ mod tests {
         assert_eq!(schema["required"], json!(["filePath", "read"]));
         assert_eq!(schema["additionalProperties"], false);
         assert_eq!(schema["properties"]["filePath"]["type"], "string");
+        assert_eq!(
+            schema["properties"]["includeLineNumbers"]["type"],
+            "boolean"
+        );
+        assert_eq!(schema["properties"]["numberBlankLines"]["type"], "boolean");
 
         let variants = schema["properties"]["read"]["oneOf"]
             .as_array()
@@ -224,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_input_rejects_missing_empty_malformed_mixed_and_legacy_read_forms() {
+    fn parse_input_rejects_missing_empty_malformed_and_mixed_read_forms() {
         for invalid in [
             json!({ "filePath": "/tmp/file" }),
             json!({ "filePath": "/tmp/file", "read": null }),
@@ -266,6 +271,8 @@ mod tests {
         .unwrap_or_else(|error| panic!("parse failed: {error}"));
 
         assert_eq!(input.file_path, "/workspace/file.txt");
+        assert!(!input.include_line_numbers);
+        assert!(!input.number_blank_lines);
         assert_eq!(
             serde_json::to_value(input.read)
                 .unwrap_or_else(|error| panic!("read operation encode failed: {error}")),
@@ -284,7 +291,9 @@ mod tests {
                 "read": {
                     "offset": 2,
                     "limit": 2
-                }
+                },
+                "includeLineNumbers": false,
+                "numberBlankLines": false
             })))
             .with_status(200)
             .with_header("content-type", "application/json")

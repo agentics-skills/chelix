@@ -1090,7 +1090,9 @@ mod tests {
                 "read": {
                     "offset": 10,
                     "limit": 5
-                }
+                },
+                "includeLineNumbers": false,
+                "numberBlankLines": false
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -1113,6 +1115,8 @@ mod tests {
                         limit: 5,
                     },
                 ),
+                include_line_numbers: false,
+                number_blank_lines: false,
             })
             .await
             .unwrap_or_else(|error| panic!("read file call failed: {error}"));
