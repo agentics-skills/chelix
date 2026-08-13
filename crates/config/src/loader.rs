@@ -73,6 +73,20 @@ fn config_dir_override() -> Option<PathBuf> {
         .clone()
 }
 
+fn resolve_explicit_config_dir(
+    programmatic_override: Option<PathBuf>,
+    env_override: Option<PathBuf>,
+) -> Option<PathBuf> {
+    programmatic_override.or_else(|| env_override.filter(|dir| !dir.as_os_str().is_empty()))
+}
+
+fn explicit_config_dir() -> Option<PathBuf> {
+    resolve_explicit_config_dir(
+        config_dir_override(),
+        std::env::var_os("CHELIX_CONFIG_DIR").map(PathBuf::from),
+    )
+}
+
 /// Set a custom data directory. When set, `data_dir()` returns this path
 /// instead of the default.
 pub fn set_data_dir(path: PathBuf) {
@@ -145,49 +159,14 @@ pub fn home_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())
 }
 
+fn default_config_dir() -> Option<PathBuf> {
+    home_dir().map(|home| home.join(".config").join("chelix"))
+}
+
 /// Returns the config directory: programmatic override -> `CHELIX_CONFIG_DIR` env ->
 /// `~/.config/chelix/`.
 pub fn config_dir() -> Option<PathBuf> {
-    if let Some(dir) = config_dir_override() {
-        return Some(dir);
-    }
-    if let Ok(dir) = std::env::var("CHELIX_CONFIG_DIR")
-        && !dir.is_empty()
-    {
-        return Some(PathBuf::from(dir));
-    }
-    home_dir().map(|h| h.join(".config").join("chelix"))
-}
-
-/// Returns the user-global config directory (`~/.config/chelix`) without
-/// considering overrides like `CHELIX_CONFIG_DIR`.
-pub fn user_global_config_dir() -> Option<PathBuf> {
-    home_dir().map(|h| h.join(".config").join("chelix"))
-}
-
-/// Returns the user-global config directory only when it differs from the
-/// active config directory (i.e. when `CHELIX_CONFIG_DIR` or `--config-dir`
-/// is overriding the default). Returns `None` when they are the same path.
-pub fn user_global_config_dir_if_different() -> Option<PathBuf> {
-    let home = user_global_config_dir()?;
-    let current = config_dir()?;
-    if home == current {
-        None
-    } else {
-        Some(home)
-    }
-}
-
-/// Finds a config file in the user-global config directory only.
-pub fn find_user_global_config_file() -> Option<PathBuf> {
-    let dir = user_global_config_dir()?;
-    for name in CONFIG_FILENAMES {
-        let p = dir.join(name);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
+    explicit_config_dir().or_else(default_config_dir)
 }
 
 /// Returns the data directory: programmatic override -> `CHELIX_DATA_DIR` env ->

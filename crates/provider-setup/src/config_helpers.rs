@@ -12,39 +12,12 @@ use {
     chelix_service_traits::{ServiceError, ServiceResult},
 };
 
-use crate::{
-    key_store::{KeyStore, ProviderConfig},
-    known_providers::known_providers,
-};
+use crate::{key_store::KeyStore, known_providers::known_providers};
 
 // ── Config directory helpers ───────────────────────────────────────────────
 
 pub(crate) fn current_config_dir() -> PathBuf {
     chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".config/chelix"))
-}
-
-pub(crate) fn home_config_dir_if_different() -> Option<PathBuf> {
-    chelix_config::user_global_config_dir_if_different()
-}
-
-pub(crate) fn home_key_store() -> Option<(KeyStore, PathBuf)> {
-    let dir = home_config_dir_if_different()?;
-    let path = dir.join("provider_keys.json");
-    Some((KeyStore::with_path(path.clone()), path))
-}
-
-pub(crate) fn home_provider_config() -> ServiceResult<Option<(ProvidersConfig, PathBuf)>> {
-    let Some(path) = chelix_config::find_user_global_config_file() else {
-        return Ok(None);
-    };
-    let Some(home_dir) = home_config_dir_if_different() else {
-        return Ok(None);
-    };
-    if !path.starts_with(&home_dir) {
-        return Ok(None);
-    }
-    let loaded = chelix_config::loader::load_config(&path).map_err(ServiceError::message)?;
-    Ok(Some((loaded.providers, path)))
 }
 
 // ── Provider name helpers ──────────────────────────────────────────────────
@@ -118,52 +91,8 @@ pub fn config_with_saved_keys(
     key_store: &KeyStore,
 ) -> ServiceResult<ProvidersConfig> {
     let mut config = base.clone();
-    if let Some((home_config, _)) = home_provider_config()? {
-        for (name, entry) in home_config.providers {
-            let dst = config.providers.entry(name).or_default();
-            if dst
-                .api_key
-                .as_ref()
-                .is_none_or(|k| k.expose_secret().is_empty())
-                && let Some(api_key) = entry.api_key
-                && !api_key.expose_secret().is_empty()
-            {
-                dst.api_key = Some(api_key);
-            }
-            if dst.base_url.is_none()
-                && let Some(base_url) = entry.base_url
-                && !base_url.trim().is_empty()
-            {
-                dst.base_url = Some(base_url);
-            }
-            merge_model_maps(&mut dst.models, entry.models);
-        }
-    }
 
-    // Merge home key store first, then current key store so current instance
-    // values win when both have values.
-    let mut saved_configs = HashMap::new();
-    if let Some((home_store, _)) = home_key_store() {
-        saved_configs.extend(home_store.load_all_configs());
-    }
     for (name, saved) in key_store.load_all_configs() {
-        let entry = saved_configs
-            .entry(name)
-            .or_insert_with(ProviderConfig::default);
-        if saved.api_key.is_some() {
-            entry.api_key = saved.api_key;
-        }
-        if saved.base_url.is_some() {
-            entry.base_url = saved.base_url;
-        }
-        if !saved.models.is_empty() {
-            let fallback = std::mem::take(&mut entry.models);
-            entry.models = saved.models;
-            merge_model_maps(&mut entry.models, fallback);
-        }
-    }
-
-    for (name, saved) in saved_configs {
         let entry = config.providers.entry(name).or_default();
 
         // Only override API key if config doesn't already have one.
@@ -220,8 +149,6 @@ pub fn detect_auto_provider_sources_with_overrides(
 ) -> ServiceResult<Vec<AutoDetectedProviderSource>> {
     let is_cloud = deploy_platform.is_some();
     let key_store = KeyStore::new();
-    let home_key_store = home_key_store();
-    let home_provider_config = home_provider_config()?;
     let config_dir = current_config_dir();
     let provider_keys_path = config_dir.join("provider_keys.json");
 
@@ -254,29 +181,8 @@ pub fn detect_auto_provider_sources_with_overrides(
             sources.push(format!("config:[providers.{}].api_key", provider.name));
         }
 
-        if home_provider_config
-            .as_ref()
-            .and_then(|(cfg, _)| cfg.get(provider.name))
-            .and_then(|entry| entry.api_key.as_ref())
-            .is_some_and(|k| !k.expose_secret().trim().is_empty())
-            && let Some((_, path)) = home_provider_config.as_ref()
-        {
-            sources.push(format!(
-                "file:{}:[providers.{}].api_key",
-                path.display(),
-                provider.name
-            ));
-        }
-
         if key_store.load(provider.name).is_some() {
             sources.push(format!("file:{}", provider_keys_path.display()));
-        }
-        if home_key_store
-            .as_ref()
-            .is_some_and(|(store, _)| store.load(provider.name).is_some())
-            && let Some((_, path)) = home_key_store.as_ref()
-        {
-            sources.push(format!("file:{}", path.display()));
         }
 
         for source in sources {

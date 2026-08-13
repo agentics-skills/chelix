@@ -62,6 +62,7 @@ impl KeyStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn with_path(path: PathBuf) -> Self {
         Self {
             inner: Arc::new(Mutex::new(KeyStoreInner { path })),
