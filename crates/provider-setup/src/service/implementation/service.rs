@@ -30,8 +30,7 @@ use {
     crate::{
         SetupBroadcaster,
         config_helpers::{
-            config_with_saved_keys, env_value_with_overrides, home_key_store,
-            set_provider_enabled_in_config,
+            config_with_saved_keys, env_value_with_overrides, set_provider_enabled_in_config,
         },
         key_store::KeyStore,
         known_providers::KnownProvider,
@@ -248,17 +247,7 @@ impl LiveProviderSetupService {
             return true;
         }
         // Check persisted key store
-        if self.key_store.load(provider.name).is_some() {
-            return true;
-        }
-        // Check persisted key store in user-global config dir.
-        if home_key_store()
-            .as_ref()
-            .is_some_and(|(store, _)| store.load(provider.name).is_some())
-        {
-            return true;
-        }
-        false
+        self.key_store.load(provider.name).is_some()
     }
 
     /// Build a ProvidersConfig that includes saved keys for registry rebuild.

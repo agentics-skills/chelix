@@ -209,41 +209,37 @@ fn load_layered_config_toml(
     apply_env_overrides_with_options(config, std::env::vars(), apply_third_party_aliases)
 }
 
+fn find_config_file_in(dir: &Path) -> Option<PathBuf> {
+    CONFIG_FILENAMES
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|path| path.exists())
+}
+
+pub(super) fn find_config_file_from_dirs(
+    explicit_dir: Option<&Path>,
+    project_dir: &Path,
+    default_dir: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(dir) = explicit_dir {
+        return find_config_file_in(dir);
+    }
+
+    find_config_file_in(project_dir).or_else(|| default_dir.and_then(find_config_file_in))
+}
+
 /// Find the first config file in standard locations.
 ///
-/// When a config dir override is set, only that directory is searched —
-/// project-local and user-global paths are skipped for isolation.
+/// When a programmatic or `CHELIX_CONFIG_DIR` override is set, only that
+/// directory is searched. Project-local and user-global paths are skipped.
 pub fn find_config_file() -> Option<PathBuf> {
-    if let Some(dir) = config_dir_override() {
-        for name in CONFIG_FILENAMES {
-            let p = dir.join(name);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        // Override is set — don't fall through to other locations.
-        return None;
-    }
-
-    // Project-local
-    for name in CONFIG_FILENAMES {
-        let p = PathBuf::from(name);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-
-    // User-global: ~/.config/chelix/
-    if let Some(dir) = home_dir().map(|h| h.join(".config").join("chelix")) {
-        for name in CONFIG_FILENAMES {
-            let p = dir.join(name);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-    }
-
-    None
+    let explicit_dir = explicit_config_dir();
+    let default_dir = default_config_dir();
+    find_config_file_from_dirs(
+        explicit_dir.as_deref(),
+        Path::new("."),
+        default_dir.as_deref(),
+    )
 }
 
 pub fn find_or_default_config_path() -> PathBuf {
