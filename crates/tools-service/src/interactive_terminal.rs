@@ -5,7 +5,7 @@ use {
     base64::Engine as _,
     chelix_protocol::{
         ToolsServiceTerminalClientMessage, ToolsServiceTerminalControlAction,
-        ToolsServiceTerminalInfo,
+        ToolsServiceTerminalInfo, ToolsServiceToolCallTerminalAttachQuery,
     },
     futures::{SinkExt, StreamExt},
 };
@@ -13,6 +13,37 @@ use {
 use crate::terminal::TerminalManager;
 
 const MAX_INPUT_BYTES: usize = 8 * 1024;
+
+pub(crate) async fn handle_tool_call(
+    mut socket: WebSocket,
+    manager: Arc<TerminalManager>,
+    query: ToolsServiceToolCallTerminalAttachQuery,
+) {
+    let terminal = tokio::select! {
+        terminal = manager.wait_for_tool_call_terminal(&query.session_key, &query.tool_call_id) => {
+            match terminal {
+                Ok(terminal) => terminal,
+                Err(error) => {
+                    let _ = send_status_socket(&mut socket, error, "error").await;
+                    return;
+                },
+            }
+        },
+        message = socket.recv() => {
+            if let Some(Ok(Message::Close(_))) = message {
+                return;
+            }
+            let _ = send_status_socket(
+                &mut socket,
+                "terminal input is unavailable until the tool call starts",
+                "error",
+            )
+            .await;
+            return;
+        },
+    };
+    handle(socket, manager, terminal).await;
+}
 
 pub(crate) async fn handle(
     socket: WebSocket,
@@ -142,6 +173,24 @@ pub(crate) async fn handle(
                 }
             },
         }
+    }
+}
+
+async fn send_status_socket(
+    socket: &mut WebSocket,
+    text: impl std::fmt::Display,
+    level: &str,
+) -> bool {
+    match serde_json::to_string(&serde_json::json!({
+        "type": "status",
+        "text": text.to_string(),
+        "level": level,
+    })) {
+        Ok(text) => socket.send(Message::Text(text.into())).await.is_ok(),
+        Err(error) => {
+            tracing::error!(%error, "serializing managed terminal websocket message failed");
+            false
+        },
     }
 }
 

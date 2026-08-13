@@ -20,8 +20,9 @@ use {
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
         TOOLS_SERVICE_READ_MEDIA_PATH, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
-        ToolsServiceError, ToolsServiceHealth, ToolsServiceTerminalAttachQuery,
-        ToolsServiceTerminalsResponse,
+        TOOLS_SERVICE_TOOL_CALL_TERMINAL_WS_PATH, ToolsServiceError, ToolsServiceHealth,
+        ToolsServiceTerminalAttachQuery, ToolsServiceTerminalsResponse,
+        ToolsServiceToolCallTerminalAttachQuery,
     },
 };
 
@@ -73,6 +74,10 @@ pub fn router(
             get(list_terminals).post(create_terminal),
         )
         .route(TOOLS_SERVICE_TERMINAL_WS_PATH, get(attach_terminal))
+        .route(
+            TOOLS_SERVICE_TOOL_CALL_TERMINAL_WS_PATH,
+            get(attach_tool_call_terminal),
+        )
         .with_state(ApiState {
             token: Arc::from(token),
             file_write_runtime: Arc::new(FileWriteRuntime::default()),
@@ -287,6 +292,25 @@ async fn create_terminal(
         Ok(terminal) => Json(CreateToolsServiceTerminalResponse { terminal }).into_response(),
         Err(error) => tool_error_response(error),
     }
+}
+
+#[tracing::instrument(skip_all)]
+async fn attach_tool_call_terminal(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Query(query): Query<ToolsServiceToolCallTerminalAttachQuery>,
+    websocket: WebSocketUpgrade,
+) -> Response {
+    if !is_authorized(&state, &headers) {
+        return unauthorized_response();
+    }
+
+    let terminal_manager = Arc::clone(&state.terminal_manager);
+    websocket
+        .on_upgrade(move |socket| {
+            interactive_terminal::handle_tool_call(socket, terminal_manager, query)
+        })
+        .into_response()
 }
 
 #[tracing::instrument(skip_all)]
@@ -535,6 +559,7 @@ mod tests {
                 .post(format!("{base_url}{TOOLS_SERVICE_EXECUTE_COMMAND_PATH}"))
                 .json(&ExecuteCommandRequest {
                     session_key: "session:http".into(),
+                    tool_call_id: "call-auth".into(),
                     command: "printf ok".into(),
                     custom_cwd: None,
                     new_terminal: true,
@@ -583,6 +608,7 @@ mod tests {
             .bearer_auth("test-token")
             .json(&ExecuteCommandRequest {
                 session_key: "session:http".into(),
+                tool_call_id: "call-success".into(),
                 command: "printf 'api-output\\n'".into(),
                 custom_cwd: None,
                 new_terminal: true,
@@ -657,6 +683,7 @@ mod tests {
                 .bearer_auth("test-token")
                 .json(&ExecuteCommandRequest {
                     session_key: "session:http".into(),
+                    tool_call_id: "call-error".into(),
                     command: String::new(),
                     custom_cwd: None,
                     new_terminal: true,

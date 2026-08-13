@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 15;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 16;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_EDIT_FILE_PATH: &str = "/v1/edit-file";
@@ -19,6 +19,7 @@ pub const TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH: &str = "/v1/read-terminal-out
 pub const TOOLS_SERVICE_PROCESS_PATH: &str = "/v1/process";
 pub const TOOLS_SERVICE_TERMINALS_PATH: &str = "/v1/terminals";
 pub const TOOLS_SERVICE_TERMINAL_WS_PATH: &str = "/v1/terminal-ws";
+pub const TOOLS_SERVICE_TOOL_CALL_TERMINAL_WS_PATH: &str = "/v1/tool-call-terminal-ws";
 pub const TOOLS_SERVICE_AUTH_HEADER: &str = "authorization";
 pub const TOOLS_SERVICE_TOKEN_ENV: &str = "CHELIX_TOOLS_SERVICE_TOKEN";
 pub const TOOLS_SERVICE_BINARY_ENV: &str = "CHELIX_TOOLS_SERVICE_BINARY";
@@ -674,6 +675,7 @@ impl fmt::Debug for ToolsServiceEnvVar {
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteCommandRequest {
     pub session_key: String,
+    pub tool_call_id: String,
     pub command: String,
     pub custom_cwd: Option<String>,
     pub new_terminal: bool,
@@ -756,6 +758,13 @@ pub struct CreateToolsServiceTerminalResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ToolsServiceTerminalAttachQuery {
     pub id: String,
+    pub session_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolsServiceToolCallTerminalAttachQuery {
+    pub tool_call_id: String,
     pub session_key: String,
 }
 
@@ -1604,6 +1613,7 @@ mod tests {
     fn execute_command_messages_use_camel_case_wire_fields() {
         let request = ExecuteCommandRequest {
             session_key: "session:test".into(),
+            tool_call_id: "call-1".into(),
             command: "printf hello".into(),
             custom_cwd: Some("/workspace".into()),
             new_terminal: false,
@@ -1622,6 +1632,7 @@ mod tests {
             json,
             serde_json::json!({
                 "sessionKey": "session:test",
+                "toolCallId": "call-1",
                 "command": "printf hello",
                 "customCwd": "/workspace",
                 "newTerminal": false,
@@ -1638,6 +1649,19 @@ mod tests {
         let decoded: ExecuteCommandRequest = serde_json::from_value(json)
             .unwrap_or_else(|error| panic!("execute request decode failed: {error}"));
         assert_eq!(decoded, request);
+        assert!(
+            serde_json::from_value::<ExecuteCommandRequest>(serde_json::json!({
+                "sessionKey": "session:test",
+                "command": "printf hello",
+                "customCwd": null,
+                "newTerminal": false,
+                "background": false,
+                "timeoutMillis": 5_000,
+                "terminalId": null,
+                "env": []
+            }))
+            .is_err()
+        );
 
         let response = ExecuteCommandResponse {
             terminal_id: "3".into(),
@@ -1659,6 +1683,26 @@ mod tests {
         let decoded: ExecuteCommandResponse = serde_json::from_value(json)
             .unwrap_or_else(|error| panic!("execute response decode failed: {error}"));
         assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn tool_call_terminal_attach_query_uses_camel_case_wire_fields() {
+        let query = ToolsServiceToolCallTerminalAttachQuery {
+            tool_call_id: "call-1".into(),
+            session_key: "session:test".into(),
+        };
+        let json = serde_json::to_value(&query)
+            .unwrap_or_else(|error| panic!("tool call terminal query encode failed: {error}"));
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "toolCallId": "call-1",
+                "sessionKey": "session:test"
+            })
+        );
+        let decoded = serde_json::from_value::<ToolsServiceToolCallTerminalAttachQuery>(json)
+            .unwrap_or_else(|error| panic!("tool call terminal query decode failed: {error}"));
+        assert_eq!(decoded, query);
     }
 
     #[test]

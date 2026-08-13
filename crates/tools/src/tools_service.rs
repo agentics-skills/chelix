@@ -14,8 +14,10 @@ use {
         TOOLS_SERVICE_PROTOCOL_VERSION, TOOLS_SERVICE_READ_FILE_PATH,
         TOOLS_SERVICE_READ_MEDIA_PATH, TOOLS_SERVICE_READ_TERMINAL_OUTPUT_PATH,
         TOOLS_SERVICE_RIPGREP_PATH, TOOLS_SERVICE_TERMINAL_WS_PATH, TOOLS_SERVICE_TERMINALS_PATH,
-        ToolsServiceError, ToolsServiceHealth, ToolsServiceInstanceInfo, ToolsServiceReady,
-        ToolsServiceTerminalAttachQuery, ToolsServiceTerminalInfo, ToolsServiceTerminalsResponse,
+        TOOLS_SERVICE_TOOL_CALL_TERMINAL_WS_PATH, ToolsServiceError, ToolsServiceHealth,
+        ToolsServiceInstanceInfo, ToolsServiceReady, ToolsServiceTerminalAttachQuery,
+        ToolsServiceTerminalInfo, ToolsServiceTerminalsResponse,
+        ToolsServiceToolCallTerminalAttachQuery,
     },
     secrecy::ExposeSecret,
     serde::{Serialize, de::DeserializeOwned},
@@ -574,6 +576,43 @@ impl ManagedToolsService {
         >,
     > {
         let instance = self.existing_instance(instance_id).await?;
+        self.connect_terminal_endpoint(&instance, TOOLS_SERVICE_TERMINAL_WS_PATH, &[
+            ("id", query.id.as_str()),
+            ("sessionKey", query.session_key.as_str()),
+        ])
+        .await
+    }
+
+    pub async fn connect_tool_call_terminal(
+        &self,
+        session_key: &str,
+        query: &ToolsServiceToolCallTerminalAttachQuery,
+    ) -> Result<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    > {
+        if query.session_key != session_key {
+            return Err(Error::message("tool call terminal session key mismatch"));
+        }
+        let instance = self.instance_for_session(session_key).await?;
+        self.connect_terminal_endpoint(&instance, TOOLS_SERVICE_TOOL_CALL_TERMINAL_WS_PATH, &[
+            ("toolCallId", query.tool_call_id.as_str()),
+            ("sessionKey", query.session_key.as_str()),
+        ])
+        .await
+    }
+
+    async fn connect_terminal_endpoint(
+        &self,
+        instance: &ToolsServiceInstance,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    > {
         let mut url = url::Url::parse(&instance.endpoint.base_url)?;
         let websocket_scheme = match url.scheme() {
             "http" => "ws",
@@ -586,10 +625,8 @@ impl ManagedToolsService {
         };
         url.set_scheme(websocket_scheme)
             .map_err(|_| Error::message("failed to set tools service WebSocket scheme"))?;
-        url.set_path(TOOLS_SERVICE_TERMINAL_WS_PATH);
-        url.query_pairs_mut()
-            .append_pair("id", &query.id)
-            .append_pair("sessionKey", &query.session_key);
+        url.set_path(path);
+        url.query_pairs_mut().extend_pairs(query.iter().copied());
         let mut request = url.as_str().into_client_request().map_err(|error| {
             Error::message(format!("invalid tools service WebSocket request: {error}"))
         })?;

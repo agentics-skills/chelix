@@ -260,6 +260,8 @@ pub enum RunnerEvent {
         iteration_tool_calls: Arc<[RunnerToolCall]>,
         /// Exact provider usage for the LLM iteration that emitted the batch.
         iteration_usage: Usage,
+        /// Server timestamp captured before the concurrent tool batch starts.
+        started_at: time::OffsetDateTime,
     },
     ToolCallEnd {
         id: String,

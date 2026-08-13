@@ -41,6 +41,8 @@ struct ExecuteCommandParams {
     terminal_id: Option<String>,
     #[serde(rename = "_session_key", default)]
     session_key: Option<String>,
+    #[serde(rename = "_tool_call_id")]
+    tool_call_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,6 +272,7 @@ impl AgentTool for ExecuteCommandTool {
         let timeout_millis = self.effective_timeout_millis(params.response_timeout_ms)?;
         let request = ExecuteCommandRequest {
             session_key: session_key.clone(),
+            tool_call_id: params.tool_call_id,
             command: command.clone(),
             custom_cwd,
             new_terminal: params.new_terminal,
@@ -473,6 +476,7 @@ mod tests {
             .match_header("authorization", "Bearer command-token")
             .match_body(mockito::Matcher::PartialJson(serde_json::json!({
                 "sessionKey": "session:test",
+                "toolCallId": "call-routes",
                 "command": "printf ok",
                 "customCwd": null,
                 "newTerminal": false,
@@ -494,7 +498,8 @@ mod tests {
         let result = tool
             .execute(serde_json::json!({
                 "command": "printf ok",
-                "_session_key": "session:test"
+                "_session_key": "session:test",
+                "_tool_call_id": "call-routes"
             }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -533,7 +538,8 @@ mod tests {
                 "command": "pwd",
                 "customCwd": "",
                 "newTerminal": true,
-                "terminalId": ""
+                "terminalId": "",
+                "_tool_call_id": "call-empty-routing"
             }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -565,7 +571,8 @@ mod tests {
             .execute(serde_json::json!({
                 "command": "pwd",
                 "customCwd": "/tmp",
-                "terminalId": "42"
+                "terminalId": "42",
+                "_tool_call_id": "call-routing-values"
             }))
             .await
             .unwrap_or_else(|error| panic!("execute failed: {error}"));
@@ -596,7 +603,8 @@ mod tests {
             .execute(serde_json::json!({
                 "command": "pwd",
                 "newTerminal": true,
-                "terminalId": "42"
+                "terminalId": "42",
+                "_tool_call_id": "call-routing-conflict"
             }))
             .await
         {
@@ -609,6 +617,21 @@ mod tests {
             "terminalId cannot be combined with newTerminal=true"
         );
         call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn execute_requires_internal_tool_call_id_before_transport() {
+        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"));
+
+        let error = match tool.execute(serde_json::json!({ "command": "pwd" })).await {
+            Ok(_) => panic!("expected missing internal tool call id error"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("missing field `_tool_call_id`"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

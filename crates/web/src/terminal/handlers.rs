@@ -185,9 +185,21 @@ pub async fn api_terminal_ws_upgrade_handler(
         Some(service) => service,
         None => return tools_service_unavailable_response(),
     };
-    let instance_id = query.instance_id.clone();
-    let attach_query = query.into();
-    let upstream = match service.connect_terminal(&instance_id, &attach_query).await {
+    let upstream = match query {
+        TerminalWsQuery::Terminal(query) => {
+            let instance_id = query.instance_id.clone();
+            let attach_query = query.into();
+            service.connect_terminal(&instance_id, &attach_query).await
+        },
+        TerminalWsQuery::ToolCall(query) => {
+            let session_key = query.session_key.clone();
+            let attach_query = query.into();
+            service
+                .connect_tool_call_terminal(&session_key, &attach_query)
+                .await
+        },
+    };
+    let upstream = match upstream {
         Ok(upstream) => upstream,
         Err(error) => {
             return (

@@ -3,6 +3,10 @@
 import { completeA2uiToolCard, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import type { ChannelFooterInfo } from "../chat-ui";
 import {
+	mountExecuteCommandToolBubble,
+	unmountExecuteCommandToolBubble,
+} from "../components/ExecuteCommandToolBubble";
+import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
 	chatAddMsg,
@@ -179,6 +183,7 @@ function appendSkillChangeHint(toolCard: HTMLElement, payload: ChatPayload): voi
 }
 
 export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSession: string): void {
+	unmountExecuteCommandToolBubble(toolCard);
 	const validationError = isToolValidationErrorPayload(p);
 	setCompletedToolStatus(toolCard, p.success, validationError);
 	renderCompletedToolResult(toolCard, p, eventSession, validationError);
@@ -198,6 +203,7 @@ export function clearStaleRunningToolCards(): void {
 		if (!card) continue;
 		if (!card.classList.contains("running")) continue;
 		if (card.classList.contains("tool-call-card")) {
+			unmountExecuteCommandToolBubble(card);
 			setToolCardStatus(card, "success");
 			setToolCardExpanded(card, false);
 			continue;
@@ -296,6 +302,13 @@ export function handleToolCallStartDom(p: ChatPayload, eventSession: string): vo
 		if (Number.isInteger(p.messageIndex)) {
 			existingCard.dataset.assistantHistoryIndex = String(p.messageIndex);
 		}
+		if (isCommandToolName(p.toolName) && p.toolCallId) {
+			mountExecuteCommandToolBubble(existingCard, {
+				toolCallId: p.toolCallId,
+				sessionKey: eventSession,
+				startedAt: p.startedAt ?? Number.NaN,
+			});
+		}
 		if (isA2uiTool(p.toolName)) {
 			mountA2uiToolCard(existingCard, {
 				arguments: p.arguments,
@@ -316,6 +329,13 @@ export function handleToolCallStartDom(p: ChatPayload, eventSession: string): vo
 		status: "running",
 		expanded: true,
 	});
+	if (isCommandToolName(p.toolName) && p.toolCallId) {
+		mountExecuteCommandToolBubble(card, {
+			toolCallId: p.toolCallId,
+			sessionKey: eventSession,
+			startedAt: p.startedAt ?? Number.NaN,
+		});
+	}
 	if (isA2uiTool(p.toolName)) {
 		mountA2uiToolCard(card, {
 			arguments: p.arguments,

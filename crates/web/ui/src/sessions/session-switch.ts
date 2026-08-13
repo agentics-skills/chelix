@@ -1,6 +1,7 @@
 // ── Session switching: switch, restore, refresh ─────────────────
 
 import { chatAddMsg, setComposerStopButton, updateTokenBar } from "../chat-ui";
+import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { sendRpc } from "../helpers";
 import { updateSessionProjectSelect } from "../project-combo";
 import { sessionPath } from "../router";
@@ -159,7 +160,10 @@ function finishSessionRefresh(key: string): void {
 
 function resetSwitchViewState(): void {
 	hideSessionLoadIndicator();
-	if (S.chatMsgBox) S.chatMsgBox.textContent = "";
+	if (S.chatMsgBox) {
+		unmountExecuteCommandToolBubbles(S.chatMsgBox);
+		S.chatMsgBox.textContent = "";
+	}
 	const tray = document.getElementById("queuedMessages");
 	if (tray) {
 		while (tray.firstChild) tray.removeChild(tray.firstChild);
@@ -235,6 +239,7 @@ function restoreActiveToolCallsFromSwitchPayload(key: string, payload: SwitchPay
 				toolName,
 				arguments: call.arguments,
 				executionMode: call.executionMode,
+				startedAt: call.startedAt,
 			} as ChatPayload,
 			key,
 		);
@@ -249,7 +254,10 @@ export function clearActiveSession(): Promise<RpcResponse> {
 	S.setChatSeq(0);
 	return sendRpc("chat.clear", {}).then((res) => {
 		if (res?.ok) {
-			if (S.chatMsgBox) S.chatMsgBox.textContent = "";
+			if (S.chatMsgBox) {
+				unmountExecuteCommandToolBubbles(S.chatMsgBox);
+				S.chatMsgBox.textContent = "";
+			}
 			S.setSessionTokens({ input: 0, output: 0 });
 			S.setSessionCurrentInputTokens(0);
 			S.setSessionCurrentContextTokens(0);

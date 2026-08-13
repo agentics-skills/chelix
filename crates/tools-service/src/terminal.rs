@@ -28,6 +28,7 @@ const DEFAULT_COLS: u16 = 220;
 const DEFAULT_ROWS: u16 = 56;
 const MAX_COMMAND_BYTES: usize = 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
+const MAX_TOOL_CALL_ID_BYTES: usize = 1024;
 const MULTILINE_COMMAND_LINE_DELAY: Duration = Duration::from_millis(25);
 const PROMPT_COMMAND: &str = r#"__chelix_status=$?; printf '\033]633;D;%s\007' "$__chelix_status"; trap 'trap - DEBUG; printf "\033]633;C\007"' DEBUG"#;
 
@@ -35,6 +36,8 @@ pub(crate) struct TerminalManager {
     default_working_dir: PathBuf,
     next_terminal_id: AtomicU64,
     terminals: RwLock<HashMap<String, Arc<ManagedTerminal>>>,
+    tool_call_terminals: Mutex<HashMap<(String, String), Arc<ManagedTerminal>>>,
+    tool_call_notify: Notify,
 }
 
 pub(crate) struct TerminalSubscription {
@@ -73,6 +76,12 @@ struct ManagedRun {
     completed: bool,
 }
 
+struct ToolCallTerminalBinding<'a> {
+    manager: &'a TerminalManager,
+    key: (String, String),
+    terminal_id: String,
+}
+
 #[derive(Default)]
 struct ShellEventParser {
     pending: Vec<u8>,
@@ -102,6 +111,8 @@ impl TerminalManager {
             default_working_dir,
             next_terminal_id: AtomicU64::new(1),
             terminals: RwLock::new(HashMap::new()),
+            tool_call_terminals: Mutex::new(HashMap::new()),
+            tool_call_notify: Notify::new(),
         })
     }
 
@@ -111,6 +122,7 @@ impl TerminalManager {
     ) -> Result<ExecuteCommandResponse> {
         validate_execute_request(&request)?;
         let terminal = self.resolve_terminal(&request).await?;
+        let _binding = self.bind_tool_call_terminal(&request, &terminal)?;
         ensure_terminal_alive(&terminal)?;
         ensure_environment_matches(&terminal, &request.env)?;
         wait_for_terminal_ready(
@@ -230,6 +242,25 @@ impl TerminalManager {
         order_terminal_infos(infos)
     }
 
+    pub(crate) async fn wait_for_tool_call_terminal(
+        &self,
+        session_key: &str,
+        tool_call_id: &str,
+    ) -> Result<ToolsServiceTerminalInfo> {
+        validate_session_key(session_key)?;
+        validate_tool_call_id(tool_call_id)?;
+        let key = (session_key.to_owned(), tool_call_id.to_owned());
+        loop {
+            let notified = self.tool_call_notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if let Some(terminal) = lock(&self.tool_call_terminals).get(&key).cloned() {
+                return Ok(terminal_info(&terminal));
+            }
+            notified.await;
+        }
+    }
+
     pub(crate) async fn terminal_ids(&self, session_key: &str) -> Result<Vec<String>> {
         validate_session_key(session_key)?;
         let terminals = self.terminals.read().await;
@@ -337,6 +368,30 @@ impl TerminalManager {
         } else {
             bail!("terminal shutdown failed: {}", errors.join("; "))
         }
+    }
+
+    fn bind_tool_call_terminal<'a>(
+        &'a self,
+        request: &ExecuteCommandRequest,
+        terminal: &Arc<ManagedTerminal>,
+    ) -> Result<ToolCallTerminalBinding<'a>> {
+        let key = (request.session_key.clone(), request.tool_call_id.clone());
+        let mut bindings = lock(&self.tool_call_terminals);
+        if bindings.contains_key(&key) {
+            bail!(
+                "tool call {:?} already has a terminal binding in session {:?}",
+                request.tool_call_id,
+                request.session_key
+            );
+        }
+        bindings.insert(key.clone(), Arc::clone(terminal));
+        drop(bindings);
+        self.tool_call_notify.notify_waiters();
+        Ok(ToolCallTerminalBinding {
+            manager: self,
+            key,
+            terminal_id: terminal.id.clone(),
+        })
     }
 
     async fn resolve_terminal(
@@ -466,6 +521,20 @@ impl TerminalManager {
             bail!("terminal {terminal_id} does not belong to this session");
         }
         Ok(terminal)
+    }
+}
+
+impl Drop for ToolCallTerminalBinding<'_> {
+    fn drop(&mut self) {
+        let mut bindings = lock(&self.manager.tool_call_terminals);
+        if bindings
+            .get(&self.key)
+            .is_some_and(|terminal| terminal.id == self.terminal_id)
+        {
+            bindings.remove(&self.key);
+        }
+        drop(bindings);
+        self.manager.tool_call_notify.notify_waiters();
     }
 }
 
@@ -924,6 +993,7 @@ fn shell_quote(value: &str) -> Result<String> {
 
 fn validate_execute_request(request: &ExecuteCommandRequest) -> Result<()> {
     validate_session_key(&request.session_key)?;
+    validate_tool_call_id(&request.tool_call_id)?;
     if request.command.is_empty() {
         bail!("command cannot be empty");
     }
@@ -939,6 +1009,16 @@ fn validate_execute_request(request: &ExecuteCommandRequest) -> Result<()> {
         validate_no_nul(&variable.value, "environment value")?;
     }
     Ok(())
+}
+
+fn validate_tool_call_id(tool_call_id: &str) -> Result<()> {
+    if tool_call_id.is_empty() {
+        bail!("toolCallId cannot be empty");
+    }
+    if tool_call_id.len() > MAX_TOOL_CALL_ID_BYTES {
+        bail!("toolCallId exceeds {MAX_TOOL_CALL_ID_BYTES} bytes");
+    }
+    validate_no_nul(tool_call_id, "toolCallId")
 }
 
 fn validated_environment(
@@ -1090,6 +1170,7 @@ mod tests {
     fn command_request(session_key: &str, command: &str) -> ExecuteCommandRequest {
         ExecuteCommandRequest {
             session_key: session_key.into(),
+            tool_call_id: format!("call-{command}"),
             command: command.into(),
             custom_cwd: None,
             new_terminal: false,
@@ -1433,6 +1514,184 @@ mod tests {
                 response.terminal_id
             )
         );
+
+        manager
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| panic!("terminal shutdown failed: {error}"));
+    }
+
+    #[test]
+    fn execute_request_rejects_invalid_tool_call_ids() {
+        let mut request = command_request("session:validation", "printf ok");
+        request.tool_call_id.clear();
+        let empty_error = match validate_execute_request(&request) {
+            Ok(()) => panic!("empty tool call id should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(empty_error.to_string(), "toolCallId cannot be empty");
+
+        request.tool_call_id = "invalid\0id".into();
+        let nul_error = match validate_execute_request(&request) {
+            Ok(()) => panic!("NUL in tool call id should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(nul_error.to_string(), "toolCallId cannot contain NUL bytes");
+    }
+
+    #[tokio::test]
+    async fn tool_call_binding_is_exact_visible_during_execution_and_removed_afterward() {
+        let manager = Arc::new(
+            TerminalManager::new(std::env::temp_dir())
+                .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}")),
+        );
+        let mut request = command_request("session:binding", "sleep 1; printf 'done\\n'");
+        request.new_terminal = true;
+        request.tool_call_id = "call-exact".into();
+        let execution_manager = Arc::clone(&manager);
+        let execution =
+            tokio::spawn(async move { execution_manager.execute_command(request).await });
+
+        let terminal = tokio::time::timeout(
+            Duration::from_secs(5),
+            manager.wait_for_tool_call_terminal("session:binding", "call-exact"),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("exact tool call binding was not published"))
+        .unwrap_or_else(|error| panic!("exact tool call binding failed: {error}"));
+        assert!(!execution.is_finished());
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(25),
+                manager.wait_for_tool_call_terminal("session:other", "call-exact"),
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(25),
+                manager.wait_for_tool_call_terminal("session:binding", "call-other"),
+            )
+            .await
+            .is_err()
+        );
+
+        let response = execution
+            .await
+            .unwrap_or_else(|error| panic!("execution task failed: {error}"))
+            .unwrap_or_else(|error| panic!("command execution failed: {error}"));
+        assert_eq!(terminal.id, response.terminal_id);
+        assert!(
+            !lock(&manager.tool_call_terminals)
+                .contains_key(&("session:binding".into(), "call-exact".into()))
+        );
+
+        manager
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| panic!("terminal shutdown failed: {error}"));
+    }
+
+    #[tokio::test]
+    async fn duplicate_tool_call_binding_is_rejected_and_guard_removes_exact_entry() {
+        let manager = TerminalManager::new(std::env::temp_dir())
+            .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
+        let terminal_info = manager
+            .create_interactive_terminal("session:duplicate", &[])
+            .await
+            .unwrap_or_else(|error| panic!("terminal creation failed: {error}"));
+        let terminal = manager
+            .find_terminal("session:duplicate", &terminal_info.id)
+            .await
+            .unwrap_or_else(|error| panic!("terminal lookup failed: {error}"));
+        let request = command_request("session:duplicate", "printf ok");
+        let binding = manager
+            .bind_tool_call_terminal(&request, &terminal)
+            .unwrap_or_else(|error| panic!("initial binding failed: {error}"));
+
+        let duplicate = match manager.bind_tool_call_terminal(&request, &terminal) {
+            Ok(_) => panic!("duplicate binding should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            duplicate.to_string(),
+            "tool call \"call-printf ok\" already has a terminal binding in session \"session:duplicate\""
+        );
+        assert_eq!(lock(&manager.tool_call_terminals).len(), 1);
+        drop(binding);
+        assert!(lock(&manager.tool_call_terminals).is_empty());
+
+        manager
+            .shutdown()
+            .await
+            .unwrap_or_else(|error| panic!("terminal shutdown failed: {error}"));
+    }
+
+    #[tokio::test]
+    async fn tool_call_binding_is_removed_on_success_error_background_and_timeout() {
+        let manager = TerminalManager::new(std::env::temp_dir())
+            .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
+
+        let mut success = command_request("session:cleanup", "printf 'success\\n'");
+        success.new_terminal = true;
+        success.tool_call_id = "call-success".into();
+        let success_response = manager
+            .execute_command(success)
+            .await
+            .unwrap_or_else(|error| panic!("success command failed: {error}"));
+        assert!(
+            !lock(&manager.tool_call_terminals)
+                .contains_key(&("session:cleanup".into(), "call-success".into()))
+        );
+
+        let mut error = command_request("session:cleanup", "printf 'error\\n'");
+        error.tool_call_id = "call-error".into();
+        error.terminal_id = Some(success_response.terminal_id.clone());
+        error.env = vec![environment_variable("CHELIX_BINDING_TEST", "changed")];
+        let environment_error = match manager.execute_command(error).await {
+            Ok(_) => panic!("changed environment should fail after binding"),
+            Err(error) => error,
+        };
+        assert!(
+            environment_error
+                .to_string()
+                .contains("different environment")
+        );
+        assert!(
+            !lock(&manager.tool_call_terminals)
+                .contains_key(&("session:cleanup".into(), "call-error".into()))
+        );
+
+        let mut background = command_request("session:cleanup", "sleep 1");
+        background.tool_call_id = "call-background".into();
+        background.terminal_id = Some(success_response.terminal_id.clone());
+        background.background = true;
+        let background_response = manager
+            .execute_command(background)
+            .await
+            .unwrap_or_else(|error| panic!("background command failed: {error}"));
+        assert!(background_response.background);
+        assert!(
+            !lock(&manager.tool_call_terminals)
+                .contains_key(&("session:cleanup".into(), "call-background".into()))
+        );
+        wait_until_idle(&manager, "session:cleanup", &success_response.terminal_id).await;
+
+        let mut timed_out = command_request("session:cleanup", "sleep 1");
+        timed_out.tool_call_id = "call-timeout".into();
+        timed_out.terminal_id = Some(success_response.terminal_id.clone());
+        timed_out.timeout_millis = 25;
+        let timeout_response = manager
+            .execute_command(timed_out)
+            .await
+            .unwrap_or_else(|error| panic!("timed out command failed: {error}"));
+        assert!(timeout_response.timed_out);
+        assert!(
+            !lock(&manager.tool_call_terminals)
+                .contains_key(&("session:cleanup".into(), "call-timeout".into()))
+        );
+        wait_until_idle(&manager, "session:cleanup", &success_response.terminal_id).await;
 
         manager
             .shutdown()

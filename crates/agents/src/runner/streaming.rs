@@ -729,6 +729,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         );
 
         // Execute tool calls concurrently.
+        let batch_started_at = time::OffsetDateTime::now_utc();
         let iteration_tool_calls: Arc<[RunnerToolCall]> =
             tool_calls.iter().map(Into::into).collect::<Vec<_>>().into();
 
@@ -762,6 +763,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 let tc_name = resolved_name.to_string();
                 let iteration_tool_calls = iteration_tool_calls.clone();
                 let iteration_usage = request_usage.clone();
+                let started_at = batch_started_at;
                 let execution_context = tool_context.clone();
                 let tool_call_id = tc.id.clone();
 
@@ -822,6 +824,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                             arguments: public_tool_arguments(&args),
                             iteration_tool_calls: iteration_tool_calls.clone(),
                             iteration_usage: iteration_usage.clone(),
+                            started_at,
                         });
                     }
                     info!(tool = %tc_name, id = %tc.id, args = %args, "executing tool");

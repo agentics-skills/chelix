@@ -2,6 +2,7 @@
 
 import { chatAddMsg, chatAddMsgWithAttachments, setComposerStopButton } from "../../chat-ui";
 import { highlightCodeBlocks } from "../../code-highlight";
+import { unmountExecuteCommandToolBubbles } from "../../components/ExecuteCommandToolBubble";
 import { renderMarkdown, sendRpc, warmAudioPlayback } from "../../helpers";
 import {
 	clearPendingAttachments,
@@ -244,6 +245,7 @@ function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
 	let current = messageEl;
 	while (current) {
 		const next = current.nextElementSibling as HTMLElement | null;
+		unmountExecuteCommandToolBubbles(current);
 		current.remove();
 		current = next;
 	}

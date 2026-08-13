@@ -404,6 +404,7 @@ pub(crate) async fn run_with_tools(
                     arguments,
                     iteration_tool_calls,
                     iteration_usage,
+                    started_at,
                 } => {
                     if terminal_runs_for_events.read().await.contains(&run_id) {
                         continue;
@@ -414,6 +415,17 @@ pub(crate) async fn run_with_tools(
                             .entry(tool_call.id.clone())
                             .or_insert_with(|| tool_call.arguments.clone());
                     }
+                    let started_at = match u64::try_from(
+                        started_at.unix_timestamp_nanos() / 1_000_000,
+                    ) {
+                        Ok(started_at) => started_at,
+                        Err(error) => {
+                            forwarder_error = Some(format!(
+                                "tool call start timestamp is outside the supported range: {error}"
+                            ));
+                            break;
+                        },
+                    };
                     let batch_key = iteration_tool_calls
                         .first()
                         .map(|tool_call| tool_call.id.clone())
@@ -459,7 +471,7 @@ pub(crate) async fn run_with_tools(
                                     &tool_call.name,
                                     sandbox_enabled,
                                 ),
-                                started_at: now_ms(),
+                                started_at,
                             });
                         }
                     }
@@ -492,6 +504,7 @@ pub(crate) async fn run_with_tools(
                         "toolCallId": id,
                         "toolName": name,
                         "arguments": arguments,
+                        "startedAt": started_at,
                         "seq": seq,
                     });
                     if let Some((segment_index, assistant_message)) = persisted_segment {

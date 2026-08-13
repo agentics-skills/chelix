@@ -13,6 +13,7 @@ import {
 	updateTokenBar,
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
+import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import * as gon from "../gon";
 import { parseAgentsListPayload, renderAudioPlayer, renderDocument, renderMarkdown, sendRpc } from "../helpers";
 import { appendMessageActions, appendUserMessageActions } from "../message-actions";
@@ -248,6 +249,7 @@ function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
 	let current = messageEl;
 	while (current) {
 		const next = current.nextElementSibling as HTMLElement | null;
+		unmountExecuteCommandToolBubbles(current);
 		current.remove();
 		current = next;
 	}
@@ -745,6 +747,7 @@ export function renderHistory(
 	hideSessionLoadIndicator();
 	if (S.chatMsgBox) {
 		S.chatMsgBox.classList.remove("chat-messages-empty");
+		unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		S.chatMsgBox.textContent = "";
 	}
 	S.setSessionTokens({ input: 0, output: 0 });

@@ -27,6 +27,7 @@ import {
 	setSessionUnread,
 } from "../sessions";
 import * as S from "../state";
+import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
@@ -875,7 +876,10 @@ function handleChatSessionCleared(_p: ChatPayload, isActive: boolean, isChatPage
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(false);
 	// Active viewer: clear the chat box and token bar.
-	if (S.chatMsgBox) S.chatMsgBox.textContent = "";
+	if (S.chatMsgBox) {
+		unmountExecuteCommandToolBubbles(S.chatMsgBox);
+		S.chatMsgBox.textContent = "";
+	}
 	S.setSessionTokens({ input: 0, output: 0 });
 	S.setSessionCurrentInputTokens(0);
 	S.setSessionCurrentContextTokens(0);

@@ -16,6 +16,7 @@ import {
 	setComposerStopButton,
 	smartScrollToBottom,
 } from "../chat-ui";
+import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { SessionHeader } from "../components/SessionHeader";
 import * as gon from "../gon";
 import { sendRpc } from "../helpers";
@@ -863,6 +864,7 @@ registerPrefix(
 		if (m1) render(null, m1);
 		const m2 = S.$("sessionActionsMount");
 		if (m2) render(null, m2);
+		if (S.chatMsgBox) unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		S.setChatMsgBox(null);
 		S.setChatInput(null);
 		S.setChatSendBtn(null);

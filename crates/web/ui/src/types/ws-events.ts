@@ -104,6 +104,7 @@ export interface ToolCallPayload {
 	toolName?: string;
 	arguments?: Record<string, unknown>;
 	executionMode?: string;
+	startedAt?: number;
 	messageIndex?: number;
 	sessionKey?: string;
 	success?: boolean;
@@ -216,6 +217,7 @@ export interface ChatPayload {
 	toolName?: string;
 	arguments?: Record<string, unknown>;
 	executionMode?: string;
+	startedAt?: number;
 	success?: boolean;
 	rejected?: boolean;
 	result?: ToolResult | string;

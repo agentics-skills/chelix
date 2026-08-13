@@ -2,17 +2,15 @@ import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
-import { useCallback, useEffect, useRef } from "preact/hooks";
-import * as gon from "../gon";
+import { useEffect, useRef } from "preact/hooks";
+import {
+	TerminalAttachment,
+	type TerminalAttachmentController,
+	type TerminalConnection,
+	type ToolsServiceTerminalInfo,
+} from "../components/TerminalAttachment";
 import { localizedApiErrorMessage } from "../helpers";
 import { targetValue } from "../typed-events";
-
-interface ToolsServiceTerminalInfo {
-	id: string;
-	sessionKey: string;
-	running: boolean;
-	alive: boolean;
-}
 
 interface ToolsServiceInstanceInfo {
 	id: string;
@@ -44,67 +42,6 @@ interface SessionTerminalsResponse {
 	error?: string;
 }
 
-interface TerminalServerMessage {
-	type: string;
-	available?: boolean;
-	data?: string;
-	encoding?: string;
-	text?: string;
-	level?: string;
-	error?: string;
-	terminal?: ToolsServiceTerminalInfo;
-}
-
-interface XtermOptions {
-	convertEol?: boolean;
-	disableStdin?: boolean;
-	cursorBlink?: boolean;
-	scrollback?: number;
-	fontFamily?: string;
-	fontSize?: number;
-	lineHeight?: number;
-	theme?: Record<string, string>;
-}
-
-interface XtermInstance {
-	cols: number;
-	rows: number;
-	options: { theme?: Record<string, string>; [key: string]: unknown };
-	buffer: { active: { baseY: number; viewportY: number } };
-	parser: { registerOscHandler: (code: number, handler: () => boolean) => { dispose: () => void } };
-	loadAddon: (addon: FitAddonInstance) => void;
-	open: (element: HTMLElement) => void;
-	onData: (handler: (data: string) => void) => { dispose: () => void };
-	onResize: (handler: (size: { cols: number; rows: number }) => void) => { dispose: () => void };
-	write: (data: string | Uint8Array, callback?: () => void) => void;
-	reset: () => void;
-	focus: () => void;
-	scrollToBottom: () => void;
-	dispose: () => void;
-}
-
-interface FitAddonInstance {
-	fit: () => void;
-}
-
-type TerminalCtor = new (options: XtermOptions) => XtermInstance;
-type FitAddonCtor = new () => FitAddonInstance;
-
-interface TerminalRuntime {
-	xterm: XtermInstance;
-	fitAddon: FitAddonInstance;
-	socket: WebSocket | null;
-	resizeObserver: ResizeObserver | null;
-	themeObserver: MutationObserver | null;
-	windowResizeListener: (() => void) | null;
-	dataDisposable: { dispose: () => void };
-	resizeDisposable: { dispose: () => void };
-	oscDisposables: { dispose: () => void }[];
-	fitFrame: number;
-	lastCols: number;
-	lastRows: number;
-}
-
 interface TerminalViewProps {
 	compact: boolean;
 	instances: Signal<ToolsServiceInstanceInfo[]>;
@@ -117,12 +54,15 @@ interface TerminalViewProps {
 	connected: Signal<boolean>;
 	loading: Signal<boolean>;
 	creating: Signal<boolean>;
+	connection: TerminalConnection | null;
 	onRefresh: () => Promise<void>;
 	onCreate: () => Promise<void>;
 	onSelectSession: (sessionId: string) => void;
 	onSelectTerminal: (terminalId: string) => void;
 	onControl: (action: "ctrl_c" | "clear" | "restart") => void;
-	terminalElementRef: (element: HTMLDivElement | null) => void;
+	onConnectedChange: (connected: boolean) => void;
+	onController: (controller: TerminalAttachmentController | null) => void;
+	onStatus: (text: string, level: "" | "ok" | "error") => void;
 }
 
 interface TerminalPageProps {
@@ -130,159 +70,19 @@ interface TerminalPageProps {
 	sessionKey?: string;
 }
 
+interface TerminalInventorySelection {
+	instanceId: string;
+	sessionId: string;
+	terminalId: string;
+}
+
+interface CreatedTerminal {
+	terminal: ToolsServiceTerminalInfo;
+	instanceId?: string;
+}
+
 let terminalContainer: HTMLElement | null = null;
-let terminalRuntime: TerminalRuntime | null = null;
-let terminalCtor: TerminalCtor | null = null;
-let fitAddonCtor: FitAddonCtor | null = null;
-
-function getCssVar(name: string, fallback: string): string {
-	return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
-function xtermTheme(): Record<string, string> {
-	return {
-		background: getCssVar("--bg", "#0f1115"),
-		foreground: getCssVar("--text", "#e4e4e7"),
-		cursor: getCssVar("--accent", "#4ade80"),
-		cursorAccent: getCssVar("--bg", "#0f1115"),
-		selectionBackground: getCssVar("--accent-subtle", "#4ade801f"),
-	};
-}
-
-async function ensureXtermModules(): Promise<void> {
-	if (terminalCtor && fitAddonCtor) return;
-	const [xtermModule, fitAddonModule] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
-	terminalCtor = (xtermModule as unknown as { Terminal: TerminalCtor }).Terminal;
-	fitAddonCtor = (fitAddonModule as unknown as { FitAddon: FitAddonCtor }).FitAddon;
-}
-
-function sendSocketMessage(payload: object): boolean {
-	const socket = terminalRuntime?.socket;
-	if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-	socket.send(JSON.stringify(payload));
-	return true;
-}
-
-function publishTerminalSize(runtime: TerminalRuntime, cols: number, rows: number, force = false): void {
-	if (terminalRuntime !== runtime || cols < 2 || rows < 1) return;
-	if (!force && cols === runtime.lastCols && rows === runtime.lastRows) return;
-	runtime.lastCols = cols;
-	runtime.lastRows = rows;
-	sendSocketMessage({ type: "resize", cols, rows });
-}
-
-function scheduleFit(force = false): void {
-	const runtime = terminalRuntime;
-	if (!runtime) return;
-	if (runtime.fitFrame) cancelAnimationFrame(runtime.fitFrame);
-	runtime.fitFrame = requestAnimationFrame(() => {
-		runtime.fitFrame = 0;
-		runtime.fitAddon.fit();
-		publishTerminalSize(runtime, runtime.xterm.cols, runtime.xterm.rows, force);
-	});
-}
-
-function decodeBase64(encoded: string): Uint8Array | null {
-	try {
-		const binary = atob(encoded);
-		const bytes = new Uint8Array(binary.length);
-		for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index) & 0xff;
-		return bytes;
-	} catch {
-		return null;
-	}
-}
-
-function writeTerminalOutput(data: string | Uint8Array): void {
-	const xterm = terminalRuntime?.xterm;
-	if (!xterm) return;
-	const buffer = xterm.buffer.active;
-	const shouldScroll = buffer.baseY - buffer.viewportY <= 2;
-	xterm.write(data, () => {
-		if (shouldScroll) xterm.scrollToBottom();
-	});
-}
-
-function closeTerminalRuntime(): void {
-	const runtime = terminalRuntime;
-	terminalRuntime = null;
-	if (!runtime) return;
-	if (runtime.fitFrame) cancelAnimationFrame(runtime.fitFrame);
-	if (runtime.socket && runtime.socket.readyState < WebSocket.CLOSING) runtime.socket.close();
-	runtime.resizeObserver?.disconnect();
-	runtime.themeObserver?.disconnect();
-	if (runtime.windowResizeListener) window.removeEventListener("resize", runtime.windowResizeListener);
-	runtime.dataDisposable.dispose();
-	runtime.resizeDisposable.dispose();
-	for (const disposable of runtime.oscDisposables) disposable.dispose();
-	runtime.xterm.dispose();
-}
-
-function closeTerminalSocket(): void {
-	const runtime = terminalRuntime;
-	const socket = runtime?.socket;
-	if (!(runtime && socket)) return;
-	runtime.socket = null;
-	socket.onmessage = null;
-	socket.onclose = null;
-	socket.onerror = null;
-	if (socket.readyState < WebSocket.CLOSING) socket.close();
-}
-
-async function createXterm(element: HTMLDivElement): Promise<TerminalRuntime> {
-	await ensureXtermModules();
-	if (!(terminalCtor && fitAddonCtor)) throw new Error("xterm failed to load");
-	const scrollbackLines = gon.get("terminal_scrollback_lines");
-	if (typeof scrollbackLines !== "number" || !Number.isSafeInteger(scrollbackLines) || scrollbackLines < 0) {
-		throw new Error("terminal scrollback configuration is unavailable or invalid");
-	}
-	const xterm = new terminalCtor({
-		convertEol: false,
-		disableStdin: false,
-		cursorBlink: true,
-		scrollback: scrollbackLines,
-		fontFamily: "JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-		fontSize: 12,
-		lineHeight: 1.35,
-		theme: xtermTheme(),
-	});
-	const fitAddon = new fitAddonCtor();
-	xterm.loadAddon(fitAddon);
-	xterm.open(element);
-	const oscDisposables = [4, 10, 11, 12, 104, 110, 111, 112].map((code) =>
-		xterm.parser.registerOscHandler(code, () => true),
-	);
-	const dataDisposable = xterm.onData((data) => {
-		sendSocketMessage({ type: "input", data });
-	});
-	let runtime: TerminalRuntime;
-	const resizeDisposable = xterm.onResize(({ cols, rows }) => {
-		publishTerminalSize(runtime, cols, rows);
-	});
-	const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleFit());
-	resizeObserver?.observe(element.parentElement ?? element);
-	const windowResizeListener = () => scheduleFit();
-	window.addEventListener("resize", windowResizeListener);
-	const themeObserver = new MutationObserver(() => {
-		xterm.options.theme = xtermTheme();
-	});
-	themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-	runtime = {
-		xterm,
-		fitAddon,
-		socket: null,
-		resizeObserver,
-		themeObserver,
-		windowResizeListener,
-		dataDisposable,
-		resizeDisposable,
-		oscDisposables,
-		fitFrame: 0,
-		lastCols: 0,
-		lastRows: 0,
-	};
-	return runtime;
-}
+let chatTerminalContainer: HTMLElement | null = null;
 
 async function readJson<T>(response: Response): Promise<T> {
 	try {
@@ -295,10 +95,6 @@ async function readJson<T>(response: Response): Promise<T> {
 function terminalLabel(terminal: ToolsServiceTerminalInfo): string {
 	const state = terminal.running ? "running" : "idle";
 	return `${terminal.id} · ${state}`;
-}
-
-function terminalShortId(terminal: ToolsServiceTerminalInfo): string {
-	return terminal.id;
 }
 
 function terminalSessionId(instanceId: string, sessionKey: string): string {
@@ -326,6 +122,19 @@ function terminalSessions(instances: ToolsServiceInstanceInfo[]): TerminalSessio
 	return sessions;
 }
 
+function TerminalOutput(props: TerminalViewProps): VNode {
+	return (
+		<TerminalAttachment
+			connection={props.connection}
+			className={props.compact ? "terminal-output chat-terminal-output" : "terminal-output"}
+			ariaLabel={props.compact ? "Chat terminal output" : "Managed terminal output"}
+			onConnectedChange={props.onConnectedChange}
+			onController={props.onController}
+			onStatus={props.onStatus}
+		/>
+	);
+}
+
 function CompactTerminalView({
 	props,
 	selectedSession,
@@ -344,13 +153,11 @@ function CompactTerminalView({
 								key={terminal.id}
 								type="button"
 								className={`terminal-tab chat-terminal-tab ${terminal.id === props.selectedTerminalId.value ? "active" : ""}`}
-								title={`Terminal ${terminalShortId(terminal)} · ${state}`}
-								aria-label={`Terminal ${terminalShortId(terminal)}, ${state}`}
-								onClick={() => {
-									props.onSelectTerminal(terminal.id);
-								}}
+								title={`Terminal ${terminal.id} · ${state}`}
+								aria-label={`Terminal ${terminal.id}, ${state}`}
+								onClick={() => props.onSelectTerminal(terminal.id)}
 							>
-								<span>{terminalShortId(terminal)}</span>
+								<span>{terminal.id}</span>
 								<span className={`chat-terminal-state chat-terminal-state-${state}`} aria-hidden="true" />
 							</button>
 						);
@@ -368,12 +175,7 @@ function CompactTerminalView({
 				</nav>
 			</div>
 			<div className="terminal-output-wrap chat-terminal-output-wrap">
-				<div
-					ref={props.terminalElementRef}
-					className="terminal-output chat-terminal-output"
-					role="log"
-					aria-label="Chat terminal output"
-				/>
+				<TerminalOutput {...props} />
 			</div>
 			{props.statusLevel.value === "error" && (
 				<div className="terminal-status terminal-status-error chat-terminal-status" role="alert">
@@ -444,9 +246,7 @@ function FullTerminalView({
 					className="logs-btn max-w-64"
 					value={props.selectedSessionId.value}
 					disabled={sessions.length === 0}
-					onChange={(event) => {
-						props.onSelectSession(targetValue(event));
-					}}
+					onChange={(event) => props.onSelectSession(targetValue(event))}
 				>
 					{sessions.map((session) => (
 						<option key={session.id} value={session.id}>
@@ -461,9 +261,7 @@ function FullTerminalView({
 							type="button"
 							className={`terminal-tab ${terminal.id === props.selectedTerminalId.value ? "active" : ""}`}
 							title={`Attach terminal ${terminal.id}`}
-							onClick={() => {
-								props.onSelectTerminal(terminal.id);
-							}}
+							onClick={() => props.onSelectTerminal(terminal.id)}
 						>
 							{terminalLabel(terminal)}
 						</button>
@@ -507,12 +305,7 @@ function FullTerminalView({
 			) : null}
 
 			<div className="terminal-output-wrap">
-				<div
-					ref={props.terminalElementRef}
-					className="terminal-output"
-					role="log"
-					aria-label="Managed terminal output"
-				/>
+				<TerminalOutput {...props} />
 			</div>
 			<div
 				className={`terminal-status ${props.statusLevel.value === "error" ? "terminal-status-error" : ""} ${props.statusLevel.value === "ok" ? "terminal-status-ok" : ""}`}
@@ -544,32 +337,6 @@ function TerminalView(props: TerminalViewProps): VNode {
 		/>
 	);
 }
-
-interface TerminalInventorySelection {
-	instanceId: string;
-	sessionId: string;
-	terminalId: string;
-	terminalChanged: boolean;
-}
-
-interface CreatedTerminal {
-	terminal: ToolsServiceTerminalInfo;
-	instanceId?: string;
-}
-
-interface TerminalSocketContext {
-	runtime: TerminalRuntime;
-	socket: WebSocket;
-	terminal: ToolsServiceTerminalInfo;
-	connected: Signal<boolean>;
-	status: Signal<string>;
-	statusLevel: Signal<"" | "ok" | "error">;
-}
-
-type ParsedTerminalMessage =
-	| { kind: "ignore" }
-	| { kind: "invalid" }
-	| { kind: "message"; message: TerminalServerMessage };
 
 async function fetchTerminalInventory(compact: boolean, sessionKey: string): Promise<ToolsServiceInstanceInfo[]> {
 	const url = compact
@@ -610,17 +377,7 @@ function terminalInventorySelection(
 			instances[0]?.id ??
 			"",
 		terminalId: terminalAvailable ? currentTerminalId : (session?.terminals[0]?.id ?? ""),
-		terminalChanged: !terminalAvailable,
 	};
-}
-
-function terminalInventoryStatus(
-	compact: boolean,
-	instanceCount: number,
-): { text: string; level: "" | "ok" | "error" } {
-	if (compact) return { text: "", level: "" };
-	if (instanceCount === 0) return { text: "No active tools service instances are registered.", level: "error" };
-	return { text: "Inventory refreshed.", level: "ok" };
 }
 
 async function requestTerminalCreation(
@@ -643,55 +400,6 @@ async function requestTerminalCreation(
 	return { terminal: payload.terminal, instanceId: payload.instanceId };
 }
 
-function parseTerminalMessage(data: unknown): ParsedTerminalMessage {
-	if (typeof data !== "string") return { kind: "ignore" };
-	try {
-		return { kind: "message", message: JSON.parse(data) as TerminalServerMessage };
-	} catch {
-		return { kind: "invalid" };
-	}
-}
-
-function handleTerminalReady(context: TerminalSocketContext, message: TerminalServerMessage): void {
-	if (!message.available || message.terminal?.id !== context.terminal.id) {
-		context.status.value = "Tools service returned mismatched terminal metadata.";
-		context.statusLevel.value = "error";
-		context.socket.close();
-		return;
-	}
-	context.connected.value = true;
-	context.status.value = `Attached to exact terminal ${context.terminal.id}.`;
-	context.statusLevel.value = "ok";
-	scheduleFit(true);
-	context.runtime.xterm.focus();
-}
-
-function handleTerminalOutput(message: TerminalServerMessage): void {
-	const output = message.encoding === "base64" ? decodeBase64(message.data ?? "") : (message.data ?? "");
-	if (output !== null) writeTerminalOutput(output);
-}
-
-function handleTerminalStatus(context: TerminalSocketContext, message: TerminalServerMessage): void {
-	context.status.value = message.text ?? message.error ?? "Terminal error";
-	context.statusLevel.value = message.level === "error" || message.type === "error" ? "error" : "";
-}
-
-function handleTerminalSocketMessage(context: TerminalSocketContext, event: MessageEvent<unknown>): void {
-	if (context.runtime.socket !== context.socket) return;
-	const parsed = parseTerminalMessage(event.data);
-	if (parsed.kind === "ignore") return;
-	if (parsed.kind === "invalid") {
-		context.status.value = "Invalid terminal message received.";
-		context.statusLevel.value = "error";
-		return;
-	}
-	if (parsed.message.type === "ready") handleTerminalReady(context, parsed.message);
-	else if (parsed.message.type === "output") handleTerminalOutput(parsed.message);
-	else if (parsed.message.type === "status" || parsed.message.type === "error") {
-		handleTerminalStatus(context, parsed.message);
-	}
-}
-
 function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: TerminalPageProps): VNode {
 	const instances = useSignal<ToolsServiceInstanceInfo[]>([]);
 	const selectedInstanceId = useSignal("");
@@ -703,41 +411,37 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 	const connected = useSignal(false);
 	const loading = useSignal(false);
 	const creating = useSignal(false);
-	const terminalElementRef = useRef<HTMLDivElement | null>(null);
-	const initializedElement = useRef<HTMLDivElement | null>(null);
-	const setTerminalElementRef = useCallback((element: HTMLDivElement | null) => {
-		terminalElementRef.current = element;
-	}, []);
+	const controllerRef = useRef<TerminalAttachmentController | null>(null);
 
-	function selectedTerminal(): ToolsServiceTerminalInfo | null {
-		const instance = instances.value.find((candidate) => candidate.id === selectedInstanceId.value);
-		const session = terminalSessions(instances.value).find((candidate) => candidate.id === selectedSessionId.value);
-		return (
-			instance?.terminals.find(
-				(terminal) => terminal.sessionKey === session?.sessionKey && terminal.id === selectedTerminalId.value,
-			) ?? null
-		);
+	function selectedSession(): TerminalSessionInfo | null {
+		return terminalSessions(instances.value).find((session) => session.id === selectedSessionId.value) ?? null;
+	}
+
+	function terminalConnection(): TerminalConnection | null {
+		const session = selectedSession();
+		const terminal = session?.terminals.find((candidate) => candidate.id === selectedTerminalId.value);
+		if (!(session && terminal)) return null;
+		return {
+			mode: "terminal",
+			instanceId: session.instanceId,
+			terminalId: terminal.id,
+			sessionKey: terminal.sessionKey,
+		};
 	}
 
 	function selectSession(sessionId: string): void {
 		const session = terminalSessions(instances.value).find((candidate) => candidate.id === sessionId) ?? null;
-		closeTerminalSocket();
-		connected.value = false;
 		selectedSessionId.value = session?.id ?? "";
 		selectedInstanceId.value = session?.instanceId ?? "";
 		selectedTerminalId.value = session?.terminals[0]?.id ?? "";
-		connect();
 	}
 
 	function selectTerminal(terminalId: string): void {
 		if (terminalId === selectedTerminalId.value && connected.value) {
-			terminalRuntime?.xterm.focus();
+			controllerRef.current?.focus();
 			return;
 		}
-		closeTerminalSocket();
-		connected.value = false;
 		selectedTerminalId.value = terminalId;
-		connect();
 	}
 
 	async function refreshInventory(): Promise<void> {
@@ -753,17 +457,14 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 			instances.value = nextInstances;
 			selectedSessionId.value = selection.sessionId;
 			selectedInstanceId.value = selection.instanceId;
-			if (selection.terminalChanged) {
-				closeTerminalSocket();
-				selectedTerminalId.value = selection.terminalId;
-				connected.value = false;
-			}
-			const nextStatus = terminalInventoryStatus(compact, nextInstances.length);
-			status.value = nextStatus.text;
-			statusLevel.value = nextStatus.level;
-			if (selectedTerminalId.value) connect();
+			selectedTerminalId.value = selection.terminalId;
+			status.value = compact
+				? ""
+				: nextInstances.length === 0
+					? "No active tools service instances are registered."
+					: "Inventory refreshed.";
+			statusLevel.value = compact ? "" : nextInstances.length === 0 ? "error" : "ok";
 		} catch (error) {
-			closeTerminalSocket();
 			instances.value = [];
 			selectedInstanceId.value = "";
 			selectedSessionId.value = "";
@@ -788,7 +489,6 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 			selectedTerminalId.value = created.terminal.id;
 			status.value = `Created exact terminal ${created.terminal.id}.`;
 			statusLevel.value = "ok";
-			connect();
 		} catch (error) {
 			status.value = error instanceof Error ? error.message : "Failed to create terminal";
 			statusLevel.value = "error";
@@ -797,78 +497,19 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 		}
 	}
 
-	function connect(): void {
-		const terminal = selectedTerminal();
-		const runtime = terminalRuntime;
-		if (!(terminal && runtime && selectedInstanceId.value)) return;
-		closeTerminalSocket();
-		runtime.xterm.reset();
-		connected.value = false;
-		const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-		const query = new URLSearchParams({
-			instanceId: selectedInstanceId.value,
-			id: terminal.id,
-			sessionKey: terminal.sessionKey,
-		});
-		const socket = new WebSocket(`${protocol}//${location.host}/api/terminal/ws?${query.toString()}`);
-		runtime.socket = socket;
-		status.value = `Connecting to exact terminal ${terminal.id}…`;
-		statusLevel.value = "";
-		const socketContext: TerminalSocketContext = {
-			runtime,
-			socket,
-			terminal,
-			connected,
-			status,
-			statusLevel,
-		};
-		socket.onmessage = (event) => handleTerminalSocketMessage(socketContext, event);
-		socket.onclose = () => {
-			if (runtime.socket !== socket) return;
-			runtime.socket = null;
-			connected.value = false;
-			if (statusLevel.value !== "error") {
-				status.value = `Terminal ${terminal.id} disconnected.`;
-				statusLevel.value = "";
-			}
-		};
-		socket.onerror = () => {
-			if (runtime.socket !== socket) return;
-			status.value = `Failed to attach terminal ${terminal.id}.`;
-			statusLevel.value = "error";
-		};
-	}
-
 	function control(action: "ctrl_c" | "clear" | "restart"): void {
 		if (action === "restart") {
-			connect();
+			controllerRef.current?.restart();
 			return;
 		}
-		if (!sendSocketMessage({ type: "control", action })) {
+		if (!controllerRef.current?.control(action)) {
 			status.value = "Terminal is not connected.";
 			statusLevel.value = "error";
 		}
 	}
 
 	useEffect(() => {
-		const element = terminalElementRef.current;
-		if (!element || initializedElement.current === element) return;
-		initializedElement.current = element;
-		void createXterm(element)
-			.then((runtime) => {
-				terminalRuntime = runtime;
-				scheduleFit();
-				if (selectedTerminal()) connect();
-			})
-			.catch((error: unknown) => {
-				status.value = error instanceof Error ? error.message : "Failed to initialize xterm";
-				statusLevel.value = "error";
-			});
-	}, []);
-
-	useEffect(() => {
 		void refreshInventory();
-		return () => closeTerminalRuntime();
 	}, []);
 
 	return (
@@ -884,12 +525,22 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 			connected={connected}
 			loading={loading}
 			creating={creating}
+			connection={terminalConnection()}
 			onRefresh={refreshInventory}
 			onCreate={createTerminal}
 			onSelectSession={selectSession}
 			onSelectTerminal={selectTerminal}
 			onControl={control}
-			terminalElementRef={setTerminalElementRef}
+			onConnectedChange={(value) => {
+				connected.value = value;
+			}}
+			onController={(controller) => {
+				controllerRef.current = controller;
+			}}
+			onStatus={(text, level) => {
+				status.value = text;
+				statusLevel.value = level;
+			}}
 		/>
 	);
 }
@@ -901,7 +552,6 @@ export function initTerminal(container: HTMLElement): void {
 }
 
 export function teardownTerminal(): void {
-	closeTerminalRuntime();
 	if (terminalContainer) {
 		render(null, terminalContainer);
 		terminalContainer.classList.remove("flex", "min-h-0", "flex-col", "overflow-hidden", "p-0");
@@ -910,12 +560,11 @@ export function teardownTerminal(): void {
 }
 
 export function initChatTerminal(container: HTMLElement, sessionKey: string): void {
-	terminalContainer = container;
+	chatTerminalContainer = container;
 	render(<TerminalPage compact sessionKey={sessionKey} />, container);
 }
 
 export function teardownChatTerminal(): void {
-	closeTerminalRuntime();
-	if (terminalContainer) render(null, terminalContainer);
-	terminalContainer = null;
+	if (chatTerminalContainer) render(null, chatTerminalContainer);
+	chatTerminalContainer = null;
 }
