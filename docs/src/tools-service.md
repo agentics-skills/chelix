@@ -150,7 +150,7 @@ migrated tool
 ## Protocol and authentication
 
 The shared wire types live in `chelix-protocol`. The current protocol version is
-`15`.
+`17`.
 
 | Method | Path                  | Purpose                                           |
 | ------ | --------------------- | ------------------------------------------------- |
@@ -189,9 +189,11 @@ compositions are preserved.
 
 ### Read file execution contract
 
-`POST /v1/read-file` requires `filePath` and a nested `read` object. For an
-offset/limit read, `read` contains required `offset` and `limit` fields.
-Positive offsets are 1-indexed; `offset = -1` selects tail mode:
+`POST /v1/read-file` requires `filePath` and a nested `read` object. The optional
+root-level `includeLineNumbers` and `numberBlankLines` fields configure line
+number rendering for every text read mode. For an offset/limit read, `read`
+contains required `offset` and `limit` fields. Positive offsets are 1-indexed;
+`offset = -1` selects tail mode:
 
 ```json
 {
@@ -199,12 +201,14 @@ Positive offsets are 1-indexed; `offset = -1` selects tail mode:
   "read": {
     "offset": 1,
     "limit": 2000
-  }
+  },
+  "includeLineNumbers": true,
+  "numberBlankLines": true
 }
 ```
 
-For a range read, `read` contains a non-empty `ranges` array and its rendering
-options:
+For a range read, `read` contains a non-empty `ranges` array and the
+range-specific `includeRangeHeaders` rendering option:
 
 ```json
 {
@@ -216,10 +220,10 @@ options:
         "endLine": 20
       }
     ],
-    "includeLineNumbers": true,
-    "numberBlankLines": true,
     "includeRangeHeaders": true
-  }
+  },
+  "includeLineNumbers": true,
+  "numberBlankLines": true
 }
 ```
 
@@ -416,7 +420,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 Candidates are discovered once for each container generation and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
-selects the first endpoint whose health response reports protocol version `15`.
+selects the first endpoint whose health response reports protocol version `17`.
 
 This supports both gateway topologies:
 

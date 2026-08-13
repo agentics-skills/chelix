@@ -190,11 +190,12 @@ interruption after writing starts can leave partially updated content.
 
 ### `read_file`
 
-`read_file` requires an absolute `filePath` and a nested `read` object. An
-offset/limit read has required `offset` and `limit` fields. Positive offsets are
-1-indexed, and `offset = -1` selects tail mode. A range read has a non-empty
-`ranges` array of inclusive text line ranges and can include source line
-numbers, line numbers for blank lines, and range headers.
+`read_file` requires an absolute `filePath` and a nested `read` object.
+`includeLineNumbers` and `numberBlankLines` are root-level options for every
+text read. An offset/limit read has required `offset` and `limit` fields.
+Positive offsets are 1-indexed, and `offset = -1` selects tail mode. A range
+read has a non-empty `ranges` array of inclusive text line ranges and can
+include range headers.
 
 A text offset/limit read returns at most 2,000 lines. A positive-offset read
 whose requested limit exceeds that cap includes a continuation message. Binary

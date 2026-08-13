@@ -10,7 +10,7 @@ use {
         ReadFileRequest, ReadFileRequestValidationError,
     },
     content_inspector::inspect,
-    std::{collections::VecDeque, path::Path},
+    std::{borrow::Cow, collections::VecDeque, path::Path},
     tokio::{
         fs::File,
         io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader, SeekFrom},
@@ -225,8 +225,26 @@ pub(crate) async fn run_tool(request: ReadFileRequest) -> Result<String> {
         .await
         .with_context(|| format!("failed to seek file '{}'", path.display()))?;
     match &request.read {
-        ReadFileOperation::OffsetLimit(read) => read_text_offset_or_tail(file, read, path).await,
-        ReadFileOperation::Ranges(read) => read_text_ranges(file, read, path).await,
+        ReadFileOperation::OffsetLimit(read) => {
+            read_text_offset_or_tail(
+                file,
+                read,
+                path,
+                request.include_line_numbers,
+                request.number_blank_lines,
+            )
+            .await
+        },
+        ReadFileOperation::Ranges(read) => {
+            read_text_ranges(
+                file,
+                read,
+                path,
+                request.include_line_numbers,
+                request.number_blank_lines,
+            )
+            .await
+        },
     }
 }
 
@@ -294,9 +312,11 @@ async fn read_text_offset_or_tail(
     file: File,
     read: &ReadFileOffsetLimitOperation,
     path: &Path,
+    include_line_numbers: bool,
+    number_blank_lines: bool,
 ) -> Result<String> {
     if read.offset == -1 {
-        return read_text_tail(file, read, path).await;
+        return read_text_tail(file, read, path, include_line_numbers, number_blank_lines).await;
     }
 
     let start_line = u64::try_from(read.offset)?;
@@ -335,7 +355,7 @@ async fn read_text_offset_or_tail(
     }
 
     let end_line = selection_end.min(total_lines);
-    let mut output = render_text_lines(&selected);
+    let mut output = render_text_lines(&selected, include_line_numbers, number_blank_lines);
     if requested_limit != effective_limit && end_line < total_lines {
         output.push_str(&format!(
             "\n[File content truncated at line {end_line}. Use read_file with read.offset and read.limit to view more.]"
@@ -348,6 +368,8 @@ async fn read_text_tail(
     file: File,
     read: &ReadFileOffsetLimitOperation,
     path: &Path,
+    include_line_numbers: bool,
+    number_blank_lines: bool,
 ) -> Result<String> {
     let effective_limit = u64::try_from(read.limit)?.min(MAX_LINES_PER_READ);
     let retained_limit = usize::try_from(effective_limit + 1)
@@ -377,13 +399,19 @@ async fn read_text_tail(
     while retained.len() > effective_limit {
         retained.pop_front();
     }
-    Ok(render_text_lines(retained.make_contiguous()))
+    Ok(render_text_lines(
+        retained.make_contiguous(),
+        include_line_numbers,
+        number_blank_lines,
+    ))
 }
 
 async fn read_text_ranges(
     file: File,
     read: &ReadFileRangesOperation,
     path: &Path,
+    include_line_numbers: bool,
+    number_blank_lines: bool,
 ) -> Result<String> {
     let requested_ranges = read
         .ranges
@@ -435,12 +463,12 @@ async fn read_text_ranges(
             let line_output = lines
                 .iter()
                 .map(|line| {
-                    let blank = line.text.is_empty();
-                    if read.include_line_numbers && (!blank || read.number_blank_lines) {
-                        format!("{}\t{}", line.number, line.text)
-                    } else {
-                        line.text.clone()
-                    }
+                    render_text_line(
+                        line.number,
+                        &line.text,
+                        include_line_numbers,
+                        number_blank_lines,
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -462,15 +490,36 @@ async fn read_text_ranges(
     }))
 }
 
-fn render_text_lines(lines: &[TextLine]) -> String {
+fn render_text_lines(
+    lines: &[TextLine],
+    include_line_numbers: bool,
+    number_blank_lines: bool,
+) -> String {
     let mut output = String::new();
     for (index, line) in lines.iter().enumerate() {
-        output.push_str(&line.text);
+        output.push_str(&render_text_line(
+            line.number,
+            &line.text,
+            include_line_numbers,
+            number_blank_lines,
+        ));
         if index + 1 < lines.len() {
             output.push_str(line.ending.as_str());
         }
     }
     output
+}
+
+fn render_text_line(
+    number: u64,
+    text: &str,
+    include_line_numbers: bool,
+    number_blank_lines: bool,
+) -> Cow<'_, str> {
+    if include_line_numbers && (!text.is_empty() || number_blank_lines) {
+        return Cow::Owned(format!("{number}\t{text}"));
+    }
+    Cow::Borrowed(text)
 }
 
 fn format_hexdump(data: &[u8], start_byte: u64) -> String {
@@ -519,6 +568,8 @@ mod tests {
         ReadFileRequest {
             file_path: path.to_string_lossy().into_owned(),
             read: ReadFileOperation::OffsetLimit(ReadFileOffsetLimitOperation { offset, limit }),
+            include_line_numbers: false,
+            number_blank_lines: false,
         }
     }
 
@@ -527,10 +578,10 @@ mod tests {
             file_path: path.to_string_lossy().into_owned(),
             read: ReadFileOperation::Ranges(ReadFileRangesOperation {
                 ranges,
-                include_line_numbers: false,
-                number_blank_lines: false,
                 include_range_headers: false,
             }),
+            include_line_numbers: false,
+            number_blank_lines: false,
         }
     }
 
@@ -553,6 +604,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn renders_line_numbers_for_offset_and_tail_reads() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "line 1\n\nline 3\nline 4")
+            .await
+            .unwrap();
+
+        let mut offset = offset_request(&path, 1, 3);
+        offset.include_line_numbers = true;
+        assert_eq!(run_tool(offset).await.unwrap(), "1\tline 1\n\n3\tline 3");
+
+        let mut numbered_blank = offset_request(&path, 1, 3);
+        numbered_blank.include_line_numbers = true;
+        numbered_blank.number_blank_lines = true;
+        assert_eq!(
+            run_tool(numbered_blank).await.unwrap(),
+            "1\tline 1\n2\t\n3\tline 3"
+        );
+
+        let mut tail = offset_request(&path, -1, 3);
+        tail.include_line_numbers = true;
+        tail.number_blank_lines = true;
+        assert_eq!(run_tool(tail).await.unwrap(), "2\t\n3\tline 3\n4\tline 4");
+    }
+
+    #[tokio::test]
     async fn reads_ranges_with_numbers_headers_and_reversed_bounds() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("sample.txt");
@@ -572,10 +649,10 @@ mod tests {
                         end_line: None,
                     },
                 ],
-                include_line_numbers: true,
-                number_blank_lines: true,
                 include_range_headers: true,
             }),
+            include_line_numbers: true,
+            number_blank_lines: true,
         };
 
         assert_eq!(

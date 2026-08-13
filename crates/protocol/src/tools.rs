@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 16;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 17;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_EDIT_FILE_PATH: &str = "/v1/edit-file";
@@ -248,6 +248,10 @@ pub struct ReadFileRange {
 pub struct ReadFileRequest {
     pub file_path: String,
     pub read: ReadFileOperation,
+    #[serde(default)]
+    pub include_line_numbers: bool,
+    #[serde(default)]
+    pub number_blank_lines: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,10 +272,6 @@ pub struct ReadFileOffsetLimitOperation {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadFileRangesOperation {
     pub ranges: Vec<ReadFileRange>,
-    #[serde(default)]
-    pub include_line_numbers: bool,
-    #[serde(default)]
-    pub number_blank_lines: bool,
     #[serde(default)]
     pub include_range_headers: bool,
 }
@@ -1237,7 +1237,7 @@ mod tests {
     }
 
     #[test]
-    fn read_file_messages_round_trip_with_nested_read_operations() {
+    fn read_file_messages_round_trip_with_shared_rendering_options() {
         for request in [
             ReadFileRequest {
                 file_path: "/workspace/src/main.rs".into(),
@@ -1245,6 +1245,8 @@ mod tests {
                     offset: 1,
                     limit: 200,
                 }),
+                include_line_numbers: true,
+                number_blank_lines: true,
             },
             ReadFileRequest {
                 file_path: "/workspace/src/main.rs".into(),
@@ -1253,10 +1255,10 @@ mod tests {
                         start_line: 12,
                         end_line: Some(20),
                     }],
-                    include_line_numbers: true,
-                    number_blank_lines: false,
                     include_range_headers: true,
                 }),
+                include_line_numbers: true,
+                number_blank_lines: false,
             },
         ] {
             let json = serde_json::to_value(&request)
@@ -1274,10 +1276,10 @@ mod tests {
                     start_line: 12,
                     end_line: Some(20),
                 }],
-                include_line_numbers: true,
-                number_blank_lines: false,
                 include_range_headers: true,
             }),
+            include_line_numbers: true,
+            number_blank_lines: false,
         };
         assert_eq!(
             serde_json::to_value(ranges)
@@ -1286,10 +1288,10 @@ mod tests {
                 "filePath": "/workspace/src/main.rs",
                 "read": {
                     "ranges": [{ "startLine": 12, "endLine": 20 }],
-                    "includeLineNumbers": true,
-                    "numberBlankLines": false,
                     "includeRangeHeaders": true
-                }
+                },
+                "includeLineNumbers": true,
+                "numberBlankLines": false
             })
         );
 
@@ -1303,7 +1305,7 @@ mod tests {
     }
 
     #[test]
-    fn read_file_request_rejects_missing_malformed_mixed_and_legacy_operations() {
+    fn read_file_request_rejects_missing_malformed_and_mixed_operations() {
         for invalid in [
             serde_json::json!({ "filePath": "/tmp/file" }),
             serde_json::json!({ "filePath": "/tmp/file", "read": null }),
