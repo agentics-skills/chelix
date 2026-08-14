@@ -829,10 +829,10 @@ mod tests {
                 "timedOut": false,
                 "truncated": false,
                 "limits": {
-                    "maxMatches": 2000,
-                    "maxFiles": 200,
-                    "maxOutputChars": 200000,
-                    "timeoutMs": 10000
+                    "maxMatches": 300,
+                    "maxFiles": 100,
+                    "maxOutputChars": 30000,
+                    "timeoutMs": 30000
                 },
                 "summary": {
                     "filesWithMatches": 1,

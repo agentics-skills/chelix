@@ -197,6 +197,28 @@ fn collect_type_filters(
     (type_names, globs)
 }
 
+/// Flags that switch every git-sourced filter on or off as one unit.
+///
+/// `--ignore-vcs` alone only covers `.gitignore`, so `.git/info/exclude`,
+/// `core.excludesFile`, and parent-directory `.gitignore` files need their own
+/// flags. `--no-require-git` applies the same rules outside a git repository.
+fn git_filter_args(gitignore: bool) -> &'static [&'static str] {
+    if gitignore {
+        return &[
+            "--ignore-vcs",
+            "--ignore-exclude",
+            "--ignore-global",
+            "--ignore-parent",
+            "--no-require-git",
+        ];
+    }
+    &[
+        "--no-ignore-vcs",
+        "--no-ignore-exclude",
+        "--no-ignore-global",
+    ]
+}
+
 fn build_args(input: &RipgrepInput, known_type_names: &HashSet<String>) -> Vec<String> {
     let (include_types, include_globs) =
         collect_type_filters(&input.include_types, known_type_names, false);
@@ -221,6 +243,13 @@ fn build_args(input: &RipgrepInput, known_type_names: &HashSet<String>) -> Vec<S
         3 => args.push("-uuu".to_string()),
         _ => {},
     }
+    // Git filter flags must follow the unrestricted flags: rg applies the last
+    // matching flag, so an earlier `--ignore-vcs` would be cancelled by `-u`.
+    args.extend(
+        git_filter_args(input.gitignore)
+            .iter()
+            .map(|flag| (*flag).to_string()),
+    );
     if input.follow_symlinks {
         args.push("--follow".to_string());
     }
@@ -829,6 +858,11 @@ mod tests {
                 "--json",
                 "--hidden",
                 "-uuu",
+                "--ignore-vcs",
+                "--ignore-exclude",
+                "--ignore-global",
+                "--ignore-parent",
+                "--no-require-git",
                 "--glob",
                 "*.customext",
                 "--glob",
@@ -861,10 +895,63 @@ mod tests {
         assert_eq!(
             build_args(&input, &known_type_names(&["all", "rust"])),
             vec![
-                "--json", "-F", "-i", "-u", "--follow", "-C", "2", "--glob", "*.rs", "--",
-                "needle", "src", "docs",
+                "--json",
+                "-F",
+                "-i",
+                "-u",
+                "--ignore-vcs",
+                "--ignore-exclude",
+                "--ignore-global",
+                "--ignore-parent",
+                "--no-require-git",
+                "--follow",
+                "-C",
+                "2",
+                "--glob",
+                "*.rs",
+                "--",
+                "needle",
+                "src",
+                "docs",
             ]
         );
+    }
+
+    #[test]
+    fn build_args_places_git_filters_after_unrestricted_flags() {
+        let args = build_args(
+            &input(json!({ "pattern": "needle" })),
+            &known_type_names(&["all"]),
+        );
+        let unrestricted = args
+            .iter()
+            .position(|arg| arg == "-uuu")
+            .unwrap_or_else(|| panic!("unrestricted flag missing: {args:?}"));
+        let ignore_vcs = args
+            .iter()
+            .position(|arg| arg == "--ignore-vcs")
+            .unwrap_or_else(|| panic!("git filter flag missing: {args:?}"));
+
+        assert!(unrestricted < ignore_vcs);
+    }
+
+    #[test]
+    fn build_args_disables_every_git_filter_source() {
+        let args = build_args(
+            &input(json!({ "pattern": "needle", "gitignore": false })),
+            &known_type_names(&["all"]),
+        );
+
+        assert_eq!(args, vec![
+            "--json",
+            "--hidden",
+            "-uuu",
+            "--no-ignore-vcs",
+            "--no-ignore-exclude",
+            "--no-ignore-global",
+            "--",
+            "needle",
+        ]);
     }
 
     #[test]
@@ -1184,6 +1271,68 @@ mod tests {
         let mut files = result.files.unwrap();
         files.sort();
         assert_eq!(files, vec!["alpha.txt", "beta.txt"]);
+    }
+
+    async fn setup_git_ignore_tree() -> tempfile::TempDir {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        tokio::fs::create_dir_all(root.join(".git/info"))
+            .await
+            .unwrap();
+        tokio::fs::create_dir(root.join("src")).await.unwrap();
+        tokio::fs::create_dir(root.join("vendor")).await.unwrap();
+        tokio::fs::create_dir(root.join("excluded")).await.unwrap();
+        tokio::fs::write(root.join(".gitignore"), "vendor/\n")
+            .await
+            .unwrap();
+        tokio::fs::write(root.join(".git/info/exclude"), "excluded/\n")
+            .await
+            .unwrap();
+        for relative in ["src/a.txt", "vendor/b.txt", "excluded/c.txt"] {
+            tokio::fs::write(root.join(relative), "gitignore-needle\n")
+                .await
+                .unwrap();
+        }
+        directory
+    }
+
+    /// Searches the working directory itself: explicit command-line paths
+    /// override rg filter rules, which would hide the flag behaviour.
+    async fn git_ignore_files(directory: &Path, gitignore: bool) -> Vec<String> {
+        let result = run_tool(
+            input(json!({
+                "pattern": "gitignore-needle",
+                "fixedStrings": true,
+                "detail": "files",
+                "gitignore": gitignore
+            })),
+            &runtime(directory),
+        )
+        .await
+        .unwrap();
+        let mut files = result.files.unwrap();
+        files.sort();
+        files
+    }
+
+    #[tokio::test]
+    async fn gitignore_default_skips_every_git_filtered_path() {
+        let directory = setup_git_ignore_tree().await;
+
+        assert_eq!(git_ignore_files(directory.path(), true).await, vec![
+            "src/a.txt"
+        ]);
+    }
+
+    #[tokio::test]
+    async fn disabled_gitignore_searches_git_filtered_paths() {
+        let directory = setup_git_ignore_tree().await;
+
+        assert_eq!(git_ignore_files(directory.path(), false).await, vec![
+            "excluded/c.txt",
+            "src/a.txt",
+            "vendor/b.txt"
+        ]);
     }
 
     #[tokio::test]
