@@ -608,6 +608,9 @@ pub(super) async fn complete_startup(
             tool_registry.register(Box::new(t));
         }
 
+        #[cfg(feature = "github")]
+        chelix_github::register_tools(&mut tool_registry, &config.tools.github);
+
         #[cfg(feature = "caldav")]
         {
             if let Some(t) = chelix_caldav::tool::CalDavTool::from_config(&config.caldav) {

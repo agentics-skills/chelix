@@ -332,6 +332,13 @@ port = {port}                           # Port number (auto-generated for this i
 # api_key = "fc-..."                # Or set FIRECRAWL_API_KEY env var
 # base_url = "https://api.firecrawl.dev"
 
+# ── GitHub (github_* tools) ───────────────────────────────────────────────────
+# Every github_* tool calls the GitHub REST API with this token. Tools that
+# require authentication fail with an explicit error when it is not set.
+
+# [tools.github]
+# pat = "ghp_..."                   # GitHub personal access token
+
 # ── Browser Automation ────────────────────────────────────────────────────────
 
 # [tools.browser]

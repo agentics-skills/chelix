@@ -19,6 +19,7 @@ default-members = [
   "crates/discord",
   "crates/external-agents",
   "crates/gateway",
+  "crates/github",
   "crates/graphql",
   "crates/home-assistant",
   "crates/httpd",
@@ -76,6 +77,7 @@ members = [
   "crates/embedding-service",
   "crates/external-agents",
   "crates/gateway",
+  "crates/github",
   "crates/graphql",
   "crates/home-assistant",
   "crates/httpd",
@@ -321,6 +323,7 @@ chelix-cron             = { path = "crates/cron" }
 chelix-discord          = { path = "crates/discord" }
 chelix-external-agents  = { path = "crates/external-agents" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
+chelix-github           = { path = "crates/github" }
 chelix-graphql          = { path = "crates/graphql" }
 chelix-home-assistant   = { path = "crates/home-assistant" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }

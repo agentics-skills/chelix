@@ -22,6 +22,7 @@ chelix-config           = { workspace = true }
 chelix-cron             = { workspace = true }
 chelix-discord          = { optional = true, workspace = true }
 chelix-external-agents  = { workspace = true }
+chelix-github           = { optional = true, workspace = true }
 chelix-home-assistant   = { optional = true, workspace = true }
 chelix-matrix           = { optional = true, workspace = true }
 chelix-mcp              = { workspace = true }
@@ -100,6 +101,7 @@ default = [
   "discord",
   "file-watcher",
   "firecrawl",
+  "github",
   "graphql",
   "home-assistant",
   "matrix",
@@ -125,6 +127,7 @@ file-watcher = [
   "chelix-skills/file-watcher",
 ]
 firecrawl = ["chelix-tools/firecrawl"]
+github = ["dep:chelix-github"]
 graphql = []
 home-assistant = ["dep:chelix-home-assistant"]
 local-embeddings = ["chelix-memory/local-embeddings"]
@@ -133,6 +136,7 @@ mdns = ["dep:mdns-sd"]
 metrics = [
   "chelix-chat/metrics",
   "chelix-discord?/metrics",
+  "chelix-github?/metrics",
   "chelix-matrix/metrics",
   "chelix-metrics/sqlite",
   "chelix-signal?/metrics",

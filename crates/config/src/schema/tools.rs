@@ -15,6 +15,7 @@ pub struct ToolsConfig {
     pub web: WebConfig,
     pub maps: MapsConfig,
     pub browser: BrowserConfig,
+    pub github: GitHubConfig,
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
     #[serde(default = "default_agent_timeout_secs")]
     pub agent_timeout_secs: u64,
@@ -57,6 +58,7 @@ impl Default for ToolsConfig {
             web: WebConfig::default(),
             maps: MapsConfig::default(),
             browser: BrowserConfig::default(),
+            github: GitHubConfig::default(),
             agent_timeout_secs: default_agent_timeout_secs(),
             agent_max_auto_continues: default_agent_max_auto_continues(),
             agent_auto_continue_min_tool_calls: default_agent_auto_continue_min_tool_calls(),
@@ -159,6 +161,23 @@ impl Default for FirecrawlConfig {
             cache_ttl_minutes: 15,
         }
     }
+}
+
+/// GitHub tool set configuration.
+///
+/// The `github_*` tools call the GitHub REST API with the configured personal
+/// access token. Tools that require authentication fail explicitly when `pat`
+/// is unset.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GitHubConfig {
+    /// GitHub personal access token used by every `github_*` tool.
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pat: Option<Secret<String>>,
 }
 
 /// Browser automation configuration.
