@@ -63,6 +63,11 @@ impl AgentTool for RipgrepTool {
                     "default": false,
                     "description": "Use fixed strings (-F)."
                 },
+                "multiline": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Allow matches to span multiple lines (maps to -U/--multiline). This does not make . match line terminators."
+                },
                 "caseMode": {
                     "type": "string",
                     "enum": ["sensitive", "ignore", "smart"],
@@ -216,6 +221,7 @@ mod tests {
                     "pattern": "needle",
                     "paths": [],
                     "fixedStrings": false,
+                    "multiline": false,
                     "detail": "lines",
                     "glob": [],
                     "type": [],

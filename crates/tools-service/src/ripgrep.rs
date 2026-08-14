@@ -229,6 +229,9 @@ fn build_args(input: &RipgrepInput, known_type_names: &HashSet<String>) -> Vec<S
     if input.fixed_strings {
         args.push("-F".to_string());
     }
+    if input.multiline {
+        args.push("-U".to_string());
+    }
     match input.case_mode {
         Some(RipgrepCaseMode::Ignore) => args.push("-i".to_string()),
         Some(RipgrepCaseMode::Smart) => args.push("-S".to_string()),
@@ -885,6 +888,7 @@ mod tests {
             "pattern": "needle",
             "paths": ["src", "docs"],
             "fixedStrings": true,
+            "multiline": true,
             "caseMode": "ignore",
             "includeHidden": false,
             "unrestricted": 1,
@@ -897,6 +901,7 @@ mod tests {
             vec![
                 "--json",
                 "-F",
+                "-U",
                 "-i",
                 "-u",
                 "--ignore-vcs",
@@ -1168,6 +1173,68 @@ mod tests {
                 .as_slice()
             )
         );
+    }
+
+    #[tokio::test]
+    async fn search_requires_multiline_for_newline_pattern() {
+        let directory = setup_tree().await;
+        let error = run_tool(
+            input(json!({
+                "pattern": "first line\nripgrep-needle here",
+                "fixedStrings": true,
+                "paths": ["alpha.txt"]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("exit code 2"));
+        assert!(message.contains("multiline"));
+    }
+
+    #[tokio::test]
+    async fn search_matches_across_lines_when_multiline_enabled() {
+        let directory = setup_tree().await;
+        let result = run_tool(
+            input(json!({
+                "pattern": "first line\nripgrep-needle here",
+                "fixedStrings": true,
+                "multiline": true,
+                "detail": "lines+submatches",
+                "contextLines": 1,
+                "paths": ["alpha.txt"]
+            })),
+            &runtime(directory.path()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.found);
+        assert_eq!(result.summary.match_count, 1);
+        assert_eq!(result.summary.files_with_matches, 1);
+        assert_eq!(result.exit_code, Some(0));
+        let matches = result.matches.as_deref().unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "alpha.txt");
+        assert_eq!(matches[0].line_number, 1);
+        assert_eq!(matches[0].lines, "first line\nripgrep-needle here\n");
+        assert_eq!(
+            matches[0].submatches.as_deref(),
+            Some(
+                [RipgrepSubmatch {
+                    matched: "first line\nripgrep-needle here".into(),
+                    start: 0,
+                    end: 30,
+                }]
+                .as_slice()
+            )
+        );
+        let context = result.context.as_deref().unwrap();
+        assert_eq!(context.len(), 1);
+        assert_eq!(context[0].line_number, 3);
+        assert_eq!(context[0].lines, "last line\n");
     }
 
     #[tokio::test]
