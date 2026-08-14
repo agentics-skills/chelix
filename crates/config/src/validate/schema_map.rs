@@ -161,10 +161,13 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
+    let github = || Struct(HashMap::from([("pat", Leaf)]));
+
     let tools = || {
         Struct(HashMap::from([
             ("execute_command", execute_command()),
             ("browser", browser()),
+            ("github", github()),
             (
                 "policy",
                 Struct(HashMap::from([

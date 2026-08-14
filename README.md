@@ -38,7 +38,7 @@ docker pull ghcr.io/agentics-skills/chelix:latest
 
 ## Architecture — Crate Map
 
-Current Rust workspace: ~270K LoC across 59 crates. The table below groups the main crates by role so the architecture stays scannable.
+Current Rust workspace: ~271K LoC across 60 crates. The table below groups the main crates by role so the architecture stays scannable.
 
 **Core runtime**:
 
@@ -65,7 +65,7 @@ Current Rust workspace: ~270K LoC across 59 crates. The table below groups the m
 |----------|--------|-------------|
 | Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-matrix`, `chelix-slack`, `chelix-channels` | 39.3K |
 | Web and APIs | `chelix-web`, `chelix-graphql`, `chelix-webhooks` | 10.8K |
-| Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins` | 11.5K |
+| Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins`, `chelix-github` | 12.9K |
 | Memory and context | `chelix-memory`, `chelix-qmd`, `chelix-code-index`, `chelix-projects` | 11.7K |
 | Voice and browser | `chelix-voice`, `chelix-browser` | 9.2K |
 | Auth and security | `chelix-auth`, `chelix-oauth`, `chelix-vault`, `chelix-secret-store`, `chelix-tls` | 8.5K |

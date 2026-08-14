@@ -277,6 +277,51 @@ The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
 `elapsed`, `stats`), rows per detail mode, captured `stderr`, and the rg
 `exitCode`. Exit code 2 (for example an invalid regex) is a tool error.
 
+## GitHub tools
+
+The `github_*` tools call the GitHub REST API through one shared client that
+reads its personal access token from `tools.github.pat`:
+
+```toml
+[tools.github]
+pat = "ghp_..."
+```
+
+The tools are always registered. A tool that requires authentication and finds
+no configured token returns an explicit error before issuing any request, and a
+`401`/`403` response received with a configured token is an error rather than a
+re-authentication prompt.
+
+Every request sends `Accept: application/vnd.github.v3+json` and
+`X-GitHub-Api-Version: 2022-11-28`. A `403`/`429` response that carries
+`retry-after`, `x-ratelimit-remaining: 0`, or a body mentioning a rate limit is
+treated as rate limited. When such a response provides usable timing
+(`retry-after`, or `x-ratelimit-reset` with `x-ratelimit-remaining: 0`), the
+call waits for that cooldown plus a 5-second buffer and retries once; without
+usable timing the response is returned as an error.
+
+### `github_search_code`
+
+Searches code via `GET /search/code`. `query` is required; the optional
+integer `perPage` selects the page size between 1 and 100. The result is
+markdown-formatted text: a
+`GitHub Code Search Results (showing <n> of <total>)` header followed by
+`Repo`, `File`, `Name`, `SHA`, and `URL` lines per item separated by
+`----------`. An empty result set returns
+`No code results found for this query.`. API failures are reported as
+`GitHub code search API error: <message>`.
+
+### `github_get_file_contents`
+
+Reads one file via `GET /repos/{owner}/{repo}/contents/{path}`. `owner`,
+`repo`, and `path` are required; the optional `ref` selects a
+commit/branch/tag. The result is a markdown header (`# <name>`, `Repository`,
+`Path`, optional `Ref`, `Size`, `SHA`, `URL`) followed by the decoded file
+content in a `~~~` fenced block. A response that is not a readable file returns
+`Failed to retrieve file content from GitHub (not found or unsupported type)`,
+and a file without decodable content returns
+`Unsupported or empty file content returned by GitHub API`.
+
 ## Catalog vs API schemas
 
 The registry exposes two independent surfaces:

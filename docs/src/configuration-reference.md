@@ -56,6 +56,7 @@
   - [`tools.browser`](#toolsbrowser)
 - **Tools — Web & Data**
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
+  - [`tools.github`](#toolsgithub)
   - [`tools.maps`](#toolsmaps)
 - **Tools — Policy & Agent Limits**
   - [`tools.policy`](#toolspolicy)
@@ -400,6 +401,12 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | only_main_content  | bool            | `true`                        | Only extract main content (skip navs, footers, etc.).                                       |
 | timeout_seconds    | integer         | `30`                          | HTTP request timeout in seconds.                                                            |
 | cache_ttl_minutes  | integer         | `15`                          | In-memory cache TTL in minutes (0 to disable).                                              |
+
+### `tools.github` — GitHubConfig
+
+| Key | Type            | Default | Description                                              |
+| --- | --------------- | ------- | -------------------------------------------------------- |
+| pat | optional string | —       | GitHub personal access token used by every `github_*` tool. |
 
 ### `tools.maps` — MapsConfig
 
