@@ -12,10 +12,10 @@ use {
 };
 
 use crate::{
-    client::{GitHubClient, RequestOptions},
+    client::GitHubClient,
     error::{Error, Result},
     metrics::record_execution,
-    tools::parse_params,
+    tools::{parse_params, request::get_with_rate_limit_retry},
 };
 
 /// Invisible separator placed between the header and the file body.
@@ -99,7 +99,10 @@ impl GithubGetFileContentsTool {
             url.query_pairs_mut().append_pair("ref", reference);
         }
 
-        let response = self.client.get(&url, RequestOptions::default()).await?;
+        let response = get_with_rate_limit_retry(&self.client, &url, self.name()).await?;
+        if response.is_rate_limited() {
+            return Err(Error::message(response.failure_message()));
+        }
         if !response.is_success() {
             return Ok(None);
         }
@@ -501,6 +504,67 @@ mod tests {
             "Unsupported or empty file content returned by GitHub API"
         );
         call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn rate_limit_without_timing_preserves_the_github_error() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("GET", "/repos/o/r/contents/docs/README.md")
+            .with_status(429)
+            .with_body("You have exceeded a secondary rate limit")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let error = match tool(server.url(), Some("pat-token"))
+            .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
+            .await
+        {
+            Ok(_) => panic!("expected a rate limit error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "You have exceeded a secondary rate limit"
+        );
+        call.assert_async().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn repeated_rate_limit_preserves_the_last_github_error() {
+        let mut server = mockito::Server::new_async().await;
+        let limited = server
+            .mock("GET", "/repos/o/r/contents/docs/README.md")
+            .with_status(429)
+            .with_header("retry-after", "1")
+            .with_body("API rate limit exceeded")
+            .expect(1)
+            .create_async()
+            .await;
+        let retried = server
+            .mock("GET", "/repos/o/r/contents/docs/README.md")
+            .with_status(403)
+            .with_body("You have exceeded a secondary rate limit")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let error = match tool(server.url(), Some("pat-token"))
+            .execute(json!({ "owner": "o", "repo": "r", "path": "docs/README.md" }))
+            .await
+        {
+            Ok(_) => panic!("expected a repeated rate limit error"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "You have exceeded a secondary rate limit"
+        );
+        limited.assert_async().await;
+        retried.assert_async().await;
     }
 
     #[tokio::test]

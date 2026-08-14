@@ -6,7 +6,10 @@ use {chelix_agents::tool_registry::ToolRegistry, chelix_config::schema::GitHubCo
 
 use crate::{
     client::GitHubClient,
-    tools::{GithubGetFileContentsTool, GithubSearchCodeTool},
+    tools::{
+        GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubSearchCodeTool,
+        GithubSearchRepositoriesTool,
+    },
 };
 
 /// Register every `github_*` tool against one shared client.
@@ -15,9 +18,18 @@ use crate::{
 /// reported at call time as an explicit tool error rather than by silently
 /// hiding the tools.
 pub fn register_tools(registry: &mut ToolRegistry, config: &GitHubConfig) {
-    let client = Arc::new(GitHubClient::new(config.pat.clone()));
+    let client = Arc::new(GitHubClient::new(
+        config.pat.clone(),
+        config.request_timeout_secs,
+    ));
+    registry.register(Box::new(GithubGetDirectoryContentsTool::new(Arc::clone(
+        &client,
+    ))));
+    registry.register(Box::new(GithubGetFileContentsTool::new(Arc::clone(
+        &client,
+    ))));
     registry.register(Box::new(GithubSearchCodeTool::new(Arc::clone(&client))));
-    registry.register(Box::new(GithubGetFileContentsTool::new(client)));
+    registry.register(Box::new(GithubSearchRepositoriesTool::new(client)));
 }
 
 #[cfg(test)]
@@ -35,8 +47,10 @@ mod tests {
             .map(|entry| entry.name)
             .collect();
         assert_eq!(names, vec![
+            "github_get_directory_contents".to_string(),
             "github_get_file_contents".to_string(),
             "github_search_code".to_string(),
+            "github_search_repositories".to_string(),
         ]);
     }
 }

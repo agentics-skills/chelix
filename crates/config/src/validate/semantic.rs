@@ -368,6 +368,15 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
+    if config.tools.github.request_timeout_secs == 0 {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: "tools.github.request_timeout_secs".into(),
+            message: "tools.github.request_timeout_secs must be at least 1".into(),
+        });
+    }
+
     if config.mcp.request_timeout_secs == 0 {
         diagnostics.push(Diagnostic {
             severity: Severity::Error,

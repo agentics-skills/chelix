@@ -70,6 +70,28 @@ fn tools_loop_detector_window_defaults_to_two() {
 }
 
 #[test]
+fn github_request_timeout_defaults_to_five_minutes() {
+    let config: ChelixConfig = toml::from_str("").unwrap();
+    assert_eq!(
+        config.tools.github.request_timeout_secs,
+        DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS
+    );
+    assert_eq!(DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS, 300);
+}
+
+#[test]
+fn github_request_timeout_parses_an_override() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools.github]
+request_timeout_secs = 45
+"#,
+    )
+    .unwrap();
+    assert_eq!(config.tools.github.request_timeout_secs, 45);
+}
+
+#[test]
 fn env_section_parses() {
     let toml = r#"
 [env]

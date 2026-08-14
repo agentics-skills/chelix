@@ -168,7 +168,9 @@ impl Default for FirecrawlConfig {
 /// The `github_*` tools call the GitHub REST API with the configured personal
 /// access token. Tools that require authentication fail explicitly when `pat`
 /// is unset.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub const DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS: u64 = 300;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct GitHubConfig {
     /// GitHub personal access token used by every `github_*` tool.
@@ -178,6 +180,17 @@ pub struct GitHubConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub pat: Option<Secret<String>>,
+    /// Maximum duration of each GitHub HTTP request in seconds. Must be positive.
+    pub request_timeout_secs: u64,
+}
+
+impl Default for GitHubConfig {
+    fn default() -> Self {
+        Self {
+            pat: None,
+            request_timeout_secs: DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS,
+        }
+    }
 }
 
 /// Browser automation configuration.

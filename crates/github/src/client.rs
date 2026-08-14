@@ -7,9 +7,13 @@
 use {
     reqwest::{StatusCode, header::HeaderValue},
     secrecy::{ExposeSecret, Secret},
+    std::time::Duration,
 };
 
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    rate_limit::RateLimitCoordinator,
+};
 
 /// GitHub REST API root used by every tool.
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
@@ -121,26 +125,49 @@ pub struct GitHubClient {
     http: reqwest::Client,
     base_url: String,
     token: Option<Secret<String>>,
+    request_timeout: Option<Duration>,
+    rate_limit: RateLimitCoordinator,
 }
 
 impl GitHubClient {
     /// Build a client for the public GitHub API.
     #[must_use]
-    pub fn new(token: Option<Secret<String>>) -> Self {
+    pub fn new(token: Option<Secret<String>>, request_timeout_secs: u64) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url: GITHUB_API_BASE_URL.to_string(),
             token,
+            request_timeout: Some(Duration::from_secs(request_timeout_secs)),
+            rate_limit: RateLimitCoordinator::default(),
         }
     }
 
-    /// Build a client pointed at a test double.
+    /// Build a client pointed at a test double without a wall-clock deadline.
+    /// Paused-time retry tests use this constructor; timeout behaviour is tested
+    /// separately through `for_test_with_timeout`.
     #[cfg(test)]
     pub(crate) fn for_test(base_url: String, token: Option<Secret<String>>) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url,
             token,
+            request_timeout: None,
+            rate_limit: RateLimitCoordinator::default(),
+        }
+    }
+
+    #[cfg(test)]
+    fn for_test_with_timeout(
+        base_url: String,
+        token: Option<Secret<String>>,
+        request_timeout: Duration,
+    ) -> Self {
+        Self {
+            http: chelix_common::http_client::build_default_http_client(),
+            base_url,
+            token,
+            request_timeout: Some(request_timeout),
+            rate_limit: RateLimitCoordinator::default(),
         }
     }
 
@@ -158,8 +185,25 @@ impl GitHubClient {
         Ok(())
     }
 
+    fn map_request_error(&self, error: reqwest::Error) -> Error {
+        if error.is_timeout()
+            && let Some(request_timeout) = self.request_timeout
+        {
+            #[cfg(feature = "tracing")]
+            tracing::warn!(
+                timeout = ?request_timeout,
+                "GitHub HTTP request timed out"
+            );
+            return Error::message(format!(
+                "GitHub request timed out after {request_timeout:?}"
+            ));
+        }
+        error.into()
+    }
+
     /// Perform one authenticated `GET` and read the complete response.
     pub async fn get(&self, url: &url::Url, options: RequestOptions) -> Result<GitHubResponse> {
+        let rate_limit_permit = self.rate_limit.acquire().await;
         let mut request = self
             .http
             .get(url.as_str())
@@ -173,7 +217,13 @@ impl GitHubClient {
             request = request.header(reqwest::header::AUTHORIZATION, authorization);
         }
 
-        let raw = request.send().await?;
+        if let Some(request_timeout) = self.request_timeout {
+            request = request.timeout(request_timeout);
+        }
+        let raw = request
+            .send()
+            .await
+            .map_err(|error| self.map_request_error(error))?;
         let status = raw.status();
         let header = |name: &str| {
             raw.headers()
@@ -186,17 +236,25 @@ impl GitHubClient {
             retry_after: header("retry-after"),
             rate_limit_remaining: header("x-ratelimit-remaining"),
             rate_limit_reset: header("x-ratelimit-reset"),
-            body: raw.text().await?,
+            body: raw
+                .text()
+                .await
+                .map_err(|error| self.map_request_error(error))?,
         };
+        rate_limit_permit.complete(
+            response.is_rate_limited(),
+            response.rate_limit_cooldown_ms(),
+        );
 
         if options.return_rate_limit_response && response.is_rate_limited() {
             return Ok(response);
         }
 
-        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
-            && self.token.is_some()
-        {
-            return Err(Error::authorization(response.failure_message()));
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+            if self.token.is_some() {
+                return Err(Error::authorization(response.failure_message()));
+            }
+            return Err(Error::MissingToken);
         }
 
         Ok(response)
@@ -220,7 +278,12 @@ mod tests {
 
     #[test]
     fn missing_token_is_reported_before_any_request() {
-        let error = match GitHubClient::new(None).require_token() {
+        let error = match GitHubClient::new(
+            None,
+            chelix_config::schema::DEFAULT_GITHUB_REQUEST_TIMEOUT_SECS,
+        )
+        .require_token()
+        {
             Ok(()) => panic!("expected a missing token error"),
             Err(error) => error,
         };
@@ -260,22 +323,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unauthenticated_forbidden_response_is_returned_to_the_caller() {
+    async fn unauthenticated_access_denial_reports_the_missing_token() {
         let mut server = mockito::Server::new_async().await;
-        let _call = server
+        let call = server
             .mock("GET", "/probe")
             .with_status(403)
             .with_body("")
+            .expect(1)
             .create_async()
             .await;
 
-        let response = probe(&server, RequestOptions::default())
-            .await
-            .unwrap_or_else(|error| panic!("probe request failed: {error}"));
+        let error = match probe(&server, RequestOptions::default()).await {
+            Ok(_) => panic!("expected a missing token error"),
+            Err(error) => error,
+        };
 
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert!(!response.is_success());
-        assert_eq!(response.failure_message(), "403 Forbidden");
+        assert!(matches!(error, Error::MissingToken));
+        call.assert_async().await;
     }
 
     #[tokio::test]
@@ -343,5 +407,41 @@ mod tests {
 
         assert!(response.is_rate_limited());
         assert_eq!(response.rate_limit_cooldown_ms(), None);
+    }
+
+    #[tokio::test]
+    async fn timed_out_probe_reopens_the_shared_gate() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap_or_else(|error| panic!("test listener failed to bind: {error}"));
+        let address = listener
+            .local_addr()
+            .unwrap_or_else(|error| panic!("test listener has no local address: {error}"));
+        let server = tokio::spawn(async move {
+            let (_socket, _) = listener
+                .accept()
+                .await
+                .unwrap_or_else(|error| panic!("test listener failed to accept: {error}"));
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        });
+        let base_url = format!("http://{address}");
+        let client =
+            GitHubClient::for_test_with_timeout(base_url.clone(), None, Duration::from_millis(50));
+        client.rate_limit.acquire().await.complete(true, Some(0));
+        let url = url::Url::parse(&format!("{base_url}/probe"))
+            .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
+
+        let error = match client.get(&url, RequestOptions::default()).await {
+            Ok(_) => panic!("expected a request timeout"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.to_string(), "GitHub request timed out after 50ms");
+        let permit = tokio::time::timeout(Duration::from_millis(50), client.rate_limit.acquire())
+            .await
+            .unwrap_or_else(|_| panic!("shared gate remained blocked after probe timeout"));
+        permit.complete(false, None);
+        server.abort();
+        let _ = server.await;
     }
 }

@@ -279,26 +279,37 @@ The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
 
 ## GitHub tools
 
-The `github_*` tools call the GitHub REST API through one shared client that
-reads its personal access token from `tools.github.pat`:
+The `github_*` tools call the GitHub REST API through one shared client. When
+configured, the client reads its personal access token from `tools.github.pat`:
 
 ```toml
 [tools.github]
 pat = "ghp_..."
+request_timeout_secs = 300
 ```
 
-The tools are always registered. A tool that requires authentication and finds
-no configured token returns an explicit error before issuing any request, and a
-`401`/`403` response received with a configured token is an error rather than a
-re-authentication prompt.
+The tools are always registered. Code search and file-content reads require a
+configured token before issuing a request. Repository search and directory
+listing can read public data without a token; if GitHub denies an unauthenticated
+request with `401`/`403`, the call returns the explicit missing-token error. A
+`401`/`403` response received with a configured token is an authorization error
+rather than a re-authentication prompt.
 
 Every request sends `Accept: application/vnd.github.v3+json` and
-`X-GitHub-Api-Version: 2022-11-28`. A `403`/`429` response that carries
+`X-GitHub-Api-Version: 2022-11-28`, and has the finite HTTP deadline configured
+by `tools.github.request_timeout_secs` (default `300`, minimum `1`). A timeout
+returns `GitHub request timed out after <duration>`. A `403`/`429` response that carries
 `retry-after`, `x-ratelimit-remaining: 0`, or a body mentioning a rate limit is
 treated as rate limited. When such a response provides usable timing
 (`retry-after`, or `x-ratelimit-reset` with `x-ratelimit-remaining: 0`), the
-call waits for that cooldown plus a 5-second buffer and retries once; without
-usable timing the response is returned as an error.
+shared client blocks every GitHub call across concurrent sessions until that
+cooldown plus a 5-second buffer expires. One waiting call is then admitted as a
+probe; the remaining calls wait for its outcome. A limited call retries once
+through this shared gate. Without usable timing the response is returned as an
+error. Cooldown start or extension, cooldown waits, probe waits, probe admission,
+probe release, and probe termination without a response are emitted to tracing.
+The per-request deadline also bounds a probe; timeout or cancellation releases
+its lease and reopens the gate.
 
 ### `github_search_code`
 
@@ -311,16 +322,43 @@ markdown-formatted text: a
 `No code results found for this query.`. API failures are reported as
 `GitHub code search API error: <message>`.
 
+### `github_search_repositories`
+
+Searches repositories via `GET /search/repositories`. `query` is required; the
+optional integer `perPage` selects the page size between 1 and 100. The result
+is markdown-formatted text: a
+`GitHub Repository Search Results (showing <n> of <total>)` header followed by
+`Name`, optional `Description`, `Stars`, `Forks`, optional `Language`, and `URL`
+lines per repository separated by `----------`. An empty result set returns
+`No repositories found for this query.`. A non-successful API response returns
+the GitHub response body, or the HTTP status line when the body is empty.
+
 ### `github_get_file_contents`
 
 Reads one file via `GET /repos/{owner}/{repo}/contents/{path}`. `owner`,
 `repo`, and `path` are required; the optional `ref` selects a
 commit/branch/tag. The result is a markdown header (`# <name>`, `Repository`,
 `Path`, optional `Ref`, `Size`, `SHA`, `URL`) followed by the decoded file
-content in a `~~~` fenced block. A response that is not a readable file returns
+content in a `~~~` fenced block. A rate-limit response remaining after the
+single controlled retry returns the GitHub response body. Any other response
+that is not a readable file returns
 `Failed to retrieve file content from GitHub (not found or unsupported type)`,
 and a file without decodable content returns
 `Unsupported or empty file content returned by GitHub API`.
+
+### `github_get_directory_contents`
+
+Lists a directory via `GET /repos/{owner}/{repo}/contents/{path}`. `owner` and
+`repo` are required. Optional `path` selects a directory and accepts an empty
+value for the repository root; optional `ref` selects a commit/branch/tag. The
+result starts with `GitHub Directory Contents`, followed by `Repo`, normalized
+`Path`, optional `Ref`, and `Entries` lines. Each entry contains `Name`, `Path`,
+`Type`, optional `Size`, `SHA`, and `URL`, with entries separated by
+`----------`. A nullable GitHub `html_url`, including an external submodule URL,
+is rendered as `URL: null`. An empty directory ends with `(empty directory)`. A file path
+returns
+`The provided path points to a file. Use github_get_file_contents instead.`;
+other non-directory and unexpected response shapes are explicit errors.
 
 ## Catalog vs API schemas
 
