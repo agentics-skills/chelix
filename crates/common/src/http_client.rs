@@ -8,9 +8,26 @@
 //! crate can later retrieve the URL via [`upstream_proxy_url`] without
 //! needing it threaded through every constructor.
 
+use std::time::Duration;
+
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 
 const FALLBACK_USER_AGENT: &str = "Chelix/unknown";
+
+/// Interval between HTTP/2 keep-alive PING frames.
+///
+/// Long-running SSE streams (notably LLM reasoning) can legitimately send no
+/// payload bytes for a long time. PING frames probe liveness at the protocol
+/// level without constraining how long a response may take, so a peer that
+/// keeps acknowledging pings is never interrupted.
+const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Time to wait for a PING acknowledgement before closing the connection.
+///
+/// Only an unacknowledged ping closes the connection, which distinguishes a
+/// peer that is still working from one that silently dropped the stream while
+/// the underlying TCP socket stays established.
+const HTTP2_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(20);
 
 static UPSTREAM_PROXY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
@@ -70,6 +87,13 @@ pub fn build_http_client(proxy_url: Option<&str>) -> reqwest::Client {
     // Set the default User-Agent header. Per-request overrides take precedence
     // because `default_headers` has lower priority than request headers.
     builder = builder.default_headers(build_default_headers());
+    // Detect dead HTTP/2 connections that TCP still reports as established.
+    // `while_idle` also covers pooled connections, so a stale one is dropped
+    // instead of being reused for the next request.
+    builder = builder
+        .http2_keep_alive_interval(HTTP2_KEEP_ALIVE_INTERVAL)
+        .http2_keep_alive_timeout(HTTP2_KEEP_ALIVE_TIMEOUT)
+        .http2_keep_alive_while_idle(true);
     if let Some(url) = proxy_url {
         match reqwest::Proxy::all(url) {
             Ok(proxy) => {
@@ -181,7 +205,7 @@ mod tests {
     #[test]
     fn apply_proxy_with_none_is_passthrough() {
         // When no upstream proxy is set, apply_proxy is a no-op.
-        let builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10));
+        let builder = reqwest::Client::builder().timeout(Duration::from_secs(10));
         let builder = apply_proxy(builder);
         let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
         drop(client);
