@@ -354,6 +354,10 @@ Relative `paths` are resolved by `rg` from that effective working directory. An
 effective working directory that does not exist or is not a directory is an
 explicit tool error.
 
+When `multiline` is `true`, the service adds `-U/--multiline` so matches may
+span line terminators. Multiline mode does not make `.` match line terminators;
+dot-all behavior must be requested explicitly in the pattern.
+
 Before emitting its readiness record, the service validates the working
 directory and loads the installed ripgrep type registry with `rg --type-list`.
 Startup fails if the directory, executable, command, output encoding, or type

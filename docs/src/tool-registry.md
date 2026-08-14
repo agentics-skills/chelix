@@ -250,12 +250,16 @@ with `--json` output and returns structured results. The binary is assumed to
 be installed — a spawn failure surfaces as a tool error.
 
 Parameters (camelCase): `pattern` (required), `paths`, `cwd`, `fixedStrings`,
-`caseMode` (`sensitive`/`ignore`/`smart`), `detail` (`summary`, `files`,
+`multiline`, `caseMode` (`sensitive`/`ignore`/`smart`), `detail` (`summary`, `files`,
 `lines` — default, `lines+submatches`), `glob`, `type`, `typeNot`,
 `contextLines`, `maxMatches` (300), `maxFiles` (100), `maxOutputChars`
 (30000), `timeoutMs` (30000), `includeHidden` (default `true`),
 `unrestricted` (0–3, default 3, maps to `-u`/`-uu`/`-uuu`), `gitignore`
 (default `true`), `followSymlinks`.
+
+`multiline` defaults to `false`. When enabled, it maps to `-U/--multiline` and
+allows matches to span line terminators. It does not make `.` match line
+terminators; dot-all behavior must be requested explicitly in the pattern.
 
 `gitignore` switches every git-sourced rg filter as one unit: `.gitignore`
 files, `.git/info/exclude`, and `core.excludesFile`. When enabled, the rules

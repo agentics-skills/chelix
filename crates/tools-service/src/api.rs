@@ -738,7 +738,7 @@ mod tests {
     #[tokio::test]
     async fn ripgrep_runs_with_authorization() {
         let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("tempdir failed: {error}"));
-        tokio::fs::write(dir.path().join("sample.txt"), "service-needle\n")
+        tokio::fs::write(dir.path().join("sample.txt"), "service\nneedle\n")
             .await
             .unwrap_or_else(|error| panic!("write failed: {error}"));
         let base_url = spawn_api().await;
@@ -747,8 +747,9 @@ mod tests {
             .bearer_auth("test-token")
             .json(&serde_json::json!({
                 "params": {
-                    "pattern": "service-needle",
+                    "pattern": "service\nneedle",
                     "fixedStrings": true,
+                    "multiline": true,
                     "cwd": dir.path(),
                 }
             }))

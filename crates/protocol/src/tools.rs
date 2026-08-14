@@ -495,6 +495,8 @@ pub struct RipgrepInput {
     pub cwd: Option<String>,
     #[serde(default)]
     pub fixed_strings: bool,
+    #[serde(default)]
+    pub multiline: bool,
     #[serde(
         default,
         deserialize_with = "deserialize_present_option",
@@ -1541,6 +1543,8 @@ mod tests {
 
         assert!(input.paths.is_empty());
         assert!(input.cwd.is_none());
+        assert!(!input.fixed_strings);
+        assert!(!input.multiline);
         assert_eq!(input.detail, RipgrepDetail::Lines);
         assert_eq!(input.max_matches, RIPGREP_DEFAULT_MAX_MATCHES);
         assert_eq!(input.max_files, RIPGREP_DEFAULT_MAX_FILES);
@@ -1557,6 +1561,7 @@ mod tests {
         for invalid in [
             serde_json::json!({ "pattern": "needle", "cwd": null }),
             serde_json::json!({ "pattern": "needle", "paths": null }),
+            serde_json::json!({ "pattern": "needle", "multiline": null }),
             serde_json::json!({ "pattern": "needle", "maxMatches": null }),
             serde_json::json!({ "pattern": "needle", "obsolete": true }),
         ] {
