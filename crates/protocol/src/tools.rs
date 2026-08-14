@@ -25,10 +25,10 @@ pub const TOOLS_SERVICE_TOKEN_ENV: &str = "CHELIX_TOOLS_SERVICE_TOKEN";
 pub const TOOLS_SERVICE_BINARY_ENV: &str = "CHELIX_TOOLS_SERVICE_BINARY";
 pub const TOOLS_SERVICE_LINUX_BINARY_ENV: &str = "CHELIX_TOOLS_SERVICE_LINUX_BINARY";
 
-pub const RIPGREP_DEFAULT_MAX_MATCHES: usize = 2000;
-pub const RIPGREP_DEFAULT_MAX_FILES: usize = 200;
-pub const RIPGREP_DEFAULT_MAX_OUTPUT_CHARS: usize = 200_000;
-pub const RIPGREP_DEFAULT_TIMEOUT_MS: u64 = 10_000;
+pub const RIPGREP_DEFAULT_MAX_MATCHES: usize = 300;
+pub const RIPGREP_DEFAULT_MAX_FILES: usize = 100;
+pub const RIPGREP_DEFAULT_MAX_OUTPUT_CHARS: usize = 30_000;
+pub const RIPGREP_DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -527,6 +527,8 @@ pub struct RipgrepInput {
     pub include_hidden: bool,
     #[serde(default = "ripgrep_default_unrestricted")]
     pub unrestricted: u8,
+    #[serde(default = "default_true")]
+    pub gitignore: bool,
     #[serde(default)]
     pub follow_symlinks: bool,
 }
@@ -1546,6 +1548,7 @@ mod tests {
         assert_eq!(input.timeout_ms, RIPGREP_DEFAULT_TIMEOUT_MS);
         assert!(input.include_hidden);
         assert_eq!(input.unrestricted, 3);
+        assert!(input.gitignore);
         assert!(input.validate().is_ok());
     }
 

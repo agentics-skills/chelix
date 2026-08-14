@@ -252,9 +252,15 @@ be installed — a spawn failure surfaces as a tool error.
 Parameters (camelCase): `pattern` (required), `paths`, `cwd`, `fixedStrings`,
 `caseMode` (`sensitive`/`ignore`/`smart`), `detail` (`summary`, `files`,
 `lines` — default, `lines+submatches`), `glob`, `type`, `typeNot`,
-`contextLines`, `maxMatches` (2000), `maxFiles` (200), `maxOutputChars`
-(200000), `timeoutMs` (10000), `includeHidden` (default `true`),
-`unrestricted` (0–3, default 3, maps to `-u`/`-uu`/`-uuu`), `followSymlinks`.
+`contextLines`, `maxMatches` (300), `maxFiles` (100), `maxOutputChars`
+(30000), `timeoutMs` (30000), `includeHidden` (default `true`),
+`unrestricted` (0–3, default 3, maps to `-u`/`-uu`/`-uuu`), `gitignore`
+(default `true`), `followSymlinks`.
+
+`gitignore` switches every git-sourced rg filter as one unit: `.gitignore`
+files, `.git/info/exclude`, and `core.excludesFile`. When enabled, the rules
+also apply from parent directories and outside a git repository. Paths listed
+explicitly in `paths` are searched by rg regardless of these rules.
 
 Common extension-like `type` values (`tsx`, `jsx`, `mjs`, …) are normalized to
 rg type names; unknown extension-like values become glob filters; anything

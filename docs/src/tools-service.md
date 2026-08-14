@@ -363,6 +363,13 @@ it in `--type-list`. Known names use `--type`/`--type-not`; common JS/TS
 extensions are normalized to their ripgrep types, and unknown extension-like
 values become include or exclusion globs.
 
+The git filter flags derived from `gitignore` are appended after the
+`unrestricted` flags, because rg applies the last matching flag and an earlier
+`--ignore-vcs` would be cancelled by `-u`/`-uu`/`-uuu`. Enabling `gitignore`
+emits `--ignore-vcs`, `--ignore-exclude`, `--ignore-global`, `--ignore-parent`,
+and `--no-require-git`; disabling it emits `--no-ignore-vcs`,
+`--no-ignore-exclude`, and `--no-ignore-global`.
+
 Stdout and stderr are read concurrently in bounded chunks. `maxOutputChars`
 is one shared budget for both streams, measured as UTF-16 code units after
 UTF-8 decoding to match the source tool's string-length contract. A chunk that

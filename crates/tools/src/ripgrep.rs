@@ -129,6 +129,11 @@ impl AgentTool for RipgrepTool {
                     "default": 3,
                     "description": "Ignore rules level (maps to -u/-uu/-uuu)."
                 },
+                "gitignore": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Respect git ignore rules (.gitignore, .git/info/exclude, core.excludesFile), including parent directories and outside git repositories."
+                },
                 "followSymlinks": {
                     "type": "boolean",
                     "default": false,
@@ -215,12 +220,13 @@ mod tests {
                     "glob": [],
                     "type": [],
                     "typeNot": [],
-                    "maxMatches": 2000,
-                    "maxFiles": 200,
-                    "maxOutputChars": 200000,
-                    "timeoutMs": 10000,
+                    "maxMatches": 300,
+                    "maxFiles": 100,
+                    "maxOutputChars": 30000,
+                    "timeoutMs": 30000,
                     "includeHidden": true,
                     "unrestricted": 3,
+                    "gitignore": true,
                     "followSymlinks": false
                 }
             })))
@@ -235,10 +241,10 @@ mod tests {
                         "timedOut": false,
                         "truncated": false,
                         "limits": {
-                            "maxMatches": 2000,
-                            "maxFiles": 200,
-                            "maxOutputChars": 200000,
-                            "timeoutMs": 10000
+                            "maxMatches": 300,
+                            "maxFiles": 100,
+                            "maxOutputChars": 30000,
+                            "timeoutMs": 30000
                         },
                         "summary": {
                             "filesWithMatches": 1,
