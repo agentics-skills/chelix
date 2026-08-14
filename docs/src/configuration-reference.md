@@ -404,9 +404,10 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 
 ### `tools.github` — GitHubConfig
 
-| Key | Type            | Default | Description                                              |
-| --- | --------------- | ------- | -------------------------------------------------------- |
-| pat | optional string | —       | GitHub personal access token used by every `github_*` tool. |
+| Key                   | Type            | Default | Description                                                        |
+| --------------------- | --------------- | ------- | ------------------------------------------------------------------ |
+| pat                   | optional string | —       | GitHub personal access token used by every `github_*` tool.        |
+| request_timeout_secs  | integer         | `300`   | Per-request GitHub HTTP timeout in seconds. Must be at least `1`.  |
 
 ### `tools.maps` — MapsConfig
 

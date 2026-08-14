@@ -1,9 +1,16 @@
 //! `github_*` agent tools.
 
+mod get_directory_contents;
 mod get_file_contents;
+mod request;
 mod search_code;
+mod search_repositories;
 
-pub use {get_file_contents::GithubGetFileContentsTool, search_code::GithubSearchCodeTool};
+pub use {
+    get_directory_contents::GithubGetDirectoryContentsTool,
+    get_file_contents::GithubGetFileContentsTool, search_code::GithubSearchCodeTool,
+    search_repositories::GithubSearchRepositoriesTool,
+};
 
 use serde_json::Value;
 

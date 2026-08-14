@@ -161,7 +161,12 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let github = || Struct(HashMap::from([("pat", Leaf)]));
+    let github = || {
+        Struct(HashMap::from([
+            ("pat", Leaf),
+            ("request_timeout_secs", Leaf),
+        ]))
+    };
 
     let tools = || {
         Struct(HashMap::from([

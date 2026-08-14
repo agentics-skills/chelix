@@ -338,6 +338,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # [tools.github]
 # pat = "ghp_..."                   # GitHub personal access token
+# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
 # ── Browser Automation ────────────────────────────────────────────────────────
 
