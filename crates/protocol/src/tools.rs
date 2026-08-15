@@ -290,7 +290,7 @@ impl ReadFileRequest {
                 if read.offset < -1 {
                     return Err(ReadFileRequestValidationError::InvalidNegativeOffset);
                 }
-                if read.limit < 1 {
+                if read.limit < 1 && read.limit != -1 {
                     return Err(ReadFileRequestValidationError::InvalidLimit);
                 }
             },
@@ -302,7 +302,10 @@ impl ReadFileRequest {
                     if range.start_line < 1 {
                         return Err(ReadFileRequestValidationError::InvalidRangeStart(index));
                     }
-                    if range.end_line.is_some_and(|end_line| end_line < 1) {
+                    if range
+                        .end_line
+                        .is_some_and(|end_line| end_line < 1 && end_line != -1)
+                    {
                         return Err(ReadFileRequestValidationError::InvalidRangeEnd(index));
                     }
                 }
@@ -324,7 +327,7 @@ pub enum ReadFileRequestValidationError {
         "read.offset must be a positive integer or -1 for tail mode. Other negative offsets are not supported."
     )]
     InvalidNegativeOffset,
-    #[error("read.limit must be a positive integer.")]
+    #[error("read.limit must be a positive integer, or -1 to read to the end of the file.")]
     InvalidLimit,
     #[error("read.ranges must contain at least one range.")]
     EmptyRanges,
@@ -332,7 +335,9 @@ pub enum ReadFileRequestValidationError {
     BinaryRangesUnsupported,
     #[error("read.ranges[{0}].startLine must be a positive integer.")]
     InvalidRangeStart(usize),
-    #[error("read.ranges[{0}].endLine must be a positive integer.")]
+    #[error(
+        "read.ranges[{0}].endLine must be a positive integer, or -1 to read to the last line of the file."
+    )]
     InvalidRangeEnd(usize),
 }
 
@@ -1255,10 +1260,16 @@ mod tests {
             ReadFileRequest {
                 file_path: "/workspace/src/main.rs".into(),
                 read: ReadFileOperation::Ranges(ReadFileRangesOperation {
-                    ranges: vec![ReadFileRange {
-                        start_line: 12,
-                        end_line: Some(20),
-                    }],
+                    ranges: vec![
+                        ReadFileRange {
+                            start_line: 12,
+                            end_line: Some(20),
+                        },
+                        ReadFileRange {
+                            start_line: 30,
+                            end_line: Some(-1),
+                        },
+                    ],
                     include_range_headers: true,
                 }),
                 include_line_numbers: true,
@@ -1276,10 +1287,16 @@ mod tests {
         let ranges = ReadFileRequest {
             file_path: "/workspace/src/main.rs".into(),
             read: ReadFileOperation::Ranges(ReadFileRangesOperation {
-                ranges: vec![ReadFileRange {
-                    start_line: 12,
-                    end_line: Some(20),
-                }],
+                ranges: vec![
+                    ReadFileRange {
+                        start_line: 12,
+                        end_line: Some(20),
+                    },
+                    ReadFileRange {
+                        start_line: 30,
+                        end_line: Some(-1),
+                    },
+                ],
                 include_range_headers: true,
             }),
             include_line_numbers: true,
@@ -1291,7 +1308,10 @@ mod tests {
             serde_json::json!({
                 "filePath": "/workspace/src/main.rs",
                 "read": {
-                    "ranges": [{ "startLine": 12, "endLine": 20 }],
+                    "ranges": [
+                        { "startLine": 12, "endLine": 20 },
+                        { "startLine": 30, "endLine": -1 }
+                    ],
                     "includeRangeHeaders": true
                 },
                 "includeLineNumbers": true,
@@ -1389,13 +1409,6 @@ mod tests {
             (
                 serde_json::json!({
                     "filePath": "/tmp/file",
-                    "read": { "offset": 1, "limit": 0 }
-                }),
-                "read.limit must be a positive integer.",
-            ),
-            (
-                serde_json::json!({
-                    "filePath": "/tmp/file",
                     "read": { "ranges": [] }
                 }),
                 "read.ranges must contain at least one range.",
@@ -1406,6 +1419,27 @@ mod tests {
                     "read": { "ranges": [{ "startLine": 0 }] }
                 }),
                 "read.ranges[0].startLine must be a positive integer.",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "read": { "offset": 1, "limit": 0 }
+                }),
+                "read.limit must be a positive integer, or -1 to read to the end of the file.",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "read": { "offset": 1, "limit": -2 }
+                }),
+                "read.limit must be a positive integer, or -1",
+            ),
+            (
+                serde_json::json!({
+                    "filePath": "/tmp/file",
+                    "read": { "ranges": [{ "startLine": 1, "endLine": -2 }] }
+                }),
+                "read.ranges[0].endLine must be a positive integer, or -1",
             ),
         ];
         for (value, expected) in invalid {

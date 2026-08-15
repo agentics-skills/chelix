@@ -1,7 +1,8 @@
 //! File reader for the managed tools service.
 //!
-//! Text reads support bounded offset/limit paging, tail mode, and multiple
-//! inclusive ranges. Binary files are returned as bounded hexadecimal dumps.
+//! Text reads support bounded offset/limit paging, tail mode, unbounded
+//! end-of-file reads (`limit`/`endLine` of `-1`), and multiple inclusive
+//! ranges. Binary files are returned as bounded hexadecimal dumps.
 
 use {
     anyhow::{Context, Result, anyhow, bail},
@@ -164,8 +165,15 @@ impl TryFrom<&ReadFileRange> for RequestedRange {
     fn try_from(range: &ReadFileRange) -> Result<Self> {
         let start_line = u64::try_from(range.start_line)
             .context("range start line exceeds the supported range")?;
-        let end_line = u64::try_from(range.end_line.unwrap_or(range.start_line))
-            .context("range end line exceeds the supported range")?;
+        // end_line of -1 selects the last line of the file, so the range stays
+        // open-ended until the total line count is known.
+        let end_line = match range.end_line {
+            Some(-1) => u64::MAX,
+            Some(end_line) => {
+                u64::try_from(end_line).context("range end line exceeds the supported range")?
+            },
+            None => start_line,
+        };
         Ok(if start_line <= end_line {
             Self {
                 start_line,
@@ -278,6 +286,11 @@ fn binary_byte_range(
     total_bytes: u64,
     read: &ReadFileOffsetLimitOperation,
 ) -> Result<(u64, u64, bool)> {
+    if read.limit == -1 {
+        bail!(
+            "read.limit of -1 is not supported for binary files; request an explicit byte count."
+        );
+    }
     let requested_length = u64::try_from(read.limit)?;
     if read.offset == -1 {
         let effective_length = requested_length.min(MAX_BINARY_HEXDUMP_BYTES);
@@ -320,11 +333,19 @@ async fn read_text_offset_or_tail(
     }
 
     let start_line = u64::try_from(read.offset)?;
-    let requested_limit = u64::try_from(read.limit)?;
-    let effective_limit = requested_limit.min(MAX_LINES_PER_READ);
-    let selection_end = start_line
-        .checked_add(effective_limit - 1)
-        .context("requested line range exceeds the supported range")?;
+    // A negative limit means the read is unbounded and runs to the last line.
+    let requested_limit = if read.limit == -1 {
+        None
+    } else {
+        Some(u64::try_from(read.limit)?)
+    };
+    let effective_limit = requested_limit.map(|limit| limit.min(MAX_LINES_PER_READ));
+    let selection_end = match effective_limit {
+        Some(limit) => start_line
+            .checked_add(limit - 1)
+            .context("requested line range exceeds the supported range")?,
+        None => u64::MAX,
+    };
     let mut reader = LogicalLineReader::new(file);
     let mut selected = Vec::new();
     let mut total_lines = 0_u64;
@@ -356,7 +377,7 @@ async fn read_text_offset_or_tail(
 
     let end_line = selection_end.min(total_lines);
     let mut output = render_text_lines(&selected, include_line_numbers, number_blank_lines);
-    if requested_limit != effective_limit && end_line < total_lines {
+    if requested_limit.is_some_and(|limit| limit > MAX_LINES_PER_READ) && end_line < total_lines {
         output.push_str(&format!(
             "\n[File content truncated at line {end_line}. Use read_file with read.offset and read.limit to view more.]"
         ));
@@ -371,6 +392,10 @@ async fn read_text_tail(
     include_line_numbers: bool,
     number_blank_lines: bool,
 ) -> Result<String> {
+    if read.limit == -1 {
+        return read_text_tail_unbounded(file, path, include_line_numbers, number_blank_lines)
+            .await;
+    }
     let effective_limit = u64::try_from(read.limit)?.min(MAX_LINES_PER_READ);
     let retained_limit = usize::try_from(effective_limit + 1)
         .context("tail line limit exceeds the supported range")?;
@@ -401,6 +426,37 @@ async fn read_text_tail(
     }
     Ok(render_text_lines(
         retained.make_contiguous(),
+        include_line_numbers,
+        number_blank_lines,
+    ))
+}
+
+/// Reads every line of the file; used for unbounded tail requests (`limit` of `-1`).
+async fn read_text_tail_unbounded(
+    file: File,
+    path: &Path,
+    include_line_numbers: bool,
+    number_blank_lines: bool,
+) -> Result<String> {
+    let mut reader = LogicalLineReader::new(file);
+    let mut lines = Vec::new();
+    let mut has_non_whitespace = false;
+
+    while let Some(line) = reader.next_line(path).await? {
+        has_non_whitespace |= line
+            .text
+            .chars()
+            .any(|character| !character.is_whitespace());
+        lines.push(line);
+    }
+    if !has_non_whitespace {
+        return Ok(whitespace_file_message(path));
+    }
+    if reader.ends_with_lf() && lines.len() > 1 {
+        lines.pop();
+    }
+    Ok(render_text_lines(
+        &lines,
         include_line_numbers,
         number_blank_lines,
     ))
@@ -604,6 +660,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reads_to_last_line_with_negative_limit() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "line 1\nline 2\nline 3\nline 4\nline 5")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            run_tool(offset_request(&path, 3, -1)).await.unwrap(),
+            "line 3\nline 4\nline 5"
+        );
+        assert_eq!(
+            run_tool(offset_request(&path, 1, -1)).await.unwrap(),
+            "line 1\nline 2\nline 3\nline 4\nline 5"
+        );
+    }
+
+    #[tokio::test]
+    async fn tail_read_with_negative_limit_returns_whole_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "line 1\nline 2\nline 3\n")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            run_tool(offset_request(&path, -1, -1)).await.unwrap(),
+            "line 1\nline 2\nline 3"
+        );
+    }
+
+    #[tokio::test]
+    async fn negative_limit_reads_beyond_the_line_cap_without_truncation_notice() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("large.txt");
+        let content = (1..=2_005)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        tokio::fs::write(&path, content).await.unwrap();
+
+        let output = run_tool(offset_request(&path, 1, -1)).await.unwrap();
+        assert!(output.contains("line 2005"));
+        assert!(!output.contains("[File content truncated"));
+    }
+
+    #[tokio::test]
     async fn renders_line_numbers_for_offset_and_tail_reads() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("sample.txt");
@@ -662,6 +765,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reads_ranges_with_end_line_marker_for_last_line() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("sample.txt");
+        tokio::fs::write(&path, "line 1\nline 2\nline 3\nline 4\nline 5")
+            .await
+            .unwrap();
+        let input = ReadFileRequest {
+            file_path: path.to_string_lossy().into_owned(),
+            read: ReadFileOperation::Ranges(ReadFileRangesOperation {
+                ranges: vec![ReadFileRange {
+                    start_line: 3,
+                    end_line: Some(-1),
+                }],
+                include_range_headers: true,
+            }),
+            include_line_numbers: true,
+            number_blank_lines: true,
+        };
+
+        assert_eq!(
+            run_tool(input).await.unwrap(),
+            "--- lines 3-5 ---\n3\tline 3\n4\tline 4\n5\tline 5"
+        );
+    }
+
+    #[tokio::test]
     async fn returns_messages_for_empty_and_whitespace_files() {
         let directory = tempfile::tempdir().unwrap();
         let empty = directory.path().join("empty.txt");
@@ -698,6 +827,14 @@ mod tests {
         assert!(output.contains("00000006"));
         assert!(output.contains("ff fe"));
         assert!(!output.contains("4d 5a"));
+
+        assert!(
+            run_tool(offset_request(&path, 1, -1))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("read.limit of -1 is not supported for binary files")
+        );
     }
 
     #[tokio::test]

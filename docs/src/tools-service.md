@@ -193,7 +193,8 @@ compositions are preserved.
 root-level `includeLineNumbers` and `numberBlankLines` fields configure line
 number rendering for every text read mode. For an offset/limit read, `read`
 contains required `offset` and `limit` fields. Positive offsets are 1-indexed;
-`offset = -1` selects tail mode:
+`offset = -1` selects tail mode; `limit = -1` reads to the end of the file
+without the bounded-read line cap:
 
 ```json
 {
@@ -208,7 +209,9 @@ contains required `offset` and `limit` fields. Positive offsets are 1-indexed;
 ```
 
 For a range read, `read` contains a non-empty `ranges` array and the
-range-specific `includeRangeHeaders` rendering option:
+range-specific `includeRangeHeaders` rendering option. Each range requires a
+positive `startLine`; the optional `endLine` is a positive 1-indexed line, or
+`-1` to read to the last line of the file:
 
 ```json
 {
@@ -228,7 +231,8 @@ range-specific `includeRangeHeaders` rendering option:
 ```
 
 Binary files use offset/limit reads with positive offsets as 1-indexed byte
-positions.
+positions. `limit = -1` is not supported for binary files; request an explicit
+byte count.
 
 ### Edit file execution contract
 
