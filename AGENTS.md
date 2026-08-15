@@ -34,7 +34,7 @@ All code must have tests with high coverage. Always check for security.
 - **Pre-approved data migrations when there is an explicit business need. An extra unknown configuration parameter must never create migration garbage — it must unambiguously cause refusal.**
 
 ## Anti-fluff policy.
-**In documentation/comments, it is forbidden to mention what does not exist**
+**In documentation/comments, it is forbidden to mention what does not exist in any form and for any purpose**
 
 ## Cargo Features
 
@@ -84,14 +84,6 @@ All crates must have `tracing` and `metrics` features, gated with `#[cfg(feature
 Use `tracing::instrument` on async functions. Record metrics at key points (counts, durations, errors).
 See `docs/metrics-and-tracing.md`.
 
-## Build Commands
-
-```bash
-cargo build                  # Debug build
-cargo build --release        # Release build
-cargo run / cargo run --release
-```
-
 ## Web UI (TypeScript + Preact + Vite)
 
 TypeScript/TSX source in `crates/web/ui/src/`, built with Vite to `crates/web/src/assets/dist/`.
@@ -129,7 +121,7 @@ npx tsc --noEmit       # Type check (strict, must be 0 errors)
 - Use `@preact/signals` with generic type parameters: `signal<string[]>([])`.
 - Prefer typed interfaces over `Record<string, unknown>` — define concrete shapes where property access is known.
 - Use `targetValue(e)` / `targetChecked(e)` from `typed-events.ts` for form event handlers.
-- No `any` types — use `unknown` with type guards or specific interfaces.
+- No `any` types — use specific interfaces or `unknown` with type guards.
 - Use shared components from `components/forms/` (TextField, SaveButton, ListItem, Badge, TabBar, etc.).
 
 ### CSS Rules
@@ -211,19 +203,6 @@ middleware in `auth_middleware.rs`. Setup code printed to terminal on first run.
 
 CLI: `chelix auth reset-password`, `chelix auth reset-identity`.
 
-## Testing
-
-```bash
-cargo test --workspace --exclude chelix-embedding-service  # All macOS unit tests
-cargo test                           # All tests on other platforms
-cargo test -- --nocapture            # With stdout
-```
-
-On macOS, always run the complete unit suite with
-`cargo test --workspace --exclude chelix-embedding-service`. Do not run package-specific or
-name-filtered Rust unit-test commands: keep the Cargo feature graph and build cache stable across
-iterations. The native embedding sidecar is built and validated separately.
-
 ### E2E Tests (Web UI)
 
 **Every web UI change needs E2E tests.** Tests in `crates/web/ui/e2e/specs/` using Playwright.
@@ -246,16 +225,19 @@ or retry-count workarounds to hide flakiness.
 
 ## Code Quality
 
-- Never run `cargo fmt` on stable in this repo. Always select the pinned nightly explicitly with `cargo +nightly-2026-07-30 fmt --all` (add `-- --check` for check-only validation).
+Explicitly commands exactly from the list:
 
 ```bash
-cargo +nightly-2026-07-30 fmt --all              # Format Rust
-cargo +nightly-2026-07-30 fmt --all -- --check   # Check Rust formatting
-just release-preflight   # fmt + clippy gates
-cargo check              # Fast compile check
+cargo +nightly-2026-07-30 fmt --all                                                 # Format Rust
+cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features # Lint
+cargo +nightly-2026-07-30 test --workspace                                          # The only allowed way to run tests
 taplo fmt                # Format TOML files
-npx biome check --write  # Lint/format TS/TSX
+npx biome check --write  # Lint/format
+npx tsc --noEmit
 ```
+
+Running `cargo check` is completely prohibited as it does not meet the verification quality requirements.
+During development inside the sandbox, running cargo ... clippy/test locally is prohibited without special wrappers that transfer the resource load to dedicated hosts.
 
 ## Sandbox Architecture
 
@@ -277,7 +259,7 @@ in `default_sandbox_packages()`. CLI: `chelix sandbox {list,build,remove,clean}`
 - **WebSocket Origin validation**: `server.rs` rejects cross-origin WS upgrades (403). Loopback variants equivalent.
 - **SSRF protection**: `chelix-common` blocks loopback/private/link-local/CGNAT IPs. Preserve this on changes.
 - **Secrets**: Use `secrecy::Secret<String>` for all passwords/keys/tokens. `expose_secret()` only at consumption point. Manual `Debug` impl with `[REDACTED]`. Scope `RwLock` read guards in blocks to avoid deadlocks. See `crates/oauth/src/types.rs` for serde helpers.
-- **Never commit** passwords, credentials, `.env` with real values, or PII.
+- **Never commit** passwords, credentials, `.env` files with real values or PII, any mentions of local environment specifics, disclosures of infrastructure details, addresses and hosts, and entities not for public use.
 - If secrets accidentally committed: `git reset HEAD~1`, remove, re-commit. If pushed, rotate immediately.
 
 ## Data and Config Directories
@@ -306,9 +288,6 @@ New crate: add `run_migrations()` to `lib.rs`, call from `server.rs` in dependen
 ## Provider Implementation
 
 - **Async all the way down** — never `block_on` in async context. All HTTP/IO must be async.
-- Make model lists broad (API errors handle unavailable models). Check `../clawdbot/` for reference.
-- BYOM providers (OpenRouter, Ollama): require user config, don't hardcode models.
-
 ## Changelog
 
 - Do **not** add manual `CHANGELOG.md` entries in normal PRs.
@@ -331,36 +310,11 @@ Conventional commits: `feat|fix|docs|style|refactor|test|chore(scope): descripti
 - Use `./scripts/prepare-release.sh [YYYYMMDD.NN]` for release prep (auto-computes next version if omitted).
 - Deploy template tags updated automatically by CI — don't manually update.
 
-**Release workflow is two phases:**
-
-1. **Prepare & publish** (can be done in a session):
-   ```bash
-   ./scripts/prepare-release.sh          # generates changelog, syncs lockfile
-   git add -A && git commit -m "chore: prepare release YYYYMMDD.NN"
-   git tag YYYYMMDD.NN && git push --follow-tags
-   ```
-   CI then builds artifacts, generates checksums, Sigstore signatures, and creates the GitHub release. This takes time.
-
-**Important:** When asked to create a release, complete phase 1 and remind the maintainer to run `gpg-sign-release.sh` after CI finishes. Do not attempt to run the signing script in the same session — the release artifacts won't exist yet.
 
 ### Lockfile
 
 - `cargo fetch` to sync (not `cargo update`). Verify with `cargo fetch --locked`. `local-validate.sh` auto-handles.
 - `cargo update --workspace` only for intentional upgrades.
-
-### Local Validation
-
-**Always** run `./scripts/local-validate.sh <PR_NUMBER>` when a PR exists.
-
-For incremental local edits before full validation:
-- TS/TSX changed: run `npx biome check --write` and `cd crates/web/ui && npm run build`.
-- Rust changed: run `cargo +nightly-2026-07-30 fmt --all -- --check`.
-- Both changed: run all three.
-
-Exact commands (must match `local-validate.sh`):
-- Fmt: `cargo +nightly-2026-07-30 fmt --all -- --check`
-- Clippy: `just lint` (OS-aware: on macOS excludes CUDA features, on Linux uses `--all-features`)
-- Tests: `just test` (OS-aware: on macOS uses nextest without CUDA features, on Linux uses `--all-features`)
 
 ### PR Descriptions
 
@@ -368,24 +322,21 @@ Required sections: `## Summary`, `## Validation` (checkboxes, split into `### Co
 with exact commands), `## Manual QA`. Include concrete test steps.
 - Do not prefix GitHub PR titles with `[codex]`.
 - Prefer normal human-readable PR titles, ideally aligned with the conventional-commit summary.
+- **Never post in PR titles/summaries** any mentions of local environment specifics, disclosures of infrastructure details, addresses, hosts, and entities not intended for public use.
 
 ## Code Quality Checklist
 
 **Run before every commit:**
-- [ ] No secrets or private tokens (CRITICAL)
-- [ ] `taplo fmt` (TOML changes)
-- [ ] `npx biome check --write` (TS/TSX changes)
-- [ ] Rust fmt passes (exact command above)
-- [ ] `just lint` passes (OS-aware clippy)
-- [ ] `just release-preflight` passes
-- [ ] `just test` passes
+- [ ] No secrets, private tokens, or mentions of local environment specifics, disclosures of infrastructure details, addresses, hosts, or entities not intended for public use (CRITICAL)
+- [ ] Running autoformatters pass
+- [ ] Running linters pass
+- [ ] Running tests pass
 - [ ] Conventional commit message
 - [ ] No debug code or temp files
 
 ## Documentation
 
 Source in `docs/src/` (mdBook).
-Update `docs/src/SUMMARY.md` when adding pages. Preview: `cd docs && mdbook serve`.
 
 **Keep docs in sync with code.** When adding or changing user-facing features
 (config fields, CLI commands, channel behavior, API endpoints, tools), update
