@@ -193,16 +193,20 @@ interruption after writing starts can leave partially updated content.
 `read_file` requires an absolute `filePath` and a nested `read` object.
 `includeLineNumbers` and `numberBlankLines` are root-level options for every
 text read. An offset/limit read has required `offset` and `limit` fields.
-Positive offsets are 1-indexed, and `offset = -1` selects tail mode. A range
-read has a non-empty `ranges` array of inclusive text line ranges and can
+Positive offsets are 1-indexed, and `offset = -1` selects tail mode. `limit = -1`
+reads to the end of the file without the bounded-read line cap. A range
+read has a non-empty `ranges` array of inclusive text line ranges, where the
+optional `endLine` accepts `-1` to read to the last line of the file, and can
 include range headers.
 
-A text offset/limit read returns at most 2,000 lines. A positive-offset read
-whose requested limit exceeds that cap includes a continuation message. Binary
-files return a hexadecimal dump, use positive offsets as 1-indexed byte
-positions, and return at most 512 bytes. Empty and whitespace-only text files
-return explicit messages. Invalid parameters, missing files, directories,
-unreadable files, and relative paths are tool errors.
+A text offset/limit read with an explicit positive limit returns at most 2,000
+lines. A positive-offset read whose requested limit exceeds that cap includes
+a continuation message. A read with `limit = -1` is not capped and carries no
+continuation message. Binary files return a hexadecimal dump, use positive
+offsets as 1-indexed byte positions, return at most 512 bytes, and reject
+`limit = -1`. Empty and whitespace-only text files return explicit messages.
+Invalid parameters, missing files, directories, unreadable files, and relative
+paths are tool errors.
 
 ### `read_media`
 

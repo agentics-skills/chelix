@@ -32,7 +32,7 @@ impl AgentTool for ReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file by offset and limit or by inclusive text line ranges. The path must be absolute. Positive offsets and line numbers are 1-indexed; offset=-1 selects tail mode. Offset/limit text reads return at most 2000 lines, and binary reads return at most 512 bytes."
+        "Read a file by offset and limit or by inclusive text line ranges. The path must be absolute. Positive offsets and line numbers are 1-indexed; offset=-1 selects tail mode. limit=-1 or endLine=-1 reads to the end of the file. Bounded offset/limit text reads return at most 2000 lines, and binary reads return at most 512 bytes."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -64,8 +64,11 @@ impl AgentTool for ReadFileTool {
                                 },
                                 "limit": {
                                     "type": "integer",
-                                    "minimum": 1,
-                                    "description": "The maximum number of lines or bytes to read. In tail mode, the number of final lines or bytes to return."
+                                    "oneOf": [
+                                        { "const": -1 },
+                                        { "minimum": 1 }
+                                    ],
+                                    "description": "The maximum number of lines or bytes to read. In tail mode, the number of final lines or bytes to return. Use -1 to read to the end of the file."
                                 }
                             }
                         },
@@ -90,8 +93,11 @@ impl AgentTool for ReadFileTool {
                                             },
                                             "endLine": {
                                                 "type": "integer",
-                                                "minimum": 1,
-                                                "description": "Optional inclusive 1-based end line for this range. If omitted, only startLine is read."
+                                                "oneOf": [
+                                                    { "const": -1 },
+                                                    { "minimum": 1 }
+                                                ],
+                                                "description": "Optional inclusive 1-based end line for this range. If omitted, only startLine is read. Use -1 to read to the last line of the file."
                                             }
                                         }
                                     }
@@ -183,7 +189,13 @@ fn record_metrics(_result: &crate::Result<ReadFileResponse>) {}
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::sandbox::ToolsServiceEndpoint};
+    use {
+        super::*,
+        crate::sandbox::ToolsServiceEndpoint,
+        chelix_protocol::{
+            ReadFileOffsetLimitOperation, ReadFileOperation, ReadFileRange, ReadFileRangesOperation,
+        },
+    };
 
     fn client(base_url: String, token: &str) -> Arc<ManagedToolsService> {
         ManagedToolsService::for_test(ToolsServiceEndpoint {
@@ -249,12 +261,65 @@ mod tests {
             }),
             json!({
                 "filePath": "/tmp/file",
+                "read": { "offset": 1, "limit": -2 }
+            }),
+            json!({
+                "filePath": "/tmp/file",
+                "read": { "ranges": [{ "startLine": 1, "endLine": -2 }] }
+            }),
+            json!({
+                "filePath": "/tmp/file",
                 "read": { "offset": 1, "limit": 2 },
                 "obsolete": true
             }),
         ] {
             assert!(parse_input(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn parse_input_accepts_end_of_file_markers() {
+        let unbounded = parse_input(json!({
+            "filePath": "/workspace/file.txt",
+            "read": { "offset": 3, "limit": -1 }
+        }))
+        .unwrap_or_else(|error| panic!("parse failed: {error}"));
+        assert_eq!(
+            unbounded.read,
+            ReadFileOperation::OffsetLimit(ReadFileOffsetLimitOperation {
+                offset: 3,
+                limit: -1,
+            })
+        );
+
+        let tail = parse_input(json!({
+            "filePath": "/workspace/file.txt",
+            "read": { "offset": -1, "limit": -1 }
+        }))
+        .unwrap_or_else(|error| panic!("parse failed: {error}"));
+        assert_eq!(
+            tail.read,
+            ReadFileOperation::OffsetLimit(ReadFileOffsetLimitOperation {
+                offset: -1,
+                limit: -1,
+            })
+        );
+
+        let ranges = parse_input(json!({
+            "filePath": "/workspace/file.txt",
+            "read": { "ranges": [{ "startLine": 12, "endLine": -1 }] }
+        }))
+        .unwrap_or_else(|error| panic!("parse failed: {error}"));
+        assert_eq!(
+            ranges.read,
+            ReadFileOperation::Ranges(ReadFileRangesOperation {
+                ranges: vec![ReadFileRange {
+                    start_line: 12,
+                    end_line: Some(-1),
+                }],
+                include_range_headers: false,
+            })
+        );
     }
 
     #[test]
