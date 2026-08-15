@@ -433,10 +433,6 @@ html {
     max-width: 60vw;
   }
 
-  #queuedMessages {
-    display: none !important;
-  }
-
 }
 
 /* ── Settings Sidebar Mobile ── */
