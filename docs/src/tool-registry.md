@@ -290,9 +290,9 @@ request_timeout_secs = 300
 
 The tools are always registered. Code search and file-content reads require a
 configured token before issuing a request. Repository search, directory listing,
-pull-request listing, and pull-request reads can access public data without a
-token; if GitHub denies an unauthenticated request with `401`/`403`, the call
-returns the explicit missing-token error. A `401`/`403` response received with a
+release listing, latest-release reads, pull-request listing, and pull-request reads
+can access public data without a token; if GitHub denies an unauthenticated request
+with `401`/`403`, the call returns the explicit missing-token error. A `401`/`403` response received with a
 configured token is an authorization error rather than a re-authentication
 prompt.
 
@@ -361,6 +361,28 @@ is rendered as `URL: null`. An empty directory ends with `(empty directory)`. A 
 returns
 `The provided path points to a file. Use github_get_file_contents instead.`;
 other non-directory and unexpected response shapes are explicit errors.
+
+### `github_get_latest_release`
+
+Retrieves the latest release via
+`GET /repos/{owner}/{repo}/releases/latest`. `owner` and `repo` are required. The
+result starts with `Latest GitHub Release for <owner>/<repo>`, followed by `Tag`,
+optional `Name`, `Draft`, `Pre-release`, `Published`, and `URL`. A null published
+date is rendered as `N/A`. A non-successful response returns the GitHub response
+body, or the HTTP status line when the body is empty.
+
+### `github_list_releases`
+
+Lists releases via `GET /repos/{owner}/{repo}/releases`. `owner` and `repo` are
+required. Optional integer `perPage` selects a page size between 1 and 100. The
+result starts with `GitHub Releases for <owner>/<repo> (showing <n>)`. Each release
+contains `Tag`, optional `Name`, `Draft`, `Pre-release`, `Published`, and `URL`.
+Entries are separated by `----------`; a null published date is rendered as `N/A`.
+An empty result returns `No releases found for <owner>/<repo>.`. A non-successful
+response returns the GitHub response body, or the HTTP status line when the body is
+empty. Both release tools use the shared rate-limit coordinator and single
+controlled retry described above. Their returned strings use the runner's standard
+tool-result persistence and truncation path.
 
 ### `github_list_pull_requests`
 

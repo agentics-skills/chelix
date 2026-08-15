@@ -18,7 +18,8 @@ pub use {
     error::{Error, Result},
     registration::register_tools,
     tools::{
-        GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubListPullRequestsTool,
-        GithubPullRequestReadTool, GithubSearchCodeTool, GithubSearchRepositoriesTool,
+        GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubGetLatestReleaseTool,
+        GithubListPullRequestsTool, GithubListReleasesTool, GithubPullRequestReadTool,
+        GithubSearchCodeTool, GithubSearchRepositoriesTool,
     },
 };
