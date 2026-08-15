@@ -3,6 +3,7 @@
 import { chatAddMsg, setComposerStopButton, updateTokenBar } from "../chat-ui";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { sendRpc } from "../helpers";
+import { renderQueuedPrompts, setQueuedPrompts } from "../pages/chat/prompt-queue";
 import { updateSessionProjectSelect } from "../project-combo";
 import { sessionPath } from "../router";
 import * as S from "../state";
@@ -17,7 +18,6 @@ import { insertSessionInOrder, Session, sessionStore } from "../stores/session-s
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage, SessionMeta } from "../types/session";
 import type { ChatPayload, QueuedPrompt, ReasoningContent, ToolCallPayload } from "../types/ws-events";
-import { renderQueuedPrompts, setQueuedPrompts } from "../pages/chat/prompt-queue";
 import { handleToolCallStartDom } from "../ws/tool-helpers";
 
 import {

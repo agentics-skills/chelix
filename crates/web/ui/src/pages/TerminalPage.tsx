@@ -76,6 +76,11 @@ interface TerminalInventorySelection {
 	terminalId: string;
 }
 
+interface TerminalInventoryStatus {
+	text: string;
+	level: "" | "ok" | "error";
+}
+
 interface CreatedTerminal {
 	terminal: ToolsServiceTerminalInfo;
 	instanceId?: string;
@@ -380,6 +385,14 @@ function terminalInventorySelection(
 	};
 }
 
+function terminalInventoryStatus(compact: boolean, instanceCount: number): TerminalInventoryStatus {
+	if (compact) return { text: "", level: "" };
+	if (instanceCount === 0) {
+		return { text: "No active tools service instances are registered.", level: "error" };
+	}
+	return { text: "Inventory refreshed.", level: "ok" };
+}
+
 async function requestTerminalCreation(
 	compact: boolean,
 	instanceId: string,
@@ -454,16 +467,13 @@ function TerminalPage({ compact = false, sessionKey: fixedSessionKey }: Terminal
 				selectedSessionId.value,
 				selectedTerminalId.value,
 			);
+			const inventoryStatus = terminalInventoryStatus(compact, nextInstances.length);
 			instances.value = nextInstances;
 			selectedSessionId.value = selection.sessionId;
 			selectedInstanceId.value = selection.instanceId;
 			selectedTerminalId.value = selection.terminalId;
-			status.value = compact
-				? ""
-				: nextInstances.length === 0
-					? "No active tools service instances are registered."
-					: "Inventory refreshed.";
-			statusLevel.value = compact ? "" : nextInstances.length === 0 ? "error" : "ok";
+			status.value = inventoryStatus.text;
+			statusLevel.value = inventoryStatus.level;
 		} catch (error) {
 			instances.value = [];
 			selectedInstanceId.value = "";

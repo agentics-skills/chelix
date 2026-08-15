@@ -3,16 +3,13 @@
 import { completeA2uiToolCard, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import type { ChannelFooterInfo } from "../chat-ui";
 import {
-	mountExecuteCommandToolBubble,
-	unmountExecuteCommandToolBubble,
-} from "../components/ExecuteCommandToolBubble";
-import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
 	chatAddMsg,
 	smartScrollToBottom,
 	stripChannelPrefix,
 } from "../chat-ui";
+import { mountExecuteCommandToolBubble, unmountExecuteCommandToolBubble } from "../components/ExecuteCommandToolBubble";
 import { renderAudioPlayer, renderMarkdown } from "../helpers";
 import { appendMessageActions } from "../message-actions";
 import { navigate } from "../router";
