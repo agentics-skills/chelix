@@ -24,28 +24,6 @@ async function waitForOnboardingStepLoaded(page) {
 	await expect(page.getByText("Loading…")).toHaveCount(0, { timeout: 10_000 });
 }
 
-async function visibleOnboardingHeadingText(page) {
-	const headings = page.locator(".onboarding-card h2");
-	const count = await headings.count();
-	for (let i = 0; i < count; i++) {
-		const heading = headings.nth(i);
-		if (!(await isVisible(heading))) continue;
-		const text = (await heading.textContent())?.trim();
-		if (text) return text;
-	}
-	return null;
-}
-
-async function waitForOnboardingHeadingAdvance(page, previousHeading) {
-	if (!previousHeading) return true;
-	try {
-		await expect.poll(() => visibleOnboardingHeadingText(page), { timeout: 10_000 }).not.toBe(previousHeading);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 async function waitForLlmStepReady(page) {
 	const llmLoading = page.getByText("Loading LLMs…", { exact: true });
 	if (await isVisible(llmLoading)) {
@@ -96,53 +74,6 @@ async function maybeCompleteIdentity(page) {
 	return true;
 }
 
-async function maybeSkipImport(page) {
-	const importHeading = page.getByRole("heading", { name: "Import Your Data", exact: true });
-	if (!(await isVisible(importHeading))) return false;
-	const headingBefore = await visibleOnboardingHeadingText(page);
-
-	const card = page.locator(".onboarding-card");
-	const skipForNow = card.getByText("Skip for now", { exact: true });
-	const skipButton = card.getByRole("button", { name: "Skip", exact: true });
-	const continueButton = card.getByRole("button", { name: "Continue", exact: true });
-
-	await expect
-		.poll(
-			async () => {
-				return (await isVisible(skipForNow)) || (await isVisible(skipButton)) || (await isVisible(continueButton));
-			},
-			{ timeout: 10_000 },
-		)
-		.toBeTruthy();
-
-	if (await isVisible(skipForNow)) {
-		await skipForNow.click();
-	} else if (await isVisible(skipButton)) {
-		await skipButton.click();
-	} else if (await isVisible(continueButton)) {
-		await continueButton.click();
-	} else {
-		return false;
-	}
-	await waitForOnboardingStepLoaded(page);
-	if (await waitForOnboardingHeadingAdvance(page, headingBefore)) return true;
-
-	await expect
-		.poll(
-			async () => {
-				if (await isVisible(importHeading)) return "import";
-				const heading = await visibleOnboardingHeadingText(page);
-				if (heading) return heading;
-				const loadingLlms = page.getByText("Loading LLMs…", { exact: true });
-				if (await isVisible(loadingLlms)) return "loading-llm";
-				return "transitioning";
-			},
-			{ timeout: 10_000 },
-		)
-		.not.toBe("import");
-	return true;
-}
-
 async function maybeWaitForLlmLoading(page) {
 	const loadingLlms = page.getByText("Loading LLMs…", { exact: true });
 	if (!(await isVisible(loadingLlms))) return false;
@@ -165,7 +96,6 @@ async function moveToLlmStep(page) {
 			return true;
 		}
 
-		if (await maybeSkipImport(page)) continue;
 		if (await maybeSkipAuth(page)) continue;
 		if (await maybeCompleteIdentity(page)) continue;
 
@@ -369,9 +299,9 @@ test.describe("Onboarding wizard", () => {
 		const isAuthStepVisible = await authHeading.isVisible().catch(() => false);
 
 		if (!isAuthStepVisible) {
-			// When auth is not needed, the wizard may show identity, import, or LLM step.
+			// When auth is not needed, the wizard may show the identity or LLM step.
 			const anyStepHeading = page.getByRole("heading", {
-				name: /^(Add LLMs|Add providers|Set up your identity|Import Your Data)$/,
+				name: /^(Add LLMs|Add providers|Set up your identity)$/,
 			});
 			await expect(anyStepHeading).toBeVisible();
 			return;

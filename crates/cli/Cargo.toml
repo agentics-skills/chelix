@@ -14,13 +14,11 @@ path = "src/main.rs"
 anyhow               = { workspace = true }
 chelix-agents        = { workspace = true }
 chelix-browser       = { workspace = true }
-chelix-claude-import = { optional = true, workspace = true }
 chelix-common        = { workspace = true }
 chelix-config        = { workspace = true }
 chelix-cron          = { workspace = true }
 chelix-gateway       = { workspace = true }
 chelix-httpd         = { workspace = true }
-chelix-import-core   = { workspace = true }
 chelix-memory        = { workspace = true }
 chelix-onboarding    = { workspace = true }
 chelix-plugins       = { workspace = true }
@@ -66,7 +64,6 @@ full = [
   "agent",
   "bundled-skills",
   "caldav",
-  "claude-import",
   "code-index-builtin",
   "code-splitter",
   "discord",
@@ -136,7 +133,6 @@ lang-toml          = ["chelix-memory/lang-toml"]
 lang-typescript    = ["chelix-memory/lang-typescript"]
 # jemalloc is intentionally unavailable on linux/aarch64 to avoid runtime
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
-claude-import      = ["chelix-gateway/claude-import", "dep:chelix-claude-import"]
 lightweight        = ["jemalloc", "tls", "web-ui"]
 local-embeddings   = ["chelix-gateway/local-embeddings"]
 matrix             = ["chelix-httpd/matrix"]

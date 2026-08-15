@@ -37,8 +37,5 @@ pub use {
     helpers::approval_manager_from_config,
     prepare_core::prepare_gateway_core,
     prepared::PreparedGatewayCore,
-    startup::{
-        claude_detected_for_ui, start_browser_warmup_after_listener,
-        sync_runtime_webauthn_host_and_notice,
-    },
+    startup::{start_browser_warmup_after_listener, sync_runtime_webauthn_host_and_notice},
 };

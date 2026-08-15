@@ -77,14 +77,6 @@ impl OnboardingService for TestOnboardingService {
     async fn user_update(&self, _params: serde_json::Value) -> ServiceResult {
         Err("not configured".into())
     }
-
-    async fn claude_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn claude_import(&self, _params: serde_json::Value) -> ServiceResult {
-        Err("not configured".into())
-    }
 }
 
 struct TestServer {

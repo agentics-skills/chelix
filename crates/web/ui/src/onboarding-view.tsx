@@ -1,8 +1,8 @@
 // ── Onboarding wizard ──────────────────────────────────────
 //
 // Multi-step setup page shown to first-time users.
-// Steps: Auth (conditional) → Import (conditional) → Provider →
-// Voice (conditional) → Skills → Channel → Identity → Summary
+// Steps: Auth (conditional) → Provider → Voice (conditional) →
+// Skills → Channel → Identity → Summary
 // No new Rust code — all existing RPC methods and REST endpoints.
 
 import type { VNode } from "preact";
@@ -17,7 +17,6 @@ import { ensureWsConnected, preferredChatPath } from "./onboarding/shared";
 import { AuthStep } from "./onboarding/steps/AuthStep";
 import { ChannelStep } from "./onboarding/steps/ChannelStep";
 import { IdentityStep } from "./onboarding/steps/IdentityStep";
-import { ImportStep } from "./onboarding/steps/ImportStep";
 import { ProviderStep } from "./onboarding/steps/ProviderStep";
 import { SkillsStep } from "./onboarding/steps/SkillsStep";
 import { VoiceStep } from "./onboarding/steps/VoiceStep";
@@ -491,7 +490,6 @@ interface OnboardingAuthPlan {
 interface OnboardingPlan {
 	steps: string[];
 	stepIndex: number;
-	importStep: number;
 	llmStep: number;
 	voiceStep: number;
 	skillsStep: number;
@@ -538,14 +536,8 @@ async function fetchOnboardingAuthPlan(): Promise<OnboardingAuthPlan> {
 	}
 }
 
-function buildOnboardingPlan(
-	step: number,
-	authNeeded: boolean,
-	voiceAvailable: boolean,
-	importDetected: boolean,
-): OnboardingPlan {
+function buildOnboardingPlan(step: number, authNeeded: boolean, voiceAvailable: boolean): OnboardingPlan {
 	const allLabels = [t("onboarding:steps.security")];
-	if (importDetected) allLabels.push(t("onboarding:steps.import"));
 	allLabels.push(t("onboarding:steps.llm"));
 	if (voiceAvailable) allLabels.push(t("onboarding:steps.voice"));
 	allLabels.push(
@@ -555,7 +547,6 @@ function buildOnboardingPlan(
 		t("onboarding:steps.summary"),
 	);
 	let nextIndex = 1;
-	const importStep = importDetected ? nextIndex++ : -1;
 	const llmStep = nextIndex++;
 	const voiceStep = voiceAvailable ? nextIndex++ : -1;
 	const skillsStep = nextIndex++;
@@ -564,7 +555,6 @@ function buildOnboardingPlan(
 	return {
 		steps: authNeeded ? allLabels : allLabels.slice(1),
 		stepIndex: authNeeded ? step : step - 1,
-		importStep,
 		llmStep,
 		voiceStep,
 		skillsStep,
@@ -579,7 +569,6 @@ interface OnboardingStepContentProps {
 	plan: OnboardingPlan;
 	authNeeded: boolean;
 	authSkippable: boolean;
-	importDetected: boolean;
 	onNext: () => void;
 	onBack: () => void;
 	onFinish: () => void;
@@ -587,13 +576,8 @@ interface OnboardingStepContentProps {
 
 function OnboardingStepContent(props: OnboardingStepContentProps): VNode | null {
 	if (props.step === 0) return <AuthStep onNext={props.onNext} skippable={props.authSkippable} />;
-	if (props.step === props.plan.importStep) {
-		return <ImportStep onNext={props.onNext} onBack={props.authNeeded ? props.onBack : null} />;
-	}
 	if (props.step === props.plan.llmStep) {
-		return (
-			<ProviderStep onNext={props.onNext} onBack={props.authNeeded || props.importDetected ? props.onBack : null} />
-		);
+		return <ProviderStep onNext={props.onNext} onBack={props.authNeeded ? props.onBack : null} />;
 	}
 	if (props.step === props.plan.voiceStep) return <VoiceStep onNext={props.onNext} onBack={props.onBack} />;
 	if (props.step === props.plan.skillsStep) return <SkillsStep onNext={props.onNext} onBack={props.onBack} />;
@@ -647,8 +631,7 @@ function OnboardingPage(): VNode {
 		);
 	}
 
-	const importDetected = getGon("claude_detected") === true;
-	const plan = buildOnboardingPlan(step, authNeeded, voiceAvailable, importDetected);
+	const plan = buildOnboardingPlan(step, authNeeded, voiceAvailable);
 
 	function goNext(): void {
 		if (step === plan.summaryStep) window.location.assign(preferredChatPath());
@@ -672,7 +655,6 @@ function OnboardingPage(): VNode {
 					plan={plan}
 					authNeeded={authNeeded}
 					authSkippable={authSkippable}
-					importDetected={importDetected}
 					onNext={goNext}
 					onBack={goBack}
 					onFinish={goFinish}

@@ -1,12 +1,10 @@
 /target
 /result
 /memory/
-prompts
 .envrc
 .env
 .env.*
 .DS_Store
-.claude/worktrees/
 CLAUDE.local.md
 .entire/
 .playwright-mcp/

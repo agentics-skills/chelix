@@ -815,8 +815,6 @@ pub trait OnboardingService: Send + Sync {
     async fn wizard_status(&self) -> ServiceResult;
     async fn user_get(&self) -> ServiceResult;
     async fn user_update(&self, params: Value) -> ServiceResult;
-    async fn claude_detect(&self) -> ServiceResult;
-    async fn claude_import(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopOnboardingService;
@@ -844,14 +842,6 @@ impl OnboardingService for NoopOnboardingService {
     }
 
     async fn user_update(&self, _params: Value) -> ServiceResult {
-        Err("onboarding service not configured".into())
-    }
-
-    async fn claude_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "detected": false }))
-    }
-
-    async fn claude_import(&self, _params: Value) -> ServiceResult {
         Err("onboarding service not configured".into())
     }
 }

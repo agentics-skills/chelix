@@ -3,7 +3,6 @@
 export default {
 	steps: {
 		security: "Security",
-		import: "Import",
 		identity: "Identity",
 		llm: "LLM",
 		voice: "Voice",

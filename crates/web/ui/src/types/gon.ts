@@ -239,7 +239,6 @@ export interface GonData {
 	sandbox: SandboxGonInfo;
 	routes: SpaRoutes;
 	started_at: number;
-	claude_detected: boolean;
 	sessions_recent: SessionMeta[];
 	agents: GonAgentsData;
 	webhooks: unknown[];

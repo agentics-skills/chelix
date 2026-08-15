@@ -586,14 +586,6 @@ impl chelix_service_traits::OnboardingService for MockOnboarding {
     async fn user_update(&self, p: Value) -> ServiceResult {
         self.0.call("user.update", p)
     }
-
-    async fn claude_detect(&self) -> ServiceResult {
-        self.0.call("claude.detect", json!({}))
-    }
-
-    async fn claude_import(&self, p: Value) -> ServiceResult {
-        self.0.call("claude.import", p)
-    }
 }
 
 #[async_trait::async_trait]
