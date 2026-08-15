@@ -7,8 +7,8 @@ use {chelix_agents::tool_registry::ToolRegistry, chelix_config::schema::GitHubCo
 use crate::{
     client::GitHubClient,
     tools::{
-        GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubSearchCodeTool,
-        GithubSearchRepositoriesTool,
+        GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubListPullRequestsTool,
+        GithubPullRequestReadTool, GithubSearchCodeTool, GithubSearchRepositoriesTool,
     },
 };
 
@@ -26,6 +26,12 @@ pub fn register_tools(registry: &mut ToolRegistry, config: &GitHubConfig) {
         &client,
     ))));
     registry.register(Box::new(GithubGetFileContentsTool::new(Arc::clone(
+        &client,
+    ))));
+    registry.register(Box::new(GithubListPullRequestsTool::new(Arc::clone(
+        &client,
+    ))));
+    registry.register(Box::new(GithubPullRequestReadTool::new(Arc::clone(
         &client,
     ))));
     registry.register(Box::new(GithubSearchCodeTool::new(Arc::clone(&client))));
@@ -49,6 +55,8 @@ mod tests {
         assert_eq!(names, vec![
             "github_get_directory_contents".to_string(),
             "github_get_file_contents".to_string(),
+            "github_list_pull_requests".to_string(),
+            "github_pull_request_read".to_string(),
             "github_search_code".to_string(),
             "github_search_repositories".to_string(),
         ]);

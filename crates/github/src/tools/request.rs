@@ -5,15 +5,27 @@ use crate::{
     error::Result,
 };
 
-/// Execute one GET request and retry it once when GitHub supplies a usable
-/// rate-limit cooldown.
+/// Execute one GET request with the default media type and retry it once when
+/// GitHub supplies a usable rate-limit cooldown.
 pub(super) async fn get_with_rate_limit_retry(
     client: &GitHubClient,
     url: &url::Url,
     tool_name: &str,
 ) -> Result<GitHubResponse> {
+    get_with_rate_limit_retry_and_options(client, url, tool_name, RequestOptions::default()).await
+}
+
+/// Execute one GET request with explicit options and retry it once when GitHub
+/// supplies a usable rate-limit cooldown.
+pub(super) async fn get_with_rate_limit_retry_and_options(
+    client: &GitHubClient,
+    url: &url::Url,
+    tool_name: &str,
+    options: RequestOptions,
+) -> Result<GitHubResponse> {
     let options = RequestOptions {
         return_rate_limit_response: true,
+        ..options
     };
     let response = client.get(url, options).await?;
     let Some(cooldown_ms) = response

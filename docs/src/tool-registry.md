@@ -289,14 +289,16 @@ request_timeout_secs = 300
 ```
 
 The tools are always registered. Code search and file-content reads require a
-configured token before issuing a request. Repository search and directory
-listing can read public data without a token; if GitHub denies an unauthenticated
-request with `401`/`403`, the call returns the explicit missing-token error. A
-`401`/`403` response received with a configured token is an authorization error
-rather than a re-authentication prompt.
+configured token before issuing a request. Repository search, directory listing,
+pull-request listing, and pull-request reads can access public data without a
+token; if GitHub denies an unauthenticated request with `401`/`403`, the call
+returns the explicit missing-token error. A `401`/`403` response received with a
+configured token is an authorization error rather than a re-authentication
+prompt.
 
-Every request sends `Accept: application/vnd.github.v3+json` and
-`X-GitHub-Api-Version: 2022-11-28`, and has the finite HTTP deadline configured
+Every request sends `X-GitHub-Api-Version: 2022-11-28` and uses
+`Accept: application/vnd.github.v3+json` unless an endpoint requires a
+specialised media type. Every request has the finite HTTP deadline configured
 by `tools.github.request_timeout_secs` (default `300`, minimum `1`). A timeout
 returns `GitHub request timed out after <duration>`. A `403`/`429` response that carries
 `retry-after`, `x-ratelimit-remaining: 0`, or a body mentioning a rate limit is
@@ -359,6 +361,52 @@ is rendered as `URL: null`. An empty directory ends with `(empty directory)`. A 
 returns
 `The provided path points to a file. Use github_get_file_contents instead.`;
 other non-directory and unexpected response shapes are explicit errors.
+
+### `github_list_pull_requests`
+
+Lists pull requests via `GET /repos/{owner}/{repo}/pulls`. `owner` and `repo`
+are required. Optional `state`, `head`, `base`, `sort`, and `direction` values
+are forwarded as GitHub filters. Optional integer `perPage` selects a page size
+between 1 and 100, and optional integer `page` selects a 1-based page. The
+result starts with
+`GitHub Pull Requests for <owner>/<repo> (showing <n>)`. Each pull request
+contains `Number`, `Title`, `State` with an optional `(draft)` marker, optional
+`Author`, `Base`, and `Head`, then `Updated`, optional `Merged At`, and `URL`.
+Entries are separated by `----------`. An empty result returns
+`No pull requests found for <owner>/<repo>.`. A non-successful response returns
+the GitHub response body, or the HTTP status line when the body is empty.
+
+### `github_pull_request_read`
+
+Reads a pull request or related data. `method`, `owner`, `repo`, and the integer
+`pullNumber` are required. `method` is one of `get`, `get_diff`, `get_status`,
+`get_files`, `get_review_comments`, `get_reviews`, or `get_comments`. Optional
+integer `perPage` between 1 and 100 and optional 1-based integer `page` are sent
+to list endpoints.
+
+- `get` reads `GET /repos/{owner}/{repo}/pulls/{pull_number}` and returns the
+  pull request fields and body in the reference Markdown layout.
+- `get_diff` reads the same endpoint with
+  `Accept: application/vnd.github.v3.diff` and returns a fenced `diff` block.
+- `get_status` reads the pull request head SHA and then
+  `GET /repos/{owner}/{repo}/commits/{sha}/status`.
+- `get_files` reads
+  `GET /repos/{owner}/{repo}/pulls/{pull_number}/files` and returns file change
+  counts, optional patches, and optional blob/raw URLs.
+- `get_review_comments` reads
+  `GET /repos/{owner}/{repo}/pulls/{pull_number}/comments`.
+- `get_reviews` reads
+  `GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews`.
+- `get_comments` reads
+  `GET /repos/{owner}/{repo}/issues/{pull_number}/comments`.
+
+Review and issue comment bodies are trimmed to 400 characters with `…` when
+longer. Empty list results are `No files.`, `No review comments.`, `No reviews.`,
+or `No issue comments.` inside the method-specific result header. Every request,
+including diff retrieval, uses the shared rate-limit coordinator and the single
+controlled retry described above. A non-successful response returns the GitHub
+response body, or the HTTP status line when the body is empty. Returned strings
+use the runner's standard tool-result persistence and truncation path.
 
 ## Catalog vs API schemas
 

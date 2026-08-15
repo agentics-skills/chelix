@@ -33,6 +33,9 @@ pub struct RequestOptions {
     /// Hand a rate-limited response back to the caller instead of treating it
     /// as an authorization failure, so the caller can apply its own cooldown.
     pub return_rate_limit_response: bool,
+    /// Override the default GitHub JSON media type for endpoints such as pull
+    /// request diff retrieval.
+    pub accept: Option<&'static str>,
 }
 
 /// One fully read GitHub REST response.
@@ -207,7 +210,10 @@ impl GitHubClient {
         let mut request = self
             .http
             .get(url.as_str())
-            .header(reqwest::header::ACCEPT, DEFAULT_ACCEPT)
+            .header(
+                reqwest::header::ACCEPT,
+                options.accept.unwrap_or(DEFAULT_ACCEPT),
+            )
             .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
         if let Some(token) = &self.token {
             let mut authorization =
@@ -355,6 +361,7 @@ mod tests {
 
         let response = probe(&server, RequestOptions {
             return_rate_limit_response: true,
+            ..RequestOptions::default()
         })
         .await
         .unwrap_or_else(|error| panic!("probe request failed: {error}"));
@@ -378,6 +385,7 @@ mod tests {
 
         let response = probe(&server, RequestOptions {
             return_rate_limit_response: true,
+            ..RequestOptions::default()
         })
         .await
         .unwrap_or_else(|error| panic!("probe request failed: {error}"));
@@ -401,6 +409,7 @@ mod tests {
 
         let response = probe(&server, RequestOptions {
             return_rate_limit_response: true,
+            ..RequestOptions::default()
         })
         .await
         .unwrap_or_else(|error| panic!("probe request failed: {error}"));
