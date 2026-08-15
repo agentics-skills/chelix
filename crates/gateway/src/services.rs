@@ -91,9 +91,9 @@ async fn run_mcp_scan(installed_dir: &Path) -> anyhow::Result<Value> {
 }
 
 /// Returns `true` for discovered skill names that are protected and cannot be
-/// deleted from the UI (e.g. built-in template/tmux skills).
+/// deleted from the UI.
 pub fn is_protected_discovered_skill(name: &str) -> bool {
-    matches!(name, "template-skill" | "template" | "tmux")
+    matches!(name, "template-skill" | "template")
 }
 
 fn commit_url_for_source(source: &str, sha: &str) -> Option<String> {

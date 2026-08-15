@@ -4,7 +4,7 @@ use tracing::{info, warn};
 
 use chelix_sessions::store::SessionStore;
 
-use super::seed_content::{EXAMPLE_HOOK_MD, EXAMPLE_SKILL_MD, TMUX_SKILL_MD};
+use super::seed_content::{EXAMPLE_HOOK_MD, EXAMPLE_SKILL_MD};
 
 // ── Hook seeding helpers ─────────────────────────────────────────────────────
 
@@ -24,10 +24,9 @@ pub(crate) fn seed_example_hook() {
     }
 }
 
-/// Seed built-in personal skills into `~/.chelix/skills/`.
+/// Seed the example personal skill into `~/.chelix/skills/`.
 pub(crate) fn seed_example_skill() {
     seed_skill_if_missing("template-skill", EXAMPLE_SKILL_MD);
-    seed_skill_if_missing("tmux", TMUX_SKILL_MD);
 }
 
 fn seed_skill_if_missing(name: &str, content: &str) {
