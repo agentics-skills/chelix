@@ -28,7 +28,7 @@ use {
     },
     chelix_config::ToolMode,
     chelix_service_traits::{ChatService, ServiceError, ServiceResult},
-    chelix_sessions::{ContentBlock, MessageContent, PersistedMessage, filter_ui_history},
+    chelix_sessions::{MessageContent, PersistedMessage, filter_ui_history},
     chelix_tools::policy::{PolicyContext, ToolPolicy},
 };
 
@@ -590,34 +590,41 @@ impl ChatService for LiveChatService {
         }))
     }
 
-    async fn cancel_queued(&self, params: Value) -> ServiceResult {
-        let session_key = params
-            .get("sessionKey")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'sessionKey'".to_string())?;
-
-        let removed = self
-            .message_queue
-            .write()
+    async fn prompt_queue_list(&self, params: Value) -> ServiceResult {
+        let session_key = self.resolve_session_key_from_params(&params).await;
+        let prompts = self
+            .prompt_queue
+            .list(&session_key)
             .await
-            .remove(session_key)
-            .unwrap_or_default();
-        let count = removed.len();
-        info!(session = %session_key, count, "cancel_queued: cleared message queue");
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        Ok(serde_json::json!({
+            "sessionKey": session_key,
+            "prompts": prompts,
+        }))
+    }
 
-        broadcast(
-            &self.state,
-            "chat",
-            serde_json::json!({
-                "sessionKey": session_key,
-                "state": "queue_cleared",
-                "count": count,
-            }),
-            BroadcastOpts::default(),
-        )
-        .await;
+    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult {
+        let session_key = self.resolve_session_key_from_params(&params).await;
+        let prompt_id = params
+            .get("promptId")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
 
-        Ok(serde_json::json!({ "cleared": count }))
+        let prompts = match prompt_id {
+            Some(prompt_id) => self.prompt_queue.cancel_one(&session_key, prompt_id).await,
+            None => self
+                .prompt_queue
+                .cancel_all(&session_key)
+                .await
+                .map(|_| Vec::new()),
+        }
+        .map_err(|error| ServiceError::message(error.to_string()))?;
+
+        Ok(serde_json::json!({
+            "sessionKey": session_key,
+            "prompts": prompts,
+        }))
     }
 
     async fn history(&self, params: Value) -> ServiceResult {
@@ -641,6 +648,12 @@ impl ChatService for LiveChatService {
             .clear(&session_key)
             .await
             .map_err(ServiceError::message)?;
+
+        // Prompts queued for the cleared conversation must not resurface.
+        self.prompt_queue
+            .cancel_all(&session_key)
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
 
         // Reset client sequence tracking for this session. A cleared chat starts
         // a fresh sequence from the web UI.

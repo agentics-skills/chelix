@@ -191,12 +191,23 @@ impl ChatMutation {
         )
     }
 
-    /// Cancel queued chat messages.
-    async fn cancel_queued(&self, ctx: &Context<'_>, session_key: String) -> Result<BoolResult> {
+    /// Cancel queued prompts of a session.
+    ///
+    /// Cancels a single prompt when `prompt_id` is given, otherwise the whole
+    /// session queue. Returns the remaining queue.
+    async fn cancel_queued_prompts(
+        &self,
+        ctx: &Context<'_>,
+        session_key: String,
+        prompt_id: Option<String>,
+    ) -> Result<Json> {
         let s = services!(ctx);
-        from_service(
+        from_service_json(
             s.chat
-                .cancel_queued(serde_json::json!({ "sessionKey": session_key }))
+                .prompt_queue_cancel(serde_json::json!({
+                    "sessionKey": session_key,
+                    "promptId": prompt_id,
+                }))
                 .await,
         )
     }

@@ -581,6 +581,9 @@ pub async fn prepare_gateway_core(
     let session_state_store = Arc::new(chelix_sessions::state_store::SessionStateStore::new(
         db_pool.clone(),
     ));
+    let prompt_queue_store = Arc::new(chelix_sessions::SessionPromptQueueStore::new(
+        db_pool.clone(),
+    ));
 
     let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
 
@@ -1078,6 +1081,7 @@ pub async fn prepare_gateway_core(
         .with_voice_persona_store(Arc::clone(&voice_persona_store))
         .with_project_store(Arc::clone(&project_store))
         .with_state_store(Arc::clone(&session_state_store))
+        .with_prompt_queue_store(Arc::clone(&prompt_queue_store))
         .with_browser_service(Arc::clone(&services.browser));
         if let Some(ref manager) = memory_manager {
             session_svc = session_svc.with_memory_manager(Arc::clone(manager));
@@ -1117,6 +1121,7 @@ pub async fn prepare_gateway_core(
         session_metadata,
         session_share_store,
         session_state_store,
+        prompt_queue_store,
         sandbox_router,
         tools_service,
         cron_service,

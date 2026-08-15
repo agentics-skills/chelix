@@ -398,8 +398,8 @@ pub(in crate::channel_events) async fn handle_queue(
         ));
     }
 
-    // Use the chat service's send method — when a run is active, it will
-    // automatically queue the message according to MessageQueueMode.
+    // Use the chat service's send method — when a run is active it queues the
+    // prompt, and the whole queue is replayed as one run after the final gate.
     let chat = state.chat();
     let params = serde_json::json!({
         "text": args,
@@ -409,11 +409,16 @@ pub(in crate::channel_events) async fn handle_queue(
     match chat.send(params).await {
         Ok(res) => {
             let queued = res.get("queued").and_then(|v| v.as_bool()).unwrap_or(false);
-            if queued {
-                Ok(format!("Queued for next turn: {args}"))
-            } else {
-                Ok("No active run \u{2014} message sent immediately.".to_string())
+            if !queued {
+                return Ok("No active run \u{2014} message sent immediately.".to_string());
             }
+            let pending = res
+                .get("prompts")
+                .and_then(|value| value.as_array())
+                .map_or(1, Vec::len);
+            Ok(format!(
+                "Queued for the next turn ({pending} pending): {args}"
+            ))
         },
         Err(e) => Err(ChannelError::external("queue", e)),
     }

@@ -189,6 +189,16 @@ impl ChatQuery {
         )
     }
 
+    /// Get the prompts queued for a session.
+    async fn queued_prompts(&self, ctx: &Context<'_>, session_key: String) -> Result<Json> {
+        let s = services!(ctx);
+        from_service_json(
+            s.chat
+                .prompt_queue_list(serde_json::json!({ "sessionKey": session_key }))
+                .await,
+        )
+    }
+
     /// Get chat context data.
     async fn context(&self, ctx: &Context<'_>, session_key: String) -> Result<Json> {
         let s = services!(ctx);

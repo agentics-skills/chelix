@@ -56,6 +56,7 @@ pub struct LiveSessionService {
     pub(super) project_store: Option<Arc<dyn ProjectStore>>,
     pub(super) hook_registry: Option<Arc<HookRegistry>>,
     pub(super) state_store: Option<Arc<SessionStateStore>>,
+    pub(super) prompt_queue_store: Option<Arc<SessionPromptQueueStore>>,
     pub(super) browser_service: Option<Arc<dyn crate::services::BrowserService>>,
     pub(super) memory_manager: Option<DynMemoryRuntime>,
 }
@@ -78,6 +79,7 @@ impl LiveSessionService {
             project_store: None,
             hook_registry: None,
             state_store: None,
+            prompt_queue_store: None,
             browser_service: None,
             memory_manager: None,
         }
@@ -151,6 +153,13 @@ impl LiveSessionService {
 
     pub fn with_state_store(mut self, store: Arc<SessionStateStore>) -> Self {
         self.state_store = Some(store);
+        self
+    }
+
+    /// Wire the prompt queue so deleting a session also drops its queue.
+    #[must_use]
+    pub fn with_prompt_queue_store(mut self, store: Arc<SessionPromptQueueStore>) -> Self {
+        self.prompt_queue_store = Some(store);
         self
     }
 

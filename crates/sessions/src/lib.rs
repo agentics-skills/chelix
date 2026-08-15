@@ -8,6 +8,7 @@ pub mod error;
 pub mod key;
 pub mod message;
 pub mod metadata;
+pub mod prompt_queue;
 pub mod session_events;
 pub mod state_store;
 pub mod store;
@@ -18,6 +19,7 @@ pub use {
     error::{Error, Result},
     key::SessionKey,
     message::{ContentBlock, MessageContent, PersistedMessage, UserDocument},
+    prompt_queue::{QueuedPrompt, SessionPromptQueueStore},
     store::SearchResult,
     tool_results::{PersistedToolResult, ToolResultStore},
     ui_history::{filter_ui_history, redact_backend_only_provider_state},
@@ -25,7 +27,8 @@ pub use {
 
 /// Run database migrations for the sessions crate.
 ///
-/// This creates the `sessions` and `channel_sessions` tables. Should be called
+/// This creates the `sessions`, `channel_sessions`, `session_state`, and
+/// `session_prompt_queue` tables. Should be called
 /// at application startup after [`chelix_projects::run_migrations`] (sessions
 /// has a foreign key to projects).
 pub async fn run_migrations(pool: &sqlx::SqlitePool) -> Result<()> {

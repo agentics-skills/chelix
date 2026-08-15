@@ -248,18 +248,6 @@ max_tools_threshold = 128
 }
 
 #[test]
-fn chat_config_default_queue_mode_is_followup() {
-    let cfg = ChatConfig::default();
-    assert_eq!(cfg.message_queue_mode, MessageQueueMode::Followup);
-}
-
-#[test]
-fn chat_config_toml_missing_queue_mode_defaults_to_followup() {
-    let cfg: ChatConfig = toml::from_str("").unwrap();
-    assert_eq!(cfg.message_queue_mode, MessageQueueMode::Followup);
-}
-
-#[test]
 fn chat_config_default_prompt_memory_mode_is_live_reload() {
     let cfg = ChatConfig::default();
     assert_eq!(cfg.prompt_memory_mode, PromptMemoryMode::LiveReload);

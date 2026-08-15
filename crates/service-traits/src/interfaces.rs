@@ -340,7 +340,14 @@ pub trait ChatService: Send + Sync {
     }
 
     async fn abort(&self, params: Value) -> ServiceResult;
-    async fn cancel_queued(&self, params: Value) -> ServiceResult;
+
+    /// List the prompts queued for a session.
+    async fn prompt_queue_list(&self, params: Value) -> ServiceResult;
+
+    /// Remove queued prompts of a session. Removes one prompt when `promptId`
+    /// is present, otherwise the whole session queue.
+    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult;
+
     async fn history(&self, params: Value) -> ServiceResult;
     async fn inject(&self, params: Value) -> ServiceResult;
     async fn clear(&self, params: Value) -> ServiceResult;
@@ -393,8 +400,15 @@ impl ChatService for NoopChatService {
         Ok(serde_json::json!({}))
     }
 
-    async fn cancel_queued(&self, _p: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "cleared": 0 }))
+    /// A service without chat cannot queue prompts, so its queue is empty.
+    /// Reporting that plainly keeps session reads (such as `sessions.switch`,
+    /// which renders the queue) working instead of failing them as a whole.
+    async fn prompt_queue_list(&self, _p: Value) -> ServiceResult {
+        Ok(serde_json::json!({ "prompts": [] }))
+    }
+
+    async fn prompt_queue_cancel(&self, _p: Value) -> ServiceResult {
+        Err("chat not configured".into())
     }
 
     async fn history(&self, _p: Value) -> ServiceResult {

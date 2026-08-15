@@ -15,6 +15,7 @@ import { t } from "../i18n";
 import { appendMessageActions } from "../message-actions";
 import { maybeRefreshFullContext } from "../pages/ChatPage";
 import { renderCheckpointCard } from "../pages/chat/context-card";
+import { setQueuedPrompts } from "../pages/chat/prompt-queue";
 import { currentPrefix } from "../router";
 import {
 	bumpSessionCount,
@@ -38,7 +39,6 @@ import { hasVisibleReasoning, isReasoningContent } from "../types/ws-events";
 import {
 	clearChatEmptyState,
 	hasNonWhitespaceContent,
-	moveFirstQueuedToChat,
 	setSafeMarkdownHtml,
 	updateSessionHistoryIndex,
 	updateSessionRunId,
@@ -288,8 +288,11 @@ function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: bo
 // so we skip rendering when the broadcast's seq matches a seq this client
 // has already sent (seq <= S.chatSeq).
 function handleChatUserMessage(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	// Suppress the echo for the originating client.
-	if (p.seq !== undefined && p.seq !== null && p.seq <= S.chatSeq) return;
+	// Suppress the echo for the originating client. Prompts replayed from the
+	// queue are exempt: the submitting client removed its optimistic bubble
+	// when the prompt was queued, so suppressing them here would hide the
+	// message on that client while every other client renders it.
+	if (!p.replayed && p.seq !== undefined && p.seq !== null && p.seq <= S.chatSeq) return;
 	const msgSession = sessionStore.getByKey(eventSession);
 	const lastIdx = msgSession ? msgSession.lastHistoryIndex.value : -1;
 	if (p.messageIndex !== undefined && p.messageIndex !== null && p.messageIndex <= lastIdx) return;
@@ -530,7 +533,6 @@ function resetFinalStreamState(eventSession: string): void {
 function finishFinalMessageUi(): void {
 	maybeRefreshFullContext();
 	if (S.chatMsgBox?.lastElementChild) highlightCodeBlocks(S.chatMsgBox.lastElementChild as HTMLElement);
-	moveFirstQueuedToChat();
 }
 
 function handleChatFinal(payload: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -715,7 +717,6 @@ function renderActiveChatError(p: ChatPayload, partialState: AbortedPartialState
 	S.setStreamEl(null);
 	S.setStreamText("");
 	S.setVoicePending(false);
-	moveFirstQueuedToChat();
 }
 
 function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -815,7 +816,6 @@ function finalizeActiveAbort(p: ChatPayload, partialState: AbortedPartialState):
 	S.setStreamEl(null);
 	S.setStreamText("");
 	S.setVoicePending(false);
-	moveFirstQueuedToChat();
 }
 
 function handleChatAborted(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -852,15 +852,8 @@ function handleChatNotice(p: ChatPayload, isActive: boolean, isChatPage: boolean
 	}
 }
 
-function handleChatQueueCleared(_p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
-	if (!(isActive && isChatPage)) return;
-	const tray = document.getElementById("queuedMessages");
-	if (tray) {
-		const count = tray.querySelectorAll(".msg").length;
-		console.debug("[queued] queue_cleared: removing all from tray", { count });
-		while (tray.firstChild) tray.removeChild(tray.firstChild);
-		tray.classList.add("hidden");
-	}
+function handleChatPromptQueue(p: ChatPayload, _isActive: boolean, _isChatPage: boolean, eventSession: string): void {
+	setQueuedPrompts(eventSession, p.prompts ?? []);
 }
 
 function handleChatSessionCleared(_p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -905,7 +898,7 @@ export const chatHandlers: Record<string, ChatHandler> = {
 	error: handleChatError,
 	aborted: handleChatAborted,
 	notice: handleChatNotice,
-	queue_cleared: handleChatQueueCleared,
+	prompt_queue: handleChatPromptQueue,
 	session_cleared: handleChatSessionCleared,
 };
 
@@ -925,7 +918,7 @@ export function handleChatEvent(p: ChatPayload): void {
 			p.state === "aborted" ||
 			p.state === "notice" ||
 			p.state === "session_cleared" ||
-			p.state === "queue_cleared";
+			p.state === "prompt_queue";
 		if (!allowDuringSwitch) {
 			return;
 		}

@@ -697,12 +697,28 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "chat.cancel_queued",
+        "chat.prompt_queue.list",
         Box::new(|ctx| {
             Box::pin(async move {
+                let mut params = ctx.params.clone();
+                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
                 ctx.state
                     .chat()
-                    .cancel_queued(ctx.params.clone())
+                    .prompt_queue_list(params)
+                    .await
+                    .map_err(ErrorShape::from)
+            })
+        }),
+    );
+    reg.register(
+        "chat.prompt_queue.cancel",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let mut params = ctx.params.clone();
+                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
+                ctx.state
+                    .chat()
+                    .prompt_queue_cancel(params)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -1140,6 +1156,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     Vec::new()
                 };
                 let voice_pending = replying && chat.active_voice_pending(key).await;
+                // Queued prompts are session state, not connection state, so a
+                // reload or a second client renders the same pending prompts.
+                let queued_prompts = chat
+                    .prompt_queue_list(serde_json::json!({ "sessionKey": key }))
+                    .await
+                    .map_err(ErrorShape::from)?;
                 if let Some(obj) = result.as_object_mut() {
                     insert_session_activity_snapshot(
                         obj,
@@ -1148,6 +1170,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         tool_calls,
                         voice_pending,
                     );
+                    if let Some(prompts) = queued_prompts.get("prompts") {
+                        obj.insert("queuedPrompts".to_string(), prompts.clone());
+                    }
                     if let Some(entry_obj) =
                         obj.get_mut("entry").and_then(|value| value.as_object_mut())
                     {

@@ -280,8 +280,12 @@ impl chelix_service_traits::ChatService for MockChat {
         self.0.call("chat.abort", p)
     }
 
-    async fn cancel_queued(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.cancel_queued", p)
+    async fn prompt_queue_list(&self, p: Value) -> ServiceResult {
+        self.0.call("chat.prompt_queue.list", p)
+    }
+
+    async fn prompt_queue_cancel(&self, p: Value) -> ServiceResult {
+        self.0.call("chat.prompt_queue.cancel", p)
     }
 
     async fn history(&self, p: Value) -> ServiceResult {

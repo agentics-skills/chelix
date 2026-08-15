@@ -132,7 +132,8 @@ impl SessionStore {
     /// The existing line count and append share one exclusive file lock, so
     /// the returned index always identifies the record written by this call.
     pub async fn append_with_index(&self, key: &str, message: &serde_json::Value) -> Result<usize> {
-        self.append_with_expected_index(key, message, None).await
+        self.append_with_expected_index(key, std::slice::from_ref(message), None)
+            .await
     }
 
     /// Append a message only when its expected zero-based physical index still
@@ -143,18 +144,38 @@ impl SessionStore {
         message: &serde_json::Value,
         expected_index: usize,
     ) -> Result<usize> {
-        self.append_with_expected_index(key, message, Some(expected_index))
+        self.append_with_expected_index(key, std::slice::from_ref(message), Some(expected_index))
+            .await
+    }
+
+    /// Append several messages as one unit and return the index of the first.
+    ///
+    /// The tail check and every write share a single exclusive file lock, and
+    /// the batch is serialized before the lock is taken. A turn that leads with
+    /// replayed queue prompts therefore never leaves a partially persisted
+    /// prefix behind: either the whole batch lands in history, or none of it.
+    pub async fn append_batch_at_index(
+        &self,
+        key: &str,
+        messages: &[serde_json::Value],
+        expected_index: usize,
+    ) -> Result<usize> {
+        self.append_with_expected_index(key, messages, Some(expected_index))
             .await
     }
 
     async fn append_with_expected_index(
         &self,
         key: &str,
-        message: &serde_json::Value,
+        messages: &[serde_json::Value],
         expected_index: Option<usize>,
     ) -> Result<usize> {
         let path = self.path_for(key);
-        let line = serde_json::to_string(message)?;
+        let mut batch = String::new();
+        for message in messages {
+            batch.push_str(&serde_json::to_string(message)?);
+            batch.push('\n');
+        }
 
         tokio::task::spawn_blocking(move || -> Result<usize> {
             if let Some(parent) = path.parent() {
@@ -182,7 +203,7 @@ impl SessionStore {
                     "expected message index {expected_index}, found session tail {message_index}"
                 )));
             }
-            writeln!(*guard, "{line}")?;
+            write!(*guard, "{batch}")?;
             Ok(message_index)
         })
         .await?

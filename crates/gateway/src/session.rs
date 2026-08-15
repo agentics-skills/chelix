@@ -18,8 +18,8 @@ use {
     chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
-        filter_ui_history, message::PersistedMessage, metadata::SqliteSessionMetadata,
-        state_store::SessionStateStore, store::SessionStore,
+        SessionPromptQueueStore, filter_ui_history, message::PersistedMessage,
+        metadata::SqliteSessionMetadata, state_store::SessionStateStore, store::SessionStore,
     },
     chelix_tools::sandbox::SandboxRouter,
     chelix_voice::{AudioFormat, TtsProviderId},

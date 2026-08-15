@@ -126,6 +126,48 @@ pub(crate) fn to_user_content(mc: &MessageContent, documents: &[UserDocument]) -
     }
 }
 
+/// Parse `chat.send` request parameters into the message content and the plain
+/// text used for logging, hooks, and previews.
+///
+/// Accepts either `text`/`message` (plain text) or `content` (multimodal
+/// blocks). Returns an error when none of them is present.
+pub(crate) fn parse_message_params(params: &Value) -> Result<(String, MessageContent), String> {
+    let Some(content) = params.get("content") else {
+        let text = params
+            .get("text")
+            .or_else(|| params.get("message"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| "missing 'text', 'message', or 'content' parameter".to_string())?
+            .to_string();
+        return Ok((text.clone(), MessageContent::Text(text)));
+    };
+
+    let blocks: Vec<ContentBlock> = content
+        .as_array()
+        .map(|items| items.iter().filter_map(parse_content_block).collect())
+        .unwrap_or_default();
+    let text = blocks
+        .iter()
+        .find_map(|block| match block {
+            ContentBlock::Text { text } => Some(text.clone()),
+            ContentBlock::ImageUrl { .. } => None,
+        })
+        .unwrap_or_else(|| "[Image]".to_string());
+    Ok((text, MessageContent::Multimodal(blocks)))
+}
+
+fn parse_content_block(block: &Value) -> Option<ContentBlock> {
+    match block.get("type")?.as_str()? {
+        "text" => Some(ContentBlock::text(block.get("text")?.as_str()?.to_string())),
+        "image_url" => Some(ContentBlock::ImageUrl {
+            image_url: chelix_sessions::message::ImageUrl {
+                url: block.get("image_url")?.get("url")?.as_str()?.to_string(),
+            },
+        }),
+        _ => None,
+    }
+}
+
 pub(crate) fn rewrite_multimodal_text_blocks(
     blocks: &[ContentBlock],
     new_text: &str,

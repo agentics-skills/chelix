@@ -16,7 +16,8 @@ import {
 import { insertSessionInOrder, Session, sessionStore } from "../stores/session-store";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage, SessionMeta } from "../types/session";
-import type { ChatPayload, ReasoningContent, ToolCallPayload } from "../types/ws-events";
+import type { ChatPayload, QueuedPrompt, ReasoningContent, ToolCallPayload } from "../types/ws-events";
+import { renderQueuedPrompts, setQueuedPrompts } from "../pages/chat/prompt-queue";
 import { handleToolCallStartDom } from "../ws/tool-helpers";
 
 import {
@@ -72,6 +73,7 @@ interface SwitchPayload {
 	thinkingText?: ReasoningContent;
 	voicePending?: boolean;
 	activeToolCalls?: ToolCallPayload[];
+	queuedPrompts?: QueuedPrompt[];
 	hasMore?: boolean;
 	nextCursor?: number;
 	totalMessages?: number;
@@ -164,11 +166,7 @@ function resetSwitchViewState(): void {
 		unmountExecuteCommandToolBubbles(S.chatMsgBox);
 		S.chatMsgBox.textContent = "";
 	}
-	const tray = document.getElementById("queuedMessages");
-	if (tray) {
-		while (tray.firstChild) tray.removeChild(tray.firstChild);
-		tray.classList.add("hidden");
-	}
+	renderQueuedPrompts();
 	S.setStreamEl(null);
 	S.setStreamText("");
 	S.setLastToolOutput("");
@@ -356,6 +354,7 @@ function renderActiveSwitch(
 ): void {
 	restoreSessionState(entry, context.projectId);
 	applyReplyingStateFromSwitchPayload(context.key, switchPayload);
+	setQueuedPrompts(context.key, switchPayload.queuedPrompts ?? []);
 	const thinkingText = switchPayload.replying ? switchPayload.thinkingText || null : null;
 	const totalCountHint = Number.isInteger(entry.messageCount)
 		? (entry.messageCount as number)

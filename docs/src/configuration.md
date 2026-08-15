@@ -233,20 +233,17 @@ encourages the agent to proactively create and update skills after complex tasks
 tool allows surgical find/replace updates without rewriting the entire skill
 body.
 
-## Chat Message Queue
+## Chat Prompt Queue
 
-When a new message arrives while an agent run is already active, Chelix can
-either replay queued messages one-by-one or merge them into a single follow-up
-message.
+Prompts submitted while an agent run is active are queued on the server and
+replayed as a single run after that run finishes. See
+[Prompt Queue](prompt-queue.md).
 
 ```toml
 [chat]
-message_queue_mode = "followup"  # Default: one-by-one replay
 prompt_memory_mode = "live-reload"
 
 # Options:
-#   "followup" - Queue each message and run them sequentially
-#   "collect"  - Merge queued text and run once after the active run
 #   "live-reload" - Re-read MEMORY.md before each turn
 #   "frozen-at-session-start" - Keep the first MEMORY.md snapshot for the session
 ```

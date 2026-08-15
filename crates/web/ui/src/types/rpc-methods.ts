@@ -6,7 +6,12 @@
 // typed use `unknown` as a placeholder -- callers can narrow with
 // `as` casts until we refine the type here.
 
-import type { ChatContextPayload, ChatFullContextPayload, ChatPromptMemoryRefreshPayload } from "./chat";
+import type {
+	ChatContextPayload,
+	ChatFullContextPayload,
+	ChatPromptMemoryRefreshPayload,
+	ChatPromptQueuePayload,
+} from "./chat";
 import type { ModelInfo, ProviderInfo } from "./model";
 import type { SessionMeta, SetSessionAgentPayload } from "./session";
 
@@ -33,12 +38,13 @@ export interface RpcMethodMap {
 
 	// ── Chat ────────────────────────────────────────────────────
 	"chat.abort": unknown;
-	"chat.cancel_queued": unknown;
 	"chat.clear": unknown;
 	"chat.compact": unknown;
 	"chat.context": ChatContextPayload;
 	"chat.full_context": ChatFullContextPayload;
 	"chat.prompt_memory.refresh": ChatPromptMemoryRefreshPayload;
+	"chat.prompt_queue.cancel": ChatPromptQueuePayload;
+	"chat.prompt_queue.list": ChatPromptQueuePayload;
 	"chat.send": unknown;
 	"chat.send_sync": unknown;
 
