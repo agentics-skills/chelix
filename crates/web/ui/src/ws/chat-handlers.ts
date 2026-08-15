@@ -10,6 +10,7 @@ import {
 	updateTokenBar,
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
+import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { localizeStructuredError, renderAudioPlayer, renderMarkdown } from "../helpers";
 import { t } from "../i18n";
 import { appendMessageActions } from "../message-actions";
@@ -28,7 +29,6 @@ import {
 	setSessionUnread,
 } from "../sessions";
 import * as S from "../state";
-import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";

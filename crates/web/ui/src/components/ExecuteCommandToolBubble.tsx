@@ -71,10 +71,7 @@ function ExecuteCommandToolBubble({ sessionKey, toolCallId, startedAt }: Execute
 	);
 }
 
-export function mountExecuteCommandToolBubble(
-	card: HTMLElement,
-	options: ExecuteCommandToolBubbleProps,
-): void {
+export function mountExecuteCommandToolBubble(card: HTMLElement, options: ExecuteCommandToolBubbleProps): void {
 	if (mountedBubbles.has(card)) return;
 	const content = card.querySelector<HTMLElement>("[data-tool-result-content]");
 	if (!content) throw new Error("execute_command tool card result mount is unavailable");

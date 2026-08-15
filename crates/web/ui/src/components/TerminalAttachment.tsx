@@ -103,6 +103,22 @@ interface TerminalServerMessage {
 	terminal?: ToolsServiceTerminalInfo;
 }
 
+type TerminalSocketCallbacks = Pick<TerminalAttachmentProps, "onConnectedChange" | "onReady" | "onStatus">;
+
+interface TerminalSocketState {
+	attachedTerminal: ToolsServiceTerminalInfo | null;
+	preserveStatusOnClose: boolean;
+}
+
+interface TerminalSocketContext {
+	runtime: TerminalRuntime;
+	socket: WebSocket;
+	connection: TerminalConnection;
+	state: TerminalSocketState;
+	callbacks: TerminalSocketCallbacks;
+	focusOnReady: boolean;
+}
+
 let terminalCtor: TerminalCtor | null = null;
 let fitAddonCtor: FitAddonCtor | null = null;
 let xtermModulesPromise: Promise<void> | null = null;
@@ -298,6 +314,60 @@ function parseTerminalMessage(data: unknown): TerminalServerMessage | null {
 	}
 }
 
+function rejectTerminalMessage(context: TerminalSocketContext, message: string): void {
+	context.state.preserveStatusOnClose = true;
+	context.callbacks.onStatus?.(message, "error");
+	context.socket.close();
+}
+
+function handleTerminalReadyMessage(message: TerminalServerMessage, context: TerminalSocketContext): void {
+	const terminal = message.terminal;
+	if (!(message.available && terminal && terminalMatchesConnection(terminal, context.connection))) {
+		rejectTerminalMessage(context, "Tools service returned mismatched terminal metadata.");
+		return;
+	}
+	context.state.attachedTerminal = terminal;
+	context.runtime.ready = true;
+	context.callbacks.onConnectedChange?.(true);
+	context.callbacks.onReady?.(terminal);
+	context.callbacks.onStatus?.(`Attached to exact terminal ${terminal.id}.`, "ok");
+	scheduleFit(context.runtime, true);
+	if (context.focusOnReady) context.runtime.xterm.focus();
+}
+
+function handleTerminalOutputMessage(message: TerminalServerMessage, context: TerminalSocketContext): void {
+	if (!context.runtime.ready) {
+		rejectTerminalMessage(context, "Terminal output arrived before attachment was ready.");
+		return;
+	}
+	const output = message.encoding === "base64" ? decodeBase64(message.data ?? "") : (message.data ?? "");
+	if (output === null) {
+		rejectTerminalMessage(context, "Invalid terminal output encoding.");
+		return;
+	}
+	writeTerminalOutput(context.runtime, output);
+}
+
+function handleTerminalStatusMessage(message: TerminalServerMessage, context: TerminalSocketContext): void {
+	const level: "" | "error" = message.level === "error" || message.type === "error" ? "error" : "";
+	if (level === "error") context.state.preserveStatusOnClose = true;
+	context.callbacks.onStatus?.(message.text ?? message.error ?? "Terminal error", level);
+}
+
+function handleTerminalServerMessage(message: TerminalServerMessage, context: TerminalSocketContext): void {
+	switch (message.type) {
+		case "ready":
+			handleTerminalReadyMessage(message, context);
+			return;
+		case "output":
+			handleTerminalOutputMessage(message, context);
+			return;
+		case "status":
+		case "error":
+			handleTerminalStatusMessage(message, context);
+	}
+}
+
 export function TerminalAttachment({
 	connection,
 	className,
@@ -335,10 +405,7 @@ export function TerminalAttachment({
 			})
 			.catch((error: unknown) => {
 				if (cancelled) return;
-				callbacksRef.current.onStatus?.(
-					error instanceof Error ? error.message : "Failed to initialize xterm",
-					"error",
-				);
+				callbacksRef.current.onStatus?.(error instanceof Error ? error.message : "Failed to initialize xterm", "error");
 			});
 		return () => {
 			cancelled = true;
@@ -363,72 +430,43 @@ export function TerminalAttachment({
 			"",
 		);
 		const socket = new WebSocket(connectionUrl(connection));
-		let preserveStatusOnClose = false;
-		let attachedTerminal: ToolsServiceTerminalInfo | null = null;
+		const socketState: TerminalSocketState = {
+			attachedTerminal: null,
+			preserveStatusOnClose: false,
+		};
 		runtime.socket = socket;
 		socket.onmessage = (event: MessageEvent<unknown>) => {
 			if (runtime.socket !== socket) return;
+			const context: TerminalSocketContext = {
+				runtime,
+				socket,
+				connection,
+				state: socketState,
+				callbacks: callbacksRef.current,
+				focusOnReady,
+			};
 			const message = parseTerminalMessage(event.data);
 			if (!message) {
-				preserveStatusOnClose = true;
-				callbacksRef.current.onStatus?.("Invalid terminal message received.", "error");
-				socket.close();
+				rejectTerminalMessage(context, "Invalid terminal message received.");
 				return;
 			}
-			if (message.type === "ready") {
-				if (!(message.available && message.terminal && terminalMatchesConnection(message.terminal, connection))) {
-					preserveStatusOnClose = true;
-					callbacksRef.current.onStatus?.("Tools service returned mismatched terminal metadata.", "error");
-					socket.close();
-					return;
-				}
-				attachedTerminal = message.terminal;
-				runtime.ready = true;
-				callbacksRef.current.onConnectedChange?.(true);
-				callbacksRef.current.onReady?.(message.terminal);
-				callbacksRef.current.onStatus?.(`Attached to exact terminal ${message.terminal.id}.`, "ok");
-				scheduleFit(runtime, true);
-				if (focusOnReady) runtime.xterm.focus();
-				return;
-			}
-			if (message.type === "output") {
-				if (!runtime.ready) {
-					preserveStatusOnClose = true;
-					callbacksRef.current.onStatus?.("Terminal output arrived before attachment was ready.", "error");
-					socket.close();
-					return;
-				}
-				const output = message.encoding === "base64" ? decodeBase64(message.data ?? "") : (message.data ?? "");
-				if (output === null) {
-					preserveStatusOnClose = true;
-					callbacksRef.current.onStatus?.("Invalid terminal output encoding.", "error");
-					socket.close();
-					return;
-				}
-				writeTerminalOutput(runtime, output);
-				return;
-			}
-			if (message.type === "status" || message.type === "error") {
-				const level = message.level === "error" || message.type === "error" ? "error" : "";
-				if (level === "error") preserveStatusOnClose = true;
-				callbacksRef.current.onStatus?.(message.text ?? message.error ?? "Terminal error", level);
-			}
+			handleTerminalServerMessage(message, context);
 		};
 		socket.onclose = () => {
 			if (runtime.socket !== socket) return;
 			runtime.socket = null;
 			runtime.ready = false;
 			callbacksRef.current.onConnectedChange?.(false);
-			if (!preserveStatusOnClose && connection.mode === "terminal") {
+			if (!socketState.preserveStatusOnClose && connection.mode === "terminal") {
 				callbacksRef.current.onStatus?.(
-					`Terminal ${attachedTerminal?.id ?? connection.terminalId} disconnected.`,
+					`Terminal ${socketState.attachedTerminal?.id ?? connection.terminalId} disconnected.`,
 					"",
 				);
 			}
 		};
 		socket.onerror = () => {
 			if (runtime.socket !== socket) return;
-			preserveStatusOnClose = true;
+			socketState.preserveStatusOnClose = true;
 			callbacksRef.current.onStatus?.(
 				connection.mode === "terminal"
 					? `Failed to attach terminal ${connection.terminalId}.`
