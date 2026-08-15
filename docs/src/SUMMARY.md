@@ -44,6 +44,7 @@
 - [Slash Commands](commands.md)
 - [Session Branching](session-branching.md)
 - [Compaction](compaction.md)
+- [Prompt Queue](prompt-queue.md)
 - [Scheduling (Cron Jobs)](scheduling.md)
 - [Webhooks](webhooks.md)
 - [Skill Self-Extension](skill-tools.md)

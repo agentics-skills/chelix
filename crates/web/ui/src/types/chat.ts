@@ -1,5 +1,7 @@
 // ── Chat RPC payload types ───────────────────────────────────
 
+import type { QueuedPrompt } from "./ws-events";
+
 export interface ChatContextFile {
 	path: string;
 	size?: number;
@@ -94,6 +96,12 @@ export interface ChatFullContextPayload {
 	truncated: boolean;
 	workspaceFiles: ChatWorkspaceFile[];
 	promptMemory: PromptMemoryData | null;
+}
+
+/** Result of `chat.prompt_queue.list` and `chat.prompt_queue.cancel`. */
+export interface ChatPromptQueuePayload {
+	sessionKey: string;
+	prompts: QueuedPrompt[];
 }
 
 export interface ChatPromptMemoryRefreshPayload {

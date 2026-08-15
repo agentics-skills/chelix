@@ -709,7 +709,7 @@ pub(super) fn write_default_config(path: &Path, config: &ChelixConfig) -> crate:
 /// lowercasing. For example:
 /// - `CHELIX_AUTH__DISABLED=true` → `auth.disabled = true`
 /// - `CHELIX_TOOLS__EXECUTE_COMMAND__DEFAULT_TIMEOUT_SECS=60` → `tools.execute_command.default_timeout_secs = 60`
-/// - `CHELIX_CHAT__MESSAGE_QUEUE_MODE=collect` → `chat.message_queue_mode = "collect"`
+/// - `CHELIX_CHAT__AUTO_TITLE=false` → `chat.auto_title = false`
 ///
 /// The config is serialized to a JSON value, env overrides are merged in,
 /// then deserialized back. Only env vars with the `CHELIX_` prefix are

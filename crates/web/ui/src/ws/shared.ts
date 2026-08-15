@@ -35,22 +35,6 @@ export function updateSessionHistoryIndex(sessionKey: string, messageIndex: numb
 	}
 }
 
-export function moveFirstQueuedToChat(): void {
-	const tray = document.getElementById("queuedMessages");
-	if (!tray) return;
-	const firstQueued = tray.querySelector(".msg.user.queued");
-	if (!firstQueued) return;
-	console.debug("[queued] moving queued message from tray to chat", {
-		remaining: tray.querySelectorAll(".msg").length - 1,
-	});
-	firstQueued.classList.remove("queued");
-	const badge = firstQueued.querySelector(".queued-badge");
-	if (badge) badge.remove();
-	clearChatEmptyState();
-	S.chatMsgBox?.appendChild(firstQueued);
-	if (!tray.querySelector(".msg")) tray.classList.add("hidden");
-}
-
 // ── Markdown rendering ────────────────────────────────────────
 
 /**

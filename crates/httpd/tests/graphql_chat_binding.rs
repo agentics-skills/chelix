@@ -51,8 +51,12 @@ impl ChatService for RecordingChatService {
         Ok(json!({ "ok": true }))
     }
 
-    async fn cancel_queued(&self, _params: Value) -> ServiceResult {
-        Ok(json!({ "cleared": 0 }))
+    async fn prompt_queue_list(&self, _params: Value) -> ServiceResult {
+        Ok(json!({ "prompts": [] }))
+    }
+
+    async fn prompt_queue_cancel(&self, _params: Value) -> ServiceResult {
+        Ok(json!({ "prompts": [] }))
     }
 
     async fn history(&self, params: Value) -> ServiceResult {

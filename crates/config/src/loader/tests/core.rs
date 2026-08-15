@@ -372,8 +372,8 @@ fn write_default_config_writes_template_to_requested_path() {
     // The override-only template has most settings commented out.
     // Port is the only active value (installation-specific).
     assert!(
-        raw.contains("# message_queue_mode"),
-        "generated template should document queue mode as commented example"
+        raw.contains("# prompt_memory_mode"),
+        "generated template should document prompt memory mode as commented example"
     );
     assert!(
         raw.contains("YOUR overrides only"),

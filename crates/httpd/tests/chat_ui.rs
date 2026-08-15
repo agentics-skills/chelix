@@ -335,8 +335,9 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         .await
         .unwrap();
     let session_metadata1 = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
-        db_pool1,
+        db_pool1.clone(),
     ));
+    let prompt_queue_store1 = Arc::new(chelix_sessions::SessionPromptQueueStore::new(db_pool1));
     if !registry.read().await.is_empty() {
         state.set_chat(Arc::new(LiveChatService::new(
             Arc::clone(&registry),
@@ -344,6 +345,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
             chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store1),
             Arc::clone(&session_metadata1),
+            Arc::clone(&prompt_queue_store1),
             chelix_config::ChelixConfig::default(),
             Arc::new(tokio::sync::RwLock::new(
                 chelix_config::AgentsConfig::default(),
@@ -372,14 +374,16 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
         .await
         .unwrap();
     let session_metadata2 = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
-        db_pool2,
+        db_pool2.clone(),
     ));
+    let prompt_queue_store2 = Arc::new(chelix_sessions::SessionPromptQueueStore::new(db_pool2));
     state2.set_chat(Arc::new(LiveChatService::new(
         Arc::clone(&registry2),
         Arc::new(tokio::sync::RwLock::new(DisabledModelsStore::default())),
         chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state2)),
         Arc::clone(&session_store2),
         Arc::clone(&session_metadata2),
+        Arc::clone(&prompt_queue_store2),
         chelix_config::ChelixConfig::default(),
         Arc::new(tokio::sync::RwLock::new(
             chelix_config::AgentsConfig::default(),

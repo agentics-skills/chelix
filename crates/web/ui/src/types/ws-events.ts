@@ -155,6 +155,15 @@ export interface CheckpointHistoryMessage {
 	[key: string]: unknown;
 }
 
+/** A user prompt queued while an agent run owns the session. */
+export interface QueuedPrompt {
+	id: string;
+	sessionKey: string;
+	position: number;
+	preview: string;
+	createdAt: number;
+}
+
 export interface ChatError {
 	title?: string;
 	detail?: string;
@@ -228,6 +237,12 @@ export interface ChatPayload {
 	phase?: string;
 	mode?: string;
 	seq?: number;
+	/**
+	 * Set on `user_message` events replayed from the prompt queue. Their seq
+	 * was already used by the submitting client, whose optimistic bubble was
+	 * dropped when the prompt was queued, so the message must render anyway.
+	 */
+	replayed?: boolean;
 	retryAfterMs?: number;
 	partialMessage?: PartialMessage;
 	assistantMessage?: AssistantHistoryMessage;
@@ -235,6 +250,8 @@ export interface ChatPayload {
 	checkpoint?: CheckpointHistoryMessage;
 	contextBudget?: ContextBudgetMetadata;
 	canContinue?: boolean;
+	/** Full queue snapshot carried by `prompt_queue` events. */
+	prompts?: QueuedPrompt[];
 }
 
 export interface ApprovalPayload {

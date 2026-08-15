@@ -7,9 +7,6 @@ pub struct ChatConfig {
     /// Automatically generate a session title after the first exchange.
     #[serde(default = "default_auto_title")]
     pub auto_title: bool,
-    /// How to handle messages that arrive while an agent run is active.
-    #[serde(default = "default_message_queue_mode")]
-    pub message_queue_mode: MessageQueueMode,
     /// How `MEMORY.md` is loaded into the prompt for an ongoing session.
     #[serde(default = "default_prompt_memory_mode")]
     pub prompt_memory_mode: PromptMemoryMode,
@@ -24,10 +21,6 @@ fn default_auto_title() -> bool {
     true
 }
 
-fn default_message_queue_mode() -> MessageQueueMode {
-    MessageQueueMode::Followup
-}
-
 fn default_prompt_memory_mode() -> PromptMemoryMode {
     PromptMemoryMode::LiveReload
 }
@@ -40,23 +33,11 @@ impl Default for ChatConfig {
     fn default() -> Self {
         Self {
             auto_title: default_auto_title(),
-            message_queue_mode: default_message_queue_mode(),
             prompt_memory_mode: default_prompt_memory_mode(),
             workspace_file_max_chars: default_workspace_file_max_chars(),
             priority_models: Vec::new(),
         }
     }
-}
-
-/// Behaviour when `chat.send()` is called during an active run.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MessageQueueMode {
-    /// Queue each message; replay them one-by-one after the current run.
-    #[default]
-    Followup,
-    /// Buffer messages; concatenate and process as a single message after the current run.
-    Collect,
 }
 
 /// How prompt memory is loaded across turns in the same session.

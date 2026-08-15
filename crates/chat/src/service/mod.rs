@@ -3,7 +3,6 @@
 mod chat_impl;
 mod types;
 
-use types::QueuedMessage;
 pub(crate) use types::{
     ActiveAssistantDraft, EventForwarderResult, append_assistant_delta, build_persisted_tool_call,
     finalize_persisted_assistant_message, persist_active_assistant_draft,

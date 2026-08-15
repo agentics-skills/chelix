@@ -134,6 +134,15 @@ impl LiveSessionService {
             tracing::warn!("session state cleanup for {key}: {e}");
         }
 
+        // Cascade-delete queued prompts. The queue table has no foreign key on
+        // the session, so leftover rows would be replayed if the key is ever
+        // reused by a fork or a channel binding.
+        if let Some(ref prompt_queue) = self.prompt_queue_store
+            && let Err(e) = prompt_queue.clear(key).await
+        {
+            tracing::warn!("prompt queue cleanup for {key}: {e}");
+        }
+
         self.metadata.clear_active_session_mappings(key).await;
 
         if let Err(e) = self.cleanup_session_memory_exports(key).await {

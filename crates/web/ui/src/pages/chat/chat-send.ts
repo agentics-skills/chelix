@@ -28,6 +28,8 @@ import { modelStore } from "../../stores/model-store";
 import { sessionStore } from "../../stores/session-store";
 import type { RpcResponse } from "../../types/rpc";
 import type { SessionMeta } from "../../types/session";
+import type { QueuedPrompt } from "../../types/ws-events";
+import { setQueuedPrompts } from "./prompt-queue";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
 
 // ── Types ────────────────────────────────────────────────────
@@ -50,6 +52,7 @@ interface PendingImageAttachment extends PendingAttachment {
 export interface ChatSendPayload {
 	runId?: string;
 	queued?: boolean;
+	prompts?: QueuedPrompt[];
 }
 
 type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
@@ -160,7 +163,10 @@ export function applySelectedModelToChatParams(chatParams: ChatSendParams): void
 export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
 	if (res.ok && res.payload?.runId) setSessionActiveRunId(S.activeSessionKey, res.payload.runId);
 	if (res.payload?.queued) {
-		markMessageQueued(userEl, S.activeSessionKey);
+		// The prompt is now server state; the optimistic bubble is replaced by
+		// the queue tray, which every client renders from the same snapshot.
+		userEl?.remove();
+		setQueuedPrompts(S.activeSessionKey, res.payload.prompts ?? []);
 		return true;
 	}
 	if (!res.ok) {
@@ -281,9 +287,9 @@ function captureOptimisticSendSnapshot(sessionKey: string, previousChatSeq: numb
 	};
 }
 
-function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
+/** Undo the optimistic session bookkeeping applied before `chat.send`. */
+function restoreOptimisticSessionState(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
 	if (userEl?.isConnected) userEl.remove();
-	S.setChatSeq(snapshot.previousChatSeq);
 
 	const session = sessionStore.getByKey(snapshot.sessionKey);
 	if (session && snapshot.session) {
@@ -309,34 +315,29 @@ function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLEl
 	}
 
 	clearSessionHistoryCache(snapshot.sessionKey);
+}
+
+/** Roll back a send the server rejected: the session is idle again. */
+function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
+	restoreOptimisticSessionState(snapshot, userEl);
+	// The server stored nothing, so this seq is free again.
+	S.setChatSeq(snapshot.previousChatSeq);
 	setSessionReplying(snapshot.sessionKey, false);
 	setComposerStopButton(false);
 }
 
-function markMessageQueued(el: HTMLElement | null, sessionKey: string): void {
-	if (!el) return;
-	const tray = document.getElementById("queuedMessages");
-	if (!tray) return;
-	console.debug("[queued] marking user message as queued, moving to tray", { sessionKey });
-	el.classList.add("queued");
-	const badge = document.createElement("div");
-	badge.className = "queued-badge";
-	const label = document.createElement("span");
-	label.className = "queued-label";
-	label.textContent = "Queued";
-	const btn = document.createElement("button");
-	btn.className = "queued-cancel";
-	btn.title = "Cancel all queued";
-	btn.textContent = "\u2715";
-	btn.addEventListener("click", (e: MouseEvent) => {
-		e.stopPropagation();
-		sendRpc("chat.cancel_queued", { sessionKey });
-	});
-	badge.appendChild(label);
-	badge.appendChild(btn);
-	el.appendChild(badge);
-	tray.appendChild(el);
-	tray.classList.remove("hidden");
+/**
+ * Roll back a send the server queued. The prompt is not part of the
+ * conversation yet — it is rendered from the server queue snapshot — but the
+ * active run keeps the session busy.
+ *
+ * `chatSeq` is deliberately kept: the queued prompt carries this seq on the
+ * server and is persisted with it when the queue is replayed. Reusing the seq
+ * for the next message would produce two user messages sharing one seq, which
+ * breaks echo suppression and makes deletion truncate at the wrong message.
+ */
+function rollbackQueuedSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
+	restoreOptimisticSessionState(snapshot, userEl);
 }
 
 // ── Main sendChat function ──────────────────────────────────
@@ -384,7 +385,9 @@ async function sendChatAsync(): Promise<void> {
 			const accepted = handleChatSendRpcResponse(res, userEl);
 			if (!accepted) {
 				rollbackOptimisticSend(rollbackSnapshot, userEl);
-			} else if (res.ok && !res.payload?.queued) {
+			} else if (res.payload?.queued) {
+				rollbackQueuedSend(rollbackSnapshot, userEl);
+			} else {
 				msg.enableDeleteAction();
 			}
 		} catch {

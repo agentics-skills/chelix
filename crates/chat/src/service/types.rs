@@ -18,7 +18,7 @@ use {
     chelix_providers::ProviderRegistry,
     chelix_service_traits::SessionMutationCoordinator,
     chelix_sessions::{
-        PersistedMessage,
+        PersistedMessage, SessionPromptQueueStore,
         message::{PersistedFunction, PersistedToolCall},
         metadata::SqliteSessionMetadata,
         state_store::SessionStateStore,
@@ -43,15 +43,10 @@ use crate::{
         discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
         prepare_run_registry, prompt_build_limits_from_config,
     },
+    prompt_queue::PromptQueue,
     runtime::ChatRuntime,
     types::*,
 };
-
-/// A message that arrived while an agent run was already active on the session.
-#[derive(Debug, Clone)]
-pub(in crate::service) struct QueuedMessage {
-    pub(in crate::service) params: Value,
-}
 
 /// A tool call currently executing within an active agent run.
 #[derive(Debug, Clone, Serialize)]
@@ -444,8 +439,8 @@ pub struct LiveChatService {
     pub(in crate::service) hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     /// Per-session coordinator ensuring session history mutations do not race chat turns.
     pub(in crate::service) session_mutations: Arc<SessionMutationCoordinator>,
-    /// Per-session message queue for messages arriving during an active run.
-    pub(in crate::service) message_queue: Arc<RwLock<HashMap<String, Vec<QueuedMessage>>>>,
+    /// Durable per-session queue of prompts submitted during an active run.
+    pub(in crate::service) prompt_queue: Arc<PromptQueue>,
     /// Per-session last-seen client sequence number for ordering diagnostics.
     pub(in crate::service) last_client_seq: Arc<RwLock<HashMap<String, u64>>>,
     /// Per-session accumulated thinking content for active runs, so it can be
@@ -491,10 +486,12 @@ impl LiveChatService {
         state: Arc<dyn ChatRuntime>,
         session_store: Arc<SessionStore>,
         session_metadata: Arc<SqliteSessionMetadata>,
+        prompt_queue_store: Arc<SessionPromptQueueStore>,
         config: chelix_config::ChelixConfig,
         agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
         tools_config_source: chelix_config::ToolsConfigSource,
     ) -> Self {
+        let prompt_queue = Arc::new(PromptQueue::new(prompt_queue_store, Arc::clone(&state)));
         Self {
             providers,
             model_store,
@@ -507,9 +504,9 @@ impl LiveChatService {
             session_store,
             session_metadata,
             session_state_store: None,
+            prompt_queue,
             hook_registry: None,
             session_mutations: Arc::new(SessionMutationCoordinator::default()),
-            message_queue: Arc::new(RwLock::new(HashMap::new())),
             last_client_seq: Arc::new(RwLock::new(HashMap::new())),
             active_thinking_text: Arc::new(RwLock::new(HashMap::new())),
             active_tool_calls: Arc::new(RwLock::new(HashMap::new())),

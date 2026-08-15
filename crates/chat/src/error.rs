@@ -8,6 +8,9 @@ pub enum Error {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    #[error(transparent)]
+    Session(#[from] chelix_sessions::Error),
+
     #[error("no config directory")]
     NoConfigDirectory,
 

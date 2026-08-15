@@ -65,10 +65,10 @@ async fn chat_abort_requires_session_key() {
 }
 
 #[tokio::test]
-async fn chat_cancel_queued_requires_session_key() {
+async fn chat_cancel_queued_prompts_requires_session_key() {
     assert_requires_session_key(
-        r#"mutation { chat { cancelQueued { ok } } }"#,
-        "cancelQueued",
+        r#"mutation { chat { cancelQueuedPrompts } }"#,
+        "cancelQueuedPrompts",
     )
     .await;
 }

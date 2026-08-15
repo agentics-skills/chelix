@@ -199,6 +199,6 @@ export default {
 
 	// ── Queued messages ──────────────────────────────────────
 	queuedMessages: {
-		cancelAllTooltip: "Cancel all queued",
+		cancelTooltip: "Cancel this queued message",
 	},
 };

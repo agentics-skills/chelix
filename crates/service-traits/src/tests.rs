@@ -19,8 +19,12 @@ impl ChatService for DefaultRefreshChatService {
         Ok(json!({}))
     }
 
-    async fn cancel_queued(&self, _params: serde_json::Value) -> ServiceResult {
-        Ok(json!({}))
+    async fn prompt_queue_list(&self, _params: serde_json::Value) -> ServiceResult {
+        Ok(json!({ "prompts": [] }))
+    }
+
+    async fn prompt_queue_cancel(&self, _params: serde_json::Value) -> ServiceResult {
+        Ok(json!({ "prompts": [] }))
     }
 
     async fn history(&self, _params: serde_json::Value) -> ServiceResult {

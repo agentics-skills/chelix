@@ -5,6 +5,7 @@ mod memory_tools;
 mod message;
 mod models;
 mod prompt;
+mod prompt_queue;
 mod run_with_tools;
 mod service;
 mod streaming;
