@@ -3,19 +3,23 @@
 mod get_directory_contents;
 mod get_file_contents;
 mod get_latest_release;
+mod issue_read;
+mod list_issues;
 mod list_pull_requests;
 mod list_releases;
 mod pull_request_read;
 mod request;
 mod search_code;
+mod search_issues;
 mod search_repositories;
 
 pub use {
     get_directory_contents::GithubGetDirectoryContentsTool,
     get_file_contents::GithubGetFileContentsTool, get_latest_release::GithubGetLatestReleaseTool,
+    issue_read::GithubIssueReadTool, list_issues::GithubListIssuesTool,
     list_pull_requests::GithubListPullRequestsTool, list_releases::GithubListReleasesTool,
     pull_request_read::GithubPullRequestReadTool, search_code::GithubSearchCodeTool,
-    search_repositories::GithubSearchRepositoriesTool,
+    search_issues::GithubSearchIssuesTool, search_repositories::GithubSearchRepositoriesTool,
 };
 
 use serde_json::Value;

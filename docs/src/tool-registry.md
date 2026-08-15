@@ -289,12 +289,12 @@ request_timeout_secs = 300
 ```
 
 The tools are always registered. Code search and file-content reads require a
-configured token before issuing a request. Repository search, directory listing,
-release listing, latest-release reads, pull-request listing, and pull-request reads
-can access public data without a token; if GitHub denies an unauthenticated request
-with `401`/`403`, the call returns the explicit missing-token error. A `401`/`403` response received with a
-configured token is an authorization error rather than a re-authentication
-prompt.
+configured token before issuing a request. Repository and issue search, directory
+listing, release and issue listing, latest-release and issue reads, pull-request
+listing, and pull-request reads can access public data without a token; if GitHub
+denies an unauthenticated request with `401`/`403`, the call returns the explicit
+missing-token error. A `401`/`403` response received with a configured token is an
+authorization error rather than a re-authentication prompt.
 
 Every request sends `X-GitHub-Api-Version: 2022-11-28` and uses
 `Accept: application/vnd.github.v3+json` unless an endpoint requires a
@@ -335,6 +335,18 @@ lines per repository separated by `----------`. An empty result set returns
 `No repositories found for this query.`. A non-successful API response returns
 the GitHub response body, or the HTTP status line when the body is empty.
 
+### `github_search_issues`
+
+Searches issues via `GET /search/issues`. `query` is required; the optional integer
+`perPage` selects the page size between 1 and 100. The tool adds `is:issue` when the
+query does not already contain that qualifier and excludes any unexpected result
+containing the GitHub `pull_request` marker. The result starts with
+`GitHub Issue Search Results (showing <n> of <total>)`. Each issue contains optional
+`Repo`, then `Number`, `Title`, `State`, optional `Author`, `Comments`, `Created`,
+`Updated`, optional `Labels`, and `URL`. Entries are separated by `----------`. An
+empty result returns `No issues found for this query.`. A non-successful response
+returns the GitHub response body, or the HTTP status line when the body is empty.
+
 ### `github_get_file_contents`
 
 Reads one file via `GET /repos/{owner}/{repo}/contents/{path}`. `owner`,
@@ -370,6 +382,35 @@ result starts with `Latest GitHub Release for <owner>/<repo>`, followed by `Tag`
 optional `Name`, `Draft`, `Pre-release`, `Published`, and `URL`. A null published
 date is rendered as `N/A`. A non-successful response returns the GitHub response
 body, or the HTTP status line when the body is empty.
+
+### `github_issue_read`
+
+Reads one issue via `GET /repos/{owner}/{repo}/issues/{issue_number}`. `owner`,
+`repo`, and the integer `issueNumber` are required. The result starts with
+`GitHub Issue (full) <owner>/<repo> #<number>` and preserves the reference field
+ordering for issue metadata, optional user, closer, milestone, labels, and reaction
+fields. The final `Body` section contains the complete issue body or `(empty)` when
+the body is absent or blank. A non-successful response returns the GitHub response
+body, or the HTTP status line when the body is empty.
+
+### `github_list_issues`
+
+Lists open repository issues via `GET /search/issues` with the
+`repo:<owner>/<repo> is:issue state:open` query, so GitHub excludes pull requests
+and closed issues before applying pagination. The request uses `sort=created` and
+`order=desc`. `owner` and
+`repo` are required and accept only ASCII letters, digits, hyphens, underscores,
+and periods; the optional integer `perPage` selects the issue page size between 1
+and 100. The result starts with
+`GitHub Issues for <owner>/<repo> (showing <n>)`. Each issue contains
+`Number`, `Title`, `State`, optional `Author`, `Comments`, `Updated`, optional
+`Labels`, and `URL`. Entries are separated by `----------`. An empty result returns
+`No issues found for <owner>/<repo>.`. A non-successful response returns the GitHub
+response body, or the HTTP status line when the body is empty.
+
+All three issue tools use the shared rate-limit coordinator and single controlled
+retry described above. Their returned strings use the runner's standard tool-result
+persistence and truncation path.
 
 ### `github_list_releases`
 

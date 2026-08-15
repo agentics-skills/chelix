@@ -19,7 +19,8 @@ pub use {
     registration::register_tools,
     tools::{
         GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubGetLatestReleaseTool,
-        GithubListPullRequestsTool, GithubListReleasesTool, GithubPullRequestReadTool,
-        GithubSearchCodeTool, GithubSearchRepositoriesTool,
+        GithubIssueReadTool, GithubListIssuesTool, GithubListPullRequestsTool,
+        GithubListReleasesTool, GithubPullRequestReadTool, GithubSearchCodeTool,
+        GithubSearchIssuesTool, GithubSearchRepositoriesTool,
     },
 };

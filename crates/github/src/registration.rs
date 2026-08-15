@@ -8,8 +8,9 @@ use crate::{
     client::GitHubClient,
     tools::{
         GithubGetDirectoryContentsTool, GithubGetFileContentsTool, GithubGetLatestReleaseTool,
-        GithubListPullRequestsTool, GithubListReleasesTool, GithubPullRequestReadTool,
-        GithubSearchCodeTool, GithubSearchRepositoriesTool,
+        GithubIssueReadTool, GithubListIssuesTool, GithubListPullRequestsTool,
+        GithubListReleasesTool, GithubPullRequestReadTool, GithubSearchCodeTool,
+        GithubSearchIssuesTool, GithubSearchRepositoriesTool,
     },
 };
 
@@ -32,6 +33,8 @@ pub fn register_tools(registry: &mut ToolRegistry, config: &GitHubConfig) {
     registry.register(Box::new(GithubGetLatestReleaseTool::new(Arc::clone(
         &client,
     ))));
+    registry.register(Box::new(GithubIssueReadTool::new(Arc::clone(&client))));
+    registry.register(Box::new(GithubListIssuesTool::new(Arc::clone(&client))));
     registry.register(Box::new(GithubListPullRequestsTool::new(Arc::clone(
         &client,
     ))));
@@ -40,6 +43,7 @@ pub fn register_tools(registry: &mut ToolRegistry, config: &GitHubConfig) {
         &client,
     ))));
     registry.register(Box::new(GithubSearchCodeTool::new(Arc::clone(&client))));
+    registry.register(Box::new(GithubSearchIssuesTool::new(Arc::clone(&client))));
     registry.register(Box::new(GithubSearchRepositoriesTool::new(client)));
 }
 
@@ -61,10 +65,13 @@ mod tests {
             "github_get_directory_contents".to_string(),
             "github_get_file_contents".to_string(),
             "github_get_latest_release".to_string(),
+            "github_issue_read".to_string(),
+            "github_list_issues".to_string(),
             "github_list_pull_requests".to_string(),
             "github_list_releases".to_string(),
             "github_pull_request_read".to_string(),
             "github_search_code".to_string(),
+            "github_search_issues".to_string(),
             "github_search_repositories".to_string(),
         ]);
     }
