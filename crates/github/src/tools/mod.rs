@@ -2,13 +2,16 @@
 
 mod get_directory_contents;
 mod get_file_contents;
+mod list_pull_requests;
+mod pull_request_read;
 mod request;
 mod search_code;
 mod search_repositories;
 
 pub use {
     get_directory_contents::GithubGetDirectoryContentsTool,
-    get_file_contents::GithubGetFileContentsTool, search_code::GithubSearchCodeTool,
+    get_file_contents::GithubGetFileContentsTool, list_pull_requests::GithubListPullRequestsTool,
+    pull_request_read::GithubPullRequestReadTool, search_code::GithubSearchCodeTool,
     search_repositories::GithubSearchRepositoriesTool,
 };
 
