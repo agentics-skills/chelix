@@ -15,7 +15,6 @@ chelix-browser          = { workspace = true }
 chelix-caldav           = { optional = true, workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
-chelix-claude-import    = { optional = true, workspace = true }
 chelix-code-index       = { workspace = true }
 chelix-common           = { workspace = true }
 chelix-config           = { workspace = true }
@@ -90,13 +89,11 @@ bundled-skills = [
   "chelix-tools/bundled-skills",
 ]
 caldav = ["dep:chelix-caldav"]
-claude-import = ["dep:chelix-claude-import"]
 code-index-builtin = ["chelix-code-index/builtin"]
 default = [
   "agent",
   "bundled-skills",
   "caldav",
-  "claude-import",
   "code-index-builtin",
   "discord",
   "file-watcher",

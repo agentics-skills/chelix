@@ -111,10 +111,6 @@ export interface RpcMethodMap {
 	"models.list_all": ModelInfo[];
 	"models.test": unknown;
 
-	// ── External imports ────────────────────────────────────────
-	"claude.detect": unknown;
-	"claude.import": unknown;
-
 	// ── Projects ────────────────────────────────────────────────
 	"projects.complete_path": unknown;
 	"projects.delete": unknown;

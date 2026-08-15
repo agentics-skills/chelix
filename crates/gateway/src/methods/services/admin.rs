@@ -1276,35 +1276,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
-    // ── Claude import ────────────────────────────────────────────────────
-
-    reg.register(
-        "claude.detect",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .claude_detect()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "claude.import",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .onboarding
-                    .claude_import(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
     // ── Logs ────────────────────────────────────────────────────────────────
 
     reg.register(

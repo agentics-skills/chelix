@@ -32,7 +32,6 @@ while IFS=$'\t' read -r lines file; do
 done < <(
   find . \( -name '*.rs' -o -name '*.ts' -o -name '*.tsx' \) \
     -not -path './target/*' \
-    -not -path './.claude/*' \
     -not -path './.chelix/*' \
     -not -path '*/node_modules/*' \
     -not -path '*/e2e/*' \

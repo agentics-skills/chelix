@@ -31,7 +31,6 @@ mod data_commands;
 mod db_commands;
 mod doctor_commands;
 mod hooks_commands;
-mod import_commands;
 mod memory_commands;
 mod sandbox_commands;
 mod service_commands;
@@ -170,11 +169,6 @@ enum Commands {
     Service {
         #[command(subcommand)]
         action: service_commands::ServiceAction,
-    },
-    /// Import data from supported external AI tools.
-    Import {
-        #[command(subcommand)]
-        action: import_commands::ImportAction,
     },
     /// Voice call management (initiate, status, end).
     VoiceCall {
@@ -473,7 +467,6 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Db { action }) => db_commands::handle_db(action).await,
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
         Some(Commands::Service { action }) => service_commands::handle_service(action),
-        Some(Commands::Import { action }) => import_commands::handle_import(action).await,
         Some(Commands::Skills { action }) => handle_skills(action).await,
         Some(Commands::Config { action }) => config_commands::handle_config(action).await,
         Some(Commands::Doctor) => doctor_commands::handle_doctor().await,

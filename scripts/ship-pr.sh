@@ -49,7 +49,7 @@ detect_area() {
     echo "docs"
     return
   fi
-  if [[ "$p" == .claude/* || "$p" == .codex/* || "$p" == scripts/* || "$p" == justfile ]]; then
+  if [[ "$p" == .codex/* || "$p" == scripts/* || "$p" == justfile ]]; then
     echo "tooling"
     return
   fi

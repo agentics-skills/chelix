@@ -136,15 +136,3 @@ pub async fn sync_runtime_webauthn_host_and_notice(
         None
     }
 }
-
-// ── Feature-gated UI helpers ─────────────────────────────────────────────────
-
-#[cfg(feature = "claude-import")]
-pub fn claude_detected_for_ui() -> bool {
-    chelix_claude_import::detect::detect().is_some()
-}
-
-#[cfg(not(feature = "claude-import"))]
-pub fn claude_detected_for_ui() -> bool {
-    false
-}
