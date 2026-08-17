@@ -56,6 +56,7 @@
   - [`tools.browser`](#toolsbrowser)
 - **Tools — Web & Data**
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
+  - [`tools.context7`](#toolscontext7)
   - [`tools.github`](#toolsgithub)
   - [`tools.maps`](#toolsmaps)
 - **Tools — Policy & Agent Limits**
@@ -400,6 +401,13 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | only_main_content  | bool            | `true`                        | Only extract main content (skip navs, footers, etc.).                                       |
 | timeout_seconds    | integer         | `30`                          | HTTP request timeout in seconds.                                                            |
 | cache_ttl_minutes  | integer         | `15`                          | In-memory cache TTL in minutes (0 to disable).                                              |
+
+### `tools.context7` — Context7Config
+
+| Key                   | Type            | Default | Description                                                        |
+| --------------------- | --------------- | ------- | ------------------------------------------------------------------ |
+| token                 | optional string | —       | Context7 API token used by every `context7_*` tool.                |
+| request_timeout_secs  | integer         | `300`   | Per-request Context7 HTTP timeout in seconds. Must be at least `1`. |
 
 ### `tools.github` — GitHubConfig
 

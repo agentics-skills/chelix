@@ -95,7 +95,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 - **Communication** — Web UI, Telegram, Signal, Discord, API access, voice I/O (8 TTS + 7 STT providers), mobile PWA with push notifications
 - **Generative UI** — A2UI v0.9.1 basic-catalog interfaces rendered in web chat with standard event actions returned to the waiting agent tool
 - **Memory & Recall** — Per-agent memory workspaces, embeddings-powered long-term memory, hybrid vector + full-text search, session persistence with auto-compaction, cross-session recall, Cursor-compatible project context, context-file safety scanning
-- **Extensibility** — MCP servers (stdio + HTTP/SSE), skill system, 14 lifecycle hook events with circuit breaker
+- **Extensibility** — MCP servers (stdio + HTTP/SSE), Context7 documentation tools, skill system, 14 lifecycle hook events with circuit breaker
 - **Security** — Encryption-at-rest vault (XChaCha20-Poly1305 + Argon2id), password + passkey + API key auth, sandbox isolation, SSRF/CSWSH protection
 - **Operations** — Cron scheduling, OpenTelemetry tracing, Prometheus metrics, cloud deploy, managed SSH deploy keys, host-pinned SSH targets, and live tool inventory in Settings
 

@@ -281,6 +281,50 @@ The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
 `elapsed`, `stats`), rows per detail mode, captured `stderr`, and the rg
 `exitCode`. Exit code 2 (for example an invalid regex) is a tool error.
 
+## Context7 tools
+
+The `context7_*` tools call the Context7 API through one shared client. The
+optional API token is read from `tools.context7.token`:
+
+```toml
+[tools.context7]
+token = "ctx7sk-..."
+request_timeout_secs = 300
+```
+
+Every request sends `X-Context7-Source: chelix` and sends the configured token as
+`Authorization: Bearer <token>`. Every request has the finite HTTP deadline
+configured by `tools.context7.request_timeout_secs` (default `300`, minimum `1`).
+A `401` or `403` response is returned as an explicit authorization error.
+
+A `429` response with a numeric `Retry-After` header starts or extends one shared
+cooldown for all Context7 calls across concurrent sessions. The client adds a
+5-second buffer, blocks callers behind the shared gate, admits one probe after the
+cooldown, and retries the limited call once through that gate. Other callers wait
+for the probe result. Cancellation or timeout of the probe releases the lease and
+reopens the gate. A `429` response without a usable `Retry-After` value is returned
+without an invented cooldown or retry delay.
+
+### `context7_resolve_library_id`
+
+Calls `GET /api/v1/search?query=<libraryName>`. `libraryName` is required. The
+result is the reference Markdown framing followed by matching libraries separated
+with `----------` and fields for title, Context7-compatible library ID,
+description, code snippets, trust score, and versions when present.
+
+### `context7_get_library_docs`
+
+Calls `GET /api/v1/<library-id>?type=txt`. The
+`context7CompatibleLibraryID` field is required. Optional `topic` narrows the
+content. Optional positive `tokens` values below `6000` are normalized to `6000`;
+other positive values are truncated to an integer. The successful API text is
+returned unchanged. Empty content and the Context7 no-content sentinel strings
+return the reference documentation-not-found message.
+
+Both tools return strings and retain the default tool-result persistence and
+truncation policy. Full results therefore pass through the common runner pipeline
+and oversized in-context copies point to the persisted text file.
+
 ## GitHub tools
 
 The `github_*` tools call the GitHub REST API through one shared client. When

@@ -610,6 +610,9 @@ pub(super) async fn complete_startup(
             tool_registry.register(Box::new(t));
         }
 
+        #[cfg(feature = "context7")]
+        chelix_context7::register_tools(&mut tool_registry, &config.tools.context7);
+
         #[cfg(feature = "github")]
         chelix_github::register_tools(&mut tool_registry, &config.tools.github);
 

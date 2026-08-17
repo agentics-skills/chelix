@@ -137,6 +137,26 @@ async fn show_status() -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
+    static DATA_DIR_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    struct DataDirTestGuard {
+        _lock: tokio::sync::MutexGuard<'static, ()>,
+    }
+
+    impl DataDirTestGuard {
+        async fn set(path: std::path::PathBuf) -> Self {
+            let lock = DATA_DIR_TEST_LOCK.lock().await;
+            chelix_config::set_data_dir(path);
+            Self { _lock: lock }
+        }
+    }
+
+    impl Drop for DataDirTestGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_data_dir();
+        }
+    }
+
     #[test]
     fn test_memory_db_path_contains_memory_db() {
         let path = memory_db_path();
@@ -151,7 +171,7 @@ mod tests {
     async fn test_search_missing_db() {
         // Point data dir to a temp directory with no memory.db
         let tmp = tempfile::TempDir::new().unwrap();
-        chelix_config::set_data_dir(tmp.path().to_path_buf());
+        let _data_dir = DataDirTestGuard::set(tmp.path().to_path_buf()).await;
 
         let result = search_memory("test", 5, false).await;
         assert!(result.is_err());
@@ -203,7 +223,7 @@ mod tests {
         pool.close().await;
 
         // Point data dir to our temp directory
-        chelix_config::set_data_dir(tmp.path().to_path_buf());
+        let _data_dir = DataDirTestGuard::set(tmp.path().to_path_buf()).await;
 
         // Search should find results
         let pool = open_memory_pool().await.unwrap();
@@ -225,7 +245,7 @@ mod tests {
         chelix_memory::schema::run_migrations(&pool).await.unwrap();
         pool.close().await;
 
-        chelix_config::set_data_dir(tmp.path().to_path_buf());
+        let _data_dir = DataDirTestGuard::set(tmp.path().to_path_buf()).await;
 
         let pool = open_memory_pool().await.unwrap();
         let store = chelix_memory::store_sqlite::SqliteMemoryStore::new(pool);
@@ -238,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn test_status_missing_db() {
         let tmp = tempfile::TempDir::new().unwrap();
-        chelix_config::set_data_dir(tmp.path().to_path_buf());
+        let _data_dir = DataDirTestGuard::set(tmp.path().to_path_buf()).await;
 
         // Should not error, just print a message
         let result = show_status().await;
@@ -284,7 +304,7 @@ mod tests {
 
         pool.close().await;
 
-        chelix_config::set_data_dir(tmp.path().to_path_buf());
+        let _data_dir = DataDirTestGuard::set(tmp.path().to_path_buf()).await;
 
         // Status should succeed and report 1 file, 1 chunk
         let ro_pool = open_memory_pool().await.unwrap();

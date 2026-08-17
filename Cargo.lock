@@ -1499,6 +1499,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "chelix-context7"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "mockito",
+ "reqwest 0.13.2",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "chelix-courier"
 version = "0.1.0"
 dependencies = [
@@ -1627,6 +1648,7 @@ dependencies = [
  "chelix-code-index",
  "chelix-common",
  "chelix-config",
+ "chelix-context7",
  "chelix-cron",
  "chelix-discord",
  "chelix-external-agents",

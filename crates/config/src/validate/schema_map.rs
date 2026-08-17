@@ -161,6 +161,13 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
+    let context7 = || {
+        Struct(HashMap::from([
+            ("token", Leaf),
+            ("request_timeout_secs", Leaf),
+        ]))
+    };
+
     let github = || {
         Struct(HashMap::from([
             ("pat", Leaf),
@@ -172,6 +179,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         Struct(HashMap::from([
             ("execute_command", execute_command()),
             ("browser", browser()),
+            ("context7", context7()),
             ("github", github()),
             (
                 "policy",
