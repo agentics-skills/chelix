@@ -5,7 +5,7 @@ use std::{
 };
 
 use {
-    crate::{Error, Result},
+    crate::{Error, PersistedMessage, Result, filter_ui_history},
     fd_lock::RwLock,
     serde::{Deserialize, Serialize},
 };
@@ -238,14 +238,23 @@ impl SessionStore {
         .await?
     }
 
+    /// Count the compact UI history entities for session metadata.
+    pub async fn ui_message_count(&self, key: &str) -> Result<u32> {
+        let count = filter_ui_history(self.read(key).await?)?.len();
+        u32::try_from(count)
+            .map_err(|error| Error::message(format!("UI message count exceeds u32: {error}")))
+    }
+
     /// Read all messages from a session that match a given `run_id`.
     pub async fn read_by_run_id(&self, key: &str, run_id: &str) -> Result<Vec<serde_json::Value>> {
-        let all = self.read(key).await?;
-        let run_id = run_id.to_string();
-        Ok(all
-            .into_iter()
-            .filter(|msg| msg.get("run_id").and_then(|v| v.as_str()) == Some(&run_id))
-            .collect())
+        let mut matching = Vec::new();
+        for message in self.read(key).await? {
+            let persisted = serde_json::from_value::<PersistedMessage>(message.clone())?;
+            if persisted.run_id() == Some(run_id) {
+                matching.push(message);
+            }
+        }
+        Ok(matching)
     }
 
     /// Read the last N messages from a session file.
@@ -417,10 +426,10 @@ impl SessionStore {
     ///
     /// Lines that fail to deserialize into `PersistedMessage` are skipped
     /// (with a warning), matching the behavior of [`read`].
-    pub async fn read_typed(&self, key: &str) -> Result<Vec<crate::message::PersistedMessage>> {
+    pub async fn read_typed(&self, key: &str) -> Result<Vec<PersistedMessage>> {
         let path = self.path_for(key);
 
-        tokio::task::spawn_blocking(move || -> Result<Vec<crate::message::PersistedMessage>> {
+        tokio::task::spawn_blocking(move || -> Result<Vec<PersistedMessage>> {
             if !path.exists() {
                 return Ok(vec![]);
             }
@@ -446,20 +455,16 @@ impl SessionStore {
     }
 
     /// Read the last N messages as typed [`PersistedMessage`] values.
-    pub async fn read_last_n_typed(
-        &self,
-        key: &str,
-        n: usize,
-    ) -> Result<Vec<crate::message::PersistedMessage>> {
+    pub async fn read_last_n_typed(&self, key: &str, n: usize) -> Result<Vec<PersistedMessage>> {
         let path = self.path_for(key);
 
-        tokio::task::spawn_blocking(move || -> Result<Vec<crate::message::PersistedMessage>> {
+        tokio::task::spawn_blocking(move || -> Result<Vec<PersistedMessage>> {
             if !path.exists() {
                 return Ok(vec![]);
             }
             let file = File::open(&path)?;
             let reader = BufReader::new(file);
-            let mut all: Vec<crate::message::PersistedMessage> = Vec::new();
+            let mut all: Vec<PersistedMessage> = Vec::new();
             for line in reader.lines() {
                 let line = line?;
                 let trimmed = line.trim();
@@ -480,7 +485,7 @@ impl SessionStore {
     pub async fn replace_history_typed(
         &self,
         key: &str,
-        messages: &[crate::message::PersistedMessage],
+        messages: &[PersistedMessage],
     ) -> Result<()> {
         let path = self.path_for(key);
         let values: Vec<serde_json::Value> = messages.iter().map(|m| m.to_value()).collect();
@@ -566,11 +571,7 @@ impl SessionStore {
     }
 
     /// Append a typed message to the session file.
-    pub async fn append_typed(
-        &self,
-        key: &str,
-        message: &crate::message::PersistedMessage,
-    ) -> Result<()> {
+    pub async fn append_typed(&self, key: &str, message: &PersistedMessage) -> Result<()> {
         self.append(key, &message.to_value()).await
     }
 
@@ -584,15 +585,13 @@ impl SessionStore {
         key: &str,
         message_index: usize,
         update: F,
-    ) -> Result<crate::message::PersistedMessage>
+    ) -> Result<PersistedMessage>
     where
-        F: FnOnce(crate::message::PersistedMessage) -> crate::message::PersistedMessage
-            + Send
-            + 'static,
+        F: FnOnce(PersistedMessage) -> PersistedMessage + Send + 'static,
     {
         let path = self.path_for(key);
 
-        tokio::task::spawn_blocking(move || -> Result<crate::message::PersistedMessage> {
+        tokio::task::spawn_blocking(move || -> Result<PersistedMessage> {
             let Some(parent) = path.parent() else {
                 return Err(Error::message(path.display().to_string()));
             };
@@ -864,6 +863,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ui_message_count_compacts_tool_lifecycle_transitions() {
+        let (store, _dir) = temp_store();
+        let lifecycle_base = json!({
+            "role": "tool_lifecycle",
+            "toolCallId": "call-1",
+            "toolName": "execute_command",
+            "emittedAtMs": 1,
+            "runId": "run-1"
+        });
+
+        store
+            .append("main", &json!({"role": "user", "content": "run it"}))
+            .await
+            .unwrap();
+        let mut created = lifecycle_base.clone();
+        created["sequence"] = json!(1);
+        created["stage"] = json!("created");
+        created["providerIndex"] = json!(0);
+        store.append("main", &created).await.unwrap();
+        let mut completed = lifecycle_base;
+        completed["sequence"] = json!(2);
+        completed["stage"] = json!("completed");
+        completed["arguments"] = json!({"command": "echo done"});
+        completed["success"] = json!(true);
+        completed["result"] = json!("{\"stdout\":\"done\",\"exitCode\":0}");
+        completed["error"] = serde_json::Value::Null;
+        store.append("main", &completed).await.unwrap();
+
+        assert_eq!(store.count("main").await.unwrap(), 3);
+        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn read_by_run_id_matches_camel_case_tool_lifecycle_identity() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append(
+                "main",
+                &json!({"role": "user", "content": "run it", "run_id": "run-1"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "tool_lifecycle",
+                    "toolCallId": "call-1",
+                    "toolName": "execute_command",
+                    "sequence": 1,
+                    "emittedAtMs": 1,
+                    "runId": "run-1",
+                    "stage": "completed",
+                    "arguments": {"command": "echo done"},
+                    "success": true,
+                    "result": "{\"stdout\":\"done\",\"exitCode\":0}",
+                    "error": null
+                }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "tool_lifecycle",
+                    "toolCallId": "call-2",
+                    "toolName": "execute_command",
+                    "sequence": 1,
+                    "emittedAtMs": 1,
+                    "runId": "run-2",
+                    "stage": "created",
+                    "providerIndex": 0
+                }),
+            )
+            .await
+            .unwrap();
+
+        let messages = store.read_by_run_id("main", "run-1").await.unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "tool_lifecycle");
+        assert_eq!(messages[1]["runId"], "run-1");
+    }
+
+    #[tokio::test]
     async fn test_search_matching() {
         let (store, _dir) = temp_store();
 
@@ -1112,7 +1198,18 @@ mod tests {
         store
             .append(
                 "main",
-                &json!({"role": "tool_result", "tool_name": "execute_command", "success": true}),
+                &json!({
+                    "role": "tool_lifecycle",
+                    "toolCallId": "call-tail",
+                    "toolName": "execute_command",
+                    "sequence": 1,
+                    "emittedAtMs": 1,
+                    "stage": "completed",
+                    "arguments": {"command": "echo tail"},
+                    "success": true,
+                    "result": "{\"stdout\":\"tail\",\"exitCode\":0}",
+                    "error": null
+                }),
             )
             .await
             .unwrap();

@@ -326,6 +326,20 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	return card;
 }
 
+export function updateToolCardParameters(card: HTMLElement, argumentsValue: unknown, executionMode?: string): void {
+	const toolName = card.dataset.toolName || "tool";
+	const parameters = card.querySelector<HTMLElement>(".tool-call-params-details .tool-call-raw-json");
+	if (parameters) parameters.textContent = stringifyValue(argumentsValue);
+	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
+	if (summary) renderCommand(summary, buildToolSummary(toolName, argumentsValue, executionMode));
+}
+
+export function setToolCardProgress(card: HTMLElement, message: string): void {
+	setToolCardStatus(card, "running", message || STATUS_LABELS.running);
+	const placeholder = getResultContent(card).querySelector<HTMLElement>(".tool-call-result-placeholder");
+	if (placeholder) placeholder.textContent = message || "Waiting for tool result…";
+}
+
 export function toolCallIds(toolCalls: unknown): string[] {
 	if (!Array.isArray(toolCalls)) return [];
 	const ids: string[] = [];

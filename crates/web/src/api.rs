@@ -327,10 +327,18 @@ pub async fn api_session_history_handler(
         },
     };
 
-    let server_count = metadata_count.unwrap_or(raw_history.len() as u64);
-
-    let full_history = filter_ui_history(raw_history);
+    let full_history = match filter_ui_history(raw_history) {
+        Ok(history) => history,
+        Err(error) => {
+            return api_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                SESSION_HISTORY_FAILED,
+                error.to_string(),
+            );
+        },
+    };
     let total_messages = full_history.len() as u64;
+    let server_count = metadata_count.unwrap_or(total_messages);
     let (mut history, has_more, next_cursor) = paginated_history(full_history, cursor, limit);
 
     let history_cache_hit = cursor.is_none()

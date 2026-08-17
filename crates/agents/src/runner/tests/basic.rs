@@ -602,24 +602,20 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     tools.register(Box::new(CaptureToolCallContext {
         arguments: Arc::clone(&captured),
     }));
-    let starts = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let starts_for_events = Arc::clone(&starts);
-    let on_event: OnEvent = Box::new(move |event| {
-        if let RunnerEvent::ToolCallStart { arguments, .. } = event {
-            starts_for_events.lock().unwrap().push(arguments);
-        }
-    });
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
     let mut hooks = HookRegistry::new();
     hooks.register(Arc::new(RewriteToolArgsHook {
         replacement: serde_json::json!({}),
     }));
 
-    let result = run_agent_loop_streaming(
+    let result = run_agent_loop_streaming_with_tool_lifecycle(
         provider,
         &tools,
         "You are a test bot.",
         &UserContent::text("capture context"),
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
         Some(serde_json::json!({
             "_session_key": "session-runtime-context",
@@ -641,9 +637,94 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     assert_eq!(arguments["_session_key"], "session-runtime-context");
     assert_eq!(arguments["_run_id"], "run-runtime-context");
     assert_eq!(arguments["_tool_call_id"], "call_runtime_context");
-    let starts = starts.lock().unwrap();
-    assert_eq!(starts.len(), 1);
-    assert!(starts[0].get("_tool_call_id").is_none());
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let invocation_events = lifecycle_events
+        .iter()
+        .filter(|event| event.lifecycle.tool_call_id == "call_runtime_context")
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        invocation_events[0].lifecycle.update,
+        chelix_common::tool_lifecycle::ToolLifecycleUpdate::Created {
+            provider_index: Some(0)
+        }
+    ));
+    assert_eq!(invocation_events[0].lifecycle.sequence, 0);
+    assert!(matches!(
+        &invocation_events[1].lifecycle.update,
+        chelix_common::tool_lifecycle::ToolLifecycleUpdate::InputStreaming {
+            arguments_delta,
+        } if arguments_delta == "{}"
+    ));
+    assert_eq!(invocation_events[1].lifecycle.sequence, 1);
+    let input_ready = match &invocation_events[2].lifecycle.update {
+        chelix_common::tool_lifecycle::ToolLifecycleUpdate::InputReady { arguments } => arguments,
+        other => panic!("expected input-ready lifecycle event, got {other:?}"),
+    };
+    assert_eq!(invocation_events[2].lifecycle.sequence, 2);
+    assert!(input_ready.get("_tool_call_id").is_none());
+}
+
+#[tokio::test]
+async fn test_waiting_for_execution_receipt_blocks_tool_dispatch() {
+    let provider = Arc::new(ToolCallContextStreamingProvider {
+        stream_calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let captured = Arc::new(std::sync::Mutex::new(None));
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(CaptureToolCallContext {
+        arguments: Arc::clone(&captured),
+    }));
+    let waiting_seen = Arc::new(tokio::sync::Notify::new());
+    let release_waiting = Arc::new(tokio::sync::Notify::new());
+    let on_tool_lifecycle: OnToolLifecycle = {
+        let waiting_seen = Arc::clone(&waiting_seen);
+        let release_waiting = Arc::clone(&release_waiting);
+        Arc::new(move |event| {
+            let waiting_seen = Arc::clone(&waiting_seen);
+            let release_waiting = Arc::clone(&release_waiting);
+            Box::pin(async move {
+                if event.lifecycle.stage()
+                    == chelix_common::tool_lifecycle::ToolLifecycleStage::WaitingForExecution
+                {
+                    waiting_seen.notify_one();
+                    release_waiting.notified().await;
+                }
+                Ok(())
+            })
+        })
+    };
+
+    let user_content = UserContent::text("capture context");
+    let run = run_agent_loop_streaming_with_tool_lifecycle(
+        provider,
+        &tools,
+        "You are a test bot.",
+        &user_content,
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+    tokio::pin!(run);
+    tokio::select! {
+        () = waiting_seen.notified() => {},
+        _ = &mut run => panic!("runner crossed the waiting boundary early"),
+    }
+    assert!(
+        captured.lock().unwrap().is_none(),
+        "tool execution must not start before the lifecycle receipt"
+    );
+
+    release_waiting.notify_waiters();
+    let result = run.await.unwrap();
+    assert_eq!(
+        result.output.text,
+        "The streaming tool context test completed successfully."
+    );
+    assert!(captured.lock().unwrap().is_some());
 }
 
 #[tokio::test]
@@ -1307,14 +1388,17 @@ async fn test_execute_command_tool_end_to_end() {
     let on_event: OnEvent = Box::new(move |event| {
         events_clone.lock().unwrap().push(event);
     });
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let uc = UserContent::text("Run echo hello");
-    let result = run_agent_loop(
+    let result = run_agent_loop_with_tool_lifecycle(
         provider,
         &tools,
         "You are a test bot.",
         &uc,
         Some(&on_event),
+        Some(&on_tool_lifecycle),
         None,
     )
     .await
@@ -1328,48 +1412,122 @@ async fn test_execute_command_tool_end_to_end() {
     assert_eq!(result.iterations, 2);
     assert_eq!(result.tool_calls_made, 1);
 
-    let evts = events.lock().unwrap();
-    let has = |name: &str| {
-        evts.iter().any(|e| {
+    let events = events.lock().unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, RunnerEvent::Thinking))
+    );
+
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    assert!(lifecycle_events.iter().any(|event| {
+        event.lifecycle.stage() == chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+    }));
+    let completed = lifecycle_events
+        .iter()
+        .find(|event| {
             matches!(
-                (e, name),
-                (RunnerEvent::Thinking, "thinking")
-                    | (RunnerEvent::ToolCallStart { .. }, "tool_call_start")
-                    | (RunnerEvent::ToolCallEnd { .. }, "tool_call_end")
+                event.lifecycle.update,
+                chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed { success: true, .. }
             )
         })
-    };
-    assert!(has("tool_call_start"));
-    assert!(has("tool_call_end"));
-    assert!(has("thinking"));
+        .expect("execute_command lifecycle must complete successfully");
+    assert_eq!(completed.lifecycle.tool_name, "execute_command");
+    let context_budget = completed
+        .lifecycle
+        .context_budget
+        .as_ref()
+        .expect("completed lifecycle event must carry context budget");
+    assert_eq!(context_budget.context_window, TEST_CONTEXT_WINDOW);
+    assert_eq!(context_budget.max_input_tokens, TEST_MAX_INPUT_TOKENS);
+    assert_eq!(context_budget.max_output_tokens, TEST_MAX_OUTPUT_TOKENS);
+    assert_eq!(context_budget.compaction_ratio, 85);
+    assert_eq!(
+        context_budget.available_input_tokens,
+        TEST_MAX_INPUT_TOKENS as usize - context_budget.tool_schema_tokens
+    );
+    assert_eq!(
+        context_budget.compaction_budget,
+        context_budget.available_input_tokens * 85 / 100
+    );
+    assert!(context_budget.prompt_tokens > 0);
+    assert!(!context_budget.compaction_required);
+}
 
-    let tool_end = evts
-        .iter()
-        .find(|e| matches!(e, RunnerEvent::ToolCallEnd { .. }));
-    if let Some(RunnerEvent::ToolCallEnd {
-        success,
-        name,
-        context_budget,
-        ..
-    }) = tool_end
-    {
-        assert!(success, "execute_command tool should succeed");
-        assert_eq!(name, "execute_command");
-        assert_eq!(context_budget.context_window, TEST_CONTEXT_WINDOW);
-        assert_eq!(context_budget.max_input_tokens, TEST_MAX_INPUT_TOKENS);
-        assert_eq!(context_budget.max_output_tokens, TEST_MAX_OUTPUT_TOKENS);
-        assert_eq!(context_budget.compaction_ratio, 85);
-        assert_eq!(
-            context_budget.available_input_tokens,
-            TEST_MAX_INPUT_TOKENS as usize - context_budget.tool_schema_tokens
-        );
-        assert_eq!(
-            context_budget.compaction_budget,
-            context_budget.available_input_tokens * 85 / 100
-        );
-        assert!(context_budget.prompt_tokens > 0);
-        assert!(!context_budget.compaction_required);
+#[tokio::test(start_paused = true)]
+async fn test_backend_execution_progress_uses_paused_tokio_time() {
+    let provider = Arc::new(ToolCallingProvider {
+        call_count: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(SlowTool {
+        tool_name: "echo_tool".to_owned(),
+        delay_ms: 3_500,
+    }));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let progress_seen = Arc::new(tokio::sync::Notify::new());
+    let on_tool_lifecycle: OnToolLifecycle = {
+        let lifecycle_events = Arc::clone(&lifecycle_events);
+        let progress_seen = Arc::clone(&progress_seen);
+        Arc::new(move |event| {
+            lifecycle_events.lock().unwrap().push(event.clone());
+            let progress_seen = Arc::clone(&progress_seen);
+            Box::pin(async move {
+                if event.lifecycle.stage()
+                    == chelix_common::tool_lifecycle::ToolLifecycleStage::ExecutionProgress
+                {
+                    progress_seen.notify_one();
+                }
+                Ok(())
+            })
+        })
+    };
+
+    let user_content = UserContent::text("run slowly");
+    let run = run_agent_loop_with_tool_lifecycle(
+        provider,
+        &tools,
+        "You are a test bot.",
+        &user_content,
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+    );
+    tokio::pin!(run);
+    tokio::select! {
+        () = progress_seen.notified() => {},
+        _ = &mut run => panic!("slow tool completed before initial progress"),
     }
+
+    for expected_second in 1..=3_u64 {
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+        tokio::select! {
+            () = progress_seen.notified() => {},
+            _ = &mut run => panic!("slow tool completed before progress second {expected_second}"),
+        }
+    }
+    tokio::time::advance(std::time::Duration::from_millis(500)).await;
+    let result = run.await.unwrap();
+    assert_eq!(result.output.text, "Done!");
+
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let progress = lifecycle_events
+        .iter()
+        .filter_map(|event| match &event.lifecycle.update {
+            chelix_common::tool_lifecycle::ToolLifecycleUpdate::ExecutionProgress {
+                elapsed_ms,
+                message,
+                ..
+            } => Some((*elapsed_ms, message.as_str())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(progress, vec![
+        (0, "wait for result [0] sec."),
+        (1_000, "wait for result [1] sec."),
+        (2_000, "wait for result [2] sec."),
+        (3_000, "wait for result [3] sec."),
+    ]);
 }
 
 struct HookModifiedCommandProvider {
@@ -1469,19 +1627,16 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
         replacement: serde_json::json!({"timeout": 1}),
     }));
 
-    let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let events_clone = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| {
-        events_clone.lock().unwrap().push(event);
-    });
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
-    let result = run_agent_loop_with_context(
+    let result = run_agent_loop_with_context_and_tool_lifecycle(
         provider,
         &tools,
         "You are a test bot.",
         &UserContent::text("Run through hook"),
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
         None,
         Some(Arc::new(hooks)),
@@ -1493,37 +1648,50 @@ async fn test_hook_modified_tool_args_are_revalidated_before_execute() {
     assert_eq!(result.output.text, "Hook rewrite was rejected.");
     assert_eq!(result.tool_calls_made, 1);
 
-    let evts = events.lock().unwrap();
-    let start_index = evts
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let waiting_index = lifecycle_events
         .iter()
-        .position(
-            |event| matches!(event, RunnerEvent::ToolCallStart { name, .. } if name == "execute_command"),
-        )
-        .expect("hook-modified call should emit ToolCallStart before hook dispatch");
-    let end_index = evts
+        .position(|event| {
+            event.lifecycle.tool_name == "execute_command"
+                && event.lifecycle.stage()
+                    == chelix_common::tool_lifecycle::ToolLifecycleStage::WaitingForExecution
+        })
+        .expect("hook-modified call must wait for execution before hook dispatch");
+    let result_ready_index = lifecycle_events
         .iter()
         .position(|event| {
             matches!(
-                event,
-                RunnerEvent::ToolCallEnd {
-                    name,
+                &event.lifecycle.update,
+                chelix_common::tool_lifecycle::ToolLifecycleUpdate::ResultReady {
                     success: false,
                     error: Some(error),
                     ..
-                } if name == "execute_command" && error.contains("Missing required field(s): `command`")
+                } if error.contains("Missing required field(s): `command`")
             )
         })
-        .expect("hook-modified validation failure should close the started tool span");
-    assert!(
-        start_index < end_index,
-        "ToolCallEnd should follow ToolCallStart"
-    );
-    assert!(
-        !evts
-            .iter()
-            .any(|event| matches!(event, RunnerEvent::ToolCallRejected { .. })),
-        "post-start validation failures should not emit ToolCallRejected"
-    );
+        .expect("hook-modified validation failure must produce a terminal result");
+    let completed_index = lifecycle_events
+        .iter()
+        .position(|event| {
+            matches!(
+                &event.lifecycle.update,
+                chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed {
+                    success: false,
+                    error: Some(error),
+                    ..
+                } if error.contains("Missing required field(s): `command`")
+            )
+        })
+        .expect("hook-modified validation failure must complete the invocation");
+    assert!(waiting_index < result_ready_index);
+    assert!(result_ready_index < completed_index);
+    assert!(!lifecycle_events.iter().any(|event| {
+        matches!(
+            event.lifecycle.stage(),
+            chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+                | chelix_common::tool_lifecycle::ToolLifecycleStage::Rejected
+        )
+    }));
 }
 
 /// Test that non-native providers can still execute tools via text parsing.
@@ -1535,20 +1703,17 @@ async fn test_text_based_tool_calling() {
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(TestExecuteCommandTool));
 
-    let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let events_clone = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| {
-        events_clone.lock().unwrap().push(event);
-    });
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let uc = UserContent::text("Run echo hello");
-    let result = run_agent_loop(
+    let result = run_agent_loop_with_tool_lifecycle(
         provider,
         &tools,
         "You are a test bot.",
         &uc,
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
     )
     .await
@@ -1562,15 +1727,16 @@ async fn test_text_based_tool_calling() {
     assert_eq!(result.iterations, 2, "should take 2 iterations");
     assert_eq!(result.tool_calls_made, 1, "should execute 1 tool call");
 
-    let evts = events.lock().unwrap();
-    assert!(
-        evts.iter()
-            .any(|e| matches!(e, RunnerEvent::ToolCallStart { .. }))
-    );
-    assert!(
-        evts.iter()
-            .any(|e| matches!(e, RunnerEvent::ToolCallEnd { success: true, .. }))
-    );
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    assert!(lifecycle_events.iter().any(|event| {
+        event.lifecycle.stage() == chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+    }));
+    assert!(lifecycle_events.iter().any(|event| {
+        matches!(
+            event.lifecycle.update,
+            chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed { success: true, .. }
+        )
+    }));
 }
 
 /// Native-tool provider that emits XML-like function text instead of
@@ -1669,20 +1835,17 @@ async fn test_native_text_function_tool_calling_non_streaming() {
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(TestProcessTool));
 
-    let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let events_clone = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| {
-        events_clone.lock().unwrap().push(event);
-    });
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
     let uc = UserContent::text("execute pwd");
-    let result = run_agent_loop(
+    let result = run_agent_loop_with_tool_lifecycle(
         provider,
         &tools,
         "You are a test bot.",
         &uc,
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
     )
     .await
@@ -1696,22 +1859,20 @@ async fn test_native_text_function_tool_calling_non_streaming() {
     assert_eq!(result.iterations, 2, "should take 2 iterations");
     assert_eq!(result.tool_calls_made, 1, "should execute 1 tool call");
 
-    let evts = events.lock().unwrap();
-    let tool_start = evts.iter().find_map(|e| {
-        if let RunnerEvent::ToolCallStart {
-            arguments, name, ..
-        } = e
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let input_ready = lifecycle_events.iter().find_map(|event| {
+        if let chelix_common::tool_lifecycle::ToolLifecycleUpdate::InputReady { arguments } =
+            &event.lifecycle.update
         {
-            Some((name.clone(), arguments.clone()))
+            Some((&event.lifecycle.tool_name, arguments))
         } else {
             None
         }
     });
-    assert!(tool_start.is_some(), "should emit ToolCallStart");
-    let (name, args) = tool_start.unwrap();
+    let (name, arguments) = input_ready.expect("input-ready lifecycle event must be emitted");
     assert_eq!(name, "process");
-    assert_eq!(args["action"], "start");
-    assert_eq!(args["command"], "pwd");
+    assert_eq!(arguments["action"], "start");
+    assert_eq!(arguments["command"], "pwd");
 }
 
 // ── sanitize_tool_result tests ──────────────────────────────────
@@ -1778,54 +1939,52 @@ async fn test_vision_provider_tool_result_sanitized() {
 }
 
 #[tokio::test]
-async fn test_tool_call_end_event_separates_context_from_raw_result() {
+async fn completed_lifecycle_separates_context_from_raw_result() {
     let provider = Arc::new(VisionEnabledProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(ScreenshotTool));
-    let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let events_clone = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| {
-        events_clone.lock().unwrap().push(event);
-    });
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
     let uc = UserContent::text("Take a screenshot");
-    let result = run_agent_loop(
+    let result = run_agent_loop_with_tool_lifecycle(
         provider,
         &tools,
         "You are a test bot.",
         &uc,
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
     )
     .await
     .unwrap();
     assert_eq!(result.tool_calls_made, 1);
-    let evts = events.lock().unwrap();
-    let tool_end = evts
+
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let completed = lifecycle_events
         .iter()
-        .find(|e| matches!(e, RunnerEvent::ToolCallEnd { success: true, .. }));
-    if let Some(RunnerEvent::ToolCallEnd {
-        success,
+        .find(|event| {
+            matches!(
+                event.lifecycle.update,
+                chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed { success: true, .. }
+            )
+        })
+        .expect("completed lifecycle event must be emitted");
+    let chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed {
         result: Some(context_result),
-        raw_result: Some(raw_result),
         ..
-    }) = tool_end
-    {
-        assert!(success);
-        assert!(!context_result.contains("data:image/png;base64,"));
-        assert!(context_result.contains("[screenshot captured and displayed in UI]"));
-        let result_str = raw_result.to_string();
-        assert!(
-            result_str.contains("screenshot"),
-            "raw result should contain screenshot field"
-        );
-        assert!(
-            result_str.contains("data:image/png;base64,"),
-            "raw result should contain image data URI"
-        );
-    } else {
-        panic!("expected ToolCallEnd event with canonical and raw results");
-    }
+    } = &completed.lifecycle.update
+    else {
+        panic!("completed lifecycle must carry the canonical context result");
+    };
+    let raw_result = completed
+        .raw_result
+        .as_ref()
+        .expect("completed lifecycle must carry the raw result envelope");
+    assert!(!context_result.contains("data:image/png;base64,"));
+    assert!(context_result.contains("[screenshot captured and displayed in UI]"));
+    let result_str = raw_result.to_string();
+    assert!(result_str.contains("screenshot"));
+    assert!(result_str.contains("data:image/png;base64,"));
 }

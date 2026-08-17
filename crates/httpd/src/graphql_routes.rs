@@ -111,8 +111,11 @@ impl ChatService for GraphqlChatServiceProxy {
         self.state.chat().active_voice_pending(session_key).await
     }
 
-    async fn active_tool_calls(&self, session_key: &str) -> Vec<Value> {
-        self.state.chat().active_tool_calls(session_key).await
+    async fn active_tool_invocations(
+        &self,
+        session_key: &str,
+    ) -> Vec<chelix_common::ActiveToolInvocation> {
+        self.state.chat().active_tool_invocations(session_key).await
     }
 
     async fn peek(&self, params: Value) -> ServiceResult {

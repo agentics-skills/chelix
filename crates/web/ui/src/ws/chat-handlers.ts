@@ -33,8 +33,16 @@ import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
 import { resolveAssistantTurnEnd, toolCallIds } from "../tool-call-card";
+import { isToolLifecyclePayload, type ToolInvocationSnapshot, toToolLifecycleEvent } from "../tool-lifecycle";
 import type { HistoryMessage } from "../types/session";
-import type { AbortedPartialState, ChatPayload, ReasoningContent, ToolCallPayload } from "../types/ws-events";
+import type {
+	AbortedPartialState,
+	AssistantHistoryMessage,
+	ChatError,
+	ChatPayload,
+	ReasoningContent,
+	ToolLifecyclePayload,
+} from "../types/ws-events";
 import { hasVisibleReasoning, isReasoningContent } from "../types/ws-events";
 import {
 	clearChatEmptyState,
@@ -44,18 +52,13 @@ import {
 	updateSessionRunId,
 } from "./shared";
 import {
-	clearPendingToolCallEndsForSession,
 	clearStaleRunningToolCards,
-	closeLiveAssistantSegment,
-	completeToolCard,
-	createToolCallCardForPayload,
-	handleToolCallStartDom,
-	pendingToolCallEnds,
+	clearToolLifecycleStateForSession,
+	reduceLiveToolInvocation,
 	renderAbortedPartialInDom,
 	renderChannelUserMessage,
+	renderToolLifecycleSnapshot,
 	resolveFinalMessageEl,
-	toolCallCardId,
-	toolCallEventKey,
 } from "./tool-helpers";
 
 export type ChatHandler = (p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string) => void;
@@ -68,7 +71,7 @@ function sessionMediaUrl(sessionKey: string, audioPath: string): string | null {
 	return `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(filename)}`;
 }
 
-function assistantHistoryMessage(message: NonNullable<ToolCallPayload["assistantMessage"]>): HistoryMessage {
+function assistantHistoryMessage(message: AssistantHistoryMessage): HistoryMessage {
 	return {
 		role: message.role,
 		content: message.content,
@@ -164,93 +167,56 @@ function handleChatVoicePending(_p: ChatPayload, isActive: boolean, isChatPage: 
 	// Keep the active reasoning part visible while audio is prepared.
 }
 
-function handleChatToolCallStart(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	updateSessionRunId(eventSession, p.runId);
-	const toolSession = sessionStore.getByKey(eventSession);
-	const knownIndex = toolSession ? toolSession.lastHistoryIndex.value : S.lastHistoryIndex;
-	const messageIndex = p.messageIndex;
-	if (p.assistantMessage && typeof messageIndex === "number" && Number.isInteger(messageIndex)) {
-		if (messageIndex > knownIndex) bumpSessionCount(eventSession, 1);
-		cacheSessionHistoryMessage(eventSession, assistantHistoryMessage(p.assistantMessage), messageIndex);
-		updateSessionHistoryIndex(eventSession, messageIndex);
-	}
-	// Update per-session signal
-	if (toolSession) toolSession.streamText.value = "";
-	if (!(isActive && isChatPage)) return;
-	setComposerStopButton(true, eventSession);
-	handleToolCallStartDom(p, eventSession);
+function cacheIndexedHistoryMessage(
+	eventSession: string,
+	message: HistoryMessage,
+	historyIndex: number | undefined,
+): void {
+	if (!Number.isInteger(historyIndex)) return;
+	const index = historyIndex as number;
+	const session = sessionStore.getByKey(eventSession);
+	const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
+	if (index > knownIndex) bumpSessionCount(eventSession, 1);
+	cacheSessionHistoryMessage(eventSession, message, index);
+	updateSessionHistoryIndex(eventSession, index);
+}
+
+function cacheLifecycleAssistantFrame(payload: ToolLifecyclePayload, eventSession: string): void {
+	if (payload.stage !== "input_ready" || !payload.assistantMessage) return;
+	cacheIndexedHistoryMessage(
+		eventSession,
+		assistantHistoryMessage(payload.assistantMessage),
+		payload.assistantMessageIndex,
+	);
+}
+
+function cacheToolLifecycleFrame(snapshot: ToolInvocationSnapshot, eventSession: string): void {
+	const inserted = cacheSessionHistoryMessage(eventSession, {
+		role: "tool_lifecycle",
+		...toToolLifecycleEvent(snapshot.lifecycle),
+		accumulatedArguments: snapshot.accumulatedArguments,
+		created_at: snapshot.lifecycle.emittedAtMs,
+	});
+	if (inserted) bumpSessionCount(eventSession, 1);
 }
 
 function updateActiveTokenBarContextBudget(p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
 	if (isActive && isChatPage && p.contextBudget) updateTokenBar(p.contextBudget);
 }
 
-function cacheRejectedAssistantFrame(p: ChatPayload, eventSession: string): void {
-	if (p.rejected !== true || !p.assistantMessage || !Number.isInteger(p.assistantMessageIndex)) return;
-	const assistantIndex = p.assistantMessageIndex as number;
-	const session = sessionStore.getByKey(eventSession);
-	const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
-	if (assistantIndex > knownIndex) bumpSessionCount(eventSession, 1);
-	cacheSessionHistoryMessage(eventSession, assistantHistoryMessage(p.assistantMessage), assistantIndex);
-	updateSessionHistoryIndex(eventSession, assistantIndex);
-}
-
-function toolResultHistoryIndex(p: ChatPayload, eventSession: string): number | undefined {
-	if (p.messageIndex !== undefined && p.messageIndex !== null) return p.messageIndex;
-	const session = sessionStore.getByKey(eventSession);
-	return session && session.messageCount > 0 ? session.messageCount - 1 : undefined;
-}
-
-function toolResultError(p: ChatPayload): string | null {
-	if (typeof p.error === "string") return p.error;
-	return p.error?.detail || p.error?.message || null;
-}
-
-function cacheToolResultFrame(p: ChatPayload, eventSession: string): void {
-	const historyIndex = toolResultHistoryIndex(p, eventSession);
-	const session = sessionStore.getByKey(eventSession);
-	const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
-	if (historyIndex === undefined || historyIndex > knownIndex) bumpSessionCount(eventSession, 1);
-	cacheSessionHistoryMessage(
-		eventSession,
-		{
-			role: "tool_result",
-			tool_call_id: p.toolCallId || "",
-			tool_name: p.toolName || "",
-			arguments: p.arguments,
-			success: p.success === true,
-			rejected: p.rejected === true,
-			result: p.result || null,
-			error: toolResultError(p),
-			contextBudget: p.contextBudget,
-			created_at: Date.now(),
-		},
-		historyIndex,
-	);
-	updateSessionHistoryIndex(eventSession, historyIndex);
-}
-
-function renderToolCallEnd(p: ChatPayload, eventSession: string): void {
-	// A rejected call has no `tool_call_start`, so nothing has closed the live
-	// assistant segment yet.
-	if (p.rejected === true) {
-		closeLiveAssistantSegment(p.assistantMessage, p.assistantMessageIndex, eventSession);
-	}
-	const toolCard =
-		(document.getElementById(toolCallCardId(p)) as HTMLElement | null) || createToolCallCardForPayload(p);
-	if (!toolCard) {
-		pendingToolCallEnds.set(toolCallEventKey(eventSession, p), p as ToolCallPayload);
-		return;
-	}
-	completeToolCard(toolCard, p, eventSession);
-}
-
-function handleChatToolCallEnd(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+function handleChatToolLifecycle(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+	if (!isToolLifecyclePayload(p)) return;
 	updateSessionRunId(eventSession, p.runId);
-	cacheRejectedAssistantFrame(p, eventSession);
-	cacheToolResultFrame(p, eventSession);
+	setSessionReplying(eventSession, true);
+	cacheLifecycleAssistantFrame(p, eventSession);
+	const snapshot = reduceLiveToolInvocation(eventSession, p);
+	cacheToolLifecycleFrame(snapshot, eventSession);
 	updateActiveTokenBarContextBudget(p, isActive, isChatPage);
-	if (isActive && isChatPage) renderToolCallEnd(p, eventSession);
+	const toolSession = sessionStore.getByKey(eventSession);
+	if (p.stage === "input_ready" && toolSession) toolSession.streamText.value = "";
+	if (!(isActive && isChatPage)) return;
+	setComposerStopButton(true, eventSession);
+	renderToolLifecycleSnapshot(snapshot, eventSession);
 }
 
 function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -536,7 +502,7 @@ function finishFinalMessageUi(): void {
 }
 
 function handleChatFinal(payload: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	clearPendingToolCallEndsForSession(eventSession);
+	clearToolLifecycleStateForSession(eventSession);
 	updateSessionRunId(eventSession, payload.runId);
 	const context = finalMessageContext(payload);
 	cacheFinalMessage(payload, eventSession, context);
@@ -622,10 +588,15 @@ function handleAutoCompactDone(p: ChatPayload, activePage: boolean, eventSession
 	renderCheckpointFromPayload(p, activePage, activePage, eventSession);
 }
 
+function structuredChatError(p: ChatPayload): ChatError | null {
+	return p.error && typeof p.error === "object" ? p.error : null;
+}
+
 function handleAutoCompactError(p: ChatPayload, activePage: boolean): void {
 	if (!activePage) return;
 	removeCompactingStatus(p);
-	chatAddMsg("error", `Auto-compact failed: ${p.error?.message || p.error?.detail || "unknown error"}`);
+	const error = structuredChatError(p);
+	chatAddMsg("error", `Auto-compact failed: ${error?.message || error?.detail || "unknown error"}`);
 }
 
 function handleChatAutoCompact(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -649,14 +620,15 @@ function handleChatCompact(p: ChatPayload, isActive: boolean, isChatPage: boolea
 
 function retryDelayMsFromPayload(p: ChatPayload): number {
 	if (p.retryAfterMs !== undefined && p.retryAfterMs !== null) return Number(p.retryAfterMs) || 0;
-	if (p.error?.retryAfterMs !== undefined && p.error?.retryAfterMs !== null) return Number(p.error.retryAfterMs) || 0;
+	const error = structuredChatError(p);
+	if (error?.retryAfterMs !== undefined && error.retryAfterMs !== null) return Number(error.retryAfterMs) || 0;
 	return 0;
 }
 
 function retryStatusText(p: ChatPayload): string {
 	const retryMs = retryDelayMsFromPayload(p);
 	const retrySecs = Math.max(1, Math.ceil(retryMs / 1000));
-	const rateLimited = p.error?.type === "rate_limit_exceeded";
+	const rateLimited = structuredChatError(p)?.type === "rate_limit_exceeded";
 	return rateLimited
 		? `Rate limited by provider, retrying in ${retrySecs}s\u2026`
 		: `Temporary provider issue, retrying in ${retrySecs}s\u2026`;
@@ -682,15 +654,16 @@ function handleChatRetrying(p: ChatPayload, isActive: boolean, isChatPage: boole
 // ── Error / abort / notice / clear ────────────────────────────
 
 function renderChatErrorMessage(p: ChatPayload): void {
-	if (p.error?.title) {
-		chatAddErrorCard(localizeStructuredError(p.error) as Parameters<typeof chatAddErrorCard>[0]);
+	const error = structuredChatError(p);
+	if (error?.title) {
+		chatAddErrorCard(localizeStructuredError(error) as Parameters<typeof chatAddErrorCard>[0]);
 		return;
 	}
 	chatAddErrorMsg(p.message || "unknown");
 }
 
 function appendErrorContinueButton(p: ChatPayload): void {
-	if (!p.error?.canContinue) return;
+	if (!structuredChatError(p)?.canContinue) return;
 	const lastCard = S.chatMsgBox?.querySelector(".error-card:last-child") as HTMLElement | null;
 	const body = lastCard?.querySelector(".error-body");
 	if (!body) return;
@@ -720,7 +693,7 @@ function renderActiveChatError(p: ChatPayload, partialState: AbortedPartialState
 }
 
 function handleChatError(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	clearPendingToolCallEndsForSession(eventSession);
+	clearToolLifecycleStateForSession(eventSession);
 	setSessionReplying(eventSession, false);
 	setSessionActiveRunId(eventSession, null);
 	const partialState = getAbortedPartialState(p);
@@ -819,7 +792,7 @@ function finalizeActiveAbort(p: ChatPayload, partialState: AbortedPartialState):
 }
 
 function handleChatAborted(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	clearPendingToolCallEndsForSession(eventSession);
+	clearToolLifecycleStateForSession(eventSession);
 	setSessionReplying(eventSession, false);
 	setSessionActiveRunId(eventSession, null);
 	const partialState = getAbortedPartialState(p);
@@ -857,7 +830,7 @@ function handleChatPromptQueue(p: ChatPayload, _isActive: boolean, _isChatPage: 
 }
 
 function handleChatSessionCleared(_p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	clearPendingToolCallEndsForSession(eventSession);
+	clearToolLifecycleStateForSession(eventSession);
 	setSessionActiveRunId(eventSession, null);
 	clearSessionHistoryCache(eventSession);
 	// Reset badge, unread state, and history index for every client.
@@ -886,8 +859,7 @@ export const chatHandlers: Record<string, ChatHandler> = {
 	thinking_text: handleChatThinkingText,
 	thinking_done: handleChatThinkingDone,
 	voice_pending: handleChatVoicePending,
-	tool_call_start: handleChatToolCallStart,
-	tool_call_end: handleChatToolCallEnd,
+	tool_lifecycle: handleChatToolLifecycle,
 	channel_user: handleChatChannelUser,
 	user_message: handleChatUserMessage,
 	delta: handleChatDelta,
@@ -909,10 +881,10 @@ export function handleChatEvent(p: ChatPayload): void {
 
 	if (isActive && sessionStore.switchInProgress.value) {
 		// If session switching got stuck (e.g. lost RPC response), do not drop
-		// terminal frames. Unstick and process final/error so replies still show
-		// without requiring a full page reload.
+		// persisted lifecycle or terminal frames.
 		const allowDuringSwitch =
 			p.state === "user_message" ||
+			p.state === "tool_lifecycle" ||
 			p.state === "final" ||
 			p.state === "error" ||
 			p.state === "aborted" ||

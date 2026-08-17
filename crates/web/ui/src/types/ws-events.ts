@@ -98,25 +98,79 @@ export interface MapPoint {
 	map_links?: MapLinks;
 }
 
-export interface ToolCallPayload {
+export type ToolLifecycleStage =
+	| "created"
+	| "input_streaming"
+	| "input_ready"
+	| "waiting_for_execution"
+	| "executing"
+	| "execution_progress"
+	| "result_ready"
+	| "completed"
+	| "rejected"
+	| "cancelled";
+
+interface ToolLifecycleBase {
+	toolCallId: string;
+	toolName: string;
+	sequence: number;
+	emittedAtMs: number;
 	runId?: string;
-	toolCallId?: string;
-	toolName?: string;
-	arguments?: Record<string, unknown>;
-	executionMode?: string;
-	startedAt?: number;
-	messageIndex?: number;
-	sessionKey?: string;
-	success?: boolean;
-	rejected?: boolean;
-	result?: ToolResult | string;
-	error?: ToolError;
-	assistantMessage?: AssistantHistoryMessage;
-	/** History index of `assistantMessage`, sent when a rejected call carries
-	 * the assistant frame that a normal call would deliver at tool start. */
-	assistantMessageIndex?: number;
 	contextBudget?: ContextBudgetMetadata;
 }
+
+export type ToolLifecycleEvent = ToolLifecycleBase &
+	(
+		| { stage: "created"; providerIndex: number | null }
+		| { stage: "input_streaming"; argumentsDelta: string }
+		| { stage: "input_ready"; arguments: Record<string, unknown> }
+		| { stage: "waiting_for_execution"; arguments: Record<string, unknown> }
+		| { stage: "executing"; arguments: Record<string, unknown>; startedAtMs: number }
+		| {
+				stage: "execution_progress";
+				arguments: Record<string, unknown>;
+				elapsedMs: number;
+				message: string;
+		  }
+		| {
+				stage: "result_ready";
+				arguments: Record<string, unknown>;
+				success: boolean;
+				result: string | null;
+				error: string | null;
+		  }
+		| {
+				stage: "completed";
+				arguments: Record<string, unknown>;
+				success: boolean;
+				result: string | null;
+				error: string | null;
+		  }
+		| {
+				stage: "rejected";
+				arguments: Record<string, unknown>;
+				reason: string;
+				result: string;
+		  }
+		| { stage: "cancelled"; arguments: Record<string, unknown> | null; reason: string }
+	);
+
+export type ToolLifecyclePayload = ChatPayload &
+	ToolLifecycleEvent & {
+		state: "tool_lifecycle";
+		runId: string;
+		sessionKey?: string;
+		executionMode?: string;
+		messageIndex?: number;
+		assistantMessage?: AssistantHistoryMessage;
+		assistantMessageIndex?: number;
+	};
+
+export type ActiveToolInvocation = ToolLifecycleEvent & {
+	runId: string;
+	executionMode?: string;
+	accumulatedArguments?: string;
+};
 
 export interface AssistantHistoryMessage {
 	role: "assistant";
@@ -221,16 +275,9 @@ export interface ChatPayload {
 	audioWarning?: string | null;
 	replyMedium?: string;
 	messageIndex?: number;
-	activeToolCalls?: ToolCallPayload[];
-	toolCallId?: string;
-	toolName?: string;
-	arguments?: Record<string, unknown>;
-	executionMode?: string;
-	startedAt?: number;
-	success?: boolean;
-	rejected?: boolean;
-	result?: ToolResult | string;
-	error?: ChatError;
+	activeToolInvocations?: ActiveToolInvocation[];
+	result?: ToolResult | string | null;
+	error?: ChatError | string | null;
 	message?: string;
 	channel?: ChannelInfo;
 	title?: string;

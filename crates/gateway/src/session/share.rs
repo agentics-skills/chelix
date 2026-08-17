@@ -80,12 +80,12 @@ impl LiveSessionService {
             let _ = share_store.revoke(&created.share.id).await;
             return Err(format!("failed to persist share boundary notice: {e}").into());
         }
-        match self.store.count(key).await {
+        match self.store.ui_message_count(key).await {
             Ok(message_count) => {
                 self.metadata.touch(key, message_count).await;
             },
             Err(e) => {
-                warn!(session_key = key, error = %e, "failed to update session message count");
+                warn!(session_key = key, error = %e, "failed to update session UI message count");
             },
         }
 

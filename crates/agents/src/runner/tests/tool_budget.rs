@@ -196,6 +196,20 @@ fn assert_threshold_error(error: AgentRunError, threshold: usize, used: usize, r
     ));
 }
 
+fn assert_no_execution_stages(events: &[RunnerToolLifecycleEvent]) {
+    assert!(events.iter().all(|event| {
+        !matches!(
+            event.lifecycle.stage(),
+            chelix_common::tool_lifecycle::ToolLifecycleStage::WaitingForExecution
+                | chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+                | chelix_common::tool_lifecycle::ToolLifecycleStage::ExecutionProgress
+                | chelix_common::tool_lifecycle::ToolLifecycleStage::ResultReady
+                | chelix_common::tool_lifecycle::ToolLifecycleStage::Completed
+                | chelix_common::tool_lifecycle::ToolLifecycleStage::Rejected
+        )
+    }));
+}
+
 #[test]
 fn tool_call_budget_rejects_oversized_batch_without_changing_used() {
     let mut budget = ToolCallBudget::new(3);
@@ -226,16 +240,16 @@ async fn non_streaming_rejects_oversized_parallel_batch_before_any_sibling_runs(
         name: "count_b",
         executions: Arc::clone(&executions),
     }));
-    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let event_sink = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| event_sink.lock().unwrap().push(event));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
-    let error = run_agent_loop_with_context_and_limits(
+    let error = run_agent_loop_with_context_lifecycle_and_limits(
         provider,
         &tools,
         "Test bot",
         &UserContent::text("Run the batch"),
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
         None,
         None,
@@ -247,12 +261,9 @@ async fn non_streaming_rejects_oversized_parallel_batch_before_any_sibling_runs(
 
     assert_threshold_error(error, 2, 0, 3);
     assert_eq!(executions.load(Ordering::SeqCst), 0);
-    assert!(!events.lock().unwrap().iter().any(|event| matches!(
-        event,
-        RunnerEvent::ToolCallStart { .. }
-            | RunnerEvent::ToolCallEnd { .. }
-            | RunnerEvent::ToolCallRejected { .. }
-    )));
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    assert!(lifecycle_events.is_empty());
+    assert_no_execution_stages(&lifecycle_events);
 }
 
 #[tokio::test]
@@ -272,16 +283,16 @@ async fn streaming_rejects_oversized_parallel_batch_before_any_sibling_runs() {
         name: "count_b",
         executions: Arc::clone(&executions),
     }));
-    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let event_sink = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| event_sink.lock().unwrap().push(event));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
-    let error = run_agent_loop_streaming_with_limits(
+    let error = run_agent_loop_streaming_with_lifecycle_and_limits(
         provider,
         &tools,
         "Test bot",
         &UserContent::text("Run the batch"),
-        Some(&on_event),
+        None,
+        Some(&on_tool_lifecycle),
         None,
         None,
         None,
@@ -294,12 +305,19 @@ async fn streaming_rejects_oversized_parallel_batch_before_any_sibling_runs() {
 
     assert_threshold_error(error, 2, 0, 3);
     assert_eq!(executions.load(Ordering::SeqCst), 0);
-    assert!(!events.lock().unwrap().iter().any(|event| matches!(
-        event,
-        RunnerEvent::ToolCallStart { .. }
-            | RunnerEvent::ToolCallEnd { .. }
-            | RunnerEvent::ToolCallRejected { .. }
-    )));
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    assert!(!lifecycle_events.is_empty());
+    assert_eq!(
+        lifecycle_events
+            .iter()
+            .filter(|event| {
+                event.lifecycle.stage()
+                    == chelix_common::tool_lifecycle::ToolLifecycleStage::Cancelled
+            })
+            .count(),
+        3
+    );
+    assert_no_execution_stages(&lifecycle_events);
 }
 
 #[tokio::test]

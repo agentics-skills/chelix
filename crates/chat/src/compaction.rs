@@ -702,11 +702,46 @@ mod tests {
                 }]
             }),
             serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call-1",
-                "tool_name": "read_file",
+                "role": "tool_lifecycle",
+                "toolCallId": "call-1",
+                "toolName": "read_file",
+                "sequence": 0,
+                "emittedAtMs": 1,
+                "runId": "run-1",
+                "stage": "created",
+                "providerIndex": 0
+            }),
+            serde_json::json!({
+                "role": "tool_lifecycle",
+                "toolCallId": "call-1",
+                "toolName": "read_file",
+                "sequence": 1,
+                "emittedAtMs": 2,
+                "runId": "run-1",
+                "stage": "input_streaming",
+                "argumentsDelta": "{}"
+            }),
+            serde_json::json!({
+                "role": "tool_lifecycle",
+                "toolCallId": "call-1",
+                "toolName": "read_file",
+                "sequence": 2,
+                "emittedAtMs": 3,
+                "runId": "run-1",
+                "stage": "input_ready",
+                "arguments": {}
+            }),
+            serde_json::json!({
+                "role": "tool_lifecycle",
+                "toolCallId": "call-1",
+                "toolName": "read_file",
+                "sequence": 3,
+                "emittedAtMs": 4,
+                "runId": "run-1",
+                "stage": "completed",
+                "arguments": {},
                 "success": true,
-                "result": {"content": "triggering result"}
+                "result": "{\"content\":\"triggering result\"}"
             }),
         ];
         for message in &history {
@@ -837,9 +872,13 @@ mod tests {
                 }]
             }),
             serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call-failed",
-                "tool_name": "read_file",
+                "role": "tool_lifecycle",
+                "toolCallId": "call-failed",
+                "toolName": "read_file",
+                "sequence": 5,
+                "emittedAtMs": 1,
+                "stage": "completed",
+                "arguments": {},
                 "success": false,
                 "error": "persisted failure"
             }),
@@ -892,9 +931,13 @@ mod tests {
                 }]
             }),
             serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call-current",
-                "tool_name": "read_file",
+                "role": "tool_lifecycle",
+                "toolCallId": "call-current",
+                "toolName": "read_file",
+                "sequence": 5,
+                "emittedAtMs": 1,
+                "stage": "completed",
+                "arguments": {},
                 "success": true,
                 "result": "current result"
             }),

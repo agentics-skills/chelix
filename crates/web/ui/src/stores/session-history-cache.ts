@@ -138,14 +138,15 @@ function normalizeMessage(message: unknown, fallbackIndex?: number | null): Hist
 	return next;
 }
 
-function upsertWithoutIndex(list: HistoryMessage[], next: HistoryMessage): void {
-	if (next.role === "tool_result" && next.tool_call_id) {
-		const existingToolIdx = list.findIndex(
-			(msg) => msg?.role === "tool_result" && msg?.tool_call_id && msg.tool_call_id === next.tool_call_id,
+function upsertWithoutIndex(list: HistoryMessage[], next: HistoryMessage): boolean {
+	if (next.role === "tool_lifecycle" && typeof next.toolCallId === "string") {
+		const existingLifecycleIndex = list.findIndex(
+			(message) =>
+				message?.role === "tool_lifecycle" && message.toolCallId === next.toolCallId && message.runId === next.runId,
 		);
-		if (existingToolIdx >= 0) {
-			list[existingToolIdx] = next;
-			return;
+		if (existingLifecycleIndex >= 0) {
+			list[existingLifecycleIndex] = next;
+			return false;
 		}
 	}
 	if (next.role === "assistant" && next.run_id) {
@@ -154,17 +155,18 @@ function upsertWithoutIndex(list: HistoryMessage[], next: HistoryMessage): void 
 		);
 		if (existingRunIdx >= 0) {
 			list[existingRunIdx] = next;
-			return;
+			return false;
 		}
 	}
 	list.push(next);
+	return true;
 }
 
-function upsertByIndex(list: HistoryMessage[], next: HistoryMessage, historyIndex: number): void {
+function upsertByIndex(list: HistoryMessage[], next: HistoryMessage, historyIndex: number): boolean {
 	const existingIdx = list.findIndex((msg) => messageHistoryIndex(msg) === historyIndex);
 	if (existingIdx >= 0) {
 		list[existingIdx] = next;
-		return;
+		return false;
 	}
 	const insertAt = list.findIndex((msg) => {
 		const other = messageHistoryIndex(msg);
@@ -173,9 +175,10 @@ function upsertByIndex(list: HistoryMessage[], next: HistoryMessage, historyInde
 	});
 	if (insertAt === -1) {
 		list.push(next);
-		return;
+		return true;
 	}
 	list.splice(insertAt, 0, next);
+	return true;
 }
 
 export function getHistoryRevision(key: string): number {
@@ -200,11 +203,7 @@ export function replaceSessionHistory(key: string, history: unknown[]): HistoryM
 	return next;
 }
 
-export function upsertSessionHistoryMessage(
-	key: string,
-	message: unknown,
-	historyIndex?: number | null,
-): HistoryMessage {
+export function upsertSessionHistoryMessage(key: string, message: unknown, historyIndex?: number | null): boolean {
 	let list = historyByKey.get(key);
 	if (!list) {
 		list = [];
@@ -212,14 +211,10 @@ export function upsertSessionHistoryMessage(
 	}
 	const next = normalizeMessage(message, historyIndex);
 	const idx = messageHistoryIndex(next);
-	if (idx !== null) {
-		upsertByIndex(list, next, idx);
-	} else {
-		upsertWithoutIndex(list, next);
-	}
+	const inserted = idx !== null ? upsertByIndex(list, next, idx) : upsertWithoutIndex(list, next);
 	bumpRevision(key);
 	enforceHistoryBudgets(key);
-	return next;
+	return inserted;
 }
 
 export function clearSessionHistory(key?: string): void {

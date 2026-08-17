@@ -379,7 +379,10 @@ pub trait ChatService: Send + Sync {
         false
     }
 
-    async fn active_tool_calls(&self, _session_key: &str) -> Vec<Value> {
+    async fn active_tool_invocations(
+        &self,
+        _session_key: &str,
+    ) -> Vec<chelix_common::ActiveToolInvocation> {
         Vec::new()
     }
 

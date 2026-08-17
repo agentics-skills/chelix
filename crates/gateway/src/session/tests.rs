@@ -10,6 +10,26 @@ mod tests {
         chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload},
     };
 
+    fn completed_tool_lifecycle(
+        tool_call_id: &str,
+        tool_name: &str,
+        arguments: Value,
+        result: Value,
+    ) -> Value {
+        serde_json::json!({
+            "role": "tool_lifecycle",
+            "toolCallId": tool_call_id,
+            "toolName": tool_name,
+            "sequence": 1,
+            "emittedAtMs": 1,
+            "stage": "completed",
+            "arguments": arguments,
+            "success": true,
+            "result": result.to_string(),
+            "error": null,
+        })
+    }
+
     struct RecordingHook {
         payloads: Arc<std::sync::Mutex<Vec<HookPayload>>>,
     }
@@ -396,7 +416,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn to_shared_message_includes_tool_result_screenshot_and_map_links() {
+    async fn to_shared_message_includes_tool_lifecycle_screenshot_and_map_links() {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
         let tiny_png = general_purpose::STANDARD
@@ -407,12 +427,11 @@ mod tests {
             .await
             .expect("save media");
 
-        let tool_msg = serde_json::json!({
-            "role": "tool_result",
-            "tool_name": "show_map",
-            "success": true,
-            "created_at": 1_770_966_725_000_u64,
-            "result": {
+        let tool_msg = completed_tool_lifecycle(
+            "call-map",
+            "show_map",
+            serde_json::json!({}),
+            serde_json::json!({
                 "label": "Tartine Bakery",
                 "screenshot": "media/main/call-map.png",
                 "map_links": {
@@ -420,8 +439,8 @@ mod tests {
                     "apple_maps": "javascript:alert(1)",
                     "openstreetmap": "https://www.openstreetmap.org/search?query=Tartine+Bakery",
                 },
-            },
-        });
+            }),
+        );
 
         let shared = to_shared_message(&tool_msg, 0, "main", &store)
             .await
@@ -449,12 +468,12 @@ mod tests {
     #[test]
     fn tool_result_text_for_share_preserves_full_stdout() {
         let large_stdout = format!("{{\"items\":[\"{}\"]}}", "x".repeat(2_000));
-        let msg = serde_json::json!({
-            "role": "tool_result",
-            "result": {
-                "stdout": large_stdout
-            }
-        });
+        let msg = completed_tool_lifecycle(
+            "call-stdout",
+            "execute_command",
+            serde_json::json!({}),
+            serde_json::json!({"stdout": large_stdout}),
+        );
 
         let text = tool_result_text_for_share(&msg).expect("tool text should exist");
         assert!(text.contains("\"items\""));
@@ -465,13 +484,15 @@ mod tests {
 
     #[test]
     fn tool_result_text_for_share_includes_output_and_camel_exit_code() {
-        let msg = serde_json::json!({
-            "role": "tool_result",
-            "result": {
+        let msg = completed_tool_lifecycle(
+            "call-output",
+            "execute_command",
+            serde_json::json!({}),
+            serde_json::json!({
                 "output": "tmux command output",
                 "exitCode": 7,
-            }
-        });
+            }),
+        );
 
         let text = tool_result_text_for_share(&msg).expect("tool text should exist");
         assert!(text.contains("tmux command output"));
@@ -494,13 +515,15 @@ mod tests {
 
     #[test]
     fn tool_result_text_for_share_redacts_sensitive_values() {
-        let msg = serde_json::json!({
-            "role": "tool_result",
-            "result": {
+        let msg = completed_tool_lifecycle(
+            "call-redaction",
+            "execute_command",
+            serde_json::json!({}),
+            serde_json::json!({
                 "stdout": "{\"apiKey\":\"llm-secret\",\"voice_api_key\":\"voice-secret\"}\nOPENAI_API_KEY=env-secret",
                 "stderr": "Authorization: Bearer bearer-secret\nx-api-key: header-secret",
-            }
-        });
+            }),
+        );
 
         let text = tool_result_text_for_share(&msg).unwrap_or_default();
         assert!(!text.contains("llm-secret"));
@@ -512,22 +535,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn to_shared_message_includes_execute_command_for_tool_result() {
+    async fn to_shared_message_includes_execute_command_for_tool_lifecycle() {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
-        let tool_msg = serde_json::json!({
-            "role": "tool_result",
-            "tool_name": "execute_command",
-            "arguments": {
-                "command": "curl -s https://example.com"
-            },
-            "success": true,
-            "result": {
+        let tool_msg = completed_tool_lifecycle(
+            "call-command",
+            "execute_command",
+            serde_json::json!({"command": "curl -s https://example.com"}),
+            serde_json::json!({
                 "stdout": "{\"ok\":true}",
                 "stderr": "",
                 "exit_code": 0,
-            },
-        });
+            }),
+        );
 
         let shared = to_shared_message(&tool_msg, 0, "main", &store)
             .await
@@ -545,19 +565,18 @@ mod tests {
     async fn to_shared_message_redacts_execute_command_and_output_secrets() {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
-        let tool_msg = serde_json::json!({
-            "role": "tool_result",
-            "tool_name": "execute_command",
-            "arguments": {
+        let tool_msg = completed_tool_lifecycle(
+            "call-secret-command",
+            "execute_command",
+            serde_json::json!({
                 "command": "OPENAI_API_KEY=sk-openai curl -s -H 'Authorization: Bearer bearer-secret' 'https://api.example.com?q=test&api_key=url-secret'"
-            },
-            "success": true,
-            "result": {
+            }),
+            serde_json::json!({
                 "stdout": "{\"api_key\":\"stdout-secret\"}",
                 "stderr": "ELEVENLABS_API_KEY=voice-secret",
                 "exit_code": 0,
-            },
-        });
+            }),
+        );
 
         let shared = to_shared_message(&tool_msg, 0, "main", &store)
             .await
@@ -863,10 +882,15 @@ mod tests {
         store
             .append(
                 "main",
-                &serde_json::json!({ "role": "tool_result", "content": "tool output" }),
+                &completed_tool_lifecycle(
+                    "call-voice-index",
+                    "execute_command",
+                    serde_json::json!({}),
+                    serde_json::json!({"output": "tool output"}),
+                ),
             )
             .await
-            .expect("append tool_result");
+            .expect("append tool lifecycle");
         store
             .append(
                 "main",

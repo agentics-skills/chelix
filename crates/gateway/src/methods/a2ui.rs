@@ -1,4 +1,5 @@
 use {
+    chelix_common::ActiveToolInvocation,
     chelix_protocol::{ErrorShape, error_codes},
     serde::Deserialize,
     serde_json::Value,
@@ -50,7 +51,11 @@ pub(super) fn register(registry: &mut MethodRegistry) {
                         )
                     })?;
 
-                let active_calls = context.state.chat().active_tool_calls(&session_key).await;
+                let active_calls = context
+                    .state
+                    .chat()
+                    .active_tool_invocations(&session_key)
+                    .await;
                 validate_active_interaction(
                     &active_calls,
                     &params.run_id,
@@ -75,28 +80,28 @@ pub(super) fn register(registry: &mut MethodRegistry) {
 }
 
 fn validate_active_interaction(
-    active_calls: &[Value],
+    active_calls: &[ActiveToolInvocation],
     run_id: &str,
     tool_call_id: &str,
     surface_id: &str,
 ) -> Result<(), ErrorShape> {
     let Some(call) = active_calls.iter().find(|call| {
-        call.get("runId").and_then(Value::as_str) == Some(run_id)
-            && call.get("toolCallId").and_then(Value::as_str) == Some(tool_call_id)
+        call.lifecycle.run_id.as_deref() == Some(run_id)
+            && call.lifecycle.tool_call_id == tool_call_id
     }) else {
         return Err(ErrorShape::new(
             error_codes::CONFLICT,
             "the referenced A2UI tool call is not active in this session",
         ));
     };
-    if call.get("toolName").and_then(Value::as_str) != Some(TOOL_NAME) {
+    if call.lifecycle.tool_name != TOOL_NAME {
         return Err(ErrorShape::new(
             error_codes::CONFLICT,
             "the referenced active tool call is not render_a2ui",
         ));
     }
     let announced_surface = call
-        .get("arguments")
+        .arguments()
         .ok_or_else(|| {
             ErrorShape::new(
                 error_codes::INTERNAL,
@@ -132,42 +137,53 @@ fn map_submit_error(error: BrokerSubmitError) -> ErrorShape {
 mod tests {
     use super::*;
 
-    fn active_call() -> Value {
-        serde_json::json!({
-            "runId": "run-1",
-            "toolCallId": "call-1",
-            "toolName": TOOL_NAME,
-            "arguments": {
-                "messages": [
-                    {
-                        "version": "v0.9.1",
-                        "createSurface": {
-                            "surfaceId": "surface-1",
-                            "catalogId": crate::a2ui::BASIC_CATALOG_ID
-                        }
-                    },
-                    {
-                        "version": "v0.9.1",
-                        "updateComponents": {
-                            "surfaceId": "surface-1",
-                            "components": [
-                                {
-                                    "id": "root",
-                                    "component": "Button",
-                                    "child": "submit-label",
-                                    "action": { "event": { "name": "submit" } }
-                                },
-                                {
-                                    "id": "submit-label",
-                                    "component": "Text",
-                                    "text": "Submit"
+    fn active_call() -> ActiveToolInvocation {
+        ActiveToolInvocation {
+            lifecycle: chelix_common::tool_lifecycle::ToolLifecycleEvent {
+                tool_call_id: "call-1".to_owned(),
+                tool_name: TOOL_NAME.to_owned(),
+                sequence: 4,
+                emitted_at_ms: 1,
+                run_id: Some("run-1".to_owned()),
+                context_budget: None,
+                update: chelix_common::tool_lifecycle::ToolLifecycleUpdate::Executing {
+                    arguments: serde_json::json!({
+                        "messages": [
+                            {
+                                "version": "v0.9.1",
+                                "createSurface": {
+                                    "surfaceId": "surface-1",
+                                    "catalogId": crate::a2ui::BASIC_CATALOG_ID
                                 }
-                            ]
-                        }
-                    }
-                ],
-            }
-        })
+                            },
+                            {
+                                "version": "v0.9.1",
+                                "updateComponents": {
+                                    "surfaceId": "surface-1",
+                                    "components": [
+                                        {
+                                            "id": "root",
+                                            "component": "Button",
+                                            "child": "submit-label",
+                                            "action": { "event": { "name": "submit" } }
+                                        },
+                                        {
+                                            "id": "submit-label",
+                                            "component": "Text",
+                                            "text": "Submit"
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }),
+                    started_at_ms: 1,
+                },
+            },
+            execution_mode: None,
+            accumulated_arguments: None,
+            context_budget: None,
+        }
     }
 
     #[test]

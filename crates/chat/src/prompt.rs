@@ -581,7 +581,7 @@ pub(crate) fn prepare_run_registry(
             chelix_config::ToolRegistryMode::Lazy
         )
     {
-        let mut visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw);
+        let mut visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw)?;
         if let Some(agent) = config.agents.get(&policy_context.agent_id) {
             visible.extend(agent.tools.preload.iter().cloned());
         }

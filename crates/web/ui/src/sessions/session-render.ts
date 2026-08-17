@@ -1,6 +1,5 @@
 // ── Session rendering: history messages, welcome card, session list ──
 
-import { getA2uiToolArgumentsError, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
@@ -26,20 +25,25 @@ import { modelStore } from "../stores/model-store";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
+import { toolCallIds } from "../tool-call-card";
 import {
-	appendToolCardContextBudget,
-	appendToolCardError,
-	createToolCallCard,
-	isCommandToolName,
-	renderToolCardError,
-	renderToolCardResult,
-	toolCallIds,
-} from "../tool-call-card";
+	isTerminalToolLifecycle,
+	isToolLifecycleEvent,
+	reduceToolInvocation,
+	type ToolInvocationSnapshot,
+	toolInvocationKey,
+} from "../tool-lifecycle";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage } from "../types/session";
-import type { CheckpointHistoryMessage, ContextBudgetMetadata, ReasoningContent, ToolResult } from "../types/ws-events";
+import type {
+	CheckpointHistoryMessage,
+	ContextBudgetMetadata,
+	ReasoningContent,
+	ToolLifecycleEvent,
+} from "../types/ws-events";
 import { hasVisibleReasoning } from "../types/ws-events";
 import { showToast } from "../ui";
+import { renderToolLifecycleSnapshot, toolCallCardId } from "../ws/tool-helpers";
 
 import { setSessionAgent } from "./session-agent";
 import { computeHistoryTailIndex, syncHistoryState } from "./session-history";
@@ -53,17 +57,10 @@ export interface SearchContext {
 	messageIndex: number;
 }
 
-interface ToolResultMsg extends HistoryMessage {
-	tool_call_id?: string;
-	tool_name?: string;
-	arguments?: unknown;
-	success?: boolean;
-	result?: ToolResult | string;
-	error?: string;
-	rejected?: boolean;
-	run_id?: string;
-	contextBudget?: ContextBudgetMetadata;
-}
+type ToolLifecycleHistoryMessage = HistoryMessage &
+	ToolLifecycleEvent & {
+		accumulatedArguments?: string;
+	};
 
 interface AssistantMsg extends HistoryMessage {
 	content?: string;
@@ -327,55 +324,6 @@ function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
 	return messageEl;
 }
 
-function appendToolResultSections(
-	card: HTMLElement,
-	msg: ToolResultMsg,
-	rejected: boolean,
-	a2uiArgumentsError: string | null,
-): void {
-	if (msg.result) {
-		renderToolCardResult(card, msg.result, {
-			sessionKey: S.activeSessionKey || "main",
-			screenshotMode: "media",
-		});
-	}
-	const toolError = rejected ? msg.error || a2uiArgumentsError : msg.success === false ? msg.error : undefined;
-	if (toolError && msg.result) appendToolCardError(card, toolError, rejected);
-	if (toolError && !msg.result) renderToolCardError(card, toolError, rejected);
-	appendToolCardContextBudget(card, msg.contextBudget);
-}
-
-function appendA2uiToolSurface(card: HTMLElement, msg: ToolResultMsg, rejected: boolean, success: boolean): void {
-	if (!isA2uiTool(msg.tool_name) || rejected) return;
-	mountA2uiToolCard(card, {
-		arguments: msg.arguments,
-		runId: msg.run_id,
-		toolCallId: msg.tool_call_id,
-		interactive: false,
-		success,
-		result: msg.result,
-		error: msg.error,
-	});
-}
-
-function renderHistoryToolResult(msg: ToolResultMsg): HTMLElement {
-	const success = msg.success !== false;
-	const a2uiTool = isA2uiTool(msg.tool_name);
-	const a2uiArgumentsError = a2uiTool ? getA2uiToolArgumentsError(msg.arguments) : null;
-	const rejected = msg.rejected === true || a2uiArgumentsError !== null;
-	const card = createToolCallCard({
-		toolCallId: msg.tool_call_id,
-		toolName: msg.tool_name,
-		arguments: msg.arguments,
-		status: rejected ? "retry" : success ? "success" : "error",
-		expanded: rejected || a2uiTool || isCommandToolName(msg.tool_name),
-	});
-	appendToolResultSections(card, msg, rejected, a2uiArgumentsError);
-	appendA2uiToolSurface(card, msg, rejected, success);
-	if (S.chatMsgBox) S.chatMsgBox.appendChild(card);
-	return card;
-}
-
 function makeThinkingDots(): HTMLElement {
 	const template = S.$<HTMLTemplateElement>("tpl-thinking-dots");
 	if (!template) throw new Error("Thinking dots template is missing");
@@ -630,8 +578,11 @@ export function hideSessionLoadIndicator(): void {
 }
 
 interface HistoryRenderState {
+	sessionKey: string;
 	messageElements: (HTMLElement | null)[];
 	pendingTerminalMetadata: Map<string, PendingTerminalToolMetadata>;
+	assistantHistoryIndexByToolCall: Map<string, number>;
+	toolInvocations: Map<string, ToolInvocationSnapshot>;
 	latestToolContextBudget: ContextBudgetMetadata | null;
 }
 
@@ -659,12 +610,10 @@ function registerAssistantTerminalMetadata(
 }
 
 function resolvePendingToolMetadata(
-	message: ToolResultMsg,
+	toolCallId: string,
 	toolCard: HTMLElement,
 	pendingMetadata: Map<string, PendingTerminalToolMetadata>,
 ): void {
-	const toolCallId = message.tool_call_id;
-	if (!toolCallId) return;
 	const pending = pendingMetadata.get(toolCallId);
 	if (!pending) return;
 	pending.remaining.delete(toolCallId);
@@ -680,18 +629,54 @@ function resolvePendingToolMetadata(
 	);
 }
 
+function renderAssistantHistoryEntry(message: AssistantMsg, state: HistoryRenderState): void {
+	const messageEl = renderHistoryAssistantMessage(message);
+	state.messageElements.push(messageEl);
+	for (const toolCallId of toolCallIds(message.tool_calls)) {
+		if (Number.isInteger(message.historyIndex)) {
+			state.assistantHistoryIndexByToolCall.set(toolCallId, message.historyIndex as number);
+		}
+	}
+	registerAssistantTerminalMetadata(message, messageEl, state.pendingTerminalMetadata);
+}
+
+function renderToolLifecycleHistoryEntry(message: HistoryMessage, state: HistoryRenderState): void {
+	if (!isToolLifecycleEvent(message)) {
+		state.messageElements.push(null);
+		return;
+	}
+	const lifecycleMessage = message as ToolLifecycleHistoryMessage;
+	const key = toolInvocationKey(state.sessionKey, lifecycleMessage.runId, lifecycleMessage.toolCallId);
+	const snapshot = reduceToolInvocation(state.toolInvocations.get(key), lifecycleMessage, {
+		runId: lifecycleMessage.runId,
+		contextBudget: lifecycleMessage.contextBudget,
+		accumulatedArguments: lifecycleMessage.accumulatedArguments,
+	});
+	state.toolInvocations.set(key, snapshot);
+	const existingCard = document.getElementById(toolCallCardId(snapshot));
+	const toolCard = renderToolLifecycleSnapshot(snapshot, state.sessionKey, {
+		renderEarly: false,
+		interactive: false,
+		screenshotMode: "media",
+		assistantHistoryIndex: state.assistantHistoryIndexByToolCall.get(lifecycleMessage.toolCallId),
+	});
+	state.messageElements.push(!existingCard && toolCard ? toolCard : null);
+	if (isTerminalToolLifecycle(lifecycleMessage)) {
+		state.latestToolContextBudget = lifecycleMessage.contextBudget || null;
+		if (toolCard) {
+			resolvePendingToolMetadata(lifecycleMessage.toolCallId, toolCard, state.pendingTerminalMetadata);
+		}
+	}
+}
+
 function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState): void {
 	switch (message.role) {
 		case "user":
 			state.messageElements.push(renderHistoryUserMessage(message as UserMsg));
 			return;
-		case "assistant": {
-			const assistantMessage = message as AssistantMsg;
-			const messageEl = renderHistoryAssistantMessage(assistantMessage);
-			state.messageElements.push(messageEl);
-			registerAssistantTerminalMetadata(assistantMessage, messageEl, state.pendingTerminalMetadata);
+		case "assistant":
+			renderAssistantHistoryEntry(message as AssistantMsg, state);
 			return;
-		}
 		case "notice":
 			state.messageElements.push(
 				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
@@ -703,14 +688,9 @@ function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState
 			state.messageElements.push(card);
 			return;
 		}
-		case "tool_result": {
-			const toolResult = message as ToolResultMsg;
-			state.latestToolContextBudget = toolResult.contextBudget || null;
-			const toolCard = renderHistoryToolResult(toolResult);
-			state.messageElements.push(toolCard);
-			resolvePendingToolMetadata(toolResult, toolCard, state.pendingTerminalMetadata);
+		case "tool_lifecycle":
+			renderToolLifecycleHistoryEntry(message, state);
 			return;
-		}
 		default:
 			state.messageElements.push(null);
 	}
@@ -755,8 +735,11 @@ export function renderHistory(
 	S.setSessionCurrentContextTokens(0);
 	S.setChatBatchLoading(true);
 	const state: HistoryRenderState = {
+		sessionKey: key,
 		messageElements: [],
 		pendingTerminalMetadata: new Map(),
+		assistantHistoryIndexByToolCall: new Map(),
+		toolInvocations: new Map(),
 		latestToolContextBudget: null,
 	};
 	for (const message of history) renderHistoryMessage(message, state);

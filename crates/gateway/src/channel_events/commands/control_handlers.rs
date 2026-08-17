@@ -439,6 +439,24 @@ pub(in crate::channel_events) async fn handle_update(
     }
 }
 
+fn active_tool_names(response: &serde_json::Value) -> Vec<&str> {
+    response
+        .get("toolInvocations")
+        .and_then(|value| value.as_array())
+        .map(|invocations| {
+            invocations
+                .iter()
+                .map(|invocation| {
+                    invocation
+                        .get("toolName")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("?")
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(in crate::channel_events) async fn handle_peek(
     state: &Arc<GatewayState>,
     session_key: &str,
@@ -455,11 +473,8 @@ pub(in crate::channel_events) async fn handle_peek(
             if let Some(text) = res.get("thinkingText").and_then(|v| v.as_str()) {
                 lines.push(format!("Thinking: {text}"));
             }
-            if let Some(tools) = res.get("toolCalls").and_then(|v| v.as_array()) {
-                for tc in tools {
-                    let name = tc.get("toolName").and_then(|v| v.as_str()).unwrap_or("?");
-                    lines.push(format!("  Running: {name}"));
-                }
+            for name in active_tool_names(&res) {
+                lines.push(format!("  Running: {name}"));
             }
             if lines.is_empty() {
                 lines.push("Active (thinking\u{2026})".to_string());
@@ -703,5 +718,25 @@ async fn handle_tts_chat(
         other => Err(ChannelError::invalid_input(format!(
             "unknown /tts chat mode: {other}\nUsage: /tts chat [on|off|default]"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::active_tool_names;
+
+    #[test]
+    fn active_tool_names_reads_tool_invocations() {
+        let response = serde_json::json!({
+            "toolInvocations": [
+                {"toolName": "read_file"},
+                {"toolName": "execute_command"}
+            ]
+        });
+
+        assert_eq!(active_tool_names(&response), vec![
+            "read_file",
+            "execute_command"
+        ]);
     }
 }

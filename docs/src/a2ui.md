@@ -64,8 +64,9 @@ sequenceDiagram
     participant Broker
 
     Agent->>Runner: render_a2ui(messages)
+    Runner-->>Chat: tool_lifecycle input_ready
     Runner->>Runner: Validate A2UI v0.9.1 payload
-    Runner-->>Chat: tool_call_start
+    Runner-->>Chat: tool_lifecycle executing
     Runner->>Broker: Wait by session + run + tool call
     Chat->>Chat: Render official A2UI surface
     Chat->>RPC: Standard action + routing metadata
@@ -73,7 +74,7 @@ sequenceDiagram
     RPC->>Broker: Submit action
     Broker-->>Runner: Standard A2UI client message
     Runner-->>Agent: {version, action}
-    Runner-->>Chat: tool_call_end
+    Runner-->>Chat: tool_lifecycle completed
 ```
 
 ## Calling `render_a2ui`
@@ -330,11 +331,11 @@ UI events and model-visible persisted arguments.
 
 ## Early actions and ending the wait
 
-Tool start is announced before the async tool future reaches its wait point. To
-avoid losing a very fast click, the gateway broker can buffer an action briefly
-until the waiter is registered. The broker uses the trusted
-`session + run + tool call` key, rejects duplicates, and marks completed
-interactions closed.
+The invocation's `input_ready` and `executing` lifecycle updates are announced
+before the async tool future reaches its wait point. To avoid losing a very fast
+click, the gateway broker can buffer an action briefly until the waiter is
+registered. The broker uses the trusted `session + run + tool call` key, rejects
+duplicates, and marks completed interactions closed.
 
 The wait has no deadline: Chelix never invents an action or continues with a
 default choice, so the only way an interaction ends is a real user action or
@@ -347,17 +348,18 @@ is rejected.
 A2UI reuses normal chat persistence:
 
 - the assistant tool-call frame stores the public `messages` argument;
-- the terminal `tool_result` stores the standard action or explicit error;
-- live tool events render the active surface;
-- history reconstruction revalidates the stored messages and renders valid
-  completed surfaces read-only;
-- rejected payloads remain visible with their original parameters and error.
+- every invocation update is appended as `role: "tool_lifecycle"`;
+- the terminal `completed` stage stores the standard action or explicit error;
+- live lifecycle events render the active surface;
+- history reconstruction reduces the persisted lifecycle, revalidates the
+  stored messages, and renders valid completed surfaces read-only;
+- rejected payloads remain visible with their original parameters and reason.
 
 No separate A2UI database or hidden UI-state copy is maintained.
 
-A call refused before execution is persisted exactly like an executed one: its
-assistant frame and a `tool_result` record carrying `"rejected": true` are both
-written to session history. Reloading the page therefore keeps the muted
+A call refused before execution keeps its assistant frame and appends a terminal
+`tool_lifecycle` record with `stage: "rejected"`, the public arguments, rejection
+reason, and agent-facing result. Reloading the page therefore keeps the muted
 **needs retry** card with its original parameters and validation error instead
 of silently dropping it. This applies to every tool, not only `render_a2ui`.
 

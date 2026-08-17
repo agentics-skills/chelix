@@ -43,7 +43,12 @@ impl LiveSessionService {
             .upsert(&key, None)
             .await
             .map_err(ServiceError::message)?;
-        self.metadata.touch(&key, truncate.kept_count as u32).await;
+        let ui_message_count = self
+            .store
+            .ui_message_count(&key)
+            .await
+            .map_err(ServiceError::message)?;
+        self.metadata.touch(&key, ui_message_count).await;
         self.metadata.set_preview(&key, preview.as_deref()).await;
 
         let entry = self
@@ -272,7 +277,12 @@ impl LiveSessionService {
             .await
             .map_err(ServiceError::message)?;
 
-        self.metadata.touch(&new_key, fork_point as u32).await;
+        let ui_message_count = self
+            .store
+            .ui_message_count(&new_key)
+            .await
+            .map_err(ServiceError::message)?;
+        self.metadata.touch(&new_key, ui_message_count).await;
 
         // Inherit model, project, mcp_disabled, and agent_id from parent.
         if let Some(parent) = self.metadata.get(parent_key).await {
@@ -472,7 +482,15 @@ impl LiveSessionService {
             match msg.get("role").and_then(|v| v.as_str()) {
                 Some("user") => user_messages += 1,
                 Some("assistant") => assistant_messages += 1,
-                Some("tool_result") => tool_calls += 1,
+                Some("tool_lifecycle") => {
+                    let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(msg.clone())
+                        .map_err(|error| {
+                            format!("invalid tool lifecycle in run history: {error}")
+                        })?;
+                    if lifecycle.stage().is_terminal() {
+                        tool_calls += 1;
+                    }
+                },
                 _ => {},
             }
         }

@@ -11,11 +11,11 @@ use std::{
 use {
     chelix_config::schema::ToolMode,
     serde_json::Value,
-    tokio::sync::{Mutex, Notify, RwLock, mpsc},
+    tokio::sync::{Mutex, Notify, RwLock, mpsc, oneshot},
     tracing::{debug, info, warn},
 };
 
-use chelix_agents::runner::RunnerEvent;
+use chelix_agents::runner::{OnEvent, OnToolLifecycle, RunnerEvent, RunnerToolLifecycleEvent};
 
 use crate::{models::DisabledModelsStore, runtime::ChatRuntime, types::*};
 
@@ -147,22 +147,145 @@ impl Drop for RunnerEventProcessedGuard {
     }
 }
 
-pub(crate) fn ordered_runner_event_callback() -> (
-    Box<dyn Fn(RunnerEvent) + Send + Sync>,
-    mpsc::UnboundedReceiver<RunnerEvent>,
+pub(crate) enum OrderedRunnerEvent {
+    Event(RunnerEvent),
+    ToolLifecycle {
+        event: Box<RunnerToolLifecycleEvent>,
+        receipt: Option<oneshot::Sender<Result<(), String>>>,
+    },
+}
+
+pub(crate) fn ordered_runner_event_callbacks() -> (
+    OnEvent,
+    OnToolLifecycle,
+    mpsc::UnboundedReceiver<OrderedRunnerEvent>,
     RunnerEventBarrier,
 ) {
-    let (tx, rx) = mpsc::unbounded_channel::<RunnerEvent>();
+    let (tx, rx) = mpsc::unbounded_channel::<OrderedRunnerEvent>();
     let barrier = RunnerEventBarrier::default();
-    let callback_barrier = barrier.clone();
-    let callback: Box<dyn Fn(RunnerEvent) + Send + Sync> = Box::new(move |event| {
-        if tx.send(event).is_ok() {
-            callback_barrier.sent.fetch_add(1, Ordering::Release);
+
+    let event_tx = tx.clone();
+    let event_barrier = barrier.clone();
+    let on_event: OnEvent = Box::new(move |event| {
+        if event_tx.send(OrderedRunnerEvent::Event(event)).is_ok() {
+            event_barrier.sent.fetch_add(1, Ordering::Release);
         } else {
             debug!("runner event dropped because event processor is closed");
         }
     });
-    (callback, rx, barrier)
+
+    let lifecycle_barrier = barrier.clone();
+    let on_tool_lifecycle: OnToolLifecycle = Arc::new(move |event| {
+        let await_receipt = event.lifecycle.stage()
+            != chelix_common::tool_lifecycle::ToolLifecycleStage::InputStreaming;
+        let (receipt, receipt_rx) = if await_receipt {
+            let (receipt_tx, receipt_rx) = oneshot::channel();
+            (Some(receipt_tx), Some(receipt_rx))
+        } else {
+            (None, None)
+        };
+        let queued = tx.send(OrderedRunnerEvent::ToolLifecycle {
+            event: Box::new(event),
+            receipt,
+        });
+        if queued.is_ok() {
+            lifecycle_barrier.sent.fetch_add(1, Ordering::Release);
+        }
+        Box::pin(async move {
+            queued.map_err(|_| anyhow::anyhow!("tool lifecycle processor is closed"))?;
+            let Some(receipt_rx) = receipt_rx else {
+                return Ok(());
+            };
+            let result = receipt_rx
+                .await
+                .map_err(|_| anyhow::anyhow!("tool lifecycle receipt was dropped"))?;
+            result.map_err(anyhow::Error::msg)
+        })
+    });
+
+    (on_event, on_tool_lifecycle, rx, barrier)
+}
+
+#[cfg(test)]
+mod lifecycle_receipt_tests {
+    use std::{future::Future, task::Poll};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn lifecycle_callback_waits_for_forwarder_receipt() {
+        let (_on_event, on_tool_lifecycle, mut receiver, _barrier) =
+            ordered_runner_event_callbacks();
+        let event =
+            RunnerToolLifecycleEvent::new(chelix_common::tool_lifecycle::ToolLifecycleEvent {
+                tool_call_id: "call-1".to_owned(),
+                tool_name: "read_file".to_owned(),
+                sequence: 3,
+                emitted_at_ms: 1,
+                run_id: None,
+                context_budget: None,
+                update: chelix_common::tool_lifecycle::ToolLifecycleUpdate::WaitingForExecution {
+                    arguments: serde_json::json!({"path": "/tmp/input"}),
+                },
+            });
+        let delivery = on_tool_lifecycle(event);
+        tokio::pin!(delivery);
+        let queued = receiver
+            .recv()
+            .await
+            .unwrap_or_else(|| panic!("lifecycle event must be queued"));
+        let OrderedRunnerEvent::ToolLifecycle { receipt, .. } = queued else {
+            panic!("expected a lifecycle event");
+        };
+        let receipt = receipt.unwrap_or_else(|| panic!("stage boundary must carry a receipt"));
+
+        let was_pending =
+            std::future::poll_fn(|cx| Poll::Ready(delivery.as_mut().poll(cx).is_pending())).await;
+        assert!(was_pending);
+        receipt
+            .send(Ok(()))
+            .unwrap_or_else(|_| panic!("lifecycle callback must still await the receipt"));
+        assert!(delivery.await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn input_streaming_callback_completes_after_ordered_enqueue() {
+        let (_on_event, on_tool_lifecycle, mut receiver, _barrier) =
+            ordered_runner_event_callbacks();
+        let event =
+            RunnerToolLifecycleEvent::new(chelix_common::tool_lifecycle::ToolLifecycleEvent {
+                tool_call_id: "call-1".to_owned(),
+                tool_name: "overwrite_file".to_owned(),
+                sequence: 1,
+                emitted_at_ms: 1,
+                run_id: None,
+                context_budget: None,
+                update: chelix_common::tool_lifecycle::ToolLifecycleUpdate::InputStreaming {
+                    arguments_delta: "fragment".to_owned(),
+                },
+            });
+
+        assert!(on_tool_lifecycle(event).await.is_ok());
+        let queued = receiver
+            .recv()
+            .await
+            .unwrap_or_else(|| panic!("input streaming event must be queued"));
+        let OrderedRunnerEvent::ToolLifecycle { receipt, .. } = queued else {
+            panic!("expected a lifecycle event");
+        };
+        assert!(receipt.is_none());
+    }
+
+    #[tokio::test]
+    async fn event_receiver_closes_after_both_callbacks_are_dropped() {
+        let (on_event, on_tool_lifecycle, mut receiver, _barrier) =
+            ordered_runner_event_callbacks();
+
+        drop(on_event);
+        drop(on_tool_lifecycle);
+
+        assert!(receiver.recv().await.is_none());
+    }
 }
 
 const CHANNEL_STREAM_BUFFER_SIZE: usize = 64;

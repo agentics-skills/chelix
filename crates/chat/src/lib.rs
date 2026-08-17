@@ -19,7 +19,7 @@ pub use {
     memory_tools::{AgentScopedMemoryWriter, MemoryForgetTool},
     models::{DisabledModelsStore, LiveModelService, UnsupportedModelInfo},
     runtime::{ChatRuntime, TtsOverride},
-    service::{ActiveToolCall, LiveChatService},
+    service::{ActiveToolInvocation, LiveChatService},
     types::{
         BroadcastOpts, memory_write_mode_allows_save, model_matches_allowlist, normalize_model_key,
     },

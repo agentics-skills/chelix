@@ -328,8 +328,13 @@ impl LiveChatService {
 
         // Update metadata.
         let _ = self.session_metadata.upsert(&session_key, None).await;
+        let ui_message_count = self
+            .session_store
+            .ui_message_count(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         self.session_metadata
-            .touch(&session_key, history.len() as u32)
+            .touch(&session_key, ui_message_count)
             .await;
 
         // If this is a web UI message on a channel-bound session, attach the
@@ -624,7 +629,7 @@ impl LiveChatService {
         let active_runs = Arc::clone(&self.active_runs);
         let active_runs_by_session = Arc::clone(&self.active_runs_by_session);
         let active_thinking_text = Arc::clone(&self.active_thinking_text);
-        let active_tool_calls = Arc::clone(&self.active_tool_calls);
+        let active_tool_invocations = Arc::clone(&self.active_tool_invocations);
         let active_partial_assistant = Arc::clone(&self.active_partial_assistant);
         let active_reply_medium = Arc::clone(&self.active_reply_medium);
         let run_id_clone = run_id.clone();
@@ -894,7 +899,7 @@ impl LiveChatService {
                         mcp_disabled,
                         client_seq,
                         Some(Arc::clone(&active_thinking_text)),
-                        Some(Arc::clone(&active_tool_calls)),
+                        Some(Arc::clone(&active_tool_invocations)),
                         Some(Arc::clone(&active_partial_assistant)),
                         &active_event_forwarders,
                         &terminal_runs,
@@ -960,7 +965,7 @@ impl LiveChatService {
                 agent_fut.await
             };
 
-            if let Ok(count) = session_store.count(&session_key_clone).await {
+            if let Ok(count) = session_store.ui_message_count(&session_key_clone).await {
                 session_metadata.touch(&session_key_clone, count).await;
 
                 // ── Periodic background memory extraction ──────────────
@@ -1054,11 +1059,10 @@ impl LiveChatService {
 
             // ── Auto-title generation ──────────────────────────────
             // After the first completed turn, trigger background title
-            // generation. We check >= 2 (not == 2) because agentic turns
-            // with tool calls produce more than 2 stored messages.
-            // `generate_title_if_needed` guards against duplicate titles.
+            // generation. `generate_title_if_needed` guards against
+            // duplicate titles.
             if auto_title_enabled
-                && let Ok(count) = session_store.count(&session_key_clone).await
+                && let Ok(count) = session_store.ui_message_count(&session_key_clone).await
                 && count >= 2
                 && !queued_replay
             {
@@ -1081,7 +1085,10 @@ impl LiveChatService {
                 .write()
                 .await
                 .remove(&session_key_clone);
-            active_tool_calls.write().await.remove(&session_key_clone);
+            active_tool_invocations
+                .write()
+                .await
+                .remove(&session_key_clone);
             terminal_runs.write().await.remove(&run_id_clone);
             active_partial_assistant
                 .write()
