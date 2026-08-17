@@ -66,6 +66,7 @@ full = [
   "caldav",
   "code-index-builtin",
   "code-splitter",
+  "context7",
   "discord",
   "file-watcher",
   "firecrawl",
@@ -108,6 +109,7 @@ full = [
 # Minimal build for memory-constrained devices (Raspberry Pi, etc.).
 # Build with: cargo build --release --no-default-features --features lightweight
 code-index-builtin = ["chelix-gateway/code-index-builtin"]
+context7           = ["chelix-gateway/context7"]
 code-splitter      = ["chelix-memory/code-splitter"]
 discord            = ["chelix-httpd/discord"]
 embedded-assets    = ["chelix-web?/embedded-assets"]

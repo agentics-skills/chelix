@@ -156,6 +156,22 @@ fn apply_env_overrides_rejects_unknown_offered_provider() {
 }
 
 #[test]
+fn apply_env_overrides_rejects_zero_context7_request_timeout() {
+    let vars = vec![(
+        "CHELIX_TOOLS__CONTEXT7__REQUEST_TIMEOUT_SECS".into(),
+        "0".into(),
+    )];
+
+    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
+        .expect_err("zero Context7 request timeout must fail");
+
+    assert_eq!(
+        error.to_string(),
+        "invalid environment overrides: tools.context7.request_timeout_secs must be at least 1"
+    );
+}
+
+#[test]
 fn apply_env_overrides_rejects_noncanonical_offered_provider_names() {
     for name in [
         "claude",

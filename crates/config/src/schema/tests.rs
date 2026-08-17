@@ -70,6 +70,42 @@ fn tools_loop_detector_window_defaults_to_two() {
 }
 
 #[test]
+fn context7_request_timeout_defaults_to_five_minutes() {
+    let config: ChelixConfig = toml::from_str("").unwrap();
+    assert_eq!(
+        config.tools.context7.request_timeout_secs,
+        DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS
+    );
+    assert_eq!(DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS, 300);
+}
+
+#[test]
+fn context7_config_parses_token_and_timeout_without_exposing_the_token() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools.context7]
+token = "ctx7-secret"
+request_timeout_secs = 45
+"#,
+    )
+    .unwrap();
+    assert_eq!(config.tools.context7.request_timeout_secs, 45);
+    assert_eq!(
+        config
+            .tools
+            .context7
+            .token
+            .as_ref()
+            .map(ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("ctx7-secret")
+    );
+    let debug = format!("{:?}", config.tools.context7);
+    assert!(debug.contains("[REDACTED]"));
+    assert!(!debug.contains("ctx7-secret"));
+}
+
+#[test]
 fn github_request_timeout_defaults_to_five_minutes() {
     let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(

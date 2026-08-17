@@ -329,6 +329,13 @@ port = {port}                           # Port number (auto-generated for this i
 # api_key = "fc-..."                # Or set FIRECRAWL_API_KEY env var
 # base_url = "https://api.firecrawl.dev"
 
+# ── Context7 (context7_* tools) ───────────────────────────────────────────────
+# Every context7_* tool calls the Context7 API with this optional token.
+
+# [tools.context7]
+# token = "ctx7sk-..."               # Context7 API token
+# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
+
 # ── GitHub (github_* tools) ───────────────────────────────────────────────────
 # Every github_* tool calls the GitHub REST API with this token. Tools that
 # require authentication fail with an explicit error when it is not set.

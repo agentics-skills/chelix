@@ -18,6 +18,7 @@ chelix-chat             = { workspace = true }
 chelix-code-index       = { workspace = true }
 chelix-common           = { workspace = true }
 chelix-config           = { workspace = true }
+chelix-context7         = { optional = true, workspace = true }
 chelix-cron             = { workspace = true }
 chelix-discord          = { optional = true, workspace = true }
 chelix-external-agents  = { workspace = true }
@@ -90,11 +91,13 @@ bundled-skills = [
 ]
 caldav = ["dep:chelix-caldav"]
 code-index-builtin = ["chelix-code-index/builtin"]
+context7 = ["dep:chelix-context7"]
 default = [
   "agent",
   "bundled-skills",
   "caldav",
   "code-index-builtin",
+  "context7",
   "discord",
   "file-watcher",
   "firecrawl",
@@ -132,6 +135,7 @@ matrix = ["dep:chelix-matrix"]
 mdns = ["dep:mdns-sd"]
 metrics = [
   "chelix-chat/metrics",
+  "chelix-context7?/metrics",
   "chelix-discord?/metrics",
   "chelix-github?/metrics",
   "chelix-matrix/metrics",

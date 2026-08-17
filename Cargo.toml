@@ -13,6 +13,7 @@ default-members = [
   "crates/code-index",
   "crates/common",
   "crates/config",
+  "crates/context7",
   "crates/cron",
   "crates/ctl",
   "crates/discord",
@@ -69,6 +70,7 @@ members = [
   "crates/code-index",
   "crates/common",
   "crates/config",
+  "crates/context7",
   "crates/cron",
   "crates/ctl",
   "crates/embedding-service",
@@ -313,6 +315,7 @@ chelix-chat             = { path = "crates/chat" }
 chelix-code-index       = { path = "crates/code-index" }
 chelix-common           = { path = "crates/common" }
 chelix-config           = { path = "crates/config" }
+chelix-context7         = { path = "crates/context7" }
 chelix-cron             = { path = "crates/cron" }
 chelix-discord          = { path = "crates/discord" }
 chelix-external-agents  = { path = "crates/external-agents" }

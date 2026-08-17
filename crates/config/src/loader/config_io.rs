@@ -816,6 +816,7 @@ pub(super) fn apply_env_overrides_with_options(
     let config: ChelixConfig = serde_json::from_value(root)
         .map_err(|source| crate::Error::external("failed to apply env overrides", source))?;
     validate_provider_names(&config.providers, "environment overrides")?;
+    validate_context7_request_timeout(&config, "environment overrides")?;
     Ok(config)
 }
 
@@ -936,7 +937,17 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     let context = format!("config {}", path.display());
     validate_provider_names(&config.providers, &context)?;
     validate_agent_ids(&config.agents, &context)?;
+    validate_context7_request_timeout(&config, &context)?;
     Ok(config)
+}
+
+fn validate_context7_request_timeout(config: &ChelixConfig, context: &str) -> crate::Result<()> {
+    if config.tools.context7.request_timeout_secs == 0 {
+        return Err(crate::Error::message(format!(
+            "invalid {context}: tools.context7.request_timeout_secs must be at least 1"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_agent_ids(agents: &crate::schema::AgentsConfig, context: &str) -> crate::Result<()> {
