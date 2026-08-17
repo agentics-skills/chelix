@@ -15,10 +15,11 @@ import {
 	replaceSessionHistory,
 } from "../stores/session-history-cache";
 import { insertSessionInOrder, Session, sessionStore } from "../stores/session-store";
+import { isToolLifecycleEvent, reduceToolInvocation } from "../tool-lifecycle";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage, SessionMeta } from "../types/session";
-import type { ChatPayload, QueuedPrompt, ReasoningContent, ToolCallPayload } from "../types/ws-events";
-import { handleToolCallStartDom } from "../ws/tool-helpers";
+import type { ActiveToolInvocation, QueuedPrompt, ReasoningContent } from "../types/ws-events";
+import { clearToolLifecycleStateForSession, renderToolLifecycleSnapshot } from "../ws/tool-helpers";
 
 import {
 	restoreSessionModelSettings as restoreSessionModelSettingsImpl,
@@ -72,7 +73,7 @@ interface SwitchPayload {
 	replying?: boolean;
 	thinkingText?: ReasoningContent;
 	voicePending?: boolean;
-	activeToolCalls?: ToolCallPayload[];
+	activeToolInvocations?: ActiveToolInvocation[];
 	queuedPrompts?: QueuedPrompt[];
 	hasMore?: boolean;
 	nextCursor?: number;
@@ -220,27 +221,18 @@ function applyReplyingStateFromSwitchPayload(key: string, payload: SwitchPayload
 	}
 }
 
-function restoreActiveToolCallsFromSwitchPayload(key: string, payload: SwitchPayload): void {
+function restoreActiveToolInvocationsFromSwitchPayload(key: string, payload: SwitchPayload): void {
 	if (key !== sessionStore.activeSessionKey.value) return;
-	const toolCalls = Array.isArray(payload.activeToolCalls) ? payload.activeToolCalls : [];
-	for (const call of toolCalls) {
-		if (!call || typeof call !== "object") continue;
-		const toolCallId = call.toolCallId;
-		const toolName = call.toolName;
-		if (!toolCallId) continue;
-		handleToolCallStartDom(
-			{
-				sessionKey: key,
-				state: "tool_call_start",
-				runId: call.runId,
-				toolCallId,
-				toolName,
-				arguments: call.arguments,
-				executionMode: call.executionMode,
-				startedAt: call.startedAt,
-			} as ChatPayload,
-			key,
-		);
+	clearToolLifecycleStateForSession(key);
+	const invocations = Array.isArray(payload.activeToolInvocations) ? payload.activeToolInvocations : [];
+	for (const invocation of invocations) {
+		if (!isToolLifecycleEvent(invocation)) continue;
+		const snapshot = reduceToolInvocation(undefined, invocation, {
+			runId: invocation.runId,
+			executionMode: invocation.executionMode,
+			accumulatedArguments: invocation.accumulatedArguments,
+		});
+		renderToolLifecycleSnapshot(snapshot, key);
 	}
 }
 
@@ -373,7 +365,7 @@ function renderActiveSwitch(
 	} else {
 		postHistoryLoadActions(context.key, context.searchContext, [], thinkingText, false);
 	}
-	restoreActiveToolCallsFromSwitchPayload(context.key, switchPayload);
+	restoreActiveToolInvocationsFromSwitchPayload(context.key, switchPayload);
 	appendHistoryLoadNotices(application, historyPayload);
 	focusChatInputIfIdle();
 }

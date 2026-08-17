@@ -8,6 +8,17 @@ const {
 	watchPageErrors,
 } = require("../helpers");
 
+function liveToolLifecycle(stage, fields) {
+	const { sequence = 0, emittedAtMs = 1_700_000_000_000, ...eventFields } = fields;
+	return {
+		...eventFields,
+		state: "tool_lifecycle",
+		sequence,
+		emittedAtMs,
+		stage,
+	};
+}
+
 test.describe("Chat abort", () => {
 	test.beforeEach(async ({ page }) => {
 		await navigateAndWait(page, "/chats/main");
@@ -147,13 +158,14 @@ test.describe("Chat abort", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-abort-tool-boundary",
-				messageIndex: 5,
+				messageIndex: 6,
+				assistantMessageIndex: 5,
 				toolCallId: "tc-boundary-1",
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "true" },
 				assistantMessage: {
 					role: "assistant",
@@ -166,7 +178,7 @@ test.describe("Chat abort", () => {
 					run_id: "run-abort-tool-boundary",
 					tool_calls: [{ id: "tc-boundary-1", name: "execute_command" }],
 				},
-			},
+			}),
 		});
 
 		const toolCard = page.locator("#tool-run-abort-tool-boundary-tc-boundary-1");
@@ -178,13 +190,14 @@ test.describe("Chat abort", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-abort-tool-boundary",
-				messageIndex: 5,
+				messageIndex: 7,
+				assistantMessageIndex: 5,
 				toolCallId: "tc-boundary-2",
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "false" },
 				assistantMessage: {
 					role: "assistant",
@@ -197,7 +210,7 @@ test.describe("Chat abort", () => {
 						{ id: "tc-boundary-2", name: "execute_command" },
 					],
 				},
-			},
+			}),
 		});
 		await expect(page.locator("#tool-run-abort-tool-boundary-tc-boundary-2")).toBeVisible({ timeout: 5_000 });
 		await expect(canonicalSegment).toHaveCount(1);
@@ -245,13 +258,14 @@ test.describe("Chat abort", () => {
 		await expectRpcOk(page, "chat.clear", {});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-abort-terminal-tool-segment",
-				messageIndex: 20,
+				messageIndex: 21,
+				assistantMessageIndex: 20,
 				toolCallId: "tc-terminal-tool-segment",
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "true" },
 				assistantMessage: {
 					role: "assistant",
@@ -263,21 +277,22 @@ test.describe("Chat abort", () => {
 					cacheReadTokens: 3,
 					tool_calls: [{ id: "tc-terminal-tool-segment", name: "execute_command" }],
 				},
-			},
+			}),
 		});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				runId: "run-abort-terminal-tool-segment",
-				messageIndex: 21,
+				messageIndex: 22,
 				toolCallId: "tc-terminal-tool-segment",
 				toolName: "execute_command",
+				sequence: 8,
 				arguments: { command: "true" },
 				success: false,
-				error: { detail: "Stopped by user." },
-			},
+				result: null,
+				error: "Stopped by user.",
+			}),
 		});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
@@ -317,13 +332,14 @@ test.describe("Chat abort", () => {
 		await expectRpcOk(page, "chat.clear", {});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-abort-empty-tool-segment",
-				messageIndex: 30,
+				messageIndex: 31,
+				assistantMessageIndex: 30,
 				toolCallId: "tc-empty-tool-segment",
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "true" },
 				assistantMessage: {
 					role: "assistant",
@@ -332,20 +348,22 @@ test.describe("Chat abort", () => {
 					provider: "mock",
 					tool_calls: [{ id: "tc-empty-tool-segment", name: "execute_command" }],
 				},
-			},
+			}),
 		});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				runId: "run-abort-empty-tool-segment",
-				messageIndex: 31,
+				messageIndex: 32,
 				toolCallId: "tc-empty-tool-segment",
 				toolName: "execute_command",
+				sequence: 8,
 				arguments: { command: "true" },
 				success: true,
-			},
+				result: null,
+				error: null,
+			}),
 		});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
@@ -383,13 +401,14 @@ test.describe("Chat abort", () => {
 		await expectRpcOk(page, "chat.clear", {});
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-abort-remainder",
-				messageIndex: 10,
+				messageIndex: 11,
+				assistantMessageIndex: 10,
 				toolCallId: "tc-remainder-1",
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "true" },
 				assistantMessage: {
 					role: "assistant",
@@ -402,37 +421,40 @@ test.describe("Chat abort", () => {
 						{ id: "tc-remainder-2", name: "execute_command" },
 					],
 				},
-			},
+			}),
 		});
 		await expect(page.locator("#tool-run-abort-remainder-tc-remainder-1")).toBeVisible({ timeout: 5_000 });
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				runId: "run-abort-remainder",
-				messageIndex: 11,
+				messageIndex: 12,
 				toolCallId: "tc-remainder-1",
 				toolName: "execute_command",
+				sequence: 8,
+				arguments: { command: "true" },
 				success: false,
-				error: { detail: "Stopped by user." },
-			},
+				result: null,
+				error: "Stopped by user.",
+			}),
 		});
 		await expect(page.locator("#tool-run-abort-remainder-tc-remainder-1")).toHaveClass(/command-err/);
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				runId: "run-abort-remainder",
-				messageIndex: 12,
+				messageIndex: 13,
 				toolCallId: "tc-remainder-2",
 				toolName: "execute_command",
+				sequence: 8,
 				arguments: { command: "false" },
 				success: false,
-				error: { detail: "Stopped by user." },
-			},
+				result: null,
+				error: "Stopped by user.",
+			}),
 		});
 		await expect(page.locator("#tool-run-abort-remainder-tc-remainder-2")).toHaveClass(/command-err/);
 		await expect(page.getByText("Stopped by user.", { exact: true })).toHaveCount(2);
@@ -443,7 +465,7 @@ test.describe("Chat abort", () => {
 				sessionKey: "main",
 				state: "aborted",
 				runId: "run-abort-remainder",
-				messageIndex: 13,
+				messageIndex: 14,
 				partialMessage: {
 					role: "assistant",
 					content: "Post-tool draft.",
@@ -456,7 +478,7 @@ test.describe("Chat abort", () => {
 		});
 
 		const preToolSegment = page.locator('.msg.assistant[data-history-index="10"]');
-		const postToolSegment = page.locator('.msg.assistant[data-history-index="13"]');
+		const postToolSegment = page.locator('.msg.assistant[data-history-index="14"]');
 		await expect(preToolSegment).toHaveCount(1);
 		await expect(postToolSegment).toHaveCount(1);
 		await expect(preToolSegment).toContainText("Intro segment.");
@@ -466,7 +488,7 @@ test.describe("Chat abort", () => {
 			var messages = document.getElementById("messages");
 			if (!messages) return false;
 			var card = document.getElementById("tool-run-abort-remainder-tc-remainder-1");
-			var segment = messages.querySelector('.msg.assistant[data-history-index="13"]');
+			var segment = messages.querySelector('.msg.assistant[data-history-index="14"]');
 			if (!(card && segment)) return false;
 			return !!(card.compareDocumentPosition(segment) & Node.DOCUMENT_POSITION_FOLLOWING);
 		});

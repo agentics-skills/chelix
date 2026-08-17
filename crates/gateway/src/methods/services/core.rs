@@ -1,6 +1,6 @@
 use super::*;
 
-use chelix_common::ReasoningContent;
+use chelix_common::{ActiveToolInvocation, ReasoningContent};
 
 use crate::session_reasoning::{enrich_session_entry_for_ui, materialize_agent_session_defaults};
 
@@ -8,7 +8,7 @@ fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     replying: bool,
     thinking_text: Option<ReasoningContent>,
-    tool_calls: Vec<serde_json::Value>,
+    tool_invocations: Vec<ActiveToolInvocation>,
     voice_pending: bool,
 ) {
     obj.insert("replying".to_string(), serde_json::Value::Bool(replying));
@@ -24,11 +24,15 @@ fn insert_session_activity_snapshot(
         };
         obj.insert("thinkingText".to_string(), value);
     }
-    if !tool_calls.is_empty() {
-        obj.insert(
-            "activeToolCalls".to_string(),
-            serde_json::Value::Array(tool_calls),
-        );
+    if !tool_invocations.is_empty() {
+        match serde_json::to_value(tool_invocations) {
+            Ok(value) => {
+                obj.insert("activeToolInvocations".to_string(), value);
+            },
+            Err(error) => {
+                tracing::error!(%error, "failed to serialize active tool invocations");
+            },
+        }
     }
     if voice_pending {
         obj.insert("voicePending".to_string(), serde_json::Value::Bool(true));
@@ -1150,8 +1154,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 } else {
                     None
                 };
-                let tool_calls = if replying {
-                    chat.active_tool_calls(key).await
+                let tool_invocations = if replying {
+                    chat.active_tool_invocations(key).await
                 } else {
                     Vec::new()
                 };
@@ -1167,7 +1171,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         obj,
                         replying,
                         thinking_text,
-                        tool_calls,
+                        tool_invocations,
                         voice_pending,
                     );
                     if let Some(prompts) = queued_prompts.get("prompts") {
@@ -1437,21 +1441,37 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReasoningContent, insert_session_activity_snapshot};
+    use super::{ActiveToolInvocation, ReasoningContent, insert_session_activity_snapshot};
+
+    fn active_tool_invocation() -> ActiveToolInvocation {
+        ActiveToolInvocation {
+            lifecycle: chelix_common::tool_lifecycle::ToolLifecycleEvent {
+                tool_call_id: "tool-1".to_owned(),
+                tool_name: "execute_command".to_owned(),
+                sequence: 1,
+                emitted_at_ms: 1,
+                run_id: Some("run-1".to_owned()),
+                context_budget: None,
+                update: chelix_common::tool_lifecycle::ToolLifecycleUpdate::Executing {
+                    arguments: serde_json::json!({"command": "ls"}),
+                    started_at_ms: 1,
+                },
+            },
+            execution_mode: None,
+            accumulated_arguments: None,
+            context_budget: None,
+        }
+    }
 
     #[test]
-    fn session_activity_snapshot_includes_active_tool_calls_only_when_replying() {
+    fn session_activity_snapshot_includes_active_tool_invocations_only_when_replying() {
         let mut obj = serde_json::Map::new();
 
         insert_session_activity_snapshot(
             &mut obj,
             true,
             Some(ReasoningContent::Text("working".to_string())),
-            vec![serde_json::json!({
-                "runId": "run-1",
-                "toolCallId": "tool-1",
-                "toolName": "execute_command",
-            })],
+            vec![active_tool_invocation()],
             true,
         );
 
@@ -1465,7 +1485,7 @@ mod tests {
             Some(true)
         );
         let tool_call = obj
-            .get("activeToolCalls")
+            .get("activeToolInvocations")
             .and_then(|v| v.as_array())
             .and_then(|calls| calls.first())
             .unwrap_or_else(|| panic!("active tool call is included"));
@@ -1504,13 +1524,13 @@ mod tests {
             &mut obj,
             false,
             Some(ReasoningContent::Text("stale".to_string())),
-            vec![serde_json::json!({"toolName": "execute_command"})],
+            vec![active_tool_invocation()],
             true,
         );
 
         assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(false));
         assert!(obj.get("thinkingText").is_none());
-        assert!(obj.get("activeToolCalls").is_none());
+        assert!(obj.get("activeToolInvocations").is_none());
         assert!(obj.get("voicePending").is_none());
     }
 }

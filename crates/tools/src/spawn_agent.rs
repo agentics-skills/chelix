@@ -738,6 +738,7 @@ async fn run_spawned_agent(
         &user_content,
         None,
         None,
+        None,
         Some(tool_context),
         None,
         None,

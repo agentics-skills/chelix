@@ -1,6 +1,17 @@
 const { expect, test } = require("../base-test");
 const { createSession, expectRpcOk, navigateAndWait, waitForWsConnected, watchPageErrors } = require("../helpers");
 
+function liveToolLifecycle(stage, fields) {
+	const { sequence = 0, emittedAtMs = 1_700_000_000_000, ...eventFields } = fields;
+	return {
+		...eventFields,
+		state: "tool_lifecycle",
+		sequence,
+		emittedAtMs,
+		stage,
+	};
+}
+
 async function openFreshChatSession(page) {
 	await navigateAndWait(page, "/");
 	await waitForWsConnected(page);
@@ -14,13 +25,13 @@ async function startDocumentToolCall(page, sessionKey, toolCallId, filename) {
 			async () => {
 				await expectRpcOk(page, "system-event", {
 					event: "chat",
-					payload: {
+					payload: liveToolLifecycle("input_ready", {
 						sessionKey,
-						state: "tool_call_start",
 						toolCallId,
 						toolName: "send_document",
-						arguments: JSON.stringify({ path: `/tmp/${filename}` }),
-					},
+						sequence: 2,
+						arguments: { path: `/tmp/${filename}` },
+					}),
 				});
 				return page.locator(`#tool-${toolCallId} .command-status`).count();
 			},
@@ -36,22 +47,24 @@ test.describe("send_document rendering", () => {
 
 		await startDocumentToolCall(page, sessionKey, "test-doc-call", "report.pdf");
 
-		// Simulate tool_call_end with document_ref result
+		// Simulate completed lifecycle with a document_ref result.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey,
-				state: "tool_call_end",
 				toolCallId: "test-doc-call",
 				toolName: "send_document",
+				sequence: 8,
+				arguments: { path: "/tmp/report.pdf" },
 				success: true,
-				result: {
+				result: JSON.stringify({
 					document_ref: "media/main/abc123_report.pdf",
 					mime_type: "application/pdf",
 					filename: "report.pdf",
 					size_bytes: 12345,
-				},
-			},
+				}),
+				error: null,
+			}),
 		});
 
 		// Verify the document card renders
@@ -87,19 +100,21 @@ test.describe("send_document rendering", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey,
-				state: "tool_call_end",
 				toolCallId: "test-zip-call",
 				toolName: "send_document",
+				sequence: 8,
+				arguments: { path: "/tmp/archive.zip" },
 				success: true,
-				result: {
+				result: JSON.stringify({
 					document_ref: "media/main/def456_archive.zip",
 					mime_type: "application/zip",
 					filename: "archive.zip",
 					size_bytes: 5242880,
-				},
-			},
+				}),
+				error: null,
+			}),
 		});
 
 		const docContainer = page.locator(".document-container").filter({ hasText: "archive.zip" });
@@ -127,19 +142,21 @@ test.describe("send_document rendering", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey,
-				state: "tool_call_end",
 				toolCallId: "test-csv-call",
 				toolName: "send_document",
+				sequence: 8,
+				arguments: { path: "/tmp/data.csv" },
 				success: true,
-				result: {
+				result: JSON.stringify({
 					document_ref: "media/main/ghi789_data.csv",
 					mime_type: "text/csv",
 					filename: "data.csv",
 					size_bytes: 256,
-				},
-			},
+				}),
+				error: null,
+			}),
 		});
 
 		const csvDoc = page.locator(".document-container").filter({ hasText: "data.csv" });

@@ -7,7 +7,6 @@ use std::{
 };
 
 use {
-    serde::Serialize,
     serde_json::Value,
     tokio::{sync::RwLock, task::AbortHandle},
     tracing::warn,
@@ -15,6 +14,7 @@ use {
 
 use {
     chelix_agents::{model::ReasoningAccumulator, tool_registry::ToolRegistry},
+    chelix_common::ActiveToolInvocation,
     chelix_providers::ProviderRegistry,
     chelix_service_traits::SessionMutationCoordinator,
     chelix_sessions::{
@@ -48,22 +48,6 @@ use crate::{
     types::*,
 };
 
-/// A tool call currently executing within an active agent run.
-#[derive(Debug, Clone, Serialize)]
-pub struct ActiveToolCall {
-    #[serde(rename = "runId")]
-    pub run_id: String,
-    #[serde(rename = "toolCallId")]
-    pub id: String,
-    #[serde(rename = "toolName")]
-    pub name: String,
-    pub arguments: Value,
-    #[serde(rename = "executionMode", skip_serializing_if = "Option::is_none")]
-    pub execution_mode: Option<String>,
-    #[serde(rename = "startedAt")]
-    pub started_at: u64,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct ActiveAssistantDraft {
     content: String,
@@ -74,7 +58,6 @@ pub(crate) struct ActiveAssistantDraft {
     reasoning_effort: Option<String>,
     seq: Option<u64>,
     run_id: String,
-    message_index: Option<usize>,
 }
 
 #[derive(Default)]
@@ -100,7 +83,6 @@ impl ActiveAssistantDraft {
             reasoning_effort,
             seq,
             run_id: run_id.to_string(),
-            message_index: None,
         }
     }
 
@@ -140,10 +122,6 @@ impl ActiveAssistantDraft {
         self.responses_reasoning.push(item);
     }
 
-    pub(crate) fn message_index(&self) -> Option<usize> {
-        self.message_index
-    }
-
     pub(crate) fn next_segment(&self) -> Self {
         Self::new(
             &self.run_id,
@@ -158,10 +136,6 @@ impl ActiveAssistantDraft {
         !self.content.trim().is_empty()
             || !self.reasoning.is_empty()
             || !self.responses_reasoning.is_empty()
-    }
-
-    fn has_visible_text(&self) -> bool {
-        !self.content.trim().is_empty()
     }
 
     pub(crate) fn to_persisted_message(
@@ -196,11 +170,10 @@ impl ActiveAssistantDraft {
 }
 
 pub(crate) async fn append_assistant_delta(
-    session_store: &SessionStore,
     active_partial_assistant: &Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>,
     session_key: &str,
     delta: &str,
-) -> error::Result<Option<usize>> {
+) -> error::Result<()> {
     let mut drafts = active_partial_assistant.write().await;
     let draft = drafts.get_mut(session_key).ok_or_else(|| {
         error::Error::message(format!(
@@ -208,44 +181,7 @@ pub(crate) async fn append_assistant_delta(
         ))
     })?;
     draft.append_text(delta);
-    if !draft.has_visible_text() {
-        return Ok(None);
-    }
-    let message_index = reserve_draft_message_index(session_store, session_key, draft).await?;
-    Ok(Some(message_index))
-}
-
-pub(crate) async fn reserve_assistant_message_index(
-    session_store: &SessionStore,
-    active_partial_assistant: &Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>,
-    session_key: &str,
-) -> error::Result<usize> {
-    let mut drafts = active_partial_assistant.write().await;
-    let draft = drafts.get_mut(session_key).ok_or_else(|| {
-        error::Error::message(format!(
-            "active assistant draft is unavailable for session '{session_key}'"
-        ))
-    })?;
-    reserve_draft_message_index(session_store, session_key, draft).await
-}
-
-async fn reserve_draft_message_index(
-    session_store: &SessionStore,
-    session_key: &str,
-    draft: &mut ActiveAssistantDraft,
-) -> error::Result<usize> {
-    if let Some(message_index) = draft.message_index() {
-        return Ok(message_index);
-    }
-
-    let message_index = session_store.count(session_key).await.map_err(|source| {
-        error::Error::external("failed to reserve assistant message index", source)
-    })?;
-    let message_index = usize::try_from(message_index).map_err(|source| {
-        error::Error::external("assistant message index exceeds usize", source)
-    })?;
-    draft.message_index = Some(message_index);
-    Ok(message_index)
+    Ok(())
 }
 
 pub(crate) async fn persist_active_assistant_draft(
@@ -262,15 +198,15 @@ pub(crate) async fn persist_active_assistant_draft(
         return Ok(None);
     }
 
-    let message_index = reserve_draft_message_index(session_store, session_key, draft).await?;
     let draft = drafts.remove(session_key).ok_or_else(|| {
         error::Error::message(format!(
             "active assistant draft disappeared for session '{session_key}'"
         ))
     })?;
+    drop(drafts);
     let partial_value = draft.to_persisted_message(None, None).to_value();
-    session_store
-        .append_at_index(session_key, &partial_value, message_index)
+    let message_index = session_store
+        .append_with_index(session_key, &partial_value)
         .await
         .map_err(|source| {
             error::Error::external("failed to persist partial assistant segment", source)
@@ -338,7 +274,6 @@ pub(crate) async fn persist_final_assistant_segment(
     reasoning_effort: Option<String>,
     seq: Option<u64>,
     run_id: &str,
-    message_index: usize,
 ) -> error::Result<usize> {
     let message = build_persisted_assistant_message(
         assistant_output.clone(),
@@ -350,7 +285,7 @@ pub(crate) async fn persist_final_assistant_segment(
     );
 
     session_store
-        .append_at_index(session_key, &message.to_value(), message_index)
+        .append_with_index(session_key, &message.to_value())
         .await
         .map_err(|source| {
             error::Error::external("failed to persist final assistant segment", source)
@@ -447,8 +382,9 @@ pub struct LiveChatService {
     /// returned in `sessions.switch` after a page reload.
     pub(in crate::service) active_thinking_text:
         Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>,
-    /// Per-session active tool calls for `chat.peek` snapshot.
-    pub(in crate::service) active_tool_calls: Arc<RwLock<HashMap<String, Vec<ActiveToolCall>>>>,
+    /// Per-session active tool invocation lifecycle snapshots for `chat.peek`.
+    pub(in crate::service) active_tool_invocations:
+        Arc<RwLock<HashMap<String, Vec<ActiveToolInvocation>>>>,
     /// Per-session streamed assistant content buffered so an abort can persist
     /// what the user already saw instead of dropping it on the floor.
     pub(in crate::service) active_partial_assistant:
@@ -509,7 +445,7 @@ impl LiveChatService {
             session_mutations: Arc::new(SessionMutationCoordinator::default()),
             last_client_seq: Arc::new(RwLock::new(HashMap::new())),
             active_thinking_text: Arc::new(RwLock::new(HashMap::new())),
-            active_tool_calls: Arc::new(RwLock::new(HashMap::new())),
+            active_tool_invocations: Arc::new(RwLock::new(HashMap::new())),
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
             config,
@@ -961,11 +897,11 @@ impl LiveChatService {
 mod tests {
     use {
         super::{
-            ActiveAssistantDraft, ActiveToolCall, append_assistant_delta,
-            build_persisted_assistant_message, build_persisted_tool_call,
-            finalize_aborted_tool_segment, finalize_persisted_assistant_message,
-            latest_tool_segment_index, persist_active_assistant_draft,
-            persist_final_assistant_segment, runtime_config_for_agent_run,
+            ActiveAssistantDraft, append_assistant_delta, build_persisted_assistant_message,
+            build_persisted_tool_call, finalize_aborted_tool_segment,
+            finalize_persisted_assistant_message, latest_tool_segment_index,
+            persist_active_assistant_draft, persist_final_assistant_segment,
+            runtime_config_for_agent_run,
         },
         crate::types::AssistantTurnOutput,
         chelix_agents::model::Usage,
@@ -1013,55 +949,6 @@ mod tests {
         assert_eq!(updated.agents.default, "writer");
         assert!(updated.agents.get("writer").is_some());
         Ok(())
-    }
-
-    #[test]
-    fn active_tool_call_serializes_switch_payload_shape() {
-        let call = ActiveToolCall {
-            run_id: "run-1".to_string(),
-            id: "tool-1".to_string(),
-            name: "browser".to_string(),
-            arguments: serde_json::json!({"url": "https://example.com"}),
-            execution_mode: Some("sandbox".to_string()),
-            started_at: 42,
-        };
-
-        let value = serde_json::to_value(call)
-            .unwrap_or_else(|error| panic!("active tool call serializes: {error}"));
-
-        assert_eq!(value.get("runId").and_then(|v| v.as_str()), Some("run-1"));
-        assert_eq!(
-            value.get("toolCallId").and_then(|v| v.as_str()),
-            Some("tool-1")
-        );
-        assert_eq!(
-            value.get("toolName").and_then(|v| v.as_str()),
-            Some("browser")
-        );
-        assert_eq!(
-            value.get("executionMode").and_then(|v| v.as_str()),
-            Some("sandbox")
-        );
-        assert_eq!(value.get("startedAt").and_then(|v| v.as_u64()), Some(42));
-        assert!(value.get("id").is_none());
-        assert!(value.get("name").is_none());
-    }
-
-    #[test]
-    fn active_tool_call_omits_missing_execution_mode() {
-        let call = ActiveToolCall {
-            run_id: "run-1".to_string(),
-            id: "tool-1".to_string(),
-            name: "execute_command".to_string(),
-            arguments: serde_json::json!({"command": "true"}),
-            execution_mode: None,
-            started_at: 42,
-        };
-
-        let value = serde_json::to_value(call)
-            .unwrap_or_else(|error| panic!("active tool call serializes: {error}"));
-
-        assert!(value.get("executionMode").is_none());
     }
 
     #[test]
@@ -1156,7 +1043,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn assistant_deltas_reserve_one_stable_message_index() {
+    async fn assistant_deltas_accumulate_without_reserving_storage() {
         let directory = tempfile::tempdir()
             .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
         let store = SessionStore::new(directory.path().to_path_buf());
@@ -1172,15 +1059,12 @@ mod tests {
             ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7)),
         )])));
 
-        let first_index = append_assistant_delta(&store, &drafts, "main", "first")
+        append_assistant_delta(&drafts, "main", "first")
             .await
-            .unwrap_or_else(|error| panic!("first delta reserves an index: {error}"));
-        let second_index = append_assistant_delta(&store, &drafts, "main", " second")
+            .unwrap_or_else(|error| panic!("first delta is accumulated: {error}"));
+        append_assistant_delta(&drafts, "main", " second")
             .await
-            .unwrap_or_else(|error| panic!("second delta reuses the index: {error}"));
-
-        assert_eq!(first_index, Some(1));
-        assert_eq!(second_index, first_index);
+            .unwrap_or_else(|error| panic!("second delta is accumulated: {error}"));
         assert_eq!(
             store
                 .count("main")
@@ -1201,7 +1085,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_partial_persists_at_its_reserved_message_index() {
+    async fn active_partial_uses_the_tail_after_interleaved_lifecycle_records() {
         let directory = tempfile::tempdir()
             .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
         let store = SessionStore::new(directory.path().to_path_buf());
@@ -1216,24 +1100,40 @@ mod tests {
             "main".to_string(),
             ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7)),
         )])));
-        let reserved_index = append_assistant_delta(&store, &drafts, "main", "partial")
+        append_assistant_delta(&drafts, "main", "partial")
             .await
-            .unwrap_or_else(|error| panic!("delta reserves an index: {error}"));
+            .unwrap_or_else(|error| panic!("delta is accumulated: {error}"));
+        store
+            .append(
+                "main",
+                &serde_json::json!({
+                    "role": "tool_lifecycle",
+                    "toolCallId": "call-1",
+                    "toolName": "read_file",
+                    "sequence": 0,
+                    "emittedAtMs": 1,
+                    "runId": "run-1",
+                    "stage": "created",
+                    "providerIndex": 0
+                }),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("lifecycle record persists: {error}"));
 
         let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "main")
             .await
             .unwrap_or_else(|error| panic!("partial persistence succeeds: {error}"))
             .unwrap_or_else(|| panic!("visible partial is persisted"));
 
-        assert_eq!(reserved_index, Some(1));
-        assert_eq!(persisted_index, 1);
+        assert_eq!(persisted_index, 2);
         assert_eq!(partial["content"], "partial");
         assert!(!drafts.read().await.contains_key("main"));
         let history = store
             .read("main")
             .await
             .unwrap_or_else(|error| panic!("session history reads: {error}"));
-        assert_eq!(history.len(), 2);
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[1]["role"], "tool_lifecycle");
         assert_eq!(history[persisted_index]["content"], "partial");
     }
 
@@ -1322,10 +1222,9 @@ mod tests {
             Some("high".to_string()),
             Some(7),
             "run-1",
-            1,
         )
         .await
-        .unwrap_or_else(|error| panic!("assistant segment persists at reserved index: {error}"));
+        .unwrap_or_else(|error| panic!("assistant segment persists: {error}"));
 
         assert_eq!(message_index, 1);
         let history = store
@@ -1340,27 +1239,6 @@ mod tests {
         assert_eq!(history[1]["provider"], "provider-1");
         assert_eq!(history[1]["seq"], 7);
         assert_eq!(history[1]["run_id"], "run-1");
-
-        let duplicate = persist_final_assistant_segment(
-            &store,
-            "main",
-            &assistant_output,
-            "model-1",
-            "provider-1",
-            Some("high".to_string()),
-            Some(7),
-            "run-1",
-            message_index,
-        )
-        .await;
-        assert!(duplicate.is_err());
-        assert_eq!(
-            store
-                .count("main")
-                .await
-                .unwrap_or_else(|error| panic!("history count: {error}")),
-            2
-        );
     }
 
     #[test]

@@ -14,7 +14,11 @@ use {
 };
 
 use {
-    chelix_common::{ReasoningContent, hooks::HookRegistry},
+    chelix_common::{
+        ReasoningContent,
+        hooks::HookRegistry,
+        tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
+    },
     chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
@@ -375,9 +379,9 @@ async fn tool_result_image_for_share(
     session_key: &str,
     store: &SessionStore,
 ) -> Option<SharedImageSet> {
-    let screenshot = msg
-        .get("result")
-        .and_then(|v| v.get("screenshot"))
+    let result = tool_result_json(msg)?;
+    let screenshot = result
+        .get("screenshot")
         .and_then(|v| v.as_str())
         .map(str::trim)?;
     let (full_mime, full_bytes) = if screenshot.starts_with("data:image/") {
@@ -658,10 +662,8 @@ fn redact_share_secret_values(text: &str) -> String {
 }
 
 fn tool_result_map_links_for_share(msg: &Value) -> Option<SharedMapLinks> {
-    let map_links = msg
-        .get("result")
-        .and_then(|v| v.get("map_links"))
-        .and_then(|v| v.as_object())?;
+    let result = tool_result_json(msg)?;
+    let map_links = result.get("map_links").and_then(|v| v.as_object())?;
 
     let links = SharedMapLinks {
         apple_maps: map_links
@@ -682,8 +684,15 @@ fn tool_result_map_links_for_share(msg: &Value) -> Option<SharedMapLinks> {
         .then_some(links)
 }
 
+fn tool_result_json(msg: &Value) -> Option<Value> {
+    let result = msg.get("result")?.as_str()?;
+    serde_json::from_str(result).ok()
+}
+
 fn tool_result_text_for_share(msg: &Value) -> Option<String> {
-    let result = msg.get("result");
+    let raw_result = msg.get("result").and_then(Value::as_str);
+    let parsed_result = tool_result_json(msg);
+    let result = parsed_result.as_ref();
     let mut sections = Vec::new();
 
     if let Some(label) = result
@@ -737,6 +746,14 @@ fn tool_result_text_for_share(msg: &Value) -> Option<String> {
         sections.push(format!("exit {exit_code}"));
     }
 
+    if sections.is_empty()
+        && let Some(result) = raw_result
+            .map(str::trim)
+            .filter(|result| !result.is_empty())
+    {
+        sections.push(redact_share_secret_values(result));
+    }
+
     let content = sections.join("\n\n");
     let trimmed = content.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
@@ -748,10 +765,16 @@ async fn to_shared_message(
     session_key: &str,
     store: &SessionStore,
 ) -> anyhow::Result<Option<SharedMessage>> {
-    let role = match msg.get("role").and_then(|v| v.as_str()) {
-        Some("user") => SharedMessageRole::User,
-        Some("assistant") => SharedMessageRole::Assistant,
-        Some("tool_result") => SharedMessageRole::ToolResult,
+    let (role, tool_lifecycle) = match msg.get("role").and_then(|v| v.as_str()) {
+        Some("user") => (SharedMessageRole::User, None),
+        Some("assistant") => (SharedMessageRole::Assistant, None),
+        Some("tool_lifecycle") => {
+            let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(msg.clone())?;
+            if !lifecycle.stage().is_terminal() {
+                return Ok(None);
+            }
+            (SharedMessageRole::ToolResult, Some(lifecycle))
+        },
         _ => return Ok(None),
     };
 
@@ -791,25 +814,20 @@ async fn to_shared_message(
         | SharedMessageRole::System
         | SharedMessageRole::Notice => None,
     };
-    let tool_success = match role {
-        SharedMessageRole::ToolResult => msg.get("success").and_then(|v| v.as_bool()),
-        SharedMessageRole::User
-        | SharedMessageRole::Assistant
-        | SharedMessageRole::System
-        | SharedMessageRole::Notice => None,
-    };
-    let tool_name = match role {
-        SharedMessageRole::ToolResult => msg
-            .get("tool_name")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|v| !v.is_empty())
-            .map(ToOwned::to_owned),
-        SharedMessageRole::User
-        | SharedMessageRole::Assistant
-        | SharedMessageRole::System
-        | SharedMessageRole::Notice => None,
-    };
+    let tool_success = tool_lifecycle
+        .as_ref()
+        .and_then(|lifecycle| match &lifecycle.update {
+            ToolLifecycleUpdate::Completed { success, .. } => Some(*success),
+            ToolLifecycleUpdate::Rejected { .. } | ToolLifecycleUpdate::Cancelled { .. } => {
+                Some(false)
+            },
+            _ => None,
+        });
+    let tool_name = tool_lifecycle
+        .as_ref()
+        .map(|lifecycle| lifecycle.tool_name.trim())
+        .filter(|name| !name.is_empty())
+        .map(ToOwned::to_owned);
     let tool_command = match role {
         SharedMessageRole::ToolResult => {
             if tool_name.as_deref() == Some("execute_command") {

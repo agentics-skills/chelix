@@ -12,7 +12,11 @@ use chelix_metrics::{counter, histogram, labels, llm as llm_metrics};
 
 use futures::StreamExt;
 
-use chelix_common::hooks::{HookAction, HookPayload, HookRegistry};
+use chelix_common::{
+    ContextBudgetMetadata,
+    hooks::{HookAction, HookPayload, HookRegistry},
+    tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
+};
 
 use crate::{
     model::{
@@ -21,7 +25,6 @@ use crate::{
         push_capped_provider_raw_event,
     },
     response_sanitizer::{clean_response, recover_tool_calls_from_content},
-    tool_arg_validator::validate_tool_args,
     tool_loop_detector::ToolCallFingerprint,
     tool_parsing::{looks_like_failed_tool_call, parse_tool_calls_from_text},
     tool_registry::ToolRegistry,
@@ -29,21 +32,80 @@ use crate::{
 
 use super::{
     AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
-    FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent, RunnerEvent, RunnerToolCall,
-    ToolCallBudget, UsageAccumulator, apply_before_llm_call_modify_payload,
-    apply_loop_detector_intervention, channel_binding_from_tool_context,
-    dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
-    enrich_tool_arguments, fallback_final_text_source, find_empty_tool_name_call, finish_agent_run,
-    has_named_tool_call, is_substantive_answer_text, log_tool_argument_diagnostic,
-    public_tool_arguments, record_answer_text, resolve_tool_lookup,
+    FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent, OnToolLifecycle, RunnerEvent,
+    RunnerToolCall, RunnerToolLifecycleEvent, ToolCallBudget, ToolInvocationExecutor,
+    UsageAccumulator, apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
+    channel_binding_from_tool_context, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
+    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, fallback_final_text_source,
+    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
+    lifecycle_now_ms, record_answer_text,
     retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
-    sanitize_tool_name, streaming_tool_call_message_content,
-    tool_result::persist_and_truncate,
+    streaming_tool_call_message_content,
 };
 
 use chelix_sessions::ToolResultStore;
 
 use crate::tool_loop_detector::ToolLoopDetector;
+
+async fn emit_stream_tool_lifecycle(
+    callback: Option<&OnToolLifecycle>,
+    tool_call_id: &str,
+    tool_name: &str,
+    sequence: &mut u64,
+    update: ToolLifecycleUpdate,
+    iteration_tool_calls: Option<Arc<[RunnerToolCall]>>,
+    iteration_usage: Option<Usage>,
+    context_budget: Option<ContextBudgetMetadata>,
+) -> Result<(), AgentRunError> {
+    let lifecycle = ToolLifecycleEvent {
+        tool_call_id: tool_call_id.to_owned(),
+        tool_name: tool_name.to_owned(),
+        sequence: *sequence,
+        emitted_at_ms: lifecycle_now_ms()?,
+        run_id: None,
+        context_budget: update
+            .stage()
+            .is_terminal()
+            .then(|| context_budget.clone())
+            .flatten(),
+        update,
+    };
+    *sequence = sequence.saturating_add(1);
+    let mut event = RunnerToolLifecycleEvent::new(lifecycle);
+    event.iteration_tool_calls = iteration_tool_calls;
+    event.iteration_usage = iteration_usage;
+    event.context_budget = context_budget;
+    deliver_tool_lifecycle(callback, event).await
+}
+
+async fn cancel_stream_tool_lifecycles(
+    callback: Option<&OnToolLifecycle>,
+    tool_calls: &[ToolCall],
+    sequences: &mut std::collections::HashMap<String, u64>,
+    reason: &str,
+    context_budget: &ContextBudgetMetadata,
+) -> Result<(), AgentRunError> {
+    for tool_call in tool_calls {
+        let Some(sequence) = sequences.get_mut(&tool_call.id) else {
+            continue;
+        };
+        emit_stream_tool_lifecycle(
+            callback,
+            &tool_call.id,
+            &tool_call.name,
+            sequence,
+            ToolLifecycleUpdate::Cancelled {
+                arguments: None,
+                reason: reason.to_owned(),
+            },
+            None,
+            None,
+            Some(context_budget.clone()),
+        )
+        .await?;
+    }
+    Ok(())
+}
 
 /// Streaming agent loop with explicit runtime limits.
 ///
@@ -56,6 +118,7 @@ pub async fn run_agent_loop_streaming_with_limits(
     system_prompt: &str,
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
+    on_tool_lifecycle: Option<&OnToolLifecycle>,
     history: Option<Vec<ChatMessage>>,
     tool_context: Option<serde_json::Value>,
     hook_registry: Option<Arc<HookRegistry>>,
@@ -308,6 +371,8 @@ pub async fn run_agent_loop_streaming_with_limits(
         // to index 1.
         let mut stream_idx_to_vec_pos: std::collections::HashMap<usize, usize> =
             std::collections::HashMap::new();
+        let mut tool_lifecycle_sequences: std::collections::HashMap<String, u64> =
+            std::collections::HashMap::new();
         let mut request_usage = Usage::default();
         let mut stream_error: Option<String> = None;
 
@@ -383,6 +448,21 @@ pub async fn run_agent_loop_streaming_with_limits(
                 StreamEvent::ToolCallStart { id, name, index } => {
                     let vec_pos = tool_calls.len();
                     debug!(tool = %name, id = %id, stream_index = index, vec_pos, "tool call started in stream");
+                    let mut sequence = 0;
+                    emit_stream_tool_lifecycle(
+                        on_tool_lifecycle,
+                        &id,
+                        &name,
+                        &mut sequence,
+                        ToolLifecycleUpdate::Created {
+                            provider_index: Some(index),
+                        },
+                        None,
+                        None,
+                        Some(context_budget.clone()),
+                    )
+                    .await?;
+                    tool_lifecycle_sequences.insert(id.clone(), sequence);
                     tool_calls.push(ToolCall {
                         id,
                         name,
@@ -393,9 +473,32 @@ pub async fn run_agent_loop_streaming_with_limits(
                     tool_call_args.insert(index, String::new());
                 },
                 StreamEvent::ToolCallArgumentsDelta { index, delta } => {
-                    if let Some(args) = tool_call_args.get_mut(&index) {
-                        args.push_str(&delta);
-                    }
+                    let Some(args) = tool_call_args.get_mut(&index) else {
+                        continue;
+                    };
+                    args.push_str(&delta);
+                    let Some(&vec_pos) = stream_idx_to_vec_pos.get(&index) else {
+                        continue;
+                    };
+                    let Some(tool_call) = tool_calls.get(vec_pos) else {
+                        continue;
+                    };
+                    let Some(sequence) = tool_lifecycle_sequences.get_mut(&tool_call.id) else {
+                        continue;
+                    };
+                    emit_stream_tool_lifecycle(
+                        on_tool_lifecycle,
+                        &tool_call.id,
+                        &tool_call.name,
+                        sequence,
+                        ToolLifecycleUpdate::InputStreaming {
+                            arguments_delta: delta,
+                        },
+                        None,
+                        None,
+                        Some(context_budget.clone()),
+                    )
+                    .await?;
                 },
                 StreamEvent::ToolCallComplete { index } => {
                     // Arguments are finalized after stream completes.
@@ -464,6 +567,17 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         if let Some(cb) = on_event {
             cb(RunnerEvent::ThinkingDone);
+        }
+
+        if let Some(reason) = stream_error.as_ref() {
+            cancel_stream_tool_lifecycles(
+                on_tool_lifecycle,
+                &tool_calls,
+                &mut tool_lifecycle_sequences,
+                &format!("provider stream failed: {reason}"),
+                &context_budget,
+            )
+            .await?;
         }
 
         // Handle stream errors — retry on transient failures/rate limits.
@@ -574,7 +688,17 @@ pub async fn run_agent_loop_streaming_with_limits(
             }
         }
 
-        tool_call_budget.reserve_batch(tool_calls.len())?;
+        if let Err(error) = tool_call_budget.reserve_batch(tool_calls.len()) {
+            cancel_stream_tool_lifecycles(
+                on_tool_lifecycle,
+                &tool_calls,
+                &mut tool_lifecycle_sequences,
+                &error.to_string(),
+                &context_budget,
+            )
+            .await?;
+            return Err(error);
+        }
 
         if let Some(tc) = find_empty_tool_name_call(&tool_calls) {
             if has_named_tool_call(&tool_calls) {
@@ -596,6 +720,14 @@ pub async fn run_agent_loop_streaming_with_limits(
                         .with_responses_reasoning(responses_reasoning),
                 );
                 messages.push(ChatMessage::user(empty_tool_name_retry_prompt(tc)));
+                cancel_stream_tool_lifecycles(
+                    on_tool_lifecycle,
+                    &tool_calls,
+                    &mut tool_lifecycle_sequences,
+                    "structured tool call has an empty tool name; requesting provider retry",
+                    &context_budget,
+                )
+                .await?;
                 continue;
             }
             warn!(
@@ -604,7 +736,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             );
         }
 
-        dispatch_after_llm_call_hook(
+        if let Err(error) = dispatch_after_llm_call_hook(
             hook_registry.as_ref(),
             &session_key_for_hooks,
             provider.name(),
@@ -614,7 +746,18 @@ pub async fn run_agent_loop_streaming_with_limits(
             &request_usage,
             iterations,
         )
-        .await?;
+        .await
+        {
+            cancel_stream_tool_lifecycles(
+                on_tool_lifecycle,
+                &tool_calls,
+                &mut tool_lifecycle_sequences,
+                &error.to_string(),
+                &context_budget,
+            )
+            .await?;
+            return Err(error);
+        }
 
         // If no tool calls, auto-continue or return the text response.
         if tool_calls.is_empty() {
@@ -728,368 +871,115 @@ pub async fn run_agent_loop_streaming_with_limits(
                 .with_responses_reasoning(responses_reasoning),
         );
 
-        // Execute tool calls concurrently.
-        let batch_started_at = time::OffsetDateTime::now_utc();
+        // Publish the canonical assistant tool-call frame before execution.
         let iteration_tool_calls: Arc<[RunnerToolCall]> =
             tool_calls.iter().map(Into::into).collect::<Vec<_>>().into();
+        for tool_call in &tool_calls {
+            let existing_sequence = tool_lifecycle_sequences.remove(&tool_call.id);
+            let mut sequence = existing_sequence.unwrap_or(0);
+            if existing_sequence.is_none() {
+                emit_stream_tool_lifecycle(
+                    on_tool_lifecycle,
+                    &tool_call.id,
+                    &tool_call.name,
+                    &mut sequence,
+                    ToolLifecycleUpdate::Created {
+                        provider_index: None,
+                    },
+                    None,
+                    None,
+                    Some(context_budget.clone()),
+                )
+                .await?;
+            }
+            emit_stream_tool_lifecycle(
+                on_tool_lifecycle,
+                &tool_call.id,
+                &tool_call.name,
+                &mut sequence,
+                ToolLifecycleUpdate::InputReady {
+                    arguments: tool_call.arguments.clone(),
+                },
+                Some(iteration_tool_calls.clone()),
+                Some(request_usage.clone()),
+                Some(context_budget.clone()),
+            )
+            .await?;
+            tool_lifecycle_sequences.insert(tool_call.id.clone(), sequence);
+        }
 
-        // Build futures for all tool calls (executed concurrently).
-        //
-        // Pre-dispatch schema validation runs synchronously against each
-        // tool's declared `parameters_schema`. Calls that fail validation
-        // are short-circuited to a directive error response without invoking
-        // `execute`, and the UI receives `ToolCallRejected` instead of the
-        // misleading "executing" status (issue #658).
-        let tool_futures: Vec<_> = tool_calls
-            .iter()
-            .map(|tc| {
-                let sanitized = sanitize_tool_name(&tc.name);
-                if *sanitized != tc.name {
-                    debug!(original = %tc.name, sanitized = %sanitized, "sanitized mangled tool name");
-                }
-                let (tool, resolved_name) = resolve_tool_lookup(tools, sanitized.as_ref());
-                if resolved_name.as_ref() != sanitized.as_ref() {
-                    debug!(original = %sanitized, resolved = %resolved_name, "resolved legacy tool alias");
-                }
-                let mut args = tc.arguments.clone();
-                let tool_hidden = matches!(tool_controls.tool_choice, Some(ToolChoice::None))
-                    || active_tool_names
-                        .as_ref()
-                        .is_some_and(|active| !active.contains(resolved_name.as_ref()));
+        // Execute all built-in and MCP tools through the shared lifecycle executor.
+        let executor = ToolInvocationExecutor {
+            tools,
+            tool_result_store: &tool_result_store,
+            max_tool_result_bytes,
+            tool_context: tool_context.as_ref(),
+            hook_registry: hook_registry.as_ref(),
+            session_key: &session_key_for_hooks,
+            channel: channel_for_hooks.as_ref(),
+            active_tool_names: active_tool_names.as_ref(),
+            tool_choice: tool_controls.tool_choice.as_ref(),
+            on_lifecycle: on_tool_lifecycle,
+            context_budget: &context_budget,
+        };
+        let mut tool_futures = Vec::with_capacity(tool_calls.len());
+        for tool_call in &tool_calls {
+            let sequence = tool_lifecycle_sequences
+                .get(&tool_call.id)
+                .copied()
+                .ok_or_else(|| {
+                    AgentRunError::Other(anyhow::anyhow!(
+                        "tool lifecycle sequence missing for call {}",
+                        tool_call.id
+                    ))
+                })?;
+            tool_futures.push(executor.execute(tool_call, sequence));
+        }
+        let results = futures::future::join_all(tool_futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, AgentRunError>>()?;
 
-                let hook_registry = hook_registry.clone();
-                let session_key = session_key_for_hooks.clone();
-                let channel_for_hooks = channel_for_hooks.clone();
-                let tc_name = resolved_name.to_string();
-                let iteration_tool_calls = iteration_tool_calls.clone();
-                let iteration_usage = request_usage.clone();
-                let started_at = batch_started_at;
-                let execution_context = tool_context.clone();
-                let tool_call_id = tc.id.clone();
-
-                enrich_tool_arguments(&mut args, execution_context.as_ref(), &tool_call_id);
-                log_tool_argument_diagnostic(&tc_name, tc.argument_diagnostic.as_ref());
-
-                // Pre-dispatch validation against the tool's schema.
-                let validation_error: Option<String> = if tool_hidden {
-                    let reason = if matches!(tool_controls.tool_choice, Some(ToolChoice::None)) {
-                        format!(
-                            "tool `{tc_name}` cannot be called: tool use is disabled for this turn"
-                        )
-                    } else {
-                        format!(
-                            "tool `{tc_name}` is not active for this turn; choose one of the currently available tools"
-                        )
-                    };
-                    Some(reason)
-                } else if let Some(ref t) = tool {
-                    let schema = t.parameters_schema();
-                    match validate_tool_args(&schema, &args) {
-                        Ok(()) => t.validate(&args).err().map(|error| {
-                            warn!(
-                                tool = %tc_name,
-                                error = %error,
-                                "tool call rejected by implementation validation"
-                            );
-                            format!(
-                                "Tool call rejected before execution by `{tc_name}`: {error}"
-                            )
-                        }),
-                        Err(e) => {
-                            warn!(
-                                tool = %tc_name,
-                                summary = %e.short_summary_with_argument_diagnostic(
-                                    tc.argument_diagnostic.as_ref(),
-                                ),
-                                "tool call rejected by pre-dispatch schema validation"
-                            );
-                            Some(e.to_llm_error_message_with_argument_diagnostic(
-                                &tc_name,
-                                tc.argument_diagnostic.as_ref(),
-                            ))
-                        },
-                    }
-                } else {
-                    None
-                };
-
-                if validation_error.is_none() {
-                    if let Some(cb) = on_event {
-                        // Emit only the caller-visible arguments: `args` is
-                        // enriched with the internal `_`-prefixed execution
-                        // context, which must never surface in the UI event.
-                        cb(RunnerEvent::ToolCallStart {
-                            id: tc.id.clone(),
-                            name: tc.name.clone(),
-                            arguments: public_tool_arguments(&args),
-                            iteration_tool_calls: iteration_tool_calls.clone(),
-                            iteration_usage: iteration_usage.clone(),
-                            started_at,
-                        });
-                    }
-                    info!(tool = %tc_name, id = %tc.id, args = %args, "executing tool");
-                }
-
-                async move {
-                    if let Some(err_msg) = validation_error {
-                        return (
-                            false,
-                            serde_json::json!({ "error": err_msg.clone() }),
-                            Some(err_msg),
-                            true,
-                        );
-                    }
-                    // Run BeforeToolCall hook.
-                    if let Some(ref hooks) = hook_registry {
-                        let payload = HookPayload::BeforeToolCall {
-                            session_key: session_key.clone(),
-                            tool_name: tc_name.clone(),
-                            arguments: args.clone(),
-                            channel: channel_for_hooks.clone(),
-                        };
-                        match hooks.dispatch(&payload).await {
-                            Ok(HookAction::Block(reason)) => {
-                                warn!(tool = %tc_name, reason = %reason, "tool call blocked by hook");
-                                let err_str = format!("blocked by hook: {reason}");
-                                return (
-                                    false,
-                                    serde_json::json!({ "error": err_str }),
-                                    Some(err_str),
-                                    false,
-                                );
-                            }
-                            Ok(HookAction::ModifyPayload(v)) => {
-                                args = v;
-                                enrich_tool_arguments(
-                                    &mut args,
-                                    execution_context.as_ref(),
-                                    &tool_call_id,
-                                );
-                                if let Some(ref tool) = tool {
-                                    let schema = tool.parameters_schema();
-                                    if let Err(e) = validate_tool_args(&schema, &args) {
-                                        let err_str = e.to_llm_error_message(&tc_name);
-                                        warn!(
-                                            tool = %tc_name,
-                                            summary = %e.short_summary(),
-                                            "tool call rejected after BeforeToolCall hook modified arguments"
-                                        );
-                                        return (
-                                            false,
-                                            serde_json::json!({ "error": err_str.clone() }),
-                                            Some(err_str),
-                                            false,
-                                        );
-                                    }
-                                }
-                            }
-                            Ok(HookAction::Continue) => {}
-                            Err(e) => {
-                                warn!(tool = %tc_name, error = %e, "BeforeToolCall hook dispatch failed");
-                            }
-                        }
-                    }
-
-                    if let Some(tool) = tool {
-                        match tool.execute(args).await {
-                            Ok(val) => {
-                                // Check if the result indicates a logical failure
-                                // (e.g., BrowserResponse with success: false)
-                                let has_error = val.get("error").is_some()
-                                    || val.get("success") == Some(&serde_json::json!(false));
-                                let error_msg = if has_error {
-                                    val.get("error")
-                                        .and_then(|e| e.as_str())
-                                        .map(String::from)
-                                } else {
-                                    None
-                                };
-
-                                if let Some(ref hooks) = hook_registry {
-                                    let payload = HookPayload::AfterToolCall {
-                                        session_key: session_key.clone(),
-                                        tool_name: tc_name.clone(),
-                                        success: !has_error,
-                                        result: Some(val.clone()),
-                                        channel: channel_for_hooks.clone(),
-                                    };
-                                    if let Err(e) = hooks.dispatch(&payload).await {
-                                        warn!(tool = %tc_name, error = %e, "AfterToolCall hook dispatch failed");
-                                    }
-                                }
-
-                                if has_error {
-                                    (false, serde_json::json!({ "result": val }), error_msg, false)
-                                } else {
-                                    (true, serde_json::json!({ "result": val }), None, false)
-                                }
-                            }
-                            Err(e) => {
-                                let err_str = e.to_string();
-                                if let Some(ref hooks) = hook_registry {
-                                    let payload = HookPayload::AfterToolCall {
-                                        session_key: session_key.clone(),
-                                        tool_name: tc_name.clone(),
-                                        success: false,
-                                        result: None,
-                                        channel: channel_for_hooks.clone(),
-                                    };
-                                    if let Err(e) = hooks.dispatch(&payload).await {
-                                        warn!(tool = %tc_name, error = %e, "AfterToolCall hook dispatch failed");
-                                    }
-                                }
-                                (
-                                    false,
-                                    serde_json::json!({ "error": err_str }),
-                                    Some(err_str),
-                                    false,
-                                )
-                            }
-                        }
-                    } else {
-                        let err_str = format!("unknown tool: {tc_name}");
-                        (
-                            false,
-                            serde_json::json!({ "error": err_str }),
-                            Some(err_str),
-                            false,
-                        )
-                    }
-                }
-            })
-            .collect();
-
-        // Execute all tools concurrently and collect results in order.
-        let results = futures::future::join_all(tool_futures).await;
-
-        // Process results in original order: emit events, append messages, and
-        // collect detector outcomes. The complete model round is recorded once
-        // after every sibling result has been persisted.
         let mut round_outcomes = Vec::with_capacity(tool_calls.len());
-        for (tc, (success, result, error, rejected)) in tool_calls.iter().zip(results) {
-            if success {
-                info!(tool = %tc.name, id = %tc.id, "tool execution succeeded");
-                trace!(tool = %tc.name, result = %result, "tool result");
-            } else if rejected {
+        for (tool_call, outcome) in tool_calls.iter().zip(results) {
+            if outcome.success {
+                info!(tool = %tool_call.name, id = %tool_call.id, "tool execution succeeded");
+                trace!(tool = %tool_call.name, result = %outcome.result, "tool result");
+            } else if outcome.rejected {
                 warn!(
-                    tool = %tc.name,
-                    id = %tc.id,
+                    tool = %tool_call.name,
+                    id = %tool_call.id,
                     "tool call rejected before execution by pre-dispatch validation"
                 );
             } else {
-                warn!(tool = %tc.name, id = %tc.id, error = %error.as_deref().unwrap_or(""), "tool execution failed");
+                warn!(
+                    tool = %tool_call.name,
+                    id = %tool_call.id,
+                    error = %outcome.error.as_deref().unwrap_or(""),
+                    "tool execution failed"
+                );
             }
 
-            // Collect one outcome per call without mutating detector state. The
-            // detector consumes the complete batch atomically below.
             if loop_detector.is_enabled() {
-                round_outcomes.push(if success {
-                    ToolCallFingerprint::success(&tc.name, &tc.arguments)
+                round_outcomes.push(if outcome.success {
+                    ToolCallFingerprint::success(&tool_call.name, &tool_call.arguments)
                 } else {
-                    ToolCallFingerprint::failure(&tc.name, &tc.arguments, error.as_deref())
+                    ToolCallFingerprint::failure(
+                        &tool_call.name,
+                        &tool_call.arguments,
+                        outcome.error.as_deref(),
+                    )
                 });
             }
 
-            if rejected && let Some(cb) = on_event {
-                cb(RunnerEvent::ToolCallRejected {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    arguments: tc.arguments.clone(),
-                    error: error.clone().unwrap_or_default(),
-                    iteration_tool_calls: iteration_tool_calls.clone(),
-                    iteration_usage: request_usage.clone(),
-                });
-            }
-
-            let has_raw_result = result.get("result").is_some();
-            let raw_result = result
-                .get("result")
-                .cloned()
-                .unwrap_or_else(|| result.clone());
-            let tool = resolve_tool_lookup(tools, sanitize_tool_name(&tc.name).as_ref()).0;
-            let mut agent_result = if has_raw_result {
-                match tool.as_ref() {
-                    Some(tool) => tool.agent_result(&tc.arguments, &raw_result).await?,
-                    None => raw_result.clone(),
-                }
-            } else {
-                raw_result.clone()
-            };
-
-            // Dispatch ToolResultPersist hook — the last opportunity for a handler
-            // to sanitize, redact, or block attacker-controlled tool output before
-            // it enters the messages array and is reasoned on by the next LLM
-            // iteration. Block substitutes an error marker instead of aborting the
-            // run, so a single hostile tool result cannot kill a long-running
-            // autonomous agent.
-            if let Some(ref hooks) = hook_registry {
-                let payload = HookPayload::ToolResultPersist {
-                    session_key: session_key_for_hooks.clone(),
-                    tool_name: sanitize_tool_name(&tc.name).into_owned(),
-                    result: agent_result.clone(),
-                    channel: channel_for_hooks.clone(),
-                };
-                match hooks.dispatch(&payload).await {
-                    Ok(HookAction::ModifyPayload(v)) => {
-                        debug!(tool = %tc.name, "ToolResultPersist replaced tool result");
-                        agent_result = v;
-                    },
-                    Ok(HookAction::Block(reason)) => {
-                        warn!(tool = %tc.name, reason = %reason, "ToolResultPersist blocked result — substituting error marker");
-                        agent_result = serde_json::json!({
-                            "error": format!("blocked by hook: {reason}")
-                        });
-                    },
-                    Ok(HookAction::Continue) => {},
-                    Err(e) => {
-                        warn!(tool = %tc.name, error = %e, "ToolResultPersist hook dispatch failed");
-                    },
-                }
-            }
-
-            // Persist the full output to disk, then sanitize the in-context
-            // copy as a string - most LLM APIs don't support multimodal
-            // content in tool results. Images are stripped but the UI still
-            // receives them via ToolCallEnd event. Oversized results are
-            // truncated with a pointer to the persisted full output.
-            let truncation = tool
-                .as_ref()
-                .map(|tool| tool.truncation(&tc.arguments))
-                .unwrap_or_default();
-            let persistence = tool
-                .as_ref()
-                .map(|tool| tool.result_persistence(&tc.arguments))
-                .unwrap_or_default();
-            let tool_result_str = persist_and_truncate(
-                &tool_result_store,
-                &session_key_for_hooks,
-                &tc.id,
-                &agent_result,
-                max_tool_result_bytes,
-                truncation,
-                persistence,
-            )
-            .await?;
-            if !rejected && let Some(cb) = on_event {
-                cb(RunnerEvent::ToolCallEnd {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    success,
-                    error,
-                    result: Some(tool_result_str.clone()),
-                    raw_result: has_raw_result.then(|| raw_result.clone()),
-                    context_budget: context_budget.clone(),
-                });
-            }
             debug!(
-                tool = %tc.name,
-                id = %tc.id,
-                result_len = tool_result_str.len(),
+                tool = %tool_call.name,
+                id = %tool_call.id,
+                result_len = outcome.result.len(),
                 "appending tool result to messages"
             );
-            trace!(tool = %tc.name, content = %tool_result_str, "tool result message content");
-
-            messages.push(ChatMessage::tool(&tc.id, &tool_result_str));
+            trace!(tool = %tool_call.name, content = %outcome.result, "tool result message content");
+            messages.push(ChatMessage::tool(&tool_call.id, &outcome.result));
         }
 
         // Record and act on the complete LLM tool-call batch exactly once.

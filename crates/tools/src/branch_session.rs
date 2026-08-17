@@ -93,7 +93,8 @@ impl AgentTool for BranchSessionTool {
             .await
             .map_err(|e| Error::message(format!("failed to create session: {e}")))?;
 
-        self.metadata.touch(&new_key, fork_point as u32).await;
+        let ui_message_count = self.store.ui_message_count(&new_key).await?;
+        self.metadata.touch(&new_key, ui_message_count).await;
 
         // Inherit model and project from parent.
         if let Some(parent) = self.metadata.get(parent_key).await {

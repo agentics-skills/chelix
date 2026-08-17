@@ -535,11 +535,11 @@ registry_mode = "lazy"   # default: "full"
 
 The runner re-computes schemas each model round, so revealed schemas appear
 immediately. On later turns, lazy visibility is restored from structured session
-history: prior successful `get_tool` schema reveals (`tool_result` with
-`tool_name == "get_tool"`, `success == true`, and
+history: prior successful `get_tool` schema reveals (`role == "tool_lifecycle"`,
+`stage == "completed"`, `toolName == "get_tool"`, `success == true`, and
 `result.schema_visible == true`) and prior assistant tool calls keep those
 schemas visible. The restoration is not inferred from user or assistant prose,
-and older sessions that predate `get_tool` simply start from `{get_tool}`.
+and sessions without a matching reveal simply start from `{get_tool}`.
 Every LLM-emitted `get_tool` invocation consumes one unit from the active
 agent's `max_tools_threshold`, just like any other tool call. Calling the
 revealed target tool consumes another unit. Lazy mode does not increase the

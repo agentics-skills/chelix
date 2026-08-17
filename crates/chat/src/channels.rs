@@ -821,8 +821,8 @@ pub(crate) async fn send_tool_status_to_channels(
 }
 
 /// Buffer a tool error result into the channel status log for a session.
-/// Called from `ToolCallEnd` for failed tool calls only — success is implicit
-/// and does not need a separate log entry.
+/// Called for failed completed lifecycle events only — success is implicit and
+/// does not need a separate log entry.
 pub(crate) async fn send_tool_result_to_channels(
     state: &Arc<dyn ChatRuntime>,
     session_key: &str,

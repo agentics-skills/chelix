@@ -17,10 +17,13 @@ interface RunMessage {
 	provider?: string;
 	inputTokens?: number;
 	outputTokens?: number;
-	tool_name?: string;
+	toolCallId?: string;
+	toolName?: string;
+	stage?: string;
 	success?: boolean;
 	arguments?: Record<string, unknown>;
 	error?: string;
+	reason?: string;
 }
 
 interface RunSummary {
@@ -109,26 +112,40 @@ function OverviewTab({ data }: TabProps): VNode | null {
 	);
 }
 
+function isTerminalToolLifecycle(message: RunMessage): boolean {
+	return (
+		message.role === "tool_lifecycle" &&
+		(message.stage === "completed" || message.stage === "rejected" || message.stage === "cancelled")
+	);
+}
+
 function ActionsTab({ data }: TabProps): VNode | null {
 	if (!data) return null;
-	const toolResults = (data.messages || []).filter((m) => m.role === "tool_result");
+	const toolResults = (data.messages || []).filter(isTerminalToolLifecycle);
 	if (toolResults.length === 0) return <div className="text-xs text-[var(--muted)]">No tool calls in this run.</div>;
 	return (
 		<div className="flex flex-col gap-2">
-			{toolResults.map((tr, i) => (
-				<div key={i} className="border border-[var(--border)] rounded-md p-2 bg-[var(--surface)] text-xs">
-					<div className="flex items-center gap-2">
-						<span className="font-semibold">{tr.tool_name || "unknown"}</span>
-						<span className={tr.success ? "text-green-500" : "text-red-500"}>{tr.success ? "ok" : "error"}</span>
+			{toolResults.map((toolResult, index) => {
+				const success = toolResult.stage === "completed" && toolResult.success === true;
+				const error = toolResult.error || toolResult.reason;
+				return (
+					<div
+						key={toolResult.toolCallId || index}
+						className="border border-[var(--border)] rounded-md p-2 bg-[var(--surface)] text-xs"
+					>
+						<div className="flex items-center gap-2">
+							<span className="font-semibold">{toolResult.toolName || "unknown"}</span>
+							<span className={success ? "text-green-500" : "text-red-500"}>{success ? "ok" : "error"}</span>
+						</div>
+						{toolResult.arguments ? (
+							<pre className="mt-1 font-mono whitespace-pre-wrap break-words text-[var(--muted)]">
+								{JSON.stringify(toolResult.arguments, null, 2)}
+							</pre>
+						) : null}
+						{error ? <div className="mt-1 text-red-500">{error}</div> : null}
 					</div>
-					{tr.arguments ? (
-						<pre className="mt-1 font-mono whitespace-pre-wrap break-words text-[var(--muted)]">
-							{JSON.stringify(tr.arguments, null, 2)}
-						</pre>
-					) : null}
-					{tr.error ? <div className="mt-1 text-red-500">{tr.error}</div> : null}
-				</div>
-			))}
+				);
+			})}
 		</div>
 	);
 }

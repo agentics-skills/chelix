@@ -76,9 +76,11 @@ The latest checkpoint defines the active context in this order:
 2. the original persisted tail from `messagesSummarized` up to the checkpoint;
 3. messages appended after the checkpoint.
 
-Older checkpoints inside the retained tail are excluded. A `tool` or
-`tool_result` message is replayed only after an assistant message containing
-the matching tool-call ID; orphan results are excluded from provider context.
+Older checkpoints inside the retained tail are excluded. Only terminal
+`tool_lifecycle` records (`completed`, `rejected`, or `cancelled`) are converted
+to provider `tool` messages. A terminal record is replayed only after an
+assistant message containing the matching tool-call ID; intermediate lifecycle
+updates and orphan terminal records are excluded from provider context.
 
 The first iteration after a checkpoint may bypass the 85% trigger only when
 its prompt is strictly below `availableInputTokens`. This lets the model consume

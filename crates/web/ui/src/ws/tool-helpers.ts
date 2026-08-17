@@ -1,6 +1,6 @@
 // ── Tool call utilities ───────────────────────────────────────
 
-import { completeA2uiToolCard, isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
+import { isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import type { ChannelFooterInfo } from "../chat-ui";
 import {
 	appendChannelFooter,
@@ -27,147 +27,83 @@ import {
 	renderToolCardResult,
 	resolveToolBatchEnd,
 	setToolCardExpanded,
+	setToolCardProgress,
 	setToolCardStatus,
 	toolCallIds,
+	updateToolCardParameters,
 } from "../tool-call-card";
+import {
+	isTerminalToolLifecycle,
+	reduceToolInvocation,
+	type ToolInvocationSnapshot,
+	terminalToolPresentation,
+	toolInvocationKey,
+	toolLifecycleArguments,
+} from "../tool-lifecycle";
 import {
 	type AbortedPartialState,
 	type ChatPayload,
 	hasVisibleReasoning,
-	type ToolCallPayload,
+	type ToolLifecyclePayload,
 	type ToolResult,
 } from "../types/ws-events";
 import { clearChatEmptyState, hasNonWhitespaceContent, setSafeMarkdownHtml } from "./shared";
 
-// ── Pending tool call end tracking ────────────────────────────
+// ── Tool lifecycle snapshot tracking ──────────────────────────
 
-export const pendingToolCallEnds: Map<string, ToolCallPayload> = new Map();
+const liveToolInvocations = new Map<string, ToolInvocationSnapshot>();
 
-export function toolCallLogicalId(payload: ToolCallPayload | null | undefined): string {
-	if (!payload) return "";
-	const toolCallId = payload.toolCallId || "";
-	if (payload.runId) return `${payload.runId}:${toolCallId}`;
-	return String(toolCallId);
+export function toolCallCardId(snapshot: ToolInvocationSnapshot): string {
+	const { toolCallId } = snapshot.lifecycle;
+	return snapshot.runId ? `tool-${snapshot.runId}-${toolCallId}` : `tool-${toolCallId}`;
 }
 
-export function toolCallCardId(payload: ToolCallPayload | ChatPayload | null | undefined): string {
-	const p = payload as ToolCallPayload | null | undefined;
-	const toolCallId = p?.toolCallId || "";
-	if (p?.runId) {
-		return `tool-${p.runId}-${toolCallId}`;
-	}
-	return `tool-${toolCallId}`;
-}
-
-export function toolCallEventKey(
-	eventSession: string,
-	payload: ToolCallPayload | ChatPayload | null | undefined,
-): string {
-	return `${eventSession}:${toolCallLogicalId(payload as ToolCallPayload)}`;
-}
-
-export function clearPendingToolCallEndsForSession(sessionKey: string): void {
-	const prefix = `${sessionKey}:`;
-	for (const key of pendingToolCallEnds.keys()) {
-		if (key.startsWith(prefix)) {
-			pendingToolCallEnds.delete(key);
-		}
-	}
-}
-
-export function createToolCallCardForPayload(p: ChatPayload): HTMLElement | null {
-	const cardId = toolCallCardId(p);
-	const existing = document.getElementById(cardId) as HTMLElement | null;
-	if (existing) return existing;
-	if (!S.chatMsgBox) return null;
-	const card = createToolCallCard({
-		id: cardId,
-		toolCallId: p.toolCallId,
-		toolName: p.toolName,
-		arguments: p.arguments,
-		executionMode: p.executionMode,
-		status: "running",
-		expanded: true,
+export function reduceLiveToolInvocation(eventSession: string, payload: ToolLifecyclePayload): ToolInvocationSnapshot {
+	const key = toolInvocationKey(eventSession, payload.runId, payload.toolCallId);
+	const snapshot = reduceToolInvocation(liveToolInvocations.get(key), payload, {
+		runId: payload.runId,
+		executionMode: payload.executionMode,
+		messageIndex: payload.messageIndex,
+		assistantMessage: payload.assistantMessage,
+		assistantMessageIndex: payload.assistantMessageIndex,
+		contextBudget: payload.contextBudget,
 	});
-	if (isA2uiTool(p.toolName) && p.rejected !== true) {
-		mountA2uiToolCard(card, {
-			arguments: p.arguments,
-			runId: p.runId,
-			toolCallId: p.toolCallId,
-			interactive: true,
-		});
+	liveToolInvocations.set(key, snapshot);
+	return snapshot;
+}
+
+export function clearToolLifecycleStateForSession(sessionKey: string): void {
+	const prefix = `${sessionKey}:`;
+	for (const key of liveToolInvocations.keys()) {
+		if (key.startsWith(prefix)) liveToolInvocations.delete(key);
 	}
-	clearChatEmptyState();
-	S.chatMsgBox.appendChild(card);
-	smartScrollToBottom();
-	return card;
 }
 
 // ── Tool result rendering ─────────────────────────────────────
 
-export function appendToolResult(toolCard: HTMLElement, resultValue: ToolResult | string, eventSession: string): void {
+function appendToolResult(
+	toolCard: HTMLElement,
+	resultValue: ToolResult | string,
+	eventSession: string,
+	screenshotMode: "inline-base64" | "media",
+): void {
 	const result = normalizeToolResult(resultValue);
 	const out = (result.stdout || result.output || "").replace(/\n+$/, "");
-	// Update per-session signal
 	const toolSession = sessionStore.getByKey(eventSession);
 	if (toolSession) toolSession.lastToolOutput.value = out;
-	// Dual-write to global state for backward compat
 	S.setLastToolOutput(out);
-	renderToolCardResult(toolCard, result, { sessionKey: eventSession || S.activeSessionKey || "main" });
+	renderToolCardResult(toolCard, result, {
+		sessionKey: eventSession || S.activeSessionKey || "main",
+		screenshotMode,
+	});
 }
 
-// ── Tool card completion ──────────────────────────────────────
-
-function isToolValidationErrorPayload(p: ChatPayload): boolean {
-	if (p.rejected === true) return true;
-	const errorDetail = p.error?.detail || p.error?.message;
-	if (!(p && !p.success && errorDetail)) return false;
-	const errDetail = errorDetail.toLowerCase();
-	return (
-		errDetail.includes("missing field") ||
-		errDetail.includes("missing required") ||
-		errDetail.includes("missing 'action'") ||
-		errDetail.includes("missing 'url'")
-	);
-}
-
-function setCompletedToolStatus(toolCard: HTMLElement, success: boolean | undefined, validationError: boolean): void {
-	setToolCardStatus(toolCard, validationError ? "retry" : success ? "success" : "error");
-}
-
-function renderCompletedToolResult(
-	toolCard: HTMLElement,
-	payload: ChatPayload,
-	eventSession: string,
-	validationError: boolean,
-): void {
-	if (payload.result) {
-		appendToolResult(toolCard, payload.result, eventSession);
-		if (!payload.success && payload.error) appendToolCardError(toolCard, payload.error, validationError);
-		return;
-	}
-	if (payload.success) {
-		renderToolCardResult(toolCard, {}, { sessionKey: eventSession || S.activeSessionKey || "main" });
-		return;
-	}
-	if (payload.error) renderToolCardError(toolCard, payload.error, validationError);
-}
-
-function completeToolA2ui(toolCard: HTMLElement, payload: ChatPayload): void {
-	if (!isA2uiTool(payload.toolName) || payload.rejected === true) return;
-	completeA2uiToolCard(
-		toolCard,
-		payload.success === true,
-		payload.result,
-		payload.error?.detail || payload.error?.message,
-	);
-}
-
-function appendSkillChangeHint(toolCard: HTMLElement, payload: ChatPayload): void {
-	if (!payload.success || (payload.toolName !== "create_skill" && payload.toolName !== "update_skill")) return;
+function appendSkillChangeHint(toolCard: HTMLElement, snapshot: ToolInvocationSnapshot, success: boolean): void {
+	const toolName = snapshot.lifecycle.toolName;
+	if (!success || (toolName !== "create_skill" && toolName !== "update_skill")) return;
 	const hint = document.createElement("div");
 	hint.className = "skill-hint";
-	const verb = payload.toolName === "create_skill" ? "created" : "updated";
+	const verb = toolName === "create_skill" ? "created" : "updated";
 	const link = document.createElement("a");
 	link.href = "/skills";
 	link.textContent = "personal skills";
@@ -179,17 +115,32 @@ function appendSkillChangeHint(toolCard: HTMLElement, payload: ChatPayload): voi
 	getToolCardDetailsContainer(toolCard).appendChild(hint);
 }
 
-export function completeToolCard(toolCard: HTMLElement, p: ChatPayload, eventSession: string): void {
+function completeToolCard(
+	toolCard: HTMLElement,
+	snapshot: ToolInvocationSnapshot,
+	eventSession: string,
+	screenshotMode: "inline-base64" | "media",
+): void {
+	const presentation = terminalToolPresentation(snapshot.lifecycle);
+	if (!presentation) return;
 	unmountExecuteCommandToolBubble(toolCard);
-	const validationError = isToolValidationErrorPayload(p);
-	setCompletedToolStatus(toolCard, p.success, validationError);
-	renderCompletedToolResult(toolCard, p, eventSession, validationError);
-	appendToolCardContextBudget(toolCard, p.contextBudget);
-	// The A2UI surface lives beside the standard Parameters/Result/Context
-	// budget disclosures, so it is refreshed after they are rendered.
-	completeToolA2ui(toolCard, p);
-	setToolCardExpanded(toolCard, validationError || isCommandToolName(p.toolName) || isA2uiTool(p.toolName));
-	appendSkillChangeHint(toolCard, p);
+	setToolCardStatus(toolCard, presentation.rejected ? "retry" : presentation.success ? "success" : "error");
+	if (presentation.result !== null) {
+		appendToolResult(toolCard, presentation.result, eventSession, screenshotMode);
+		if (!presentation.success && presentation.error) {
+			appendToolCardError(toolCard, presentation.error, presentation.rejected);
+		}
+	} else if (presentation.success) {
+		renderToolCardResult(toolCard, {}, { sessionKey: eventSession || S.activeSessionKey || "main", screenshotMode });
+	} else {
+		renderToolCardError(toolCard, presentation.error || undefined, presentation.rejected);
+	}
+	appendToolCardContextBudget(toolCard, snapshot.contextBudget);
+	setToolCardExpanded(
+		toolCard,
+		presentation.rejected || isCommandToolName(snapshot.lifecycle.toolName) || isA2uiTool(snapshot.lifecycle.toolName),
+	);
+	appendSkillChangeHint(toolCard, snapshot, presentation.success);
 }
 
 export function clearStaleRunningToolCards(): void {
@@ -212,18 +163,12 @@ export function clearStaleRunningToolCards(): void {
 	}
 }
 
-// ── Tool call start ───────────────────────────────────────────
+// ── Canonical assistant segment ───────────────────────────────
 
-/** Close the live assistant segment that precedes a tool card.
+/** Close the live assistant segment when input-ready supplies its persisted frame.
  *
- * The server persisted the assistant frame before it emitted the tool event.
- * Binding the live element to that canonical history index and clearing the
- * stream state is what keeps the next iteration's deltas below the tool card
- * instead of appending them to a segment that now sits above it.
- *
- * `assistantHistoryIndex` is the index of the assistant frame itself: tool
- * start carries it in `messageIndex`, while a rejected call reports it
- * separately because its `messageIndex` addresses the tool-result record.
+ * Binding the live element to the canonical assistant history index keeps the
+ * next iteration's deltas below the invocation card.
  */
 function assistantSegmentByHistoryIndex(historyIndex: number | undefined): HTMLElement | null {
 	if (!Number.isInteger(historyIndex)) return null;
@@ -291,65 +236,126 @@ export function closeLiveAssistantSegment(
 	if (segment) applyCanonicalAssistantSegment(segment, assistantMessage, assistantHistoryIndex, sessionKey);
 }
 
-export function handleToolCallStartDom(p: ChatPayload, eventSession: string): void {
-	closeLiveAssistantSegment(p.assistantMessage, p.messageIndex, eventSession);
-	const cardId = toolCallCardId(p);
-	const existingCard = document.getElementById(cardId) as HTMLElement | null;
-	if (existingCard) {
-		if (Number.isInteger(p.messageIndex)) {
-			existingCard.dataset.assistantHistoryIndex = String(p.messageIndex);
-		}
-		if (isCommandToolName(p.toolName) && p.toolCallId) {
-			mountExecuteCommandToolBubble(existingCard, {
-				toolCallId: p.toolCallId,
-				sessionKey: eventSession,
-				startedAt: p.startedAt ?? Number.NaN,
-			});
-		}
-		if (isA2uiTool(p.toolName)) {
-			mountA2uiToolCard(existingCard, {
-				arguments: p.arguments,
-				runId: p.runId,
-				toolCallId: p.toolCallId,
-				interactive: true,
-			});
-		}
-		return;
+interface ToolLifecycleRenderOptions {
+	renderEarly?: boolean;
+	interactive?: boolean;
+	screenshotMode?: "inline-base64" | "media";
+	assistantHistoryIndex?: number;
+}
+
+function lifecycleStatus(snapshot: ToolInvocationSnapshot): string {
+	switch (snapshot.lifecycle.stage) {
+		case "created":
+			return "preparing…";
+		case "input_streaming":
+			return "receiving parameters…";
+		case "input_ready":
+			return "parameters ready";
+		case "waiting_for_execution":
+			return "waiting for execution…";
+		case "executing":
+			return "running…";
+		case "execution_progress":
+			return snapshot.lifecycle.message;
+		case "result_ready":
+			return "result ready";
+		case "completed":
+			return snapshot.lifecycle.success ? "completed" : "failed";
+		case "rejected":
+			return "needs retry";
+		case "cancelled":
+			return "cancelled";
 	}
-	const card = createToolCallCard({
-		id: cardId,
-		toolCallId: p.toolCallId,
-		assistantHistoryIndex: Number.isInteger(p.messageIndex) ? p.messageIndex : undefined,
-		toolName: p.toolName,
-		arguments: p.arguments,
-		executionMode: p.executionMode,
-		status: "running",
-		expanded: true,
+}
+
+function shouldRenderLifecycle(snapshot: ToolInvocationSnapshot, renderEarly: boolean): boolean {
+	return renderEarly || (snapshot.lifecycle.stage !== "created" && snapshot.lifecycle.stage !== "input_streaming");
+}
+
+function updateExecuteCommandBubble(
+	card: HTMLElement,
+	snapshot: ToolInvocationSnapshot,
+	eventSession: string,
+	interactive: boolean,
+): void {
+	const lifecycle = snapshot.lifecycle;
+	if (!isCommandToolName(lifecycle.toolName) || isTerminalToolLifecycle(lifecycle)) return;
+	mountExecuteCommandToolBubble(card, {
+		toolCallId: lifecycle.toolCallId,
+		sessionKey: eventSession,
+		progressMessage: lifecycleStatus(snapshot),
+		attachTerminal: interactive && lifecycle.stage === "execution_progress" && lifecycle.elapsedMs >= 10_000,
 	});
-	if (isCommandToolName(p.toolName) && p.toolCallId) {
-		mountExecuteCommandToolBubble(card, {
-			toolCallId: p.toolCallId,
-			sessionKey: eventSession,
-			startedAt: p.startedAt ?? Number.NaN,
+}
+
+function updateA2uiSurface(card: HTMLElement, snapshot: ToolInvocationSnapshot, interactive: boolean): void {
+	const lifecycle = snapshot.lifecycle;
+	if (!isA2uiTool(lifecycle.toolName) || lifecycle.stage === "rejected") return;
+	const argumentsValue = toolLifecycleArguments(lifecycle, snapshot.accumulatedArguments);
+	if (!(argumentsValue && typeof argumentsValue === "object" && !Array.isArray(argumentsValue))) return;
+	const presentation = terminalToolPresentation(lifecycle);
+	mountA2uiToolCard(card, {
+		arguments: argumentsValue,
+		runId: snapshot.runId,
+		toolCallId: lifecycle.toolCallId,
+		interactive,
+		success: presentation?.success,
+		result: presentation?.result ?? undefined,
+		error: presentation?.error ?? undefined,
+	});
+}
+
+function closeCanonicalAssistantBeforeCard(
+	snapshot: ToolInvocationSnapshot,
+	eventSession: string,
+	card: HTMLElement | null,
+): void {
+	if (snapshot.lifecycle.stage !== "input_ready" || !snapshot.assistantMessage) return;
+	closeLiveAssistantSegment(snapshot.assistantMessage, snapshot.assistantMessageIndex, eventSession);
+	const assistant = assistantSegmentByHistoryIndex(snapshot.assistantMessageIndex);
+	if (assistant && card) card.before(assistant);
+}
+
+export function renderToolLifecycleSnapshot(
+	snapshot: ToolInvocationSnapshot,
+	eventSession: string,
+	options: ToolLifecycleRenderOptions = {},
+): HTMLElement | null {
+	const cardId = toolCallCardId(snapshot);
+	let card = document.getElementById(cardId) as HTMLElement | null;
+	closeCanonicalAssistantBeforeCard(snapshot, eventSession, card);
+	if (!(card || shouldRenderLifecycle(snapshot, options.renderEarly !== false))) return null;
+	if (!card) {
+		if (!S.chatMsgBox) return null;
+		card = createToolCallCard({
+			id: cardId,
+			toolCallId: snapshot.lifecycle.toolCallId,
+			assistantHistoryIndex: options.assistantHistoryIndex ?? snapshot.assistantMessageIndex,
+			toolName: snapshot.lifecycle.toolName,
+			arguments: toolLifecycleArguments(snapshot.lifecycle, snapshot.accumulatedArguments),
+			executionMode: snapshot.executionMode,
+			status: "running",
+			expanded: true,
 		});
+		clearChatEmptyState();
+		S.chatMsgBox.appendChild(card);
 	}
-	if (isA2uiTool(p.toolName)) {
-		mountA2uiToolCard(card, {
-			arguments: p.arguments,
-			runId: p.runId,
-			toolCallId: p.toolCallId,
-			interactive: true,
-		});
+	const renderedSequence = Number(card.dataset.toolSequence);
+	if (Number.isSafeInteger(renderedSequence) && renderedSequence >= snapshot.lifecycle.sequence) return card;
+	card.dataset.toolSequence = String(snapshot.lifecycle.sequence);
+	const assistantHistoryIndex = options.assistantHistoryIndex ?? snapshot.assistantMessageIndex;
+	if (Number.isInteger(assistantHistoryIndex)) card.dataset.assistantHistoryIndex = String(assistantHistoryIndex);
+	const argumentsValue = toolLifecycleArguments(snapshot.lifecycle, snapshot.accumulatedArguments);
+	if (argumentsValue !== undefined) updateToolCardParameters(card, argumentsValue, snapshot.executionMode);
+	if (isTerminalToolLifecycle(snapshot.lifecycle)) {
+		completeToolCard(card, snapshot, eventSession, options.screenshotMode || "inline-base64");
+	} else {
+		setToolCardProgress(card, lifecycleStatus(snapshot));
+		updateExecuteCommandBubble(card, snapshot, eventSession, options.interactive !== false);
 	}
-	clearChatEmptyState();
-	S.chatMsgBox?.appendChild(card);
-	const endKey = toolCallEventKey(eventSession, p);
-	const pendingEnd = pendingToolCallEnds.get(endKey);
-	if (pendingEnd) {
-		pendingToolCallEnds.delete(endKey);
-		completeToolCard(card, pendingEnd as ChatPayload, eventSession);
-	}
+	updateA2uiSurface(card, snapshot, options.interactive !== false);
 	smartScrollToBottom();
+	return card;
 }
 
 // ── Channel user message rendering ────────────────────────────

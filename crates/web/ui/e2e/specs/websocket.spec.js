@@ -5,6 +5,24 @@ async function clearChatAndWait(page) {
 	await expectRpcOk(page, "chat.clear", {});
 	await expect.poll(() => page.locator("#messages .msg").count(), { timeout: 10_000 }).toBe(0);
 }
+function lifecycleEvent(stage, fields) {
+	const { sequence = 0, emittedAtMs = 1_700_000_000_000, ...eventFields } = fields;
+	return {
+		...eventFields,
+		sequence,
+		emittedAtMs,
+		stage,
+	};
+}
+
+function liveToolLifecycle(stage, fields) {
+	return { state: "tool_lifecycle", ...lifecycleEvent(stage, fields) };
+}
+
+function persistedToolLifecycle(stage, fields) {
+	return { role: "tool_lifecycle", ...lifecycleEvent(stage, fields) };
+}
+
 async function waitForChatSessionReady(page) {
 	await page.waitForFunction(
 		async () => {
@@ -161,13 +179,15 @@ test.describe("WebSocket connection lifecycle", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId: "context-budget-1",
 				toolName: "execute_command",
+				sequence: 8,
+				arguments: {},
 				success: true,
-				result: { stdout: "first", exit_code: 0 },
+				result: JSON.stringify({ stdout: "first", exit_code: 0 }),
+				error: null,
 				contextBudget: {
 					contextWindow: 200000,
 					maxInputTokens: 180000,
@@ -180,32 +200,36 @@ test.describe("WebSocket connection lifecycle", () => {
 					usagePercent: 25,
 					compactionRequired: false,
 				},
-			},
+			}),
 		});
 		await expect(page.locator("#tokenBar")).toContainText("[25%]");
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId: "context-budget-2",
 				toolName: "execute_command",
+				sequence: 8,
+				arguments: {},
 				success: true,
-				result: { stdout: "second", exit_code: 0 },
-			},
+				result: JSON.stringify({ stdout: "second", exit_code: 0 }),
+				error: null,
+			}),
 		});
 		await expect(page.locator("#tokenBar")).toContainText("[25%]");
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId: "context-budget-3",
 				toolName: "execute_command",
+				sequence: 8,
+				arguments: {},
 				success: true,
-				result: { stdout: "third", exit_code: 0 },
+				result: JSON.stringify({ stdout: "third", exit_code: 0 }),
+				error: null,
 				contextBudget: {
 					contextWindow: 200000,
 					maxInputTokens: 180000,
@@ -218,7 +242,7 @@ test.describe("WebSocket connection lifecycle", () => {
 					usagePercent: 100,
 					compactionRequired: true,
 				},
-			},
+			}),
 		});
 		await expect(page.locator("#tokenBar")).toContainText("[100%]");
 		expect(pageErrors).toEqual([]);
@@ -238,12 +262,14 @@ test.describe("WebSocket connection lifecycle", () => {
 					historyCacheHit: false,
 					historyTruncated: false,
 					history: [
-						{
-							role: "tool_result",
-							tool_call_id: "history-budget-1",
-							tool_name: "execute_command",
+						persistedToolLifecycle("completed", {
+							toolCallId: "history-budget-1",
+							toolName: "execute_command",
+							sequence: 8,
+							arguments: {},
 							success: true,
-							result: { stdout: "first", exit_code: 0 },
+							result: JSON.stringify({ stdout: "first", exit_code: 0 }),
+							error: null,
 							contextBudget: {
 								contextWindow: 200000,
 								maxInputTokens: 180000,
@@ -256,13 +282,15 @@ test.describe("WebSocket connection lifecycle", () => {
 								usagePercent: 25,
 								compactionRequired: false,
 							},
-						},
-						{
-							role: "tool_result",
-							tool_call_id: "history-budget-2",
-							tool_name: "execute_command",
+						}),
+						persistedToolLifecycle("completed", {
+							toolCallId: "history-budget-2",
+							toolName: "execute_command",
+							sequence: 8,
+							arguments: {},
 							success: true,
-							result: { stdout: "second", exit_code: 0 },
+							result: JSON.stringify({ stdout: "second", exit_code: 0 }),
+							error: null,
 							contextBudget: {
 								contextWindow: 200000,
 								maxInputTokens: 180000,
@@ -275,7 +303,7 @@ test.describe("WebSocket connection lifecycle", () => {
 								usagePercent: 50,
 								compactionRequired: false,
 							},
-						},
+						}),
 					],
 				}),
 			});
@@ -395,13 +423,16 @@ test.describe("WebSocket connection lifecycle", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId: "echo-test",
+				toolName: "execute_command",
+				sequence: 8,
+				arguments: { command: "uname -a" },
 				success: true,
-				result: { stdout: toolOutput, stderr: "", exit_code: 0 },
-			},
+				result: JSON.stringify({ stdout: toolOutput, stderr: "", exit_code: 0 }),
+				error: null,
+			}),
 		});
 
 		await expectRpcOk(page, "system-event", {
@@ -688,6 +719,131 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
+	test("tool lifecycle streams parameters and uses backend execution progress", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		const runId = "run-live-lifecycle";
+		const toolCallId = "live-lifecycle-command";
+		const base = {
+			sessionKey: "main",
+			runId,
+			toolCallId,
+			toolName: "execute_command",
+		};
+		const sendLifecycle = (stage, fields) =>
+			expectRpcOk(page, "system-event", {
+				event: "chat",
+				payload: liveToolLifecycle(stage, { ...base, ...fields }),
+			});
+
+		await sendLifecycle("created", { sequence: 0, providerIndex: 0 });
+		const card = page.locator(`#tool-${runId}-${toolCallId}`);
+		await expect(card).toBeVisible();
+		await expect(card.locator(".tool-call-status")).toHaveText("preparing…");
+
+		await sendLifecycle("input_streaming", {
+			sequence: 1,
+			argumentsDelta: '"sleep 10"}',
+			accumulatedArguments: '{"command":"sleep 10"}',
+		});
+		await expect(card.locator(".tool-call-params-details .tool-call-raw-json")).toContainText("sleep 10");
+		await expect(card.locator(".tool-call-status")).toHaveText("receiving parameters…");
+
+		const commandArguments = { command: "sleep 10" };
+		await sendLifecycle("input_ready", { sequence: 2, arguments: commandArguments });
+		await expect(card.locator(".tool-call-status")).toHaveText("parameters ready");
+		await sendLifecycle("waiting_for_execution", { sequence: 3, arguments: commandArguments });
+		await expect(card.locator(".tool-call-status")).toHaveText("waiting for execution…");
+		await sendLifecycle("executing", {
+			sequence: 4,
+			arguments: commandArguments,
+			startedAtMs: 1_700_000_000_100,
+		});
+		await expect(card.locator(".tool-call-status")).toHaveText("running…");
+
+		await sendLifecycle("execution_progress", {
+			sequence: 5,
+			arguments: commandArguments,
+			elapsedMs: 9_000,
+			message: "wait for result [9] sec.",
+		});
+		await expect(card.locator(".tool-call-result-placeholder")).toHaveText("wait for result [9] sec.");
+		await expect(card.locator(".terminal-output")).toHaveCount(0);
+
+		await sendLifecycle("execution_progress", {
+			sequence: 6,
+			arguments: commandArguments,
+			elapsedMs: 10_000,
+			message: "wait for result [10] sec.",
+		});
+		await expect(card.locator(".terminal-output")).toHaveCount(1);
+
+		await sendLifecycle("result_ready", {
+			sequence: 7,
+			arguments: commandArguments,
+			success: true,
+			result: JSON.stringify({ stdout: "done\n", exit_code: 0 }),
+			error: null,
+		});
+		await expect(card.locator(".tool-call-status")).toHaveText("result ready");
+		await sendLifecycle("completed", {
+			sequence: 8,
+			arguments: commandArguments,
+			success: true,
+			result: JSON.stringify({ stdout: "done\n", exit_code: 0 }),
+			error: null,
+		});
+		await expect(card).toHaveClass(/command-ok/);
+		await expect(card.locator(".command-output")).toContainText("done");
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("rejected and cancelled lifecycle events render terminal cards", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		await expectRpcOk(page, "system-event", {
+			event: "chat",
+			payload: liveToolLifecycle("rejected", {
+				sessionKey: "main",
+				runId: "run-rejected",
+				toolCallId: "tool-rejected",
+				toolName: "read_file",
+				sequence: 4,
+				arguments: { filePath: "/tmp/rejected" },
+				reason: "policy denied the tool call",
+				result: JSON.stringify({ error: "policy denied the tool call" }),
+			}),
+		});
+		const rejected = page.locator("#tool-run-rejected-tool-rejected");
+		await expect(rejected).toBeVisible();
+		await expect(rejected.locator(".tool-call-status")).toHaveText("needs retry");
+		await expect(rejected).toContainText("policy denied the tool call");
+
+		await expectRpcOk(page, "system-event", {
+			event: "chat",
+			payload: liveToolLifecycle("cancelled", {
+				sessionKey: "main",
+				runId: "run-cancelled",
+				toolCallId: "tool-cancelled",
+				toolName: "overwrite_file",
+				sequence: 3,
+				arguments: { filePath: "/tmp/cancelled" },
+				reason: "Stopped by user.",
+			}),
+		});
+		const cancelled = page.locator("#tool-run-cancelled-tool-cancelled");
+		await expect(cancelled).toBeVisible();
+		await expect(cancelled.locator(".tool-call-status")).toHaveText("failed");
+		await expect(cancelled).toContainText("Stopped by user.");
+		expect(pageErrors).toEqual([]);
+	});
+
 	test("out-of-order tool events still resolve command card", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
@@ -702,25 +858,27 @@ test.describe("WebSocket connection lifecycle", () => {
 			`\n\n[Truncated — full tool result (101KB) written to file. Use the read_file tool to access the content at: ${fullOutputPath}]`;
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId,
 				toolName: "execute_command",
+				sequence: 8,
+				arguments: { command: "df -h" },
 				success: true,
 				result: truncatedResult,
-			},
+				error: null,
+			}),
 		});
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				toolCallId,
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "df -h" },
-			},
+			}),
 		});
 
 		const card = page.locator(`#tool-${toolCallId}`);
@@ -770,7 +928,7 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("switch payload restores active running tool calls", async ({ page }) => {
+	test("switch payload restores active streamed input and backend progress", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
 		await waitForWsConnected(page);
@@ -780,15 +938,26 @@ test.describe("WebSocket connection lifecycle", () => {
 		await mockRpcOkResponse(page, "sessions.switch", {
 			entry: { key: "session:active-tool", messageCount: 1 },
 			historyOmitted: false,
-			history: [{ role: "user", content: "run a command", historyIndex: 0 }],
+			history: [{ role: "user", content: "run two tools", historyIndex: 0 }],
 			replying: true,
-			activeToolCalls: [
-				{
-					runId: "run-switch-tool",
-					toolCallId: "tc-switch-tool",
+			activeToolInvocations: [
+				lifecycleEvent("input_streaming", {
+					runId: "run-switch-input",
+					toolCallId: "tc-switch-input",
+					toolName: "read_file",
+					sequence: 1,
+					argumentsDelta: '"/tmp/input"}',
+					accumulatedArguments: '{"filePath":"/tmp/input"}',
+				}),
+				lifecycleEvent("execution_progress", {
+					runId: "run-switch-progress",
+					toolCallId: "tc-switch-progress",
 					toolName: "execute_command",
+					sequence: 5,
 					arguments: { command: "sleep 10" },
-				},
+					elapsedMs: 4_000,
+					message: "wait for result [4] sec.",
+				}),
 			],
 		});
 
@@ -801,9 +970,116 @@ test.describe("WebSocket connection lifecycle", () => {
 			sessions.switchSession("session:active-tool");
 		});
 
-		const card = page.locator("#tool-run-switch-tool-tc-switch-tool");
-		await expect(card).toBeVisible();
-		await expect(card.locator(".tool-call-result-placeholder")).toContainText("Waiting for tool result");
+		const inputCard = page.locator("#tool-run-switch-input-tc-switch-input");
+		await expect(inputCard).toBeVisible();
+		await expect(inputCard.locator(".tool-call-status")).toHaveText("receiving parameters…");
+		await expect(inputCard.locator(".tool-call-params-details .tool-call-raw-json")).toContainText("/tmp/input");
+
+		const progressCard = page.locator("#tool-run-switch-progress-tc-switch-progress");
+		await expect(progressCard).toBeVisible();
+		await expect(progressCard.locator(".tool-call-result-placeholder")).toHaveText("wait for result [4] sec.");
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("history replays UI-only lifecycle stages into one terminal tool card", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		await page.goto("/chats/main");
+		await waitForWsConnected(page);
+		await waitForChatSessionReady(page);
+		await expectRpcOk(page, "chat.clear", {});
+
+		const lifecycleFields = {
+			runId: "run-history-lifecycle",
+			toolCallId: "tc-history-lifecycle",
+			toolName: "execute_command",
+		};
+		const commandArguments = { command: "printf history" };
+		await mockRpcOkResponse(page, "sessions.switch", {
+			entry: { key: "session:history-lifecycle", messageCount: 10 },
+			historyOmitted: false,
+			history: [
+				{ role: "user", content: "run a command", historyIndex: 0 },
+				{
+					role: "assistant",
+					content: "",
+					tool_calls: [{ id: lifecycleFields.toolCallId, name: lifecycleFields.toolName }],
+					historyIndex: 1,
+				},
+				persistedToolLifecycle("created", {
+					...lifecycleFields,
+					sequence: 0,
+					providerIndex: 0,
+					historyIndex: 2,
+				}),
+				persistedToolLifecycle("input_streaming", {
+					...lifecycleFields,
+					sequence: 1,
+					argumentsDelta: '"printf history"}',
+					accumulatedArguments: '{"command":"printf history"}',
+					historyIndex: 3,
+				}),
+				persistedToolLifecycle("input_ready", {
+					...lifecycleFields,
+					sequence: 2,
+					arguments: commandArguments,
+					historyIndex: 4,
+				}),
+				persistedToolLifecycle("waiting_for_execution", {
+					...lifecycleFields,
+					sequence: 3,
+					arguments: commandArguments,
+					historyIndex: 5,
+				}),
+				persistedToolLifecycle("executing", {
+					...lifecycleFields,
+					sequence: 4,
+					arguments: commandArguments,
+					startedAtMs: 1_700_000_000_000,
+					historyIndex: 6,
+				}),
+				persistedToolLifecycle("execution_progress", {
+					...lifecycleFields,
+					sequence: 5,
+					arguments: commandArguments,
+					elapsedMs: 1_000,
+					message: "wait for result [1] sec.",
+					historyIndex: 7,
+				}),
+				persistedToolLifecycle("result_ready", {
+					...lifecycleFields,
+					sequence: 6,
+					arguments: commandArguments,
+					success: true,
+					result: JSON.stringify({ stdout: "history", exit_code: 0 }),
+					error: null,
+					historyIndex: 8,
+				}),
+				persistedToolLifecycle("completed", {
+					...lifecycleFields,
+					sequence: 7,
+					arguments: commandArguments,
+					success: true,
+					result: JSON.stringify({ stdout: "history", exit_code: 0 }),
+					error: null,
+					historyIndex: 9,
+				}),
+			],
+			replying: false,
+		});
+
+		await page.evaluate(async () => {
+			const appScript = document.querySelector('script[type="module"][src*="js/app.js"]');
+			if (!appScript) throw new Error("app module script not found");
+			const appUrl = new URL(appScript.src, window.location.origin);
+			const prefix = appUrl.href.slice(0, appUrl.href.length - "js/app.js".length);
+			const sessions = await import(`${prefix}js/sessions.js`);
+			sessions.switchSession("session:history-lifecycle");
+		});
+
+		const card = page.locator("#tool-run-history-lifecycle-tc-history-lifecycle");
+		await expect(card).toHaveCount(1);
+		await expect(card).toHaveClass(/command-ok/);
+		await expect(card.locator(".command-output")).toContainText("history");
 		expect(pageErrors).toEqual([]);
 	});
 
@@ -829,13 +1105,16 @@ test.describe("WebSocket connection lifecycle", () => {
 					tool_calls: [{ id: "tool-1", name: "execute_command" }],
 					historyIndex: 1,
 				},
-				{
-					role: "tool_result",
-					tool_call_id: "tool-1",
-					tool_name: "execute_command",
+				persistedToolLifecycle("completed", {
+					toolCallId: "tool-1",
+					toolName: "execute_command",
+					sequence: 8,
+					arguments: {},
 					success: true,
+					result: null,
+					error: null,
 					historyIndex: 2,
-				},
+				}),
 				{
 					role: "assistant",
 					content: "Final answer.",
@@ -895,14 +1174,17 @@ test.describe("WebSocket connection lifecycle", () => {
 					tool_calls: [{ id: "tool-empty-terminal", name: "execute_command" }],
 					historyIndex: 1,
 				},
-				{
-					role: "tool_result",
-					tool_call_id: "tool-empty-terminal",
-					tool_name: "execute_command",
+				persistedToolLifecycle("completed", {
+					toolCallId: "tool-empty-terminal",
+					toolName: "execute_command",
+					sequence: 8,
+					arguments: {},
 					success: false,
+					result: null,
+					error: "Tool failed.",
 					created_at: 1_700_000_000_000,
 					historyIndex: 2,
-				},
+				}),
 			],
 			replying: false,
 		});
@@ -964,7 +1246,7 @@ test.describe("WebSocket connection lifecycle", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("final event clears stale running command status when tool end is missed", async ({ page }) => {
+	test("final event clears stale running command status when terminal lifecycle is missed", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
 		await waitForWsConnected(page);
@@ -974,13 +1256,13 @@ test.describe("WebSocket connection lifecycle", () => {
 		const toolCallId = "stale-command-1";
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				toolCallId,
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "df -h" },
-			},
+			}),
 		});
 
 		await expect(page.locator(`#tool-${toolCallId} .command-status`)).toBeVisible();
@@ -1013,32 +1295,34 @@ test.describe("WebSocket connection lifecycle", () => {
 		const toolCallId = "map-links-icons-1";
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				toolCallId,
 				toolName: "show_map",
+				sequence: 2,
 				arguments: { label: "Tartine Bakery ⭐4.7 - Open till 4PM" },
-			},
+			}),
 		});
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId,
 				toolName: "show_map",
+				sequence: 8,
+				arguments: { label: "Tartine Bakery ⭐4.7 - Open till 4PM" },
 				success: true,
-				result: {
+				result: JSON.stringify({
 					label: "Tartine Bakery ⭐4.7 - Open till 4PM",
 					map_links: {
 						provider: "google_maps",
 						url: "https://www.google.com/maps/search/?api=1&query=Tartine+Bakery&center=37.7615,-122.4241",
 						google_maps: "https://www.google.com/maps/search/?api=1&query=Tartine+Bakery&center=37.7615,-122.4241",
 					},
-				},
-			},
+				}),
+				error: null,
+			}),
 		});
 
 		const card = page.locator(`#tool-${toolCallId}`);
@@ -1063,24 +1347,25 @@ test.describe("WebSocket connection lifecycle", () => {
 		const toolCallId = "map-links-points-1";
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				toolCallId,
 				toolName: "show_map",
+				sequence: 2,
 				arguments: { label: "Breakfast spots" },
-			},
+			}),
 		});
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("completed", {
 				sessionKey: "main",
-				state: "tool_call_end",
 				toolCallId,
 				toolName: "show_map",
+				sequence: 8,
+				arguments: { label: "Breakfast spots" },
 				success: true,
-				result: {
+				result: JSON.stringify({
 					label: "Breakfast spots",
 					map_links: {
 						provider: "google_maps",
@@ -1110,8 +1395,9 @@ test.describe("WebSocket connection lifecycle", () => {
 							},
 						},
 					],
-				},
-			},
+				}),
+				error: null,
+			}),
 		});
 
 		const card = page.locator(`#tool-${toolCallId}`);
@@ -1166,17 +1452,18 @@ test.describe("WebSocket connection lifecycle", () => {
 		await expect(liveSegment).toBeVisible();
 		await expect(liveSegment.locator(".msg-reasoning")).not.toHaveAttribute("open", "");
 
-		// 4. Tool start binds the segment to the persisted assistant iteration.
+		// 4. Input-ready binds the segment to the persisted assistant iteration.
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-think-tool",
 				toolCallId: "tc-ripgrep-1",
 				toolName: "ripgrep",
+				sequence: 2,
 				arguments: { pattern: "SandboxBackend" },
-				messageIndex: 999997,
+				messageIndex: 999998,
+				assistantMessageIndex: 999997,
 				assistantMessage: {
 					role: "assistant",
 					content: "",
@@ -1191,7 +1478,7 @@ test.describe("WebSocket connection lifecycle", () => {
 						},
 					],
 				},
-			},
+			}),
 		});
 		const persistedSegment = page.locator('.msg.assistant[data-history-index="999997"]');
 		const persistedReasoningItems = persistedSegment.locator(".msg-reasoning-item");
@@ -1209,7 +1496,7 @@ test.describe("WebSocket connection lifecycle", () => {
 				sessionKey: "main",
 				state: "final",
 				text: "Here are the top news stories.",
-				messageIndex: 999998,
+				messageIndex: 999999,
 				model: "test-model",
 				provider: "test-provider",
 				replyMedium: "text",
@@ -1220,14 +1507,14 @@ test.describe("WebSocket connection lifecycle", () => {
 			},
 		});
 		await expect(page.locator(".msg.assistant > .msg-reasoning")).toHaveCount(2);
-		const finalReasoningItems = page.locator('.msg.assistant[data-history-index="999998"] .msg-reasoning-item');
+		const finalReasoningItems = page.locator('.msg.assistant[data-history-index="999999"] .msg-reasoning-item');
 		await expect(finalReasoningItems).toHaveCount(2);
 		await expect(finalReasoningItems.nth(0)).toContainText("Analyzing final evidence");
 		await expect(finalReasoningItems.nth(1)).toContainText("Preparing the response");
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("whitespace-only streamed assistant bubble is removed once tool call starts/finalizes", async ({ page }) => {
+	test("whitespace-only streamed assistant bubble is removed once tool input is ready/finalizes", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await page.goto("/chats/main");
 		await waitForWsConnected(page);
@@ -1247,14 +1534,14 @@ test.describe("WebSocket connection lifecycle", () => {
 
 		await expectRpcOk(page, "system-event", {
 			event: "chat",
-			payload: {
+			payload: liveToolLifecycle("input_ready", {
 				sessionKey: "main",
-				state: "tool_call_start",
 				runId: "run-whitespace-tool",
 				toolCallId: "tc-empty-1",
 				toolName: "execute_command",
+				sequence: 2,
 				arguments: { command: "echo $FOO" },
-			},
+			}),
 		});
 
 		const toolCard = page.locator("#tool-run-whitespace-tool-tc-empty-1");

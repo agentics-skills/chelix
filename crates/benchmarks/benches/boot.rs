@@ -155,9 +155,13 @@ fn build_persisted_messages(n: usize) -> Vec<serde_json::Value> {
                 ],
             })),
             _ => values.push(serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": format!("tool_{i}"),
-                "content": {"success": true},
+                "role": "tool_lifecycle",
+                "toolCallId": format!("tool_{i}"),
+                "toolName": "benchmark_tool",
+                "sequence": 0,
+                "emittedAtMs": i,
+                "stage": "created",
+                "providerIndex": null,
             })),
         }
     }

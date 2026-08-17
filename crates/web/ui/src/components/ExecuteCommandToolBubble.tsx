@@ -1,54 +1,28 @@
 import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
-import { useEffect } from "preact/hooks";
 import { TerminalAttachment } from "./TerminalAttachment";
-
-const TERMINAL_ATTACH_DELAY_MS = 10_000;
 
 interface ExecuteCommandToolBubbleProps {
 	sessionKey: string;
 	toolCallId: string;
-	startedAt: number;
+	progressMessage: string;
+	attachTerminal: boolean;
 }
 
 const mountedBubbles = new Map<HTMLElement, HTMLElement>();
 
-function validStartedAt(startedAt: number): boolean {
-	return Number.isSafeInteger(startedAt) && startedAt > 0;
-}
-
-function ExecuteCommandToolBubble({ sessionKey, toolCallId, startedAt }: ExecuteCommandToolBubbleProps): VNode {
-	const deadlineReached = useSignal(validStartedAt(startedAt) && Date.now() >= startedAt + TERMINAL_ATTACH_DELAY_MS);
+function ExecuteCommandToolBubble({
+	sessionKey,
+	toolCallId,
+	progressMessage,
+	attachTerminal,
+}: ExecuteCommandToolBubbleProps): VNode {
 	const status = useSignal("");
 	const statusLevel = useSignal<"" | "ok" | "error">("");
 
-	useEffect(() => {
-		if (!validStartedAt(startedAt)) {
-			status.value = "Tool call start timestamp is unavailable or invalid.";
-			statusLevel.value = "error";
-			return;
-		}
-		const remaining = startedAt + TERMINAL_ATTACH_DELAY_MS - Date.now();
-		if (remaining <= 0) {
-			deadlineReached.value = true;
-			return;
-		}
-		const wakeUp = window.setTimeout(() => {
-			deadlineReached.value = true;
-		}, remaining);
-		return () => window.clearTimeout(wakeUp);
-	}, [startedAt]);
-
-	if (!validStartedAt(startedAt)) {
-		return (
-			<div className="tool-call-result-placeholder text-[var(--err)]" role="alert">
-				{status.value}
-			</div>
-		);
-	}
-	if (!deadlineReached.value) {
-		return <div className="tool-call-result-placeholder">Waiting for tool result…</div>;
+	if (!attachTerminal) {
+		return <div className="tool-call-result-placeholder">{progressMessage || "Waiting for tool result…"}</div>;
 	}
 	return (
 		<div className="overflow-hidden rounded border border-[var(--border)] bg-[var(--bg)]">
@@ -72,14 +46,16 @@ function ExecuteCommandToolBubble({ sessionKey, toolCallId, startedAt }: Execute
 }
 
 export function mountExecuteCommandToolBubble(card: HTMLElement, options: ExecuteCommandToolBubbleProps): void {
-	if (mountedBubbles.has(card)) return;
-	const content = card.querySelector<HTMLElement>("[data-tool-result-content]");
-	if (!content) throw new Error("execute_command tool card result mount is unavailable");
-	content.textContent = "";
-	const mount = document.createElement("div");
-	mount.setAttribute("data-execute-command-bubble", "");
-	content.appendChild(mount);
-	mountedBubbles.set(card, mount);
+	let mount = mountedBubbles.get(card);
+	if (!mount) {
+		const content = card.querySelector<HTMLElement>("[data-tool-result-content]");
+		if (!content) throw new Error("execute_command tool card result mount is unavailable");
+		content.textContent = "";
+		mount = document.createElement("div");
+		mount.setAttribute("data-execute-command-bubble", "");
+		content.appendChild(mount);
+		mountedBubbles.set(card, mount);
+	}
 	render(<ExecuteCommandToolBubble {...options} />, mount);
 }
 

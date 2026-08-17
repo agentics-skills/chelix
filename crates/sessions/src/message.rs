@@ -4,23 +4,12 @@
 //! They include both LLM-relevant fields (role, content) and metadata
 //! fields (created_at, model, provider, tokens, channel).
 
-use serde::{Deserialize, Serialize};
+use {
+    chelix_common::tool_lifecycle::ToolLifecycleEvent,
+    serde::{Deserialize, Serialize},
+};
 
-/// Exact values used by the agent loop's automatic checkpoint check.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ContextBudgetMetadata {
-    pub context_window: u32,
-    pub max_input_tokens: u32,
-    pub max_output_tokens: u32,
-    pub compaction_ratio: usize,
-    pub prompt_tokens: usize,
-    pub tool_schema_tokens: usize,
-    pub available_input_tokens: usize,
-    pub compaction_budget: usize,
-    pub usage_percent: usize,
-    pub compaction_required: bool,
-}
+pub use chelix_common::ContextBudgetMetadata;
 
 /// A message stored in a session JSONL file.
 ///
@@ -165,38 +154,11 @@ pub enum PersistedMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         created_at: Option<u64>,
     },
-    /// Tool execution result with structured output (stdout, stderr, exit_code).
-    ///
-    /// Persisted alongside user/assistant messages so that the UI can
-    /// reconstruct command cards when a session is reloaded.
-    #[serde(rename = "tool_result")]
-    ToolResult {
-        tool_call_id: String,
-        tool_name: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        arguments: Option<serde_json::Value>,
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        result: Option<serde_json::Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// The call was refused by pre-dispatch validation, so the tool's
-        /// `execute` method never ran. Distinguishes a rejected call from a
-        /// tool that executed and failed, which the UI renders differently.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        rejected: bool,
-        /// Provider reasoning/thinking content that preceded this tool call.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reasoning: Option<chelix_common::ReasoningContent>,
-        /// Exact automatic-checkpoint calculation used before the LLM
-        /// iteration that produced this tool call.
-        #[serde(rename = "contextBudget", skip_serializing_if = "Option::is_none")]
-        context_budget: Option<ContextBudgetMetadata>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        created_at: Option<u64>,
-        /// Agent run ID linking this result to its parent run.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        run_id: Option<String>,
+    /// Append-only state transition for one tool invocation.
+    #[serde(rename = "tool_lifecycle")]
+    ToolLifecycle {
+        #[serde(flatten)]
+        lifecycle: ToolLifecycleEvent,
     },
 }
 
@@ -252,6 +214,18 @@ pub struct PersistedFunction {
 }
 
 impl PersistedMessage {
+    #[must_use]
+    pub fn run_id(&self) -> Option<&str> {
+        match self {
+            Self::User { run_id, .. } | Self::Assistant { run_id, .. } => run_id.as_deref(),
+            Self::ToolLifecycle { lifecycle } => lifecycle.run_id.as_deref(),
+            Self::System { .. }
+            | Self::Notice { .. }
+            | Self::Checkpoint { .. }
+            | Self::Tool { .. } => None,
+        }
+    }
+
     /// Create a user message with plain text content.
     pub fn user(text: impl Into<String>) -> Self {
         Self::User {
@@ -383,80 +357,6 @@ impl PersistedMessage {
             tool_call_id: tool_call_id.into(),
             content: content.into(),
             created_at: Some(now_ms()),
-        }
-    }
-
-    /// Create a tool execution result message.
-    pub fn tool_result(
-        tool_call_id: impl Into<String>,
-        tool_name: impl Into<String>,
-        arguments: Option<serde_json::Value>,
-        success: bool,
-        result: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> Self {
-        Self::ToolResult {
-            tool_call_id: tool_call_id.into(),
-            tool_name: tool_name.into(),
-            arguments,
-            success,
-            result,
-            error,
-            rejected: false,
-            reasoning: None,
-            context_budget: None,
-            created_at: Some(now_ms()),
-            run_id: None,
-        }
-    }
-
-    /// Create a tool execution result message with reasoning text.
-    pub fn tool_result_with_reasoning(
-        tool_call_id: impl Into<String>,
-        tool_name: impl Into<String>,
-        arguments: Option<serde_json::Value>,
-        success: bool,
-        result: Option<serde_json::Value>,
-        error: Option<String>,
-        reasoning: Option<chelix_common::ReasoningContent>,
-    ) -> Self {
-        Self::ToolResult {
-            tool_call_id: tool_call_id.into(),
-            tool_name: tool_name.into(),
-            arguments,
-            success,
-            result,
-            error,
-            rejected: false,
-            reasoning,
-            context_budget: None,
-            created_at: Some(now_ms()),
-            run_id: None,
-        }
-    }
-
-    /// Create a tool result message with a run ID linking it to its agent run.
-    pub fn tool_result_with_run_id(
-        tool_call_id: impl Into<String>,
-        tool_name: impl Into<String>,
-        arguments: Option<serde_json::Value>,
-        success: bool,
-        result: Option<serde_json::Value>,
-        error: Option<String>,
-        run_id: impl Into<String>,
-    ) -> Self {
-        Self::ToolResult {
-            tool_call_id: tool_call_id.into(),
-            tool_name: tool_name.into(),
-            arguments,
-            success,
-            result,
-            error,
-            rejected: false,
-            reasoning: None,
-            context_budget: None,
-            created_at: Some(now_ms()),
-            run_id: Some(run_id.into()),
         }
     }
 
@@ -947,16 +847,13 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_serializes_correctly() {
-        let msg = PersistedMessage::ToolResult {
-            tool_call_id: "call_1".to_string(),
-            tool_name: "execute_command".to_string(),
-            arguments: Some(serde_json::json!({"command": "ls -la"})),
-            success: true,
-            result: Some(serde_json::json!({"stdout": "file.txt", "exit_code": 0})),
-            error: None,
-            rejected: false,
-            reasoning: None,
+    fn tool_lifecycle_serializes_and_round_trips() {
+        let lifecycle = ToolLifecycleEvent {
+            tool_call_id: "call_1".to_owned(),
+            tool_name: "execute_command".to_owned(),
+            sequence: 7,
+            emitted_at_ms: 12_345,
+            run_id: Some("run_1".to_owned()),
             context_budget: Some(ContextBudgetMetadata {
                 context_window: 200_000,
                 max_input_tokens: 180_000,
@@ -969,236 +866,45 @@ mod tests {
                 usage_percent: 29,
                 compaction_required: false,
             }),
-            created_at: Some(12345),
-            run_id: None,
+            update: chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed {
+                arguments: serde_json::json!({"command": "ls -la"}),
+                success: true,
+                result: Some("file.txt".to_owned()),
+                error: None,
+            },
         };
-        let json = serde_json::to_value(&msg).unwrap();
-        assert_eq!(json["role"], "tool_result");
-        assert_eq!(json["tool_call_id"], "call_1");
-        assert_eq!(json["tool_name"], "execute_command");
+        let message = PersistedMessage::ToolLifecycle {
+            lifecycle: lifecycle.clone(),
+        };
+
+        let json = message.to_value();
+        assert_eq!(json["role"], "tool_lifecycle");
+        assert_eq!(json["stage"], "completed");
+        assert_eq!(json["toolCallId"], "call_1");
         assert_eq!(json["arguments"]["command"], "ls -la");
-        assert!(json["success"].as_bool().unwrap());
-        assert_eq!(json["result"]["stdout"], "file.txt");
+        assert_eq!(json["result"], "file.txt");
         assert_eq!(json["contextBudget"]["contextWindow"], 200_000);
-        assert_eq!(json["contextBudget"]["maxInputTokens"], 180_000);
-        assert_eq!(json["contextBudget"]["maxOutputTokens"], 20_000);
-        assert_eq!(json["contextBudget"]["compactionRatio"], 85);
-        assert_eq!(json["contextBudget"]["promptTokens"], 42_000);
-        assert_eq!(json["contextBudget"]["toolSchemaTokens"], 10_000);
-        assert_eq!(json["contextBudget"]["availableInputTokens"], 170_000);
-        assert_eq!(json["contextBudget"]["compactionBudget"], 144_500);
-        assert_eq!(json["contextBudget"]["usagePercent"], 29);
-        assert!(
-            !json["contextBudget"]["compactionRequired"]
-                .as_bool()
-                .unwrap()
-        );
-        assert!(json["contextBudget"].get("currentTokens").is_none());
-        assert!(json["contextBudget"].get("tokensNeeded").is_none());
-        assert!(json.get("error").is_none());
-    }
 
-    #[test]
-    fn tool_result_error_serializes_correctly() {
-        let msg = PersistedMessage::ToolResult {
-            tool_call_id: "call_2".to_string(),
-            tool_name: "execute_command".to_string(),
-            arguments: Some(serde_json::json!({"command": "bad_cmd"})),
-            success: false,
-            result: None,
-            error: Some("command not found".to_string()),
-            rejected: false,
-            reasoning: None,
-            context_budget: None,
-            created_at: Some(12345),
-            run_id: None,
-        };
-        let json = serde_json::to_value(&msg).unwrap();
-        assert_eq!(json["role"], "tool_result");
-        assert!(!json["success"].as_bool().unwrap());
-        assert_eq!(json["error"], "command not found");
-        assert!(json.get("result").is_none());
-        assert!(
-            json.get("rejected").is_none(),
-            "an executed failure must not be marked as rejected"
-        );
-    }
-
-    #[test]
-    fn rejected_tool_result_roundtrips_the_marker() {
-        let msg = PersistedMessage::ToolResult {
-            tool_call_id: "call_9".to_string(),
-            tool_name: "render_a2ui".to_string(),
-            arguments: Some(serde_json::json!({"messages": []})),
-            success: false,
-            result: None,
-            error: Some("component `Heading` is not in the trusted catalog".to_string()),
-            rejected: true,
-            reasoning: None,
-            context_budget: None,
-            created_at: Some(12345),
-            run_id: Some("run_1".to_string()),
-        };
-        let json = msg.to_value();
-        assert_eq!(json["rejected"], true);
-        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
-        match parsed {
-            PersistedMessage::ToolResult {
-                rejected, success, ..
-            } => {
-                assert!(rejected);
-                assert!(!success);
+        let decoded: PersistedMessage = serde_json::from_value(json).unwrap();
+        match decoded {
+            PersistedMessage::ToolLifecycle { lifecycle: decoded } => {
+                assert_eq!(decoded, lifecycle);
+                assert_eq!(decoded.run_id.as_deref(), Some("run_1"));
             },
-            _ => panic!("expected ToolResult message"),
+            _ => panic!("expected ToolLifecycle message"),
         }
     }
 
     #[test]
-    fn roundtrip_tool_result() {
-        let original = PersistedMessage::tool_result(
-            "call_3",
-            "read_file",
-            Some(serde_json::json!({"path": "README.md"})),
-            true,
-            Some(serde_json::json!({"stdout": "OK", "exit_code": 0})),
-            None,
-        );
-        let json = original.to_value();
-        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
-        match parsed {
-            PersistedMessage::ToolResult {
-                tool_call_id,
-                tool_name,
-                arguments,
-                success,
-                result,
-                error,
-                ..
-            } => {
-                assert_eq!(tool_call_id, "call_3");
-                assert_eq!(tool_name, "read_file");
-                assert_eq!(arguments.unwrap()["path"], "README.md");
-                assert!(success);
-                assert_eq!(result.unwrap()["stdout"], "OK");
-                assert!(error.is_none());
-            },
-            _ => panic!("expected ToolResult message"),
-        }
-    }
-
-    #[test]
-    fn tool_result_deserializes_from_json() {
-        let json = serde_json::json!({
+    fn removed_tool_result_role_is_rejected() {
+        let legacy = serde_json::json!({
             "role": "tool_result",
-            "tool_call_id": "call_4",
-            "tool_name": "execute_command",
+            "toolCallId": "call_1",
+            "toolName": "execute_command",
             "success": true,
-            "result": {"stdout": "hello", "stderr": "", "exit_code": 0},
-            "created_at": 99999
+            "result": "done"
         });
-        let msg: PersistedMessage = serde_json::from_value(json).unwrap();
-        match msg {
-            PersistedMessage::ToolResult {
-                tool_call_id,
-                tool_name,
-                success,
-                reasoning,
-                ..
-            } => {
-                assert_eq!(tool_call_id, "call_4");
-                assert_eq!(tool_name, "execute_command");
-                assert!(success);
-                // Old sessions without reasoning field should deserialize as None.
-                assert!(reasoning.is_none());
-            },
-            _ => panic!("expected ToolResult message"),
-        }
-    }
 
-    #[test]
-    fn tool_result_with_reasoning_roundtrips() {
-        let original = PersistedMessage::tool_result_with_reasoning(
-            "call_5",
-            "ripgrep",
-            Some(serde_json::json!({"pattern": "SandboxBackend"})),
-            true,
-            Some(serde_json::json!({"stdout": "results", "exit_code": 0})),
-            None,
-            Some(chelix_common::ReasoningContent::Text(
-                "I need to locate sandbox backend references".to_string(),
-            )),
-        );
-        let json = original.to_value();
-        assert_eq!(
-            json["reasoning"],
-            "I need to locate sandbox backend references"
-        );
-
-        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
-        match parsed {
-            PersistedMessage::ToolResult {
-                tool_call_id,
-                reasoning,
-                ..
-            } => {
-                assert_eq!(tool_call_id, "call_5");
-                assert_eq!(
-                    reasoning,
-                    Some(chelix_common::ReasoningContent::Text(
-                        "I need to locate sandbox backend references".to_string(),
-                    ))
-                );
-            },
-            _ => panic!("expected ToolResult message"),
-        }
-    }
-
-    #[test]
-    fn tool_result_with_reasoning_parts_roundtrips_without_flattening() {
-        let expected = chelix_common::ReasoningContent::Parts(vec![
-            "**Locating references**\nSearching the codebase.".to_string(),
-            "**Reviewing matches**\nChecking the relevant files.".to_string(),
-        ]);
-        let original = PersistedMessage::tool_result_with_reasoning(
-            "call_parts",
-            "ripgrep",
-            Some(serde_json::json!({"pattern": "ReasoningContent"})),
-            true,
-            Some(serde_json::json!({"stdout": "results", "exit_code": 0})),
-            None,
-            Some(expected.clone()),
-        );
-
-        let json = original.to_value();
-        assert_eq!(
-            json["reasoning"],
-            serde_json::json!([
-                "**Locating references**\nSearching the codebase.",
-                "**Reviewing matches**\nChecking the relevant files."
-            ])
-        );
-
-        let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
-        match parsed {
-            PersistedMessage::ToolResult { reasoning, .. } => {
-                assert_eq!(reasoning, Some(expected));
-            },
-            _ => panic!("expected ToolResult message"),
-        }
-    }
-
-    #[test]
-    fn tool_result_without_reasoning_omits_field() {
-        let msg = PersistedMessage::tool_result(
-            "call_6",
-            "execute_command",
-            None,
-            true,
-            Some(serde_json::json!({"stdout": "ok"})),
-            None,
-        );
-        let json = msg.to_value();
-        // reasoning field should not be present when None.
-        assert!(json.get("reasoning").is_none());
+        assert!(serde_json::from_value::<PersistedMessage>(legacy).is_err());
     }
 }
