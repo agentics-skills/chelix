@@ -125,12 +125,16 @@ impl LiveSessionService {
             );
         }
 
-        let message_count = history.len() as u32;
         self.store
             .replace_history(key, history)
             .await
             .map_err(ServiceError::message)?;
-        self.metadata.touch(key, message_count).await;
+        let ui_message_count = self
+            .store
+            .ui_message_count(key)
+            .await
+            .map_err(ServiceError::message)?;
+        self.metadata.touch(key, ui_message_count).await;
 
         Ok(serde_json::json!({
             "sessionKey": key,

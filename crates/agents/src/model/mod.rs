@@ -140,6 +140,27 @@ fn raw_argument_preview(raw: &str) -> String {
 mod tests {
     use super::*;
 
+    fn completed_tool_lifecycle(
+        tool_call_id: &str,
+        tool_name: &str,
+        success: bool,
+        result: Option<String>,
+        error: Option<&str>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "role": "tool_lifecycle",
+            "toolCallId": tool_call_id,
+            "toolName": tool_name,
+            "sequence": 1,
+            "emittedAtMs": 1,
+            "stage": "completed",
+            "arguments": {},
+            "success": success,
+            "result": result,
+            "error": error,
+        })
+    }
+
     // ── ChatMessage constructors ─────────────────────────────────────
 
     #[test]
@@ -373,6 +394,21 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn malformed_tool_lifecycle_reports_physical_message_index() {
+        let values = vec![
+            serde_json::json!({"role": "user", "content": "valid"}),
+            serde_json::json!({"role": "tool_lifecycle", "toolCallId": "call-1"}),
+        ];
+
+        let error = values_to_chat_messages(&values).expect_err("malformed lifecycle must fail");
+
+        assert!(matches!(error, ChatMessageConversionError::ToolLifecycle {
+            message_index: 1,
+            ..
+        }));
     }
 
     #[test]
@@ -663,7 +699,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_includes_tool_result_with_matching_assistant() {
+    fn convert_includes_completed_lifecycle_with_matching_assistant() {
         let values = vec![
             serde_json::json!({"role": "user", "content": "run ls"}),
             serde_json::json!({
@@ -674,13 +710,13 @@ mod tests {
                     "function": {"name": "execute_command", "arguments": "{\"command\":\"ls\"}"}
                 }]
             }),
-            serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call_1",
-                "tool_name": "execute_command",
-                "success": true,
-                "result": {"stdout": "file.txt", "exit_code": 0}
-            }),
+            completed_tool_lifecycle(
+                "call_1",
+                "execute_command",
+                true,
+                Some(r#"{"stdout":"file.txt","exit_code":0}"#.to_owned()),
+                None,
+            ),
             serde_json::json!({"role": "assistant", "content": "done"}),
         ];
         let msgs = values_to_chat_messages(&values).expect("valid message history");
@@ -692,17 +728,17 @@ mod tests {
     }
 
     #[test]
-    fn convert_skips_orphan_tool_result() {
-        // Orphan tool_result with no matching assistant tool_calls
+    fn convert_skips_orphan_terminal_lifecycle() {
+        // An orphan terminal lifecycle has no matching assistant tool call.
         let values = vec![
             serde_json::json!({"role": "user", "content": "run ls"}),
-            serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call_orphan",
-                "tool_name": "execute_command",
-                "success": true,
-                "result": {"stdout": "file.txt", "exit_code": 0}
-            }),
+            completed_tool_lifecycle(
+                "call_orphan",
+                "execute_command",
+                true,
+                Some(r#"{"stdout":"file.txt","exit_code":0}"#.to_owned()),
+                None,
+            ),
             serde_json::json!({"role": "assistant", "content": "done"}),
         ];
         let msgs = values_to_chat_messages(&values).expect("valid message history");
@@ -752,7 +788,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_tool_result_to_tool_message() {
+    fn convert_completed_lifecycle_to_tool_message() {
         let values = vec![
             serde_json::json!({
                 "role": "assistant",
@@ -762,13 +798,13 @@ mod tests {
                     "function": {"name": "execute_command", "arguments": "{\"command\":\"ls\"}"}
                 }]
             }),
-            serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call_1",
-                "tool_name": "execute_command",
-                "success": true,
-                "result": {"stdout": "file.txt", "exit_code": 0}
-            }),
+            completed_tool_lifecycle(
+                "call_1",
+                "execute_command",
+                true,
+                Some(r#"{"stdout":"file.txt","exit_code":0}"#.to_owned()),
+                None,
+            ),
         ];
         let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);
@@ -781,39 +817,6 @@ mod tests {
                 assert!(content.contains("file.txt"));
             },
             other => panic!("expected Tool, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn convert_tool_result_reasoning_attaches_to_assistant_tool_call() {
-        let values = vec![
-            serde_json::json!({
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [{
-                    "id": "call_1",
-                    "function": {"name": "execute_command", "arguments": "{\"command\":\"ls\"}"}
-                }]
-            }),
-            serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call_1",
-                "tool_name": "execute_command",
-                "success": true,
-                "result": {"stdout": "file.txt"},
-                "reasoning": "I should inspect the directory first."
-            }),
-        ];
-        let msgs = values_to_chat_messages(&values).expect("valid message history");
-
-        match &msgs[0] {
-            ChatMessage::Assistant { reasoning, .. } => assert_eq!(
-                reasoning,
-                &Some(chelix_common::ReasoningContent::Text(
-                    "I should inspect the directory first.".to_string(),
-                ))
-            ),
-            other => panic!("expected Assistant, got {other:?}"),
         }
     }
 
@@ -858,7 +861,7 @@ mod tests {
     }
 
     #[test]
-    fn convert_tool_result_error_to_tool_message() {
+    fn convert_completed_lifecycle_error_to_tool_message() {
         let values = vec![
             serde_json::json!({
                 "role": "assistant",
@@ -868,13 +871,13 @@ mod tests {
                     "function": {"name": "execute_command", "arguments": "{\"command\":\"bad_cmd\"}"}
                 }]
             }),
-            serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call_2",
-                "tool_name": "execute_command",
-                "success": false,
-                "error": "command not found"
-            }),
+            completed_tool_lifecycle(
+                "call_2",
+                "execute_command",
+                false,
+                None,
+                Some("command not found"),
+            ),
         ];
         let msgs = values_to_chat_messages(&values).expect("valid message history");
         assert_eq!(msgs.len(), 2);

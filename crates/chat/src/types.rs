@@ -157,6 +157,25 @@ pub(crate) struct ChatErrorBroadcast {
     pub seq: Option<u64>,
 }
 
+/// Typed broadcast payload for one authoritative tool lifecycle transition.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ChatToolLifecycleBroadcast {
+    pub state: &'static str,
+    #[serde(flatten)]
+    pub lifecycle: chelix_common::tool_lifecycle::ToolLifecycleEvent,
+    pub session_key: String,
+    pub seq: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assistant_message_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assistant_message: Option<Value>,
+}
+
 #[derive(Clone)]
 pub(crate) struct AssistantTurnOutput {
     pub text: String,

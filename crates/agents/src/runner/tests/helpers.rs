@@ -16,10 +16,10 @@ use {
 pub(super) use {
     super::super::{
         AUTO_COMPACTION_RATIO, AgentLoopLimits, AgentRunError, AgentRunResult, OnEvent,
-        RunnerEvent, apply_before_llm_call_modify_payload, estimate_prompt_tokens,
-        estimate_tool_schema_tokens, evaluate_context_budget, is_substantive_answer_text,
-        resolve_tool_lookup, retry::*, sanitize_tool_name, sanitize_tool_result,
-        tool_result::persist_and_truncate,
+        OnToolLifecycle, RunnerEvent, RunnerToolLifecycleEvent,
+        apply_before_llm_call_modify_payload, estimate_prompt_tokens, estimate_tool_schema_tokens,
+        evaluate_context_budget, is_substantive_answer_text, resolve_tool_lookup, retry::*,
+        sanitize_tool_name, sanitize_tool_result, tool_result::persist_and_truncate,
     },
     crate::{
         model::UserContent,
@@ -59,6 +59,7 @@ pub(super) async fn run_agent_loop(
         system_prompt,
         user_content,
         on_event,
+        None,
         history,
         None,
         None,
@@ -66,6 +67,43 @@ pub(super) async fn run_agent_loop(
         test_agent_loop_limits(),
     )
     .await
+}
+
+pub(super) async fn run_agent_loop_with_tool_lifecycle(
+    provider: Arc<dyn LlmProvider>,
+    tools: &ToolRegistry,
+    system_prompt: &str,
+    user_content: &UserContent,
+    on_event: Option<&OnEvent>,
+    on_tool_lifecycle: Option<&OnToolLifecycle>,
+    history: Option<Vec<ChatMessage>>,
+) -> Result<AgentRunResult, AgentRunError> {
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    super::super::run_agent_loop_with_context_and_limits(
+        provider,
+        tools,
+        &tools_config,
+        system_prompt,
+        user_content,
+        on_event,
+        on_tool_lifecycle,
+        history,
+        None,
+        None,
+        None,
+        test_agent_loop_limits(),
+    )
+    .await
+}
+
+pub(super) fn recording_tool_lifecycle(
+    events: &Arc<std::sync::Mutex<Vec<RunnerToolLifecycleEvent>>>,
+) -> OnToolLifecycle {
+    let events = Arc::clone(events);
+    Arc::new(move |event| {
+        events.lock().unwrap().push(event);
+        Box::pin(async { Ok(()) })
+    })
 }
 
 pub(super) async fn run_agent_loop_with_context(
@@ -87,6 +125,37 @@ pub(super) async fn run_agent_loop_with_context(
         system_prompt,
         user_content,
         on_event,
+        None,
+        history,
+        tool_context,
+        hook_registry,
+        sender_name,
+        test_agent_loop_limits(),
+    )
+    .await
+}
+
+pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
+    provider: Arc<dyn LlmProvider>,
+    tools: &ToolRegistry,
+    system_prompt: &str,
+    user_content: &UserContent,
+    on_event: Option<&OnEvent>,
+    on_tool_lifecycle: Option<&OnToolLifecycle>,
+    history: Option<Vec<ChatMessage>>,
+    tool_context: Option<serde_json::Value>,
+    hook_registry: Option<Arc<HookRegistry>>,
+    sender_name: Option<String>,
+) -> Result<AgentRunResult, AgentRunError> {
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    super::super::run_agent_loop_with_context_and_limits(
+        provider,
+        tools,
+        &tools_config,
+        system_prompt,
+        user_content,
+        on_event,
+        on_tool_lifecycle,
         history,
         tool_context,
         hook_registry,
@@ -116,6 +185,38 @@ pub(super) async fn run_agent_loop_with_context_and_limits(
         system_prompt,
         user_content,
         on_event,
+        None,
+        history,
+        tool_context,
+        hook_registry,
+        sender_name,
+        limits,
+    )
+    .await
+}
+
+pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
+    provider: Arc<dyn LlmProvider>,
+    tools: &ToolRegistry,
+    system_prompt: &str,
+    user_content: &UserContent,
+    on_event: Option<&OnEvent>,
+    on_tool_lifecycle: Option<&OnToolLifecycle>,
+    history: Option<Vec<ChatMessage>>,
+    tool_context: Option<serde_json::Value>,
+    hook_registry: Option<Arc<HookRegistry>>,
+    sender_name: Option<String>,
+    limits: AgentLoopLimits,
+) -> Result<AgentRunResult, AgentRunError> {
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    super::super::run_agent_loop_with_context_and_limits(
+        provider,
+        tools,
+        &tools_config,
+        system_prompt,
+        user_content,
+        on_event,
+        on_tool_lifecycle,
         history,
         tool_context,
         hook_registry,
@@ -153,6 +254,71 @@ pub(super) async fn run_agent_loop_streaming(
     .await
 }
 
+pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
+    provider: Arc<dyn LlmProvider>,
+    tools: &ToolRegistry,
+    system_prompt: &str,
+    user_content: &UserContent,
+    on_event: Option<&OnEvent>,
+    on_tool_lifecycle: Option<&OnToolLifecycle>,
+    history: Option<Vec<ChatMessage>>,
+    tool_context: Option<serde_json::Value>,
+    hook_registry: Option<Arc<HookRegistry>>,
+    sender_name: Option<String>,
+    steer_inbox: Option<super::super::SteerInbox>,
+) -> Result<AgentRunResult, AgentRunError> {
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    super::super::streaming::run_agent_loop_streaming_with_limits(
+        provider,
+        tools,
+        &tools_config,
+        system_prompt,
+        user_content,
+        on_event,
+        on_tool_lifecycle,
+        history,
+        tool_context,
+        hook_registry,
+        sender_name,
+        steer_inbox,
+        test_agent_loop_limits(),
+    )
+    .await
+}
+
+pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
+    provider: Arc<dyn LlmProvider>,
+    tools: &ToolRegistry,
+    system_prompt: &str,
+    user_content: &UserContent,
+    on_event: Option<&OnEvent>,
+    on_tool_lifecycle: Option<&OnToolLifecycle>,
+    history: Option<Vec<ChatMessage>>,
+    tool_context: Option<serde_json::Value>,
+    hook_registry: Option<Arc<HookRegistry>>,
+    sender_name: Option<String>,
+    steer_inbox: Option<super::super::SteerInbox>,
+    limits: AgentLoopLimits,
+) -> Result<AgentRunResult, AgentRunError> {
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    super::super::streaming::run_agent_loop_streaming_with_limits(
+        provider,
+        tools,
+        &tools_config,
+        system_prompt,
+        user_content,
+        on_event,
+        on_tool_lifecycle,
+        history,
+        tool_context,
+        hook_registry,
+        sender_name,
+        steer_inbox,
+        limits,
+    )
+    .await
+}
+
 pub(super) async fn run_agent_loop_streaming_with_limits(
     provider: Arc<dyn LlmProvider>,
     tools: &ToolRegistry,
@@ -174,6 +340,7 @@ pub(super) async fn run_agent_loop_streaming_with_limits(
         system_prompt,
         user_content,
         on_event,
+        None,
         history,
         tool_context,
         hook_registry,

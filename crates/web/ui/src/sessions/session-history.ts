@@ -134,8 +134,8 @@ function currentSessionTailIndex(key: string): number | null {
 	return null;
 }
 
-export function cacheSessionHistoryMessage(key: string, message: HistoryMessage, historyIndex?: number): void {
-	upsertSessionHistoryMessage(key, message, historyIndex);
+export function cacheSessionHistoryMessage(key: string, message: HistoryMessage, historyIndex?: number): boolean {
+	return upsertSessionHistoryMessage(key, message, historyIndex);
 }
 
 export function cacheOutgoingUserMessage(key: string, chatParams: ChatParams): void {

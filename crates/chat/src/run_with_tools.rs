@@ -26,15 +26,16 @@ use {
         },
         tool_registry::ToolRegistry,
     },
+    chelix_common::tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleStage, ToolLifecycleUpdate},
     chelix_config::{AgentRuntimeLimits, ToolMode},
     chelix_sessions::{PersistedMessage, store::SessionStore},
 };
 
 use crate::{
-    ActiveToolCall, LiveChatService,
+    ActiveToolInvocation, LiveChatService,
     agent_loop::{
-        ChannelStreamDispatcher, clear_unsupported_model, mark_unsupported_model,
-        ordered_runner_event_callback,
+        ChannelStreamDispatcher, OrderedRunnerEvent, clear_unsupported_model,
+        mark_unsupported_model, ordered_runner_event_callbacks,
     },
     channels::{
         deliver_channel_error, deliver_channel_replies, dispatch_document_to_channels,
@@ -56,7 +57,6 @@ use crate::{
         ActiveAssistantDraft, EventForwarderResult, append_assistant_delta,
         build_persisted_tool_call, finalize_persisted_assistant_message,
         persist_active_assistant_draft, persist_final_assistant_segment,
-        reserve_assistant_message_index,
     },
     types::*,
 };
@@ -96,7 +96,6 @@ async fn persist_tool_segment(
             ));
         },
     };
-    let message_index = reserve_assistant_message_index(store, drafts, session_key).await?;
     let current_draft = drafts
         .read()
         .await
@@ -121,7 +120,7 @@ async fn persist_tool_segment(
         .to_persisted_message(Some(tool_calls), Some(iteration_usage))
         .to_value();
     let index = store
-        .append_at_index(session_key, &segment_value, message_index)
+        .append_with_index(session_key, &segment_value)
         .await
         .map_err(|source| {
             crate::error::Error::external("failed to persist assistant tool segment", source)
@@ -160,6 +159,392 @@ fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, 
     }
 }
 
+fn accumulate_persisted_tool_input(
+    pending_inputs: &mut HashMap<String, ToolLifecycleEvent>,
+    lifecycle: &ToolLifecycleEvent,
+) -> Result<(), String> {
+    let ToolLifecycleUpdate::InputStreaming { arguments_delta } = &lifecycle.update else {
+        return Err("only input-streaming lifecycle events can be accumulated".to_owned());
+    };
+    if let Some(pending) = pending_inputs.get_mut(&lifecycle.tool_call_id) {
+        let ToolLifecycleUpdate::InputStreaming {
+            arguments_delta: pending_delta,
+        } = &mut pending.update
+        else {
+            return Err(format!(
+                "pending lifecycle input for '{}' has an invalid stage",
+                lifecycle.tool_call_id
+            ));
+        };
+        pending_delta.push_str(arguments_delta);
+        pending.sequence = lifecycle.sequence;
+        pending.emitted_at_ms = lifecycle.emitted_at_ms;
+        pending.context_budget.clone_from(&lifecycle.context_budget);
+    } else {
+        pending_inputs.insert(lifecycle.tool_call_id.clone(), lifecycle.clone());
+    }
+    Ok(())
+}
+
+async fn persist_pending_tool_input(
+    session_store: Option<&Arc<SessionStore>>,
+    session_key: &str,
+    tool_call_id: &str,
+    pending_inputs: &mut HashMap<String, ToolLifecycleEvent>,
+) -> Result<(), String> {
+    let Some(lifecycle) = pending_inputs.remove(tool_call_id) else {
+        return Ok(());
+    };
+    let Some(store) = session_store else {
+        return Ok(());
+    };
+    store
+        .append(
+            session_key,
+            &PersistedMessage::ToolLifecycle { lifecycle }.to_value(),
+        )
+        .await
+        .map_err(|error| {
+            format!("failed to persist accumulated tool input for session '{session_key}': {error}")
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_tool_lifecycle_event(
+    state: &Arc<dyn ChatRuntime>,
+    session_store: Option<&Arc<SessionStore>>,
+    active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
+    active_tool_invocations: Option<&Arc<RwLock<HashMap<String, Vec<ActiveToolInvocation>>>>>,
+    terminal_runs: &Arc<RwLock<HashSet<String>>>,
+    session_key: &str,
+    run_id: &str,
+    client_seq: Option<u64>,
+    sandbox_enabled: bool,
+    event: chelix_agents::runner::RunnerToolLifecycleEvent,
+    persisted_tool_batches: &mut HashMap<String, (usize, Value)>,
+    pending_inputs: &mut HashMap<String, ToolLifecycleEvent>,
+) -> Result<Option<Value>, String> {
+    if terminal_runs.read().await.contains(run_id) {
+        return Ok(None);
+    }
+
+    let mut lifecycle = event.lifecycle;
+    lifecycle.run_id = Some(run_id.to_owned());
+    let stage = lifecycle.stage();
+    if stage == ToolLifecycleStage::InputStreaming {
+        accumulate_persisted_tool_input(pending_inputs, &lifecycle)?;
+    } else {
+        persist_pending_tool_input(
+            session_store,
+            session_key,
+            &lifecycle.tool_call_id,
+            pending_inputs,
+        )
+        .await?;
+    }
+
+    let mut persisted_segment = None;
+    if stage == ToolLifecycleStage::InputReady {
+        let iteration_tool_calls = event.iteration_tool_calls.as_deref().ok_or_else(|| {
+            format!(
+                "input-ready lifecycle event for '{}' has no iteration tool-call batch",
+                lifecycle.tool_call_id
+            )
+        })?;
+        let iteration_usage = event.iteration_usage.as_ref().ok_or_else(|| {
+            format!(
+                "input-ready lifecycle event for '{}' has no iteration usage",
+                lifecycle.tool_call_id
+            )
+        })?;
+        let batch_key = iteration_tool_calls
+            .first()
+            .map(|tool_call| tool_call.id.as_str())
+            .ok_or_else(|| "input-ready lifecycle batch is empty".to_owned())?;
+        persisted_segment = persist_tool_segment(
+            session_store,
+            active_partial_assistant,
+            session_key,
+            iteration_tool_calls,
+            iteration_usage,
+            batch_key,
+            persisted_tool_batches,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    }
+
+    if matches!(
+        stage,
+        ToolLifecycleStage::Completed | ToolLifecycleStage::Rejected
+    ) && session_store.is_some()
+        && !persisted_tool_batches.contains_key(&lifecycle.tool_call_id)
+    {
+        return Err(format!(
+            "terminal lifecycle event for '{}' has no canonical assistant tool-call frame",
+            lifecycle.tool_call_id
+        ));
+    }
+
+    if stage != ToolLifecycleStage::InputStreaming
+        && let Some(store) = session_store
+    {
+        let message = PersistedMessage::ToolLifecycle {
+            lifecycle: lifecycle.clone(),
+        };
+        store
+            .append(session_key, &message.to_value())
+            .await
+            .map_err(|error| {
+                format!(
+                    "failed to persist tool lifecycle event for session '{session_key}': {error}"
+                )
+            })?;
+    }
+
+    if let Some(active_tool_invocations) = active_tool_invocations {
+        let mut active = active_tool_invocations.write().await;
+        let invocations = active.entry(session_key.to_owned()).or_default();
+        if stage.is_terminal() {
+            invocations
+                .retain(|invocation| invocation.lifecycle.tool_call_id != lifecycle.tool_call_id);
+            if invocations.is_empty() {
+                active.remove(session_key);
+            }
+        } else {
+            let existing_index = invocations
+                .iter()
+                .position(|invocation| invocation.lifecycle.tool_call_id == lifecycle.tool_call_id);
+            let accumulated_arguments = match &lifecycle.update {
+                ToolLifecycleUpdate::InputStreaming { arguments_delta } => {
+                    let mut accumulated = existing_index
+                        .and_then(|index| invocations[index].accumulated_arguments.clone())
+                        .unwrap_or_default();
+                    accumulated.push_str(arguments_delta);
+                    Some(accumulated)
+                },
+                _ => None,
+            };
+            let snapshot = ActiveToolInvocation {
+                execution_mode: tool_execution_mode(&lifecycle.tool_name, sandbox_enabled),
+                lifecycle: lifecycle.clone(),
+                accumulated_arguments,
+                context_budget: event.context_budget.clone(),
+            };
+            if let Some(index) = existing_index {
+                invocations[index] = snapshot;
+            } else {
+                invocations.push(snapshot);
+            }
+        }
+    }
+
+    if let ToolLifecycleUpdate::Executing { arguments, .. } = &lifecycle.update {
+        let state = Arc::clone(state);
+        let session_key = session_key.to_owned();
+        let tool_name = lifecycle.tool_name.clone();
+        let arguments = arguments.clone();
+        tokio::spawn(async move {
+            send_tool_status_to_channels(&state, &session_key, &tool_name, &arguments).await;
+        });
+    }
+    if stage == ToolLifecycleStage::Completed {
+        dispatch_completed_tool_side_effects(
+            state,
+            session_store,
+            session_key,
+            &lifecycle,
+            event.raw_result.as_ref(),
+        )
+        .await;
+    }
+
+    let (assistant_message_index, assistant_message) = persisted_segment
+        .map_or((None, None), |(index, message)| {
+            (Some(index), Some(message))
+        });
+    let execution_mode = tool_execution_mode(&lifecycle.tool_name, sandbox_enabled);
+    let payload = ChatToolLifecycleBroadcast {
+        state: "tool_lifecycle",
+        lifecycle,
+        session_key: session_key.to_owned(),
+        seq: client_seq,
+        execution_mode,
+        message_index: None,
+        assistant_message_index,
+        assistant_message,
+    };
+
+    serde_json::to_value(payload)
+        .map(Some)
+        .map_err(|error| format!("failed to serialize tool lifecycle event: {error}"))
+}
+
+async fn dispatch_completed_tool_side_effects(
+    state: &Arc<dyn ChatRuntime>,
+    session_store: Option<&Arc<SessionStore>>,
+    session_key: &str,
+    lifecycle: &ToolLifecycleEvent,
+    raw_result: Option<&Value>,
+) {
+    let ToolLifecycleUpdate::Completed {
+        success,
+        error,
+        result,
+        ..
+    } = &lifecycle.update
+    else {
+        return;
+    };
+
+    let screenshot_to_send = raw_result
+        .and_then(|value| value.get("screenshot"))
+        .and_then(Value::as_str)
+        .filter(|value| value.starts_with("data:image/"))
+        .map(str::to_owned);
+    let image_caption = raw_result
+        .and_then(|value| value.get("caption"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+
+    let document_ref_to_send = raw_result
+        .and_then(|value| value.get("document_ref"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let document_ref_mime = document_ref_to_send.as_ref().and_then(|_| {
+        raw_result
+            .and_then(|value| value.get("mime_type"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    });
+    let document_to_send = document_ref_to_send
+        .is_none()
+        .then(|| {
+            raw_result
+                .and_then(|value| value.get("document"))
+                .and_then(Value::as_str)
+                .filter(|value| value.starts_with("data:"))
+                .map(str::to_owned)
+        })
+        .flatten();
+    let has_document = document_ref_to_send.is_some() || document_to_send.is_some();
+    let document_filename = has_document
+        .then(|| {
+            raw_result
+                .and_then(|value| value.get("filename"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .flatten();
+    let document_caption = has_document
+        .then(|| {
+            raw_result
+                .and_then(|value| value.get("caption"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
+        .flatten();
+
+    let location_to_send = (lifecycle.tool_name == "show_map")
+        .then(|| {
+            let raw_result = raw_result?;
+            let latitude = raw_result.get("latitude")?.as_f64()?;
+            let longitude = raw_result.get("longitude")?.as_f64()?;
+            let label = raw_result
+                .get("label")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            Some((latitude, longitude, label))
+        })
+        .flatten();
+
+    if let Some((latitude, longitude, label)) = location_to_send {
+        let state = Arc::clone(state);
+        let session_key = session_key.to_owned();
+        tokio::spawn(async move {
+            send_location_to_channels(&state, &session_key, latitude, longitude, label.as_deref())
+                .await;
+        });
+    }
+
+    if let Some(screenshot_data) = screenshot_to_send.as_ref() {
+        let state = Arc::clone(state);
+        let session_key = session_key.to_owned();
+        let screenshot_data = screenshot_data.clone();
+        tokio::spawn(async move {
+            send_screenshot_to_channels(
+                &state,
+                &session_key,
+                &screenshot_data,
+                image_caption.as_deref(),
+            )
+            .await;
+        });
+    }
+
+    if let Some(media_ref) = document_ref_to_send {
+        let state = Arc::clone(state);
+        let session_key = session_key.to_owned();
+        let store = session_store.cloned();
+        let mime_type = document_ref_mime.unwrap_or_else(|| "application/octet-stream".to_owned());
+        tokio::spawn(async move {
+            if let Some(payload) = document_payload_from_ref(
+                store.as_ref(),
+                &session_key,
+                &media_ref,
+                &mime_type,
+                document_filename.as_deref(),
+                document_caption.as_deref(),
+            )
+            .await
+            {
+                dispatch_document_to_channels(&state, &session_key, payload).await;
+            }
+        });
+    } else if let Some(document_data) = document_to_send {
+        let state = Arc::clone(state);
+        let session_key = session_key.to_owned();
+        let payload = document_payload_from_data_uri(
+            &document_data,
+            document_filename.as_deref(),
+            document_caption.as_deref(),
+        );
+        tokio::spawn(async move {
+            dispatch_document_to_channels(&state, &session_key, payload).await;
+        });
+    }
+
+    if !success {
+        send_tool_result_to_channels(
+            state,
+            session_key,
+            &lifecycle.tool_name,
+            *success,
+            error,
+            &raw_result.cloned(),
+        )
+        .await;
+    }
+
+    if result.is_some()
+        && let (Some(store), Some(screenshot_data)) = (session_store, screenshot_to_send)
+        && let Some(encoded) = screenshot_data.split(',').nth(1)
+    {
+        use base64::Engine;
+
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) {
+            let store = Arc::clone(store);
+            let session_key = session_key.to_owned();
+            let filename = format!("{}.png", lifecycle.tool_call_id);
+            tokio::spawn(async move {
+                if let Err(error) = store.save_media(&session_key, &filename, &bytes).await {
+                    warn!(%error, "failed to save screenshot media");
+                }
+            });
+        }
+    }
+}
+
 pub(crate) async fn run_with_tools(
     persona: PromptPersona,
     runtime_limits: AgentRuntimeLimits,
@@ -187,7 +572,7 @@ pub(crate) async fn run_with_tools(
     mcp_disabled: bool,
     client_seq: Option<u64>,
     active_thinking_text: Option<Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>>,
-    active_tool_calls: Option<Arc<RwLock<HashMap<String, Vec<ActiveToolCall>>>>>,
+    active_tool_invocations: Option<Arc<RwLock<HashMap<String, Vec<ActiveToolInvocation>>>>>,
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     active_event_forwarders: &Arc<
         RwLock<HashMap<String, tokio::task::JoinHandle<EventForwarderResult>>>,
@@ -362,29 +747,66 @@ pub(crate) async fn run_with_tools(
     let provider_name_for_events = provider_name.to_string();
     let active_partial_for_events = active_partial_assistant.as_ref().map(Arc::clone);
     let terminal_runs_for_events = Arc::clone(terminal_runs);
-    let (on_event, mut event_rx, event_barrier) = ordered_runner_event_callback();
+    let (on_event, on_tool_lifecycle, mut event_rx, event_barrier) =
+        ordered_runner_event_callbacks();
     let event_barrier_for_forwarder = event_barrier.clone();
     let channel_stream_dispatcher = ChannelStreamDispatcher::for_session(state, session_key)
         .await
         .map(|dispatcher| Arc::new(Mutex::new(dispatcher)));
     let channel_stream_for_events = channel_stream_dispatcher.as_ref().map(Arc::clone);
     let event_forwarder: tokio::task::JoinHandle<EventForwarderResult> = tokio::spawn(async move {
-        // Tool calls are persisted as one assistant frame per LLM iteration
-        // before their cards are broadcast. ToolCallEnd persists only results.
-        let mut tool_args_map: HashMap<String, Value> = HashMap::new();
-        // Track reasoning content that belongs to the first tool call after thinking.
-        let mut tool_reasoning_map: HashMap<String, chelix_common::ReasoningContent> =
-            HashMap::new();
         let mut latest_reasoning = ReasoningAccumulator::default();
         let mut persisted_tool_batches: HashMap<String, (usize, Value)> = HashMap::new();
+        let mut pending_inputs: HashMap<String, ToolLifecycleEvent> = HashMap::new();
         let mut forwarder_error = None;
-        while let Some(event) = event_rx.recv().await {
+        while let Some(queued_event) = event_rx.recv().await {
             let _processed = event_barrier_for_forwarder.processed_guard();
             let state = Arc::clone(&state_for_events);
             let run_id = run_id_for_events.clone();
             let sk = session_key_for_events.clone();
             let store = session_store_for_events.clone();
             let seq = client_seq;
+            let event = match queued_event {
+                OrderedRunnerEvent::Event(event) => event,
+                OrderedRunnerEvent::ToolLifecycle { event, receipt } => {
+                    match process_tool_lifecycle_event(
+                        &state,
+                        store.as_ref(),
+                        active_partial_for_events.as_ref(),
+                        active_tool_invocations.as_ref(),
+                        &terminal_runs_for_events,
+                        &sk,
+                        &run_id,
+                        seq,
+                        sandbox_enabled,
+                        *event,
+                        &mut persisted_tool_batches,
+                        &mut pending_inputs,
+                    )
+                    .await
+                    {
+                        Ok(Some(payload)) => {
+                            broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
+                            if let Some(receipt) = receipt {
+                                let _ = receipt.send(Ok(()));
+                            }
+                        },
+                        Ok(None) => {
+                            if let Some(receipt) = receipt {
+                                let _ = receipt.send(Ok(()));
+                            }
+                        },
+                        Err(error) => {
+                            if let Some(receipt) = receipt {
+                                let _ = receipt.send(Err(error.clone()));
+                            }
+                            forwarder_error = Some(error);
+                            break;
+                        },
+                    }
+                    continue;
+                },
+            };
             let payload = match event {
                 RunnerEvent::Thinking => serde_json::json!({
                     "runId": run_id,
@@ -398,394 +820,6 @@ pub(crate) async fn run_with_tools(
                     "state": "thinking_done",
                     "seq": seq,
                 }),
-                RunnerEvent::ToolCallStart {
-                    id,
-                    name,
-                    arguments,
-                    iteration_tool_calls,
-                    iteration_usage,
-                    started_at,
-                } => {
-                    if terminal_runs_for_events.read().await.contains(&run_id) {
-                        continue;
-                    }
-                    tool_args_map.insert(id.clone(), arguments.clone());
-                    for tool_call in iteration_tool_calls.iter() {
-                        tool_args_map
-                            .entry(tool_call.id.clone())
-                            .or_insert_with(|| tool_call.arguments.clone());
-                    }
-                    let started_at = match u64::try_from(
-                        started_at.unix_timestamp_nanos() / 1_000_000,
-                    ) {
-                        Ok(started_at) => started_at,
-                        Err(error) => {
-                            forwarder_error = Some(format!(
-                                "tool call start timestamp is outside the supported range: {error}"
-                            ));
-                            break;
-                        },
-                    };
-                    let batch_key = iteration_tool_calls
-                        .first()
-                        .map(|tool_call| tool_call.id.clone())
-                        .unwrap_or_else(|| id.clone());
-                    // The runner invokes each iteration start callback before
-                    // the first tool future awaits. The first call ID is the
-                    // canonical full-frame carrier for this tool batch.
-                    let persisted_segment = match persist_tool_segment(
-                        store.as_ref(),
-                        active_partial_for_events.as_ref(),
-                        &sk,
-                        iteration_tool_calls.as_ref(),
-                        &iteration_usage,
-                        &batch_key,
-                        &mut persisted_tool_batches,
-                    )
-                    .await
-                    {
-                        Ok(persisted_segment) => persisted_segment,
-                        Err(error) => {
-                            forwarder_error = Some(error.to_string());
-                            break;
-                        },
-                    };
-
-                    // The runner launches every iteration batch concurrently
-                    // before it emits the individual start events. Record the
-                    // complete batch atomically so Stop can terminally close
-                    // every already-started tool.
-                    if let Some(ref map) = active_tool_calls {
-                        let mut active_calls = map.write().await;
-                        let calls = active_calls.entry(sk.clone()).or_default();
-                        for tool_call in iteration_tool_calls.iter() {
-                            if calls.iter().any(|call| call.id == tool_call.id) {
-                                continue;
-                            }
-                            calls.push(ActiveToolCall {
-                                run_id: run_id.clone(),
-                                id: tool_call.id.clone(),
-                                name: tool_call.name.clone(),
-                                arguments: tool_call.arguments.clone(),
-                                execution_mode: tool_execution_mode(
-                                    &tool_call.name,
-                                    sandbox_enabled,
-                                ),
-                                started_at,
-                            });
-                        }
-                    }
-
-                    // Attach reasoning to the first tool call after thinking.
-                    if let Some(reasoning) = std::mem::take(&mut latest_reasoning).content() {
-                        tool_reasoning_map.insert(id.clone(), reasoning);
-                    }
-
-                    // Send tool status to channels (Telegram, etc.)
-                    let state_clone = Arc::clone(&state);
-                    let sk_clone = sk.clone();
-                    let name_clone = name.clone();
-                    let args_clone = arguments.clone();
-                    tokio::spawn(async move {
-                        send_tool_status_to_channels(
-                            &state_clone,
-                            &sk_clone,
-                            &name_clone,
-                            &args_clone,
-                        )
-                        .await;
-                    });
-
-                    let is_browser = name == "browser";
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "tool_call_start",
-                        "toolCallId": id,
-                        "toolName": name,
-                        "arguments": arguments,
-                        "startedAt": started_at,
-                        "seq": seq,
-                    });
-                    if let Some((segment_index, assistant_message)) = persisted_segment {
-                        payload["messageIndex"] = serde_json::json!(segment_index);
-                        if id == batch_key {
-                            payload["assistantMessage"] = assistant_message;
-                        }
-                    }
-                    if is_browser
-                        && let Some(execution_mode) = tool_execution_mode(&name, sandbox_enabled)
-                    {
-                        payload["executionMode"] = serde_json::json!(execution_mode);
-                    }
-                    payload
-                },
-                RunnerEvent::ToolCallEnd {
-                    id,
-                    name,
-                    success,
-                    error,
-                    result,
-                    raw_result,
-                    context_budget,
-                } => {
-                    if terminal_runs_for_events.read().await.contains(&run_id) {
-                        continue;
-                    }
-                    // Remove from active tool calls tracking.
-                    if let Some(ref map) = active_tool_calls {
-                        let mut guard = map.write().await;
-                        if let Some(calls) = guard.get_mut(&sk) {
-                            calls.retain(|tc| tc.id != id);
-                            if calls.is_empty() {
-                                guard.remove(&sk);
-                            }
-                        }
-                    }
-
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "tool_call_end",
-                        "toolCallId": id,
-                        "toolName": name,
-                        "success": success,
-                        "contextBudget": context_budget,
-                        "seq": seq,
-                    });
-                    if let Some(ref err) = error {
-                        payload["error"] = serde_json::json!(parse_chat_error(err, None));
-                    }
-                    // Check for screenshot/image to send to channel (Telegram, etc.)
-                    let screenshot_to_send = raw_result
-                        .as_ref()
-                        .and_then(|r| r.get("screenshot"))
-                        .and_then(|s| s.as_str())
-                        .filter(|s| s.starts_with("data:image/"))
-                        .map(String::from);
-
-                    let image_caption = raw_result
-                        .as_ref()
-                        .and_then(|r| r.get("caption"))
-                        .and_then(|c| c.as_str())
-                        .map(String::from);
-
-                    // Check for document file to send to channel.
-                    // New path: `document_ref` (lightweight media-dir reference).
-                    // Legacy path: `document` with `data:` URI.
-                    let document_ref_to_send = raw_result
-                        .as_ref()
-                        .and_then(|r| r.get("document_ref"))
-                        .and_then(|d| d.as_str())
-                        .map(String::from);
-
-                    let document_ref_mime = if document_ref_to_send.is_some() {
-                        raw_result
-                            .as_ref()
-                            .and_then(|r| r.get("mime_type"))
-                            .and_then(|m| m.as_str())
-                            .map(String::from)
-                    } else {
-                        None
-                    };
-
-                    let document_to_send = if document_ref_to_send.is_none() {
-                        raw_result
-                            .as_ref()
-                            .and_then(|r| r.get("document"))
-                            .and_then(|d| d.as_str())
-                            .filter(|d| d.starts_with("data:"))
-                            .map(String::from)
-                    } else {
-                        None
-                    };
-
-                    let has_document = document_ref_to_send.is_some() || document_to_send.is_some();
-
-                    let document_filename = if has_document {
-                        raw_result
-                            .as_ref()
-                            .and_then(|r| r.get("filename"))
-                            .and_then(|f| f.as_str())
-                            .map(String::from)
-                    } else {
-                        None
-                    };
-
-                    let document_caption = if has_document {
-                        raw_result
-                            .as_ref()
-                            .and_then(|r| r.get("caption"))
-                            .and_then(|c| c.as_str())
-                            .map(String::from)
-                    } else {
-                        None
-                    };
-
-                    // Extract location from show_map results for native pin
-                    let location_to_send = if name == "show_map" {
-                        raw_result.as_ref().and_then(|r| {
-                            let lat = r.get("latitude")?.as_f64()?;
-                            let lon = r.get("longitude")?.as_f64()?;
-                            let label = r.get("label").and_then(|l| l.as_str()).map(String::from);
-                            Some((lat, lon, label))
-                        })
-                    } else {
-                        None
-                    };
-
-                    if let Some(ref result) = result {
-                        payload["result"] = Value::String(result.clone());
-                    }
-
-                    // Send native location pin to channels before the screenshot.
-                    if let Some((lat, lon, label)) = location_to_send {
-                        let state_clone = Arc::clone(&state);
-                        let sk_clone = sk.clone();
-                        tokio::spawn(async move {
-                            send_location_to_channels(
-                                &state_clone,
-                                &sk_clone,
-                                lat,
-                                lon,
-                                label.as_deref(),
-                            )
-                            .await;
-                        });
-                    }
-
-                    // Send screenshot/image to channel targets (Telegram) if present.
-                    if let Some(screenshot_data) = screenshot_to_send {
-                        let state_clone = Arc::clone(&state);
-                        let sk_clone = sk.clone();
-                        tokio::spawn(async move {
-                            send_screenshot_to_channels(
-                                &state_clone,
-                                &sk_clone,
-                                &screenshot_data,
-                                image_caption.as_deref(),
-                            )
-                            .await;
-                        });
-                    }
-
-                    // Send document to channel targets if present.
-                    if let Some(media_ref) = document_ref_to_send {
-                        // New path: read from media dir at upload time.
-                        let state_clone = Arc::clone(&state);
-                        let sk_clone = sk.clone();
-                        let store_clone = store.clone();
-                        let mime = document_ref_mime
-                            .unwrap_or_else(|| "application/octet-stream".to_string());
-                        tokio::spawn(async move {
-                            if let Some(payload) = document_payload_from_ref(
-                                store_clone.as_ref(),
-                                &sk_clone,
-                                &media_ref,
-                                &mime,
-                                document_filename.as_deref(),
-                                document_caption.as_deref(),
-                            )
-                            .await
-                            {
-                                dispatch_document_to_channels(&state_clone, &sk_clone, payload)
-                                    .await;
-                            }
-                        });
-                    } else if let Some(document_data) = document_to_send {
-                        // Legacy fallback: data URI.
-                        let state_clone = Arc::clone(&state);
-                        let sk_clone = sk.clone();
-                        let payload = document_payload_from_data_uri(
-                            &document_data,
-                            document_filename.as_deref(),
-                            document_caption.as_deref(),
-                        );
-                        tokio::spawn(async move {
-                            dispatch_document_to_channels(&state_clone, &sk_clone, payload).await;
-                        });
-                    }
-
-                    // Buffer tool error result for the channel logbook.
-                    if !success {
-                        send_tool_result_to_channels(
-                            &state,
-                            &sk,
-                            &name,
-                            success,
-                            &error,
-                            &raw_result,
-                        )
-                        .await;
-                    }
-
-                    // Persist only the terminal result when its canonical
-                    // assistant tool-call segment was saved before start.
-                    if let Some(store) = store.as_ref()
-                        && persisted_tool_batches.contains_key(&id)
-                    {
-                        let tracked_args = tool_args_map.remove(&id);
-                        // Save screenshot bytes separately; conversational
-                        // history receives only the canonical runner result.
-                        let store_media = Arc::clone(store);
-                        let sk_media = sk.clone();
-                        let tool_call_id = id.clone();
-                        let persisted_result = result.as_ref().map(|result| {
-                            let decoded_screenshot = raw_result
-                                .as_ref()
-                                .and_then(|result| result.get("screenshot"))
-                                .and_then(|v| v.as_str())
-                                .filter(|s| s.starts_with("data:image/"))
-                                .and_then(|uri| uri.split(',').nth(1))
-                                .and_then(|b64| {
-                                    use base64::Engine;
-                                    base64::engine::general_purpose::STANDARD.decode(b64).ok()
-                                });
-                            if let Some(bytes) = decoded_screenshot {
-                                let filename = format!("{tool_call_id}.png");
-                                let store_ref = Arc::clone(&store_media);
-                                let sk_ref = sk_media.clone();
-                                tokio::spawn(async move {
-                                    if let Err(e) =
-                                        store_ref.save_media(&sk_ref, &filename, &bytes).await
-                                    {
-                                        warn!("failed to save screenshot media: {e}");
-                                    }
-                                });
-                            }
-                            Value::String(result.clone())
-                        });
-                        let tracked_reasoning = tool_reasoning_map.remove(&id);
-                        let tool_result_msg = PersistedMessage::ToolResult {
-                            tool_call_id: id,
-                            tool_name: name,
-                            arguments: tracked_args,
-                            success,
-                            result: persisted_result,
-                            error,
-                            rejected: false,
-                            reasoning: tracked_reasoning,
-                            context_budget: Some(context_budget),
-                            created_at: Some(now_ms()),
-                            run_id: Some(run_id.clone()),
-                        };
-                        let tool_result_index = match store
-                            .append_with_index(&sk, &tool_result_msg.to_value())
-                            .await
-                        {
-                            Ok(message_index) => message_index,
-                            Err(error) => {
-                                forwarder_error = Some(format!(
-                                    "failed to persist tool result for session '{sk}': {error}"
-                                ));
-                                break;
-                            },
-                        };
-                        payload["messageIndex"] = serde_json::json!(tool_result_index);
-                    }
-
-                    payload
-                },
                 RunnerEvent::ThinkingText(text) => {
                     latest_reasoning.set_text(&text);
                     let reasoning = latest_reasoning.content();
@@ -888,35 +922,28 @@ pub(crate) async fn run_with_tools(
                     continue;
                 },
                 RunnerEvent::TextDelta(text) => {
-                    let message_index = match (store.as_ref(), active_partial_for_events.as_ref()) {
-                        (Some(store), Some(drafts)) => {
-                            match append_assistant_delta(store, drafts, &sk, &text).await {
-                                Ok(message_index) => message_index,
-                                Err(error) => {
-                                    forwarder_error = Some(error.to_string());
-                                    break;
-                                },
+                    match active_partial_for_events.as_ref() {
+                        Some(drafts) => {
+                            if let Err(error) = append_assistant_delta(drafts, &sk, &text).await {
+                                forwarder_error = Some(error.to_string());
+                                break;
                             }
                         },
-                        (None, None) => None,
-                        _ => {
+                        None if store.is_none() => {},
+                        None => {
                             forwarder_error = Some(
                                 "assistant persistence dependencies are inconsistent".to_string(),
                             );
                             break;
                         },
-                    };
-                    let mut payload = serde_json::json!({
+                    }
+                    serde_json::json!({
                         "runId": run_id,
                         "sessionKey": sk,
                         "state": "delta",
                         "text": text,
                         "seq": seq,
-                    });
-                    if let Some(message_index) = message_index {
-                        payload["messageIndex"] = serde_json::json!(message_index);
-                    }
-                    payload
+                    })
                 },
                 RunnerEvent::ProgressText(text) => {
                     if let Some(ref dispatcher) = channel_stream_for_events {
@@ -1001,104 +1028,6 @@ pub(crate) async fn run_with_tools(
                         "seq": seq,
                     })
                 },
-                RunnerEvent::ToolCallRejected {
-                    id,
-                    name,
-                    arguments,
-                    error,
-                    iteration_tool_calls,
-                    iteration_usage,
-                } => {
-                    // Pre-dispatch validation failure — the tool's `execute`
-                    // method never ran. Emit as a terminal tool_call_end with
-                    // a `rejected: true` marker so the UI can render it
-                    // distinctly from a normal execution failure (issue #658).
-                    if let Some(ref map) = active_tool_calls {
-                        let mut guard = map.write().await;
-                        if let Some(calls) = guard.get_mut(&sk) {
-                            calls.retain(|tc| tc.id != id);
-                            if calls.is_empty() {
-                                guard.remove(&sk);
-                            }
-                        }
-                    }
-                    // A rejected call still belongs to a real assistant turn.
-                    // Persist its canonical assistant frame and the terminal
-                    // failure record so the error bubble survives a reload
-                    // instead of silently vanishing from history.
-                    let batch_key = iteration_tool_calls
-                        .first()
-                        .map(|tool_call| tool_call.id.clone())
-                        .unwrap_or_else(|| id.clone());
-                    let persisted_segment = match persist_tool_segment(
-                        store.as_ref(),
-                        active_partial_for_events.as_ref(),
-                        &sk,
-                        iteration_tool_calls.as_ref(),
-                        &iteration_usage,
-                        &batch_key,
-                        &mut persisted_tool_batches,
-                    )
-                    .await
-                    {
-                        Ok(persisted_segment) => persisted_segment,
-                        Err(error) => {
-                            forwarder_error = Some(error.to_string());
-                            break;
-                        },
-                    };
-                    let parsed_error = parse_chat_error(&error, None);
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "tool_call_end",
-                        "toolCallId": id,
-                        "toolName": name,
-                        "arguments": arguments,
-                        "success": false,
-                        "rejected": true,
-                        "error": parsed_error,
-                        "seq": seq,
-                    });
-                    if let Some((segment_index, ref assistant_message)) = persisted_segment
-                        && id == batch_key
-                    {
-                        payload["assistantMessage"] = assistant_message.clone();
-                        payload["assistantMessageIndex"] = serde_json::json!(segment_index);
-                    }
-                    if let Some(store) = store.as_ref()
-                        && persisted_tool_batches.contains_key(&id)
-                    {
-                        let tool_result_msg = PersistedMessage::ToolResult {
-                            tool_call_id: id.clone(),
-                            tool_name: name,
-                            arguments: Some(arguments),
-                            success: false,
-                            result: None,
-                            error: Some(error),
-                            rejected: true,
-                            reasoning: tool_reasoning_map.remove(&id),
-                            context_budget: None,
-                            created_at: Some(now_ms()),
-                            run_id: Some(run_id.clone()),
-                        };
-                        let tool_result_index = match store
-                            .append_with_index(&sk, &tool_result_msg.to_value())
-                            .await
-                        {
-                            Ok(message_index) => message_index,
-                            Err(error) => {
-                                forwarder_error = Some(format!(
-                                    "failed to persist rejected tool call for session '{sk}': {error}"
-                                ));
-                                break;
-                            },
-                        };
-                        payload["messageIndex"] = serde_json::json!(tool_result_index);
-                    }
-                    tool_args_map.remove(&id);
-                    payload
-                },
                 RunnerEvent::LoopInterventionFired { stage, tool_name } => {
                     serde_json::json!({
                         "runId": run_id,
@@ -1117,6 +1046,12 @@ pub(crate) async fn run_with_tools(
                 },
             };
             broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
+        }
+        if forwarder_error.is_none() && !pending_inputs.is_empty() {
+            let tool_call_ids = pending_inputs.into_keys().collect::<Vec<_>>().join(", ");
+            forwarder_error = Some(format!(
+                "tool input stream ended before an authoritative boundary for: {tool_call_ids}"
+            ));
         }
         EventForwarderResult {
             tool_segment_indices: persisted_tool_batches
@@ -1200,6 +1135,7 @@ pub(crate) async fn run_with_tools(
             &system_prompt,
             &effective_user_content,
             Some(&on_event),
+            Some(&on_tool_lifecycle),
             next_history.take(),
             Some(tool_context.clone()),
             hook_registry.clone(),
@@ -1349,6 +1285,7 @@ pub(crate) async fn run_with_tools(
     // Ensure all runner events (including deltas) are broadcast in order before
     // emitting terminal final/error frames.
     drop(on_event);
+    drop(on_tool_lifecycle);
     let event_result =
         LiveChatService::wait_for_event_forwarder(active_event_forwarders, session_key).await;
     let EventForwarderResult {
@@ -1549,24 +1486,17 @@ pub(crate) async fn run_with_tools(
                             )),
                         }
                     } else {
-                        let drafts = active_partial_assistant.as_ref()?;
-                        match reserve_assistant_message_index(store, drafts, session_key).await {
-                            Ok(message_index) => {
-                                persist_final_assistant_segment(
-                                    store,
-                                    session_key,
-                                    &assistant_output,
-                                    provider_ref.id(),
-                                    provider_name,
-                                    session_reasoning_effort.clone(),
-                                    client_seq,
-                                    run_id,
-                                    message_index,
-                                )
-                                .await
-                            },
-                            Err(error) => Err(error),
-                        }
+                        persist_final_assistant_segment(
+                            store,
+                            session_key,
+                            &assistant_output,
+                            provider_ref.id(),
+                            provider_name,
+                            session_reasoning_effort.clone(),
+                            client_seq,
+                            run_id,
+                        )
+                        .await
                     };
                 match persisted_message_index {
                     Ok(message_index) => {

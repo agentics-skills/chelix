@@ -412,12 +412,13 @@ impl SessionService for LiveSessionService {
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
         let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
-        let messages = self
-            .store
-            .read_last_n(key, limit)
-            .await
-            .map_err(ServiceError::message)?;
-        Ok(serde_json::json!({ "messages": filter_ui_history(messages) }))
+        let messages = self.store.read(key).await.map_err(ServiceError::message)?;
+        let mut messages = filter_ui_history(messages).map_err(ServiceError::message)?;
+        if messages.len() > limit {
+            let drop_count = messages.len() - limit;
+            messages.drain(0..drop_count);
+        }
+        Ok(serde_json::json!({ "messages": messages }))
     }
 
     async fn resolve(&self, params: Value) -> ServiceResult {
@@ -507,7 +508,8 @@ impl SessionService for LiveSessionService {
             }
         }
 
-        let (history, dropped_count) = trim_ui_history(filter_ui_history(raw_history));
+        let history = filter_ui_history(raw_history).map_err(ServiceError::message)?;
+        let (history, dropped_count) = trim_ui_history(history);
 
         Ok(serde_json::json!({
             "entry": {

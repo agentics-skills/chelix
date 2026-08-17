@@ -1,4 +1,7 @@
-use crate::multimodal::parse_data_uri;
+use {
+    crate::multimodal::parse_data_uri,
+    chelix_common::tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
+};
 
 /// Failure to reconstruct provider input from persisted or hook-modified JSON.
 #[derive(Debug, thiserror::Error)]
@@ -20,6 +23,13 @@ pub enum ChatMessageConversionError {
     ResponsesReasoningItem {
         message_index: usize,
         item_index: usize,
+        #[source]
+        source: serde_json::Error,
+    },
+    /// A persisted tool lifecycle record could not be decoded.
+    #[error("message at index {message_index} has invalid tool lifecycle: {source}")]
+    ToolLifecycle {
+        message_index: usize,
         #[source]
         source: serde_json::Error,
     },
@@ -304,34 +314,34 @@ fn values_to_chat_messages_inner(
                 };
                 messages.push(ChatMessage::tool(tool_call_id, content));
             },
-            // tool_result entries are persisted tool execution output; convert
-            // them to standard tool messages so the LLM sees its own results.
-            "tool_result" => {
-                let tool_call_id = val["tool_call_id"].as_str().unwrap_or("").to_string();
-                let has_matching_assistant = pending_tool_call_ids.remove(&tool_call_id);
+            "tool_lifecycle" => {
+                let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(val.clone()).map_err(
+                    |source| ChatMessageConversionError::ToolLifecycle {
+                        message_index: i,
+                        source,
+                    },
+                )?;
+                let content = match lifecycle.update {
+                    ToolLifecycleUpdate::Completed { result, error, .. } => {
+                        result.unwrap_or_else(|| {
+                            error.map_or_else(String::new, |error| format!("Error: {error}"))
+                        })
+                    },
+                    ToolLifecycleUpdate::Rejected { result, .. } => result,
+                    ToolLifecycleUpdate::Cancelled { reason, .. } => {
+                        format!("Tool call cancelled: {reason}")
+                    },
+                    _ => continue,
+                };
+                let has_matching_assistant = pending_tool_call_ids.remove(&lifecycle.tool_call_id);
                 if filter_orphan_tool_results && !has_matching_assistant {
-                    tracing::debug!(tool_call_id, "skipping orphan tool_result message");
+                    tracing::debug!(
+                        tool_call_id = lifecycle.tool_call_id,
+                        "skipping orphan terminal tool lifecycle message"
+                    );
                     continue;
                 }
-                if let Some(reasoning) = decode_reasoning(val.get("reasoning"), i)? {
-                    attach_reasoning_to_assistant_tool_call(
-                        &mut messages,
-                        &tool_call_id,
-                        reasoning,
-                    );
-                }
-                let content = if let Some(err) = val["error"].as_str() {
-                    format!("Error: {err}")
-                } else if let Some(result) = val.get("result") {
-                    if let Some(s) = result.as_str() {
-                        s.to_string()
-                    } else {
-                        result.to_string()
-                    }
-                } else {
-                    String::new()
-                };
-                messages.push(ChatMessage::tool(tool_call_id, content));
+                messages.push(ChatMessage::tool(lifecycle.tool_call_id, content));
             },
             // notice entries are UI-only informational messages.
             "notice" => continue,
@@ -353,37 +363,6 @@ fn values_to_chat_messages_inner(
         }
     }
     Ok(messages)
-}
-
-fn attach_reasoning_to_assistant_tool_call(
-    messages: &mut [ChatMessage],
-    tool_call_id: &str,
-    tool_reasoning: chelix_common::ReasoningContent,
-) {
-    for message in messages.iter_mut().rev() {
-        let ChatMessage::Assistant {
-            tool_calls,
-            reasoning,
-            ..
-        } = message
-        else {
-            continue;
-        };
-
-        if tool_calls
-            .iter()
-            .any(|tool_call| tool_call.id == tool_call_id)
-        {
-            if reasoning.is_none() {
-                *reasoning = Some(tool_reasoning);
-            }
-            return;
-        }
-    }
-    tracing::debug!(
-        tool_call_id,
-        "no assistant message found for reasoning attachment"
-    );
 }
 
 #[cfg(test)]
@@ -413,11 +392,16 @@ mod checkpoint_tests {
                 }]
             }),
             serde_json::json!({
-                "role": "tool_result",
-                "tool_call_id": "call-2",
-                "tool_name": "read_file",
+                "role": "tool_lifecycle",
+                "toolCallId": "call-2",
+                "toolName": "read_file",
+                "sequence": 1,
+                "emittedAtMs": 1,
+                "stage": "completed",
+                "arguments": {},
                 "success": true,
-                "result": "latest result"
+                "result": "latest result",
+                "error": null
             }),
             serde_json::json!({
                 "role": "checkpoint",

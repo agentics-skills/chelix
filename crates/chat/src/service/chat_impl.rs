@@ -26,6 +26,7 @@ use {
             build_system_prompt_with_session_runtime_details,
         },
     },
+    chelix_common::tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
     chelix_config::ToolMode,
     chelix_service_traits::{ChatService, ServiceError, ServiceResult},
     chelix_sessions::{MessageContent, PersistedMessage, filter_ui_history},
@@ -180,7 +181,14 @@ impl ChatService for LiveChatService {
             );
         }
         if !ephemeral {
-            self.session_metadata.touch(&session_key, 1).await;
+            let ui_message_count = self
+                .session_store
+                .ui_message_count(&session_key)
+                .await
+                .map_err(ServiceError::message)?;
+            self.session_metadata
+                .touch(&session_key, ui_message_count)
+                .await;
         }
 
         let session_entry = self.session_metadata.get(&session_key).await;
@@ -368,7 +376,7 @@ impl ChatService for LiveChatService {
                 false, // send_sync: MCP tools always enabled for API calls
                 None,  // send_sync: no client seq
                 (!ephemeral).then(|| Arc::clone(&self.active_thinking_text)),
-                (!ephemeral).then(|| Arc::clone(&self.active_tool_calls)),
+                (!ephemeral).then(|| Arc::clone(&self.active_tool_invocations)),
                 (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &active_event_forwarders,
                 &terminal_runs,
@@ -385,7 +393,10 @@ impl ChatService for LiveChatService {
             }
             drop(runs_by_session);
             self.active_thinking_text.write().await.remove(&session_key);
-            self.active_tool_calls.write().await.remove(&session_key);
+            self.active_tool_invocations
+                .write()
+                .await
+                .remove(&session_key);
             terminal_runs.write().await.remove(&run_id);
             self.active_partial_assistant
                 .write()
@@ -394,7 +405,7 @@ impl ChatService for LiveChatService {
             self.active_reply_medium.write().await.remove(&session_key);
         }
 
-        if !ephemeral && let Ok(count) = self.session_store.count(&session_key).await {
+        if !ephemeral && let Ok(count) = self.session_store.ui_message_count(&session_key).await {
             self.session_metadata.touch(&session_key, count).await;
         }
 
@@ -425,7 +436,7 @@ impl ChatService for LiveChatService {
                     .append(&session_key, &error_entry.to_value())
                     .await;
                 // Update metadata so the session shows in the UI.
-                if let Ok(count) = self.session_store.count(&session_key).await {
+                if let Ok(count) = self.session_store.ui_message_count(&session_key).await {
                     self.session_metadata.touch(&session_key, count).await;
                 }
 
@@ -463,7 +474,7 @@ impl ChatService for LiveChatService {
 
         if aborted && let Some(key) = resolved_session_key.as_deref() {
             let interrupted_tool_calls = self
-                .active_tool_calls
+                .active_tool_invocations
                 .write()
                 .await
                 .remove(key)
@@ -495,56 +506,68 @@ impl ChatService for LiveChatService {
             let terminal_partial = partial.or(finalized_tool_segment);
             self.active_thinking_text.write().await.remove(key);
             self.active_reply_medium.write().await.remove(key);
-            for tool_call in interrupted_tool_calls {
-                let tool_result = PersistedMessage::ToolResult {
-                    tool_call_id: tool_call.id.clone(),
-                    tool_name: tool_call.name.clone(),
-                    arguments: Some(tool_call.arguments.clone()),
-                    success: false,
-                    result: None,
-                    error: Some(STOPPED_BY_USER.to_string()),
-                    rejected: false,
-                    reasoning: None,
-                    context_budget: None,
-                    created_at: Some(now_ms()),
-                    run_id: Some(tool_call.run_id.clone()),
+            for invocation in interrupted_tool_calls {
+                let Some(invocation_run_id) = invocation.lifecycle.run_id.clone() else {
+                    terminal_errors.push(format!(
+                        "active tool invocation '{}' has no run identity",
+                        invocation.lifecycle.tool_call_id
+                    ));
+                    continue;
                 };
-                let tool_result_index = match self
-                    .session_store
-                    .append_with_index(key, &tool_result.to_value())
-                    .await
-                {
-                    Ok(message_index) => message_index,
+                let arguments = invocation.arguments().cloned();
+                let context_budget = invocation.context_budget.clone();
+                let execution_mode = invocation.execution_mode.clone();
+                let lifecycle = ToolLifecycleEvent {
+                    tool_call_id: invocation.lifecycle.tool_call_id.clone(),
+                    tool_name: invocation.lifecycle.tool_name.clone(),
+                    sequence: invocation.lifecycle.sequence.saturating_add(1),
+                    emitted_at_ms: now_ms(),
+                    run_id: Some(invocation_run_id),
+                    context_budget,
+                    update: ToolLifecycleUpdate::Cancelled {
+                        arguments,
+                        reason: STOPPED_BY_USER.to_owned(),
+                    },
+                };
+                let message = PersistedMessage::ToolLifecycle {
+                    lifecycle: lifecycle.clone(),
+                };
+                match self.session_store.append(key, &message.to_value()).await {
+                    Ok(()) => {},
                     Err(error) => {
                         terminal_errors.push(format!(
-                            "failed to persist stopped tool call '{}' for session '{key}': {error}",
-                            tool_call.id
+                            "failed to persist cancelled tool invocation '{}' for session '{key}': {error}",
+                            lifecycle.tool_call_id
                         ));
                         continue;
                     },
                 };
-                broadcast(
-                    &self.state,
-                    "chat",
-                    serde_json::json!({
-                        "state": "tool_call_end",
-                        "runId": tool_call.run_id,
-                        "sessionKey": key,
-                        "toolCallId": tool_call.id,
-                        "toolName": tool_call.name,
-                        "arguments": tool_call.arguments,
-                        "success": false,
-                        "error": { "detail": STOPPED_BY_USER },
-                        "messageIndex": tool_result_index,
-                    }),
-                    BroadcastOpts::default(),
-                )
-                .await;
+                let tool_call_id = lifecycle.tool_call_id.clone();
+                let payload = ChatToolLifecycleBroadcast {
+                    state: "tool_lifecycle",
+                    lifecycle,
+                    session_key: key.to_owned(),
+                    seq: None,
+                    execution_mode,
+                    message_index: None,
+                    assistant_message_index: None,
+                    assistant_message: None,
+                };
+                let payload = match serde_json::to_value(payload) {
+                    Ok(payload) => payload,
+                    Err(error) => {
+                        terminal_errors.push(format!(
+                            "failed to serialize cancelled tool invocation '{tool_call_id}': {error}"
+                        ));
+                        continue;
+                    },
+                };
+                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
             }
-            match self.session_store.count(key).await {
+            match self.session_store.ui_message_count(key).await {
                 Ok(count) => self.session_metadata.touch(key, count).await,
                 Err(error) => terminal_errors.push(format!(
-                    "failed to count session '{key}' after abort persistence: {error}"
+                    "failed to count UI history for session '{key}' after abort persistence: {error}"
                 )),
             }
             if let Some(run_id) = resolved_run_id.as_deref() {
@@ -634,7 +657,8 @@ impl ChatService for LiveChatService {
             .read(&session_key)
             .await
             .map_err(ServiceError::message)?;
-        Ok(serde_json::json!(filter_ui_history(messages)))
+        let history = filter_ui_history(messages).map_err(ServiceError::message)?;
+        Ok(serde_json::json!(history))
     }
 
     async fn inject(&self, _params: Value) -> ServiceResult {
@@ -721,7 +745,11 @@ impl ChatService for LiveChatService {
         .await
         .map_err(|e| ServiceError::message(e.to_string()))?;
 
-        let message_count = self.session_store.count(&session_key).await.unwrap_or(0);
+        let message_count = self
+            .session_store
+            .ui_message_count(&session_key)
+            .await
+            .unwrap_or(0);
         self.session_metadata
             .touch(&session_key, message_count)
             .await;
@@ -759,7 +787,11 @@ impl ChatService for LiveChatService {
         let session_key = self.resolve_session_key_from_params(&params).await;
 
         // Session info
-        let message_count = self.session_store.count(&session_key).await.unwrap_or(0);
+        let message_count = self
+            .session_store
+            .ui_message_count(&session_key)
+            .await
+            .unwrap_or(0);
         let session_entry = self.session_metadata.get(&session_key).await;
         let prompt_persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
@@ -1298,7 +1330,7 @@ impl ChatService for LiveChatService {
             .collect();
 
         // Build the full messages array: system prompt + conversation history.
-        // `values_to_chat_messages` handles `tool_result` → `tool` conversion.
+        // `values_to_chat_messages` converts terminal tool lifecycle records to provider tool messages.
         let mut messages = Vec::with_capacity(1 + history.len());
         messages.push(ChatMessage::system(system_prompt));
         messages.extend(values_to_chat_messages(&history).map_err(ServiceError::message)?);
@@ -1397,16 +1429,13 @@ impl ChatService for LiveChatService {
             .is_some_and(|m| *m == ReplyMedium::Voice)
     }
 
-    async fn active_tool_calls(&self, session_key: &str) -> Vec<Value> {
-        self.active_tool_calls
+    async fn active_tool_invocations(&self, session_key: &str) -> Vec<ActiveToolInvocation> {
+        self.active_tool_invocations
             .read()
             .await
             .get(session_key)
             .cloned()
             .unwrap_or_default()
-            .into_iter()
-            .filter_map(|call| serde_json::to_value(call).ok())
-            .collect()
     }
 
     async fn peek(&self, params: Value) -> ServiceResult {
@@ -1432,8 +1461,8 @@ impl ChatService for LiveChatService {
             .get(session_key)
             .cloned();
 
-        let tool_calls: Vec<ActiveToolCall> = self
-            .active_tool_calls
+        let tool_invocations: Vec<ActiveToolInvocation> = self
+            .active_tool_invocations
             .read()
             .await
             .get(session_key)
@@ -1444,7 +1473,7 @@ impl ChatService for LiveChatService {
             "active": true,
             "sessionKey": session_key,
             "thinkingText": thinking_text,
-            "toolCalls": tool_calls,
+            "toolInvocations": tool_invocations,
         }))
     }
 }

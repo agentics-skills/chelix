@@ -1,6 +1,13 @@
 //! Shared UI history filtering for JSONL session records.
 
-use {chelix_common::ReasoningContent, serde_json::Value};
+use std::collections::HashMap;
+
+use {
+    chelix_common::{ReasoningContent, tool_lifecycle::ToolLifecycleEvent},
+    serde_json::Value,
+};
+
+use crate::Result;
 
 fn has_visible_reasoning(value: Option<&Value>) -> bool {
     value
@@ -31,12 +38,23 @@ pub fn redact_backend_only_provider_state(value: &mut Value) {
 /// Empty assistant frames are required by LLM history coherence but are not
 /// visible UI content. Assistant tool-call frames are retained because they
 /// provide the canonical identity and terminal metadata for tool results.
-pub fn filter_ui_history(messages: Vec<Value>) -> Vec<Value> {
-    messages
-        .into_iter()
-        .enumerate()
-        .filter_map(|(history_index, mut message)| {
-            if message.get("role").and_then(Value::as_str) == Some("assistant") {
+pub fn filter_ui_history(messages: Vec<Value>) -> Result<Vec<Value>> {
+    let mut last_lifecycle_index = HashMap::new();
+    for (history_index, message) in messages.iter().enumerate() {
+        if message.get("role").and_then(Value::as_str) != Some("tool_lifecycle") {
+            continue;
+        }
+        let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(message.clone())?;
+        last_lifecycle_index.insert(
+            (lifecycle.run_id.clone(), lifecycle.tool_call_id),
+            history_index,
+        );
+    }
+
+    let mut filtered = Vec::with_capacity(messages.len());
+    for (history_index, mut message) in messages.into_iter().enumerate() {
+        match message.get("role").and_then(Value::as_str) {
+            Some("assistant") => {
                 let has_content = message
                     .get("content")
                     .and_then(Value::as_str)
@@ -51,16 +69,25 @@ pub fn filter_ui_history(messages: Vec<Value>) -> Vec<Value> {
                     .and_then(Value::as_array)
                     .is_some_and(|tool_calls| !tool_calls.is_empty());
                 if !(has_content || has_reasoning || has_audio || has_tool_calls) {
-                    return None;
+                    continue;
                 }
-            }
-            redact_backend_only_provider_state(&mut message);
-            if let Some(object) = message.as_object_mut() {
-                object.insert("historyIndex".to_string(), serde_json::json!(history_index));
-            }
-            Some(message)
-        })
-        .collect()
+            },
+            Some("tool_lifecycle") => {
+                let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(message.clone())?;
+                let identity = (lifecycle.run_id, lifecycle.tool_call_id);
+                if last_lifecycle_index.get(&identity) != Some(&history_index) {
+                    continue;
+                }
+            },
+            _ => {},
+        }
+        redact_backend_only_provider_state(&mut message);
+        if let Some(object) = message.as_object_mut() {
+            object.insert("historyIndex".to_string(), serde_json::json!(history_index));
+        }
+        filtered.push(message);
+    }
+    Ok(filtered)
 }
 
 #[cfg(test)]
@@ -74,7 +101,8 @@ mod tests {
             "role": "assistant",
             "content": "",
             "tool_calls": [{ "id": "tool-1", "function": { "name": "execute_command" } }],
-        })]);
+        })])
+        .unwrap();
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0]["historyIndex"], 0);
@@ -86,7 +114,8 @@ mod tests {
         let filtered = filter_ui_history(vec![
             serde_json::json!({ "role": "assistant", "content": " \n " }),
             serde_json::json!({ "role": "tool", "content": "" }),
-        ]);
+        ])
+        .unwrap();
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0]["historyIndex"], 1);
@@ -105,7 +134,8 @@ mod tests {
                 ]
             }),
             serde_json::json!({ "role": "assistant", "audio": "media/reply.ogg" }),
-        ]);
+        ])
+        .unwrap();
 
         assert_eq!(filtered.len(), 3);
         assert_eq!(filtered[0]["historyIndex"], 0);
@@ -139,7 +169,8 @@ mod tests {
                     "encrypted_content": "opaque-state"
                 }
             }]
-        })]);
+        })])
+        .unwrap();
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0]["reasoning"], "visible reasoning");
@@ -150,6 +181,45 @@ mod tests {
                 .is_none()
         );
         assert_eq!(filtered[0]["llmApiResponse"][0]["item"]["id"], "rs_123");
+    }
+
+    #[test]
+    fn keeps_only_the_latest_snapshot_for_each_tool_invocation() {
+        let filtered = filter_ui_history(vec![
+            serde_json::json!({
+                "role": "user",
+                "content": "run it"
+            }),
+            serde_json::json!({
+                "role": "tool_lifecycle",
+                "toolCallId": "call-1",
+                "toolName": "overwrite_file",
+                "sequence": 0,
+                "emittedAtMs": 1,
+                "runId": "run-1",
+                "stage": "created",
+                "providerIndex": 0
+            }),
+            serde_json::json!({
+                "role": "tool_lifecycle",
+                "toolCallId": "call-1",
+                "toolName": "overwrite_file",
+                "sequence": 8,
+                "emittedAtMs": 2,
+                "runId": "run-1",
+                "stage": "completed",
+                "arguments": {"filePath": "/tmp/report"},
+                "success": true,
+                "result": "{\"ok\":true}",
+                "error": null
+            }),
+        ])
+        .unwrap();
+
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0]["role"], "user");
+        assert_eq!(filtered[1]["stage"], "completed");
+        assert_eq!(filtered[1]["historyIndex"], 2);
     }
 
     #[test]

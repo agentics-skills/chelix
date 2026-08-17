@@ -35,7 +35,7 @@ use crate::{
     runtime::ChatRuntime,
     service::{
         ActiveAssistantDraft, append_assistant_delta, persist_active_assistant_draft,
-        persist_final_assistant_segment, reserve_assistant_message_index,
+        persist_final_assistant_segment,
     },
     types::*,
 };
@@ -261,47 +261,37 @@ pub(crate) async fn run_streaming(
             match event {
                 StreamEvent::Delta(delta) => {
                     accumulated.push_str(&delta);
-                    let message_index = if let (Some(store), Some(drafts)) =
-                        (session_store, active_partial_assistant.as_ref())
+                    if let Some(drafts) = active_partial_assistant.as_ref()
+                        && let Err(error) =
+                            append_assistant_delta(drafts, session_key, &delta).await
                     {
-                        match append_assistant_delta(store, drafts, session_key, &delta).await {
-                            Ok(message_index) => message_index,
-                            Err(error) => {
-                                let error = error.to_string();
-                                warn!(run_id, %error, "failed to persist streaming assistant segment");
-                                state.set_run_error(run_id, error.clone()).await;
-                                let error_obj = parse_chat_error(&error, Some(provider_name));
-                                deliver_channel_error(state, session_key, &error_obj).await;
-                                let error_payload = ChatErrorBroadcast {
-                                    run_id: run_id.to_string(),
-                                    session_key: session_key.to_string(),
-                                    state: "error",
-                                    error: error_obj,
-                                    seq: client_seq,
-                                };
-                                #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                                let payload_val = serde_json::to_value(&error_payload).unwrap();
-                                terminal_runs.write().await.insert(run_id.to_string());
-                                broadcast(state, "chat", payload_val, BroadcastOpts::default())
-                                    .await;
-                                return None;
-                            },
-                        }
-                    } else {
-                        None
-                    };
+                        let error = error.to_string();
+                        warn!(run_id, %error, "failed to accumulate streaming assistant segment");
+                        state.set_run_error(run_id, error.clone()).await;
+                        let error_obj = parse_chat_error(&error, Some(provider_name));
+                        deliver_channel_error(state, session_key, &error_obj).await;
+                        let error_payload = ChatErrorBroadcast {
+                            run_id: run_id.to_string(),
+                            session_key: session_key.to_string(),
+                            state: "error",
+                            error: error_obj,
+                            seq: client_seq,
+                        };
+                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
+                        let payload_val = serde_json::to_value(&error_payload).unwrap();
+                        terminal_runs.write().await.insert(run_id.to_string());
+                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
+                        return None;
+                    }
                     if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                         dispatcher.send_delta(&delta).await;
                     }
-                    let mut payload = serde_json::json!({
+                    let payload = serde_json::json!({
                         "runId": run_id,
                         "sessionKey": session_key,
                         "state": "delta",
                         "text": delta,
                     });
-                    if let Some(message_index) = message_index {
-                        payload["messageIndex"] = serde_json::json!(message_index);
-                    }
                     broadcast(state, "chat", payload, BroadcastOpts::default()).await;
                 },
                 StreamEvent::ReasoningDelta(delta) => {
@@ -589,38 +579,9 @@ pub(crate) async fn run_streaming(
                         responses_reasoning,
                         llm_api_response,
                     );
-                    if let (Some(store), Some(drafts)) =
+                    if let (Some(store), Some(_drafts)) =
                         (session_store, active_partial_assistant.as_ref())
                     {
-                        let message_index = match reserve_assistant_message_index(
-                            store,
-                            drafts,
-                            session_key,
-                        )
-                        .await
-                        {
-                            Ok(message_index) => message_index,
-                            Err(error) => {
-                                let error = error.to_string();
-                                warn!(run_id, %error, "failed to reserve final assistant message index");
-                                state.set_run_error(run_id, error.clone()).await;
-                                let error_obj = parse_chat_error(&error, Some(provider_name));
-                                deliver_channel_error(state, session_key, &error_obj).await;
-                                let error_payload = ChatErrorBroadcast {
-                                    run_id: run_id.to_string(),
-                                    session_key: session_key.to_string(),
-                                    state: "error",
-                                    error: error_obj,
-                                    seq: client_seq,
-                                };
-                                #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                                let payload_val = serde_json::to_value(&error_payload).unwrap();
-                                terminal_runs.write().await.insert(run_id.to_string());
-                                broadcast(state, "chat", payload_val, BroadcastOpts::default())
-                                    .await;
-                                return None;
-                            },
-                        };
                         match persist_final_assistant_segment(
                             store,
                             session_key,
@@ -630,7 +591,6 @@ pub(crate) async fn run_streaming(
                             session_reasoning_effort.clone(),
                             client_seq,
                             run_id,
-                            message_index,
                         )
                         .await
                         {

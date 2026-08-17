@@ -47,17 +47,21 @@ async fn test_parallel_tool_execution() {
         delay_ms: 0,
     }));
 
-    let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let events_clone = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| {
-        events_clone.lock().unwrap().push(event);
-    });
+    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&events);
 
     let uc = UserContent::text("Use all tools");
-    let result = run_agent_loop(provider, &tools, "Test bot", &uc, Some(&on_event), None)
-        .await
-        .unwrap();
+    let result = run_agent_loop_with_tool_lifecycle(
+        provider,
+        &tools,
+        "Test bot",
+        &uc,
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(result.output.text, "All done");
     assert_eq!(result.tool_calls_made, 3);
@@ -66,13 +70,15 @@ async fn test_parallel_tool_execution() {
     let starts: Vec<_> = evts
         .iter()
         .enumerate()
-        .filter(|(_, e)| matches!(e, RunnerEvent::ToolCallStart { .. }))
+        .filter(|(_, event)| {
+            event.lifecycle.stage() == chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+        })
         .map(|(i, _)| i)
         .collect();
     let ends: Vec<_> = evts
         .iter()
         .enumerate()
-        .filter(|(_, e)| matches!(e, RunnerEvent::ToolCallEnd { .. }))
+        .filter(|(_, event)| event.lifecycle.stage().is_terminal())
         .map(|(i, _)| i)
         .collect();
     assert_eq!(starts.len(), 3);
@@ -120,17 +126,21 @@ async fn test_parallel_tool_one_fails() {
         delay_ms: 0,
     }));
 
-    let events: Arc<std::sync::Mutex<Vec<RunnerEvent>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let events_clone = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| {
-        events_clone.lock().unwrap().push(event);
-    });
+    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&events);
 
     let uc = UserContent::text("Use all tools");
-    let result = run_agent_loop(provider, &tools, "Test bot", &uc, Some(&on_event), None)
-        .await
-        .unwrap();
+    let result = run_agent_loop_with_tool_lifecycle(
+        provider,
+        &tools,
+        "Test bot",
+        &uc,
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(result.output.text, "All done");
     assert_eq!(result.tool_calls_made, 3);
@@ -138,11 +148,24 @@ async fn test_parallel_tool_one_fails() {
     let evts = events.lock().unwrap();
     let successes = evts
         .iter()
-        .filter(|e| matches!(e, RunnerEvent::ToolCallEnd { success: true, .. }))
+        .filter(|event| {
+            matches!(
+                event.lifecycle.update,
+                chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed { success: true, .. }
+            )
+        })
         .count();
     let failures = evts
         .iter()
-        .filter(|e| matches!(e, RunnerEvent::ToolCallEnd { success: false, .. }))
+        .filter(|event| {
+            matches!(
+                event.lifecycle.update,
+                chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed {
+                    success: false,
+                    ..
+                }
+            )
+        })
         .count();
     assert_eq!(successes, 2);
     assert_eq!(failures, 1);

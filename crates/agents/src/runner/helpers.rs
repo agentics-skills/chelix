@@ -2,14 +2,15 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use tracing::{info, warn};
-
 use {
-    chelix_common::{
-        ReasoningContent,
-        hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry},
-    },
-    chelix_sessions::message::ContextBudgetMetadata,
+    futures::future::BoxFuture,
+    tracing::{info, warn},
+};
+
+use chelix_common::{
+    ContextBudgetMetadata, ReasoningContent,
+    hooks::{ChannelBinding, HookAction, HookPayload, HookRegistry},
+    tool_lifecycle::ToolLifecycleEvent,
 };
 
 use crate::{
@@ -242,8 +243,49 @@ impl UsageAccumulator {
     }
 }
 
-/// Callback for streaming events out of the runner.
+/// Callback for non-blocking streaming events out of the runner.
 pub type OnEvent = Box<dyn Fn(RunnerEvent) + Send + Sync>;
+
+/// Awaitable delivery boundary for persisted tool lifecycle events.
+pub type OnToolLifecycle =
+    Arc<dyn Fn(RunnerToolLifecycleEvent) -> BoxFuture<'static, anyhow::Result<()>> + Send + Sync>;
+
+/// Runner metadata carried alongside the shared persisted lifecycle contract.
+#[derive(Debug, Clone)]
+pub struct RunnerToolLifecycleEvent {
+    pub lifecycle: ToolLifecycleEvent,
+    /// Full tool-call batch belonging to the same assistant message.
+    pub iteration_tool_calls: Option<Arc<[RunnerToolCall]>>,
+    /// Exact provider usage for the LLM iteration that emitted the batch.
+    pub iteration_usage: Option<Usage>,
+    /// Raw structured result used only for media/location/channel side effects.
+    pub raw_result: Option<serde_json::Value>,
+    /// Current budget retained for active snapshots and cancellation metadata.
+    pub context_budget: Option<ContextBudgetMetadata>,
+}
+
+impl RunnerToolLifecycleEvent {
+    #[must_use]
+    pub fn new(lifecycle: ToolLifecycleEvent) -> Self {
+        Self {
+            lifecycle,
+            iteration_tool_calls: None,
+            iteration_usage: None,
+            raw_result: None,
+            context_budget: None,
+        }
+    }
+}
+
+pub(crate) async fn deliver_tool_lifecycle(
+    callback: Option<&OnToolLifecycle>,
+    event: RunnerToolLifecycleEvent,
+) -> Result<(), AgentRunError> {
+    if let Some(callback) = callback {
+        callback(event).await?;
+    }
+    Ok(())
+}
 
 /// Events emitted during the agent run.
 #[derive(Debug, Clone)]
@@ -252,30 +294,6 @@ pub enum RunnerEvent {
     Thinking,
     /// LLM finished thinking (hide the indicator).
     ThinkingDone,
-    ToolCallStart {
-        id: String,
-        name: String,
-        arguments: serde_json::Value,
-        /// Full tool-call batch belonging to the same assistant message.
-        iteration_tool_calls: Arc<[RunnerToolCall]>,
-        /// Exact provider usage for the LLM iteration that emitted the batch.
-        iteration_usage: Usage,
-        /// Server timestamp captured before the concurrent tool batch starts.
-        started_at: time::OffsetDateTime,
-    },
-    ToolCallEnd {
-        id: String,
-        name: String,
-        success: bool,
-        error: Option<String>,
-        /// Exact result content passed to the LLM, UI, and session history.
-        result: Option<String>,
-        /// Raw structured result, available only for media/location/channel
-        /// side effects and never persisted as conversational context.
-        raw_result: Option<serde_json::Value>,
-        /// Exact context-budget calculation used before this LLM iteration.
-        context_budget: ContextBudgetMetadata,
-    },
     /// LLM returned reasoning/status text alongside tool calls.
     ThinkingText(String),
     /// OpenAI Responses reasoning-summary text for one source-defined part.
@@ -320,23 +338,6 @@ pub enum RunnerEvent {
     /// The model stopped without tool calls while auto-continue remains enabled.
     AutoContinue {
         iteration: usize,
-    },
-    /// A tool call was rejected by pre-dispatch schema validation before the
-    /// tool's `execute` method ran. Used in place of the usual
-    /// `ToolCallStart`/`ToolCallEnd` pair for rejected calls so the UI does
-    /// not render a misleading "executing" status for a call that never
-    /// actually executed.
-    ToolCallRejected {
-        id: String,
-        name: String,
-        arguments: serde_json::Value,
-        error: String,
-        /// Full tool-call batch belonging to the same assistant message. The
-        /// forwarder needs it to persist the canonical assistant frame so a
-        /// rejected call survives a page reload exactly like an executed one.
-        iteration_tool_calls: Arc<[RunnerToolCall]>,
-        /// Exact provider usage for the LLM iteration that emitted the batch.
-        iteration_usage: Usage,
     },
     /// The loop detector fired after equivalent tool failures repeated across
     /// distinct model rounds. `stage` is 1 for the nudge/directive intervention
@@ -397,8 +398,8 @@ pub(crate) fn sanitize_tool_name(name: &str) -> Cow<'_, str> {
 /// before dispatch. Those keys are all `_`-prefixed by convention (mirroring
 /// the MCP bridge contract in `chelix-mcp`'s `tool_bridge`) and are meant only
 /// for tool implementations, never for humans. Emitting them in
-/// `RunnerEvent::ToolCallStart` leaks browser/session metadata into the UI
-/// tool-call bubble title, so strip every `_`-prefixed key here.
+/// Tool lifecycle arguments are persisted and broadcast to the UI, so strip
+/// every `_`-prefixed key before publishing them.
 ///
 /// Non-object values are returned unchanged (a defensive no-op).
 pub(crate) fn public_tool_arguments(args: &serde_json::Value) -> serde_json::Value {

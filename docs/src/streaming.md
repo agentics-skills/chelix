@@ -64,44 +64,53 @@ The trait also exposes `supports_tools()`, `reasoning_effort()`, and
 The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Agent Loop                           │
-│                                                         │
-│  1. Call provider.stream_with_tools()                   │
-│                                                         │
-│  2. While stream has events:                            │
-│     ├─ Delta(text) → emit RunnerEvent::TextDelta        │
-│     ├─ ToolCallStart → accumulate tool call             │
-│     ├─ ToolCallArgumentsDelta → accumulate args         │
-│     ├─ ToolCallComplete → finalize args                 │
-│     ├─ Done → record usage                              │
-│     └─ Error → return error                             │
-│                                                         │
-│  3. If no tool calls → return accumulated text          │
-│                                                         │
-│  4. Execute tool calls concurrently                     │
-│     ├─ Inject trusted session/run/tool-call context     │
-│     ├─ Validate tool-specific constraints               │
-│     ├─ Emit ToolCallStart events                        │
-│     ├─ Run tools in parallel                            │
-│     └─ Emit ToolCallEnd events                          │
-│                                                         │
-│  5. Append tool results to messages                     │
-│                                                         │
-│  6. Loop back to step 1                                 │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         Agent Loop                               │
+│                                                                  │
+│  1. Call provider.stream_with_tools()                            │
+│                                                                  │
+│  2. While the provider stream has events:                        │
+│     ├─ Delta(text) → emit RunnerEvent::TextDelta                 │
+│     ├─ ToolCallStart → emit Created and accumulate the call      │
+│     ├─ ToolCallArgumentsDelta → emit InputStreaming              │
+│     ├─ ToolCallComplete → mark arguments complete                │
+│     ├─ Done → record usage                                       │
+│     └─ Error → emit Cancelled for started calls, then retry/fail  │
+│                                                                  │
+│  3. Finalize arguments and emit InputReady                       │
+│     └─ The canonical assistant tool-call frame is published here │
+│                                                                  │
+│  4. Execute calls concurrently through ToolInvocationExecutor    │
+│     ├─ Validate → Rejected on pre-dispatch refusal               │
+│     ├─ Emit WaitingForExecution                                  │
+│     ├─ Run BeforeToolCall, then emit Executing                   │
+│     ├─ Emit backend ExecutionProgress while useful work runs     │
+│     └─ Emit ResultReady, then Completed                          │
+│                                                                  │
+│  5. Append terminal tool outputs to provider messages            │
+│                                                                  │
+│  6. Loop back to step 1                                          │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4. Chat Service (`crates/chat/src/run_with_tools.rs`)
 
 The chat service's `run_with_tools()` function:
 
-1. Sets up an event callback that broadcasts `RunnerEvent`s via WebSocket
-2. Calls `run_agent_loop_streaming()` from
-   `crates/agents/src/runner/streaming.rs`
-3. Broadcasts events to connected clients as JSON frames
+1. Sets up the ordinary `RunnerEvent` callback for text, reasoning, notices, and
+   other non-tool stream updates.
+2. Sets up a separate ordered `OnToolLifecycle` callback. `input_streaming`
+   returns after enqueue so provider argument streaming never waits for
+   persistence. Every other stage waits for its processor receipt and therefore
+   forms an authoritative boundary after all earlier updates.
+3. Calls `run_agent_loop_streaming()` from
+   `crates/agents/src/runner/streaming.rs`.
+4. Broadcasts every lifecycle update. Adjacent input deltas are accumulated and
+   persisted as one `input_streaming` checkpoint immediately before that
+   invocation's next non-input boundary; each non-input update is persisted
+   before its WebSocket frame is broadcast.
 
-Runner event handling in the chat service:
+Ordinary runner-event handling in the chat service:
 
 | RunnerEvent                         | Chat service handling                                      |
 | ----------------------------------- | ---------------------------------------------------------- |
@@ -112,9 +121,6 @@ Runner event handling in the chat service:
 | `ResponsesReasoningPartDone { ... }` | Broadcasts `thinking_text` with the authoritative part text |
 | `ResponsesReasoningItem(item)`      | Persists backend-only opaque replay state; not broadcast    |
 | `TextDelta(text)`                   | Broadcasts `delta` with `text` field                       |
-| `ToolCallStart`                     | Broadcasts `tool_call_start`                               |
-| `ToolCallEnd`                       | Broadcasts `tool_call_end`                                 |
-| `ToolCallRejected`                  | Broadcasts `tool_call_end` with `rejected: true`           |
 | `Iteration(n)`                      | Broadcasts `iteration`                                     |
 | `SubAgentStart`                     | Broadcasts `sub_agent_start`                               |
 | `SubAgentEnd`                       | Broadcasts `sub_agent_end`                                 |
@@ -122,12 +128,36 @@ Runner event handling in the chat service:
 | `RetryingAfterError`                | Broadcasts `retrying`                                      |
 | `LoopInterventionFired`             | Broadcasts `notice` ("Loop detected")                      |
 
+Tool invocation updates use the shared `ToolLifecycleEvent` contract:
+
+| Stage | Meaning |
+| --- | --- |
+| `created` | The provider announced the invocation; the UI can create its bubble immediately. |
+| `input_streaming` | One JSON argument fragment is emitted; accumulated argument text lives in the active invocation and UI snapshots rather than the event. |
+| `input_ready` | Arguments decoded successfully; the canonical assistant tool-call frame is persisted before execution. |
+| `waiting_for_execution` | Pre-dispatch validation passed and the shared executor reached the execution boundary. |
+| `executing` | The implementation is about to run with the effective public arguments. |
+| `execution_progress` | Backend-authored elapsed time and progress text while the implementation future is pending. |
+| `result_ready` | The agent-facing result has been prepared, before terminal completion. |
+| `completed` | Terminal success or execution failure with result/error fields. |
+| `rejected` | Terminal pre-execution refusal with the original arguments and reason. |
+| `cancelled` | Terminal cancellation with an optional argument snapshot and reason. |
+
+Persisted lifecycle records use `role: "tool_lifecycle"` and store their `runId`,
+per-call `sequence`, and `emittedAtMs` timestamp in the lifecycle event itself.
+Terminal events can also carry `contextBudget`. Non-terminal events replace the
+active invocation snapshot, whose separate `accumulatedArguments` field retains
+streamed input; terminal events remove it. Lifecycle records do not reserve or
+broadcast a physical `messageIndex`. The WebSocket envelope adds `sessionKey`
+and, at `input_ready`, the canonical `assistantMessage` and the
+`assistantMessageIndex` returned by its successful append.
+
 The runner injects the exact provider tool-call ID into the hidden
 `_tool_call_id` execution context before implementation validation and restores
 trusted context after a `BeforeToolCall` hook rewrites arguments. Internal
-underscore-prefixed fields are removed from caller-visible tool events. The
-waiting [A2UI](a2ui.md) tool uses this ID with the trusted session and run IDs
-to route a browser action to one active invocation.
+underscore-prefixed fields are removed from caller-visible lifecycle arguments.
+The waiting [A2UI](a2ui.md) tool uses this ID with the trusted session and run
+IDs to route a browser action to one active invocation.
 
 ### 5. Web Crate (`crates/web/`)
 
@@ -140,9 +170,21 @@ UI concerns separate from API and agent logic in the gateway.
 
 The TypeScript frontend handles streaming via WebSocket:
 
-1. **websocket.ts** - Receives WebSocket frames and dispatches to handlers
-2. **events.ts** - Event bus for distributing events to components
-3. **state.js** - Manages streaming state (`streamText`, `streamEl`)
+1. **websocket.ts** receives WebSocket frames and dispatches them to handlers.
+2. **ws/chat-handlers.ts** accepts `state: "tool_lifecycle"` frames and upserts
+   one cached lifecycle entity per `(runId, toolCallId)`; only the first frame for
+   that invocation increments the logical session count.
+3. **tool-lifecycle.ts** validates the discriminated lifecycle union, accumulates
+   input deltas outside the wire event, and reduces per-call snapshots by
+   sequence. Terminal result strings are JSON-decoded only by consumers that
+   need structured fields.
+4. **ws/tool-helpers.ts** applies snapshots to one invocation card, including
+   backend-authored progress and terminal presentation. Terminal attachment is
+   allowed only for interactive live rendering.
+5. **sessions/session-render.ts** and **sessions/session-switch.ts** reuse the
+   same reducer and renderer for the latest persisted invocation snapshots and
+   active reconnect snapshots. History rendering is non-interactive and never
+   opens a terminal attachment WebSocket.
 
 When a `delta` event arrives:
 
