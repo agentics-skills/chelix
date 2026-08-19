@@ -2,7 +2,7 @@
 
 import { chatAddMsg } from "../chat-ui";
 import * as S from "../state";
-import { getSessionHistory, replaceSessionHistory } from "../stores/session-history-cache";
+import { getSessionHistory, replaceSessionHistory, retainSessionHistory } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
 import type { HistoryMessage } from "../types/session";
 
@@ -16,16 +16,19 @@ import {
 	setHistoryPaginationLoading,
 	setHistoryPaginationState,
 } from "./session-history";
-import { renderHistory, type SearchContext } from "./session-render";
+import { prependHistoryPage, renderHistory, type SearchContext } from "./session-render";
 
-interface ScrollSnapshot {
-	height: number;
-	top: number;
-}
-
-const HISTORY_AUTOLOAD_THRESHOLD_PX = 120;
+// How much history is kept ready above the viewport. Loading is driven by this
+// distance rather than by scroll events, so it cannot stall when a page adds
+// little height.
+const HISTORY_HEADROOM_PX = 1200;
 let historyScrollEl: HTMLElement | null = null;
 let historyScrollRaf = 0;
+// Session whose fill loop is running, so concurrent scroll events join it
+// instead of starting a second one. Keyed by session rather than global: a
+// switch must be able to start filling the newly opened chat even while the
+// previous one is still finishing a request.
+let historyFillKey: string | null = null;
 
 function isActiveSession(key: string): boolean {
 	return sessionStore.activeSessionKey.value === key;
@@ -36,19 +39,35 @@ function canLoadOlderHistory(key: string): boolean {
 	return paging?.hasMore === true && typeof paging.nextCursor === "number" && paging.loadingOlder === false;
 }
 
-function maybeLoadOlderHistoryFromScroll(): void {
-	if (!S.chatMsgBox) return;
-	if (S.chatMsgBox.scrollTop > HISTORY_AUTOLOAD_THRESHOLD_PX) return;
+/// Load older pages until the headroom above the viewport is filled.
+///
+/// The stop condition is the distance to the top, not the arrival of a page: a
+/// page holds a fixed number of messages, and how much height they add is
+/// unknown until they are rendered. Looping on the distance keeps short pages
+/// from leaving the user at a standstill.
+async function fillHistoryHeadroom(): Promise<void> {
 	const key = sessionStore.activeSessionKey.value || S.activeSessionKey;
-	if (!(key && canLoadOlderHistory(key))) return;
-	void loadOlderHistoryPage(key);
+	if (!key || historyFillKey === key) return;
+	historyFillKey = key;
+	try {
+		while (S.chatMsgBox && S.chatMsgBox.scrollTop < HISTORY_HEADROOM_PX) {
+			// The user may have switched away mid-request; that session owns its
+			// own fill loop and this one must stop.
+			if (!isActiveSession(key)) return;
+			if (!canLoadOlderHistory(key)) return;
+			const loaded = await loadOlderHistoryPage(key);
+			if (!loaded) return;
+		}
+	} finally {
+		if (historyFillKey === key) historyFillKey = null;
+	}
 }
 
 function handleHistoryScroll(): void {
 	if (historyScrollRaf) return;
 	historyScrollRaf = requestAnimationFrame(() => {
 		historyScrollRaf = 0;
-		maybeLoadOlderHistoryFromScroll();
+		void fillHistoryHeadroom();
 	});
 }
 
@@ -71,23 +90,13 @@ export function renderSessionHistory(
 	skipAutoScroll: boolean,
 ): void {
 	ensureHistoryScrollBinding();
+	// This session is the one on screen: its pages must survive, and the
+	// previously retained session becomes evictable again.
+	retainSessionHistory(key);
 	renderHistory(key, history, searchContext, totalCountHint, skipAutoScroll);
-}
-
-function resolvedHistoryTotal(totalMessages: number | null, history: HistoryMessage[]): number {
-	return typeof totalMessages === "number" && Number.isInteger(totalMessages) ? totalMessages : history.length;
-}
-
-function captureScrollSnapshot(): ScrollSnapshot {
-	return {
-		height: S.chatMsgBox?.scrollHeight || 0,
-		top: S.chatMsgBox?.scrollTop || 0,
-	};
-}
-
-function restoreScrollSnapshot(snapshot: ScrollSnapshot): void {
-	if (!S.chatMsgBox) return;
-	S.chatMsgBox.scrollTop = Math.max(0, snapshot.top + (S.chatMsgBox.scrollHeight - snapshot.height));
+	// A short first page can leave the viewport already at the top, where no
+	// scroll event will ever arrive to start loading.
+	void fillHistoryHeadroom();
 }
 
 function fetchOlderHistoryPage(key: string, paging: HistoryPaginationState): Promise<HistoryPayload> {
@@ -100,47 +109,38 @@ function fetchOlderHistoryPage(key: string, paging: HistoryPaginationState): Pro
 	});
 }
 
-function applyOlderHistoryPage(key: string, payload: HistoryPayload, scrollSnapshot: ScrollSnapshot): void {
+/// Add one older page to the cache and to the DOM.
+///
+/// The page is rendered on its own and inserted above the existing messages.
+/// Nothing already rendered is rebuilt, so live tool bubbles keep their sockets
+/// and the reading position is preserved.
+async function applyOlderHistoryPage(key: string, payload: HistoryPayload): Promise<void> {
 	const older = Array.isArray(payload.history) ? payload.history : [];
-	const current = getSessionHistory(key) || [];
-	if (older.length > 0 && payload.historyCacheHit !== true) {
-		replaceSessionHistory(key, mergeHistoryPages(current, older));
-	}
 	setHistoryPaginationState(key, payload);
-
-	const merged = getSessionHistory(key) || [];
-	const sessionMessageCount = sessionStore.getByKey(key)?.messageCount;
-	const totalCountHint = Number.isInteger(sessionMessageCount)
-		? (sessionMessageCount as number)
-		: Number(payload.totalMessages) || merged.length;
-	renderSessionHistory(key, merged, null, totalCountHint, true);
-	restoreScrollSnapshot(scrollSnapshot);
+	if (older.length === 0 || payload.historyCacheHit === true) return;
+	const tail = getSessionHistory(key) || [];
+	replaceSessionHistory(key, mergeHistoryPages(tail, older));
+	// The server pages strictly below the cursor, so an older page never repeats
+	// a message that is already on screen.
+	await prependHistoryPage(key, older);
 }
 
-function handleOlderHistoryFailure(key: string, paging: HistoryPaginationState): void {
-	if (!isActiveSession(key)) return;
-	const fallback = getSessionHistory(key) || [];
-	setHistoryPaginationLoading(key, false);
-	renderSessionHistory(key, fallback, null, resolvedHistoryTotal(paging.totalMessages, fallback), true);
-	chatAddMsg("error", "Failed to load older messages");
-}
-
-async function loadOlderHistoryPage(key: string): Promise<void> {
-	if (!(canLoadOlderHistory(key) && isActiveSession(key))) return;
+/// Load and insert one older page. Returns whether the caller may continue.
+async function loadOlderHistoryPage(key: string): Promise<boolean> {
+	if (!(canLoadOlderHistory(key) && isActiveSession(key))) return false;
 	const paging = setHistoryPaginationLoading(key, true);
-	if (!paging) return;
-
-	const loadedHistory = getSessionHistory(key) || [];
-	renderSessionHistory(key, loadedHistory, null, resolvedHistoryTotal(paging.totalMessages, loadedHistory), true);
-	const scrollSnapshot = captureScrollSnapshot();
-
+	if (!paging) return false;
 	try {
 		const payload = await fetchOlderHistoryPage(key, paging);
-		if (isActiveSession(key)) applyOlderHistoryPage(key, payload, scrollSnapshot);
-	} catch {
-		handleOlderHistoryFailure(key, paging);
+		if (!isActiveSession(key)) return false;
+		await applyOlderHistoryPage(key, payload);
+		return true;
+	} catch (error) {
+		if (isActiveSession(key)) {
+			chatAddMsg("error", `Failed to load older messages: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		return false;
 	} finally {
 		setHistoryPaginationLoading(key, false);
-		if (isActiveSession(key)) maybeLoadOlderHistoryFromScroll();
 	}
 }

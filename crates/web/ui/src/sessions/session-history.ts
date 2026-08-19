@@ -9,6 +9,7 @@ import {
 } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
 import type { HistoryMessage, SessionMeta } from "../types/session";
+import { hasVisibleReasoning, isReasoningContent } from "../types/ws-events";
 
 interface ChatParams {
 	content?: unknown[];
@@ -47,6 +48,76 @@ interface OutgoingUserMessage extends HistoryMessage {
 
 export const SESSION_HISTORY_PAGE_LIMIT = 120;
 const sessionHistoryPaging = new Map<string, HistoryPaginationState>();
+
+/** Whether an assistant frame renders a bubble of its own. */
+function assistantRendersBubble(message: HistoryMessage): boolean {
+	if (typeof message.content === "string" && message.content.trim()) return true;
+	if (typeof message.audio === "string" && message.audio.trim()) return true;
+	return isReasoningContent(message.reasoning) && hasVisibleReasoning(message.reasoning);
+}
+
+/** Segment identifiers that already have an assistant message of their own. */
+function assistantSegmentIds(history: HistoryMessage[]): Set<string> {
+	const ids = new Set<string>();
+	for (const message of history) {
+		if (message?.role !== "assistant") continue;
+		const id = message.segmentId || message.segment_id;
+		if (typeof id === "string" && id) ids.add(id);
+	}
+	return ids;
+}
+
+function segmentIdOfUpdate(message: HistoryMessage): string | null {
+	const direct = message.segmentId;
+	if (typeof direct === "string" && direct) return direct;
+	const update = message.update as { segmentId?: string } | undefined;
+	const nested = update?.segmentId;
+	return typeof nested === "string" && nested ? nested : null;
+}
+
+/// Roles that always render a bubble of their own.
+const ALWAYS_RENDERED_ROLES = new Set(["user", "system", "notice", "checkpoint", "tool_lifecycle"]);
+
+/**
+ * Whether each record of `history` renders a bubble of its own.
+ *
+ * Mirrors `rendered_bubble_flags` in `chelix-sessions`. It cannot be decided per
+ * record in isolation: a provider segment renders one bubble however many
+ * records it spans, and none once an assistant message carries that segment in
+ * its final form.
+ */
+function renderedBubbleFlags(history: HistoryMessage[]): boolean[] {
+	const assistantSegments = assistantSegmentIds(history);
+	const renderedSegments = new Set<string>();
+	return history.map((message) => {
+		const role = message?.role;
+		if (role && ALWAYS_RENDERED_ROLES.has(role)) return true;
+		if (role === "assistant") return assistantRendersBubble(message);
+		if (role !== "provider_update") return false;
+		const id = segmentIdOfUpdate(message);
+		if (!id || assistantSegments.has(id) || renderedSegments.has(id)) return false;
+		renderedSegments.add(id);
+		return true;
+	});
+}
+
+/** Number of bubbles `history` renders as. */
+export function countDisplayableMessages(history: HistoryMessage[]): number {
+	if (!Array.isArray(history)) return 0;
+	return renderedBubbleFlags(history).filter(Boolean).length;
+}
+
+/**
+ * Whether appending `message` to `history` adds a bubble.
+ *
+ * The live counter is incremented per arriving record, so it must ask the same
+ * question the totals answer: an assistant frame carrying only tool calls, or a
+ * record of a segment that is already on screen, adds nothing.
+ */
+export function appendingAddsBubble(history: HistoryMessage[], message: HistoryMessage): boolean {
+	const flags = renderedBubbleFlags([...(Array.isArray(history) ? history : []), message]);
+	return flags[flags.length - 1] === true;
+}
 
 function toValidHistoryIndex(value: unknown): number | null {
 	if (value === null || value === undefined) return null;
@@ -123,14 +194,17 @@ export function historyHasUnindexedMessages(history: HistoryMessage[]): boolean 
 	return false;
 }
 
-function currentSessionTailIndex(key: string): number | null {
+/**
+ * Index the next appended record will receive.
+ *
+ * Derived from the observed history tail, never from message counters: those
+ * count displayable messages, while a record index addresses a stored record
+ * and a single message can span many of them.
+ */
+function nextSessionHistoryIndex(key: string): number | null {
 	const session = sessionStore.getByKey(key);
-	if (session && typeof session.messageCount === "number" && session.messageCount > 0) {
-		return session.messageCount - 1;
-	}
-	if (key === S.activeSessionKey && S.lastHistoryIndex >= 0) {
-		return S.lastHistoryIndex + 1;
-	}
+	if (session && session.lastHistoryIndex.value >= 0) return session.lastHistoryIndex.value + 1;
+	if (key === S.activeSessionKey && S.lastHistoryIndex >= 0) return S.lastHistoryIndex + 1;
 	return null;
 }
 
@@ -140,7 +214,7 @@ export function cacheSessionHistoryMessage(key: string, message: HistoryMessage,
 
 export function cacheOutgoingUserMessage(key: string, chatParams: ChatParams): void {
 	if (!(key && chatParams)) return;
-	const historyIndex = currentSessionTailIndex(key);
+	const historyIndex = nextSessionHistoryIndex(key);
 	const next: OutgoingUserMessage = {
 		role: "user",
 		content: (chatParams.content && Array.isArray(chatParams.content)
@@ -245,7 +319,7 @@ export function syncHistoryState(
 	historyTailIndex: number,
 	totalCountHint: number | null,
 ): void {
-	const loadedCount = Array.isArray(history) ? history.length : 0;
+	const loadedCount = countDisplayableMessages(history);
 	const sessionEntry = sessionStore.getByKey(key);
 	const legacy = (S.sessions as SessionMeta[]).find((session) => session.key === key);
 	const existingCount = Number.isInteger(sessionEntry?.messageCount) ? (sessionEntry?.messageCount as number) : 0;

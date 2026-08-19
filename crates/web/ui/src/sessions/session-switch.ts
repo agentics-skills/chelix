@@ -1,7 +1,6 @@
 // ── Session switching: switch, restore, refresh ─────────────────
 
-import { chatAddMsg, setComposerStopButton, updateTokenBar } from "../chat-ui";
-import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
+import { chatAddMsg, resetChatView, setComposerStopButton, updateTokenBar } from "../chat-ui";
 import { sendRpc } from "../helpers";
 import { renderQueuedPrompts, setQueuedPrompts } from "../pages/chat/prompt-queue";
 import { updateSessionProjectSelect } from "../project-combo";
@@ -27,6 +26,7 @@ import {
 } from "./session-agent";
 import {
 	clearHistoryPaginationState,
+	countDisplayableMessages,
 	fetchSessionHistoryViaHttp,
 	getHistoryPaginationState,
 	type HistoryPayload,
@@ -163,8 +163,7 @@ function finishSessionRefresh(key: string): void {
 function resetSwitchViewState(): void {
 	hideSessionLoadIndicator();
 	if (S.chatMsgBox) {
-		unmountExecuteCommandToolBubbles(S.chatMsgBox);
-		S.chatMsgBox.textContent = "";
+		resetChatView(S.chatMsgBox);
 	}
 	renderQueuedPrompts();
 	S.setStreamEl(null);
@@ -244,8 +243,7 @@ export function clearActiveSession(): Promise<RpcResponse> {
 	return sendRpc("chat.clear", {}).then((res) => {
 		if (res?.ok) {
 			if (S.chatMsgBox) {
-				unmountExecuteCommandToolBubbles(S.chatMsgBox);
-				S.chatMsgBox.textContent = "";
+				resetChatView(S.chatMsgBox);
 			}
 			S.setSessionTokens({ input: 0, output: 0 });
 			S.setSessionCurrentInputTokens(0);
@@ -327,11 +325,9 @@ function appendHistoryLoadNotices(application: HistoryApplication, historyPayloa
 		);
 	}
 	if (historyPayload.hasMore === true) {
-		const total = Number(historyPayload.totalMessages) || application.resolvedHistory.length;
-		chatAddMsg(
-			"system",
-			`Loaded recent history (${application.resolvedHistory.length} of ${total} messages) for faster loading.`,
-		);
+		const loaded = countDisplayableMessages(application.resolvedHistory);
+		const total = Number(historyPayload.totalMessages) || loaded;
+		chatAddMsg("system", `Loaded recent history (${loaded} of ${total} messages) for faster loading.`);
 	}
 }
 
@@ -348,7 +344,7 @@ function renderActiveSwitch(
 	setQueuedPrompts(context.key, switchPayload.queuedPrompts ?? []);
 	const totalCountHint = Number.isInteger(entry.messageCount)
 		? (entry.messageCount as number)
-		: Number(historyPayload.totalMessages) || application.resolvedHistory.length;
+		: Number(historyPayload.totalMessages) || countDisplayableMessages(application.resolvedHistory);
 	const shouldRerender =
 		!context.hasCache || Boolean(context.searchContext?.query) || application.appliedServerHistory || pagingChanged;
 	if (shouldRerender) {

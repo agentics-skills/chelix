@@ -1,6 +1,6 @@
 //! Shared UI history filtering for JSONL session records.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use {
     chelix_common::{ReasoningContent, tool_lifecycle::ToolLifecycleEvent},
@@ -13,6 +13,71 @@ fn has_visible_reasoning(value: Option<&Value>) -> bool {
     value
         .and_then(|value| serde_json::from_value::<ReasoningContent>(value.clone()).ok())
         .is_some_and(|reasoning| !reasoning.is_blank())
+}
+
+/// Segment a record belongs to.
+fn segment_id(message: &Value) -> Option<&str> {
+    message.get("segmentId").and_then(Value::as_str)
+}
+
+/// Whether an assistant frame renders a bubble of its own.
+///
+/// A frame kept only for its `tool_calls` carries the identity and terminal
+/// metadata of the tool results; the UI attaches those to the tool cards and
+/// renders no message for the frame itself.
+fn assistant_renders_bubble(message: &Value) -> bool {
+    let has_content = message
+        .get("content")
+        .and_then(Value::as_str)
+        .is_some_and(|content| !content.trim().is_empty());
+    let has_audio = message
+        .get("audio")
+        .and_then(Value::as_str)
+        .is_some_and(|audio| !audio.trim().is_empty());
+    has_content || has_audio || has_visible_reasoning(message.get("reasoning"))
+}
+
+/// Whether each record of `history` renders a bubble of its own.
+///
+/// This is the single definition of the unit that message counts and page
+/// limits are expressed in, so it follows the renderer exactly. It cannot be
+/// decided per record in isolation: a provider segment renders one bubble no
+/// matter how many records it spans, and renders none once an assistant message
+/// carries that segment in its final form.
+///
+/// Roles the renderer has no branch for produce no DOM and count as nothing, so
+/// a count never promises a bubble that does not exist.
+#[must_use]
+pub fn rendered_bubble_flags(history: &[Value]) -> Vec<bool> {
+    let assistant_segments: HashSet<&str> = history
+        .iter()
+        .filter(|message| message.get("role").and_then(Value::as_str) == Some("assistant"))
+        .filter_map(segment_id)
+        .collect();
+
+    let mut rendered_segments: HashSet<&str> = HashSet::new();
+    history
+        .iter()
+        .map(
+            |message| match message.get("role").and_then(Value::as_str) {
+                Some("user" | "system" | "notice" | "checkpoint" | "tool_lifecycle") => true,
+                Some("assistant") => assistant_renders_bubble(message),
+                Some("provider_update") => segment_id(message).is_some_and(|id| {
+                    !assistant_segments.contains(id) && rendered_segments.insert(id)
+                }),
+                _ => false,
+            },
+        )
+        .collect()
+}
+
+/// Number of bubbles `history` renders as.
+#[must_use]
+pub fn count_rendered_bubbles(history: &[Value]) -> usize {
+    rendered_bubble_flags(history)
+        .into_iter()
+        .filter(|rendered| *rendered)
+        .count()
 }
 
 /// Remove provider replay state before a value crosses a UI or API boundary.

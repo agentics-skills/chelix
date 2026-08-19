@@ -6,6 +6,7 @@ import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
 	chatAddMsg,
+	chatInsertionTarget,
 	smartScrollToBottom,
 	stripChannelPrefix,
 } from "../chat-ui";
@@ -312,6 +313,10 @@ function updateA2uiSurface(card: HTMLElement, snapshot: ToolInvocationSnapshot, 
 
 function closeCanonicalAssistantBeforeCard(snapshot: ToolInvocationSnapshot, eventSession: string): void {
 	if (snapshot.lifecycle.stage !== "input_ready" || !snapshot.assistantMessage) return;
+	// Replayed records describe a finished turn. The live element belongs to the
+	// run streaming right now, and closing it from a replay would cut off the
+	// response the user is watching.
+	if (S.chatBatchLoading) return;
 	// `input_ready` repeats for every tool call of the same assistant turn, but
 	// the bubble is closed once. Reapplying the canonical frame afterwards would
 	// repaint an already finished bubble on every following tool call.
@@ -332,6 +337,13 @@ function placeToolCard(
 	snapshot: ToolInvocationSnapshot,
 	eventSession: string,
 ): void {
+	// A batch replay carries its own order: the records are rendered in history
+	// order. The live segment describes the run currently streaming, which is a
+	// different part of the conversation, so it must not position these cards.
+	if (S.chatBatchLoading) {
+		container.appendChild(card);
+		return;
+	}
 	const segment = currentLiveSegment(eventSession);
 	if (!segment) {
 		container.appendChild(card);
@@ -357,7 +369,8 @@ export function renderToolLifecycleSnapshot(
 	closeCanonicalAssistantBeforeCard(snapshot, eventSession);
 	if (!(card || shouldRenderLifecycle(snapshot, options.renderEarly !== false))) return null;
 	if (!card) {
-		if (!S.chatMsgBox) return null;
+		const target = chatInsertionTarget();
+		if (!target) return null;
 		card = createToolCallCard({
 			id: cardId,
 			toolCallId: snapshot.lifecycle.toolCallId,
@@ -369,7 +382,7 @@ export function renderToolLifecycleSnapshot(
 			expanded: true,
 		});
 		clearChatEmptyState();
-		placeToolCard(S.chatMsgBox, card, snapshot, eventSession);
+		placeToolCard(target, card, snapshot, eventSession);
 	}
 	const renderedSequence = Number(card.dataset.toolSequence);
 	if (Number.isSafeInteger(renderedSequence) && renderedSequence >= snapshot.lifecycle.sequence) return card;

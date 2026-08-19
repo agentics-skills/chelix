@@ -29,6 +29,7 @@ export const cacheOutgoingUserMessage = sessionHistory.cacheOutgoingUserMessage;
 export const cacheSessionHistoryMessage = sessionHistory.cacheSessionHistoryMessage;
 export const clearHistoryPaginationState = sessionHistory.clearHistoryPaginationState;
 export const clearSessionHistoryCache = sessionHistory.clearSessionHistoryCache;
+export const appendingAddsBubble = sessionHistory.appendingAddsBubble;
 export const bumpSessionCount = sessionList.bumpSessionCount;
 export const fetchSessions = sessionList.fetchSessions;
 export const markSessionLocallyCleared = sessionList.markSessionLocallyCleared;

@@ -5,11 +5,16 @@ import {
 	appendReasoningDisclosure,
 	chatAddMsg,
 	chatAddMsgWithImages,
+	chatInsertionTarget,
+	chatViewEpoch,
 	highlightAndScroll,
+	preserveChatViewport,
+	resetChatView,
 	scrollChatToBottom,
 	stripChannelPrefix,
 	syncChatFollowStateFromPosition,
 	updateTokenBar,
+	withChatInsertionTarget,
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
@@ -342,8 +347,8 @@ function decorateAssistantMessage(messageEl: HTMLElement | null, msg: AssistantM
 	if (Number.isInteger(msg.historyIndex)) messageEl.dataset.historyIndex = String(msg.historyIndex);
 }
 
-function renderHistoryAssistantMessage(msg: AssistantMsg): HTMLElement | null {
-	const isTerminal = isTerminalAssistantMessage(msg);
+function renderHistoryAssistantMessage(msg: AssistantMsg, applySessionUsage: boolean): HTMLElement | null {
+	const isTerminal = isTerminalAssistantMessage(msg) && applySessionUsage;
 	if (!hasVisibleAssistantContent(msg)) {
 		applyTerminalAssistantUsage(msg, isTerminal);
 		return null;
@@ -612,6 +617,12 @@ interface HistoryRenderState {
 	providerSegments: Map<string, ProviderSegmentViewModel>;
 	/// Segments already rendered as a persisted assistant message.
 	assistantSegmentIds: Set<string>;
+	/// Whether the rendered messages describe the session tail.
+	///
+	/// Token counters and the latest context describe the end of the history. An
+	/// older page replayed above the viewport describes turns that already
+	/// contributed to them, so it must not add its usage a second time.
+	applySessionUsage: boolean;
 }
 
 function registerAssistantTerminalMetadata(
@@ -623,7 +634,7 @@ function registerAssistantTerminalMetadata(
 	const toolIds = toolCallIds(message.tool_calls);
 	if (toolIds.length === 0) {
 		appendTerminalMetadata(
-			S.chatMsgBox,
+			chatInsertionTarget(),
 			messageEl,
 			terminalMetadataData(message, { historyIndex: message.historyIndex }),
 		);
@@ -651,14 +662,14 @@ function resolvePendingToolMetadata(
 		pendingMetadata.delete(completedToolCallId);
 	}
 	appendTerminalMetadata(
-		S.chatMsgBox,
+		chatInsertionTarget(),
 		toolCard,
 		terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
 	);
 }
 
 function renderAssistantHistoryEntry(message: AssistantMsg, state: HistoryRenderState): void {
-	const messageEl = renderHistoryAssistantMessage(message);
+	const messageEl = renderHistoryAssistantMessage(message, state.applySessionUsage);
 	state.messageElements.push(messageEl);
 	for (const toolCallId of toolCallIds(message.tool_calls)) {
 		if (Number.isInteger(message.historyIndex)) {
@@ -712,6 +723,13 @@ function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState
 			applyProviderSegmentCloseHistoryEntry(message, state);
 			return;
 		case "notice":
+			state.messageElements.push(
+				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
+			);
+			return;
+		// Persisted failures. Dropping them would hide, on every reload, an error
+		// the service explicitly recorded.
+		case "system":
 			state.messageElements.push(
 				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
 			);
@@ -823,7 +841,7 @@ function appendRemainingTerminalMetadata(pendingMetadata: Map<string, PendingTer
 	for (const pending of new Set(pendingMetadata.values())) {
 		if (!pending.lastToolCard) continue;
 		appendTerminalMetadata(
-			S.chatMsgBox,
+			chatInsertionTarget(),
 			pending.lastToolCard,
 			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
 		);
@@ -865,12 +883,31 @@ export function renderHistory(
 	hideSessionLoadIndicator();
 	if (S.chatMsgBox) {
 		S.chatMsgBox.classList.remove("chat-messages-empty");
-		unmountExecuteCommandToolBubbles(S.chatMsgBox);
-		S.chatMsgBox.textContent = "";
+		resetChatView(S.chatMsgBox);
 	}
 	S.setSessionTokens({ input: 0, output: 0 });
 	S.setSessionCurrentInputTokens(0);
 	S.setSessionCurrentContextTokens(0);
+	const state = renderHistoryMessages(key, history);
+	updateTokenBar(state.latestToolContextBudget);
+	if (S.chatMsgBox) highlightCodeBlocks(S.chatMsgBox);
+	const historyTailIndex = computeHistoryTailIndex(history);
+	syncHistoryState(key, history, historyTailIndex, totalCountHint);
+	S.setChatSeq(latestUserSequence(history));
+	if (history.length === 0) showWelcomeCard();
+	postHistoryLoadActions(key, searchContext, state.messageElements, skipAutoScroll === true);
+}
+
+/// Render `history` into whatever container is currently the insertion target.
+///
+/// This is the single materialization path: a full render and an older page
+/// differ only in where the nodes go and what happens around them, never in how
+/// a message becomes DOM.
+function renderHistoryMessages(
+	key: string,
+	history: HistoryMessage[],
+	options: { applySessionUsage: boolean } = { applySessionUsage: true },
+): HistoryRenderState {
 	S.setChatBatchLoading(true);
 	const state: HistoryRenderState = {
 		sessionKey: key,
@@ -881,17 +918,48 @@ export function renderHistory(
 		latestToolContextBudget: null,
 		providerSegments: new Map(),
 		assistantSegmentIds: assistantSegmentIds(history),
+		applySessionUsage: options.applySessionUsage,
 	};
-	for (const message of history) renderHistoryMessage(message, state);
-	// Whatever is left was never closed: the run was interrupted mid-response.
-	renderReplayedProviderSegments(state);
-	appendRemainingTerminalMetadata(state.pendingTerminalMetadata);
-	updateTokenBar(state.latestToolContextBudget);
-	S.setChatBatchLoading(false);
-	if (S.chatMsgBox) highlightCodeBlocks(S.chatMsgBox);
-	const historyTailIndex = computeHistoryTailIndex(history);
-	syncHistoryState(key, history, historyTailIndex, totalCountHint);
-	S.setChatSeq(latestUserSequence(history));
-	if (history.length === 0) showWelcomeCard();
-	postHistoryLoadActions(key, searchContext, state.messageElements, skipAutoScroll === true);
+	try {
+		for (const message of history) renderHistoryMessage(message, state);
+		// Whatever is left was never closed: the run was interrupted mid-response.
+		renderReplayedProviderSegments(state);
+		appendRemainingTerminalMetadata(state.pendingTerminalMetadata);
+	} finally {
+		S.setChatBatchLoading(false);
+	}
+	return state;
+}
+
+/// Insert an older history page above what is already rendered.
+///
+/// Only the new page is materialized: the messages already on screen keep their
+/// DOM nodes, so live terminal bubbles stay mounted, and the viewport stays on
+/// the message the user was reading. Session-wide state is untouched — the tail
+/// of the history did not change, so token counters, the tail index and the
+/// client sequence still describe it correctly.
+export async function prependHistoryPage(key: string, page: HistoryMessage[]): Promise<void> {
+	const box = S.chatMsgBox;
+	if (!(box && page.length > 0)) return;
+	const epoch = chatViewEpoch();
+	const fragment = document.createDocumentFragment();
+	const container = document.createElement("div");
+	withChatInsertionTarget(container, () => {
+		renderHistoryMessages(key, page, { applySessionUsage: false });
+	});
+	// Highlighting resizes code blocks. Doing it while the page is still detached
+	// keeps every height change out of the scroll container, so the correction
+	// below is the final position instead of one more jump a few frames later.
+	await highlightCodeBlocks(container);
+	// Highlighting yields to the event loop, so the chat may have moved on: the
+	// user switched sessions, or `chat.clear` emptied this one. Either way these
+	// nodes describe a history that is no longer on screen and must be dropped
+	// rather than inserted into a view they do not belong to.
+	if (S.chatMsgBox !== box) return;
+	if (sessionStore.activeSessionKey.value !== key) return;
+	if (chatViewEpoch() !== epoch) return;
+	while (container.firstChild) fragment.appendChild(container.firstChild);
+	preserveChatViewport(box, () => {
+		box.insertBefore(fragment, box.firstChild);
+	});
 }

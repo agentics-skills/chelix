@@ -1,5 +1,6 @@
 // ── Chat UI ─────────────────────────────────────────────────
 
+import { unmountExecuteCommandToolBubbles } from "./components/ExecuteCommandToolBubble";
 import { formatTokens, parseErrorMessage, renderDocument, renderMarkdown, sendRpc } from "./helpers";
 import * as S from "./state";
 import type { ContextBudgetMetadata, ReasoningContent } from "./types/ws-events";
@@ -37,9 +38,33 @@ function clearChatEmptyState(): void {
 let isAutoScrolling = false;
 let shouldFollowChat = true;
 let trackedChatMsgBox: HTMLElement | null = null;
+// Container new chat nodes are inserted into. It is the chat box itself except
+// while an older history page is rendered into a detached fragment, so the
+// page can be built without touching what is already on screen.
+let chatInsertTarget: HTMLElement | null = null;
 // `scrollTop` written by the last programmatic scroll, used to tell our own
 // scroll events apart from the user's.
 let programmaticScrollTop: number | null = null;
+
+/// Container that receives newly rendered chat nodes.
+export function chatInsertionTarget(): HTMLElement | null {
+	return chatInsertTarget ?? S.chatMsgBox;
+}
+
+/// Render everything `build` produces into `target` instead of the chat box.
+///
+/// The target is restored afterwards, including when `build` throws: a render
+/// that failed halfway must not leave later messages writing into a detached
+/// node.
+export function withChatInsertionTarget(target: HTMLElement, build: () => void): void {
+	const previous = chatInsertTarget;
+	chatInsertTarget = target;
+	try {
+		build();
+	} finally {
+		chatInsertTarget = previous;
+	}
+}
 
 function handleChatScroll(): void {
 	if (!S.chatMsgBox) return;
@@ -76,6 +101,10 @@ export function syncChatFollowStateFromPosition(): void {
 // autoScrollMode "always", user-sent messages).
 export function scrollChatToBottom(force = false): void {
 	if (!S.chatMsgBox) return;
+	// A batch render inserts many nodes at once. Scrolling per node would fight
+	// the position the batch is about to establish, so the batch scrolls once,
+	// after it finished.
+	if (S.chatBatchLoading) return;
 	ensureChatFollowTracking();
 	if (force) shouldFollowChat = true;
 	else if (!shouldFollowChat) return;
@@ -111,6 +140,7 @@ export function isChatAtBottom(threshold = 60): boolean {
  * - else → show indicator, let user choose when to scroll
  */
 export function smartScrollToBottom(): void {
+	if (S.chatBatchLoading) return;
 	ensureChatFollowTracking();
 	if (S.autoScrollMode === "always") {
 		scrollChatToBottom(true);
@@ -122,6 +152,41 @@ export function smartScrollToBottom(): void {
 	} else {
 		showNewContentIndicator();
 	}
+}
+
+/// Incremented every time the chat view is emptied.
+///
+/// Work that renders detached nodes for the current view — an older history
+/// page waiting on syntax highlighting — compares this before inserting them:
+/// a session switch or `chat.clear` in the meantime means those nodes describe
+/// a view that no longer exists. Streaming does not touch it, so a response in
+/// progress never invalidates a page in flight.
+let chatViewGeneration = 0;
+
+export function chatViewEpoch(): number {
+	return chatViewGeneration;
+}
+
+/// Empty the chat view and invalidate any detached render targeting it.
+export function resetChatView(box: HTMLElement): void {
+	unmountExecuteCommandToolBubbles(box);
+	box.textContent = "";
+	chatViewGeneration += 1;
+}
+
+/// Run `mutate`, which grows `box` above the viewport, keeping what the user
+/// currently sees in place.
+///
+/// The resulting scroll correction is our own, not user intent: it is recorded
+/// as programmatic so it cannot flip the chat out of follow mode.
+export function preserveChatViewport(box: HTMLElement, mutate: () => void): void {
+	const previousHeight = box.scrollHeight;
+	const previousTop = box.scrollTop;
+	mutate();
+	const nextTop = previousTop + (box.scrollHeight - previousHeight);
+	if (nextTop === box.scrollTop) return;
+	box.scrollTop = nextTop;
+	programmaticScrollTop = box.scrollTop;
 }
 
 /** Show the "new content" floating indicator on the chat area. */
@@ -150,7 +215,8 @@ export function hideNewContentIndicator(): void {
 export type MessageRole = "user" | "assistant" | "system" | "error";
 
 export function chatAddMsg(cls: MessageRole, content: string, isHtml?: boolean): HTMLDivElement | null {
-	if (!S.chatMsgBox) return null;
+	const target = chatInsertionTarget();
+	if (!target) return null;
 	clearChatEmptyState();
 	const el = document.createElement("div");
 	el.className = `msg ${cls}`;
@@ -164,11 +230,9 @@ export function chatAddMsg(cls: MessageRole, content: string, isHtml?: boolean):
 	} else {
 		el.textContent = content;
 	}
-	S.chatMsgBox.appendChild(el);
-	if (!S.chatBatchLoading) {
-		if (cls === "user") scrollChatToBottom(true);
-		else smartScrollToBottom();
-	}
+	target.appendChild(el);
+	if (cls === "user") scrollChatToBottom(true);
+	else smartScrollToBottom();
 	return el;
 }
 
@@ -224,18 +288,17 @@ export function chatAddMsgWithAttachments(
 	images: ImageAttachment[],
 	documents: DocumentAttachment[],
 ): HTMLDivElement | null {
-	if (!S.chatMsgBox) return null;
+	const target = chatInsertionTarget();
+	if (!target) return null;
 	clearChatEmptyState();
 	const el = document.createElement("div");
 	el.className = `msg ${cls}`;
 	appendHtmlContent(el, htmlContent);
 	appendImageAttachments(el, images);
 	appendDocumentAttachments(el, documents);
-	S.chatMsgBox.appendChild(el);
-	if (!S.chatBatchLoading) {
-		if (cls === "user") scrollChatToBottom(true);
-		else smartScrollToBottom();
-	}
+	target.appendChild(el);
+	if (cls === "user") scrollChatToBottom(true);
+	else smartScrollToBottom();
 	return el;
 }
 
