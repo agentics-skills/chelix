@@ -130,7 +130,8 @@ impl AgentTool for RipgrepTool {
                 },
                 "unrestricted": {
                     "type": "integer",
-                    "enum": [0, 1, 2, 3],
+                    "minimum": 0,
+                    "maximum": 3,
                     "default": 3,
                     "description": "Ignore rules level (maps to -u/-uu/-uuu)."
                 },
@@ -302,6 +303,34 @@ mod tests {
         .unwrap_or_else(|error| panic!("parse failed: {error}"));
 
         assert_eq!(input.pattern, "needle");
+    }
+
+    /// The advertised bounds must be exactly the values the tool accepts, so a
+    /// model cannot read a range the server later rejects.
+    #[test]
+    fn unrestricted_schema_bounds_match_the_accepted_levels() {
+        let schema =
+            RipgrepTool::new(client("http://tools.invalid".into(), "unused")).parameters_schema();
+        let unrestricted = &schema["properties"]["unrestricted"];
+
+        assert_eq!(unrestricted["type"], "integer");
+        assert_eq!(unrestricted["default"], 3);
+        let minimum = unrestricted["minimum"]
+            .as_i64()
+            .unwrap_or_else(|| panic!("'unrestricted' must declare a numeric minimum"));
+        let maximum = unrestricted["maximum"]
+            .as_i64()
+            .unwrap_or_else(|| panic!("'unrestricted' must declare a numeric maximum"));
+
+        for level in minimum..=maximum {
+            let input = parse_input(json!({ "pattern": "needle", "unrestricted": level }))
+                .unwrap_or_else(|error| {
+                    panic!("level {level} is advertised but rejected: {error}")
+                });
+            assert_eq!(i64::from(input.unrestricted), level);
+        }
+        assert!(parse_input(json!({ "pattern": "needle", "unrestricted": maximum + 1 })).is_err());
+        assert!(parse_input(json!({ "pattern": "needle", "unrestricted": minimum - 1 })).is_err());
     }
 
     #[tokio::test]
