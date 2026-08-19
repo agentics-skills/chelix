@@ -21,11 +21,19 @@ function ExecuteCommandToolBubble({
 	const status = useSignal("");
 	const statusLevel = useSignal<"" | "ok" | "error">("");
 
+	// The two branches carry distinct keys so attaching the terminal replaces the
+	// progress element instead of reusing it. Both are plain divs, so without the
+	// keys Preact would keep the same node and only swap the children it tracks,
+	// leaving the progress text in place above the terminal.
 	if (!attachTerminal) {
-		return <div className="tool-call-result-placeholder">{progressMessage || "Waiting for tool result…"}</div>;
+		return (
+			<div key="progress" className="tool-call-result-placeholder">
+				{progressMessage || "Waiting for tool result…"}
+			</div>
+		);
 	}
 	return (
-		<div className="overflow-hidden rounded border border-[var(--border)] bg-[var(--bg)]">
+		<div key="terminal" className="overflow-hidden rounded border border-[var(--border)] bg-[var(--bg)]">
 			<TerminalAttachment
 				connection={{ mode: "tool_call", sessionKey, toolCallId }}
 				className="terminal-output chat-terminal-output h-24 min-h-0"
