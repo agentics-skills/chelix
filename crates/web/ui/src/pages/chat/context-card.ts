@@ -1,6 +1,6 @@
 // ── Context card rendering ───────────────────────────────────
 
-import { smartScrollToBottom } from "../../chat-ui";
+import { chatInsertionTarget, smartScrollToBottom } from "../../chat-ui";
 import { formatBytes, formatTokens } from "../../helpers";
 import * as S from "../../state";
 import type { ChatContextPayload, ChatContextTokenUsage, PromptMemoryData } from "../../types/chat";
@@ -51,7 +51,8 @@ export function ctxSection(title: string): HTMLElement {
  * in both paths. Appends to the chat message box and returns the element.
  */
 export function renderCheckpointCard(data: CheckpointCardData): HTMLElement | null {
-	if (!S.chatMsgBox) return null;
+	const target = chatInsertionTarget();
+	if (!target) return null;
 	slashInjectStyles();
 	const card = ctxEl("div", "ctx-card checkpoint-card");
 	const header = ctxEl("div", "ctx-header");
@@ -87,7 +88,7 @@ export function renderCheckpointCard(data: CheckpointCardData): HTMLElement | nu
 		details.appendChild(body);
 		card.appendChild(details);
 	}
-	S.chatMsgBox.appendChild(card);
+	target.appendChild(card);
 	return card;
 }
 

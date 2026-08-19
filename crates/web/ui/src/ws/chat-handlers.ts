@@ -5,12 +5,12 @@ import {
 	chatAddErrorCard,
 	chatAddErrorMsg,
 	chatAddMsg,
+	resetChatView,
 	setComposerStopButton,
 	smartScrollToBottom,
 	updateTokenBar,
 } from "../chat-ui";
 import { highlightCodeBlocks } from "../code-highlight";
-import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { localizeStructuredError, renderAudioPlayer, renderMarkdown } from "../helpers";
 import { t } from "../i18n";
 import { appendMessageActions } from "../message-actions";
@@ -19,6 +19,7 @@ import { renderCheckpointCard } from "../pages/chat/context-card";
 import { setQueuedPrompts } from "../pages/chat/prompt-queue";
 import { currentPrefix } from "../router";
 import {
+	appendingAddsBubble,
 	bumpSessionCount,
 	cacheSessionHistoryMessage,
 	clearSessionHistoryCache,
@@ -34,6 +35,7 @@ import {
 	type ProviderSegmentViewModel,
 } from "../sessions/provider-segment-reducer";
 import * as S from "../state";
+import { getSessionHistory } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
@@ -306,7 +308,12 @@ function cacheIndexedHistoryMessage(
 	const index = historyIndex as number;
 	const session = sessionStore.getByKey(eventSession);
 	const knownIndex = session ? session.lastHistoryIndex.value : S.lastHistoryIndex;
-	if (index > knownIndex) bumpSessionCount(eventSession, 1);
+	// The counter is expressed in bubbles, and most arriving records are stream
+	// fragments or frames that render nothing on their own, so the decision needs
+	// the history this record joins.
+	if (index > knownIndex && appendingAddsBubble(getSessionHistory(eventSession) || [], message)) {
+		bumpSessionCount(eventSession, 1);
+	}
 	cacheSessionHistoryMessage(eventSession, message, index);
 	updateSessionHistoryIndex(eventSession, index);
 }
@@ -321,13 +328,17 @@ function cacheLifecycleAssistantFrame(payload: ToolLifecyclePayload, eventSessio
 }
 
 function cacheToolLifecycleFrame(snapshot: ToolInvocationSnapshot, eventSession: string): void {
-	const inserted = cacheSessionHistoryMessage(eventSession, {
+	const message: HistoryMessage = {
 		role: "tool_lifecycle",
 		...toToolLifecycleEvent(snapshot.lifecycle),
 		accumulatedArguments: snapshot.accumulatedArguments,
 		created_at: snapshot.lifecycle.emittedAtMs,
-	});
-	if (inserted) bumpSessionCount(eventSession, 1);
+	};
+	// Later stages of the same call replace the existing record rather than
+	// adding one, so only the first insertion adds a card.
+	const history = getSessionHistory(eventSession) || [];
+	const inserted = cacheSessionHistoryMessage(eventSession, message);
+	if (inserted && appendingAddsBubble(history, message)) bumpSessionCount(eventSession, 1);
 }
 
 function updateActiveTokenBarContextBudget(p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
@@ -978,8 +989,7 @@ function handleChatSessionCleared(_p: ChatPayload, isActive: boolean, isChatPage
 	setComposerStopButton(false);
 	// Active viewer: clear the chat box and token bar.
 	if (S.chatMsgBox) {
-		unmountExecuteCommandToolBubbles(S.chatMsgBox);
-		S.chatMsgBox.textContent = "";
+		resetChatView(S.chatMsgBox);
 	}
 	S.setSessionTokens({ input: 0, output: 0 });
 	S.setSessionCurrentInputTokens(0);

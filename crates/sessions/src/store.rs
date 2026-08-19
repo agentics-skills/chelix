@@ -240,7 +240,7 @@ impl SessionStore {
 
     /// Count the compact UI history entities for session metadata.
     pub async fn ui_message_count(&self, key: &str) -> Result<u32> {
-        let count = filter_ui_history(self.read(key).await?)?.len();
+        let count = crate::count_rendered_bubbles(&filter_ui_history(self.read(key).await?)?);
         u32::try_from(count)
             .map_err(|error| Error::message(format!("UI message count exceeds u32: {error}")))
     }
@@ -892,6 +892,110 @@ mod tests {
         store.append("main", &completed).await.unwrap();
 
         assert_eq!(store.count("main").await.unwrap(), 3);
+        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
+    }
+
+    /// A streamed answer is many records but one message; the counter shown in
+    /// the UI must agree with the number of bubbles, not with the record count.
+    #[tokio::test]
+    async fn ui_message_count_counts_a_streamed_answer_as_one_message() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "hi"}))
+            .await
+            .unwrap();
+        for sequence in 0..64 {
+            store
+                .append(
+                    "main",
+                    &json!({
+                        "role": "provider_update",
+                        "segmentId": "segment-1",
+                        "update": {"sequence": sequence}
+                    }),
+                )
+                .await
+                .unwrap();
+        }
+        store
+            .append(
+                "main",
+                &json!({"role": "provider_segment_close", "segmentId": "segment-1"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "assistant",
+                    "segmentId": "segment-1",
+                    "content": "hello"
+                }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(store.count("main").await.unwrap(), 67);
+        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
+    }
+
+    /// The count must follow the renderer in both directions.
+    #[tokio::test]
+    async fn ui_message_count_follows_what_the_renderer_produces() {
+        let (store, _dir) = temp_store();
+
+        // An attempt abandoned on retry: records exist, no assistant message was
+        // ever written, yet the UI still renders the segment as one bubble.
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "provider_update",
+                    "segmentId": "abandoned",
+                    "update": {"sequence": 0}
+                }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "provider_segment_close", "segmentId": "abandoned"}),
+            )
+            .await
+            .unwrap();
+        // A frame kept only for its tool calls renders no bubble of its own.
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"id": "call-1"}]
+                }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(store.ui_message_count("main").await.unwrap(), 1);
+    }
+
+    /// A persisted failure is shown to the user, so it counts as a message.
+    #[tokio::test]
+    async fn ui_message_count_includes_persisted_errors() {
+        let (store, _dir) = temp_store();
+
+        store
+            .append("main", &json!({"role": "user", "content": "hi"}))
+            .await
+            .unwrap();
+        store
+            .append_typed("main", &PersistedMessage::system("[error] provider failed"))
+            .await
+            .unwrap();
+
         assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
     }
 

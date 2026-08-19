@@ -48,14 +48,18 @@ async function ensureLanguageLoaded(lang: string): Promise<boolean> {
 	if (loadedLangs.includes(lang)) return true;
 	let inFlight = languageLoadPromises.get(lang);
 	if (!inFlight) {
-		inFlight = highlighter
-			.loadLanguage(lang as Parameters<typeof highlighter.loadLanguage>[0])
-			.catch(() => {
+		// A grammar outside the bundle is reported synchronously for some
+		// languages and as a rejection for others, so both are contained here.
+		// An unhighlighted block is not an error: the code is still readable.
+		inFlight = (async (): Promise<void> => {
+			try {
+				await highlighter?.loadLanguage(lang as Parameters<typeof highlighter.loadLanguage>[0]);
+			} catch {
 				// Unknown/unsupported language -- leave code block unhighlighted.
-			})
-			.finally(() => {
+			} finally {
 				languageLoadPromises.delete(lang);
-			});
+			}
+		})();
 		languageLoadPromises.set(lang, inFlight);
 	}
 	await inFlight;
@@ -116,7 +120,13 @@ export async function highlightCodeBlocks(containerEl: HTMLElement | null): Prom
 	if (!highlighter) return;
 	const codeEls = containerEl.querySelectorAll("pre code[data-lang]");
 	for (const codeEl of codeEls) {
-		await highlightCodeElement(codeEl as HTMLElement);
+		// Decoration must not fail the render that asked for it: a grammar this
+		// bundle does not carry leaves the block as plain text.
+		try {
+			await highlightCodeElement(codeEl as HTMLElement);
+		} catch (error) {
+			console.warn("[shiki] failed to highlight code block:", error);
+		}
 	}
 }
 

@@ -1,6 +1,9 @@
 //! Web-UI API handlers (bootstrap, skills, images, containers, media, logs).
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use {
     axum::{
@@ -10,7 +13,7 @@ use {
         response::{IntoResponse, Response},
     },
     chelix_httpd::AppState,
-    chelix_sessions::filter_ui_history,
+    chelix_sessions::{count_rendered_bubbles, filter_ui_history, rendered_bubble_flags},
     chelix_tools::image_cache::ImageBuilder,
     tracing::warn,
 };
@@ -199,6 +202,104 @@ fn history_index(msg: &serde_json::Value) -> Option<usize> {
         .and_then(|idx| usize::try_from(idx).ok())
 }
 
+/// Provider segment a record belongs to, if any.
+///
+/// Streaming writes one record per provider event, so a single answer spans
+/// many records that all share this identity.
+fn record_segment_id(msg: &serde_json::Value) -> Option<&str> {
+    msg.get("segmentId").and_then(serde_json::Value::as_str)
+}
+
+/// Index of the first record of the segment `scoped[start]` belongs to.
+///
+/// A page must not begin in the middle of a provider segment: the records left
+/// behind would replay an incomplete segment and the client would have to stitch
+/// the halves back together.
+fn segment_start_index(scoped: &[serde_json::Value], start: usize) -> usize {
+    let Some(segment_id) = scoped.get(start).and_then(record_segment_id) else {
+        return start;
+    };
+    let mut boundary = start;
+    while boundary > 0 && scoped.get(boundary - 1).and_then(record_segment_id) == Some(segment_id) {
+        boundary -= 1;
+    }
+    boundary
+}
+
+/// Tool call identifiers an assistant frame declares.
+fn declared_tool_call_ids(msg: &serde_json::Value) -> impl Iterator<Item = &str> {
+    msg.get("tool_calls")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|call| call.get("id").and_then(serde_json::Value::as_str))
+}
+
+/// Tool call a lifecycle record belongs to.
+fn lifecycle_tool_call_id(msg: &serde_json::Value) -> Option<&str> {
+    msg.get("toolCallId").and_then(serde_json::Value::as_str)
+}
+
+/// Index at which every tool lifecycle record in `scoped[start..]` still has the
+/// assistant frame that owns it.
+///
+/// A tool card takes its model, token and duration metadata from that frame. If
+/// the cursor separated them, the card would be rendered by a page that cannot
+/// see the frame, and the frame would later arrive in a page that no longer
+/// knows about the card, so the metadata would never be attached.
+fn tool_frame_start_index(scoped: &[serde_json::Value], start: usize) -> usize {
+    let mut boundary = start;
+    loop {
+        let pending: HashSet<&str> = scoped[boundary..]
+            .iter()
+            .filter_map(lifecycle_tool_call_id)
+            .collect();
+        if pending.is_empty() {
+            return boundary;
+        }
+        let owner = scoped[..boundary]
+            .iter()
+            .position(|msg| declared_tool_call_ids(msg).any(|id| pending.contains(id)));
+        match owner {
+            Some(index) => boundary = index,
+            None => return boundary,
+        }
+    }
+}
+
+/// Move a page boundary back until it splits neither a provider segment nor an
+/// assistant frame from the tool lifecycle records it owns.
+fn page_boundary(scoped: &[serde_json::Value], start: usize) -> usize {
+    let mut boundary = start;
+    loop {
+        let next = segment_start_index(scoped, tool_frame_start_index(scoped, boundary));
+        if next == boundary {
+            return boundary;
+        }
+        boundary = next;
+    }
+}
+
+/// Index at which a page holding `limit` bubbles begins.
+///
+/// Counted with the same definition as `totalMessages`, so a page of `limit`
+/// carries `limit` bubbles instead of an amount that depends on how the answer
+/// happened to be streamed.
+fn page_start_index(scoped: &[serde_json::Value], limit: usize) -> usize {
+    let flags = rendered_bubble_flags(scoped);
+    let mut bubbles = 0usize;
+    for index in (0..scoped.len()).rev() {
+        if !flags[index] {
+            continue;
+        }
+        bubbles += 1;
+        if bubbles > limit {
+            return page_boundary(scoped, index + 1);
+        }
+    }
+    0
+}
+
 fn paginated_history(
     history: Vec<serde_json::Value>,
     cursor: Option<usize>,
@@ -213,9 +314,9 @@ fn paginated_history(
         history
     };
 
-    let len = scoped.len();
-    if len > limit {
-        scoped.drain(0..(len - limit));
+    let start = page_start_index(&scoped, limit);
+    if start > 0 {
+        scoped.drain(0..start);
     }
 
     let next_cursor = scoped
@@ -337,7 +438,9 @@ pub async fn api_session_history_handler(
             );
         },
     };
-    let total_messages = full_history.len() as u64;
+    // Counted in bubbles: a total that includes provider records would report
+    // several hundred messages for a handful of visible ones.
+    let total_messages = count_rendered_bubbles(&full_history) as u64;
     let server_count = metadata_count.unwrap_or(total_messages);
     let (mut history, has_more, next_cursor) = paginated_history(full_history, cursor, limit);
 
@@ -1258,6 +1361,136 @@ pub async fn api_restart_daemon_handler() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn indexed(mut msg: serde_json::Value, index: usize) -> serde_json::Value {
+        msg["historyIndex"] = serde_json::json!(index);
+        msg
+    }
+
+    fn user(index: usize) -> serde_json::Value {
+        indexed(serde_json::json!({"role": "user", "content": "hi"}), index)
+    }
+
+    fn provider_update(index: usize, segment: &str) -> serde_json::Value {
+        indexed(
+            serde_json::json!({"role": "provider_update", "segmentId": segment}),
+            index,
+        )
+    }
+
+    fn segment_close(index: usize, segment: &str) -> serde_json::Value {
+        indexed(
+            serde_json::json!({"role": "provider_segment_close", "segmentId": segment}),
+            index,
+        )
+    }
+
+    fn assistant_with_tool_call(index: usize, call_id: &str) -> serde_json::Value {
+        indexed(
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": call_id}]
+            }),
+            index,
+        )
+    }
+
+    fn tool_lifecycle(index: usize, call_id: &str) -> serde_json::Value {
+        indexed(
+            serde_json::json!({"role": "tool_lifecycle", "toolCallId": call_id}),
+            index,
+        )
+    }
+
+    #[test]
+    fn page_keeps_a_tool_lifecycle_with_the_assistant_frame_that_owns_it() {
+        let history = vec![
+            user(0),
+            assistant_with_tool_call(1, "call-1"),
+            tool_lifecycle(2, "call-1"),
+            user(3),
+        ];
+
+        // A boundary drawn purely by message count would start at the lifecycle
+        // record and leave its assistant frame on the previous page.
+        let (page, ..) = paginated_history(history, None, 2);
+
+        assert_eq!(page.first().and_then(history_index), Some(1));
+    }
+
+    #[test]
+    fn page_is_measured_in_bubbles_not_stream_records() {
+        // One answer streamed as many records must not consume the whole page.
+        let mut history = vec![user(0), user(1)];
+        for index in 2..102 {
+            history.push(provider_update(index, "seg-1"));
+        }
+        history.push(segment_close(102, "seg-1"));
+
+        let (page, has_more, next_cursor) = paginated_history(history, None, 2);
+
+        // Exactly the requested number of bubbles: the last user message and the
+        // single bubble the streamed answer renders as.
+        assert_eq!(count_rendered_bubbles(&page), 2);
+        assert_eq!(page.first().and_then(history_index), Some(1));
+        assert_eq!(page.len(), 102, "the whole segment travels with the page");
+        assert!(has_more);
+        assert_eq!(next_cursor, Some(1));
+    }
+
+    #[test]
+    fn page_never_starts_inside_a_provider_segment() {
+        let mut history = vec![user(0)];
+        for index in 1..5 {
+            history.push(provider_update(index, "seg-1"));
+        }
+        history.push(segment_close(5, "seg-1"));
+        history.push(user(6));
+
+        let (page, has_more, next_cursor) = paginated_history(history, None, 1);
+
+        // The boundary fell inside `seg-1`, so the page was extended down to the
+        // first record of that segment instead of splitting it. The page then
+        // holds more records than the limit, which counts messages, not records.
+        assert_eq!(page.first().and_then(history_index), Some(1));
+        assert!(has_more);
+        assert_eq!(next_cursor, Some(1));
+    }
+
+    #[test]
+    fn cursor_walks_back_to_the_first_message() {
+        let history: Vec<_> = (0..5).map(user).collect();
+
+        let (page, has_more, next_cursor) = paginated_history(history.clone(), Some(3), 2);
+
+        assert_eq!(page.first().and_then(history_index), Some(1));
+        assert!(has_more);
+        assert_eq!(next_cursor, Some(1));
+
+        let (page, has_more, next_cursor) = paginated_history(history, Some(1), 2);
+
+        assert_eq!(page.first().and_then(history_index), Some(0));
+        assert!(!has_more);
+        assert_eq!(next_cursor, None);
+    }
+
+    /// The page limit and `totalMessages` must agree on what a message is,
+    /// including records whose rendering is not decided by role alone.
+    #[test]
+    fn page_limit_counts_the_same_bubbles_the_total_reports() {
+        let history = vec![
+            user(0),
+            // Renders no bubble of its own: it only carries the tool call.
+            assistant_with_tool_call(1, "call-1"),
+            tool_lifecycle(2, "call-1"),
+            user(3),
+        ];
+
+        let (page, ..) = paginated_history(history, None, 2);
+
+        assert_eq!(count_rendered_bubbles(&page), 2);
+    }
 
     #[test]
     fn content_disposition_inline_for_pdf() {

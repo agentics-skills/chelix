@@ -22,7 +22,10 @@ pub use {
     prompt_queue::{QueuedPrompt, SessionPromptQueueStore},
     store::SearchResult,
     tool_results::{PersistedToolResult, ToolResultStore},
-    ui_history::{filter_ui_history, redact_backend_only_provider_state},
+    ui_history::{
+        count_rendered_bubbles, filter_ui_history, redact_backend_only_provider_state,
+        rendered_bubble_flags,
+    },
 };
 
 /// Run database migrations for the sessions crate.

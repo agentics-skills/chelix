@@ -794,7 +794,7 @@ impl ExternalAgentChatService {
             };
             let message_count = self
                 .session_store
-                .count(&session_key)
+                .ui_message_count(&session_key)
                 .await
                 .map_err(ServiceError::message)?;
             self.session_metadata
