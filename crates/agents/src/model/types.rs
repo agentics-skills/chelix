@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 /// Response from an LLM completion call.
 #[derive(Debug)]
 pub struct CompletionResponse {
@@ -8,7 +10,7 @@ pub struct CompletionResponse {
 
 pub const MAX_CAPTURED_PROVIDER_RAW_EVENTS: usize = 256;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -16,7 +18,7 @@ pub struct ToolCall {
     pub argument_diagnostic: Option<ToolCallArgumentDiagnostic>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolCallArgumentSource {
     RepairedString,
     EmptyString,
@@ -24,7 +26,7 @@ pub enum ToolCallArgumentSource {
     MalformedString,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCallArgumentDiagnostic {
     pub source: ToolCallArgumentSource,
     pub raw_len: Option<usize>,
@@ -63,7 +65,7 @@ impl ToolCallArgumentDiagnostic {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,

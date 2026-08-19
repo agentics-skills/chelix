@@ -1,6 +1,6 @@
 use {
     super::types::ToolCall,
-    chelix_common::{ReasoningContent, ResponsesReasoningItem},
+    chelix_common::{ProviderOutputItem, ProviderSegmentId, ReasoningContent},
 };
 
 // ── Typed chat messages ─────────────────────────────────────────────────────
@@ -24,7 +24,8 @@ pub enum ChatMessage {
         content: Option<String>,
         tool_calls: Vec<ToolCall>,
         reasoning: Option<ReasoningContent>,
-        responses_reasoning: Vec<ResponsesReasoningItem>,
+        provider_items: Vec<ProviderOutputItem>,
+        segment_id: Option<ProviderSegmentId>,
     },
     Tool {
         tool_call_id: String,
@@ -99,7 +100,8 @@ impl ChatMessage {
             content: Some(content.into()),
             tool_calls: vec![],
             reasoning: None,
-            responses_reasoning: vec![],
+            provider_items: vec![],
+            segment_id: None,
         }
     }
 
@@ -109,7 +111,8 @@ impl ChatMessage {
             content,
             tool_calls,
             reasoning: None,
-            responses_reasoning: vec![],
+            provider_items: vec![],
+            segment_id: None,
         }
     }
 
@@ -125,18 +128,28 @@ impl ChatMessage {
         self
     }
 
-    /// Attach opaque OpenAI Responses reasoning state to an assistant message.
+    /// Attach canonical provider output items to an assistant message.
     #[must_use]
-    pub fn with_responses_reasoning(
-        mut self,
-        responses_reasoning: Vec<ResponsesReasoningItem>,
-    ) -> Self {
+    pub fn with_provider_items(mut self, provider_items: Vec<ProviderOutputItem>) -> Self {
         if let Self::Assistant {
-            responses_reasoning: current,
+            provider_items: current,
             ..
         } = &mut self
         {
-            *current = responses_reasoning;
+            *current = provider_items;
+        }
+        self
+    }
+
+    /// Attach provider segment identity to an assistant message.
+    #[must_use]
+    pub fn with_segment_id(mut self, segment_id: Option<ProviderSegmentId>) -> Self {
+        if let Self::Assistant {
+            segment_id: current,
+            ..
+        } = &mut self
+        {
+            *current = segment_id;
         }
         self
     }

@@ -398,24 +398,43 @@ impl LlmProvider for IterationOwnedResponsesProvider {
 
 impl IterationOwnedResponsesProvider {
     fn terminal_events(&self) -> Vec<StreamEvent> {
-        let mut events = match self.terminal_output {
+        let mut events = vec![StreamEvent::SegmentStart {
+            segment_id: chelix_common::ProviderSegmentId::new("resp_test"),
+        }];
+        events.extend(match self.terminal_output {
             TerminalResponsesOutput::VisibleReasoning => {
-                vec![StreamEvent::ResponsesReasoningDelta {
-                    item_id: "rs_terminal".into(),
-                    output_index: 0,
-                    summary_index: 0,
-                    delta: "Terminal iteration reasoning.".into(),
-                }]
-            },
-            TerminalResponsesOutput::OpaqueReasoning => {
-                vec![StreamEvent::ResponsesReasoningItem(
-                    chelix_common::ResponsesReasoningItem {
-                        id: "rs_terminal".into(),
-                        encrypted_content: "opaque-terminal".into(),
+                vec![StreamEvent::ProviderItemUpdate(
+                    chelix_common::ProviderItemUpdate {
+                        segment_id: chelix_common::ProviderSegmentId::new("resp_test"),
+                        item_id: chelix_common::ProviderItemId::new("rs_terminal"),
+                        position: chelix_common::ProviderItemPosition::new(0),
+                        update_seq: 1,
+                        payload: chelix_common::ProviderItemUpdatePayload::ReasoningDelta {
+                            part_index: 0,
+                            delta: "Terminal iteration reasoning.".into(),
+                        },
                     },
                 )]
             },
-        };
+            TerminalResponsesOutput::OpaqueReasoning => {
+                vec![StreamEvent::ProviderItemUpdate(
+                    chelix_common::ProviderItemUpdate {
+                        segment_id: chelix_common::ProviderSegmentId::new("resp_test"),
+                        item_id: chelix_common::ProviderItemId::new("rs_terminal"),
+                        position: chelix_common::ProviderItemPosition::new(0),
+                        update_seq: 1,
+                        payload: chelix_common::ProviderItemUpdatePayload::ReasoningItemDone {
+                            encrypted_content: Some("opaque-terminal".into()),
+                        },
+                    },
+                )]
+            },
+        });
+        events.push(StreamEvent::SegmentClose {
+            segment_id: chelix_common::ProviderSegmentId::new("resp_test"),
+            outcome: chelix_common::ProviderSegmentOutcome::Completed,
+            usage: Some(Usage::default()),
+        });
         events.push(StreamEvent::Done(Usage::default()));
         events
     }
@@ -459,7 +478,6 @@ async fn test_reasoning_only_terminal_iteration_is_a_new_segment() {
             "Terminal iteration reasoning.".to_string(),
         ]))
     );
-    assert!(result.output.responses_reasoning.is_empty());
     assert_eq!(
         result.final_text_source,
         super::super::FinalTextSource::NewSegment
@@ -474,12 +492,14 @@ async fn test_opaque_only_terminal_iteration_is_a_new_segment() {
 
     assert_eq!(result.output.text, "");
     assert!(result.output.reasoning.is_none());
-    assert_eq!(result.output.responses_reasoning.len(), 1);
-    assert_eq!(result.output.responses_reasoning[0].id, "rs_terminal");
-    assert_eq!(
-        result.output.responses_reasoning[0].encrypted_content,
-        "opaque-terminal"
-    );
+    assert_eq!(result.output.provider_items.len(), 1);
+    assert_eq!(result.output.provider_items[0].id.as_str(), "rs_terminal");
+    match &result.output.provider_items[0].payload {
+        chelix_common::ProviderOutputPayload::Reasoning(r) => {
+            assert_eq!(r.encrypted_content.as_deref(), Some("opaque-terminal"));
+        },
+        _ => panic!("expected reasoning payload"),
+    }
     assert_eq!(
         result.final_text_source,
         super::super::FinalTextSource::NewSegment
@@ -929,7 +949,12 @@ fn test_before_llm_call_modify_payload_rejects_invalid_messages() {
     )
     .expect_err("invalid hook messages must fail");
 
-    assert!(error.to_string().contains("no valid messages"));
+    assert!(
+        error
+            .to_string()
+            .contains("message at index 0 has unsupported role 'invalid'"),
+        "unexpected error: {error}"
+    );
     assert_eq!(messages.len(), 1);
     assert!(matches!(
         messages.first(),

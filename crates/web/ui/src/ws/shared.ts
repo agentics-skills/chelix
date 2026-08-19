@@ -40,19 +40,43 @@ export function updateSessionHistoryIndex(sessionKey: string, messageIndex: numb
 /**
  * Safe wrapper: renderMarkdown uses the `marked` library which HTML-escapes
  * all input by default. No raw user content reaches innerHTML.
+ *
+ * Streaming calls this on every delta. The rendered markdown is kept in a
+ * dedicated wrapper so the reasoning disclosure and the action bar are never
+ * detached, and identical output is not re-applied: replacing unchanged nodes
+ * makes the bubble flicker and resets the chat scroll position.
  */
 export function setSafeMarkdownHtml(el: HTMLElement, text: string): void {
 	const rendered = renderMarkdown(text);
-	const reasoning = Array.from(el.children).find((child) => child.classList.contains("msg-reasoning"));
+	const body = markdownBody(el);
+	if (body.dataset.markdownSource === text) return;
+	body.dataset.markdownSource = text;
+	body.textContent = "";
+	body.insertAdjacentHTML("afterbegin", rendered);
+}
+
+/// The wrapper holding rendered markdown inside a message element.
+///
+/// Created on first use and reused afterwards, so streaming updates touch only
+/// its contents and leave the surrounding reasoning disclosure and action bar
+/// in place.
+function markdownBody(el: HTMLElement): HTMLElement {
+	const existing = el.querySelector<HTMLElement>(":scope > .msg-markdown-body");
+	if (existing) return existing;
+	const body = document.createElement("span");
+	body.className = "msg-markdown-body";
 	const actionBar = Array.from(el.children).find((child) => child.classList.contains("msg-action-bar"));
-	if (reasoning) reasoning.remove();
-	if (actionBar) actionBar.remove();
-	el.textContent = "";
-	const wrapper = document.createElement("span");
-	wrapper.insertAdjacentHTML("afterbegin", rendered);
-	while (wrapper.firstChild) el.appendChild(wrapper.firstChild);
-	if (reasoning) el.prepend(reasoning);
-	if (actionBar) el.appendChild(actionBar);
+	// Legacy inline content from a non-streaming render is replaced by the
+	// wrapper, keeping the reasoning disclosure and the action bar attached.
+	for (const child of Array.from(el.childNodes)) {
+		if (child instanceof HTMLElement && (child.classList.contains("msg-reasoning") || child === actionBar)) {
+			continue;
+		}
+		child.remove();
+	}
+	if (actionBar) el.insertBefore(body, actionBar);
+	else el.appendChild(body);
+	return body;
 }
 
 export function hasNonWhitespaceContent(text: string | null | undefined): boolean {

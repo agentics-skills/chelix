@@ -343,7 +343,6 @@ impl ChatService for LiveChatService {
                 None, // send_sync: no sender name
                 (!ephemeral).then_some(&self.session_store),
                 None, // send_sync: no client seq
-                (!ephemeral).then(|| Arc::clone(&self.active_thinking_text)),
                 (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &terminal_runs,
             )
@@ -375,7 +374,6 @@ impl ChatService for LiveChatService {
                 (!ephemeral).then_some(&self.session_store),
                 false, // send_sync: MCP tools always enabled for API calls
                 None,  // send_sync: no client seq
-                (!ephemeral).then(|| Arc::clone(&self.active_thinking_text)),
                 (!ephemeral).then(|| Arc::clone(&self.active_tool_invocations)),
                 (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
                 &active_event_forwarders,
@@ -392,7 +390,6 @@ impl ChatService for LiveChatService {
                 runs_by_session.remove(&session_key);
             }
             drop(runs_by_session);
-            self.active_thinking_text.write().await.remove(&session_key);
             self.active_tool_invocations
                 .write()
                 .await
@@ -504,7 +501,6 @@ impl ChatService for LiveChatService {
                 None
             };
             let terminal_partial = partial.or(finalized_tool_segment);
-            self.active_thinking_text.write().await.remove(key);
             self.active_reply_medium.write().await.remove(key);
             for invocation in interrupted_tool_calls {
                 let Some(invocation_run_id) = invocation.lifecycle.run_id.clone() else {
@@ -514,9 +510,20 @@ impl ChatService for LiveChatService {
                     ));
                     continue;
                 };
-                let arguments = invocation.arguments().cloned();
                 let context_budget = invocation.context_budget.clone();
                 let execution_mode = invocation.execution_mode.clone();
+                let arguments = match &invocation.lifecycle.update {
+                    ToolLifecycleUpdate::InputReady { arguments }
+                    | ToolLifecycleUpdate::WaitingForExecution { arguments }
+                    | ToolLifecycleUpdate::Executing { arguments, .. }
+                    | ToolLifecycleUpdate::ExecutionProgress { arguments, .. }
+                    | ToolLifecycleUpdate::ResultReady { arguments, .. }
+                    | ToolLifecycleUpdate::Completed { arguments, .. }
+                    | ToolLifecycleUpdate::Rejected { arguments, .. } => Some(arguments.clone()),
+                    ToolLifecycleUpdate::Cancelled { arguments, .. } => arguments.clone(),
+                    ToolLifecycleUpdate::Created { .. }
+                    | ToolLifecycleUpdate::InputStreaming { .. } => None,
+                };
                 let lifecycle = ToolLifecycleEvent {
                     tool_call_id: invocation.lifecycle.tool_call_id.clone(),
                     tool_name: invocation.lifecycle.tool_name.clone(),
@@ -1410,17 +1417,6 @@ impl ChatService for LiveChatService {
             .collect()
     }
 
-    async fn active_thinking_text(
-        &self,
-        session_key: &str,
-    ) -> Option<chelix_common::ReasoningContent> {
-        self.active_thinking_text
-            .read()
-            .await
-            .get(session_key)
-            .cloned()
-    }
-
     async fn active_voice_pending(&self, session_key: &str) -> bool {
         self.active_reply_medium
             .read()
@@ -1454,13 +1450,6 @@ impl ChatService for LiveChatService {
             return Ok(serde_json::json!({ "active": false }));
         }
 
-        let thinking_text = self
-            .active_thinking_text
-            .read()
-            .await
-            .get(session_key)
-            .cloned();
-
         let tool_invocations: Vec<ActiveToolInvocation> = self
             .active_tool_invocations
             .read()
@@ -1472,7 +1461,6 @@ impl ChatService for LiveChatService {
         Ok(serde_json::json!({
             "active": true,
             "sessionKey": session_key,
-            "thinkingText": thinking_text,
             "toolInvocations": tool_invocations,
         }))
     }

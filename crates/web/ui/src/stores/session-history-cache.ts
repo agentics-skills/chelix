@@ -149,12 +149,25 @@ function upsertWithoutIndex(list: HistoryMessage[], next: HistoryMessage): boole
 			return false;
 		}
 	}
-	if (next.role === "assistant" && next.run_id) {
-		const existingRunIdx = list.findIndex(
-			(msg) => msg?.role === "assistant" && msg?.run_id && msg.run_id === next.run_id,
+	if (next.role === "assistant" && (next.segmentId || next.segment_id)) {
+		const targetSegmentId = next.segmentId || next.segment_id;
+		const existingSegIdx = list.findIndex(
+			(msg) => msg?.role === "assistant" && (msg.segmentId === targetSegmentId || msg.segment_id === targetSegmentId),
 		);
-		if (existingRunIdx >= 0) {
-			list[existingRunIdx] = next;
+		if (existingSegIdx >= 0) {
+			list[existingSegIdx] = next;
+			return false;
+		}
+	}
+	if (next.role === "provider_update" && next.update && typeof next.update === "object") {
+		const u = next.update as { segmentId?: string; itemId?: string; updateSeq?: number };
+		const existingUpdateIdx = list.findIndex((message) => {
+			if (message?.role !== "provider_update" || !message.update || typeof message.update !== "object") return false;
+			const other = message.update as { segmentId?: string; itemId?: string; updateSeq?: number };
+			return other.segmentId === u.segmentId && other.itemId === u.itemId && other.updateSeq === u.updateSeq;
+		});
+		if (existingUpdateIdx >= 0) {
+			list[existingUpdateIdx] = next;
 			return false;
 		}
 	}

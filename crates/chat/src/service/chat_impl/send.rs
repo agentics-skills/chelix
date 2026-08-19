@@ -628,7 +628,6 @@ impl LiveChatService {
         let state = Arc::clone(&self.state);
         let active_runs = Arc::clone(&self.active_runs);
         let active_runs_by_session = Arc::clone(&self.active_runs_by_session);
-        let active_thinking_text = Arc::clone(&self.active_thinking_text);
         let active_tool_invocations = Arc::clone(&self.active_tool_invocations);
         let active_partial_assistant = Arc::clone(&self.active_partial_assistant);
         let active_reply_medium = Arc::clone(&self.active_reply_medium);
@@ -866,7 +865,6 @@ impl LiveChatService {
                         sender_name,
                         Some(&session_store),
                         client_seq,
-                        Some(Arc::clone(&active_thinking_text)),
                         Some(Arc::clone(&active_partial_assistant)),
                         &terminal_runs,
                     )
@@ -898,7 +896,6 @@ impl LiveChatService {
                         Some(&session_store),
                         mcp_disabled,
                         client_seq,
-                        Some(Arc::clone(&active_thinking_text)),
                         Some(Arc::clone(&active_tool_invocations)),
                         Some(Arc::clone(&active_partial_assistant)),
                         &active_event_forwarders,
@@ -1081,10 +1078,6 @@ impl LiveChatService {
                 runs_by_session.remove(&session_key_clone);
             }
             drop(runs_by_session);
-            active_thinking_text
-                .write()
-                .await
-                .remove(&session_key_clone);
             active_tool_invocations
                 .write()
                 .await

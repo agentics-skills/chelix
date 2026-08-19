@@ -37,9 +37,21 @@ function clearChatEmptyState(): void {
 let isAutoScrolling = false;
 let shouldFollowChat = true;
 let trackedChatMsgBox: HTMLElement | null = null;
+// `scrollTop` written by the last programmatic scroll, used to tell our own
+// scroll events apart from the user's.
+let programmaticScrollTop: number | null = null;
 
 function handleChatScroll(): void {
-	if (!S.chatMsgBox || isAutoScrolling) return;
+	if (!S.chatMsgBox) return;
+	// The scroll event produced by our own scroll carries the exact position we
+	// wrote. Every other event is real user intent and must be able to stop the
+	// chat from following the stream — during streaming a pending animation
+	// frame would otherwise swallow all of them.
+	if (programmaticScrollTop !== null && S.chatMsgBox.scrollTop === programmaticScrollTop) {
+		programmaticScrollTop = null;
+		return;
+	}
+	programmaticScrollTop = null;
 	shouldFollowChat = isChatAtBottom();
 	if (shouldFollowChat) hideNewContentIndicator();
 }
@@ -65,18 +77,21 @@ export function syncChatFollowStateFromPosition(): void {
 export function scrollChatToBottom(force = false): void {
 	if (!S.chatMsgBox) return;
 	ensureChatFollowTracking();
-	if (!force && (isAutoScrolling || !shouldFollowChat)) return;
 	if (force) shouldFollowChat = true;
-
+	else if (!shouldFollowChat) return;
+	// A frame is already pending; it will scroll to the height reached by then.
+	if (isAutoScrolling) return;
 	isAutoScrolling = true;
 
 	requestAnimationFrame(() => {
-		if (S.chatMsgBox) {
-			S.chatMsgBox.scrollTop = S.chatMsgBox.scrollHeight;
-			shouldFollowChat = true;
-			hideNewContentIndicator();
-		}
 		isAutoScrolling = false;
+		if (!S.chatMsgBox) return;
+		// The user may have scrolled away while the frame was pending. Their
+		// position wins: the chat must not snap back to the bottom.
+		if (!shouldFollowChat) return;
+		S.chatMsgBox.scrollTop = S.chatMsgBox.scrollHeight;
+		programmaticScrollTop = S.chatMsgBox.scrollTop;
+		hideNewContentIndicator();
 	});
 }
 
@@ -295,16 +310,39 @@ export function appendReasoningDisclosure(
 	if (body) {
 		body.dataset.reasoning = JSON.stringify(reasoning ?? "");
 		body.hidden = parts.length === 0;
-		body.textContent = "";
-		for (const part of parts) {
-			const item = document.createElement("div");
-			item.className = "msg-reasoning-item markdown-content";
-			// Safe: renderMarkdown escapes source text before adding formatting tags.
-			item.insertAdjacentHTML("afterbegin", renderMarkdown(part));
-			body.appendChild(item);
-		}
+		syncReasoningParts(body, parts);
 	}
 	return details;
+}
+
+/// Update the rendered reasoning parts in place.
+///
+/// Streaming calls this on every chunk. Rebuilding the whole body each time
+/// would replace nodes that did not change, which makes the bubble flicker and
+/// keeps resetting the chat scroll position. Only parts whose text actually
+/// changed are re-rendered, and only surplus parts are removed.
+function syncReasoningParts(body: HTMLElement, parts: string[]): void {
+	const rendered = Array.from(body.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+	for (let index = parts.length; index < rendered.length; index += 1) {
+		rendered[index].remove();
+	}
+	parts.forEach((part, index) => {
+		const existing = rendered[index];
+		if (existing) {
+			if (existing.dataset.reasoningPart === part) return;
+			existing.dataset.reasoningPart = part;
+			existing.textContent = "";
+			// Safe: renderMarkdown escapes source text before adding formatting tags.
+			existing.insertAdjacentHTML("afterbegin", renderMarkdown(part));
+			return;
+		}
+		const item = document.createElement("div");
+		item.className = "msg-reasoning-item markdown-content";
+		item.dataset.reasoningPart = part;
+		// Safe: renderMarkdown escapes source text before adding formatting tags.
+		item.insertAdjacentHTML("afterbegin", renderMarkdown(part));
+		body.appendChild(item);
+	});
 }
 
 export function chatAddErrorCard(err: ErrorCardData): void {

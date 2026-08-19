@@ -31,6 +31,64 @@ export enum WsEventName {
 
 export type ReasoningContent = string | string[];
 
+export type ProviderSegmentOutcome = "active" | "completed" | "incomplete" | "failed" | "cancelled" | "transport_error";
+
+export interface ReasoningPart {
+	partIndex: number;
+	text: string;
+}
+
+export interface ReasoningItem {
+	id: string;
+	outputIndex: number;
+	summaryParts?: ReasoningPart[];
+	visibleText?: string;
+}
+
+export type ProviderOutputPayload =
+	| ({ type: "reasoning" } & ReasoningItem)
+	| { type: "message"; text: string }
+	| { type: "function_call"; callId: string; name: string; arguments: string };
+
+export interface ProviderOutputItem {
+	id: string;
+	position: number;
+	payload: ProviderOutputPayload;
+}
+
+export type ProviderItemUpdatePayload =
+	| { update_type: "reasoning_delta"; part_index: number; delta: string }
+	| { update_type: "reasoning_part_done"; part_index: number; text: string }
+	| { update_type: "reasoning_item_done"; encrypted_content?: string }
+	| { update_type: "reasoning_text"; text: string }
+	| { update_type: "reasoning_text_delta"; delta: string }
+	| { update_type: "message_delta"; delta: string }
+	| { update_type: "message_done"; text: string }
+	| { update_type: "function_call_start"; name: string }
+	| { update_type: "function_call_delta"; delta: string }
+	| { update_type: "function_call_done"; arguments: string };
+
+export interface ProviderItemUpdate {
+	segmentId: string;
+	itemId: string;
+	position: number;
+	updateSeq: number;
+	payload: ProviderItemUpdatePayload;
+}
+
+export interface ProviderUpdatePayload extends ChatPayload {
+	state: "provider_update";
+	update: ProviderItemUpdate;
+	historyIndex?: number;
+}
+
+export interface ProviderSegmentClosePayload extends ChatPayload {
+	state: "provider_segment_close";
+	segmentId: string;
+	outcome: ProviderSegmentOutcome;
+	historyIndex?: number;
+}
+
 export function hasVisibleReasoning(content: ReasoningContent | null | undefined): boolean {
 	return Array.isArray(content)
 		? content.some((part) => part.trim().length > 0)
@@ -189,6 +247,8 @@ export interface AssistantHistoryMessage {
 	requestCacheWriteTokens?: number;
 	tool_calls?: unknown[];
 	reasoning?: ReasoningContent;
+	providerItems?: ProviderOutputItem[];
+	segmentId?: string;
 	audio?: string;
 	run_id?: string;
 	created_at?: number;
@@ -275,6 +335,7 @@ export interface ChatPayload {
 	audioWarning?: string | null;
 	replyMedium?: string;
 	messageIndex?: number;
+	historyIndex?: number;
 	activeToolInvocations?: ActiveToolInvocation[];
 	result?: ToolResult | string | null;
 	error?: ChatError | string | null;
@@ -294,6 +355,11 @@ export interface ChatPayload {
 	partialMessage?: PartialMessage;
 	assistantMessage?: AssistantHistoryMessage;
 	assistantMessageIndex?: number;
+	update?: ProviderItemUpdate;
+	segmentId?: string;
+	/** Canonical items of the segment a finished turn produced. */
+	providerItems?: ProviderOutputItem[];
+	outcome?: ProviderSegmentOutcome;
 	checkpoint?: CheckpointHistoryMessage;
 	contextBudget?: ContextBudgetMetadata;
 	canContinue?: boolean;

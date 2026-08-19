@@ -47,6 +47,8 @@ import {
 	type ToolLifecyclePayload,
 	type ToolResult,
 } from "../types/ws-events";
+import { clearLiveSegment, currentLiveSegment, liveFunctionCallPosition } from "./live-segments";
+import { placeSegmentNode, SegmentPlacementError } from "./segment-placement";
 import { clearChatEmptyState, hasNonWhitespaceContent, setSafeMarkdownHtml } from "./shared";
 
 // ── Tool lifecycle snapshot tracking ──────────────────────────
@@ -77,6 +79,9 @@ export function clearToolLifecycleStateForSession(sessionKey: string): void {
 	for (const key of liveToolInvocations.keys()) {
 		if (key.startsWith(prefix)) liveToolInvocations.delete(key);
 	}
+	// The streaming segment ends with its tool lifecycles; keeping it would let
+	// a stale segment position nodes of the next run.
+	clearLiveSegment(sessionKey);
 }
 
 // ── Tool result rendering ─────────────────────────────────────
@@ -305,15 +310,41 @@ function updateA2uiSurface(card: HTMLElement, snapshot: ToolInvocationSnapshot, 
 	});
 }
 
-function closeCanonicalAssistantBeforeCard(
+function closeCanonicalAssistantBeforeCard(snapshot: ToolInvocationSnapshot, eventSession: string): void {
+	if (snapshot.lifecycle.stage !== "input_ready" || !snapshot.assistantMessage) return;
+	// `input_ready` repeats for every tool call of the same assistant turn, but
+	// the bubble is closed once. Reapplying the canonical frame afterwards would
+	// repaint an already finished bubble on every following tool call.
+	if (!S.streamEl && assistantSegmentByHistoryIndex(snapshot.assistantMessageIndex)) return;
+	closeLiveAssistantSegment(snapshot.assistantMessage, snapshot.assistantMessageIndex, eventSession);
+}
+
+/// Insert a freshly created tool card at the canonical position of its
+/// function call inside the streaming segment.
+///
+/// Without a streaming segment there is nothing to order against: history
+/// replay and session switching render cards outside any live segment, so the
+/// card is appended. Inside a segment the call must be known, and a card whose
+/// call the segment never announced is reported as a defect.
+function placeToolCard(
+	container: HTMLElement,
+	card: HTMLElement,
 	snapshot: ToolInvocationSnapshot,
 	eventSession: string,
-	card: HTMLElement | null,
 ): void {
-	if (snapshot.lifecycle.stage !== "input_ready" || !snapshot.assistantMessage) return;
-	closeLiveAssistantSegment(snapshot.assistantMessage, snapshot.assistantMessageIndex, eventSession);
-	const assistant = assistantSegmentByHistoryIndex(snapshot.assistantMessageIndex);
-	if (assistant && card) card.before(assistant);
+	const segment = currentLiveSegment(eventSession);
+	if (!segment) {
+		container.appendChild(card);
+		return;
+	}
+	const position = liveFunctionCallPosition(eventSession, snapshot.lifecycle.toolCallId);
+	if (position === null) {
+		container.appendChild(card);
+		throw new SegmentPlacementError(
+			`tool call \`${snapshot.lifecycle.toolCallId}\` has no provider item in segment \`${segment.segmentId}\``,
+		);
+	}
+	placeSegmentNode(container, card, segment.segmentId, position);
 }
 
 export function renderToolLifecycleSnapshot(
@@ -323,7 +354,7 @@ export function renderToolLifecycleSnapshot(
 ): HTMLElement | null {
 	const cardId = toolCallCardId(snapshot);
 	let card = document.getElementById(cardId) as HTMLElement | null;
-	closeCanonicalAssistantBeforeCard(snapshot, eventSession, card);
+	closeCanonicalAssistantBeforeCard(snapshot, eventSession);
 	if (!(card || shouldRenderLifecycle(snapshot, options.renderEarly !== false))) return null;
 	if (!card) {
 		if (!S.chatMsgBox) return null;
@@ -338,7 +369,7 @@ export function renderToolLifecycleSnapshot(
 			expanded: true,
 		});
 		clearChatEmptyState();
-		S.chatMsgBox.appendChild(card);
+		placeToolCard(S.chatMsgBox, card, snapshot, eventSession);
 	}
 	const renderedSequence = Number(card.dataset.toolSequence);
 	if (Number.isSafeInteger(renderedSequence) && renderedSequence >= snapshot.lifecycle.sequence) return card;

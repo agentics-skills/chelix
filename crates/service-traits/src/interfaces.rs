@@ -368,13 +368,6 @@ pub trait ChatService: Send + Sync {
         Vec::new()
     }
 
-    async fn active_thinking_text(
-        &self,
-        _session_key: &str,
-    ) -> Option<chelix_common::ReasoningContent> {
-        None
-    }
-
     async fn active_voice_pending(&self, _session_key: &str) -> bool {
         false
     }

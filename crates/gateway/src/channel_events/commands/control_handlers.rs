@@ -470,9 +470,6 @@ pub(in crate::channel_events) async fn handle_peek(
                 return Ok("Idle \u{2014} nothing running.".to_string());
             }
             let mut lines = Vec::new();
-            if let Some(text) = res.get("thinkingText").and_then(|v| v.as_str()) {
-                lines.push(format!("Thinking: {text}"));
-            }
             for name in active_tool_names(&res) {
                 lines.push(format!("  Running: {name}"));
             }

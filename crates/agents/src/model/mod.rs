@@ -12,6 +12,9 @@ pub use types::{
 mod chat;
 pub use chat::{ChatMessage, ContentPart, UserContent};
 
+mod aborted_calls;
+pub(crate) use aborted_calls::ensure_tool_call_results_present;
+
 mod convert;
 pub use convert::{
     ChatMessageConversionError, provider_values_to_chat_messages, values_to_chat_messages,
@@ -19,9 +22,6 @@ pub use convert::{
 
 mod options;
 pub use options::CompletionOptions;
-
-mod reasoning;
-pub use reasoning::ReasoningAccumulator;
 
 mod stream;
 pub use stream::{LlmProvider, StreamEvent};
@@ -342,13 +342,13 @@ mod tests {
     // ── values_to_chat_messages ──────────────────────────────────────
 
     #[test]
-    fn malformed_responses_reasoning_collection_reports_physical_message_index() {
+    fn malformed_provider_items_collection_reports_physical_message_index() {
         let values = vec![
             serde_json::json!({"role": "user", "content": "old"}),
             serde_json::json!({
                 "role": "assistant",
                 "content": "tail",
-                "responsesReasoning": "invalid"
+                "providerItems": "invalid"
             }),
             serde_json::json!({
                 "role": "checkpoint",
@@ -361,19 +361,29 @@ mod tests {
 
         assert!(matches!(
             error,
-            ChatMessageConversionError::ResponsesReasoningCollection { message_index: 1 }
+            ChatMessageConversionError::ProviderItemsCollection { message_index: 1 }
         ));
     }
 
     #[test]
-    fn malformed_responses_reasoning_item_reports_physical_message_and_item_indexes() {
+    fn malformed_provider_item_reports_physical_message_and_item_indexes() {
         let values = vec![
             serde_json::json!({"role": "user", "content": "old"}),
             serde_json::json!({
                 "role": "assistant",
                 "content": "tail",
-                "responsesReasoning": [
-                    {"id": "rs_valid", "encryptedContent": "opaque-valid"},
+                "providerItems": [
+                    {
+                        "id": "rs_valid",
+                        "position": 0,
+                        "payload": {
+                            "type": "reasoning",
+                            "id": "rs_valid",
+                            "outputIndex": 0,
+                            "summaryParts": [],
+                            "encryptedContent": "opaque-valid"
+                        }
+                    },
                     {"id": "rs_invalid"}
                 ]
             }),
@@ -386,14 +396,11 @@ mod tests {
 
         let error = values_to_chat_messages(&values).expect_err("malformed item must fail");
 
-        assert!(matches!(
-            error,
-            ChatMessageConversionError::ResponsesReasoningItem {
-                message_index: 1,
-                item_index: 1,
-                ..
-            }
-        ));
+        assert!(matches!(error, ChatMessageConversionError::ProviderItem {
+            message_index: 1,
+            item_index: 1,
+            ..
+        }));
     }
 
     #[test]
@@ -532,7 +539,9 @@ mod tests {
             }]
         })];
         let msgs = values_to_chat_messages(&values).expect("valid message history");
-        assert_eq!(msgs.len(), 1);
+        // The call has no result in this history, so it is recorded as aborted:
+        // a provider rejects an assistant tool call without a matching result.
+        assert_eq!(msgs.len(), 2);
         match &msgs[0] {
             ChatMessage::Assistant {
                 content,
@@ -547,6 +556,16 @@ mod tests {
                 assert!(reasoning.is_none());
             },
             _ => panic!("expected assistant message"),
+        }
+        match &msgs[1] {
+            ChatMessage::Tool {
+                tool_call_id,
+                content,
+            } => {
+                assert_eq!(tool_call_id, "call_1");
+                assert_eq!(content, "aborted");
+            },
+            _ => panic!("expected an aborted result for the unanswered call"),
         }
     }
 
@@ -569,7 +588,8 @@ mod tests {
             }]
         })];
         let msgs = values_to_chat_messages(&values).expect("valid message history");
-        assert_eq!(msgs.len(), 1);
+        // The unanswered call is recorded as aborted, so the request stays valid.
+        assert_eq!(msgs.len(), 2);
         match &msgs[0] {
             ChatMessage::Assistant { tool_calls, .. } => {
                 assert_eq!(tool_calls.len(), 1);
@@ -630,7 +650,8 @@ mod tests {
                     argument_diagnostic: None,
                 }],
                 reasoning: None,
-                responses_reasoning: vec![],
+                provider_items: vec![],
+                segment_id: None,
             },
             ChatMessage::tool("call_1", "result"),
         ];
@@ -654,7 +675,8 @@ mod tests {
                 argument_diagnostic: None,
             }],
             reasoning: None,
-            responses_reasoning: vec![],
+            provider_items: vec![],
+            segment_id: None,
         }];
         let values: Vec<serde_json::Value> = original.iter().map(|m| m.to_openai_value()).collect();
         let roundtripped = values_to_chat_messages(&values).expect("valid message history");

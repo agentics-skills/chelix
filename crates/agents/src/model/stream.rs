@@ -13,36 +13,22 @@ use super::{
 /// Events emitted during streaming LLM completion.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
+    /// Append-only provider item update carrying canonical segment ID, item ID, position, seq, and payload.
+    ProviderItemUpdate(chelix_common::ProviderItemUpdate),
+    /// Provider response/attempt segment opened.
+    SegmentStart {
+        segment_id: chelix_common::ProviderSegmentId,
+    },
+    /// Provider response/attempt segment closed.
+    SegmentClose {
+        segment_id: chelix_common::ProviderSegmentId,
+        outcome: chelix_common::ProviderSegmentOutcome,
+        usage: Option<Usage>,
+    },
     /// Text content delta.
     Delta(String),
     /// Raw provider event payload (for debugging API responses).
     ProviderRaw(serde_json::Value),
-    /// Reasoning/planning text delta from non-Responses transports.
-    ReasoningDelta(String),
-    /// OpenAI Responses reasoning-summary text for one source-defined part.
-    ResponsesReasoningDelta {
-        /// Provider reasoning item ID.
-        item_id: String,
-        /// Position of the reasoning item in the response output.
-        output_index: usize,
-        /// Position of the summary part within the reasoning item.
-        summary_index: usize,
-        /// Summary text delta.
-        delta: String,
-    },
-    /// Marks one OpenAI Responses reasoning-summary part complete.
-    ResponsesReasoningPartDone {
-        /// Provider reasoning item ID.
-        item_id: String,
-        /// Position of the reasoning item in the response output.
-        output_index: usize,
-        /// Position of the summary part within the reasoning item.
-        summary_index: usize,
-        /// Authoritative completed summary part text.
-        text: String,
-    },
-    /// Opaque OpenAI Responses reasoning state for the next stateless request.
-    ResponsesReasoningItem(chelix_common::ResponsesReasoningItem),
     /// A tool call has started (content_block_start with tool_use).
     ToolCallStart {
         /// Tool call ID from the provider.

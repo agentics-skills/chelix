@@ -1,28 +1,18 @@
 use super::*;
 
-use chelix_common::{ActiveToolInvocation, ReasoningContent};
+use chelix_common::ActiveToolInvocation;
 
 use crate::session_reasoning::{enrich_session_entry_for_ui, materialize_agent_session_defaults};
 
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     replying: bool,
-    thinking_text: Option<ReasoningContent>,
     tool_invocations: Vec<ActiveToolInvocation>,
     voice_pending: bool,
 ) {
     obj.insert("replying".to_string(), serde_json::Value::Bool(replying));
     if !replying {
         return;
-    }
-    if let Some(reasoning) = thinking_text {
-        let value = match reasoning {
-            ReasoningContent::Text(text) => serde_json::Value::String(text),
-            ReasoningContent::Parts(parts) => {
-                serde_json::Value::Array(parts.into_iter().map(serde_json::Value::String).collect())
-            },
-        };
-        obj.insert("thinkingText".to_string(), value);
     }
     if !tool_invocations.is_empty() {
         match serde_json::to_value(tool_invocations) {
@@ -1149,11 +1139,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let chat = ctx.state.chat();
                 let active_keys = chat.active_session_keys().await;
                 let replying = active_keys.iter().any(|k| k == key);
-                let thinking_text = if replying {
-                    chat.active_thinking_text(key).await
-                } else {
-                    None
-                };
                 let tool_invocations = if replying {
                     chat.active_tool_invocations(key).await
                 } else {
@@ -1170,7 +1155,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     insert_session_activity_snapshot(
                         obj,
                         replying,
-                        thinking_text,
                         tool_invocations,
                         voice_pending,
                     );
@@ -1441,7 +1425,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ActiveToolInvocation, ReasoningContent, insert_session_activity_snapshot};
+    use super::{ActiveToolInvocation, insert_session_activity_snapshot};
 
     fn active_tool_invocation() -> ActiveToolInvocation {
         ActiveToolInvocation {
@@ -1467,19 +1451,9 @@ mod tests {
     fn session_activity_snapshot_includes_active_tool_invocations_only_when_replying() {
         let mut obj = serde_json::Map::new();
 
-        insert_session_activity_snapshot(
-            &mut obj,
-            true,
-            Some(ReasoningContent::Text("working".to_string())),
-            vec![active_tool_invocation()],
-            true,
-        );
+        insert_session_activity_snapshot(&mut obj, true, vec![active_tool_invocation()], true);
 
         assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(true));
-        assert_eq!(
-            obj.get("thinkingText").and_then(|v| v.as_str()),
-            Some("working")
-        );
         assert_eq!(
             obj.get("voicePending").and_then(|v| v.as_bool()),
             Some(true)
@@ -1496,40 +1470,12 @@ mod tests {
     }
 
     #[test]
-    fn session_activity_snapshot_preserves_structured_reasoning_parts() {
-        let mut obj = serde_json::Map::new();
-
-        insert_session_activity_snapshot(
-            &mut obj,
-            true,
-            Some(ReasoningContent::Parts(vec![
-                "Analyzing".to_string(),
-                "Tracing".to_string(),
-            ])),
-            Vec::new(),
-            false,
-        );
-
-        assert_eq!(
-            obj.get("thinkingText"),
-            Some(&serde_json::json!(["Analyzing", "Tracing"]))
-        );
-    }
-
-    #[test]
     fn session_activity_snapshot_omits_active_fields_when_idle() {
         let mut obj = serde_json::Map::new();
 
-        insert_session_activity_snapshot(
-            &mut obj,
-            false,
-            Some(ReasoningContent::Text("stale".to_string())),
-            vec![active_tool_invocation()],
-            true,
-        );
+        insert_session_activity_snapshot(&mut obj, false, vec![active_tool_invocation()], true);
 
         assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(false));
-        assert!(obj.get("thinkingText").is_none());
         assert!(obj.get("activeToolInvocations").is_none());
         assert!(obj.get("voicePending").is_none());
     }

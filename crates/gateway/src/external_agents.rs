@@ -2,6 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use {
     async_trait::async_trait,
+    chelix_common::{
+        ItemPositionAllocator, ProviderItemId, ProviderItemUpdate, ProviderItemUpdatePayload,
+        ProviderSegmentId, ProviderSegmentMaterializer, ProviderSegmentOutcome,
+    },
     chelix_config::schema::ExternalAgentsConfig,
     chelix_external_agents::{
         AcpPermissionHandler, AcpPermissionOptionKind, AcpPermissionRequest, AgentTransportKind,
@@ -24,6 +28,15 @@ use {
 use chelix_tools::approval::{ApprovalDecision, ApprovalManager};
 
 use crate::{broadcast::BroadcastOpts, state::GatewayState};
+
+/// Identity of the visible message item synthesized for external-agent runs.
+///
+/// External agents report no output items, so the adapter assigns this identity
+/// once per segment. All visible text of the segment belongs to it.
+const EXTERNAL_AGENT_MESSAGE_ITEM_ID: &str = "msg_0";
+
+/// Identity of the reasoning item synthesized for external-agent runs.
+const EXTERNAL_AGENT_REASONING_ITEM_ID: &str = "rs_0";
 
 pub struct GatewayExternalAgentService {
     registry: ExternalAgentRegistry,
@@ -585,10 +598,58 @@ impl ExternalAgentChatService {
         let mut token_usage = None;
         let mut external_error = None;
         let mut completed = false;
+        let segment_id = ProviderSegmentId::new(format!("seg_{run_id}"));
+        let mut materializer = ProviderSegmentMaterializer::new(segment_id.clone());
+        let mut update_seq: u64 = 0;
+        // The transport reports text and thinking as separate event kinds with
+        // no ordering between them, so the position of an item is assigned once
+        // when its identity first arrives.
+        let mut item_positions = ItemPositionAllocator::default();
+        crate::broadcast::broadcast(
+            &self.state,
+            "chat",
+            serde_json::json!({
+                "runId": run_id,
+                "sessionKey": session_key,
+                "state": "segment_start",
+                "segmentId": segment_id.0,
+                "seq": seq,
+            }),
+            BroadcastOpts::default(),
+        )
+        .await;
         while let Some(event) = events.next().await {
             match event {
                 ExternalAgentEvent::TextDelta(delta) => {
                     assistant_text.push_str(&delta);
+                    update_seq += 1;
+                    let item_id = ProviderItemId::new(EXTERNAL_AGENT_MESSAGE_ITEM_ID);
+                    let position = item_positions.position_for(&item_id);
+                    let update = ProviderItemUpdate {
+                        segment_id: segment_id.clone(),
+                        item_id,
+                        position,
+                        update_seq,
+                        payload: ProviderItemUpdatePayload::MessageDelta {
+                            delta: delta.clone(),
+                        },
+                    };
+                    materializer
+                        .apply_update(&update)
+                        .map_err(|error| ServiceError::message(error.to_string()))?;
+                    crate::broadcast::broadcast(
+                        &self.state,
+                        "chat",
+                        serde_json::json!({
+                            "runId": run_id,
+                            "sessionKey": session_key,
+                            "state": "provider_update",
+                            "update": update.redacted(),
+                            "seq": seq,
+                        }),
+                        BroadcastOpts::default(),
+                    )
+                    .await;
                     crate::broadcast::broadcast(
                         &self.state,
                         "chat",
@@ -605,14 +666,27 @@ impl ExternalAgentChatService {
                     .await;
                 },
                 ExternalAgentEvent::ThinkingDelta(delta) => {
+                    update_seq += 1;
+                    let item_id = ProviderItemId::new(EXTERNAL_AGENT_REASONING_ITEM_ID);
+                    let position = item_positions.position_for(&item_id);
+                    let update = ProviderItemUpdate {
+                        segment_id: segment_id.clone(),
+                        item_id,
+                        position,
+                        update_seq,
+                        payload: ProviderItemUpdatePayload::ReasoningTextDelta { delta },
+                    };
+                    materializer
+                        .apply_update(&update)
+                        .map_err(|error| ServiceError::message(error.to_string()))?;
                     crate::broadcast::broadcast(
                         &self.state,
                         "chat",
                         serde_json::json!({
                             "runId": run_id,
                             "sessionKey": session_key,
-                            "state": "thinking_text",
-                            "text": delta,
+                            "state": "provider_update",
+                            "update": update.redacted(),
                             "seq": seq,
                         }),
                         BroadcastOpts::default(),
@@ -641,7 +715,35 @@ impl ExternalAgentChatService {
             external_error =
                 Some("The external agent stream ended without a terminal event.".to_string());
         }
+        let segment_outcome = if external_error.is_some() {
+            ProviderSegmentOutcome::Failed
+        } else {
+            ProviderSegmentOutcome::Completed
+        };
+        materializer
+            .close(segment_outcome)
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        crate::broadcast::broadcast(
+            &self.state,
+            "chat",
+            serde_json::json!({
+                "runId": run_id,
+                "sessionKey": session_key,
+                "state": "provider_segment_close",
+                "segmentId": segment_id.0,
+                "outcome": segment_outcome,
+                "seq": seq,
+            }),
+            BroadcastOpts::default(),
+        )
+        .await;
         let duration_ms = start.elapsed().as_millis() as u64;
+        let provider_items = if materializer.segment.items.is_empty() {
+            None
+        } else {
+            Some(materializer.segment.items.clone())
+        };
+        let reasoning = materializer.segment.reasoning_content();
         let assistant_msg = PersistedMessage::Assistant {
             content: assistant_text.clone(),
             created_at: Some(now_ms()),
@@ -658,8 +760,9 @@ impl ExternalAgentChatService {
             request_cache_read_tokens: None,
             request_cache_write_tokens: None,
             tool_calls: None,
-            reasoning: None,
-            responses_reasoning: Vec::new(),
+            reasoning: reasoning.clone(),
+            provider_items: provider_items.clone(),
+            segment_id: Some(segment_id.clone()),
             llm_api_response: None,
             audio: None,
             seq,
@@ -744,6 +847,13 @@ impl ExternalAgentChatService {
                 "durationMs": duration_ms,
                 "messageIndex": assistant_message_index,
                 "replyMedium": "text",
+                "reasoning": reasoning,
+                // A client reopening the chat renders this broadcast, so it
+                // carries the same canonical identity the persisted history
+                // does. Without it the client cannot tell this turn from the
+                // segment records it already applied, and shows it twice.
+                "providerItems": provider_items,
+                "segmentId": segment_id.0,
                 "seq": seq,
             }),
             BroadcastOpts::default(),
@@ -823,13 +933,6 @@ impl ChatService for ExternalAgentChatService {
 
     async fn active_session_keys(&self) -> Vec<String> {
         self.inner.active_session_keys().await
-    }
-
-    async fn active_thinking_text(
-        &self,
-        session_key: &str,
-    ) -> Option<chelix_common::ReasoningContent> {
-        self.inner.active_thinking_text(session_key).await
     }
 
     async fn active_voice_pending(&self, session_key: &str) -> bool {
@@ -1026,6 +1129,13 @@ mod tests {
                 return Ok(Box::pin(stream::iter([
                     ExternalAgentEvent::TextDelta("partial reply".to_string()),
                     ExternalAgentEvent::Error("fake partial failure".to_string()),
+                ])));
+            }
+            if prompt == "thinking-first" {
+                return Ok(Box::pin(stream::iter([
+                    ExternalAgentEvent::ThinkingDelta("weighing options".to_string()),
+                    ExternalAgentEvent::TextDelta("the answer".to_string()),
+                    ExternalAgentEvent::Done { usage: None },
                 ])));
             }
             self.state
@@ -1534,6 +1644,46 @@ mod tests {
         let history = session_store.read("main").await.expect("read history");
         assert_eq!(history[1]["inputTokens"], 7);
         assert_eq!(history[1]["outputTokens"], 11);
+    }
+
+    #[tokio::test]
+    async fn external_agent_item_positions_follow_arrival_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
+        external_agents
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .expect("bind external agent");
+        let chat = test_chat_service(
+            Arc::clone(&external_agents),
+            Arc::clone(&metadata),
+            Arc::clone(&session_store),
+        )
+        .await;
+
+        chat.send(serde_json::json!({ "sessionKey": "main", "text": "thinking-first" }))
+            .await
+            .expect("send thinking-first");
+
+        let history = session_store.read("main").await.expect("read history");
+        let items = history[1]["providerItems"]
+            .as_array()
+            .expect("assistant message carries canonical items");
+        // Reasoning arrived first, so it holds the first slot. A hardcoded
+        // position would put it after the message regardless of arrival order.
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["id"], "rs_0");
+        assert_eq!(items[0]["position"], 0);
+        assert_eq!(items[1]["id"], "msg_0");
+        assert_eq!(items[1]["position"], 1);
+        assert!(
+            history[1]["segmentId"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("seg_"))
+        );
     }
 
     #[tokio::test]

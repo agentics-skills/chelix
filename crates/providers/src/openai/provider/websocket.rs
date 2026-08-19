@@ -173,6 +173,9 @@ impl OpenAiProvider {
                     Ok(Message::Binary(b)) => String::from_utf8_lossy(&b).into_owned(),
                     Ok(Message::Ping(p)) => {
                         if let Err(err) = ws_stream.send(Message::Pong(p)).await {
+                            for event in state.close_on_transport_error() {
+                                yield event;
+                            }
                             yield StreamEvent::Error(err.to_string());
                             return;
                         }
@@ -181,6 +184,11 @@ impl OpenAiProvider {
                     Ok(Message::Close(_)) => break,
                     Ok(_) => continue,
                     Err(err) => {
+                        // The response was cut off. Close the segment so it is
+                        // not replayed later as still in progress.
+                        for event in state.close_on_transport_error() {
+                            yield event;
+                        }
                         yield StreamEvent::Error(err.to_string());
                         return;
                     },

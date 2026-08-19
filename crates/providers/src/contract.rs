@@ -11,6 +11,10 @@ use std::pin::Pin;
 use {
     async_trait::async_trait,
     chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
+    chelix_common::{
+        ProviderItemId, ProviderItemPosition, ProviderItemUpdate, ProviderItemUpdatePayload,
+        ProviderSegmentId,
+    },
     tokio_stream::{Stream, StreamExt},
 };
 
@@ -152,8 +156,16 @@ pub async fn stream_surfaces_reasoning_separately(
 
     while let Some(event) = stream.next().await {
         match event {
-            StreamEvent::ReasoningDelta(_) => {
-                first_reasoning_index.get_or_insert(event_index);
+            StreamEvent::ProviderItemUpdate(ref update) => {
+                if matches!(
+                    &update.payload,
+                    ProviderItemUpdatePayload::ReasoningDelta { .. }
+                        | ProviderItemUpdatePayload::ReasoningPartDone { .. }
+                        | ProviderItemUpdatePayload::ReasoningText { .. }
+                        | ProviderItemUpdatePayload::ReasoningTextDelta { .. }
+                ) {
+                    first_reasoning_index.get_or_insert(event_index);
+                }
             },
             StreamEvent::Delta(_) => {
                 first_visible_index.get_or_insert(event_index);
@@ -236,8 +248,24 @@ mod tests {
             _messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
             Box::pin(tokio_stream::iter(vec![
-                StreamEvent::ReasoningDelta("step 1".into()),
-                StreamEvent::ReasoningDelta(" step 2".into()),
+                StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: ProviderSegmentId::new("seg_mock"),
+                    item_id: ProviderItemId::new("rs_0"),
+                    position: ProviderItemPosition::new(0),
+                    update_seq: 1,
+                    payload: ProviderItemUpdatePayload::ReasoningTextDelta {
+                        delta: "step 1".into(),
+                    },
+                }),
+                StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: ProviderSegmentId::new("seg_mock"),
+                    item_id: ProviderItemId::new("rs_0"),
+                    position: ProviderItemPosition::new(0),
+                    update_seq: 2,
+                    payload: ProviderItemUpdatePayload::ReasoningTextDelta {
+                        delta: " step 2".into(),
+                    },
+                }),
                 StreamEvent::Delta("answer".into()),
                 StreamEvent::Done(Usage::default()),
             ]))

@@ -28,6 +28,11 @@ import {
 	setSessionReplying,
 	setSessionUnread,
 } from "../sessions";
+import {
+	applyProviderItemUpdate,
+	extractSegmentReasoning,
+	type ProviderSegmentViewModel,
+} from "../sessions/provider-segment-reducer";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
@@ -40,10 +45,14 @@ import type {
 	AssistantHistoryMessage,
 	ChatError,
 	ChatPayload,
+	ProviderItemUpdate,
+	ProviderUpdatePayload,
 	ReasoningContent,
 	ToolLifecyclePayload,
 } from "../types/ws-events";
 import { hasVisibleReasoning, isReasoningContent } from "../types/ws-events";
+import { currentLiveSegment, liveSegmentFor, openLiveSegment } from "./live-segments";
+import { placeSegmentNode } from "./segment-placement";
 import {
 	clearChatEmptyState,
 	hasNonWhitespaceContent,
@@ -89,6 +98,11 @@ function assistantHistoryMessage(message: AssistantHistoryMessage): HistoryMessa
 		requestCacheWriteTokens: message.requestCacheWriteTokens,
 		tool_calls: message.tool_calls,
 		reasoning: message.reasoning,
+		// Canonical identity travels with the message: a client that reopens the
+		// chat needs it to recognize this turn as the segment whose records it
+		// already applied, instead of rendering the segment a second time.
+		providerItems: message.providerItems,
+		segmentId: message.segmentId,
 		audio: message.audio,
 		run_id: message.run_id,
 		created_at: message.created_at,
@@ -141,15 +155,131 @@ function handleChatThinking(p: ChatPayload, isActive: boolean, isChatPage: boole
 	smartScrollToBottom();
 }
 
-function handleChatThinkingText(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+function handleChatSegmentStart(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
 	updateSessionRunId(eventSession, p.runId);
 	setSessionReplying(eventSession, true);
+	if (p.segmentId) {
+		const previous = currentLiveSegment(eventSession);
+		openLiveSegment(eventSession, p.segmentId);
+		// A new segment gets its own bubble. Keeping the previous element would
+		// append this segment's text to the one a retry just closed, showing the
+		// two attempts as a single run-on answer.
+		if (previous && previous.segmentId !== p.segmentId) detachLiveAssistantSegment();
+	}
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(true, eventSession);
-	const segment = activeAssistantSegment();
-	segment.querySelector(".thinking-status")?.remove();
-	appendReasoningDisclosure(segment, isReasoningContent(p.text) ? p.text : "", { expanded: true, streaming: true });
+}
+
+/// Close the live assistant element so the next segment starts a new one.
+///
+/// A segment that produced nothing visible leaves no element behind: an empty
+/// bubble has nothing to show and its disclosure would keep announcing a
+/// thinking state no later event can end. Anything else is finished in place,
+/// because it holds what the closed segment produced and the next segment must
+/// not erase it.
+function detachLiveAssistantSegment(): void {
+	const segment = S.streamEl;
+	if (!segment) return;
+	S.setStreamEl(null);
+	S.setStreamText("");
+	if (renderedSegmentIsEmpty(segment)) {
+		segment.remove();
+		return;
+	}
+	finishLiveReasoning(segment);
+}
+
+/// Whether the element shows nothing: no rendered text and no reasoning parts.
+function renderedSegmentIsEmpty(segment: HTMLElement): boolean {
+	const text = segment.querySelector<HTMLElement>(":scope > .msg-markdown-body")?.textContent;
+	if (hasNonWhitespaceContent(text)) return false;
+	return !hasVisibleReasoning(liveReasoningContent(segment));
+}
+
+function handleChatProviderUpdate(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
+	updateSessionRunId(eventSession, p.runId);
+	setSessionReplying(eventSession, true);
+	if (!p.update) return;
+	const payload = p as ProviderUpdatePayload;
+	cacheIndexedHistoryMessage(
+		eventSession,
+		{
+			role: "provider_update",
+			update: payload.update,
+			created_at: Date.now(),
+			run_id: p.runId,
+		},
+		payload.historyIndex,
+	);
+	// The live segment reducer owns identity and ordering for this session.
+	const segment = liveSegmentFor(eventSession, payload.update.segmentId);
+	applyProviderItemUpdate(segment, payload.update);
+	if (!(isActive && isChatPage)) return;
+	setComposerStopButton(true, eventSession);
+	placeLiveAssistantSegment(activeAssistantSegment(), segment);
+	// Function call deltas belong to a tool card, not to the assistant bubble.
+	// Re-rendering the reasoning for them would repaint a bubble whose content
+	// did not change.
+	if (touchesReasoning(payload.update.payload)) renderLiveSegmentReasoning(segment);
+}
+
+/// Whether an update changes what the reasoning disclosure displays.
+function touchesReasoning(payload: ProviderItemUpdate["payload"]): boolean {
+	switch (payload.update_type) {
+		case "reasoning_delta":
+		case "reasoning_part_done":
+		case "reasoning_item_done":
+		case "reasoning_text":
+		case "reasoning_text_delta":
+			return true;
+		default:
+			return false;
+	}
+}
+
+/// Place the live assistant node at the canonical position of the first
+/// non-function-call item of the segment, so it keeps its slot relative to the
+/// tool cards of the same segment.
+function placeLiveAssistantSegment(element: HTMLElement, segment: ProviderSegmentViewModel): void {
+	const anchor = segment.items.find((item) => item.payload.type !== "function_call");
+	if (!(anchor && S.chatMsgBox)) return;
+	placeSegmentNode(S.chatMsgBox, element, segment.segmentId, anchor.position);
+}
+
+function renderLiveSegmentReasoning(segment: ProviderSegmentViewModel): void {
+	const reasoning = extractSegmentReasoning(segment);
+	if (!hasVisibleReasoning(reasoning)) return;
+	const element = activeAssistantSegment();
+	element.classList.add("reasoning-stream");
+	appendReasoningDisclosure(element, reasoning, { expanded: true, streaming: true });
 	smartScrollToBottom();
+}
+
+function handleChatProviderSegmentClose(
+	p: ChatPayload,
+	isActive: boolean,
+	isChatPage: boolean,
+	eventSession: string,
+): void {
+	if (p.historyIndex !== undefined) {
+		cacheIndexedHistoryMessage(
+			eventSession,
+			{
+				role: "provider_segment_close",
+				segmentId: p.segmentId,
+				outcome: p.outcome,
+				created_at: Date.now(),
+				run_id: p.runId,
+			},
+			p.historyIndex,
+		);
+	}
+	const segment = currentLiveSegment(eventSession);
+	if (segment && p.outcome) segment.outcome = p.outcome;
+	if (!(isActive && isChatPage)) return;
+	if (S.streamEl) {
+		finishLiveReasoning(S.streamEl, segment ? extractSegmentReasoning(segment) : undefined);
+	}
 }
 
 function handleChatThinkingDone(_p: ChatPayload, isActive: boolean, isChatPage: boolean): void {
@@ -347,6 +477,11 @@ function finalAssistantHistory(payload: ChatPayload, text: string): HistoryMessa
 		requestCacheWriteTokens: payload.requestCacheWriteTokens,
 		reasoningEffort: payload.reasoningEffort,
 		reasoning: payload.reasoning || undefined,
+		// The cached message stands in for the persisted one until the next
+		// reload, so it carries the same canonical identity: without it the
+		// segment records replay as a separate message beside this turn.
+		providerItems: payload.providerItems,
+		segmentId: payload.segmentId,
 		audio: payload.audio || undefined,
 		run_id: payload.runId || undefined,
 		created_at: Date.now(),
@@ -856,8 +991,10 @@ function handleChatSessionCleared(_p: ChatPayload, isActive: boolean, isChatPage
 
 export const chatHandlers: Record<string, ChatHandler> = {
 	thinking: handleChatThinking,
-	thinking_text: handleChatThinkingText,
 	thinking_done: handleChatThinkingDone,
+	segment_start: handleChatSegmentStart,
+	provider_update: handleChatProviderUpdate,
+	provider_segment_close: handleChatProviderSegmentClose,
 	voice_pending: handleChatVoicePending,
 	tool_lifecycle: handleChatToolLifecycle,
 	channel_user: handleChatChannelUser,
@@ -882,9 +1019,15 @@ export function handleChatEvent(p: ChatPayload): void {
 	if (isActive && sessionStore.switchInProgress.value) {
 		// If session switching got stuck (e.g. lost RPC response), do not drop
 		// persisted lifecycle or terminal frames.
+		// `segment_start`, `provider_update` and `provider_segment_close` are
+		// persisted records: dropping one leaves the segment reducer with a hole
+		// it cannot rebuild, and the identity of every later update is rejected.
 		const allowDuringSwitch =
 			p.state === "user_message" ||
 			p.state === "tool_lifecycle" ||
+			p.state === "segment_start" ||
+			p.state === "provider_update" ||
+			p.state === "provider_segment_close" ||
 			p.state === "final" ||
 			p.state === "error" ||
 			p.state === "aborted" ||

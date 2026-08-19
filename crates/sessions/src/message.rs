@@ -5,7 +5,10 @@
 //! fields (created_at, model, provider, tokens, channel).
 
 use {
-    chelix_common::tool_lifecycle::ToolLifecycleEvent,
+    chelix_common::{
+        ProviderItemUpdate, ProviderOutputItem, ProviderSegmentId, ProviderSegmentOutcome,
+        tool_lifecycle::ToolLifecycleEvent,
+    },
     serde::{Deserialize, Serialize},
 };
 
@@ -128,13 +131,12 @@ pub enum PersistedMessage {
         /// Optional provider reasoning/planning content (not final answer text).
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning: Option<chelix_common::ReasoningContent>,
-        /// Opaque OpenAI Responses reasoning state used for stateless replay.
-        #[serde(
-            rename = "responsesReasoning",
-            default,
-            skip_serializing_if = "Vec::is_empty"
-        )]
-        responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
+        /// Ordered provider output items with canonical identity and positions.
+        #[serde(rename = "providerItems", skip_serializing_if = "Option::is_none")]
+        provider_items: Option<Vec<ProviderOutputItem>>,
+        /// Provider response/attempt segment identity.
+        #[serde(rename = "segmentId", skip_serializing_if = "Option::is_none")]
+        segment_id: Option<ProviderSegmentId>,
         /// Raw provider API payload captured during streaming for debugging.
         #[serde(rename = "llmApiResponse", skip_serializing_if = "Option::is_none")]
         llm_api_response: Option<serde_json::Value>,
@@ -159,6 +161,31 @@ pub enum PersistedMessage {
     ToolLifecycle {
         #[serde(flatten)]
         lifecycle: ToolLifecycleEvent,
+    },
+    /// Append-only incremental provider item update.
+    #[serde(rename = "provider_update")]
+    ProviderUpdate {
+        #[serde(flatten)]
+        update: ProviderItemUpdate,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        created_at: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        seq: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        run_id: Option<String>,
+    },
+    /// Terminal closure for a provider response/attempt segment.
+    #[serde(rename = "provider_segment_close")]
+    ProviderSegmentClose {
+        #[serde(rename = "segmentId")]
+        segment_id: ProviderSegmentId,
+        outcome: ProviderSegmentOutcome,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        created_at: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        seq: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        run_id: Option<String>,
     },
 }
 
@@ -217,7 +244,10 @@ impl PersistedMessage {
     #[must_use]
     pub fn run_id(&self) -> Option<&str> {
         match self {
-            Self::User { run_id, .. } | Self::Assistant { run_id, .. } => run_id.as_deref(),
+            Self::User { run_id, .. }
+            | Self::Assistant { run_id, .. }
+            | Self::ProviderUpdate { run_id, .. }
+            | Self::ProviderSegmentClose { run_id, .. } => run_id.as_deref(),
             Self::ToolLifecycle { lifecycle } => lifecycle.run_id.as_deref(),
             Self::System { .. }
             | Self::Notice { .. }
@@ -307,7 +337,8 @@ impl PersistedMessage {
             request_cache_write_tokens: None,
             tool_calls: None,
             reasoning: None,
-            responses_reasoning: vec![],
+            provider_items: None,
+            segment_id: None,
             llm_api_response: None,
             audio,
             seq: None,
@@ -464,7 +495,8 @@ mod tests {
             request_cache_write_tokens: Some(4),
             tool_calls: None,
             reasoning: None,
-            responses_reasoning: vec![],
+            provider_items: None,
+            segment_id: None,
             llm_api_response: None,
             audio: None,
             seq: None,
@@ -817,7 +849,8 @@ mod tests {
             request_cache_write_tokens: Some(0),
             tool_calls: None,
             reasoning: None,
-            responses_reasoning: vec![],
+            provider_items: None,
+            segment_id: None,
             llm_api_response: None,
             audio: None,
             seq: None,
