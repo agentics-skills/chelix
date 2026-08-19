@@ -13,16 +13,15 @@ use chelix_metrics::{counter, histogram, labels, llm as llm_metrics};
 use futures::StreamExt;
 
 use chelix_common::{
-    ContextBudgetMetadata,
+    ContextBudgetMetadata, ProviderSegmentMaterializer, ProviderSegmentOutcome,
     hooks::{HookAction, HookPayload, HookRegistry},
     tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
 };
 
 use crate::{
     model::{
-        AgentToolControls, ChatMessage, LlmProvider, ReasoningAccumulator, StreamEvent, ToolCall,
-        ToolChoice, Usage, UserContent, decode_tool_call_arguments_from_str,
-        push_capped_provider_raw_event,
+        AgentToolControls, ChatMessage, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
+        UserContent, decode_tool_call_arguments_from_str, push_capped_provider_raw_event,
     },
     response_sanitizer::{clean_response, recover_tool_calls_from_content},
     tool_loop_detector::ToolCallFingerprint,
@@ -105,6 +104,61 @@ async fn cancel_stream_tool_lifecycles(
         .await?;
     }
     Ok(())
+}
+
+/// Close the provider segment of a failed attempt.
+///
+/// A failed attempt ends its provider segment, whether the loop retries or
+/// gives up. The segment is reported as a transport error so downstream
+/// consumers keep the partial output of the attempt instead of discarding it,
+/// merging it into the next attempt, or replaying it later as still active.
+///
+/// A segment the provider never opened has nothing to close, and an already
+/// closed segment was closed by its own terminal event; both are left as they
+/// are. Any other rejection is a real ordering defect and is propagated.
+fn close_failed_segment(
+    materializer: &mut ProviderSegmentMaterializer,
+    on_event: Option<&OnEvent>,
+) -> Result<(), AgentRunError> {
+    let Some(segment_id) = materializer.segment.segment_id.clone() else {
+        return Ok(());
+    };
+    if materializer.segment.outcome != ProviderSegmentOutcome::Active {
+        return Ok(());
+    }
+    materializer
+        .close(ProviderSegmentOutcome::TransportError)
+        .map_err(|error| {
+            AgentRunError::Other(anyhow::anyhow!(
+                "provider segment close rejected after a failed attempt: {error}"
+            ))
+        })?;
+    if let Some(cb) = on_event {
+        cb(RunnerEvent::SegmentClose {
+            segment_id,
+            outcome: ProviderSegmentOutcome::TransportError,
+            usage: None,
+        });
+    }
+    Ok(())
+}
+
+/// Assistant message carrying what a failed attempt already produced.
+///
+/// The next attempt is a new provider request built from the conversation, so
+/// the partial output has to enter it as a message. Returns `None` when the
+/// attempt produced nothing, in which case there is nothing to carry over.
+fn failed_attempt_message(materializer: &ProviderSegmentMaterializer) -> Option<ChatMessage> {
+    if materializer.segment.items.is_empty() {
+        return None;
+    }
+    Some(ChatMessage::Assistant {
+        content: materializer.segment.message_text(),
+        tool_calls: Vec::new(),
+        reasoning: materializer.segment.reasoning_content(),
+        provider_items: materializer.segment.items.clone(),
+        segment_id: materializer.segment.segment_id.clone(),
+    })
 }
 
 /// Streaming agent loop with explicit runtime limits.
@@ -359,8 +413,9 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         // Accumulate answer text, reasoning text, and tool calls from the stream.
         let mut accumulated_text = String::new();
-        let mut accumulated_reasoning = ReasoningAccumulator::default();
-        let mut responses_reasoning = Vec::new();
+        // Segment identity is owned by the provider: it is adopted from the
+        // first announced update and never invented by the runtime.
+        let mut materializer = ProviderSegmentMaterializer::pending();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
         // Map streaming index -> accumulated JSON args string.
         let mut tool_call_args: std::collections::HashMap<usize, String> =
@@ -378,6 +433,36 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         while let Some(event) = stream.next().await {
             match event {
+                StreamEvent::SegmentStart { segment_id } => {
+                    materializer = ProviderSegmentMaterializer::new(segment_id.clone());
+                    if let Some(cb) = on_event {
+                        cb(RunnerEvent::SegmentStart { segment_id });
+                    }
+                },
+                StreamEvent::ProviderItemUpdate(update) => {
+                    materializer.apply_update(&update).map_err(|error| {
+                        anyhow::anyhow!("provider item update rejected: {error}")
+                    })?;
+                    if let Some(cb) = on_event {
+                        cb(RunnerEvent::ProviderItemUpdate(update));
+                    }
+                },
+                StreamEvent::SegmentClose {
+                    segment_id,
+                    outcome,
+                    usage,
+                } => {
+                    materializer.close(outcome).map_err(|error| {
+                        anyhow::anyhow!("provider segment close rejected: {error}")
+                    })?;
+                    if let Some(cb) = on_event {
+                        cb(RunnerEvent::SegmentClose {
+                            segment_id,
+                            outcome,
+                            usage: usage.clone(),
+                        });
+                    }
+                },
                 StreamEvent::Delta(text) => {
                     accumulated_text.push_str(&text);
                     if let Some(cb) = on_event {
@@ -387,63 +472,6 @@ pub async fn run_agent_loop_streaming_with_limits(
                 },
                 StreamEvent::ProviderRaw(raw) => {
                     push_capped_provider_raw_event(&mut raw_llm_responses, raw);
-                },
-                StreamEvent::ReasoningDelta(text) => {
-                    accumulated_reasoning.append_text(&text);
-                    if let Some(cb) = on_event
-                        && let Some(chelix_common::ReasoningContent::Text(text)) =
-                            accumulated_reasoning.content()
-                    {
-                        cb(RunnerEvent::ThinkingText(text));
-                    }
-                },
-                StreamEvent::ResponsesReasoningDelta {
-                    item_id,
-                    output_index,
-                    summary_index,
-                    delta,
-                } => {
-                    accumulated_reasoning.append_responses_delta(
-                        &item_id,
-                        output_index,
-                        summary_index,
-                        &delta,
-                    );
-                    if let Some(cb) = on_event {
-                        cb(RunnerEvent::ResponsesReasoningDelta {
-                            item_id,
-                            output_index,
-                            summary_index,
-                            delta,
-                        });
-                    }
-                },
-                StreamEvent::ResponsesReasoningPartDone {
-                    item_id,
-                    output_index,
-                    summary_index,
-                    text,
-                } => {
-                    accumulated_reasoning.complete_responses_part(
-                        &item_id,
-                        output_index,
-                        summary_index,
-                        text.clone(),
-                    );
-                    if let Some(cb) = on_event {
-                        cb(RunnerEvent::ResponsesReasoningPartDone {
-                            item_id,
-                            output_index,
-                            summary_index,
-                            text,
-                        });
-                    }
-                },
-                StreamEvent::ResponsesReasoningItem(item) => {
-                    responses_reasoning.push(item.clone());
-                    if let Some(cb) = on_event {
-                        cb(RunnerEvent::ResponsesReasoningItem(item));
-                    }
                 },
                 StreamEvent::ToolCallStart { id, name, index } => {
                     let vec_pos = tool_calls.len();
@@ -582,6 +610,9 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         // Handle stream errors — retry on transient failures/rate limits.
         if let Some(err) = stream_error {
+            // The attempt is over either way, so its segment is closed before
+            // the loop decides whether to retry or to give up.
+            close_failed_segment(&mut materializer, on_event)?;
             if let Some(delay_ms) = next_retry_delay_ms(
                 &err,
                 &mut server_retries_remaining,
@@ -590,6 +621,15 @@ pub async fn run_agent_loop_streaming_with_limits(
             ) {
                 // Don't count the failed attempt as an iteration.
                 iterations -= 1;
+                // The retry opens the next segment, but it must not discard the
+                // previous one: what the provider already produced becomes part
+                // of the conversation the next attempt sees.
+                if let Some(message) = failed_attempt_message(&materializer) {
+                    messages.push(message);
+                    // The attempt may have been cut mid tool call, and a call
+                    // without a result makes the next request invalid.
+                    crate::model::ensure_tool_call_results_present(&mut messages);
+                }
                 warn!(
                     error = %err,
                     delay_ms,
@@ -668,8 +708,9 @@ pub async fn run_agent_loop_streaming_with_limits(
             info!("detected malformed tool call in stream, requesting retry");
             messages.push(
                 ChatMessage::assistant(&accumulated_text)
-                    .with_reasoning(accumulated_reasoning.content())
-                    .with_responses_reasoning(responses_reasoning),
+                    .with_reasoning(materializer.segment.reasoning_content())
+                    .with_provider_items(materializer.segment.items.clone())
+                    .with_segment_id(materializer.segment.segment_id.clone()),
             );
             messages.push(ChatMessage::user(MALFORMED_TOOL_RETRY_PROMPT));
             continue;
@@ -716,8 +757,9 @@ pub async fn run_agent_loop_streaming_with_limits(
                 );
                 messages.push(
                     ChatMessage::assistant(retry_text.unwrap_or_default())
-                        .with_reasoning(accumulated_reasoning.content())
-                        .with_responses_reasoning(responses_reasoning),
+                        .with_reasoning(materializer.segment.reasoning_content())
+                        .with_provider_items(materializer.segment.items.clone())
+                        .with_segment_id(materializer.segment.segment_id.clone()),
                 );
                 messages.push(ChatMessage::user(empty_tool_name_retry_prompt(tc)));
                 cancel_stream_tool_lifecycles(
@@ -765,8 +807,11 @@ pub async fn run_agent_loop_streaming_with_limits(
             // and we haven't exhausted nudges, ask it to keep going. Suppress
             // the nudge when the model already produced a substantive final
             // answer — nudging in that case risks losing the answer (GH #628).
-            let has_reasoning_output =
-                !accumulated_reasoning.is_empty() || !responses_reasoning.is_empty();
+            let current_reasoning = materializer.segment.reasoning_content();
+            let current_items = materializer.segment.items.clone();
+            let current_segment_id = materializer.segment.segment_id.clone();
+            let has_reasoning_output = current_reasoning.as_ref().is_some_and(|r| !r.is_empty())
+                || !current_items.is_empty();
             if !is_substantive_answer_text(&accumulated_text)
                 && !has_reasoning_output
                 && tool_call_budget.used() > 0
@@ -783,18 +828,18 @@ pub async fn run_agent_loop_streaming_with_limits(
                         iteration: iterations,
                     });
                 }
-                let reasoning = accumulated_reasoning.content();
                 if !accumulated_text.is_empty()
-                    || reasoning.is_some()
-                    || !responses_reasoning.is_empty()
+                    || current_reasoning.is_some()
+                    || !current_items.is_empty()
                 {
                     messages.push(
                         ChatMessage::assistant_with_tools(
                             (!accumulated_text.is_empty()).then(|| accumulated_text.clone()),
                             Vec::new(),
                         )
-                        .with_reasoning(reasoning)
-                        .with_responses_reasoning(responses_reasoning),
+                        .with_reasoning(current_reasoning)
+                        .with_provider_items(current_items)
+                        .with_segment_id(current_segment_id),
                     );
                 }
                 messages.push(ChatMessage::user(AUTO_CONTINUE_NUDGE));
@@ -803,8 +848,9 @@ pub async fn run_agent_loop_streaming_with_limits(
 
             let current_output = AssistantIterationOutput {
                 text: accumulated_text,
-                reasoning: accumulated_reasoning.content(),
-                responses_reasoning,
+                reasoning: current_reasoning,
+                provider_items: current_items,
+                segment_id: current_segment_id,
             };
             // A previous tool iteration can own the display answer only when the
             // current provider iteration returned no output parts at all.
@@ -849,7 +895,9 @@ pub async fn run_agent_loop_streaming_with_limits(
         // Persist every output part on the assistant frame owned by this
         // provider iteration before executing its tool calls.
         let text_for_msg = (!accumulated_text.is_empty()).then(|| accumulated_text.clone());
-        let reasoning_for_msg = accumulated_reasoning.content();
+        let reasoning_for_msg = materializer.segment.reasoning_content();
+        let current_items = materializer.segment.items.clone();
+        let current_segment_id = materializer.segment.segment_id.clone();
         if let Some(ref text) = text_for_msg {
             record_answer_text(
                 &mut last_answer_text,
@@ -868,7 +916,8 @@ pub async fn run_agent_loop_streaming_with_limits(
         messages.push(
             ChatMessage::assistant_with_tools(text_for_msg, tool_calls.clone())
                 .with_reasoning(reasoning_for_msg)
-                .with_responses_reasoning(responses_reasoning),
+                .with_provider_items(current_items)
+                .with_segment_id(current_segment_id),
         );
 
         // Publish the canonical assistant tool-call frame before execution.

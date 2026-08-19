@@ -11,11 +11,24 @@ use {
         ChatMessage, CompletionResponse, StreamEvent, ToolCall, Usage, UserContent,
         decode_tool_call_arguments_with_diagnostic,
     },
+    chelix_common::{
+        ItemPositionAllocator, ProviderItemId, ProviderItemPosition, ProviderItemUpdate,
+        ProviderItemUpdatePayload, ProviderSegmentId, ProviderSegmentOutcome,
+    },
     serde::Serialize,
     tracing::trace,
 };
 
 use super::schema_normalization::{normalize_tool_parameters, tool_identity};
+
+/// Identity of the reasoning item synthesized for Chat Completions streams.
+///
+/// Chat Completions has no output items, so the adapter assigns this identity
+/// once per segment. All reasoning text of the segment belongs to it.
+const CHAT_REASONING_ITEM_ID: &str = "rs_0";
+
+/// Identity of the visible message item synthesized for Chat Completions streams.
+const CHAT_MESSAGE_ITEM_ID: &str = "msg_0";
 
 // ============================================================================
 // OpenAI Tool Schema Types
@@ -194,41 +207,64 @@ pub fn to_responses_input(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
             ChatMessage::Assistant {
                 content,
                 tool_calls,
-                responses_reasoning,
+                provider_items,
                 ..
             } => {
-                let mut items: Vec<serde_json::Value> = responses_reasoning
-                    .iter()
-                    .filter(|item| item.id.starts_with("rs"))
-                    .map(|item| {
-                        serde_json::json!({
-                            "type": "reasoning",
-                            "id": item.id,
-                            "summary": [],
-                            "encrypted_content": item.encrypted_content,
+                if !provider_items.is_empty() {
+                    provider_items
+                        .iter()
+                        .map(|item| match &item.payload {
+                            chelix_common::ProviderOutputPayload::Reasoning(reasoning) => {
+                                serde_json::json!({
+                                    "type": "reasoning",
+                                    "id": reasoning.id.0,
+                                    "summary": reasoning_summary(reasoning),
+                                    "encrypted_content": reasoning.encrypted_content,
+                                })
+                            },
+                            chelix_common::ProviderOutputPayload::Message { text } => {
+                                serde_json::json!({
+                                    "type": "message",
+                                    "role": "assistant",
+                                    "content": [{"type": "output_text", "text": text}]
+                                })
+                            },
+                            chelix_common::ProviderOutputPayload::FunctionCall {
+                                call_id,
+                                name,
+                                arguments,
+                            } => {
+                                serde_json::json!({
+                                    "type": "function_call",
+                                    "call_id": call_id,
+                                    "name": name,
+                                    "arguments": arguments,
+                                })
+                            },
                         })
-                    })
-                    .collect();
+                        .collect()
+                } else {
+                    let mut items = Vec::new();
+                    if let Some(text) = content
+                        && (!text.is_empty() || tool_calls.is_empty())
+                    {
+                        items.push(serde_json::json!({
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": text}]
+                        }));
+                    }
 
-                if let Some(text) = content
-                    && (!text.is_empty() || tool_calls.is_empty())
-                {
-                    items.push(serde_json::json!({
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [{"type": "output_text", "text": text}]
+                    items.extend(tool_calls.iter().map(|tc| {
+                        serde_json::json!({
+                            "type": "function_call",
+                            "call_id": tc.id,
+                            "name": tc.name,
+                            "arguments": tc.arguments.to_string(),
+                        })
                     }));
+                    items
                 }
-
-                items.extend(tool_calls.iter().map(|tc| {
-                    serde_json::json!({
-                        "type": "function_call",
-                        "call_id": tc.id,
-                        "name": tc.name,
-                        "arguments": tc.arguments.to_string(),
-                    })
-                }));
-                items
             },
             ChatMessage::Tool {
                 tool_call_id,
@@ -240,6 +276,67 @@ pub fn to_responses_input(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                     "output": content,
                 })]
             },
+        })
+        .collect()
+}
+
+/// Updates for the summary parts carried by a final reasoning item.
+///
+/// `output_item.done` repeats the whole summary of the item, including parts
+/// that already arrived as deltas. Re-emitting those would append the same text
+/// twice, so only the parts the stream never delivered are emitted here. A
+/// provider that sends the summary only in the final item therefore keeps its
+/// reasoning, and one that streams it keeps it exactly once.
+fn reasoning_summary_events(
+    item: &serde_json::Value,
+    item_id: &ProviderItemId,
+    position: ProviderItemPosition,
+    state: &mut ResponsesStreamState,
+) -> Vec<StreamEvent> {
+    let Some(summary) = item["summary"].as_array() else {
+        return Vec::new();
+    };
+    let mut events = Vec::new();
+    for (summary_index, part) in summary.iter().enumerate() {
+        let Some(text) = part["text"].as_str().filter(|text| !text.is_empty()) else {
+            continue;
+        };
+        if !state
+            .streamed_reasoning_summary_parts
+            .insert((item_id.0.clone(), summary_index))
+        {
+            continue;
+        }
+        let seq = state.next_seq();
+        events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+            segment_id: state.segment_id.clone(),
+            item_id: item_id.clone(),
+            position,
+            update_seq: seq,
+            payload: ProviderItemUpdatePayload::ReasoningPartDone {
+                part_index: summary_index,
+                text: text.to_string(),
+            },
+        }));
+    }
+    events
+}
+
+/// Serialize the summary of a reasoning item for a Responses API request.
+///
+/// The parts a segment collected are what the model produced, so they are sent
+/// back verbatim and in their canonical order. An item that carries no parts
+/// serializes as an empty summary, which is what the API expects for reasoning
+/// that only has opaque content.
+fn reasoning_summary(reasoning: &chelix_common::ReasoningItem) -> Vec<serde_json::Value> {
+    reasoning
+        .summary_parts
+        .iter()
+        .map(|part| {
+            serde_json::json!({
+                "type": "summary_text",
+                "text": part.text,
+            })
         })
         .collect()
 }
@@ -581,7 +678,7 @@ pub fn strip_think_tags(content: &str) -> (String, String) {
     )
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReasoningTag {
     Think,
     Thought,
@@ -621,10 +718,27 @@ fn longest_reasoning_open_tag_suffix(text: &str) -> usize {
 }
 
 /// State for tracking streaming tool calls.
-#[derive(Default)]
+#[derive(Debug)]
 pub struct StreamingToolState {
+    pub segment_id: ProviderSegmentId,
+    pub segment_started: bool,
+    /// Set once the segment has been closed by a terminal outcome.
+    pub segment_closed: bool,
+    /// Set once the provider announced a terminal outcome for this response.
+    ///
+    /// Chat Completions marks the end of a response with a `finish_reason` or a
+    /// `[DONE]` frame. Without one of them the connection simply dropped, and
+    /// the segment must not be reported as completed.
+    terminal_seen: bool,
+    pub next_seq: u64,
     /// Map from index -> (id, name, arguments_buffer)
     pub tool_calls: HashMap<usize, (String, String, String)>,
+    /// Canonical positions for this segment, assigned in first-appearance order.
+    ///
+    /// Chat Completions carries no output item index, so the adapter is the
+    /// only place that can assign positions, and it does so exactly once per
+    /// item identity.
+    item_positions: ItemPositionAllocator,
     pub input_tokens: u32,
     pub output_tokens: u32,
     pub cache_read_tokens: u32,
@@ -646,6 +760,75 @@ pub struct StreamingToolState {
     tag_buffer: String,
 }
 
+impl Default for StreamingToolState {
+    fn default() -> Self {
+        Self {
+            segment_id: ProviderSegmentId::new(format!(
+                "seg_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )),
+            segment_started: false,
+            segment_closed: false,
+            terminal_seen: false,
+            next_seq: 0,
+            tool_calls: HashMap::new(),
+            item_positions: ItemPositionAllocator::default(),
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            in_think_block: false,
+            current_reasoning_tag: None,
+            think_strip_leading_ws: false,
+            visible_strip_leading_ws: false,
+            tag_buffer: String::new(),
+        }
+    }
+}
+
+impl StreamingToolState {
+    pub fn next_seq(&mut self) -> u64 {
+        self.next_seq += 1;
+        self.next_seq
+    }
+
+    /// Record that the provider announced the end of this response.
+    pub fn mark_terminal(&mut self) {
+        self.terminal_seen = true;
+    }
+
+    /// Close this segment because the transport failed mid-response.
+    ///
+    /// The caller aborts the stream without finalizing it, so the close is
+    /// emitted here. A segment left open would later be replayed as if the
+    /// response were still in progress.
+    pub fn close_on_transport_error(&mut self) -> Vec<StreamEvent> {
+        if !self.segment_started || self.segment_closed {
+            return Vec::new();
+        }
+        self.segment_closed = true;
+        vec![StreamEvent::SegmentClose {
+            segment_id: self.segment_id.clone(),
+            outcome: ProviderSegmentOutcome::TransportError,
+            usage: Some(Usage {
+                input_tokens: self.input_tokens,
+                output_tokens: self.output_tokens,
+                cache_read_tokens: self.cache_read_tokens,
+                cache_write_tokens: self.cache_write_tokens,
+            }),
+        }]
+    }
+
+    /// Canonical position of `item_id`, assigned on first sight and stable
+    /// afterwards.
+    fn position_for(&mut self, item_id: &ProviderItemId) -> ProviderItemPosition {
+        self.item_positions.position_for(item_id)
+    }
+}
+
 /// Result of processing a single SSE line.
 #[derive(Debug)]
 pub enum SseLineResult {
@@ -655,6 +838,33 @@ pub enum SseLineResult {
     Done,
     /// Events to yield
     Events(Vec<StreamEvent>),
+}
+
+/// Report a malformed Chat Completions event and fail the stream.
+///
+/// Substituting a value for a missing correlation field would merge unrelated
+/// provider items, so the segment is closed as failed and the defect is
+/// reported instead.
+fn chat_protocol_error(
+    state: &mut StreamingToolState,
+    mut events: Vec<StreamEvent>,
+    detail: String,
+) -> SseLineResult {
+    tracing::error!(
+        segment_id = %state.segment_id,
+        detail = %detail,
+        "provider sent a malformed Chat Completions event"
+    );
+    if !state.segment_closed {
+        state.segment_closed = true;
+        events.push(StreamEvent::SegmentClose {
+            segment_id: state.segment_id.clone(),
+            outcome: ProviderSegmentOutcome::Failed,
+            usage: None,
+        });
+    }
+    events.push(StreamEvent::Error(detail));
+    SseLineResult::Events(events)
 }
 
 /// Result of processing a single Responses API SSE line.
@@ -676,41 +886,62 @@ pub enum ResponsesEventResult {
 
 /// Emit a `ReasoningDelta`, stripping leading whitespace at the start of a
 /// think block so the UI doesn't show a blank prefix.
-fn emit_reasoning(text: String, strip_leading_ws: &mut bool, events: &mut Vec<StreamEvent>) {
+fn emit_reasoning(text: String, state: &mut StreamingToolState, events: &mut Vec<StreamEvent>) {
     if text.is_empty() {
         return;
     }
-    let emitted = if *strip_leading_ws {
+    let emitted = if state.think_strip_leading_ws {
         let trimmed = text.trim_start();
         if trimmed.is_empty() {
             // Entire chunk was whitespace — keep stripping
             return;
         }
-        *strip_leading_ws = false;
+        state.think_strip_leading_ws = false;
         trimmed.to_string()
     } else {
         text
     };
-    events.push(StreamEvent::ReasoningDelta(emitted));
+    let seq = state.next_seq();
+    let item_id = ProviderItemId::new(CHAT_REASONING_ITEM_ID);
+    let position = state.position_for(&item_id);
+    events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+        segment_id: state.segment_id.clone(),
+        item_id,
+        position,
+        update_seq: seq,
+        payload: ProviderItemUpdatePayload::ReasoningTextDelta { delta: emitted },
+    }));
 }
 
 /// Emit a visible `Delta`, stripping leading whitespace after a `</think>`
 /// block so the UI doesn't show blank lines before the answer.
-fn emit_visible(text: String, strip_leading_ws: &mut bool, events: &mut Vec<StreamEvent>) {
+fn emit_visible(text: String, state: &mut StreamingToolState, events: &mut Vec<StreamEvent>) {
     if text.is_empty() {
         return;
     }
-    let emitted = if *strip_leading_ws {
+    let emitted = if state.visible_strip_leading_ws {
         let trimmed = text.trim_start();
         if trimmed.is_empty() {
             // Entire chunk was whitespace — keep stripping
             return;
         }
-        *strip_leading_ws = false;
+        state.visible_strip_leading_ws = false;
         trimmed.to_string()
     } else {
         text
     };
+    let seq = state.next_seq();
+    let item_id = ProviderItemId::new(CHAT_MESSAGE_ITEM_ID);
+    let position = state.position_for(&item_id);
+    events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+        segment_id: state.segment_id.clone(),
+        item_id,
+        position,
+        update_seq: seq,
+        payload: ProviderItemUpdatePayload::MessageDelta {
+            delta: emitted.clone(),
+        },
+    }));
     events.push(StreamEvent::Delta(emitted));
 }
 
@@ -739,7 +970,7 @@ fn process_content_think_tags(
             match state.tag_buffer.find(close_tag) {
                 Some(pos) => {
                     let thinking = state.tag_buffer[..pos].to_string();
-                    emit_reasoning(thinking, &mut state.think_strip_leading_ws, events);
+                    emit_reasoning(thinking, state, events);
                     state.in_think_block = false;
                     state.current_reasoning_tag = None;
                     state.visible_strip_leading_ws = true;
@@ -754,13 +985,13 @@ fn process_content_think_tags(
                     if suffix_match > 0 {
                         let safe = state.tag_buffer.len() - suffix_match;
                         let emit = state.tag_buffer[..safe].to_string();
-                        emit_reasoning(emit, &mut state.think_strip_leading_ws, events);
+                        emit_reasoning(emit, state, events);
                         let kept = state.tag_buffer[safe..].to_string();
                         state.tag_buffer = kept;
                     } else {
                         // No partial tag — emit everything as reasoning
                         let buf = std::mem::take(&mut state.tag_buffer);
-                        emit_reasoning(buf, &mut state.think_strip_leading_ws, events);
+                        emit_reasoning(buf, state, events);
                     }
                     break;
                 },
@@ -770,7 +1001,7 @@ fn process_content_think_tags(
             match find_next_open_tag(&state.tag_buffer) {
                 Some((pos, tag)) => {
                     let visible = state.tag_buffer[..pos].to_string();
-                    emit_visible(visible, &mut state.visible_strip_leading_ws, events);
+                    emit_visible(visible, state, events);
                     state.in_think_block = true;
                     state.current_reasoning_tag = Some(tag);
                     state.think_strip_leading_ws = true;
@@ -784,13 +1015,13 @@ fn process_content_think_tags(
                     if suffix_match > 0 {
                         let safe = state.tag_buffer.len() - suffix_match;
                         let emit = state.tag_buffer[..safe].to_string();
-                        emit_visible(emit, &mut state.visible_strip_leading_ws, events);
+                        emit_visible(emit, state, events);
                         let kept = state.tag_buffer[safe..].to_string();
                         state.tag_buffer = kept;
                     } else {
                         // No partial tag — emit everything as visible
                         let buf = std::mem::take(&mut state.tag_buffer);
-                        emit_visible(buf, &mut state.visible_strip_leading_ws, events);
+                        emit_visible(buf, state, events);
                     }
                     break;
                 },
@@ -827,6 +1058,7 @@ fn longest_tag_suffix(text: &str, tag: &str) -> usize {
 /// chain-of-thought in `content` rather than using `reasoning_content`.
 pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> SseLineResult {
     if data == "[DONE]" {
+        state.mark_terminal();
         return SseLineResult::Done;
     }
 
@@ -835,6 +1067,15 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
     };
 
     let mut events = vec![StreamEvent::ProviderRaw(evt.clone())];
+    if !state.segment_started {
+        state.segment_started = true;
+        if let Some(id) = evt.get("id").and_then(serde_json::Value::as_str) {
+            state.segment_id = ProviderSegmentId::new(id);
+        }
+        events.push(StreamEvent::SegmentStart {
+            segment_id: state.segment_id.clone(),
+        });
+    }
 
     if let Some(usage) = parse_openai_compat_usage_from_payload(&evt) {
         state.input_tokens = usage.input_tokens;
@@ -861,19 +1102,50 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
     if let Some(reasoning_content) = reasoning_text
         && !reasoning_content.is_empty()
     {
-        events.push(StreamEvent::ReasoningDelta(reasoning_content.to_string()));
+        let seq = state.next_seq();
+        let item_id = ProviderItemId::new(CHAT_REASONING_ITEM_ID);
+        let position = state.position_for(&item_id);
+        events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+            segment_id: state.segment_id.clone(),
+            item_id,
+            position,
+            update_seq: seq,
+            payload: ProviderItemUpdatePayload::ReasoningTextDelta {
+                delta: reasoning_content.to_string(),
+            },
+        }));
     }
 
     // Handle tool calls
     if let Some(tcs) = delta["tool_calls"].as_array() {
         for tc in tcs {
-            let index = tc["index"].as_u64().unwrap_or(0) as usize;
+            // `index` correlates argument deltas with the call that opened the
+            // slot. Defaulting it would append arguments to an unrelated call.
+            let Some(index) = tc["index"].as_u64().map(|index| index as usize) else {
+                return chat_protocol_error(
+                    state,
+                    events,
+                    "tool_call delta has no index".to_string(),
+                );
+            };
 
             // Check if this is a new tool call (has id and function.name)
             if let (Some(id), Some(name)) = (tc["id"].as_str(), tc["function"]["name"].as_str()) {
                 state
                     .tool_calls
                     .insert(index, (id.to_string(), name.to_string(), String::new()));
+                let seq = state.next_seq();
+                let item_id = ProviderItemId::new(id);
+                let position = state.position_for(&item_id);
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::FunctionCallStart {
+                        name: name.to_string(),
+                    },
+                }));
                 events.push(StreamEvent::ToolCallStart {
                     id: id.to_string(),
                     name: name.to_string(),
@@ -885,8 +1157,25 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
             if let Some(args_delta) = tc["function"]["arguments"].as_str()
                 && !args_delta.is_empty()
             {
-                if let Some((_, _, args_buf)) = state.tool_calls.get_mut(&index) {
+                let tool_id = if let Some((id, _, args_buf)) = state.tool_calls.get_mut(&index) {
                     args_buf.push_str(args_delta);
+                    Some(id.clone())
+                } else {
+                    None
+                };
+                if let Some(id) = tool_id {
+                    let seq = state.next_seq();
+                    let item_id = ProviderItemId::new(id);
+                    let position = state.position_for(&item_id);
+                    events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                        segment_id: state.segment_id.clone(),
+                        item_id,
+                        position,
+                        update_seq: seq,
+                        payload: ProviderItemUpdatePayload::FunctionCallDelta {
+                            delta: args_delta.to_string(),
+                        },
+                    }));
                 }
                 events.push(StreamEvent::ToolCallArgumentsDelta {
                     index,
@@ -899,6 +1188,7 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
     // Detect error finish reasons (e.g. "network_error", "content_filter").
     // Normal reasons (null, "stop", "tool_calls", "length") are not errors.
     if let Some(reason) = evt["choices"][0]["finish_reason"].as_str() {
+        state.mark_terminal();
         match reason {
             "stop" | "tool_calls" | "length" | "function_call" => {},
             error_reason => {
@@ -923,8 +1213,29 @@ pub fn finalize_stream(state: &mut StreamingToolState) -> Vec<StreamEvent> {
     if !state.tag_buffer.is_empty() {
         let remaining = std::mem::take(&mut state.tag_buffer);
         if state.in_think_block {
-            events.push(StreamEvent::ReasoningDelta(remaining));
+            let seq = state.next_seq();
+            let item_id = ProviderItemId::new(CHAT_REASONING_ITEM_ID);
+            let position = state.position_for(&item_id);
+            events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                segment_id: state.segment_id.clone(),
+                item_id,
+                position,
+                update_seq: seq,
+                payload: ProviderItemUpdatePayload::ReasoningTextDelta { delta: remaining },
+            }));
         } else {
+            let seq = state.next_seq();
+            let item_id = ProviderItemId::new(CHAT_MESSAGE_ITEM_ID);
+            let position = state.position_for(&item_id);
+            events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                segment_id: state.segment_id.clone(),
+                item_id,
+                position,
+                update_seq: seq,
+                payload: ProviderItemUpdatePayload::MessageDelta {
+                    delta: remaining.clone(),
+                },
+            }));
             events.push(StreamEvent::Delta(remaining));
         }
     }
@@ -934,6 +1245,36 @@ pub fn finalize_stream(state: &mut StreamingToolState) -> Vec<StreamEvent> {
         events.push(StreamEvent::ToolCallComplete { index: *index });
     }
 
+    if state.segment_started && !state.segment_closed {
+        state.segment_closed = true;
+        // Only a provider-announced terminal marker completes a segment. A
+        // stream that just ends was cut off, and reporting it as completed
+        // would turn a truncated answer into a successful one.
+        let outcome = if state.terminal_seen {
+            ProviderSegmentOutcome::Completed
+        } else {
+            ProviderSegmentOutcome::TransportError
+        };
+        events.push(StreamEvent::SegmentClose {
+            segment_id: state.segment_id.clone(),
+            outcome,
+            usage: Some(Usage {
+                input_tokens: state.input_tokens,
+                output_tokens: state.output_tokens,
+                cache_read_tokens: state.cache_read_tokens,
+                cache_write_tokens: state.cache_write_tokens,
+            }),
+        });
+        if !state.terminal_seen {
+            tracing::error!(
+                segment_id = %state.segment_id,
+                "Chat Completions stream ended without finish_reason or [DONE]"
+            );
+            events.push(StreamEvent::Error(
+                "provider stream closed before announcing a finish_reason".to_string(),
+            ));
+        }
+    }
     events.push(StreamEvent::Done(Usage {
         input_tokens: state.input_tokens,
         output_tokens: state.output_tokens,
@@ -981,91 +1322,145 @@ pub fn split_responses_instructions_and_input(
     (instructions, to_responses_input(&non_system))
 }
 
-/// Resolve the output index from a Responses API event.
-///
-/// The Responses API uses `output_index` for items and `index` for
-/// sub-item fields.  WebSocket events may also use `item_index`.
-/// Falls back to `fallback` if none of these keys are present.
-pub fn responses_output_index(event: &serde_json::Value, fallback: usize) -> usize {
-    event
-        .get("output_index")
-        .or_else(|| event.get("item_index"))
-        .or_else(|| event.get("index"))
-        .and_then(serde_json::Value::as_u64)
-        .map(|i| i as usize)
-        .unwrap_or(fallback)
-}
-
 /// State for tracking Responses API SSE streaming.
-#[derive(Default)]
 pub struct ResponsesStreamState {
-    /// Map from index -> (call_id, name)
+    pub segment_id: ProviderSegmentId,
+    pub segment_started: bool,
+    /// Set once the segment has been closed by a terminal outcome. A segment is
+    /// closed exactly once; finalization must not emit a second close.
+    pub segment_closed: bool,
+    pub next_seq: u64,
     pub tool_calls: HashMap<usize, (String, String)>,
     /// Set of tool call indices that have already emitted `ToolCallComplete`.
     pub completed_tool_calls: HashSet<usize>,
     /// The next tool call index to assign.
     pub current_tool_index: usize,
+    /// Canonical positions for this segment, assigned in first-appearance order.
+    ///
+    /// The `output_index` carried by Responses delta events orders items only
+    /// within a channel for some providers, so two distinct items can share one
+    /// value inside a single response. Positions therefore come from the order
+    /// in which item identities first appear on the stream.
+    item_positions: ItemPositionAllocator,
     pub input_tokens: u32,
     pub output_tokens: u32,
     pub cache_read_tokens: u32,
     pub cache_write_tokens: u32,
-    /// Reasoning summary parts already emitted from streaming events.
-    pub streamed_reasoning_summary_parts: HashSet<(String, usize, usize)>,
+    /// Reasoning summary parts already emitted from streaming events, keyed by
+    /// the item they belong to and their summary index.
+    ///
+    /// The final `output_item.done` repeats the whole summary. A part that
+    /// already arrived as a delta is not emitted again, so the two sources
+    /// cannot produce the same text twice.
+    pub streamed_reasoning_summary_parts: HashSet<(String, usize)>,
 }
 
-fn responses_reasoning_events(
-    item: &serde_json::Value,
-    output_index: Option<usize>,
-    state: &ResponsesStreamState,
-) -> Vec<StreamEvent> {
-    if item.get("type").and_then(serde_json::Value::as_str) != Some("reasoning") {
-        return Vec::new();
-    }
-    let Some(id) = item.get("id").and_then(serde_json::Value::as_str) else {
-        return Vec::new();
-    };
-
-    let mut events = Vec::new();
-    if let Some(output_index) = output_index {
-        for (summary_index, text) in item
-            .get("summary")
-            .and_then(serde_json::Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|part| part.get("text").and_then(serde_json::Value::as_str))
-            .enumerate()
-        {
-            let part_key = (id.to_string(), output_index, summary_index);
-            if !state.streamed_reasoning_summary_parts.contains(&part_key) {
-                events.push(StreamEvent::ResponsesReasoningPartDone {
-                    item_id: id.to_string(),
-                    output_index,
-                    summary_index,
-                    text: text.to_string(),
-                });
-            }
+impl Default for ResponsesStreamState {
+    fn default() -> Self {
+        Self {
+            segment_id: ProviderSegmentId::new(format!(
+                "resp_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )),
+            segment_started: false,
+            segment_closed: false,
+            next_seq: 0,
+            tool_calls: HashMap::new(),
+            completed_tool_calls: HashSet::new(),
+            current_tool_index: 0,
+            item_positions: ItemPositionAllocator::default(),
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            streamed_reasoning_summary_parts: HashSet::new(),
         }
     }
-
-    if let Some(encrypted_content) = item
-        .get("encrypted_content")
-        .and_then(serde_json::Value::as_str)
-        && id.starts_with("rs")
-        && !encrypted_content.is_empty()
-    {
-        events.push(StreamEvent::ResponsesReasoningItem(
-            chelix_common::ResponsesReasoningItem {
-                id: id.to_string(),
-                encrypted_content: encrypted_content.to_string(),
-            },
-        ));
-    }
-
-    events
 }
 
-/// Process one parsed event from a Responses API stream.
+impl ResponsesStreamState {
+    pub fn next_seq(&mut self) -> u64 {
+        self.next_seq += 1;
+        self.next_seq
+    }
+
+    /// Canonical position of `item_id`, assigned on first sight and stable
+    /// afterwards.
+    fn position_for(&mut self, item_id: &ProviderItemId) -> ProviderItemPosition {
+        self.item_positions.position_for(item_id)
+    }
+
+    /// Close this segment because the transport failed mid-response.
+    ///
+    /// The caller aborts the stream without finalizing it, so the close is
+    /// emitted here. A segment left open would later be replayed as if the
+    /// response were still in progress.
+    pub fn close_on_transport_error(&mut self) -> Vec<StreamEvent> {
+        if !self.segment_started || self.segment_closed {
+            return Vec::new();
+        }
+        self.segment_closed = true;
+        vec![StreamEvent::SegmentClose {
+            segment_id: self.segment_id.clone(),
+            outcome: ProviderSegmentOutcome::TransportError,
+            usage: Some(Usage {
+                input_tokens: self.input_tokens,
+                output_tokens: self.output_tokens,
+                cache_read_tokens: self.cache_read_tokens,
+                cache_write_tokens: self.cache_write_tokens,
+            }),
+        }]
+    }
+}
+
+/// Tool call slot referenced by a Responses function-call event.
 ///
+/// The `output_index` of these events is the provider's own tool call slot; it
+/// is how the transport correlates `function_call_arguments.*` with the
+/// `output_item.added` that opened the call. It is a tool-call index, not an
+/// output position, so it is used only for that correlation.
+///
+/// Returns `None` when the provider sends no slot at all. Guessing one would
+/// attach arguments to an unrelated tool call, so the caller must fail instead.
+fn responses_tool_slot(event: &serde_json::Value) -> Option<usize> {
+    event
+        .get("output_index")
+        .or_else(|| event.get("item_index"))
+        .or_else(|| event.get("index"))
+        .and_then(serde_json::Value::as_u64)
+        .map(|index| index as usize)
+}
+
+/// Report a malformed provider event and fail the stream.
+///
+/// A missing identity or slot cannot be recovered from: any substitute value
+/// silently merges or splits provider items. The segment is closed as failed so
+/// the defect surfaces instead of corrupting the transcript.
+fn responses_protocol_error(
+    state: &mut ResponsesStreamState,
+    mut events: Vec<StreamEvent>,
+    detail: String,
+) -> ResponsesEventResult {
+    tracing::error!(
+        segment_id = %state.segment_id,
+        detail = %detail,
+        "provider sent a malformed Responses event"
+    );
+    if !state.segment_closed {
+        state.segment_closed = true;
+        events.push(StreamEvent::SegmentClose {
+            segment_id: state.segment_id.clone(),
+            outcome: ProviderSegmentOutcome::Failed,
+            usage: None,
+        });
+    }
+    events.push(StreamEvent::Error(detail));
+    ResponsesEventResult::Failed(events)
+}
+
 /// Both SSE and WebSocket transports call this function so Responses event
 /// semantics cannot diverge between transports.
 pub fn process_responses_event(
@@ -1074,133 +1469,312 @@ pub fn process_responses_event(
 ) -> ResponsesEventResult {
     let raw = StreamEvent::ProviderRaw(evt.clone());
 
+    let mut init_events = Vec::new();
+
+    if !state.segment_started {
+        state.segment_started = true;
+        if let Some(id) = evt
+            .get("response")
+            .and_then(|r| r.get("id"))
+            .or_else(|| evt.get("id"))
+            .and_then(serde_json::Value::as_str)
+        {
+            state.segment_id = ProviderSegmentId::new(id);
+        }
+        init_events.push(StreamEvent::SegmentStart {
+            segment_id: state.segment_id.clone(),
+        });
+    }
     match evt["type"].as_str().unwrap_or("") {
         "response.output_text.delta" => {
+            let mut events = init_events;
+            events.push(raw);
             if let Some(delta) = evt["delta"].as_str()
                 && !delta.is_empty()
             {
-                ResponsesEventResult::Events(vec![raw, StreamEvent::Delta(delta.to_string())])
-            } else {
-                ResponsesEventResult::Events(vec![raw])
+                let Some(id) = evt["item_id"].as_str().filter(|id| !id.is_empty()) else {
+                    return responses_protocol_error(
+                        state,
+                        events,
+                        "response.output_text.delta has no item_id".to_string(),
+                    );
+                };
+                let item_id = ProviderItemId::new(id);
+                let position = state.position_for(&item_id);
+                let seq = state.next_seq();
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::MessageDelta {
+                        delta: delta.to_string(),
+                    },
+                }));
+                events.push(StreamEvent::Delta(delta.to_string()));
             }
+            ResponsesEventResult::Events(events)
         },
         "response.reasoning_summary_text.delta" => {
-            if let (Some(item_id), Some(output_index), Some(summary_index), Some(delta)) = (
+            let mut events = init_events;
+            events.push(raw);
+            if let (Some(item_id), Some(summary_index), Some(delta)) = (
                 evt["item_id"].as_str(),
-                evt["output_index"].as_u64().map(|index| index as usize),
                 evt["summary_index"].as_u64().map(|index| index as usize),
                 evt["delta"].as_str(),
             ) && !item_id.is_empty()
                 && !delta.is_empty()
             {
-                state.streamed_reasoning_summary_parts.insert((
-                    item_id.to_string(),
-                    output_index,
-                    summary_index,
-                ));
-                ResponsesEventResult::Events(vec![raw, StreamEvent::ResponsesReasoningDelta {
-                    item_id: item_id.to_string(),
-                    output_index,
-                    summary_index,
-                    delta: delta.to_string(),
-                }])
-            } else {
-                ResponsesEventResult::Events(vec![raw])
+                state
+                    .streamed_reasoning_summary_parts
+                    .insert((item_id.to_string(), summary_index));
+                let item_id = ProviderItemId::new(item_id);
+                let position = state.position_for(&item_id);
+                let seq = state.next_seq();
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::ReasoningDelta {
+                        part_index: summary_index,
+                        delta: delta.to_string(),
+                    },
+                }));
             }
+            ResponsesEventResult::Events(events)
         },
         "response.reasoning_summary_part.done" => {
-            if let (Some(item_id), Some(output_index), Some(summary_index), Some(text)) = (
+            let mut events = init_events;
+            events.push(raw);
+            if let (Some(item_id), Some(summary_index), Some(text)) = (
                 evt["item_id"].as_str(),
-                evt["output_index"].as_u64().map(|index| index as usize),
                 evt["summary_index"].as_u64().map(|index| index as usize),
                 evt["part"]["text"].as_str(),
             ) && !item_id.is_empty()
             {
-                state.streamed_reasoning_summary_parts.insert((
-                    item_id.to_string(),
-                    output_index,
-                    summary_index,
-                ));
-                ResponsesEventResult::Events(vec![raw, StreamEvent::ResponsesReasoningPartDone {
-                    item_id: item_id.to_string(),
-                    output_index,
-                    summary_index,
-                    text: text.to_string(),
-                }])
-            } else {
-                ResponsesEventResult::Events(vec![raw])
+                state
+                    .streamed_reasoning_summary_parts
+                    .insert((item_id.to_string(), summary_index));
+                let item_id = ProviderItemId::new(item_id);
+                let position = state.position_for(&item_id);
+                let seq = state.next_seq();
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::ReasoningPartDone {
+                        part_index: summary_index,
+                        text: text.to_string(),
+                    },
+                }));
             }
+            ResponsesEventResult::Events(events)
         },
         "response.output_item.added" => {
+            let mut events = init_events;
+            events.push(raw);
             if evt["item"]["type"].as_str() == Some("function_call") {
-                let id = evt["item"]["call_id"].as_str().unwrap_or("").to_string();
-                let name = evt["item"]["name"].as_str().unwrap_or("").to_string();
-                let index = responses_output_index(&evt, state.current_tool_index);
+                let Some(id) = evt["item"]["call_id"]
+                    .as_str()
+                    .filter(|id| !id.is_empty())
+                    .map(ToString::to_string)
+                else {
+                    return responses_protocol_error(
+                        state,
+                        events,
+                        "response.output_item.added function_call has no call_id".to_string(),
+                    );
+                };
+                let Some(name) = evt["item"]["name"]
+                    .as_str()
+                    .filter(|name| !name.is_empty())
+                    .map(ToString::to_string)
+                else {
+                    return responses_protocol_error(
+                        state,
+                        events,
+                        format!("function_call `{id}` has no name"),
+                    );
+                };
+                let index = responses_tool_slot(&evt).unwrap_or(state.current_tool_index);
+                // `output_item.added` opens a slot rather than referencing one,
+                // so an absent index is assigned in arrival order. Events that
+                // reference an existing slot must carry it and are rejected
+                // otherwise.
                 state.current_tool_index = state.current_tool_index.max(index + 1);
                 state.tool_calls.insert(index, (id.clone(), name.clone()));
-                ResponsesEventResult::Events(vec![raw, StreamEvent::ToolCallStart {
-                    id,
-                    name,
-                    index,
-                }])
-            } else {
-                ResponsesEventResult::Events(vec![raw])
+                let item_id = ProviderItemId::new(id.clone());
+                let position = state.position_for(&item_id);
+                let seq = state.next_seq();
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::FunctionCallStart { name: name.clone() },
+                }));
+                events.push(StreamEvent::ToolCallStart { id, name, index });
             }
+            ResponsesEventResult::Events(events)
         },
         "response.output_item.done" => {
-            let mut events = vec![raw];
-            let output_index = evt["output_index"].as_u64().map(|index| index as usize);
-            events.extend(responses_reasoning_events(
-                &evt["item"],
-                output_index,
-                state,
-            ));
+            let mut events = init_events;
+            events.push(raw);
+            if evt["item"]["type"].as_str() == Some("reasoning") {
+                let encrypted_content = evt["item"]["encrypted_content"]
+                    .as_str()
+                    .map(ToString::to_string);
+                let Some(id) = evt["item"]["id"].as_str().filter(|id| !id.is_empty()) else {
+                    return responses_protocol_error(
+                        state,
+                        events,
+                        "response.output_item.done reasoning item has no id".to_string(),
+                    );
+                };
+                let item_id = ProviderItemId::new(id);
+                let position = state.position_for(&item_id);
+                events.extend(reasoning_summary_events(
+                    &evt["item"],
+                    &item_id,
+                    position,
+                    state,
+                ));
+                let seq = state.next_seq();
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::ReasoningItemDone { encrypted_content },
+                }));
+            }
             ResponsesEventResult::Events(events)
         },
         "response.function_call_arguments.delta" => {
+            let mut events = init_events;
+            events.push(raw);
             if let Some(delta) = evt["delta"].as_str()
                 && !delta.is_empty()
             {
-                let index =
-                    responses_output_index(&evt, state.current_tool_index.saturating_sub(1));
-                ResponsesEventResult::Events(vec![raw, StreamEvent::ToolCallArgumentsDelta {
+                let Some(index) = responses_tool_slot(&evt) else {
+                    return responses_protocol_error(
+                        state,
+                        events,
+                        "response.function_call_arguments.delta has no output_index".to_string(),
+                    );
+                };
+                let Some(call_id) = state.tool_calls.get(&index).map(|(id, _)| id.clone()) else {
+                    return responses_protocol_error(
+                        state,
+                        events,
+                        format!(
+                            "response.function_call_arguments.delta references unopened tool call slot {index}"
+                        ),
+                    );
+                };
+                let item_id = ProviderItemId::new(call_id);
+                let position = state.position_for(&item_id);
+                let seq = state.next_seq();
+                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: state.segment_id.clone(),
+                    item_id,
+                    position,
+                    update_seq: seq,
+                    payload: ProviderItemUpdatePayload::FunctionCallDelta {
+                        delta: delta.to_string(),
+                    },
+                }));
+                events.push(StreamEvent::ToolCallArgumentsDelta {
                     index,
                     delta: delta.to_string(),
-                }])
-            } else {
-                ResponsesEventResult::Events(vec![raw])
+                });
             }
+            ResponsesEventResult::Events(events)
         },
         "response.function_call_arguments.done" => {
-            let index = responses_output_index(&evt, state.current_tool_index.saturating_sub(1));
+            let mut events = init_events;
+            events.push(raw);
+            let Some(index) = responses_tool_slot(&evt) else {
+                return responses_protocol_error(
+                    state,
+                    events,
+                    "response.function_call_arguments.done has no output_index".to_string(),
+                );
+            };
+            let Some(call_id) = state.tool_calls.get(&index).map(|(id, _)| id.clone()) else {
+                return responses_protocol_error(
+                    state,
+                    events,
+                    format!(
+                        "response.function_call_arguments.done references unopened tool call slot {index}"
+                    ),
+                );
+            };
+            let Some(arguments) = evt["arguments"].as_str().map(ToString::to_string) else {
+                return responses_protocol_error(
+                    state,
+                    events,
+                    format!("function_call `{call_id}` completed without an arguments field"),
+                );
+            };
+            let item_id = ProviderItemId::new(call_id);
+            let position = state.position_for(&item_id);
+            let seq = state.next_seq();
+            events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                segment_id: state.segment_id.clone(),
+                item_id,
+                position,
+                update_seq: seq,
+                payload: ProviderItemUpdatePayload::FunctionCallDone { arguments },
+            }));
             if state.completed_tool_calls.insert(index) {
-                ResponsesEventResult::Events(vec![raw, StreamEvent::ToolCallComplete { index }])
-            } else {
-                ResponsesEventResult::Events(vec![raw])
+                events.push(StreamEvent::ToolCallComplete { index });
             }
+            ResponsesEventResult::Events(events)
         },
         "response.completed" => {
-            if let Some(usage) = evt
+            let mut events = init_events;
+            events.push(raw);
+            let usage = evt
                 .get("response")
                 .and_then(|response| response.get("usage"))
-            {
-                let parsed = parse_openai_compat_usage(usage);
-                state.input_tokens = parsed.input_tokens;
-                state.output_tokens = parsed.output_tokens;
-                state.cache_read_tokens = parsed.cache_read_tokens;
-                state.cache_write_tokens = parsed.cache_write_tokens;
+                .map(parse_openai_compat_usage);
+            if let Some(ref u) = usage {
+                state.input_tokens = u.input_tokens;
+                state.output_tokens = u.output_tokens;
+                state.cache_read_tokens = u.cache_read_tokens;
+                state.cache_write_tokens = u.cache_write_tokens;
             }
-            ResponsesEventResult::Completed(vec![raw])
+            state.segment_closed = true;
+            events.push(StreamEvent::SegmentClose {
+                segment_id: state.segment_id.clone(),
+                outcome: ProviderSegmentOutcome::Completed,
+                usage,
+            });
+            ResponsesEventResult::Completed(events)
         },
         "error" | "response.failed" => {
+            let mut events = init_events;
+            events.push(raw);
             let msg = evt["error"]["message"]
                 .as_str()
                 .or_else(|| evt["response"]["error"]["message"].as_str())
                 .or_else(|| evt["message"].as_str())
                 .unwrap_or("unknown error");
-            ResponsesEventResult::Failed(vec![raw, StreamEvent::Error(msg.to_string())])
+            state.segment_closed = true;
+            events.push(StreamEvent::SegmentClose {
+                segment_id: state.segment_id.clone(),
+                outcome: ProviderSegmentOutcome::Failed,
+                usage: None,
+            });
+            events.push(StreamEvent::Error(msg.to_string()));
+            ResponsesEventResult::Failed(events)
         },
         "response.incomplete" => {
+            let mut events = init_events;
+            events.push(raw);
             let msg = evt["response"]["incomplete_details"]["reason"]
                 .as_str()
                 .map(|reason| format!("response incomplete: {reason}"))
@@ -1211,9 +1785,20 @@ pub fn process_responses_event(
                 })
                 .or_else(|| evt["message"].as_str().map(ToString::to_string))
                 .unwrap_or_else(|| "response incomplete".to_string());
-            ResponsesEventResult::Failed(vec![raw, StreamEvent::Error(msg)])
+            state.segment_closed = true;
+            events.push(StreamEvent::SegmentClose {
+                segment_id: state.segment_id.clone(),
+                outcome: ProviderSegmentOutcome::Incomplete,
+                usage: None,
+            });
+            events.push(StreamEvent::Error(msg));
+            ResponsesEventResult::Failed(events)
         },
-        _ => ResponsesEventResult::Events(vec![raw]),
+        _ => {
+            let mut events = init_events;
+            events.push(raw);
+            ResponsesEventResult::Events(events)
+        },
     }
 }
 
@@ -1246,6 +1831,30 @@ pub fn finalize_responses_stream(state: &mut ResponsesStreamState) -> Vec<Stream
         }
     }
 
+    if state.segment_started && !state.segment_closed {
+        state.segment_closed = true;
+        // The Responses API always announces its outcome with
+        // `response.completed`, `response.failed` or `response.incomplete`,
+        // each of which closes the segment where it is handled. Reaching this
+        // point means the stream ended before any of them arrived.
+        tracing::error!(
+            segment_id = %state.segment_id,
+            "Responses stream closed before a terminal response event"
+        );
+        events.push(StreamEvent::SegmentClose {
+            segment_id: state.segment_id.clone(),
+            outcome: ProviderSegmentOutcome::TransportError,
+            usage: Some(Usage {
+                input_tokens: state.input_tokens,
+                output_tokens: state.output_tokens,
+                cache_read_tokens: state.cache_read_tokens,
+                cache_write_tokens: state.cache_write_tokens,
+            }),
+        });
+        events.push(StreamEvent::Error(
+            "provider stream closed before response.completed".to_string(),
+        ));
+    }
     events.push(StreamEvent::Done(Usage {
         input_tokens: state.input_tokens,
         output_tokens: state.output_tokens,

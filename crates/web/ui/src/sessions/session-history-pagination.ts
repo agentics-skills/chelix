@@ -5,7 +5,6 @@ import * as S from "../state";
 import { getSessionHistory, replaceSessionHistory } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
 import type { HistoryMessage } from "../types/session";
-import type { ReasoningContent } from "../types/ws-events";
 
 import {
 	fetchSessionHistoryViaHttp,
@@ -68,12 +67,11 @@ export function renderSessionHistory(
 	key: string,
 	history: HistoryMessage[],
 	searchContext: SearchContext | null,
-	thinkingText: ReasoningContent | null,
 	totalCountHint: number | null,
 	skipAutoScroll: boolean,
 ): void {
 	ensureHistoryScrollBinding();
-	renderHistory(key, history, searchContext, thinkingText, totalCountHint, skipAutoScroll);
+	renderHistory(key, history, searchContext, totalCountHint, skipAutoScroll);
 }
 
 function resolvedHistoryTotal(totalMessages: number | null, history: HistoryMessage[]): number {
@@ -115,7 +113,7 @@ function applyOlderHistoryPage(key: string, payload: HistoryPayload, scrollSnaps
 	const totalCountHint = Number.isInteger(sessionMessageCount)
 		? (sessionMessageCount as number)
 		: Number(payload.totalMessages) || merged.length;
-	renderSessionHistory(key, merged, null, null, totalCountHint, true);
+	renderSessionHistory(key, merged, null, totalCountHint, true);
 	restoreScrollSnapshot(scrollSnapshot);
 }
 
@@ -123,7 +121,7 @@ function handleOlderHistoryFailure(key: string, paging: HistoryPaginationState):
 	if (!isActiveSession(key)) return;
 	const fallback = getSessionHistory(key) || [];
 	setHistoryPaginationLoading(key, false);
-	renderSessionHistory(key, fallback, null, null, resolvedHistoryTotal(paging.totalMessages, fallback), true);
+	renderSessionHistory(key, fallback, null, resolvedHistoryTotal(paging.totalMessages, fallback), true);
 	chatAddMsg("error", "Failed to load older messages");
 }
 
@@ -133,7 +131,7 @@ async function loadOlderHistoryPage(key: string): Promise<void> {
 	if (!paging) return;
 
 	const loadedHistory = getSessionHistory(key) || [];
-	renderSessionHistory(key, loadedHistory, null, null, resolvedHistoryTotal(paging.totalMessages, loadedHistory), true);
+	renderSessionHistory(key, loadedHistory, null, resolvedHistoryTotal(paging.totalMessages, loadedHistory), true);
 	const scrollSnapshot = captureScrollSnapshot();
 
 	try {

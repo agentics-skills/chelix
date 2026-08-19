@@ -16,7 +16,7 @@ use {
 use {
     chelix_agents::{
         AgentRunError, ChatMessage, UserContent,
-        model::{AgentToolControls, ReasoningAccumulator},
+        model::AgentToolControls,
         prompt::{
             PromptRuntimeContext, build_system_prompt_minimal_runtime_details,
             build_system_prompt_with_session_runtime_details,
@@ -54,9 +54,9 @@ use crate::{
     },
     runtime::ChatRuntime,
     service::{
-        ActiveAssistantDraft, EventForwarderResult, append_assistant_delta,
-        build_persisted_tool_call, finalize_persisted_assistant_message,
-        persist_active_assistant_draft, persist_final_assistant_segment,
+        ActiveAssistantDraft, EventForwarderResult, build_persisted_tool_call,
+        finalize_persisted_assistant_message, persist_active_assistant_draft,
+        persist_final_assistant_segment,
     },
     types::*,
 };
@@ -571,7 +571,6 @@ pub(crate) async fn run_with_tools(
     session_store: Option<&Arc<SessionStore>>,
     mcp_disabled: bool,
     client_seq: Option<u64>,
-    active_thinking_text: Option<Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>>,
     active_tool_invocations: Option<Arc<RwLock<HashMap<String, Vec<ActiveToolInvocation>>>>>,
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     active_event_forwarders: &Arc<
@@ -755,7 +754,6 @@ pub(crate) async fn run_with_tools(
         .map(|dispatcher| Arc::new(Mutex::new(dispatcher)));
     let channel_stream_for_events = channel_stream_dispatcher.as_ref().map(Arc::clone);
     let event_forwarder: tokio::task::JoinHandle<EventForwarderResult> = tokio::spawn(async move {
-        let mut latest_reasoning = ReasoningAccumulator::default();
         let mut persisted_tool_batches: HashMap<String, (usize, Value)> = HashMap::new();
         let mut pending_inputs: HashMap<String, ToolLifecycleEvent> = HashMap::new();
         let mut forwarder_error = None;
@@ -820,123 +818,94 @@ pub(crate) async fn run_with_tools(
                     "state": "thinking_done",
                     "seq": seq,
                 }),
-                RunnerEvent::ThinkingText(text) => {
-                    latest_reasoning.set_text(&text);
-                    let reasoning = latest_reasoning.content();
-                    if let Some(ref map) = active_thinking_text
-                        && let Some(ref reasoning) = reasoning
-                    {
-                        map.write().await.insert(sk.clone(), reasoning.clone());
+                RunnerEvent::SegmentStart { segment_id } => serde_json::json!({
+                    "runId": run_id,
+                    "sessionKey": sk,
+                    "state": "segment_start",
+                    "segmentId": segment_id.0,
+                    "seq": seq,
+                }),
+                RunnerEvent::ProviderItemUpdate(update) => {
+                    if let Some(ref map) = active_partial_for_events {
+                        let mut drafts = map.write().await;
+                        if let Some(draft) = drafts.get_mut(&sk)
+                            && let Err(error) = draft.apply_update(&update)
+                        {
+                            drop(drafts);
+                            forwarder_error = Some(format!(
+                                "active assistant draft rejected provider update: {error}"
+                            ));
+                            break;
+                        }
                     }
-                    if let Some(ref map) = active_partial_for_events
-                        && let Some(draft) = map.write().await.get_mut(&sk)
-                    {
-                        draft.set_reasoning(&text);
+                    let mut history_index = None;
+                    if let Some(ref store) = store {
+                        let persisted = PersistedMessage::ProviderUpdate {
+                            update: update.clone(),
+                            created_at: Some(now_ms()),
+                            seq,
+                            run_id: Some(run_id.clone()),
+                        };
+                        match store.append_with_index(&sk, &persisted.to_value()).await {
+                            Ok(idx) => history_index = Some(idx),
+                            Err(err) => {
+                                forwarder_error =
+                                    Some(format!("failed to persist provider update: {err}"));
+                                break;
+                            },
+                        }
                     }
-                    serde_json::json!({
+                    let mut payload = serde_json::json!({
                         "runId": run_id,
                         "sessionKey": sk,
-                        "state": "thinking_text",
-                        "text": reasoning,
+                        "state": "provider_update",
+                        "update": update.redacted(),
                         "seq": seq,
-                    })
+                    });
+                    if let Some(idx) = history_index {
+                        payload["historyIndex"] = serde_json::json!(idx);
+                    }
+                    payload
                 },
-                RunnerEvent::ResponsesReasoningDelta {
-                    item_id,
-                    output_index,
-                    summary_index,
-                    delta,
+                RunnerEvent::SegmentClose {
+                    segment_id,
+                    outcome,
+                    usage,
                 } => {
-                    latest_reasoning.append_responses_delta(
-                        &item_id,
-                        output_index,
-                        summary_index,
-                        &delta,
-                    );
-                    let reasoning = latest_reasoning.content();
-                    if let Some(ref map) = active_thinking_text
-                        && let Some(ref reasoning) = reasoning
-                    {
-                        map.write().await.insert(sk.clone(), reasoning.clone());
+                    let mut history_index = None;
+                    if let Some(ref store) = store {
+                        let persisted = PersistedMessage::ProviderSegmentClose {
+                            segment_id: segment_id.clone(),
+                            outcome,
+                            created_at: Some(now_ms()),
+                            seq,
+                            run_id: Some(run_id.clone()),
+                        };
+                        match store.append_with_index(&sk, &persisted.to_value()).await {
+                            Ok(idx) => history_index = Some(idx),
+                            Err(err) => {
+                                forwarder_error = Some(format!(
+                                    "failed to persist provider segment close: {err}"
+                                ));
+                                break;
+                            },
+                        }
                     }
-                    if let Some(ref map) = active_partial_for_events
-                        && let Some(draft) = map.write().await.get_mut(&sk)
-                    {
-                        draft.append_responses_reasoning(
-                            &item_id,
-                            output_index,
-                            summary_index,
-                            &delta,
-                        );
-                    }
-                    serde_json::json!({
+                    let mut payload = serde_json::json!({
                         "runId": run_id,
                         "sessionKey": sk,
-                        "state": "thinking_text",
-                        "text": reasoning,
+                        "state": "provider_segment_close",
+                        "segmentId": segment_id.0,
+                        "outcome": outcome,
+                        "usage": usage,
                         "seq": seq,
-                    })
-                },
-                RunnerEvent::ResponsesReasoningPartDone {
-                    item_id,
-                    output_index,
-                    summary_index,
-                    text,
-                } => {
-                    latest_reasoning.complete_responses_part(
-                        &item_id,
-                        output_index,
-                        summary_index,
-                        text.clone(),
-                    );
-                    let reasoning = latest_reasoning.content();
-                    if let Some(ref map) = active_thinking_text
-                        && let Some(ref reasoning) = reasoning
-                    {
-                        map.write().await.insert(sk.clone(), reasoning.clone());
+                    });
+                    if let Some(idx) = history_index {
+                        payload["historyIndex"] = serde_json::json!(idx);
                     }
-                    if let Some(ref map) = active_partial_for_events
-                        && let Some(draft) = map.write().await.get_mut(&sk)
-                    {
-                        draft.complete_responses_reasoning(
-                            &item_id,
-                            output_index,
-                            summary_index,
-                            text,
-                        );
-                    }
-                    serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "thinking_text",
-                        "text": reasoning,
-                        "seq": seq,
-                    })
-                },
-                RunnerEvent::ResponsesReasoningItem(item) => {
-                    if let Some(ref map) = active_partial_for_events
-                        && let Some(draft) = map.write().await.get_mut(&sk)
-                    {
-                        draft.push_responses_reasoning(item);
-                    }
-                    continue;
+                    payload
                 },
                 RunnerEvent::TextDelta(text) => {
-                    match active_partial_for_events.as_ref() {
-                        Some(drafts) => {
-                            if let Err(error) = append_assistant_delta(drafts, &sk, &text).await {
-                                forwarder_error = Some(error.to_string());
-                                break;
-                            }
-                        },
-                        None if store.is_none() => {},
-                        None => {
-                            forwarder_error = Some(
-                                "assistant persistence dependencies are inconsistent".to_string(),
-                            );
-                            break;
-                        },
-                    }
                     serde_json::json!({
                         "runId": run_id,
                         "sessionKey": sk,
@@ -1002,6 +971,16 @@ pub(crate) async fn run_with_tools(
                     "seq": seq,
                 }),
                 RunnerEvent::RetryingAfterError { error, delay_ms } => {
+                    // The failed attempt closed its provider segment; the retry
+                    // opens the next one. Without rolling the draft here its
+                    // materializer stays on the closed segment and rejects the
+                    // first update of the new attempt.
+                    if let Some(ref map) = active_partial_for_events {
+                        let mut drafts = map.write().await;
+                        if let Some(draft) = drafts.get_mut(&sk) {
+                            *draft = draft.next_segment();
+                        }
+                    }
                     let error_obj =
                         parse_chat_error(&error, Some(provider_name_for_events.as_str()));
                     if error_obj.get("type").and_then(|v| v.as_str()) == Some("rate_limit_exceeded")
@@ -1313,7 +1292,8 @@ pub(crate) async fn run_with_tools(
             let usage = result.usage;
             let request_usage = result.request_usage;
             let terminal_output = result.output;
-            let responses_reasoning = terminal_output.responses_reasoning;
+            let provider_items = terminal_output.provider_items;
+            let segment_id = terminal_output.segment_id;
             let llm_api_response = (!result.raw_llm_responses.is_empty())
                 .then_some(Value::Array(result.raw_llm_responses));
             let display_text = terminal_output.text;
@@ -1323,7 +1303,7 @@ pub(crate) async fn run_with_tools(
                 || terminal_reasoning
                     .as_ref()
                     .is_some_and(|reasoning| !reasoning.is_blank())
-                || !responses_reasoning.is_empty();
+                || !provider_items.is_empty();
 
             info!(
                 run_id,
@@ -1463,7 +1443,8 @@ pub(crate) async fn run_with_tools(
                 run_started.elapsed().as_millis() as u64,
                 audio_path.clone(),
                 terminal_reasoning.clone(),
-                responses_reasoning,
+                provider_items,
+                segment_id,
                 llm_api_response,
             );
             if let Some(store) = session_store {
@@ -1541,6 +1522,7 @@ pub(crate) async fn run_with_tools(
                 audio_warning,
                 terminal_reasoning.clone(),
                 client_seq,
+                (&assistant_output).into(),
             );
             #[allow(clippy::unwrap_used)] // serializing known-valid struct
             let payload_val = serde_json::to_value(&final_payload).unwrap();

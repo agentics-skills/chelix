@@ -18,7 +18,7 @@ import { insertSessionInOrder, Session, sessionStore } from "../stores/session-s
 import { isToolLifecycleEvent, reduceToolInvocation } from "../tool-lifecycle";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage, SessionMeta } from "../types/session";
-import type { ActiveToolInvocation, QueuedPrompt, ReasoningContent } from "../types/ws-events";
+import type { ActiveToolInvocation, QueuedPrompt } from "../types/ws-events";
 import { clearToolLifecycleStateForSession, renderToolLifecycleSnapshot } from "../ws/tool-helpers";
 
 import {
@@ -71,7 +71,6 @@ interface SwitchPayload {
 	historyDroppedCount?: number;
 	historyOmitted?: boolean;
 	replying?: boolean;
-	thinkingText?: ReasoningContent;
 	voicePending?: boolean;
 	activeToolInvocations?: ActiveToolInvocation[];
 	queuedPrompts?: QueuedPrompt[];
@@ -347,23 +346,15 @@ function renderActiveSwitch(
 	restoreSessionState(entry, context.projectId);
 	applyReplyingStateFromSwitchPayload(context.key, switchPayload);
 	setQueuedPrompts(context.key, switchPayload.queuedPrompts ?? []);
-	const thinkingText = switchPayload.replying ? switchPayload.thinkingText || null : null;
 	const totalCountHint = Number.isInteger(entry.messageCount)
 		? (entry.messageCount as number)
 		: Number(historyPayload.totalMessages) || application.resolvedHistory.length;
 	const shouldRerender =
 		!context.hasCache || Boolean(context.searchContext?.query) || application.appliedServerHistory || pagingChanged;
 	if (shouldRerender) {
-		renderSessionHistory(
-			context.key,
-			application.resolvedHistory,
-			context.searchContext,
-			thinkingText,
-			totalCountHint,
-			false,
-		);
+		renderSessionHistory(context.key, application.resolvedHistory, context.searchContext, totalCountHint, false);
 	} else {
-		postHistoryLoadActions(context.key, context.searchContext, [], thinkingText, false);
+		postHistoryLoadActions(context.key, context.searchContext, [], false);
 	}
 	restoreActiveToolInvocationsFromSwitchPayload(context.key, switchPayload);
 	appendHistoryLoadNotices(application, historyPayload);
@@ -432,7 +423,7 @@ export function switchSession(key: string, searchContext?: SearchContext | null,
 	};
 	startSessionRefresh(key, !hasCache);
 	if (cachedHistory) {
-		renderSessionHistory(key, cachedHistory, context.searchContext, null, cachedHistoryCount, false);
+		renderSessionHistory(key, cachedHistory, context.searchContext, cachedHistoryCount, false);
 	} else {
 		showSessionLoadIndicator();
 	}

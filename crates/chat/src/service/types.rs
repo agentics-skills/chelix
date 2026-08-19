@@ -13,8 +13,10 @@ use {
 };
 
 use {
-    chelix_agents::{model::ReasoningAccumulator, tool_registry::ToolRegistry},
-    chelix_common::ActiveToolInvocation,
+    chelix_agents::tool_registry::ToolRegistry,
+    chelix_common::{
+        ActiveToolInvocation, MaterializerError, ProviderItemUpdate, ProviderSegmentMaterializer,
+    },
     chelix_providers::ProviderRegistry,
     chelix_service_traits::SessionMutationCoordinator,
     chelix_sessions::{
@@ -50,9 +52,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub(crate) struct ActiveAssistantDraft {
-    content: String,
-    reasoning: ReasoningAccumulator,
-    responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
+    pub(crate) materializer: ProviderSegmentMaterializer,
     model: String,
     provider: String,
     reasoning_effort: Option<String>,
@@ -75,9 +75,8 @@ impl ActiveAssistantDraft {
         seq: Option<u64>,
     ) -> Self {
         Self {
-            content: String::new(),
-            reasoning: ReasoningAccumulator::default(),
-            responses_reasoning: Vec::new(),
+            // Segment identity is adopted from the provider's first update.
+            materializer: ProviderSegmentMaterializer::pending(),
             model: model.to_string(),
             provider: provider.to_string(),
             reasoning_effort,
@@ -86,40 +85,11 @@ impl ActiveAssistantDraft {
         }
     }
 
-    pub(crate) fn append_text(&mut self, delta: &str) {
-        if !delta.is_empty() {
-            self.content.push_str(delta);
-        }
-    }
-
-    pub(crate) fn set_reasoning(&mut self, reasoning: &str) {
-        self.reasoning.set_text(reasoning);
-    }
-
-    pub(crate) fn append_responses_reasoning(
+    pub(crate) fn apply_update(
         &mut self,
-        item_id: &str,
-        output_index: usize,
-        summary_index: usize,
-        delta: &str,
-    ) {
-        self.reasoning
-            .append_responses_delta(item_id, output_index, summary_index, delta);
-    }
-
-    pub(crate) fn complete_responses_reasoning(
-        &mut self,
-        item_id: &str,
-        output_index: usize,
-        summary_index: usize,
-        text: String,
-    ) {
-        self.reasoning
-            .complete_responses_part(item_id, output_index, summary_index, text);
-    }
-
-    pub(crate) fn push_responses_reasoning(&mut self, item: chelix_common::ResponsesReasoningItem) {
-        self.responses_reasoning.push(item);
+        update: &ProviderItemUpdate,
+    ) -> Result<(), MaterializerError> {
+        self.materializer.apply_update(update)
     }
 
     pub(crate) fn next_segment(&self) -> Self {
@@ -133,9 +103,7 @@ impl ActiveAssistantDraft {
     }
 
     pub(crate) fn has_provider_output(&self) -> bool {
-        !self.content.trim().is_empty()
-            || !self.reasoning.is_empty()
-            || !self.responses_reasoning.is_empty()
+        !self.materializer.segment.items.is_empty()
     }
 
     pub(crate) fn to_persisted_message(
@@ -144,7 +112,7 @@ impl ActiveAssistantDraft {
         usage: Option<&chelix_agents::model::Usage>,
     ) -> PersistedMessage {
         PersistedMessage::Assistant {
-            content: self.content.clone(),
+            content: self.materializer.segment.message_text().unwrap_or_default(),
             created_at: Some(now_ms()),
             model: Some(self.model.clone()),
             provider: Some(self.provider.clone()),
@@ -159,29 +127,15 @@ impl ActiveAssistantDraft {
             request_cache_read_tokens: usage.map(|usage| usage.cache_read_tokens),
             request_cache_write_tokens: usage.map(|usage| usage.cache_write_tokens),
             tool_calls,
-            reasoning: self.reasoning.content(),
-            responses_reasoning: self.responses_reasoning.clone(),
+            reasoning: self.materializer.segment.reasoning_content(),
+            provider_items: Some(self.materializer.segment.items.clone()),
+            segment_id: self.materializer.segment.segment_id.clone(),
             llm_api_response: None,
             audio: None,
             seq: self.seq,
             run_id: Some(self.run_id.clone()),
         }
     }
-}
-
-pub(crate) async fn append_assistant_delta(
-    active_partial_assistant: &Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>,
-    session_key: &str,
-    delta: &str,
-) -> error::Result<()> {
-    let mut drafts = active_partial_assistant.write().await;
-    let draft = drafts.get_mut(session_key).ok_or_else(|| {
-        error::Error::message(format!(
-            "active assistant draft is unavailable for session '{session_key}'"
-        ))
-    })?;
-    draft.append_text(delta);
-    Ok(())
 }
 
 pub(crate) async fn persist_active_assistant_draft(
@@ -257,7 +211,12 @@ pub(crate) fn build_persisted_assistant_message(
         request_cache_write_tokens: Some(assistant_output.request_cache_write_tokens),
         tool_calls: None,
         reasoning: assistant_output.reasoning,
-        responses_reasoning: assistant_output.responses_reasoning,
+        provider_items: if assistant_output.provider_items.is_empty() {
+            None
+        } else {
+            Some(assistant_output.provider_items)
+        },
+        segment_id: assistant_output.segment_id,
         llm_api_response: assistant_output.llm_api_response,
         audio: assistant_output.audio_path,
         seq,
@@ -304,7 +263,8 @@ pub(crate) fn finalize_persisted_assistant_message(
         reasoning_effort,
         tool_calls,
         reasoning,
-        responses_reasoning,
+        provider_items,
+        segment_id,
         seq,
         run_id,
         ..
@@ -330,7 +290,8 @@ pub(crate) fn finalize_persisted_assistant_message(
         request_cache_write_tokens: Some(assistant_output.request_cache_write_tokens),
         tool_calls,
         reasoning,
-        responses_reasoning,
+        provider_items,
+        segment_id,
         llm_api_response: assistant_output.llm_api_response,
         audio: assistant_output.audio_path,
         seq,
@@ -378,10 +339,6 @@ pub struct LiveChatService {
     pub(in crate::service) prompt_queue: Arc<PromptQueue>,
     /// Per-session last-seen client sequence number for ordering diagnostics.
     pub(in crate::service) last_client_seq: Arc<RwLock<HashMap<String, u64>>>,
-    /// Per-session accumulated thinking content for active runs, so it can be
-    /// returned in `sessions.switch` after a page reload.
-    pub(in crate::service) active_thinking_text:
-        Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>,
     /// Per-session active tool invocation lifecycle snapshots for `chat.peek`.
     pub(in crate::service) active_tool_invocations:
         Arc<RwLock<HashMap<String, Vec<ActiveToolInvocation>>>>,
@@ -444,7 +401,6 @@ impl LiveChatService {
             hook_registry: None,
             session_mutations: Arc::new(SessionMutationCoordinator::default()),
             last_client_seq: Arc::new(RwLock::new(HashMap::new())),
-            active_thinking_text: Arc::new(RwLock::new(HashMap::new())),
             active_tool_invocations: Arc::new(RwLock::new(HashMap::new())),
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
@@ -897,14 +853,17 @@ impl LiveChatService {
 mod tests {
     use {
         super::{
-            ActiveAssistantDraft, append_assistant_delta, build_persisted_assistant_message,
-            build_persisted_tool_call, finalize_aborted_tool_segment,
-            finalize_persisted_assistant_message, latest_tool_segment_index,
-            persist_active_assistant_draft, persist_final_assistant_segment,
-            runtime_config_for_agent_run,
+            ActiveAssistantDraft, build_persisted_assistant_message, build_persisted_tool_call,
+            finalize_aborted_tool_segment, finalize_persisted_assistant_message,
+            latest_tool_segment_index, persist_active_assistant_draft,
+            persist_final_assistant_segment, runtime_config_for_agent_run,
         },
         crate::types::AssistantTurnOutput,
         chelix_agents::model::Usage,
+        chelix_common::{
+            ProviderItemId, ProviderItemPosition, ProviderItemUpdate, ProviderItemUpdatePayload,
+            ProviderSegmentId,
+        },
         chelix_sessions::{PersistedMessage, store::SessionStore},
         std::{collections::HashMap, sync::Arc},
         tokio::sync::RwLock,
@@ -970,8 +929,29 @@ mod tests {
             Some("high".to_string()),
             Some(7),
         );
-        draft.append_text("hello");
-        draft.set_reasoning("thinking");
+        let seg_id = ProviderSegmentId::new("resp_test");
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id.clone(),
+                item_id: ProviderItemId::new("msg_0"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDone {
+                    text: "hello".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id,
+                item_id: ProviderItemId::new("rs_0"),
+                position: ProviderItemPosition::new(1),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::ReasoningText {
+                    text: "thinking".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
 
         let message = draft.to_persisted_message(None, None);
 
@@ -1015,7 +995,8 @@ mod tests {
                 reasoning: Some(chelix_common::ReasoningContent::Text(
                     "thinking".to_string(),
                 )),
-                responses_reasoning: Vec::new(),
+                provider_items: Vec::new(),
+                segment_id: None,
                 llm_api_response: None,
             },
             Some("gpt-4.1".to_string()),
@@ -1054,17 +1035,31 @@ mod tests {
             )
             .await
             .unwrap_or_else(|error| panic!("user message persists: {error}"));
-        let drafts = Arc::new(RwLock::new(HashMap::from([(
-            "main".to_string(),
-            ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7)),
-        )])));
-
-        append_assistant_delta(&drafts, "main", "first")
-            .await
-            .unwrap_or_else(|error| panic!("first delta is accumulated: {error}"));
-        append_assistant_delta(&drafts, "main", " second")
-            .await
-            .unwrap_or_else(|error| panic!("second delta is accumulated: {error}"));
+        let mut draft = ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7));
+        let seg_id = ProviderSegmentId::new("resp_test");
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id.clone(),
+                item_id: ProviderItemId::new("msg_0"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDelta {
+                    delta: "first".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id,
+                item_id: ProviderItemId::new("msg_0"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 2,
+                payload: ProviderItemUpdatePayload::MessageDelta {
+                    delta: " second".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
+        let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
         assert_eq!(
             store
                 .count("main")
@@ -1096,13 +1091,20 @@ mod tests {
             )
             .await
             .unwrap_or_else(|error| panic!("user message persists: {error}"));
-        let drafts = Arc::new(RwLock::new(HashMap::from([(
-            "main".to_string(),
-            ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7)),
-        )])));
-        append_assistant_delta(&drafts, "main", "partial")
-            .await
-            .unwrap_or_else(|error| panic!("delta is accumulated: {error}"));
+        let mut draft = ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7));
+        let seg_id = ProviderSegmentId::new("resp_test");
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id,
+                item_id: ProviderItemId::new("msg_0"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDelta {
+                    delta: "partial".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
+        let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
         store
             .append(
                 "main",
@@ -1150,10 +1152,18 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("user message persists: {error}"));
         let mut draft = ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7));
-        draft.push_responses_reasoning(chelix_common::ResponsesReasoningItem {
-            id: "rs_partial".to_string(),
-            encrypted_content: "opaque-partial".to_string(),
-        });
+        let seg_id = ProviderSegmentId::new("resp_test");
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id,
+                item_id: ProviderItemId::new("rs_partial"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::ReasoningItemDone {
+                    encrypted_content: Some("opaque-partial".to_string()),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
         let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
 
         let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "main")
@@ -1164,21 +1174,12 @@ mod tests {
         assert_eq!(persisted_index, 1);
         assert_eq!(partial["content"], "");
         assert!(partial.get("reasoning").is_none());
-        assert_eq!(partial["responsesReasoning"][0]["id"], "rs_partial");
-        assert_eq!(
-            partial["responsesReasoning"][0]["encryptedContent"],
-            "opaque-partial"
-        );
         assert!(!drafts.read().await.contains_key("main"));
         let history = store
             .read("main")
             .await
             .unwrap_or_else(|error| panic!("session history reads: {error}"));
         assert_eq!(history.len(), 2);
-        assert_eq!(
-            history[persisted_index]["responsesReasoning"][0]["id"],
-            "rs_partial"
-        );
     }
 
     #[tokio::test]
@@ -1209,7 +1210,8 @@ mod tests {
             reasoning: Some(chelix_common::ReasoningContent::Text(
                 "streamed reasoning".to_string(),
             )),
-            responses_reasoning: Vec::new(),
+            provider_items: Vec::new(),
+            segment_id: None,
             llm_api_response: None,
         };
 
@@ -1250,12 +1252,40 @@ mod tests {
             Some("high".to_string()),
             Some(7),
         );
-        draft.append_text("Text before tool.");
-        draft.set_reasoning("Initial reasoning.");
-        draft.push_responses_reasoning(chelix_common::ResponsesReasoningItem {
-            id: "rs_tool_segment".to_string(),
-            encrypted_content: "opaque-tool-segment".to_string(),
-        });
+        let seg_id = ProviderSegmentId::new("resp_test");
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id.clone(),
+                item_id: ProviderItemId::new("rs_tool_segment"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::ReasoningText {
+                    text: "Initial reasoning.".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id.clone(),
+                item_id: ProviderItemId::new("rs_tool_segment"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 2,
+                payload: ProviderItemUpdatePayload::ReasoningItemDone {
+                    encrypted_content: Some("opaque-tool-segment".to_string()),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: seg_id,
+                item_id: ProviderItemId::new("msg_0"),
+                position: ProviderItemPosition::new(1),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDone {
+                    text: "Text before tool.".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
         let segment = draft.to_persisted_message(
             Some(vec![build_persisted_tool_call(
                 "tool-1",
@@ -1287,10 +1317,8 @@ mod tests {
                 reasoning: Some(chelix_common::ReasoningContent::Text(
                     "Foreign terminal reasoning.".to_string(),
                 )),
-                responses_reasoning: vec![chelix_common::ResponsesReasoningItem {
-                    id: "rs_foreign_terminal".to_string(),
-                    encrypted_content: "opaque-foreign-terminal".to_string(),
-                }],
+                provider_items: Vec::new(),
+                segment_id: None,
                 llm_api_response: Some(serde_json::json!([{"foreign": "terminal"}])),
             },
             segment,
@@ -1309,7 +1337,8 @@ mod tests {
                 duration_ms,
                 tool_calls,
                 reasoning,
-                responses_reasoning,
+                provider_items,
+                segment_id,
                 llm_api_response,
                 seq,
                 run_id,
@@ -1334,12 +1363,8 @@ mod tests {
                         "Initial reasoning.".to_string(),
                     ))
                 );
-                assert_eq!(responses_reasoning.len(), 1);
-                assert_eq!(responses_reasoning[0].id, "rs_tool_segment");
-                assert_eq!(
-                    responses_reasoning[0].encrypted_content,
-                    "opaque-tool-segment"
-                );
+                assert!(provider_items.is_some());
+                assert!(segment_id.is_some());
                 assert_eq!(
                     llm_api_response,
                     Some(serde_json::json!([{"foreign": "terminal"}]))
@@ -1376,7 +1401,8 @@ mod tests {
             reasoning: Some(chelix_common::ReasoningContent::Text(
                 "Initial reasoning.".to_string(),
             )),
-            responses_reasoning: vec![],
+            provider_items: None,
+            segment_id: None,
             llm_api_response: None,
             audio: None,
             seq: Some(7),

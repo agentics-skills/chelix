@@ -143,6 +143,15 @@ pub(crate) struct ChatFinalBroadcast {
     pub reasoning: Option<chelix_common::ReasoningContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
+    /// Canonical items of the segment this turn produced.
+    ///
+    /// The broadcast is what a client reopening the chat renders, so it carries
+    /// the same canonical identity the history does. Without it the client
+    /// cannot tell this turn from the segment records it already applied.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub provider_items: Vec<chelix_common::ProviderOutputItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub segment_id: Option<chelix_common::ProviderSegmentId>,
 }
 
 /// Typed broadcast payload for the "error" chat event.
@@ -193,7 +202,8 @@ pub(crate) struct AssistantTurnOutput {
     pub request_cache_write_tokens: u32,
     pub audio_path: Option<String>,
     pub reasoning: Option<chelix_common::ReasoningContent>,
-    pub responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
+    pub provider_items: Vec<chelix_common::ProviderOutputItem>,
+    pub segment_id: Option<chelix_common::ProviderSegmentId>,
     pub llm_api_response: Option<Value>,
 }
 
@@ -215,6 +225,7 @@ pub(crate) fn build_chat_final_broadcast(
     audio_warning: Option<String>,
     reasoning: Option<chelix_common::ReasoningContent>,
     seq: Option<u64>,
+    segment: ChatFinalSegment,
 ) -> ChatFinalBroadcast {
     let total = usage.total_fields();
     let request = usage.request_fields();
@@ -243,6 +254,24 @@ pub(crate) fn build_chat_final_broadcast(
         audio_warning,
         reasoning,
         seq,
+        provider_items: segment.provider_items,
+        segment_id: segment.segment_id,
+    }
+}
+
+/// Canonical identity of the segment a finished turn produced.
+#[derive(Clone, Default)]
+pub(crate) struct ChatFinalSegment {
+    pub provider_items: Vec<chelix_common::ProviderOutputItem>,
+    pub segment_id: Option<chelix_common::ProviderSegmentId>,
+}
+
+impl From<&AssistantTurnOutput> for ChatFinalSegment {
+    fn from(output: &AssistantTurnOutput) -> Self {
+        Self {
+            provider_items: output.provider_items.clone(),
+            segment_id: output.segment_id.clone(),
+        }
     }
 }
 
@@ -253,7 +282,8 @@ pub(crate) fn build_assistant_turn_output(
     duration_ms: u64,
     audio_path: Option<String>,
     reasoning: Option<chelix_common::ReasoningContent>,
-    responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
+    provider_items: Vec<chelix_common::ProviderOutputItem>,
+    segment_id: Option<chelix_common::ProviderSegmentId>,
     llm_api_response: Option<Value>,
 ) -> AssistantTurnOutput {
     let total = usage.total_fields();
@@ -272,7 +302,8 @@ pub(crate) fn build_assistant_turn_output(
         request_cache_write_tokens: request.cache_write_tokens,
         audio_path,
         reasoning,
-        responses_reasoning,
+        provider_items,
+        segment_id,
         llm_api_response,
     }
 }
@@ -357,8 +388,8 @@ pub(crate) fn session_token_usage_from_messages(messages: &[Value]) -> SessionTo
 mod tests {
     use {
         super::{
-            ReplyMedium, UsageSnapshot, build_assistant_turn_output, build_chat_final_broadcast,
-            session_token_usage_from_messages,
+            ChatFinalSegment, ReplyMedium, UsageSnapshot, build_assistant_turn_output,
+            build_chat_final_broadcast, session_token_usage_from_messages,
         },
         chelix_agents::model::Usage,
         chelix_common::ReasoningContent,
@@ -435,6 +466,7 @@ mod tests {
             None,
             Some(ReasoningContent::Text("thinking".to_string())),
             Some(42),
+            ChatFinalSegment::default(),
         );
 
         assert_eq!(payload.cache_read_tokens, 1050);
@@ -443,6 +475,53 @@ mod tests {
         assert_eq!(payload.request_cache_write_tokens, Some(2));
         assert_eq!(payload.message_index, Some(7));
         assert_eq!(payload.seq, Some(42));
+    }
+
+    #[test]
+    fn build_chat_final_broadcast_carries_canonical_segment_identity() {
+        let output = build_assistant_turn_output(
+            "hello".to_string(),
+            None,
+            UsageSnapshot::new(Usage::default(), None),
+            10,
+            None,
+            None,
+            vec![chelix_common::ProviderOutputItem {
+                id: chelix_common::ProviderItemId("item_1".to_string()),
+                position: chelix_common::ProviderItemPosition(0),
+                payload: chelix_common::ProviderOutputPayload::Message {
+                    text: "hello".to_string(),
+                },
+            }],
+            Some(chelix_common::ProviderSegmentId("seg_1".to_string())),
+            None,
+        );
+
+        let payload = build_chat_final_broadcast(
+            "run-1",
+            "main",
+            "hello".to_string(),
+            "gpt-4.1".to_string(),
+            "openai".to_string(),
+            None,
+            UsageSnapshot::new(Usage::default(), None),
+            10,
+            None,
+            ReplyMedium::Text,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            (&output).into(),
+        );
+
+        assert_eq!(
+            payload.segment_id,
+            Some(chelix_common::ProviderSegmentId("seg_1".to_string()))
+        );
+        assert_eq!(payload.provider_items.len(), 1);
     }
 
     #[test]
@@ -468,6 +547,7 @@ mod tests {
             None,
             Some(ReasoningContent::Text("thinking".to_string())),
             Vec::new(),
+            None,
             None,
         );
 

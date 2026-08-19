@@ -7,26 +7,50 @@ provider through to the web UI.
 
 Chelix supports real-time token streaming for LLM responses, providing a much
 better user experience than waiting for the complete response. Streaming works
-even when tools are enabled, allowing users to see text as it arrives while tool
-calls are accumulated and executed.
+even when tools are enabled, ensuring every provider output item maintains a
+canonical identity and output position without loss through live streaming,
+persistence, reload, and subsequent provider request replay.
 
 ## Components
 
-### 1. StreamEvent Enum (`crates/agents/src/model.rs`)
+### 1. Canonical Provider Output Model (`crates/common/src/provider_output.rs`)
+
+Chelix defines concrete typed structures for provider responses:
+
+- `ProviderSegmentId`: immutable identity for a provider response/attempt.
+- `ProviderSegmentOutcome`: active, completed, incomplete, failed, cancelled, or transport_error.
+- `ProviderItemId`: provider-issued or canonical ingress identity.
+- `ProviderItemPosition`: 0-based position in the provider's output array.
+- `ProviderItemUpdate`: append-only stream update addressed to a specific item.
+- `ProviderSegmentMaterializer`: single Rust materializer verifying monotonic sequences and constructing ordered segments.
+
+### 2. StreamEvent Enum (`crates/agents/src/model.rs`)
 
 The `StreamEvent` enum defines all events that can occur during a streaming LLM
 response:
 
 ```rust
 pub enum StreamEvent {
+    /// Append-only provider item update carrying canonical segment ID, item ID, position, seq, and payload.
+    ProviderItemUpdate(chelix_common::ProviderItemUpdate),
+
+    /// Provider response/attempt segment opened.
+    SegmentStart {
+        segment_id: chelix_common::ProviderSegmentId,
+    },
+
+    /// Provider response/attempt segment closed.
+    SegmentClose {
+        segment_id: chelix_common::ProviderSegmentId,
+        outcome: chelix_common::ProviderSegmentOutcome,
+        usage: Option<Usage>,
+    },
+
     /// Text content delta.
     Delta(String),
 
     /// Raw provider event payload (for debugging API responses).
     ProviderRaw(serde_json::Value),
-
-    /// Reasoning/planning text delta (not user-visible final answer text).
-    ReasoningDelta(String),
 
     /// A tool call has started (content_block_start with tool_use).
     ToolCallStart { id: String, name: String, index: usize },
@@ -45,7 +69,7 @@ pub enum StreamEvent {
 }
 ```
 
-### 2. LlmProvider Trait (`crates/agents/src/model.rs`)
+### 3. LlmProvider Trait (`crates/agents/src/model.rs`)
 
 The `LlmProvider` trait defines two streaming methods:
 
@@ -59,7 +83,7 @@ the default implementation, which ignores the tools parameter.
 The trait also exposes `supports_tools()`, `reasoning_effort()`, and
 `with_reasoning_effort()` for provider capability discovery.
 
-### 3. Agent Runner (`crates/agents/src/runner/streaming.rs`)
+### 4. Agent Runner (`crates/agents/src/runner/streaming.rs`)
 
 The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 
@@ -70,10 +94,13 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 │  1. Call provider.stream_with_tools()                            │
 │                                                                  │
 │  2. While the provider stream has events:                        │
+│     ├─ SegmentStart → initialize ProviderSegmentMaterializer     │
+│     ├─ ProviderItemUpdate → apply to materializer and emit       │
 │     ├─ Delta(text) → emit RunnerEvent::TextDelta                 │
 │     ├─ ToolCallStart → emit Created and accumulate the call      │
 │     ├─ ToolCallArgumentsDelta → emit InputStreaming              │
 │     ├─ ToolCallComplete → mark arguments complete                │
+│     ├─ SegmentClose → close materializer with terminal outcome   │
 │     ├─ Done → record usage                                       │
 │     └─ Error → emit Cancelled for started calls, then retry/fail  │
 │                                                                  │
@@ -93,7 +120,7 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 4. Chat Service (`crates/chat/src/run_with_tools.rs`)
+### 5. Chat Service (`crates/chat/src/run_with_tools.rs`)
 
 The chat service's `run_with_tools()` function:
 
@@ -105,21 +132,18 @@ The chat service's `run_with_tools()` function:
    forms an authoritative boundary after all earlier updates.
 3. Calls `run_agent_loop_streaming()` from
    `crates/agents/src/runner/streaming.rs`.
-4. Broadcasts every lifecycle update. Adjacent input deltas are accumulated and
-   persisted as one `input_streaming` checkpoint immediately before that
-   invocation's next non-input boundary; each non-input update is persisted
-   before its WebSocket frame is broadcast.
+4. Persists updates to the session store first, obtains the authoritative
+   `historyIndex`, and broadcasts the public redacted record to connected clients.
 
 Ordinary runner-event handling in the chat service:
 
 | RunnerEvent                         | Chat service handling                                      |
 | ----------------------------------- | ---------------------------------------------------------- |
+| `SegmentStart`                      | Broadcasts `segment_start`                                 |
+| `ProviderItemUpdate(update)`        | Persists `provider_update` and broadcasts with `historyIndex` |
+| `SegmentClose`                      | Persists `provider_segment_close` and broadcasts with `historyIndex` |
 | `Thinking`                          | Broadcasts `thinking`                                      |
 | `ThinkingDone`                      | Broadcasts `thinking_done`                                 |
-| `ThinkingText(text)`                | Broadcasts `thinking_text`                                 |
-| `ResponsesReasoningDelta { ... }`   | Broadcasts `thinking_text` with accumulated source parts   |
-| `ResponsesReasoningPartDone { ... }` | Broadcasts `thinking_text` with the authoritative part text |
-| `ResponsesReasoningItem(item)`      | Persists backend-only opaque replay state; not broadcast    |
 | `TextDelta(text)`                   | Broadcasts `delta` with `text` field                       |
 | `Iteration(n)`                      | Broadcasts `iteration`                                     |
 | `SubAgentStart`                     | Broadcasts `sub_agent_start`                               |
@@ -159,14 +183,71 @@ underscore-prefixed fields are removed from caller-visible lifecycle arguments.
 The waiting [A2UI](a2ui.md) tool uses this ID with the trusted session and run
 IDs to route a browser action to one active invocation.
 
-### 5. Web Crate (`crates/web/`)
+### 6. Segments, Retries, and Replay
+
+A segment is one provider response attempt. A retry or a tool boundary closes
+the current segment and opens the next one; it never deletes, overwrites, or
+merges an adjacent segment.
+
+**Retry keeps what the failed attempt produced.** When a stream fails and the
+runner decides to retry, it closes the segment as `transport_error` and appends
+the items that attempt already produced to the messages the next attempt sees
+(`crates/agents/src/runner/streaming.rs`). The next attempt therefore starts
+from what the model has already said rather than from nothing.
+
+**Unclosed segments are replayed at their place in history.** When history is
+converted back into provider messages
+(`crates/agents/src/model/convert.rs`), a segment is emitted where it closed,
+not appended at the end. A segment that never closed ends the history, because
+the run was interrupted mid-response.
+
+**An interrupted tool call gets a result.** A replayed segment can carry a
+function call the run never finished. Both Chat Completions and Responses reject
+a request whose assistant message has a call without a matching result, so
+`ensure_tool_call_results_present()`
+(`crates/agents/src/model/aborted_calls.rs`) records the missing result as
+`aborted` and logs a warning naming the call. The call itself is kept.
+
+**Reasoning survives the round trip.** A replayed reasoning item is serialized
+with its summary parts and its opaque `encrypted_content`
+(`crates/providers/src/openai_compat/provider.rs`). A missing opaque state is
+sent as `null`; it is never replaced by a substitute value.
+
+### 7. Item Identity and Position on Ingress
+
+Every item receives its canonical position exactly once, when its identity first
+appears on the stream, from `ItemPositionAllocator`
+(`crates/common/src/item_positions.rs`). Transports are not a reliable source of
+that slot:
+
+- Chat Completions has no output items at all; reasoning, visible text, and tool
+    calls arrive as parallel delta channels with no index ordering them against
+    each other.
+- Responses carries `output_index` on delta events, but for some providers it
+    orders items only within a channel, so two distinct items can share one value
+    inside a single response.
+- External agents report text and thinking as separate event kinds with no
+    ordering between them.
+
+Adapters for those transports assign the identity of the synthesized item once
+per segment and take its position from the allocator. Deriving a position from a
+transport field would make two items collide on one slot, which the materializer
+rejects as a position/id conflict.
+
+A Responses reasoning item can deliver its summary twice: as
+`reasoning_summary_text.delta` / `reasoning_summary_part.done` events, and again
+in full inside the final `output_item.done`. Parts already received from the
+stream are not emitted a second time, so a provider that streams the summary and
+one that sends it only at the end both end up with the same segment.
+
+### 8. Web Crate (`crates/web/`)
 
 The `chelix-web` crate owns the browser-facing layer: HTML templates, static
 assets (JS, CSS, icons), and the axum routes that serve them. It injects its
 routes into the gateway via the `RouteEnhancer` composition pattern, keeping web
 UI concerns separate from API and agent logic in the gateway.
 
-### 6. Frontend (`crates/web/ui/src/`)
+### 9. Frontend (`crates/web/ui/src/`)
 
 The TypeScript frontend handles streaming via WebSocket:
 
@@ -186,23 +267,20 @@ The TypeScript frontend handles streaming via WebSocket:
    active reconnect snapshots. History rendering is non-interactive and never
    opens a terminal attachment WebSocket.
 
-When a `delta` event arrives:
+`handleChatDelta` in `ws/chat-handlers.ts` appends the text to the live
+assistant element, creating it on first use. Rendered markdown lives in a
+dedicated wrapper inside that element, so a delta never detaches the reasoning
+disclosure or the action bar next to it.
 
-```javascript
-function handleChatDelta(p, isActive, isChatPage) {
-  if (!(p.text && isActive && isChatPage)) return;
-  removeThinking();
-  if (!S.streamEl) {
-    S.setStreamText("");
-    S.setStreamEl(document.createElement("div"));
-    S.streamEl.className = "msg assistant";
-    S.chatMsgBox.appendChild(S.streamEl);
-  }
-  S.setStreamText(S.streamText + p.text);
-  setSafeMarkdownHtml(S.streamEl, S.streamText);
-  S.chatMsgBox.scrollTop = S.chatMsgBox.scrollHeight;
-}
-```
+Each segment owns one bubble. `segment_start` for a different segment releases
+the current element so the next segment starts its own: an element that produced
+nothing visible is removed, and one that produced something is finished in place
+and left in the conversation. Without that release, a retry would append the
+second attempt to the text of the first.
+
+All reasoning items of a segment render into a single disclosure, as parts of
+one reasoning stream. The live view and the view rebuilt from history use the
+same aggregation, so a reload shows the same structure as the live run.
 
 ## Data Flow
 

@@ -100,6 +100,11 @@ impl OpenAiProvider {
                 let chunk = match chunk {
                     Ok(c) => c,
                     Err(e) => {
+                        // The response was cut off. Close the segment so it is
+                        // not replayed later as still in progress.
+                        for event in state.close_on_transport_error() {
+                            yield event;
+                        }
                         yield StreamEvent::Error(e.to_string());
                         return;
                     }
@@ -257,6 +262,11 @@ impl OpenAiProvider {
                 let chunk = match chunk {
                     Ok(c) => c,
                     Err(e) => {
+                        // The response was cut off. Close the segment so it is
+                        // not replayed later as still in progress.
+                        for event in state.close_on_transport_error() {
+                            yield event;
+                        }
                         yield StreamEvent::Error(e.to_string());
                         return;
                     }
@@ -336,7 +346,9 @@ mod tests {
             Json, Router, body::Body, http::header::CONTENT_TYPE, response::Response, routing::post,
         },
         chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort, StreamEvent},
-        chelix_common::{ModelReasoningMetadata, ReasoningInclude, ReasoningSummary},
+        chelix_common::{
+            ModelReasoningMetadata, ProviderSegmentOutcome, ReasoningInclude, ReasoningSummary,
+        },
         futures::StreamExt,
         secrecy::Secret,
         std::sync::Arc,
@@ -452,7 +464,15 @@ mod tests {
 
         assert!(matches!(
             events.as_slice(),
-            [StreamEvent::ProviderRaw(raw), StreamEvent::Done(usage)]
+            [
+                StreamEvent::SegmentStart { .. },
+                StreamEvent::ProviderRaw(raw),
+                StreamEvent::SegmentClose {
+                    outcome: ProviderSegmentOutcome::Completed,
+                    ..
+                },
+                StreamEvent::Done(usage),
+            ]
                 if raw == &completed
                     && usage.input_tokens == 12
                     && usage.output_tokens == 7
@@ -471,7 +491,15 @@ mod tests {
 
         assert!(matches!(
             events.as_slice(),
-            [StreamEvent::ProviderRaw(raw), StreamEvent::Error(message)]
+            [
+                StreamEvent::SegmentStart { .. },
+                StreamEvent::ProviderRaw(raw),
+                StreamEvent::SegmentClose {
+                    outcome: ProviderSegmentOutcome::Failed,
+                    ..
+                },
+                StreamEvent::Error(message),
+            ]
                 if raw == &failed && message == "upstream failed"
         ));
     }

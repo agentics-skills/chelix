@@ -68,7 +68,16 @@ pub fn filter_ui_history(messages: Vec<Value>) -> Result<Vec<Value>> {
                     .get("tool_calls")
                     .and_then(Value::as_array)
                     .is_some_and(|tool_calls| !tool_calls.is_empty());
-                if !(has_content || has_reasoning || has_audio || has_tool_calls) {
+                let has_provider_items = message
+                    .get("providerItems")
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| !items.is_empty());
+                if !(has_content
+                    || has_reasoning
+                    || has_audio
+                    || has_tool_calls
+                    || has_provider_items)
+                {
                     continue;
                 }
             },

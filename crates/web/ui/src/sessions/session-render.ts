@@ -38,6 +38,9 @@ import type { HistoryMessage } from "../types/session";
 import type {
 	CheckpointHistoryMessage,
 	ContextBudgetMetadata,
+	ProviderItemUpdate,
+	ProviderOutputItem,
+	ProviderSegmentOutcome,
 	ReasoningContent,
 	ToolLifecycleEvent,
 } from "../types/ws-events";
@@ -45,6 +48,14 @@ import { hasVisibleReasoning } from "../types/ws-events";
 import { showToast } from "../ui";
 import { renderToolLifecycleSnapshot, toolCallCardId } from "../ws/tool-helpers";
 
+import {
+	applyProviderItemUpdate,
+	createProviderSegmentViewModel,
+	extractSegmentMessageText,
+	extractSegmentReasoning,
+	type ProviderSegmentViewModel,
+	segmentFromItems,
+} from "./provider-segment-reducer";
 import { setSessionAgent } from "./session-agent";
 import { computeHistoryTailIndex, syncHistoryState } from "./session-history";
 import { fetchSessions } from "./session-list";
@@ -77,6 +88,8 @@ interface AssistantMsg extends HistoryMessage {
 	tts_provider?: string;
 	run_id?: string;
 	historyIndex?: number;
+	providerItems?: ProviderOutputItem[];
+	segmentId?: string;
 	requestInputTokens?: number;
 	requestOutputTokens?: number;
 	requestCacheReadTokens?: number;
@@ -290,13 +303,30 @@ function renderAssistantAudioMessage(msg: AssistantMsg): HTMLElement | null {
 }
 
 function renderAssistantMessageBody(msg: AssistantMsg): HTMLElement | null {
-	const messageEl = msg.audio
-		? renderAssistantAudioMessage(msg)
-		: chatAddMsg("assistant", renderMarkdown(msg.content || ""), true);
-	if (messageEl && msg.reasoning) {
-		appendReasoningDisclosure(messageEl, msg.reasoning, { expanded: false, streaming: false });
-	}
+	if (msg.audio) return renderAssistantAudioMessage(msg);
+	const messageEl = chatAddMsg("assistant", renderMarkdown(msg.content || ""), true);
+	if (messageEl) appendAssistantReasoning(messageEl, msg);
 	return messageEl;
+}
+
+/// Render reasoning strictly by canonical provider item position. Falls back to
+/// the persisted reasoning field only when no provider items exist.
+function appendAssistantReasoning(messageEl: HTMLElement, msg: AssistantMsg): void {
+	const providerItems = Array.isArray(msg.providerItems) ? msg.providerItems : [];
+	if (providerItems.length === 0) {
+		if (msg.reasoning) {
+			appendReasoningDisclosure(messageEl, msg.reasoning, { expanded: false, streaming: false });
+		}
+		return;
+	}
+	// Every reasoning item of the segment belongs to the same disclosure: they
+	// are parts of one reasoning stream, and the live view renders them the same
+	// way. One disclosure per item would show the message thinking several times.
+	const segment = segmentFromItems(msg.segmentId ?? "", providerItems);
+	const reasoning = extractSegmentReasoning(segment);
+	if (hasVisibleReasoning(reasoning)) {
+		appendReasoningDisclosure(messageEl, reasoning, { expanded: false, streaming: false });
+	}
 }
 
 function decorateAssistantMessage(messageEl: HTMLElement | null, msg: AssistantMsg): void {
@@ -369,24 +399,17 @@ function scrollAfterHistoryLoad(
 	scrollChatToBottom(true);
 }
 
-function restoreActiveAssistantSegment(
-	key: string,
-	thinkingText: ReasoningContent | null,
-	skipAutoScroll: boolean,
-): void {
+function restoreActiveAssistantSegment(key: string, skipAutoScroll: boolean): void {
 	const session = sessionStore.getByKey(key);
 	if (!(session?.replying.value && S.chatMsgBox)) return;
 	const activeText = session.streamText.value;
 	let segment = S.streamEl;
-	if (!(segment && segment.parentNode === S.chatMsgBox)) {
+	if (!(segment && segment.parentNode === S.chatMsgBox) && activeText) {
 		segment = document.createElement("div");
 		segment.className = "msg assistant reasoning-stream";
-		appendReasoningDisclosure(segment, thinkingText || "", { expanded: true, streaming: true });
-		if (activeText) {
-			const text = document.createElement("span");
-			text.insertAdjacentHTML("afterbegin", renderMarkdown(activeText));
-			while (text.firstChild) segment.appendChild(text.firstChild);
-		}
+		const text = document.createElement("span");
+		text.insertAdjacentHTML("afterbegin", renderMarkdown(activeText));
+		while (text.firstChild) segment.appendChild(text.firstChild);
 		S.chatMsgBox.appendChild(segment);
 		S.setStreamEl(segment);
 	}
@@ -398,12 +421,11 @@ export function postHistoryLoadActions(
 	key: string,
 	searchContext: SearchContext | null,
 	msgEls: (HTMLElement | null)[],
-	thinkingText: ReasoningContent | null,
 	skipAutoScroll: boolean,
 ): void {
 	refreshHistoryContext();
 	scrollAfterHistoryLoad(searchContext, msgEls, skipAutoScroll);
-	restoreActiveAssistantSegment(key, thinkingText, skipAutoScroll);
+	restoreActiveAssistantSegment(key, skipAutoScroll);
 }
 
 /** No-op -- the Preact SessionHeader component auto-updates from signals. */
@@ -584,6 +606,12 @@ interface HistoryRenderState {
 	assistantHistoryIndexByToolCall: Map<string, number>;
 	toolInvocations: Map<string, ToolInvocationSnapshot>;
 	latestToolContextBudget: ContextBudgetMetadata | null;
+	/// Provider segments rebuilt from append-only `provider_update` records, so
+	/// a reload during an active response restores the same canonical items the
+	/// live path had materialized.
+	providerSegments: Map<string, ProviderSegmentViewModel>;
+	/// Segments already rendered as a persisted assistant message.
+	assistantSegmentIds: Set<string>;
 }
 
 function registerAssistantTerminalMetadata(
@@ -677,6 +705,12 @@ function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState
 		case "assistant":
 			renderAssistantHistoryEntry(message as AssistantMsg, state);
 			return;
+		case "provider_update":
+			applyProviderUpdateHistoryEntry(message, state);
+			return;
+		case "provider_segment_close":
+			applyProviderSegmentCloseHistoryEntry(message, state);
+			return;
 		case "notice":
 			state.messageElements.push(
 				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
@@ -696,6 +730,95 @@ function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState
 	}
 }
 
+/// Rebuild one canonical provider item update recorded in history.
+///
+/// These records carry no DOM of their own: they feed the segment reducer, and
+/// the resulting segment is rendered once the replay is complete.
+function applyProviderUpdateHistoryEntry(message: HistoryMessage, state: HistoryRenderState): void {
+	state.messageElements.push(null);
+	const update = providerItemUpdateOf(message);
+	if (!update) return;
+	const segment = historySegmentFor(state, update.segmentId);
+	applyProviderItemUpdate(segment, update);
+}
+
+/// Apply the terminal outcome of a provider segment recorded in history.
+///
+/// The segment ends here, so it is rendered here. Rendering it after the whole
+/// history would move a failed attempt below every turn that followed it.
+function applyProviderSegmentCloseHistoryEntry(message: HistoryMessage, state: HistoryRenderState): void {
+	state.messageElements.push(null);
+	const segmentId = typeof message.segmentId === "string" ? message.segmentId : "";
+	if (!segmentId) return;
+	const outcome = message.outcome;
+	if (!isProviderSegmentOutcome(outcome)) return;
+	const segment = historySegmentFor(state, segmentId);
+	segment.outcome = outcome;
+	renderReplayedProviderSegment(segment, state);
+	state.providerSegments.delete(segmentId);
+}
+
+function historySegmentFor(state: HistoryRenderState, segmentId: string): ProviderSegmentViewModel {
+	const existing = state.providerSegments.get(segmentId);
+	if (existing) return existing;
+	const created = createProviderSegmentViewModel(segmentId);
+	state.providerSegments.set(segmentId, created);
+	return created;
+}
+
+const PROVIDER_SEGMENT_OUTCOMES: readonly ProviderSegmentOutcome[] = [
+	"active",
+	"completed",
+	"incomplete",
+	"failed",
+	"cancelled",
+	"transport_error",
+];
+
+function isProviderSegmentOutcome(value: unknown): value is ProviderSegmentOutcome {
+	return typeof value === "string" && (PROVIDER_SEGMENT_OUTCOMES as readonly string[]).includes(value);
+}
+
+/// Read the canonical update out of a persisted `provider_update` record.
+///
+/// The record flattens the update, so the identity fields sit next to the
+/// record metadata. A record without them is malformed and is skipped rather
+/// than materialized into a guessed item.
+function providerItemUpdateOf(message: HistoryMessage): ProviderItemUpdate | null {
+	const candidate = (message.update ?? message) as Partial<ProviderItemUpdate>;
+	if (typeof candidate.segmentId !== "string" || !candidate.segmentId) return null;
+	if (typeof candidate.itemId !== "string" || !candidate.itemId) return null;
+	if (!Number.isSafeInteger(candidate.position)) return null;
+	if (!Number.isSafeInteger(candidate.updateSeq)) return null;
+	if (!candidate.payload || typeof candidate.payload !== "object") return null;
+	return candidate as ProviderItemUpdate;
+}
+
+/// Render the provider segments rebuilt from append-only history.
+///
+/// Every recorded segment is shown, whatever its outcome: a retry or an
+/// interrupted run closes a segment but never deletes what the provider already
+/// produced. A segment already carried by a persisted assistant message is
+/// skipped, because that message is the same segment in its final form.
+function renderReplayedProviderSegments(state: HistoryRenderState): void {
+	for (const segment of state.providerSegments.values()) {
+		renderReplayedProviderSegment(segment, state);
+	}
+}
+
+/// Render one rebuilt provider segment as an assistant message.
+function renderReplayedProviderSegment(segment: ProviderSegmentViewModel, state: HistoryRenderState): void {
+	if (segment.items.length === 0) return;
+	if (state.assistantSegmentIds.has(segment.segmentId)) return;
+	const text = extractSegmentMessageText(segment);
+	const messageEl = chatAddMsg("assistant", renderMarkdown(text), true);
+	if (!messageEl) return;
+	const reasoning = extractSegmentReasoning(segment);
+	if (hasVisibleReasoning(reasoning)) {
+		appendReasoningDisclosure(messageEl, reasoning, { expanded: false, streaming: false });
+	}
+}
+
 function appendRemainingTerminalMetadata(pendingMetadata: Map<string, PendingTerminalToolMetadata>): void {
 	for (const pending of new Set(pendingMetadata.values())) {
 		if (!pending.lastToolCard) continue;
@@ -705,6 +828,22 @@ function appendRemainingTerminalMetadata(pendingMetadata: Map<string, PendingTer
 			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
 		);
 	}
+}
+
+/// Segment identifiers already carried by a persisted assistant message.
+///
+/// Such a message is the final form of its segment, so the append-only records
+/// of that segment must not be rendered a second time. The set is built over the
+/// whole history up front: a segment closes before its assistant message is
+/// written, so collecting the ids while rendering would render it twice.
+function assistantSegmentIds(history: HistoryMessage[]): Set<string> {
+	const ids = new Set<string>();
+	for (const message of history) {
+		if (message.role !== "assistant") continue;
+		const segmentId = (message as AssistantMsg).segmentId;
+		if (typeof segmentId === "string" && segmentId) ids.add(segmentId);
+	}
+	return ids;
 }
 
 function latestUserSequence(history: HistoryMessage[]): number {
@@ -720,7 +859,6 @@ export function renderHistory(
 	key: string,
 	history: HistoryMessage[],
 	searchContext: SearchContext | null,
-	thinkingText: ReasoningContent | null,
 	totalCountHint: number | null,
 	skipAutoScroll: boolean,
 ): void {
@@ -741,8 +879,12 @@ export function renderHistory(
 		assistantHistoryIndexByToolCall: new Map(),
 		toolInvocations: new Map(),
 		latestToolContextBudget: null,
+		providerSegments: new Map(),
+		assistantSegmentIds: assistantSegmentIds(history),
 	};
 	for (const message of history) renderHistoryMessage(message, state);
+	// Whatever is left was never closed: the run was interrupted mid-response.
+	renderReplayedProviderSegments(state);
 	appendRemainingTerminalMetadata(state.pendingTerminalMetadata);
 	updateTokenBar(state.latestToolContextBudget);
 	S.setChatBatchLoading(false);
@@ -751,5 +893,5 @@ export function renderHistory(
 	syncHistoryState(key, history, historyTailIndex, totalCountHint);
 	S.setChatSeq(latestUserSequence(history));
 	if (history.length === 0) showWelcomeCard();
-	postHistoryLoadActions(key, searchContext, state.messageElements, thinkingText, skipAutoScroll === true);
+	postHistoryLoadActions(key, searchContext, state.messageElements, skipAutoScroll === true);
 }

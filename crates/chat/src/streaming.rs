@@ -16,10 +16,11 @@ use {
 use {
     chelix_agents::{
         ChatMessage, UserContent,
-        model::{ReasoningAccumulator, StreamEvent, push_capped_provider_raw_event},
+        model::{StreamEvent, push_capped_provider_raw_event},
         prompt::{PromptRuntimeContext, build_system_prompt_minimal_runtime_details},
     },
-    chelix_sessions::store::SessionStore,
+    chelix_common::ProviderSegmentMaterializer,
+    chelix_sessions::{PersistedMessage, store::SessionStore},
 };
 
 use crate::{
@@ -34,8 +35,7 @@ use crate::{
     prompt::prompt_build_limits_from_config,
     runtime::ChatRuntime,
     service::{
-        ActiveAssistantDraft, append_assistant_delta, persist_active_assistant_draft,
-        persist_final_assistant_segment,
+        ActiveAssistantDraft, persist_active_assistant_draft, persist_final_assistant_segment,
     },
     types::*,
 };
@@ -156,7 +156,6 @@ pub(crate) async fn run_streaming(
     sender_name: Option<String>,
     session_store: Option<&Arc<SessionStore>>,
     client_seq: Option<u64>,
-    active_thinking_text: Option<Arc<RwLock<HashMap<String, chelix_common::ReasoningContent>>>>,
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
 ) -> Option<AssistantTurnOutput> {
@@ -253,36 +252,120 @@ pub(crate) async fn run_streaming(
 
         let mut stream = provider.stream(messages.clone());
         let mut accumulated = String::new();
-        let mut accumulated_reasoning = ReasoningAccumulator::default();
-        let mut responses_reasoning = Vec::new();
+        // Segment identity is owned by the provider and adopted on ingress.
+        let mut materializer = ProviderSegmentMaterializer::pending();
         let mut raw_llm_responses: Vec<Value> = Vec::new();
+        // Set when the canonical provider pipeline refuses to continue. The run
+        // must fail loudly instead of silently dropping provider output.
+        let mut stream_failure: Option<String> = None;
 
         while let Some(event) = stream.next().await {
             match event {
+                StreamEvent::SegmentStart { segment_id } => {
+                    materializer = ProviderSegmentMaterializer::new(segment_id.clone());
+                    broadcast(
+                        state,
+                        "chat",
+                        serde_json::json!({
+                            "runId": run_id,
+                            "sessionKey": session_key,
+                            "state": "segment_start",
+                            "segmentId": segment_id.0,
+                        }),
+                        BroadcastOpts::default(),
+                    )
+                    .await;
+                },
+                StreamEvent::ProviderItemUpdate(update) => {
+                    if let Err(error) = materializer.apply_update(&update) {
+                        stream_failure = Some(format!("provider item update rejected: {error}"));
+                        break;
+                    }
+                    if let Some(ref map) = active_partial_assistant
+                        && let Some(draft) = map.write().await.get_mut(session_key)
+                        && let Err(error) = draft.apply_update(&update)
+                    {
+                        stream_failure =
+                            Some(format!("active assistant draft rejected update: {error}"));
+                        break;
+                    }
+                    let mut history_index = None;
+                    if let Some(store) = session_store {
+                        let persisted = PersistedMessage::ProviderUpdate {
+                            update: update.clone(),
+                            created_at: Some(now_ms()),
+                            seq: client_seq,
+                            run_id: Some(run_id.to_string()),
+                        };
+                        match store
+                            .append_with_index(session_key, &persisted.to_value())
+                            .await
+                        {
+                            Ok(idx) => history_index = Some(idx),
+                            Err(error) => {
+                                stream_failure =
+                                    Some(format!("failed to persist provider update: {error}"));
+                                break;
+                            },
+                        }
+                    }
+                    let mut payload = serde_json::json!({
+                        "runId": run_id,
+                        "sessionKey": session_key,
+                        "state": "provider_update",
+                        "update": update.redacted(),
+                    });
+                    if let Some(idx) = history_index {
+                        payload["historyIndex"] = serde_json::json!(idx);
+                    }
+                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+                },
+                StreamEvent::SegmentClose {
+                    segment_id,
+                    outcome,
+                    usage,
+                } => {
+                    if let Err(error) = materializer.close(outcome) {
+                        stream_failure = Some(format!("provider segment close rejected: {error}"));
+                        break;
+                    }
+                    let mut history_index = None;
+                    if let Some(store) = session_store {
+                        let persisted = PersistedMessage::ProviderSegmentClose {
+                            segment_id: segment_id.clone(),
+                            outcome,
+                            created_at: Some(now_ms()),
+                            seq: client_seq,
+                            run_id: Some(run_id.to_string()),
+                        };
+                        match store
+                            .append_with_index(session_key, &persisted.to_value())
+                            .await
+                        {
+                            Ok(idx) => history_index = Some(idx),
+                            Err(error) => {
+                                stream_failure = Some(format!(
+                                    "failed to persist provider segment close: {error}"
+                                ));
+                                break;
+                            },
+                        }
+                    }
+                    let mut payload = serde_json::json!({
+                        "runId": run_id,
+                        "sessionKey": session_key,
+                        "state": "provider_segment_close",
+                        "segmentId": segment_id.0,
+                        "outcome": outcome,
+                        "usage": usage,
+                    });
+                    if let Some(idx) = history_index {
+                        payload["historyIndex"] = serde_json::json!(idx);
+                    }
+                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+                },
                 StreamEvent::Delta(delta) => {
                     accumulated.push_str(&delta);
-                    if let Some(drafts) = active_partial_assistant.as_ref()
-                        && let Err(error) =
-                            append_assistant_delta(drafts, session_key, &delta).await
-                    {
-                        let error = error.to_string();
-                        warn!(run_id, %error, "failed to accumulate streaming assistant segment");
-                        state.set_run_error(run_id, error.clone()).await;
-                        let error_obj = parse_chat_error(&error, Some(provider_name));
-                        deliver_channel_error(state, session_key, &error_obj).await;
-                        let error_payload = ChatErrorBroadcast {
-                            run_id: run_id.to_string(),
-                            session_key: session_key.to_string(),
-                            state: "error",
-                            error: error_obj,
-                            seq: client_seq,
-                        };
-                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                        let payload_val = serde_json::to_value(&error_payload).unwrap();
-                        terminal_runs.write().await.insert(run_id.to_string());
-                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-                        return None;
-                    }
                     if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                         dispatcher.send_delta(&delta).await;
                     }
@@ -293,129 +376,6 @@ pub(crate) async fn run_streaming(
                         "text": delta,
                     });
                     broadcast(state, "chat", payload, BroadcastOpts::default()).await;
-                },
-                StreamEvent::ReasoningDelta(delta) => {
-                    accumulated_reasoning.append_text(&delta);
-                    let reasoning = accumulated_reasoning.content();
-                    if let Some(ref map) = active_thinking_text
-                        && let Some(ref reasoning) = reasoning
-                    {
-                        map.write()
-                            .await
-                            .insert(session_key.to_string(), reasoning.clone());
-                    }
-                    if let Some(ref map) = active_partial_assistant
-                        && let Some(draft) = map.write().await.get_mut(session_key)
-                        && let Some(chelix_common::ReasoningContent::Text(ref text)) = reasoning
-                    {
-                        draft.set_reasoning(text);
-                    }
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "thinking_text",
-                            "text": reasoning,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                },
-                StreamEvent::ResponsesReasoningDelta {
-                    item_id,
-                    output_index,
-                    summary_index,
-                    delta,
-                } => {
-                    accumulated_reasoning.append_responses_delta(
-                        &item_id,
-                        output_index,
-                        summary_index,
-                        &delta,
-                    );
-                    let reasoning = accumulated_reasoning.content();
-                    if let Some(ref map) = active_thinking_text
-                        && let Some(ref reasoning) = reasoning
-                    {
-                        map.write()
-                            .await
-                            .insert(session_key.to_string(), reasoning.clone());
-                    }
-                    if let Some(ref map) = active_partial_assistant
-                        && let Some(draft) = map.write().await.get_mut(session_key)
-                    {
-                        draft.append_responses_reasoning(
-                            &item_id,
-                            output_index,
-                            summary_index,
-                            &delta,
-                        );
-                    }
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "thinking_text",
-                            "text": reasoning,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                },
-                StreamEvent::ResponsesReasoningPartDone {
-                    item_id,
-                    output_index,
-                    summary_index,
-                    text,
-                } => {
-                    accumulated_reasoning.complete_responses_part(
-                        &item_id,
-                        output_index,
-                        summary_index,
-                        text.clone(),
-                    );
-                    let reasoning = accumulated_reasoning.content();
-                    if let Some(ref map) = active_thinking_text
-                        && let Some(ref reasoning) = reasoning
-                    {
-                        map.write()
-                            .await
-                            .insert(session_key.to_string(), reasoning.clone());
-                    }
-                    if let Some(ref map) = active_partial_assistant
-                        && let Some(draft) = map.write().await.get_mut(session_key)
-                    {
-                        draft.complete_responses_reasoning(
-                            &item_id,
-                            output_index,
-                            summary_index,
-                            text,
-                        );
-                    }
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "thinking_text",
-                            "text": reasoning,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                },
-                StreamEvent::ResponsesReasoningItem(item) => {
-                    responses_reasoning.push(item.clone());
-                    if let Some(ref map) = active_partial_assistant
-                        && let Some(draft) = map.write().await.get_mut(session_key)
-                    {
-                        draft.push_responses_reasoning(item);
-                    }
                 },
                 StreamEvent::ProviderRaw(raw) => {
                     push_capped_provider_raw_event(&mut raw_llm_responses, raw);
@@ -466,11 +426,12 @@ pub(crate) async fn run_streaming(
                     }
 
                     let is_silent = accumulated.trim().is_empty();
-                    let reasoning = accumulated_reasoning
-                        .content()
+                    let reasoning = materializer
+                        .segment
+                        .reasoning_content()
                         .filter(|reasoning| !reasoning.is_blank());
                     let has_provider_output =
-                        !is_silent || reasoning.is_some() || !responses_reasoning.is_empty();
+                        !is_silent || reasoning.is_some() || !materializer.segment.items.is_empty();
                     let streamed_target_keys =
                         if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                             dispatcher.finish().await;
@@ -576,7 +537,8 @@ pub(crate) async fn run_streaming(
                         duration_ms,
                         audio_path.clone(),
                         reasoning.clone(),
-                        responses_reasoning,
+                        materializer.segment.items.clone(),
+                        materializer.segment.segment_id.clone(),
                         llm_api_response,
                     );
                     if let (Some(store), Some(_drafts)) =
@@ -654,6 +616,7 @@ pub(crate) async fn run_streaming(
                         audio_warning,
                         reasoning.clone(),
                         client_seq,
+                        (&assistant_output).into(),
                     );
                     #[allow(clippy::unwrap_used)] // serializing known-valid struct
                     let payload_val = serde_json::to_value(&final_payload).unwrap();
@@ -680,9 +643,12 @@ pub(crate) async fn run_streaming(
                 },
                 StreamEvent::Error(msg) => {
                     let provider_error_obj = parse_chat_error(&msg, Some(provider_name));
+                    let reasoning = materializer.segment.reasoning_content();
                     let has_no_streamed_content = accumulated.trim().is_empty()
-                        && accumulated_reasoning.is_blank()
-                        && responses_reasoning.is_empty()
+                        && reasoning
+                            .as_ref()
+                            .is_none_or(|reasoning| reasoning.is_blank())
+                        && materializer.segment.items.is_empty()
                         && raw_llm_responses.is_empty();
                     if has_no_streamed_content
                         && let Some(delay_ms) = next_stream_retry_delay_ms(
@@ -779,8 +745,10 @@ pub(crate) async fn run_streaming(
             }
         }
 
-        // Stream ended unexpectedly without Done/Error.
-        let stream_error = "The provider stream ended without a terminal event.";
+        // The stream either broke the canonical provider contract or ended
+        // without a terminal event. Both are hard failures.
+        let stream_error = stream_failure
+            .unwrap_or_else(|| "The provider stream ended without a terminal event.".to_string());
         let (terminal_error, partial) = match persist_streaming_partial(
             session_store,
             active_partial_assistant.as_ref(),
@@ -788,13 +756,13 @@ pub(crate) async fn run_streaming(
         )
         .await
         {
-            Ok(partial) => (stream_error.to_string(), partial),
+            Ok(partial) => (stream_error.clone(), partial),
             Err(error) => (
                 format!("{stream_error} Partial assistant persistence failed: {error}"),
                 None,
             ),
         };
-        warn!(run_id, error = %terminal_error, "chat stream ended unexpectedly");
+        warn!(run_id, error = %terminal_error, "chat stream terminated without a successful outcome");
         if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
             dispatcher.finish().await;
         }

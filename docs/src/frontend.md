@@ -109,6 +109,21 @@ npm run build:all      # Vite + Tailwind + service worker
 | Syntax highlighting | [Shiki](https://shiki.style/) (bundled, lazy-loaded)            |
 | E2E testing         | [Playwright](https://playwright.dev/)                           |
 
+## Provider Segment and Keyed Rendering
+
+Chat streaming and history reload use a single typed materializer in
+`src/sessions/provider-segment-reducer.ts`.
+
+- **Segment ID**: identifies a provider attempt/response.
+- **Item ID & Position**: assigned once on provider ingress in Rust and carried
+  on every update. The reducer orders items by that position and never assigns
+  one of its own.
+- **Reasoning Parts**: provider part index orders structured summary chunks.
+- **One Disclosure per Bubble**: all reasoning items of a segment render as parts
+  of a single disclosure, in the live view and after a reload alike.
+- **Cache Indexing**: cache updates key on physical `historyIndex` and item identity rather than transient `run_id`.
+- **No DOM Reordering**: DOM insertion time does not determine reasoning position.
+
 ## Type Safety
 
 The codebase enforces strict TypeScript with zero tolerance for `any`:

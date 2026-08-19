@@ -520,7 +520,7 @@ pub async fn run_agent_loop_with_context_and_limits(
 
         // Append assistant message with tool calls.
         // Save any answer text for fallback — when the final iteration returns
-        // empty, this becomes the result. Don't emit as ThinkingText because
+        // empty, this becomes the result.
         // it may be the actual answer (e.g. a table produced before a cleanup
         // tool call like `browser close`).
         record_answer_text(

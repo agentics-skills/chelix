@@ -114,7 +114,8 @@ pub(crate) fn should_trigger_automatic_checkpoint(
 pub struct AssistantIterationOutput {
     pub text: String,
     pub reasoning: Option<ReasoningContent>,
-    pub responses_reasoning: Vec<chelix_common::ResponsesReasoningItem>,
+    pub provider_items: Vec<chelix_common::ProviderOutputItem>,
+    pub segment_id: Option<chelix_common::ProviderSegmentId>,
 }
 
 impl AssistantIterationOutput {
@@ -124,7 +125,7 @@ impl AssistantIterationOutput {
                 .reasoning
                 .as_ref()
                 .is_some_and(|reasoning| !reasoning.is_empty())
-            || !self.responses_reasoning.is_empty()
+            || !self.provider_items.is_empty()
     }
 }
 
@@ -290,28 +291,22 @@ pub(crate) async fn deliver_tool_lifecycle(
 /// Events emitted during the agent run.
 #[derive(Debug, Clone)]
 pub enum RunnerEvent {
+    /// Append-only provider item update carrying canonical segment ID, item ID, position, seq, and payload.
+    ProviderItemUpdate(chelix_common::ProviderItemUpdate),
+    /// Provider response/attempt segment opened.
+    SegmentStart {
+        segment_id: chelix_common::ProviderSegmentId,
+    },
+    /// Provider response/attempt segment closed.
+    SegmentClose {
+        segment_id: chelix_common::ProviderSegmentId,
+        outcome: chelix_common::ProviderSegmentOutcome,
+        usage: Option<Usage>,
+    },
     /// LLM is processing (show a "thinking" indicator).
     Thinking,
     /// LLM finished thinking (hide the indicator).
     ThinkingDone,
-    /// LLM returned reasoning/status text alongside tool calls.
-    ThinkingText(String),
-    /// OpenAI Responses reasoning-summary text for one source-defined part.
-    ResponsesReasoningDelta {
-        item_id: String,
-        output_index: usize,
-        summary_index: usize,
-        delta: String,
-    },
-    /// Marks one OpenAI Responses reasoning-summary part complete.
-    ResponsesReasoningPartDone {
-        item_id: String,
-        output_index: usize,
-        summary_index: usize,
-        text: String,
-    },
-    /// Opaque OpenAI Responses reasoning state for stateless replay.
-    ResponsesReasoningItem(chelix_common::ResponsesReasoningItem),
     TextDelta(String),
     /// Text from an iteration that continued into tool calls.
     ProgressText(String),
