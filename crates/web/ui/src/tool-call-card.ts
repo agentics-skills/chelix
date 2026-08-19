@@ -70,12 +70,12 @@ export function isCommandToolName(toolName: string | undefined): boolean {
 	return toolName === "execute_command";
 }
 
-/** Tools whose card already shows the payload in a purpose-built form.
+/** Tools whose card already shows the result in a purpose-built form.
  *
  * `execute_command` prints stdout/stderr, `render_a2ui` mounts a live A2UI
- * surface. For both, the raw JSON disclosures are diagnostics rather than the
- * primary content, so they start collapsed. Every other tool keeps the raw
- * payload open because it is the only representation of the call.
+ * surface. For both, the raw result JSON is a diagnostic rather than the
+ * primary content, so it starts collapsed. Every other tool keeps the raw
+ * result open when nothing else rendered it.
  *
  * The A2UI name is compared literally instead of imported from
  * `a2ui-renderer`, which already imports this module.
@@ -292,8 +292,9 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 		toggle.setAttribute("aria-controls", details.id);
 	}
 
+	// The summary line above already carries the call in readable form, so the
+	// raw arguments start collapsed for every tool.
 	appendRawPayload(details, "Parameters", options.arguments, {
-		open: !hasDedicatedResultView(toolName),
 		className: "tool-call-params-details",
 	});
 
