@@ -101,4 +101,7 @@ COPY docs/src ./docs/src
 
 COPY --from=web-builder /build/crates/web/src/assets ./crates/web/src/assets
 
-RUN cargo +nightly-2026-07-30 test --workspace --no-fail-fast
+VOLUME ["/cargo-target"]
+
+RUN CARGO_TARGET_DIR=/cargo-target \
+    cargo +nightly-2026-07-30 test --workspace --no-fail-fast

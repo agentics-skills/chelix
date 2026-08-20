@@ -79,4 +79,8 @@ COPY --from=web-builder /build/crates/web/src/assets ./crates/web/src/assets
 
 ARG CHELIX_VERSION
 ENV CHELIX_VERSION=${CHELIX_VERSION}
-RUN cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features
+
+VOLUME ["/cargo-target"]
+
+RUN CARGO_TARGET_DIR=/cargo-target \
+    cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features
