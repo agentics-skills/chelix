@@ -284,7 +284,11 @@ impl AgentTool for ExecuteCommandTool {
         info!(session = session_key, "execute_command tool invoked");
         let response = self.service.execute_command(&session_key, request).await?;
         self.fire_completion(&command, &response);
-        Ok(serde_json::to_value(response)?)
+        let mut result = serde_json::to_value(&response)?;
+        if response.completed && response.exit_code == Some(1) {
+            result["error"] = serde_json::Value::String(format_execute_status(&response));
+        }
+        Ok(result)
     }
 }
 
@@ -357,23 +361,32 @@ impl AgentTool for ReadTerminalOutputTool {
 }
 
 fn format_execute_result(response: &ExecuteCommandResponse) -> String {
-    let status = if response.background {
-        format!(
+    format_output(format_execute_status(response), &response.output)
+}
+
+fn format_execute_status(response: &ExecuteCommandResponse) -> String {
+    if response.background {
+        return format!(
             "Command started in terminal (id: {}).",
             response.terminal_id
-        )
-    } else if response.timed_out {
-        format!(
+        );
+    }
+    if response.timed_out {
+        return format!(
             "Command is still running in terminal (id: {}).",
             response.terminal_id
-        )
-    } else {
-        format!(
+        );
+    }
+    let Some(exit_code) = response.exit_code else {
+        return format!(
             "Command finished in terminal (id: {}).",
             response.terminal_id
-        )
+        );
     };
-    format_output(status, &response.output)
+    format!(
+        "Command finished in terminal (id: {}) with exit code {exit_code}.",
+        response.terminal_id
+    )
 }
 
 fn format_terminal_output(response: &ReadTerminalOutputResponse) -> String {
@@ -437,12 +450,12 @@ mod tests {
         }
     }
 
-    fn execute_response(terminal_id: &str) -> String {
+    fn execute_response(terminal_id: &str, exit_code: i32) -> String {
         serde_json::json!({
             "terminalId": terminal_id,
             "runId": "run",
             "output": "ok",
-            "exitCode": 0,
+            "exitCode": exit_code,
             "completed": true,
             "alive": true,
             "timedOut": false,
@@ -487,7 +500,7 @@ mod tests {
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(execute_response("terminal"))
+            .with_body(execute_response("terminal", 0))
             .expect(1)
             .create_async()
             .await;
@@ -509,9 +522,102 @@ mod tests {
             tool.agent_result(&serde_json::json!({}), &result)
                 .await
                 .unwrap_or_else(|error| panic!("agent result failed: {error}")),
-            "Command finished in terminal (id: terminal).\nOutput:\nok"
+            "Command finished in terminal (id: terminal) with exit code 0.\nOutput:\nok"
         );
         call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn execute_marks_only_completed_exit_code_one_as_error() {
+        let mut server = mockito::Server::new_async().await;
+        let exit_one_call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "toolCallId": "call-exit-one"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(execute_response("1", 1))
+            .expect(1)
+            .create_async()
+            .await;
+        let exit_two_call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "toolCallId": "call-exit-two"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(execute_response("2", 2))
+            .expect(1)
+            .create_async()
+            .await;
+        let background_exit_one_call = server
+            .mock("POST", chelix_protocol::TOOLS_SERVICE_EXECUTE_COMMAND_PATH)
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({
+                "toolCallId": "call-background-exit-one"
+            })))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                serde_json::json!({
+                    "terminalId": "3",
+                    "runId": "run",
+                    "output": "",
+                    "exitCode": 1,
+                    "completed": false,
+                    "alive": true,
+                    "timedOut": false,
+                    "background": true,
+                    "message": "started"
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        let service = client(server.url(), "command-token");
+        initialize_empty_environment(&service);
+        let tool = ExecuteCommandTool::new(service);
+
+        let exit_one = tool
+            .execute(serde_json::json!({
+                "command": "exit 1",
+                "_tool_call_id": "call-exit-one"
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("exit 1 execution failed: {error}"));
+        let exit_two = tool
+            .execute(serde_json::json!({
+                "command": "exit 2",
+                "_tool_call_id": "call-exit-two"
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("exit 2 execution failed: {error}"));
+        let background_exit_one = tool
+            .execute(serde_json::json!({
+                "command": "exit 1",
+                "background": true,
+                "_tool_call_id": "call-background-exit-one"
+            }))
+            .await
+            .unwrap_or_else(|error| panic!("background exit 1 execution failed: {error}"));
+
+        assert_eq!(
+            exit_one["error"],
+            "Command finished in terminal (id: 1) with exit code 1."
+        );
+        assert_eq!(
+            tool.agent_result(&serde_json::json!({}), &exit_one)
+                .await
+                .unwrap_or_else(|error| panic!("exit 1 agent result failed: {error}")),
+            "Command finished in terminal (id: 1) with exit code 1.\nOutput:\nok"
+        );
+        assert!(exit_two.get("error").is_none());
+        assert!(background_exit_one.get("error").is_none());
+        exit_one_call.assert_async().await;
+        exit_two_call.assert_async().await;
+        background_exit_one_call.assert_async().await;
     }
 
     #[tokio::test]
@@ -527,7 +633,7 @@ mod tests {
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(execute_response("1"))
+            .with_body(execute_response("1", 0))
             .expect(1)
             .create_async()
             .await;
@@ -561,7 +667,7 @@ mod tests {
             })))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(execute_response("42"))
+            .with_body(execute_response("42", 0))
             .expect(1)
             .create_async()
             .await;
@@ -672,7 +778,7 @@ mod tests {
     fn execute_result_formats_finished_timed_out_and_background_states() {
         assert_eq!(
             format_execute_result(&response("done", true, false, false)),
-            "Command finished in terminal (id: 7).\nOutput:\ndone"
+            "Command finished in terminal (id: 7) with exit code 0.\nOutput:\ndone"
         );
         assert_eq!(
             format_execute_result(&response("partial", false, true, false)),
@@ -688,6 +794,17 @@ mod tests {
     fn execute_result_omits_output_section_when_empty() {
         assert_eq!(
             format_execute_result(&response("", true, false, false)),
+            "Command finished in terminal (id: 7) with exit code 0."
+        );
+    }
+
+    #[test]
+    fn execute_result_preserves_finished_status_without_exit_code() {
+        let mut response = response("", true, false, false);
+        response.exit_code = None;
+
+        assert_eq!(
+            format_execute_result(&response),
             "Command finished in terminal (id: 7)."
         );
     }
@@ -723,7 +840,7 @@ mod tests {
 
         assert_eq!(
             result,
-            "Command finished in terminal (id: 7).\nOutput:\n[REDACTED] public-value"
+            "Command finished in terminal (id: 7) with exit code 0.\nOutput:\n[REDACTED] public-value"
         );
     }
 

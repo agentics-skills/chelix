@@ -91,6 +91,10 @@ Omit optional routing parameters when they do not apply. Empty `customCwd` and
 combined with `newTerminal = true`. Invalid terminal IDs and invalid working
 directories are returned as explicit tool errors.
 
+A completed foreground `execute_command` result includes the captured shell exit
+code in its status text. Exit code `1` marks the tool invocation as failed; other
+exit codes retain the normal successful tool classification.
+
 Each terminal is an in-process RMUX PTY with one persistent interactive shell.
 Its current directory, exported variables, shell functions, job-control state,
 child processes, terminal emulator state, and retained output remain associated
