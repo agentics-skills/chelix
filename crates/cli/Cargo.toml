@@ -11,35 +11,35 @@ name = "chelix"
 path = "src/main.rs"
 
 [dependencies]
-anyhow               = { workspace = true }
-chelix-agents        = { workspace = true }
-chelix-browser       = { workspace = true }
-chelix-common        = { workspace = true }
-chelix-config        = { workspace = true }
-chelix-cron          = { workspace = true }
-chelix-gateway       = { workspace = true }
-chelix-httpd         = { workspace = true }
-chelix-memory        = { workspace = true }
-chelix-onboarding    = { workspace = true }
-chelix-plugins       = { workspace = true }
-chelix-portable      = { workspace = true }
-chelix-projects      = { workspace = true }
-chelix-sessions      = { workspace = true }
-chelix-skills        = { workspace = true }
-chelix-tools         = { workspace = true }
-chelix-web           = { optional = true, workspace = true }
-clap                 = { workspace = true }
-dotenvy              = { workspace = true }
-openssl              = { workspace = true }
-reqwest              = { workspace = true }
-secrecy              = { workspace = true }
-serde_json           = { workspace = true }
-sqlx                 = { workspace = true }
-time                 = { workspace = true }
-tokio                = { workspace = true }
-tracing              = { workspace = true }
-tracing-subscriber   = { workspace = true }
-which                = { workspace = true }
+anyhow             = { workspace = true }
+chelix-agents      = { workspace = true }
+chelix-browser     = { workspace = true }
+chelix-common      = { workspace = true }
+chelix-config      = { workspace = true }
+chelix-cron        = { workspace = true }
+chelix-gateway     = { workspace = true }
+chelix-httpd       = { workspace = true }
+chelix-memory      = { workspace = true }
+chelix-onboarding  = { workspace = true }
+chelix-plugins     = { workspace = true }
+chelix-portable    = { workspace = true }
+chelix-projects    = { workspace = true }
+chelix-sessions    = { workspace = true }
+chelix-skills      = { workspace = true }
+chelix-tools       = { workspace = true }
+chelix-web         = { optional = true, workspace = true }
+clap               = { workspace = true }
+dotenvy            = { workspace = true }
+openssl            = { workspace = true }
+reqwest            = { workspace = true }
+secrecy            = { workspace = true }
+serde_json         = { workspace = true }
+sqlx               = { workspace = true }
+time               = { workspace = true }
+tokio              = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+which              = { workspace = true }
 
 [target.'cfg(all(not(target_os = "windows"), not(all(target_os = "linux", target_arch = "aarch64"))))'.dependencies]
 tikv-jemallocator = { optional = true, workspace = true }
@@ -68,6 +68,7 @@ full = [
   "code-splitter",
   "context7",
   "discord",
+  "duckduckgo",
   "file-watcher",
   "firecrawl",
   "github",
@@ -109,9 +110,10 @@ full = [
 # Minimal build for memory-constrained devices (Raspberry Pi, etc.).
 # Build with: cargo build --release --no-default-features --features lightweight
 code-index-builtin = ["chelix-gateway/code-index-builtin"]
-context7           = ["chelix-gateway/context7"]
 code-splitter      = ["chelix-memory/code-splitter"]
+context7           = ["chelix-gateway/context7"]
 discord            = ["chelix-httpd/discord"]
+duckduckgo         = ["chelix-gateway/duckduckgo"]
 embedded-assets    = ["chelix-web?/embedded-assets"]
 file-watcher       = ["chelix-gateway/file-watcher"]
 firecrawl          = ["chelix-gateway/firecrawl"]

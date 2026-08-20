@@ -16,6 +16,7 @@ pub struct ToolsConfig {
     pub maps: MapsConfig,
     pub browser: BrowserConfig,
     pub context7: Context7Config,
+    pub duckduckgo: DuckDuckGoConfig,
     pub github: GitHubConfig,
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
     #[serde(default = "default_agent_timeout_secs")]
@@ -60,6 +61,7 @@ impl Default for ToolsConfig {
             maps: MapsConfig::default(),
             browser: BrowserConfig::default(),
             context7: Context7Config::default(),
+            duckduckgo: DuckDuckGoConfig::default(),
             github: GitHubConfig::default(),
             agent_timeout_secs: default_agent_timeout_secs(),
             agent_max_auto_continues: default_agent_max_auto_continues(),
@@ -199,6 +201,25 @@ impl Default for Context7Config {
         Self {
             token: None,
             request_timeout_secs: DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS,
+        }
+    }
+}
+
+/// DuckDuckGo search configuration.
+pub const DEFAULT_DUCKDUCKGO_REQUEST_TIMEOUT_SECS: u64 = 300;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DuckDuckGoConfig {
+    /// Maximum duration of the complete search lifecycle, including shared queue
+    /// waiting, retry/backoff, the HTTP request, and response body reading.
+    pub request_timeout_secs: u64,
+}
+
+impl Default for DuckDuckGoConfig {
+    fn default() -> Self {
+        Self {
+            request_timeout_secs: DEFAULT_DUCKDUCKGO_REQUEST_TIMEOUT_SECS,
         }
     }
 }

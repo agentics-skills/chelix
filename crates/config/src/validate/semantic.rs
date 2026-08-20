@@ -377,6 +377,15 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
+    if config.tools.duckduckgo.request_timeout_secs == 0 {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: "tools.duckduckgo.request_timeout_secs".into(),
+            message: "tools.duckduckgo.request_timeout_secs must be at least 1".into(),
+        });
+    }
+
     if config.tools.github.request_timeout_secs == 0 {
         diagnostics.push(Diagnostic {
             severity: Severity::Error,

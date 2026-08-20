@@ -318,6 +318,25 @@ request_timeout_secs = 0
 }
 
 #[test]
+fn duckduckgo_request_timeout_must_be_positive() {
+    let toml = r#"
+[tools.duckduckgo]
+request_timeout_secs = 0
+"#;
+    let result = validate_toml_str(toml);
+    let invalid = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "tools.duckduckgo.request_timeout_secs"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.category == "invalid-value"
+    });
+    assert!(
+        invalid.is_some(),
+        "expected tools.duckduckgo.request_timeout_secs invalid-value error, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn github_request_timeout_is_accepted() {
     let toml = r#"
 [tools.github]
