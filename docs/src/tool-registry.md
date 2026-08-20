@@ -307,19 +307,19 @@ without an invented cooldown or retry delay.
 
 ### `context7_resolve_library_id`
 
-Calls `GET /api/v1/search?query=<libraryName>`. `libraryName` is required. The
-result is the reference Markdown framing followed by matching libraries separated
-with `----------` and fields for title, Context7-compatible library ID,
-description, code snippets, trust score, and versions when present.
+Calls `GET /api/v2/libs/search?query=<query>&libraryName=<libraryName>`. Both
+`query` and `libraryName` are required. The result starts with `Available
+Libraries:` and formats matching libraries as Markdown blocks separated with
+`----------`. Each block contains the title, Context7-compatible library ID,
+description, code snippet count when known, source reputation, positive benchmark
+score, versions, and source when present. Responses filtered by teamspace policy
+start with the Context7 policy notice.
 
 ### `context7_get_library_docs`
 
-Calls `GET /api/v1/<library-id>?type=txt`. The
-`context7CompatibleLibraryID` field is required. Optional `topic` narrows the
-content. Optional positive `tokens` values below `6000` are normalized to `6000`;
-other positive values are truncated to an integer. The successful API text is
-returned unchanged. Empty content and the Context7 no-content sentinel strings
-return the reference documentation-not-found message.
+Calls `GET /api/v2/context?query=<query>&libraryId=<libraryId>`. Both `libraryId`
+and `query` are required. The successful API text is returned unchanged. Empty
+content and `404 Not Found` return the documentation-not-found message.
 
 Both tools return strings and retain the default tool-result persistence and
 truncation policy. Full results therefore pass through the common runner pipeline

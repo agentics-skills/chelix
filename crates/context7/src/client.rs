@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Context7 API root used by every tool.
-pub const CONTEXT7_API_BASE_URL: &str = "https://context7.com/api/v1";
+pub const CONTEXT7_API_BASE_URL: &str = "https://context7.com/api";
 
 /// Source identifier sent with every request.
 const CONTEXT7_SOURCE: &str = "chelix";

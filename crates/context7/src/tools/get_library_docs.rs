@@ -1,4 +1,4 @@
-//! `context7_get_library_docs` — fetch Context7 documentation text.
+//! `context7_get_library_docs` — query Context7 documentation.
 
 use std::sync::Arc;
 
@@ -16,47 +16,44 @@ use crate::{
     tools::{parse_params, request::get_with_rate_limit_retry},
 };
 
-const DEFAULT_MINIMUM_TOKENS: f64 = 6_000.0;
-const DOCUMENTATION_NOT_FOUND: &str = "Documentation not found or not finalized for this library. This might have happened because you used an invalid Context7-compatible library ID. To get a valid ID, call context7_resolve_library_id first.";
+const TOOL_DESCRIPTION: &str = r#"Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework.
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+You must call 'context7_resolve_library_id' tool first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.
+
+Do not call this tool more than 3 times per question."#;
+const LIBRARY_ID_DESCRIPTION: &str = "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'context7_resolve_library_id' or directly from user query in the format '/org/project' or '/org/project/version'.";
+const QUERY_DESCRIPTION: &str = "What to look up in the library's documentation, scoped to a single concept. Be specific and include relevant details, but keep each query to one topic — if the user's question spans multiple distinct concepts, make a separate call per concept instead of combining them, unless the question is about how the concepts interact. Good: 'How to set up authentication with JWT in Express.js' or 'React useEffect cleanup function examples'. Bad (too vague): 'auth' or 'hooks'. Bad (too broad): 'routing and auth and caching in Next.js'. The query is sent to the Context7 API for processing. Do not include any sensitive or confidential information such as API keys, passwords, credentials, personal data, or proprietary code in your query.";
+const DOCUMENTATION_NOT_FOUND: &str = "Documentation not found or not finalized for this library. This might have happened because you used an invalid Context7-compatible library ID. To get a valid Context7-compatible library ID, use the 'context7_resolve_library_id' with the package name you wish to retrieve documentation for.";
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct GetLibraryDocsInput {
-    #[serde(rename = "context7CompatibleLibraryID")]
-    context7_compatible_library_id: Option<String>,
-    #[serde(default)]
-    topic: Option<String>,
-    #[serde(default)]
-    tokens: Option<f64>,
+    library_id: Option<String>,
+    query: Option<String>,
 }
 
 struct NormalizedInput {
     library_id: String,
-    topic: Option<String>,
-    tokens: Option<f64>,
+    query: String,
 }
 
 impl GetLibraryDocsInput {
     fn normalize(self) -> Result<NormalizedInput> {
         let library_id = self
-            .context7_compatible_library_id
+            .library_id
             .as_deref()
             .map(str::trim)
             .filter(|library_id| !library_id.is_empty())
-            .ok_or_else(|| {
-                Error::message("Missing required parameter: context7CompatibleLibraryID")
-            })?;
-        let topic = self
-            .topic
-            .map(|topic| topic.trim().to_string())
-            .filter(|topic| !topic.is_empty());
-        let tokens = self.tokens.and_then(|tokens| {
-            (tokens.is_finite() && tokens > 0.0).then(|| tokens.max(DEFAULT_MINIMUM_TOKENS).trunc())
-        });
+            .ok_or_else(|| Error::message("Missing required parameter: libraryId"))?;
+        let query = self
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|query| !query.is_empty())
+            .ok_or_else(|| Error::message("Missing required parameter: query"))?;
         Ok(NormalizedInput {
             library_id: library_id.to_string(),
-            topic,
-            tokens,
+            query: query.to_string(),
         })
     }
 }
@@ -73,21 +70,10 @@ impl Context7GetLibraryDocsTool {
     }
 
     async fn fetch_docs(&self, input: &NormalizedInput) -> Result<Option<String>> {
-        let clean_id = input
-            .library_id
-            .strip_prefix('/')
-            .unwrap_or(&input.library_id);
-        let mut url = url::Url::parse(&format!("{}/{clean_id}", self.client.base_url()))?;
-        {
-            let mut query = url.query_pairs_mut();
-            if let Some(tokens) = input.tokens {
-                query.append_pair("tokens", &tokens.to_string());
-            }
-            if let Some(topic) = &input.topic {
-                query.append_pair("topic", topic);
-            }
-            query.append_pair("type", "txt");
-        }
+        let mut url = url::Url::parse(&format!("{}/v2/context", self.client.base_url()))?;
+        url.query_pairs_mut()
+            .append_pair("query", &input.query)
+            .append_pair("libraryId", &input.library_id);
 
         let response = get_with_rate_limit_retry(&self.client, &url, self.name()).await?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -101,8 +87,7 @@ impl Context7GetLibraryDocsTool {
             )));
         }
         let text = response.body();
-        if text.is_empty() || text == "No content available" || text == "No context data available"
-        {
+        if text.is_empty() {
             return Ok(None);
         }
         Ok(Some(text.to_string()))
@@ -124,26 +109,22 @@ impl AgentTool for Context7GetLibraryDocsTool {
     }
 
     fn description(&self) -> &str {
-        "Fetches up-to-date documentation for a library given a Context7-compatible library ID (obtained via 'context7_resolve_library_id' or directly provided by user)."
+        TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["context7CompatibleLibraryID"],
+            "required": ["libraryId", "query"],
             "properties": {
-                "context7CompatibleLibraryID": {
+                "libraryId": {
                     "type": "string",
-                    "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87')."
+                    "description": LIBRARY_ID_DESCRIPTION
                 },
-                "topic": {
+                "query": {
                     "type": "string",
-                    "description": "Topic to focus documentation on (e.g., 'hooks', 'routing')."
-                },
-                "tokens": {
-                    "type": "number",
-                    "description": "Maximum number of tokens of documentation to retrieve (default: 6000). Higher values provide more context but consume more tokens."
+                    "description": QUERY_DESCRIPTION
                 }
             }
         })
@@ -172,41 +153,34 @@ mod tests {
     }
 
     #[test]
-    fn exposes_the_reference_description_and_schema() {
+    fn exposes_the_current_description_and_schema() {
         let tool = tool("http://127.0.0.1:1".into());
 
         assert_eq!(tool.name(), "context7_get_library_docs");
-        assert_eq!(
-            tool.description(),
-            "Fetches up-to-date documentation for a library given a Context7-compatible library ID (obtained via 'context7_resolve_library_id' or directly provided by user)."
-        );
+        assert_eq!(tool.description(), TOOL_DESCRIPTION);
         let schema = tool.parameters_schema();
         assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["required"], json!(["context7CompatibleLibraryID"]));
+        assert_eq!(schema["required"], json!(["libraryId", "query"]));
+        assert_eq!(schema["properties"]["libraryId"]["type"], "string");
         assert_eq!(
-            schema["properties"]["context7CompatibleLibraryID"]["description"],
-            "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87')."
+            schema["properties"]["libraryId"]["description"],
+            LIBRARY_ID_DESCRIPTION
         );
+        assert_eq!(schema["properties"]["query"]["type"], "string");
         assert_eq!(
-            schema["properties"]["topic"]["description"],
-            "Topic to focus documentation on (e.g., 'hooks', 'routing')."
-        );
-        assert_eq!(schema["properties"]["tokens"]["type"], "number");
-        assert_eq!(
-            schema["properties"]["tokens"]["description"],
-            "Maximum number of tokens of documentation to retrieve (default: 6000). Higher values provide more context but consume more tokens."
+            schema["properties"]["query"]["description"],
+            QUERY_DESCRIPTION
         );
     }
 
     #[tokio::test]
-    async fn returns_reference_text_and_normalizes_query_parameters() {
+    async fn returns_context_text_unchanged() {
         let mut server = mockito::Server::new_async().await;
         let call = server
-            .mock("GET", "/vercel/next.js")
+            .mock("GET", "/v2/context")
             .match_query(mockito::Matcher::AllOf(vec![
-                mockito::Matcher::UrlEncoded("tokens".into(), "6000".into()),
-                mockito::Matcher::UrlEncoded("topic".into(), "hooks".into()),
-                mockito::Matcher::UrlEncoded("type".into(), "txt".into()),
+                mockito::Matcher::UrlEncoded("query".into(), "React hooks cleanup".into()),
+                mockito::Matcher::UrlEncoded("libraryId".into(), "/vercel/next.js".into()),
             ]))
             .with_status(200)
             .with_body("# Hooks\n\nDocumentation text")
@@ -216,9 +190,8 @@ mod tests {
 
         let value = tool(server.url())
             .execute(json!({
-                "context7CompatibleLibraryID": " /vercel/next.js ",
-                "topic": " hooks ",
-                "tokens": 100
+                "libraryId": " /vercel/next.js ",
+                "query": " React hooks cleanup "
             }))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
@@ -228,18 +201,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn returns_the_reference_not_found_message() {
+    async fn returns_the_current_not_found_message() {
         let mut server = mockito::Server::new_async().await;
         let call = server
-            .mock("GET", "/unknown/library")
-            .match_query(mockito::Matcher::UrlEncoded("type".into(), "txt".into()))
+            .mock("GET", "/v2/context")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("query".into(), "routing".into()),
+                mockito::Matcher::UrlEncoded("libraryId".into(), "/unknown/library".into()),
+            ]))
             .with_status(404)
             .expect(1)
             .create_async()
             .await;
 
         let value = tool(server.url())
-            .execute(json!({"context7CompatibleLibraryID": "/unknown/library"}))
+            .execute(json!({"libraryId": "/unknown/library", "query": "routing"}))
+            .await
+            .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
+
+        assert_eq!(value, DOCUMENTATION_NOT_FOUND);
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn empty_context_returns_the_current_not_found_message() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("GET", "/v2/context")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("query".into(), "routing".into()),
+                mockito::Matcher::UrlEncoded("libraryId".into(), "/unknown/library".into()),
+            ]))
+            .with_status(200)
+            .with_body("")
+            .expect(1)
+            .create_async()
+            .await;
+
+        let value = tool(server.url())
+            .execute(json!({"libraryId": "/unknown/library", "query": "routing"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
 
@@ -250,9 +250,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn exhausted_rate_limit_is_returned_as_a_tool_error() {
         let mut server = mockito::Server::new_async().await;
+        let query_matcher = mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("query".into(), "routing".into()),
+            mockito::Matcher::UrlEncoded("libraryId".into(), "/vercel/next.js".into()),
+        ]);
         let limited = server
-            .mock("GET", "/vercel/next.js")
-            .match_query(mockito::Matcher::UrlEncoded("type".into(), "txt".into()))
+            .mock("GET", "/v2/context")
+            .match_query(query_matcher.clone())
             .with_status(429)
             .with_header("retry-after", "1")
             .with_body("rate limited")
@@ -260,8 +264,8 @@ mod tests {
             .create_async()
             .await;
         let exhausted = server
-            .mock("GET", "/vercel/next.js")
-            .match_query(mockito::Matcher::UrlEncoded("type".into(), "txt".into()))
+            .mock("GET", "/v2/context")
+            .match_query(query_matcher)
             .with_status(429)
             .with_body("quota exhausted")
             .expect(1)
@@ -269,7 +273,7 @@ mod tests {
             .await;
 
         let error = match tool(server.url())
-            .execute(json!({"context7CompatibleLibraryID": "/vercel/next.js"}))
+            .execute(json!({"libraryId": "/vercel/next.js", "query": "routing"}))
             .await
         {
             Ok(value) => panic!("expected tool error, got: {value}"),
@@ -290,8 +294,11 @@ mod tests {
             let mut server = mockito::Server::new_async().await;
             let body = format!("server error {status}");
             let call = server
-                .mock("GET", "/vercel/next.js")
-                .match_query(mockito::Matcher::UrlEncoded("type".into(), "txt".into()))
+                .mock("GET", "/v2/context")
+                .match_query(mockito::Matcher::AllOf(vec![
+                    mockito::Matcher::UrlEncoded("query".into(), "routing".into()),
+                    mockito::Matcher::UrlEncoded("libraryId".into(), "/vercel/next.js".into()),
+                ]))
                 .with_status(status)
                 .with_body(body.clone())
                 .expect(1)
@@ -299,7 +306,7 @@ mod tests {
                 .await;
 
             let error = match tool(server.url())
-                .execute(json!({"context7CompatibleLibraryID": "/vercel/next.js"}))
+                .execute(json!({"libraryId": "/vercel/next.js", "query": "routing"}))
                 .await
             {
                 Ok(value) => panic!("expected tool error, got: {value}"),
@@ -325,7 +332,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "context7_get_library_docs error: Missing required parameter: context7CompatibleLibraryID"
+            "context7_get_library_docs error: Missing required parameter: libraryId"
         );
     }
 }

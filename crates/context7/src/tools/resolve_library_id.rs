@@ -16,21 +16,74 @@ use crate::{
     tools::{parse_params, request::get_with_rate_limit_retry},
 };
 
+const TOOL_DESCRIPTION: &str = r#"Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.
+
+You MUST call this function before 'context7_get_library_docs' tool to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.
+
+Each result includes:
+- Library ID: Context7-compatible identifier (format: /org/project)
+- Name: Library or package name
+- Description: Short summary
+- Code Snippets: Number of available code examples
+- Source Reputation: Authority indicator (High, Medium, Low, or Unknown)
+- Benchmark Score: Quality indicator (100 is the highest score)
+- Versions: List of versions if available. Use one of those versions if the user provides a version in their query. The format of the version is /org/project/version.
+
+For best results, select libraries based on name match, source reputation, snippet coverage, benchmark score, and relevance to your use case.
+
+Selection Process:
+1. Analyze the query to understand what library/package the user is looking for
+2. Return the most relevant match based on:
+- Name similarity to the query (exact matches prioritized)
+- Description relevance to the query's intent
+- Documentation coverage (prioritize libraries with higher Code Snippet counts)
+- Source reputation (consider libraries with High or Medium reputation more authoritative)
+- Benchmark Score: Quality indicator (100 is the highest score)
+
+Response Format:
+- Return the selected library ID in a clearly marked section
+- Provide a brief explanation for why this library was chosen
+- If multiple good matches exist, acknowledge this but proceed with the most relevant one
+- If no good matches exist, clearly state this and suggest query refinements
+
+For ambiguous queries, request clarification before proceeding with a best-guess match.
+
+IMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have."#;
+const QUERY_DESCRIPTION: &str = "What to look up in the library's documentation. This is used to rank library results by relevance to what the user is trying to accomplish. The query is sent to the Context7 API for processing. Do not include any sensitive or confidential information such as API keys, passwords, credentials, personal data, or proprietary code in your query.";
+const LIBRARY_NAME_DESCRIPTION: &str = "Library name to search for and retrieve a Context7-compatible library ID. Use the official library name with proper punctuation — e.g., 'Next.js' instead of 'nextjs', 'Customer.io' instead of 'customerio', 'Three.js' instead of 'threejs'.";
+const NO_LIBRARIES_FOUND: &str = "No libraries found matching the provided name.";
+const FILTERED_RESULTS_NOTE: &str = "**Note:** Your results only include libraries matching your teamspace's library filters. To adjust quality thresholds or blocked libraries, update your filters at https://context7.com/dashboard?tab=policies";
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ResolveLibraryIdInput {
+    query: Option<String>,
     library_name: Option<String>,
 }
 
+struct NormalizedInput {
+    query: String,
+    library_name: String,
+}
+
 impl ResolveLibraryIdInput {
-    fn normalize(self) -> Result<String> {
+    fn normalize(self) -> Result<NormalizedInput> {
+        let query = self
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|query| !query.is_empty())
+            .ok_or_else(|| Error::message("Missing required parameter: query"))?;
         let library_name = self
             .library_name
             .as_deref()
             .map(str::trim)
             .filter(|library_name| !library_name.is_empty())
             .ok_or_else(|| Error::message("Missing required parameter: libraryName"))?;
-        Ok(library_name.to_string())
+        Ok(NormalizedInput {
+            query: query.to_string(),
+            library_name: library_name.to_string(),
+        })
     }
 }
 
@@ -42,12 +95,17 @@ struct Context7SearchResult {
     description: String,
     total_snippets: Option<i64>,
     trust_score: Option<f64>,
+    benchmark_score: Option<f64>,
     versions: Option<Vec<String>>,
+    source: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Context7SearchResponse {
     results: Vec<Context7SearchResult>,
+    #[serde(default)]
+    search_filter_applied: bool,
 }
 
 /// Resolve a package or product name to Context7-compatible library IDs.
@@ -61,26 +119,42 @@ impl Context7ResolveLibraryIdTool {
         Self { client }
     }
 
-    async fn search_libraries(&self, query: &str) -> Result<Context7SearchResponse> {
-        let mut url = url::Url::parse(&format!("{}/search", self.client.base_url()))?;
-        url.query_pairs_mut().append_pair("query", query);
+    async fn search_libraries(&self, input: &NormalizedInput) -> Result<Context7SearchResponse> {
+        let mut url = url::Url::parse(&format!("{}/v2/libs/search", self.client.base_url()))?;
+        url.query_pairs_mut()
+            .append_pair("query", &input.query)
+            .append_pair("libraryName", &input.library_name);
 
         let response = get_with_rate_limit_retry(&self.client, &url, self.name()).await?;
         if !response.is_success() {
-            return Err(Error::message(
-                "Failed to retrieve library documentation data from Context7",
-            ));
+            return Err(Error::message(format!(
+                "Context7 request failed with HTTP {}: {}",
+                response.status().as_u16(),
+                response.failure_message()
+            )));
         }
         response.json()
     }
 
     async fn run(&self, params: Value) -> Result<String> {
-        let query = parse_input(params)?.normalize()?;
-        let response = self.search_libraries(&query).await?;
-        let body = format_results(&response);
+        let input = parse_input(params)?.normalize()?;
+        let response = self.search_libraries(&input).await?;
+        if response.results.is_empty() {
+            return Ok(NO_LIBRARIES_FOUND.to_string());
+        }
         Ok(format!(
-            "Available Libraries (top matches):\n\nEach result includes:\n- Library ID: Context7-compatible identifier (format: /org/project)\n- Name: Library or package name\n- Description: Short summary\n- Code Snippets: Number of available code examples\n- Trust Score: Authority indicator\n- Versions: List of versions if available. Use one of those versions if and only if the user explicitly provides a version in their query.\n\nFor best results, select libraries based on name match, trust score, snippet coverage, and relevance to your use case.\n\n----------\n\n{body}"
+            "Available Libraries:\n\n{}",
+            format_results(&response)
         ))
+    }
+}
+
+fn source_reputation(trust_score: Option<f64>) -> &'static str {
+    match trust_score {
+        Some(score) if score >= 7.0 => "High",
+        Some(score) if score >= 4.0 => "Medium",
+        Some(score) if score >= 0.0 => "Low",
+        _ => "Unknown",
     }
 }
 
@@ -95,11 +169,14 @@ fn format_result(result: &Context7SearchResult) -> String {
     {
         lines.push(format!("- Code Snippets: {total_snippets}"));
     }
-    if let Some(trust_score) = result.trust_score
-        && trust_score >= 0.0
+    lines.push(format!(
+        "- Source Reputation: {}",
+        source_reputation(result.trust_score)
+    ));
+    if let Some(benchmark_score) = result.benchmark_score
+        && benchmark_score > 0.0
     {
-        let rounded = (trust_score * 10.0).round() / 10.0;
-        lines.push(format!("- Trust Score: {rounded:.1}"));
+        lines.push(format!("- Benchmark Score: {benchmark_score}"));
     }
     if let Some(versions) = result
         .versions
@@ -108,19 +185,24 @@ fn format_result(result: &Context7SearchResult) -> String {
     {
         lines.push(format!("- Versions: {}", versions.join(", ")));
     }
+    if let Some(source) = result.source.as_deref().filter(|source| !source.is_empty()) {
+        lines.push(format!("- Source: {source}"));
+    }
     lines.join("\n")
 }
 
 fn format_results(response: &Context7SearchResponse) -> String {
-    if response.results.is_empty() {
-        return "No documentation libraries found matching your query.".to_string();
-    }
-    response
+    let formatted_results = response
         .results
         .iter()
         .map(format_result)
         .collect::<Vec<_>>()
-        .join("\n----------\n")
+        .join("\n----------\n");
+    if response.search_filter_applied {
+        format!("{FILTERED_RESULTS_NOTE}\n\n{formatted_results}")
+    } else {
+        formatted_results
+    }
 }
 
 #[async_trait]
@@ -130,18 +212,22 @@ impl AgentTool for Context7ResolveLibraryIdTool {
     }
 
     fn description(&self) -> &str {
-        "Resolves a package/product name to a Context7-compatible library ID and returns a list of matching libraries. Call before 'context7_get_library_docs' unless user explicitly provides an ID."
+        TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["libraryName"],
+            "required": ["query", "libraryName"],
             "properties": {
+                "query": {
+                    "type": "string",
+                    "description": QUERY_DESCRIPTION
+                },
                 "libraryName": {
                     "type": "string",
-                    "description": "Library name to search for and retrieve a Context7-compatible library ID."
+                    "description": LIBRARY_NAME_DESCRIPTION
                 }
             }
         })
@@ -172,43 +258,51 @@ mod tests {
     }
 
     #[test]
-    fn exposes_the_reference_description_and_schema() {
+    fn exposes_the_current_description_and_schema() {
         let tool = tool("http://127.0.0.1:1".into());
 
         assert_eq!(tool.name(), "context7_resolve_library_id");
-        assert_eq!(
-            tool.description(),
-            "Resolves a package/product name to a Context7-compatible library ID and returns a list of matching libraries. Call before 'context7_get_library_docs' unless user explicitly provides an ID."
-        );
+        assert_eq!(tool.description(), TOOL_DESCRIPTION);
         let schema = tool.parameters_schema();
         assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["required"], json!(["libraryName"]));
+        assert_eq!(schema["required"], json!(["query", "libraryName"]));
+        assert_eq!(schema["properties"]["query"]["type"], "string");
+        assert_eq!(
+            schema["properties"]["query"]["description"],
+            QUERY_DESCRIPTION
+        );
         assert_eq!(schema["properties"]["libraryName"]["type"], "string");
         assert_eq!(
             schema["properties"]["libraryName"]["description"],
-            "Library name to search for and retrieve a Context7-compatible library ID."
+            LIBRARY_NAME_DESCRIPTION
         );
     }
 
     #[tokio::test]
-    async fn formats_the_reference_markdown_result() {
+    async fn formats_the_current_markdown_result() {
         let mut server = mockito::Server::new_async().await;
         let call = server
-            .mock("GET", "/search")
-            .match_query(mockito::Matcher::UrlEncoded(
-                "query".into(),
-                "Next.js".into(),
-            ))
+            .mock("GET", "/v2/libs/search")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded(
+                    "query".into(),
+                    "React framework routing".into(),
+                ),
+                mockito::Matcher::UrlEncoded("libraryName".into(), "Next.js".into()),
+            ]))
             .with_status(200)
             .with_body(
-                r#"{"results":[{"id":"/vercel/next.js","title":"Next.js","description":"The React Framework","totalSnippets":42,"trustScore":9.25,"versions":["v15","v14"]}]}"#,
+                r#"{"results":[{"id":"/vercel/next.js","title":"Next.js","description":"The React Framework","totalSnippets":42,"trustScore":9.25,"benchmarkScore":95.5,"versions":["v15","v14"],"source":"github"}],"searchFilterApplied":true}"#,
             )
             .expect(1)
             .create_async()
             .await;
 
         let value = tool(server.url())
-            .execute(json!({"libraryName": " Next.js "}))
+            .execute(json!({
+                "query": " React framework routing ",
+                "libraryName": " Next.js "
+            }))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
         let output = value
@@ -217,30 +311,30 @@ mod tests {
 
         assert_eq!(
             output,
-            "Available Libraries (top matches):\n\nEach result includes:\n- Library ID: Context7-compatible identifier (format: /org/project)\n- Name: Library or package name\n- Description: Short summary\n- Code Snippets: Number of available code examples\n- Trust Score: Authority indicator\n- Versions: List of versions if available. Use one of those versions if and only if the user explicitly provides a version in their query.\n\nFor best results, select libraries based on name match, trust score, snippet coverage, and relevance to your use case.\n\n----------\n\n- Title: Next.js\n- Context7-compatible library ID: /vercel/next.js\n- Description: The React Framework\n- Code Snippets: 42\n- Trust Score: 9.3\n- Versions: v15, v14"
+            "Available Libraries:\n\n**Note:** Your results only include libraries matching your teamspace's library filters. To adjust quality thresholds or blocked libraries, update your filters at https://context7.com/dashboard?tab=policies\n\n- Title: Next.js\n- Context7-compatible library ID: /vercel/next.js\n- Description: The React Framework\n- Code Snippets: 42\n- Source Reputation: High\n- Benchmark Score: 95.5\n- Versions: v15, v14\n- Source: github"
         );
         call.assert_async().await;
     }
 
     #[tokio::test]
-    async fn unknown_snippet_count_sentinel_does_not_reject_the_search_response() {
+    async fn unknown_snippet_count_and_reputation_are_formatted_like_the_mcp_result() {
         let mut server = mockito::Server::new_async().await;
         let call = server
-            .mock("GET", "/search")
-            .match_query(mockito::Matcher::UrlEncoded(
-                "query".into(),
-                "packages".into(),
-            ))
+            .mock("GET", "/v2/libs/search")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("query".into(), "packages".into()),
+                mockito::Matcher::UrlEncoded("libraryName".into(), "packages".into()),
+            ]))
             .with_status(200)
             .with_body(
-                r#"{"results":[{"id":"/unknown/snippets","title":"Unknown","description":"Unknown snippet count","totalSnippets":-1},{"id":"/known/snippets","title":"Known","description":"Known snippet count","totalSnippets":7}]}"#,
+                r#"{"results":[{"id":"/unknown/snippets","title":"Unknown","description":"Unknown snippet count","totalSnippets":-1},{"id":"/known/snippets","title":"Known","description":"Known snippet count","totalSnippets":7,"trustScore":4}] }"#,
             )
             .expect(1)
             .create_async()
             .await;
 
         let value = tool(server.url())
-            .execute(json!({"libraryName": "packages"}))
+            .execute(json!({"query": "packages", "libraryName": "packages"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
         let output = value
@@ -248,21 +342,51 @@ mod tests {
             .unwrap_or_else(|| panic!("tool result is not text"));
 
         assert!(output.contains("- Context7-compatible library ID: /unknown/snippets"));
+        assert!(output.contains("- Source Reputation: Unknown"));
         assert!(output.contains("- Context7-compatible library ID: /known/snippets"));
+        assert!(output.contains("- Source Reputation: Medium"));
         assert!(!output.contains("- Code Snippets: -1"));
         assert!(output.contains("- Code Snippets: 7"));
+        call.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn missing_snippet_count_does_not_reject_the_search_response() {
+        let mut server = mockito::Server::new_async().await;
+        let call = server
+            .mock("GET", "/v2/libs/search")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("query".into(), "package".into()),
+                mockito::Matcher::UrlEncoded("libraryName".into(), "A".into()),
+            ]))
+            .with_status(200)
+            .with_body(r#"{"results":[{"id":"/a/b","title":"A","description":"D"}]}"#)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let value = tool(server.url())
+            .execute(json!({"query": "package", "libraryName": "A"}))
+            .await
+            .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
+
+        assert_eq!(
+            value,
+            "Available Libraries:\n\n- Title: A\n- Context7-compatible library ID: /a/b\n- Description: D\n- Source Reputation: Unknown"
+        );
         call.assert_async().await;
     }
 
     #[tokio::test(start_paused = true)]
     async fn rate_limited_response_is_retried_once_after_the_shared_cooldown() {
         let mut server = mockito::Server::new_async().await;
+        let query_matcher = mockito::Matcher::AllOf(vec![
+            mockito::Matcher::UrlEncoded("query".into(), "routing".into()),
+            mockito::Matcher::UrlEncoded("libraryName".into(), "Next.js".into()),
+        ]);
         let limited = server
-            .mock("GET", "/search")
-            .match_query(mockito::Matcher::UrlEncoded(
-                "query".into(),
-                "Next.js".into(),
-            ))
+            .mock("GET", "/v2/libs/search")
+            .match_query(query_matcher.clone())
             .with_status(429)
             .with_header("retry-after", "1")
             .with_body("rate limited")
@@ -270,11 +394,8 @@ mod tests {
             .create_async()
             .await;
         let retried = server
-            .mock("GET", "/search")
-            .match_query(mockito::Matcher::UrlEncoded(
-                "query".into(),
-                "Next.js".into(),
-            ))
+            .mock("GET", "/v2/libs/search")
+            .match_query(query_matcher)
             .with_status(200)
             .with_body(r#"{"results":[]}"#)
             .expect(1)
@@ -282,14 +403,11 @@ mod tests {
             .await;
 
         let value = tool(server.url())
-            .execute(json!({"libraryName": "Next.js"}))
+            .execute(json!({"query": "routing", "libraryName": "Next.js"}))
             .await
             .unwrap_or_else(|error| panic!("tool execution failed: {error}"));
-        let output = value
-            .as_str()
-            .unwrap_or_else(|| panic!("tool result is not text"));
 
-        assert!(output.ends_with("No documentation libraries found matching your query."));
+        assert_eq!(value, NO_LIBRARIES_FOUND);
         limited.assert_async().await;
         retried.assert_async().await;
     }
@@ -298,11 +416,11 @@ mod tests {
     async fn rate_limit_without_timing_is_not_retried() {
         let mut server = mockito::Server::new_async().await;
         let call = server
-            .mock("GET", "/search")
-            .match_query(mockito::Matcher::UrlEncoded(
-                "query".into(),
-                "Next.js".into(),
-            ))
+            .mock("GET", "/v2/libs/search")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("query".into(), "routing".into()),
+                mockito::Matcher::UrlEncoded("libraryName".into(), "Next.js".into()),
+            ]))
             .with_status(429)
             .with_body("rate limited")
             .expect(1)
@@ -310,7 +428,7 @@ mod tests {
             .await;
 
         let error = match tool(server.url())
-            .execute(json!({"libraryName": "Next.js"}))
+            .execute(json!({"query": "routing", "libraryName": "Next.js"}))
             .await
         {
             Ok(value) => panic!("expected tool error, got: {value}"),
@@ -319,13 +437,13 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "context7_resolve_library_id error: Failed to retrieve library documentation data from Context7"
+            "context7_resolve_library_id error: Context7 request failed with HTTP 429: rate limited"
         );
         call.assert_async().await;
     }
 
     #[tokio::test]
-    async fn preserves_the_reference_error_prefix() {
+    async fn preserves_the_registered_error_prefix() {
         let error = match tool("http://127.0.0.1:1".into()).execute(json!({})).await {
             Ok(value) => panic!("expected tool error, got: {value}"),
             Err(error) => error,
@@ -333,7 +451,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "context7_resolve_library_id error: Missing required parameter: libraryName"
+            "context7_resolve_library_id error: Missing required parameter: query"
         );
     }
 }
