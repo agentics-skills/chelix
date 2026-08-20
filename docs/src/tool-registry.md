@@ -325,6 +325,28 @@ Both tools return strings and retain the default tool-result persistence and
 truncation policy. Full results therefore pass through the common runner pipeline
 and oversized in-context copies point to the persisted text file.
 
+## DuckDuckGo search tool
+
+The built-in `duckduckgo_search` tool is exposed to the model with this
+description:
+
+> Search the web using DuckDuckGo
+
+Its public parameters are `query` (required string), `page` (integer, default `1`,
+minimum `1`), and `numResults` (integer, default `10`, range `1`–`20`). Unknown
+public parameters are rejected. Runtime metadata keys beginning with `_` are
+removed before strict parameter deserialization.
+
+One shared client serializes every invocation, spaces request starts, reuses an
+in-memory cookie jar, and retries one rate-limited response while retaining the
+serial queue permit. `tools.duckduckgo.request_timeout_secs` (default `300`,
+minimum `1`) bounds the complete call, including queueing, request spacing,
+retry/backoff, HTTP work, and response parsing.
+
+The tool returns Markdown as a string and uses the default tool-result persistence
+and truncation policy. See [DuckDuckGo Search](duckduckgo-search.md) for the exact
+result format, retry classification, and transport behavior.
+
 ## GitHub tools
 
 The `github_*` tools call the GitHub REST API through one shared client. When

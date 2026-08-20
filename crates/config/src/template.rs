@@ -336,6 +336,13 @@ port = {port}                           # Port number (auto-generated for this i
 # token = "ctx7sk-..."               # Context7 API token
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
+# ── DuckDuckGo Search ─────────────────────────────────────────────────────────
+# request_timeout_secs covers the complete search lifecycle: shared queue wait,
+# retry/backoff, the HTTP request, and response body reading.
+
+# [tools.duckduckgo]
+# request_timeout_secs = 300         # Complete search timeout; must be at least 1
+
 # ── GitHub (github_* tools) ───────────────────────────────────────────────────
 # Every github_* tool calls the GitHub REST API with this token. Tools that
 # require authentication fail with an explicit error when it is not set.

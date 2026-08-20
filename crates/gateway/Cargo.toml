@@ -21,6 +21,7 @@ chelix-config           = { workspace = true }
 chelix-context7         = { optional = true, workspace = true }
 chelix-cron             = { workspace = true }
 chelix-discord          = { optional = true, workspace = true }
+chelix-duckduckgo       = { optional = true, workspace = true }
 chelix-external-agents  = { workspace = true }
 chelix-github           = { optional = true, workspace = true }
 chelix-home-assistant   = { optional = true, workspace = true }
@@ -99,6 +100,7 @@ default = [
   "code-index-builtin",
   "context7",
   "discord",
+  "duckduckgo",
   "file-watcher",
   "firecrawl",
   "github",
@@ -121,6 +123,7 @@ default = [
   "whatsapp",
 ]
 discord = ["dep:chelix-discord"]
+duckduckgo = ["dep:chelix-duckduckgo"]
 file-watcher = [
   "chelix-code-index/file-watcher",
   "chelix-memory/file-watcher",
@@ -137,6 +140,7 @@ metrics = [
   "chelix-chat/metrics",
   "chelix-context7?/metrics",
   "chelix-discord?/metrics",
+  "chelix-duckduckgo?/metrics",
   "chelix-github?/metrics",
   "chelix-matrix/metrics",
   "chelix-metrics/sqlite",

@@ -17,6 +17,7 @@ default-members = [
   "crates/cron",
   "crates/ctl",
   "crates/discord",
+  "crates/duckduckgo",
   "crates/external-agents",
   "crates/gateway",
   "crates/github",
@@ -73,6 +74,7 @@ members = [
   "crates/context7",
   "crates/cron",
   "crates/ctl",
+  "crates/duckduckgo",
   "crates/embedding-service",
   "crates/external-agents",
   "crates/gateway",
@@ -261,6 +263,7 @@ ipnet             = "2"
 mdns-sd           = "0.20.2"
 mime_guess        = "2"
 pulldown-cmark    = { default-features = false, version = "0.13.4" }
+regex             = "1"
 # Code splitting (tree-sitter based)
 text-splitter          = { default-features = false, features = ["code"], version = "0.29" }
 tree-sitter-bash       = "0.25"
@@ -318,6 +321,7 @@ chelix-config           = { path = "crates/config" }
 chelix-context7         = { path = "crates/context7" }
 chelix-cron             = { path = "crates/cron" }
 chelix-discord          = { path = "crates/discord" }
+chelix-duckduckgo       = { path = "crates/duckduckgo" }
 chelix-external-agents  = { path = "crates/external-agents" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
 chelix-github           = { path = "crates/github" }

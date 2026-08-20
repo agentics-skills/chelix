@@ -57,6 +57,7 @@
 - **Tools — Web & Data**
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
   - [`tools.context7`](#toolscontext7)
+  - [`tools.duckduckgo`](#toolsduckduckgo)
   - [`tools.github`](#toolsgithub)
   - [`tools.maps`](#toolsmaps)
 - **Tools — Policy & Agent Limits**
@@ -408,6 +409,12 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | --------------------- | --------------- | ------- | ------------------------------------------------------------------ |
 | token                 | optional string | —       | Context7 API token used by every `context7_*` tool.                |
 | request_timeout_secs  | integer         | `300`   | Per-request Context7 HTTP timeout in seconds. Must be at least `1`. |
+
+### `tools.duckduckgo` — DuckDuckGoConfig
+
+| Key                  | Type    | Default | Description                                                                                                                   |
+| -------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| request_timeout_secs | integer | `300`   | Complete `duckduckgo_search` call timeout, including queueing, retry/backoff, and HTTP work. Must be at least `1`.             |
 
 ### `tools.github` — GitHubConfig
 

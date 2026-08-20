@@ -106,6 +106,28 @@ request_timeout_secs = 45
 }
 
 #[test]
+fn duckduckgo_request_timeout_defaults_to_five_minutes() {
+    let config: ChelixConfig = toml::from_str("").unwrap();
+    assert_eq!(
+        config.tools.duckduckgo.request_timeout_secs,
+        DEFAULT_DUCKDUCKGO_REQUEST_TIMEOUT_SECS
+    );
+    assert_eq!(DEFAULT_DUCKDUCKGO_REQUEST_TIMEOUT_SECS, 300);
+}
+
+#[test]
+fn duckduckgo_request_timeout_parses_an_override() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools.duckduckgo]
+request_timeout_secs = 45
+"#,
+    )
+    .unwrap();
+    assert_eq!(config.tools.duckduckgo.request_timeout_secs, 45);
+}
+
+#[test]
 fn github_request_timeout_defaults_to_five_minutes() {
     let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(
