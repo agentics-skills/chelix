@@ -1,6 +1,7 @@
 import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
+import { setToolCardOutputVisible } from "../tool-call-card";
 import { TerminalAttachment } from "./TerminalAttachment";
 
 interface ExecuteCommandToolBubbleProps {
@@ -17,7 +18,7 @@ function ExecuteCommandToolBubble({
 	toolCallId,
 	progressMessage,
 	attachTerminal,
-}: ExecuteCommandToolBubbleProps): VNode {
+}: ExecuteCommandToolBubbleProps): VNode | null {
 	const status = useSignal("");
 	const statusLevel = useSignal<"" | "ok" | "error">("");
 
@@ -26,9 +27,10 @@ function ExecuteCommandToolBubble({
 	// keys Preact would keep the same node and only swap the children it tracks,
 	// leaving the progress text in place above the terminal.
 	if (!attachTerminal) {
+		if (!progressMessage.trim()) return null;
 		return (
 			<div key="progress" className="tool-call-result-placeholder">
-				{progressMessage || "Waiting for tool result…"}
+				{progressMessage}
 			</div>
 		);
 	}
@@ -56,8 +58,8 @@ function ExecuteCommandToolBubble({
 export function mountExecuteCommandToolBubble(card: HTMLElement, options: ExecuteCommandToolBubbleProps): void {
 	let mount = mountedBubbles.get(card);
 	if (!mount) {
-		const content = card.querySelector<HTMLElement>("[data-tool-result-content]");
-		if (!content) throw new Error("execute_command tool card result mount is unavailable");
+		const content = card.querySelector<HTMLElement>("[data-tool-output-content]");
+		if (!content) throw new Error("execute_command tool card output mount is unavailable");
 		content.textContent = "";
 		mount = document.createElement("div");
 		mount.setAttribute("data-execute-command-bubble", "");
@@ -65,6 +67,7 @@ export function mountExecuteCommandToolBubble(card: HTMLElement, options: Execut
 		mountedBubbles.set(card, mount);
 	}
 	render(<ExecuteCommandToolBubble {...options} />, mount);
+	setToolCardOutputVisible(card, options.attachTerminal || Boolean(options.progressMessage.trim()));
 }
 
 export function unmountExecuteCommandToolBubble(card: HTMLElement): void {
@@ -73,6 +76,7 @@ export function unmountExecuteCommandToolBubble(card: HTMLElement): void {
 	render(null, mount);
 	mount.remove();
 	mountedBubbles.delete(card);
+	setToolCardOutputVisible(card, false);
 }
 
 export function unmountExecuteCommandToolBubbles(container: ParentNode): void {

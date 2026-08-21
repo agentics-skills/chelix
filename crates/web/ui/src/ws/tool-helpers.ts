@@ -25,6 +25,7 @@ import {
 	isCommandToolName,
 	normalizeToolResult,
 	renderToolCardError,
+	renderToolCardProgress,
 	renderToolCardResult,
 	resolveToolBatchEnd,
 	setToolCardExpanded,
@@ -137,7 +138,7 @@ function completeToolCard(
 			appendToolCardError(toolCard, presentation.error, presentation.rejected);
 		}
 	} else if (presentation.success) {
-		renderToolCardResult(toolCard, {}, { sessionKey: eventSession || S.activeSessionKey || "main", screenshotMode });
+		renderToolCardResult(toolCard, null, { sessionKey: eventSession || S.activeSessionKey || "main", screenshotMode });
 	} else {
 		renderToolCardError(toolCard, presentation.error || undefined, presentation.rejected);
 	}
@@ -158,6 +159,7 @@ export function clearStaleRunningToolCards(): void {
 		if (!card.classList.contains("running")) continue;
 		if (card.classList.contains("tool-call-card")) {
 			unmountExecuteCommandToolBubble(card);
+			renderToolCardResult(card, null);
 			setToolCardStatus(card, "success");
 			setToolCardExpanded(card, false);
 			continue;
@@ -278,19 +280,27 @@ function shouldRenderLifecycle(snapshot: ToolInvocationSnapshot, renderEarly: bo
 	return renderEarly || (snapshot.lifecycle.stage !== "created" && snapshot.lifecycle.stage !== "input_streaming");
 }
 
-function updateExecuteCommandBubble(
+function updateToolOutput(
 	card: HTMLElement,
 	snapshot: ToolInvocationSnapshot,
 	eventSession: string,
 	interactive: boolean,
 ): void {
 	const lifecycle = snapshot.lifecycle;
-	if (!isCommandToolName(lifecycle.toolName) || isTerminalToolLifecycle(lifecycle)) return;
+	if (lifecycle.stage !== "execution_progress") {
+		if (isCommandToolName(lifecycle.toolName)) unmountExecuteCommandToolBubble(card);
+		renderToolCardProgress(card, null);
+		return;
+	}
+	if (!isCommandToolName(lifecycle.toolName)) {
+		renderToolCardProgress(card, lifecycle.message);
+		return;
+	}
 	mountExecuteCommandToolBubble(card, {
 		toolCallId: lifecycle.toolCallId,
 		sessionKey: eventSession,
-		progressMessage: lifecycleStatus(snapshot),
-		attachTerminal: interactive && lifecycle.stage === "execution_progress" && lifecycle.elapsedMs >= 10_000,
+		progressMessage: lifecycle.message,
+		attachTerminal: interactive && lifecycle.elapsedMs >= 10_000,
 	});
 }
 
@@ -304,7 +314,7 @@ function updateA2uiSurface(card: HTMLElement, snapshot: ToolInvocationSnapshot, 
 		arguments: argumentsValue,
 		runId: snapshot.runId,
 		toolCallId: lifecycle.toolCallId,
-		interactive,
+		interactive: interactive && !presentation,
 		success: presentation?.success,
 		result: presentation?.result ?? undefined,
 		error: presentation?.error ?? undefined,
@@ -395,7 +405,7 @@ export function renderToolLifecycleSnapshot(
 		completeToolCard(card, snapshot, eventSession, options.screenshotMode || "inline-base64");
 	} else {
 		setToolCardProgress(card, lifecycleStatus(snapshot));
-		updateExecuteCommandBubble(card, snapshot, eventSession, options.interactive !== false);
+		updateToolOutput(card, snapshot, eventSession, options.interactive !== false);
 	}
 	updateA2uiSurface(card, snapshot, options.interactive !== false);
 	smartScrollToBottom();

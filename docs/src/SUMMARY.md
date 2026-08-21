@@ -54,6 +54,13 @@
 
 ---
 
+# UI
+
+- [General Rules](ui/general-rules.md)
+- [Tool Call Bubble](ui/tool-call-bubble.md)
+
+---
+
 # Security
 
 - [Authentication](authentication.md)

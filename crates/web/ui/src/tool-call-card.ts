@@ -33,7 +33,7 @@ const TRUNCATED_RESULT_MARKER = "\n\n[Truncated —";
 const TEXT_RESULT_FIELDS = ["stdout", "output", "stderr"] as const;
 
 function stringifyValue(value: unknown): string {
-	if (value === undefined) return "{}";
+	if (value === undefined) return "";
 	if (typeof value === "string") {
 		try {
 			return JSON.stringify(JSON.parse(value), null, 2);
@@ -42,10 +42,10 @@ function stringifyValue(value: unknown): string {
 		}
 	}
 	try {
-		const json = JSON.stringify(value ?? {}, null, 2);
-		return json || String(value ?? "");
+		const json = JSON.stringify(value, null, 2);
+		return json ?? String(value);
 	} catch (_err) {
-		return String(value ?? "");
+		return String(value);
 	}
 }
 
@@ -70,42 +70,41 @@ export function isCommandToolName(toolName: string | undefined): boolean {
 	return toolName === "execute_command";
 }
 
-/** Tools whose card already shows the result in a purpose-built form.
- *
- * `execute_command` prints stdout/stderr, `render_a2ui` mounts a live A2UI
- * surface. For both, the raw result JSON is a diagnostic rather than the
- * primary content, so it starts collapsed. Every other tool keeps the raw
- * result open when nothing else rendered it.
- *
- * The A2UI name is compared literally instead of imported from
- * `a2ui-renderer`, which already imports this module.
- */
-function hasDedicatedResultView(toolName: string | undefined): boolean {
-	return isCommandToolName(toolName) || toolName === "render_a2ui";
-}
-
-function makeLabeledPre(label: string, text: string, className: string): HTMLElement {
+function makeOutputBlock(stream: "stdout" | "output" | "stderr", text: string, className: string): HTMLElement {
 	const wrap = document.createElement("div");
 	wrap.className = "tool-call-output-block";
-
-	const labelEl = document.createElement("div");
-	labelEl.className = "tool-call-output-label";
-	labelEl.textContent = label;
-	wrap.appendChild(labelEl);
 
 	const pre = document.createElement("pre");
 	pre.className = className;
 	pre.textContent = text;
-	pre.setAttribute("data-tool-stream", label.toLowerCase());
+	pre.setAttribute("data-tool-stream", stream);
 	wrap.appendChild(pre);
 
 	return wrap;
 }
 
+function getSectionContent(card: HTMLElement, section: "result" | "output"): HTMLElement {
+	const content = card.querySelector<HTMLElement>(`[data-tool-${section}-content]`);
+	if (!content) throw new Error(`tool card ${section} content is unavailable`);
+	return content;
+}
+
+function setSectionTitleVisible(card: HTMLElement, section: "result" | "output", visible: boolean): void {
+	const title = card.querySelector<HTMLElement>(`.tool-call-${section}-section > .tool-call-section-title`);
+	if (!title) throw new Error(`tool card ${section} title is unavailable`);
+	title.hidden = !visible;
+}
+
 function getResultContent(card: HTMLElement): HTMLElement {
-	const existing = card.querySelector("[data-tool-result-content]") as HTMLElement | null;
-	if (existing) return existing;
-	return card;
+	return getSectionContent(card, "result");
+}
+
+function getOutputContent(card: HTMLElement): HTMLElement {
+	return getSectionContent(card, "output");
+}
+
+export function setToolCardOutputVisible(card: HTMLElement, visible: boolean): void {
+	setSectionTitleVisible(card, "output", visible);
 }
 
 function getStatusEl(card: HTMLElement): HTMLElement | null {
@@ -117,7 +116,7 @@ function appendRawPayload(
 	label: string,
 	payload: unknown,
 	options: { open?: boolean; className?: string } = {},
-): void {
+): HTMLDetailsElement {
 	const raw = document.createElement("details");
 	raw.className = options.className ? `tool-call-raw ${options.className}` : "tool-call-raw";
 	raw.open = options.open === true;
@@ -132,6 +131,7 @@ function appendRawPayload(
 	raw.appendChild(pre);
 
 	container.appendChild(raw);
+	return raw;
 }
 
 function resolveScreenshotSrc(screenshot: string, options: ToolResultRenderOptions): string {
@@ -292,29 +292,41 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 		toggle.setAttribute("aria-controls", details.id);
 	}
 
-	// The summary line above already carries the call in readable form, so the
-	// raw arguments start collapsed for every tool.
-	appendRawPayload(details, "Parameters", options.arguments, {
-		className: "tool-call-params-details",
-	});
-
 	const resultSection = document.createElement("section");
 	resultSection.className = "tool-call-section tool-call-result-section";
 
 	const resultTitle = document.createElement("div");
 	resultTitle.className = "tool-call-section-title";
 	resultTitle.textContent = "Result";
+	resultTitle.hidden = true;
 	resultSection.appendChild(resultTitle);
 
 	const resultContent = document.createElement("div");
 	resultContent.className = "tool-call-result-content";
 	resultContent.setAttribute("data-tool-result-content", "");
-	const placeholder = document.createElement("div");
-	placeholder.className = "tool-call-result-placeholder";
-	placeholder.textContent = status === "running" ? "Waiting for tool result…" : "No result payload.";
-	resultContent.appendChild(placeholder);
 	resultSection.appendChild(resultContent);
 	details.appendChild(resultSection);
+
+	const outputSection = document.createElement("section");
+	outputSection.className = "tool-call-section tool-call-output-section";
+
+	const outputTitle = document.createElement("div");
+	outputTitle.className = "tool-call-section-title";
+	outputTitle.textContent = "Output";
+	outputTitle.hidden = true;
+	outputSection.appendChild(outputTitle);
+
+	const outputContent = document.createElement("div");
+	outputContent.className = "tool-call-result-content tool-call-output-content";
+	outputContent.setAttribute("data-tool-output-content", "");
+	outputSection.appendChild(outputContent);
+	details.appendChild(outputSection);
+
+	// The summary line above already carries the call in readable form, so the
+	// raw arguments start collapsed for every tool.
+	appendRawPayload(details, "Parameters", options.arguments, {
+		className: "tool-call-params-details",
+	});
 
 	card.appendChild(details);
 
@@ -330,15 +342,32 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 export function updateToolCardParameters(card: HTMLElement, argumentsValue: unknown, executionMode?: string): void {
 	const toolName = card.dataset.toolName || "tool";
 	const parameters = card.querySelector<HTMLElement>(".tool-call-params-details .tool-call-raw-json");
-	if (parameters) parameters.textContent = stringifyValue(argumentsValue);
+	if (!parameters) throw new Error("tool card Parameters content is unavailable");
+	parameters.textContent = stringifyValue(argumentsValue);
 	const summary = card.querySelector<HTMLElement>(".tool-call-summary");
-	if (summary) renderCommand(summary, buildToolSummary(toolName, argumentsValue, executionMode));
+	if (!summary) throw new Error("tool card summary is unavailable");
+	renderCommand(summary, buildToolSummary(toolName, argumentsValue, executionMode));
 }
 
 export function setToolCardProgress(card: HTMLElement, message: string): void {
 	setToolCardStatus(card, "running", message || STATUS_LABELS.running);
-	const placeholder = getResultContent(card).querySelector<HTMLElement>(".tool-call-result-placeholder");
-	if (placeholder) placeholder.textContent = message || "Waiting for tool result…";
+	getResultContent(card).textContent = "";
+	setSectionTitleVisible(card, "result", false);
+	const details = getToolCardDetailsContainer(card);
+	details.querySelector(".tool-call-result-payload-details")?.remove();
+	details.querySelector(".tool-call-context-budget-details")?.remove();
+}
+
+export function renderToolCardProgress(card: HTMLElement, message: string | null): void {
+	const content = getOutputContent(card);
+	content.textContent = "";
+	if (message?.trim()) {
+		const output = document.createElement("div");
+		output.className = "tool-call-result-placeholder";
+		output.textContent = message;
+		content.appendChild(output);
+	}
+	setToolCardOutputVisible(card, content.childElementCount > 0);
 }
 
 export function toolCallIds(toolCalls: unknown): string[] {
@@ -420,12 +449,13 @@ export function setToolCardStatus(card: HTMLElement, status: ToolCardStatus, lab
 
 export function appendToolOutputChunk(card: HTMLElement, stream: "stdout" | "stderr", chunk: string): void {
 	if (!chunk) return;
-	const content = getResultContent(card);
-	const placeholder = content.querySelector(".tool-call-result-placeholder");
-	if (placeholder) placeholder.remove();
+	const content = getOutputContent(card);
 	let pre = content.querySelector(`pre[data-tool-stream="${stream}"]`) as HTMLPreElement | null;
+	if (!(pre || chunk.trim())) return;
+
+	content.querySelector(".tool-call-result-placeholder")?.remove();
 	if (!pre) {
-		const block = makeLabeledPre(
+		const block = makeOutputBlock(
 			stream,
 			"",
 			stream === "stderr" ? "command-output command-stderr tool-call-output" : "command-output tool-call-output",
@@ -434,6 +464,7 @@ export function appendToolOutputChunk(card: HTMLElement, stream: "stdout" | "std
 		pre = block.querySelector("pre") as HTMLPreElement | null;
 	}
 	if (pre) pre.textContent = `${pre.textContent || ""}${chunk}`;
+	setToolCardOutputVisible(card, content.childElementCount > 0);
 }
 
 interface ToolResultStream {
@@ -447,15 +478,12 @@ const TOOL_RESULT_STREAMS: ToolResultStream[] = [
 	{ field: "stderr", className: "command-output command-stderr tool-call-output" },
 ];
 
-function renderToolResultStreams(content: HTMLElement, result: ToolResult): boolean {
-	let rendered = false;
+function renderToolResultStreams(content: HTMLElement, result: ToolResult): void {
 	for (const stream of TOOL_RESULT_STREAMS) {
 		const text = (result[stream.field] || "").replace(/\n+$/, "");
-		if (!text) continue;
-		content.appendChild(makeLabeledPre(stream.field, text, stream.className));
-		rendered = true;
+		if (!text.trim()) continue;
+		content.appendChild(makeOutputBlock(stream.field, text, stream.className));
 	}
-	return rendered;
 }
 
 function renderToolExitCode(content: HTMLElement, result: ToolResult): boolean {
@@ -468,13 +496,12 @@ function renderToolExitCode(content: HTMLElement, result: ToolResult): boolean {
 	return true;
 }
 
-function renderToolMessage(content: HTMLElement, result: ToolResult, alreadyRendered: boolean): boolean {
-	if (alreadyRendered || !result.message) return alreadyRendered;
+function renderToolMessage(content: HTMLElement, result: ToolResult): void {
+	if (!result.message?.trim()) return;
 	const messageEl = document.createElement("div");
 	messageEl.className = "tool-call-result-placeholder";
 	messageEl.textContent = result.message;
 	content.appendChild(messageEl);
-	return true;
 }
 
 function renderToolScreenshot(content: HTMLElement, result: ToolResult, options: ToolResultRenderOptions): boolean {
@@ -500,59 +527,76 @@ function renderToolMap(content: HTMLElement, result: ToolResult): boolean {
 	return true;
 }
 
-function appendEmptyToolResult(content: HTMLElement, rendered: boolean): void {
-	if (rendered) return;
-	const empty = document.createElement("div");
-	empty.className = "tool-call-result-placeholder";
-	empty.textContent = "No textual output.";
-	content.appendChild(empty);
-}
-
 export function renderToolCardResult(
 	card: HTMLElement,
-	resultValue: ToolResult | string,
+	resultValue: ToolResult | string | null,
 	options: ToolResultRenderOptions = {},
 ): void {
-	const result = normalizeToolResult(resultValue);
-	const content = getResultContent(card);
-	content.textContent = "";
+	const details = getToolCardDetailsContainer(card);
+	const parameters = details.querySelector<HTMLElement>(".tool-call-params-details");
+	if (!parameters) throw new Error("tool card Parameters disclosure is unavailable");
 
-	let renderedVisibleResult = renderToolResultStreams(content, result);
-	renderedVisibleResult = renderToolExitCode(content, result) || renderedVisibleResult;
-	renderedVisibleResult = renderToolMessage(content, result, renderedVisibleResult);
-	renderedVisibleResult = renderToolScreenshot(content, result, options) || renderedVisibleResult;
-	renderedVisibleResult = renderToolDocument(content, result, options) || renderedVisibleResult;
-	renderedVisibleResult = renderToolMap(content, result) || renderedVisibleResult;
-	appendEmptyToolResult(content, renderedVisibleResult);
+	const result = resultValue === null ? null : normalizeToolResult(resultValue);
+	const resultContent = getResultContent(card);
+	const outputContent = getOutputContent(card);
+	resultContent.textContent = "";
+	outputContent.textContent = "";
 
-	// A tool with a dedicated result view renders the payload elsewhere on the
-	// card, so the raw JSON stays collapsed even when this section is empty.
-	appendRawPayload(content, "Raw result payload", result, {
-		open: !(renderedVisibleResult || hasDedicatedResultView(card.getAttribute("data-tool-name") ?? undefined)),
+	if (result) {
+		renderToolResultStreams(outputContent, result);
+		renderToolExitCode(resultContent, result);
+		renderToolMessage(resultContent, result);
+		renderToolScreenshot(resultContent, result, options);
+		renderToolDocument(resultContent, result, options);
+		renderToolMap(resultContent, result);
+	}
+	setSectionTitleVisible(card, "result", resultContent.childElementCount > 0);
+	setToolCardOutputVisible(card, outputContent.childElementCount > 0);
+
+	details.querySelector(".tool-call-result-payload-details")?.remove();
+	if (!result) return;
+
+	const rawPayload = appendRawPayload(details, "Raw result payload", result, {
+		className: "tool-call-result-payload-details",
 	});
+	parameters.after(rawPayload);
 }
 
 export function appendToolCardContextBudget(card: HTMLElement, contextBudget: ContextBudgetMetadata | undefined): void {
+	const details = getToolCardDetailsContainer(card);
+	details.querySelector(".tool-call-context-budget-details")?.remove();
 	if (!contextBudget) return;
-	appendRawPayload(getResultContent(card), "Context budget", contextBudget, {
+
+	const anchor =
+		details.querySelector<HTMLElement>(".tool-call-result-payload-details") ||
+		details.querySelector<HTMLElement>(".tool-call-params-details");
+	if (!anchor) throw new Error("tool card diagnostic disclosures are unavailable");
+
+	const disclosure = appendRawPayload(details, "Context budget", contextBudget, {
 		className: "tool-call-context-budget-details",
 	});
+	anchor.after(disclosure);
 }
 
 export function appendToolCardError(card: HTMLElement, error: ToolError | string | undefined, retry = false): void {
 	const content = getResultContent(card);
+	const message = typeof error === "string" ? error : error?.detail || error?.message;
+	if (!message?.trim()) throw new Error("tool card error message is unavailable");
 
-	const message = typeof error === "string" ? error : error?.detail || error?.message || "Tool call failed.";
 	const errMsg = document.createElement("div");
 	errMsg.className = retry ? "command-retry-detail" : "command-error-detail";
 	errMsg.textContent = message;
 	content.appendChild(errMsg);
 
 	if (error && typeof error !== "string") appendRawPayload(content, "Raw error payload", error);
+	setSectionTitleVisible(card, "result", true);
 }
 
 export function renderToolCardError(card: HTMLElement, error: ToolError | string | undefined, retry = false): void {
-	const content = getResultContent(card);
-	content.textContent = "";
+	const resultContent = getResultContent(card);
+	resultContent.textContent = "";
+	getOutputContent(card).textContent = "";
+	setToolCardOutputVisible(card, false);
+	getToolCardDetailsContainer(card).querySelector(".tool-call-result-payload-details")?.remove();
 	appendToolCardError(card, error, retry);
 }
