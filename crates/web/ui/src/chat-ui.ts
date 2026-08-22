@@ -81,12 +81,25 @@ function handleChatScroll(): void {
 	if (shouldFollowChat) hideNewContentIndicator();
 }
 
+function handleChatMediaLoad(): void {
+	// An image that finishes loading grows the chat below the pinned bottom.
+	// While the chat is following, the bottom must stay the bottom; a user
+	// reading older messages is not moved.
+	scrollChatToBottom();
+}
+
 function ensureChatFollowTracking(): void {
 	if (!S.chatMsgBox || trackedChatMsgBox === S.chatMsgBox) return;
-	if (trackedChatMsgBox) trackedChatMsgBox.removeEventListener("scroll", handleChatScroll);
+	if (trackedChatMsgBox) {
+		trackedChatMsgBox.removeEventListener("scroll", handleChatScroll);
+		trackedChatMsgBox.removeEventListener("load", handleChatMediaLoad, true);
+	}
 	trackedChatMsgBox = S.chatMsgBox;
 	shouldFollowChat = true;
 	trackedChatMsgBox.addEventListener("scroll", handleChatScroll, { passive: true });
+	// `load` does not bubble, but the capture phase still visits ancestors, so
+	// one listener covers every image the chat will ever contain.
+	trackedChatMsgBox.addEventListener("load", handleChatMediaLoad, true);
 }
 
 export function syncChatFollowStateFromPosition(): void {
@@ -122,6 +135,22 @@ export function scrollChatToBottom(force = false): void {
 		programmaticScrollTop = S.chatMsgBox.scrollTop;
 		hideNewContentIndicator();
 	});
+}
+
+/// Set the chat scroll position to the bottom synchronously.
+///
+/// A history render must establish its final position before follow-up work
+/// measures the viewport (headroom fill), so it cannot wait for an animation
+/// frame the way streaming scrolls do. `force=true` resets follow mode,
+/// exactly like `scrollChatToBottom(true)`.
+export function pinChatToBottom(force = false): void {
+	if (!S.chatMsgBox) return;
+	ensureChatFollowTracking();
+	if (force) shouldFollowChat = true;
+	else if (!shouldFollowChat) return;
+	S.chatMsgBox.scrollTop = S.chatMsgBox.scrollHeight;
+	programmaticScrollTop = S.chatMsgBox.scrollTop;
+	hideNewContentIndicator();
 }
 
 /** Returns true when the chat scroll position is within `threshold` px of the bottom. */

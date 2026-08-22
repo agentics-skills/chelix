@@ -8,9 +8,9 @@ import {
 	chatInsertionTarget,
 	chatViewEpoch,
 	highlightAndScroll,
+	pinChatToBottom,
 	preserveChatViewport,
 	resetChatView,
-	scrollChatToBottom,
 	stripChannelPrefix,
 	syncChatFollowStateFromPosition,
 	updateTokenBar,
@@ -394,6 +394,9 @@ function scrollAfterHistoryLoad(
 	skipAutoScroll: boolean,
 ): void {
 	if (!skipAutoScroll && searchContext?.query && S.chatMsgBox) {
+		// A search jump is not follow mode: late decoration must not drag the
+		// viewport away from the highlighted match.
+		syncChatFollowStateFromPosition();
 		highlightAndScroll(msgEls, searchContext.messageIndex, searchContext.query);
 		return;
 	}
@@ -401,7 +404,10 @@ function scrollAfterHistoryLoad(
 		syncChatFollowStateFromPosition();
 		return;
 	}
-	scrollChatToBottom(true);
+	// The bottom must be established synchronously: the headroom fill that runs
+	// right after this render measures `scrollTop`, and a scroll deferred to an
+	// animation frame would make it see the top of a freshly reset view.
+	pinChatToBottom(true);
 }
 
 function restoreActiveAssistantSegment(key: string, skipAutoScroll: boolean): void {
@@ -419,7 +425,7 @@ function restoreActiveAssistantSegment(key: string, skipAutoScroll: boolean): vo
 		S.setStreamEl(segment);
 	}
 	S.setStreamText(activeText);
-	if (!skipAutoScroll) scrollChatToBottom(true);
+	if (!skipAutoScroll) pinChatToBottom(true);
 }
 
 export function postHistoryLoadActions(
@@ -890,12 +896,27 @@ export function renderHistory(
 	S.setSessionCurrentContextTokens(0);
 	const state = renderHistoryMessages(key, history);
 	updateTokenBar(state.latestToolContextBudget);
-	if (S.chatMsgBox) highlightCodeBlocks(S.chatMsgBox);
 	const historyTailIndex = computeHistoryTailIndex(history);
 	syncHistoryState(key, history, historyTailIndex, totalCountHint);
 	S.setChatSeq(latestUserSequence(history));
 	if (history.length === 0) showWelcomeCard();
 	postHistoryLoadActions(key, searchContext, state.messageElements, skipAutoScroll === true);
+	void settleHistoryDecorations();
+}
+
+/// Re-pin the chat after syntax highlighting settles.
+///
+/// Highlighting resizes code blocks after the render has already established
+/// its scroll position. While the chat is following the bottom, the bottom must
+/// remain the bottom once those resizes land; a user who scrolled away keeps
+/// their position, and a view replaced mid-highlight is left alone.
+async function settleHistoryDecorations(): Promise<void> {
+	const box = S.chatMsgBox;
+	if (!box) return;
+	const epoch = chatViewEpoch();
+	await highlightCodeBlocks(box);
+	if (S.chatMsgBox !== box || chatViewEpoch() !== epoch) return;
+	pinChatToBottom();
 }
 
 /// Render `history` into whatever container is currently the insertion target.
