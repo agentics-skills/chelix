@@ -2,10 +2,9 @@
 
 mod send;
 
-const STOPPED_BY_USER: &str = "Stopped by user.";
-
 use std::{
     collections::{HashMap, HashSet},
+    future::Future,
     path::Path,
     sync::Arc,
 };
@@ -14,6 +13,7 @@ use {
     async_trait::async_trait,
     serde_json::Value,
     tokio::sync::RwLock,
+    tokio_util::sync::CancellationToken,
     tracing::{info, warn},
 };
 
@@ -26,7 +26,6 @@ use {
             build_system_prompt_with_session_runtime_details,
         },
     },
-    chelix_common::tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
     chelix_config::ToolMode,
     chelix_service_traits::{ChatService, ServiceError, ServiceResult},
     chelix_sessions::{MessageContent, PersistedMessage, filter_ui_history},
@@ -35,7 +34,7 @@ use {
 
 use crate::{
     agent_loop::effective_tool_mode,
-    channels::{deliver_channel_error, notify_channels_of_compaction},
+    channels::notify_channels_of_compaction,
     compaction,
     message::{
         infer_reply_medium, user_audio_path_from_params, user_documents_for_persistence,
@@ -99,6 +98,29 @@ fn send_sync_model_id<'a>(
     session_entry: Option<&'a chelix_sessions::metadata::SessionEntry>,
 ) -> Option<&'a str> {
     explicit_model.or_else(|| session_entry.and_then(|entry| entry.model.as_deref()))
+}
+
+async fn resolve_send_sync_outcome<F, Fut>(result: ChatRunOutcome, on_failed: F) -> ServiceResult
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = ServiceResult>,
+{
+    match result {
+        ChatRunOutcome::Completed(assistant_output) => Ok(serde_json::json!({
+            "text": assistant_output.text,
+            "inputTokens": assistant_output.input_tokens,
+            "outputTokens": assistant_output.output_tokens,
+            "cacheReadTokens": assistant_output.cache_read_tokens,
+            "cacheWriteTokens": assistant_output.cache_write_tokens,
+            "durationMs": assistant_output.duration_ms,
+            "requestInputTokens": assistant_output.request_input_tokens,
+            "requestOutputTokens": assistant_output.request_output_tokens,
+            "requestCacheReadTokens": assistant_output.request_cache_read_tokens,
+            "requestCacheWriteTokens": assistant_output.request_cache_write_tokens,
+        })),
+        ChatRunOutcome::Cancelled => Err("agent run cancelled".into()),
+        ChatRunOutcome::Failed => on_failed().await,
+    }
 }
 
 #[async_trait]
@@ -243,6 +265,7 @@ impl ChatService for LiveChatService {
         let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
 
         let run_id = uuid::Uuid::new_v4().to_string();
+        let cancellation_token = CancellationToken::new();
         let state = Arc::clone(&self.state);
         let tool_registry = if let Some(policy) = request_tool_policy.as_ref() {
             let registry_guard = self.tool_registry.read().await;
@@ -259,6 +282,10 @@ impl ChatService for LiveChatService {
         let user_message_index = history.len();
 
         if !ephemeral {
+            self.active_runs
+                .write()
+                .await
+                .insert(run_id.clone(), cancellation_token.clone());
             self.active_runs_by_session
                 .write()
                 .await
@@ -325,6 +352,7 @@ impl ChatService for LiveChatService {
         let result = if stream_only {
             run_streaming(
                 persona,
+                &cancellation_token,
                 &state,
                 &model_store,
                 &run_id,
@@ -351,6 +379,7 @@ impl ChatService for LiveChatService {
             run_with_tools(
                 persona,
                 runtime_limits,
+                &cancellation_token,
                 &state,
                 &model_store,
                 &run_id,
@@ -385,6 +414,7 @@ impl ChatService for LiveChatService {
         };
 
         if !ephemeral {
+            self.active_runs.write().await.remove(&run_id);
             let mut runs_by_session = self.active_runs_by_session.write().await;
             if runs_by_session.get(&session_key) == Some(&run_id) {
                 runs_by_session.remove(&session_key);
@@ -406,40 +436,27 @@ impl ChatService for LiveChatService {
             self.session_metadata.touch(&session_key, count).await;
         }
 
-        match result {
-            Some(assistant_output) => Ok(serde_json::json!({
-                "text": assistant_output.text,
-                "inputTokens": assistant_output.input_tokens,
-                "outputTokens": assistant_output.output_tokens,
-                "cacheReadTokens": assistant_output.cache_read_tokens,
-                "cacheWriteTokens": assistant_output.cache_write_tokens,
-                "durationMs": assistant_output.duration_ms,
-                "requestInputTokens": assistant_output.request_input_tokens,
-                "requestOutputTokens": assistant_output.request_output_tokens,
-                "requestCacheReadTokens": assistant_output.request_cache_read_tokens,
-                "requestCacheWriteTokens": assistant_output.request_cache_write_tokens,
-            })),
-            None => {
-                // Check the last broadcast for this run to get the actual error message.
-                let error_msg = state
-                    .last_run_error(&run_id)
-                    .await
-                    .unwrap_or_else(|| "agent run failed (check server logs)".to_string());
+        resolve_send_sync_outcome(result, || async {
+            // Check the last broadcast for this run to get the actual error message.
+            let error_msg = state
+                .last_run_error(&run_id)
+                .await
+                .unwrap_or_else(|| "agent run failed (check server logs)".to_string());
 
-                // Persist the error in the session so it's visible in session history.
-                let error_entry = PersistedMessage::system(format!("[error] {error_msg}"));
-                let _ = self
-                    .session_store
-                    .append(&session_key, &error_entry.to_value())
-                    .await;
-                // Update metadata so the session shows in the UI.
-                if let Ok(count) = self.session_store.ui_message_count(&session_key).await {
-                    self.session_metadata.touch(&session_key, count).await;
-                }
+            // Persist the error in the session so it's visible in session history.
+            let error_entry = PersistedMessage::system(format!("[error] {error_msg}"));
+            let _ = self
+                .session_store
+                .append(&session_key, &error_entry.to_value())
+                .await;
+            // Update metadata so the session shows in the UI.
+            if let Ok(count) = self.session_store.ui_message_count(&session_key).await {
+                self.session_metadata.touch(&session_key, count).await;
+            }
 
-                Err(error_msg.into())
-            },
-        }
+            Err(error_msg.into())
+        })
+        .await
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
@@ -452,8 +469,7 @@ impl ChatService for LiveChatService {
         let resolved_session_key =
             Self::resolve_session_key_for_run(&self.active_runs_by_session, run_id, session_key)
                 .await;
-
-        let (resolved_run_id, aborted) = Self::abort_run_handle(
+        let (resolved_run_id, aborted) = Self::cancel_run(
             &self.active_runs,
             &self.active_runs_by_session,
             &self.terminal_runs,
@@ -468,150 +484,6 @@ impl ChatService for LiveChatService {
             aborted,
             "chat.abort"
         );
-
-        if aborted && let Some(key) = resolved_session_key.as_deref() {
-            let interrupted_tool_calls = self
-                .active_tool_invocations
-                .write()
-                .await
-                .remove(key)
-                .unwrap_or_default();
-            let event_result =
-                Self::wait_for_event_forwarder(&self.active_event_forwarders, key).await;
-            let mut terminal_errors = event_result.error.into_iter().collect::<Vec<_>>();
-            let partial = match self.persist_partial_assistant_on_abort(key).await {
-                Ok(partial) => partial,
-                Err(error) => {
-                    terminal_errors.push(error.to_string());
-                    None
-                },
-            };
-            let finalized_tool_segment = if partial.is_none() {
-                match self
-                    .finalize_active_tool_segment_on_abort(key, &event_result.tool_segment_indices)
-                    .await
-                {
-                    Ok(segment) => segment,
-                    Err(error) => {
-                        terminal_errors.push(error.to_string());
-                        None
-                    },
-                }
-            } else {
-                None
-            };
-            let terminal_partial = partial.or(finalized_tool_segment);
-            self.active_reply_medium.write().await.remove(key);
-            for invocation in interrupted_tool_calls {
-                let Some(invocation_run_id) = invocation.lifecycle.run_id.clone() else {
-                    terminal_errors.push(format!(
-                        "active tool invocation '{}' has no run identity",
-                        invocation.lifecycle.tool_call_id
-                    ));
-                    continue;
-                };
-                let context_budget = invocation.context_budget.clone();
-                let execution_mode = invocation.execution_mode.clone();
-                let arguments = match &invocation.lifecycle.update {
-                    ToolLifecycleUpdate::InputReady { arguments }
-                    | ToolLifecycleUpdate::WaitingForExecution { arguments }
-                    | ToolLifecycleUpdate::Executing { arguments, .. }
-                    | ToolLifecycleUpdate::ExecutionProgress { arguments, .. }
-                    | ToolLifecycleUpdate::ResultReady { arguments, .. }
-                    | ToolLifecycleUpdate::Completed { arguments, .. }
-                    | ToolLifecycleUpdate::Rejected { arguments, .. } => Some(arguments.clone()),
-                    ToolLifecycleUpdate::Cancelled { arguments, .. } => arguments.clone(),
-                    ToolLifecycleUpdate::Created { .. }
-                    | ToolLifecycleUpdate::InputStreaming { .. } => None,
-                };
-                let lifecycle = ToolLifecycleEvent {
-                    tool_call_id: invocation.lifecycle.tool_call_id.clone(),
-                    tool_name: invocation.lifecycle.tool_name.clone(),
-                    sequence: invocation.lifecycle.sequence.saturating_add(1),
-                    emitted_at_ms: now_ms(),
-                    run_id: Some(invocation_run_id),
-                    context_budget,
-                    update: ToolLifecycleUpdate::Cancelled {
-                        arguments,
-                        reason: STOPPED_BY_USER.to_owned(),
-                    },
-                };
-                let message = PersistedMessage::ToolLifecycle {
-                    lifecycle: lifecycle.clone(),
-                };
-                match self.session_store.append(key, &message.to_value()).await {
-                    Ok(()) => {},
-                    Err(error) => {
-                        terminal_errors.push(format!(
-                            "failed to persist cancelled tool invocation '{}' for session '{key}': {error}",
-                            lifecycle.tool_call_id
-                        ));
-                        continue;
-                    },
-                };
-                let tool_call_id = lifecycle.tool_call_id.clone();
-                let payload = ChatToolLifecycleBroadcast {
-                    state: "tool_lifecycle",
-                    lifecycle,
-                    session_key: key.to_owned(),
-                    seq: None,
-                    execution_mode,
-                    message_index: None,
-                    assistant_message_index: None,
-                    assistant_message: None,
-                };
-                let payload = match serde_json::to_value(payload) {
-                    Ok(payload) => payload,
-                    Err(error) => {
-                        terminal_errors.push(format!(
-                            "failed to serialize cancelled tool invocation '{tool_call_id}': {error}"
-                        ));
-                        continue;
-                    },
-                };
-                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
-            }
-            match self.session_store.ui_message_count(key).await {
-                Ok(count) => self.session_metadata.touch(key, count).await,
-                Err(error) => terminal_errors.push(format!(
-                    "failed to count UI history for session '{key}' after abort persistence: {error}"
-                )),
-            }
-            if let Some(run_id) = resolved_run_id.as_deref() {
-                self.terminal_runs.write().await.remove(run_id);
-            }
-            if terminal_errors.is_empty() {
-                let mut payload = serde_json::json!({
-                    "state": "aborted",
-                    "runId": resolved_run_id,
-                    "sessionKey": key,
-                });
-                if let Some((partial_message, message_index)) = terminal_partial {
-                    payload["partialMessage"] = partial_message;
-                    payload["messageIndex"] = serde_json::json!(message_index);
-                }
-                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
-            } else {
-                let error = terminal_errors.join("; ");
-                let error_obj = serde_json::json!({
-                    "title": "Failed to stop assistant cleanly",
-                    "detail": error,
-                });
-                deliver_channel_error(&self.state, key, &error_obj).await;
-                let mut payload = serde_json::json!({
-                    "state": "error",
-                    "runId": resolved_run_id,
-                    "sessionKey": key,
-                    "error": error_obj,
-                });
-                if let Some((partial_message, message_index)) = terminal_partial {
-                    payload["partialMessage"] = partial_message;
-                    payload["messageIndex"] = serde_json::json!(message_index);
-                }
-                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
-                return Err(ServiceError::message(error));
-            }
-        }
 
         Ok(serde_json::json!({
             "aborted": aborted,
@@ -1468,9 +1340,20 @@ impl ChatService for LiveChatService {
 
 #[cfg(test)]
 mod tests {
-    use chelix_sessions::metadata::SessionEntry;
+    use std::{
+        collections::{HashMap, HashSet},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
 
-    use super::send_sync_model_id;
+    use {
+        chelix_sessions::metadata::SessionEntry, tokio::sync::RwLock,
+        tokio_util::sync::CancellationToken,
+    };
+
+    use super::{ChatRunOutcome, LiveChatService, resolve_send_sync_outcome, send_sync_model_id};
 
     fn session_entry_with_model(model: Option<&str>) -> SessionEntry {
         SessionEntry {
@@ -1513,5 +1396,100 @@ mod tests {
         let entry = session_entry_with_model(Some("preset-model"));
 
         assert_eq!(send_sync_model_id(None, Some(&entry)), Some("preset-model"));
+    }
+
+    #[tokio::test]
+    async fn send_sync_cancellation_skips_failure_persistence() {
+        let failure_called = Arc::new(AtomicBool::new(false));
+        let failure_called_by_callback = Arc::clone(&failure_called);
+
+        let result = resolve_send_sync_outcome(ChatRunOutcome::Cancelled, move || async move {
+            failure_called_by_callback.store(true, Ordering::SeqCst);
+            Err("failure callback must not run".into())
+        })
+        .await;
+
+        match result {
+            Err(error) => assert_eq!(error.to_string(), "agent run cancelled"),
+            Ok(value) => panic!("cancellation unexpectedly succeeded: {value}"),
+        }
+        assert!(!failure_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn cancel_run_signals_registered_token_without_removing_run_state() {
+        let active_runs = Arc::new(RwLock::new(HashMap::new()));
+        let active_runs_by_session = Arc::new(RwLock::new(HashMap::new()));
+        let terminal_runs = Arc::new(RwLock::new(HashSet::new()));
+        let cancellation_token = CancellationToken::new();
+        active_runs
+            .write()
+            .await
+            .insert("run-1".to_owned(), cancellation_token.clone());
+        active_runs_by_session
+            .write()
+            .await
+            .insert("session-1".to_owned(), "run-1".to_owned());
+
+        let (resolved_run_id, cancelled) = LiveChatService::cancel_run(
+            &active_runs,
+            &active_runs_by_session,
+            &terminal_runs,
+            None,
+            Some("session-1"),
+        )
+        .await;
+
+        assert_eq!(resolved_run_id.as_deref(), Some("run-1"));
+        assert!(cancelled);
+        assert!(cancellation_token.is_cancelled());
+        assert!(active_runs.read().await.contains_key("run-1"));
+        assert_eq!(
+            active_runs_by_session
+                .read()
+                .await
+                .get("session-1")
+                .map(String::as_str),
+            Some("run-1")
+        );
+
+        let (_, cancelled_again) = LiveChatService::cancel_run(
+            &active_runs,
+            &active_runs_by_session,
+            &terminal_runs,
+            Some("run-1"),
+            None,
+        )
+        .await;
+        assert!(!cancelled_again);
+    }
+
+    #[tokio::test]
+    async fn cancel_run_does_not_signal_a_terminal_run() {
+        let active_runs = Arc::new(RwLock::new(HashMap::new()));
+        let active_runs_by_session = Arc::new(RwLock::new(HashMap::new()));
+        let terminal_runs = Arc::new(RwLock::new(HashSet::from(["run-1".to_owned()])));
+        let cancellation_token = CancellationToken::new();
+        active_runs
+            .write()
+            .await
+            .insert("run-1".to_owned(), cancellation_token.clone());
+        active_runs_by_session
+            .write()
+            .await
+            .insert("session-1".to_owned(), "run-1".to_owned());
+
+        let (resolved_run_id, cancelled) = LiveChatService::cancel_run(
+            &active_runs,
+            &active_runs_by_session,
+            &terminal_runs,
+            None,
+            Some("session-1"),
+        )
+        .await;
+
+        assert_eq!(resolved_run_id.as_deref(), Some("run-1"));
+        assert!(!cancelled);
+        assert!(!cancellation_token.is_cancelled());
     }
 }

@@ -6,11 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use {
-    serde_json::Value,
-    tokio::{sync::RwLock, task::AbortHandle},
-    tracing::warn,
-};
+use {serde_json::Value, tokio::sync::RwLock, tokio_util::sync::CancellationToken, tracing::warn};
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
@@ -323,7 +319,7 @@ pub struct LiveChatService {
     pub(in crate::service) providers: Arc<RwLock<ProviderRegistry>>,
     pub(in crate::service) model_store: Arc<RwLock<DisabledModelsStore>>,
     pub(in crate::service) state: Arc<dyn ChatRuntime>,
-    pub(in crate::service) active_runs: Arc<RwLock<HashMap<String, AbortHandle>>>,
+    pub(in crate::service) active_runs: Arc<RwLock<HashMap<String, CancellationToken>>>,
     pub(in crate::service) active_runs_by_session: Arc<RwLock<HashMap<String, String>>>,
     pub(in crate::service) active_event_forwarders:
         Arc<RwLock<HashMap<String, tokio::task::JoinHandle<EventForwarderResult>>>>,
@@ -479,8 +475,8 @@ impl LiveChatService {
             .unwrap_or(true)
     }
 
-    pub(in crate::service) async fn abort_run_handle(
-        active_runs: &Arc<RwLock<HashMap<String, AbortHandle>>>,
+    pub(in crate::service) async fn cancel_run(
+        active_runs: &Arc<RwLock<HashMap<String, CancellationToken>>>,
         active_runs_by_session: &Arc<RwLock<HashMap<String, String>>>,
         terminal_runs: &Arc<RwLock<HashSet<String>>>,
         run_id: Option<&str>,
@@ -497,29 +493,20 @@ impl LiveChatService {
         let Some(target_run_id) = resolved_run_id.clone() else {
             return (None, false);
         };
-
-        if terminal_runs.read().await.contains(&target_run_id) {
+        let terminal_runs = terminal_runs.read().await;
+        if terminal_runs.contains(&target_run_id) {
             return (resolved_run_id, false);
         }
-
-        let abort_handle = active_runs.write().await.remove(&target_run_id);
-        let aborted = if let Some(handle) = abort_handle {
-            terminal_runs.write().await.insert(target_run_id.clone());
-            handle.abort();
+        let cancellation_token = active_runs.read().await.get(&target_run_id).cloned();
+        let cancelled = cancellation_token.is_some_and(|token| {
+            if token.is_cancelled() {
+                return false;
+            }
+            token.cancel();
             true
-        } else {
-            false
-        };
+        });
 
-        let mut by_session = active_runs_by_session.write().await;
-        if let Some(key) = session_key
-            && by_session.get(key).is_some_and(|id| id == &target_run_id)
-        {
-            by_session.remove(key);
-        }
-        by_session.retain(|_, id| id != &target_run_id);
-
-        (resolved_run_id, aborted)
+        (resolved_run_id, cancelled)
     }
 
     pub(in crate::service) async fn resolve_session_key_for_run(
@@ -564,53 +551,6 @@ impl LiveChatService {
                 }
             },
         }
-    }
-
-    pub(in crate::service) async fn persist_partial_assistant_on_abort(
-        &self,
-        session_key: &str,
-    ) -> error::Result<Option<(Value, usize)>> {
-        persist_active_assistant_draft(
-            &self.session_store,
-            &self.active_partial_assistant,
-            session_key,
-        )
-        .await
-    }
-
-    pub(in crate::service) async fn finalize_active_tool_segment_on_abort(
-        &self,
-        session_key: &str,
-        tool_segment_indices: &HashMap<String, usize>,
-    ) -> error::Result<Option<(Value, usize)>> {
-        let Some(message_index) = latest_tool_segment_index(tool_segment_indices) else {
-            return Ok(None);
-        };
-        let finalized = self
-            .session_store
-            .update_typed_at(session_key, message_index, |existing| {
-                let duration_ms = match &existing {
-                    PersistedMessage::Assistant { created_at, .. } => created_at
-                        .map(|started_at| now_ms().saturating_sub(started_at))
-                        .unwrap_or_default(),
-                    _ => 0,
-                };
-                finalize_aborted_tool_segment(existing, duration_ms)
-            })
-            .await
-            .map_err(|source| {
-                error::Error::external(
-                    "failed to finalize assistant tool segment after abort",
-                    source,
-                )
-            })?;
-        if !matches!(finalized, PersistedMessage::Assistant { .. }) {
-            return Err(error::Error::message(format!(
-                "message index {message_index} is not an assistant tool segment"
-            )));
-        };
-
-        Ok(Some((finalized.to_value(), message_index)))
     }
 
     /// Resolve a provider from session metadata, history, or first registered.

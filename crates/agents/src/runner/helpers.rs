@@ -28,6 +28,7 @@ use crate::{
 // ── Constants ───────────────────────────────────────────────────────────
 
 pub(crate) const AUTO_COMPACTION_RATIO: usize = 85;
+pub(crate) const AGENT_RUN_CANCELLED_REASON: &str = "Stopped by user.";
 
 pub(crate) const MALFORMED_TOOL_RETRY_PROMPT: &str = "Your tool call was malformed. Retry with exact format:\n\
      ```tool_call\n{\"tool\": \"name\", \"arguments\": {...}}\n```";
@@ -54,6 +55,9 @@ pub(crate) const AUTO_CONTINUE_SUBSTANTIVE_TEXT_THRESHOLD: usize = 40;
 /// Typed errors from the agent loop.
 #[derive(Debug, thiserror::Error)]
 pub enum AgentRunError {
+    /// The run was cancelled by its owner.
+    #[error("agent run cancelled")]
+    Cancelled,
     /// The prompt reached the automatic checkpoint threshold.
     #[error("automatic context compaction required")]
     ContextCompactionRequired(Box<ContextCompactionRequest>),

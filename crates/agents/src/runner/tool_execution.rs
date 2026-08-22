@@ -8,6 +8,7 @@ use {
     },
     chelix_sessions::ToolResultStore,
     tokio::time::{Instant, MissedTickBehavior},
+    tokio_util::sync::CancellationToken,
     tracing::{debug, info, warn},
 };
 
@@ -18,9 +19,10 @@ use crate::{
 };
 
 use super::{
-    AgentRunError, OnToolLifecycle, RunnerToolLifecycleEvent, deliver_tool_lifecycle,
-    enrich_tool_arguments, log_tool_argument_diagnostic, public_tool_arguments,
-    resolve_tool_lookup, sanitize_tool_name, tool_result::persist_and_truncate,
+    AGENT_RUN_CANCELLED_REASON, AgentRunError, OnToolLifecycle, RunnerToolLifecycleEvent,
+    deliver_tool_lifecycle, enrich_tool_arguments, log_tool_argument_diagnostic,
+    public_tool_arguments, resolve_tool_lookup, sanitize_tool_name,
+    tool_result::persist_and_truncate,
 };
 
 #[derive(Debug)]
@@ -50,6 +52,25 @@ impl ToolInvocationExecutor<'_> {
         &self,
         tool_call: &ToolCall,
         first_sequence: u64,
+    ) -> Result<ToolExecutionOutcome, AgentRunError> {
+        self.execute_inner(tool_call, first_sequence, None).await
+    }
+
+    pub async fn execute_cancellable(
+        &self,
+        tool_call: &ToolCall,
+        first_sequence: u64,
+        cancellation_token: &CancellationToken,
+    ) -> Result<ToolExecutionOutcome, AgentRunError> {
+        self.execute_inner(tool_call, first_sequence, Some(cancellation_token))
+            .await
+    }
+
+    async fn execute_inner(
+        &self,
+        tool_call: &ToolCall,
+        first_sequence: u64,
+        cancellation_token: Option<&CancellationToken>,
     ) -> Result<ToolExecutionOutcome, AgentRunError> {
         let sanitized = sanitize_tool_name(&tool_call.name);
         if *sanitized != tool_call.name {
@@ -107,6 +128,19 @@ impl ToolInvocationExecutor<'_> {
         };
 
         let mut sequence = first_sequence;
+        if cancellation_token.is_some_and(CancellationToken::is_cancelled) {
+            self.emit(
+                tool_call,
+                &mut sequence,
+                ToolLifecycleUpdate::Cancelled {
+                    arguments: Some(public_arguments),
+                    reason: AGENT_RUN_CANCELLED_REASON.to_owned(),
+                },
+                None,
+            )
+            .await?;
+            return Err(AgentRunError::Cancelled);
+        }
         if let Some(error) = validation_error {
             let raw_result = serde_json::json!({ "error": error.clone() });
             let result = self
@@ -147,15 +181,34 @@ impl ToolInvocationExecutor<'_> {
         )
         .await?;
 
-        let raw_execution = self
-            .run_before_hook_and_execute(
-                tool_call,
-                &execution_name,
-                tool.as_ref(),
-                execution_arguments,
-                &mut sequence,
-            )
-            .await?;
+        let execution = self.run_before_hook_and_execute(
+            tool_call,
+            &execution_name,
+            tool.as_ref(),
+            execution_arguments,
+            &mut sequence,
+        );
+        let raw_execution = match cancellation_token {
+            Some(cancellation_token) => {
+                match cancellation_token.run_until_cancelled(execution).await {
+                    Some(result) => result?,
+                    None => {
+                        self.emit(
+                            tool_call,
+                            &mut sequence,
+                            ToolLifecycleUpdate::Cancelled {
+                                arguments: Some(public_arguments),
+                                reason: AGENT_RUN_CANCELLED_REASON.to_owned(),
+                            },
+                            None,
+                        )
+                        .await?;
+                        return Err(AgentRunError::Cancelled);
+                    },
+                }
+            },
+            None => execution.await?,
+        };
         let (success, wrapped_result, error, effective_arguments) = raw_execution;
         let public_arguments = public_tool_arguments(&effective_arguments);
         let has_raw_result = wrapped_result.get("result").is_some();

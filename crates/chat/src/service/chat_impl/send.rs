@@ -4,6 +4,7 @@ use std::{sync::Arc, time::Duration};
 
 use {
     serde_json::Value,
+    tokio_util::sync::CancellationToken,
     tracing::{debug, info, warn},
 };
 
@@ -799,8 +800,17 @@ impl LiveChatService {
         let terminal_runs = Arc::clone(&self.terminal_runs);
         let tools_config_source = self.tools_config_source.clone();
         let deferred_channel_target = deferred_channel_target.clone();
+        let cancellation_token = CancellationToken::new();
+        self.active_runs
+            .write()
+            .await
+            .insert(run_id.clone(), cancellation_token.clone());
+        self.active_runs_by_session
+            .write()
+            .await
+            .insert(session_key.clone(), run_id.clone());
 
-        let handle = tokio::spawn(async move {
+        let _run_task = tokio::spawn(async move {
             let permit = permit; // hold permit until agent run completes
             let ctx_ref = project_context.as_deref();
             if let Some(target) = deferred_channel_target {
@@ -847,6 +857,7 @@ impl LiveChatService {
                 if stream_only {
                     run_streaming(
                         persona,
+                        &cancellation_token,
                         &state,
                         &model_store,
                         &run_id_clone,
@@ -873,6 +884,7 @@ impl LiveChatService {
                     run_with_tools(
                         persona,
                         runtime_limits,
+                        &cancellation_token,
                         &state,
                         &model_store,
                         &run_id_clone,
@@ -907,7 +919,7 @@ impl LiveChatService {
                 }
             };
 
-            let assistant_text = if outer_agent_timeout_secs > 0 {
+            let run_outcome = if outer_agent_timeout_secs > 0 {
                 match tokio::time::timeout(Duration::from_secs(outer_agent_timeout_secs), agent_fut)
                     .await
                 {
@@ -955,7 +967,7 @@ impl LiveChatService {
                             payload["messageIndex"] = serde_json::json!(message_index);
                         }
                         broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
-                        None
+                        ChatRunOutcome::Failed
                     },
                 }
             } else {
@@ -973,7 +985,7 @@ impl LiveChatService {
                 let write_mode = extraction_write_mode;
                 // A "turn" = user + assistant = 2 messages.
                 let turn_number = count / 2;
-                if assistant_text.is_some()
+                if matches!(run_outcome, ChatRunOutcome::Completed(_))
                     && interval > 0
                     && turn_number > 0
                     && turn_number % interval == 0
@@ -1143,15 +1155,6 @@ impl LiveChatService {
                     .await;
             }
         });
-
-        self.active_runs
-            .write()
-            .await
-            .insert(run_id.clone(), handle.abort_handle());
-        self.active_runs_by_session
-            .write()
-            .await
-            .insert(session_key.clone(), run_id.clone());
 
         info!(
             run_id = %run_id,

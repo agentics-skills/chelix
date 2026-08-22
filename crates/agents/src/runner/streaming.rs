@@ -10,7 +10,7 @@ use {
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, histogram, labels, llm as llm_metrics};
 
-use futures::StreamExt;
+use {futures::StreamExt, tokio_util::sync::CancellationToken};
 
 use chelix_common::{
     ContextBudgetMetadata, ProviderSegmentMaterializer, ProviderSegmentOutcome,
@@ -30,14 +30,14 @@ use crate::{
 };
 
 use super::{
-    AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
-    FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent, OnToolLifecycle, RunnerEvent,
-    RunnerToolCall, RunnerToolLifecycleEvent, ToolCallBudget, ToolInvocationExecutor,
-    UsageAccumulator, apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
-    channel_binding_from_tool_context, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
-    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, fallback_final_text_source,
-    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
-    lifecycle_now_ms, record_answer_text,
+    AGENT_RUN_CANCELLED_REASON, AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError,
+    AgentRunResult, AssistantIterationOutput, FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT,
+    OnEvent, OnToolLifecycle, RunnerEvent, RunnerToolCall, RunnerToolLifecycleEvent,
+    ToolCallBudget, ToolInvocationExecutor, UsageAccumulator, apply_before_llm_call_modify_payload,
+    apply_loop_detector_intervention, channel_binding_from_tool_context, deliver_tool_lifecycle,
+    dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
+    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
+    is_substantive_answer_text, lifecycle_now_ms, record_answer_text,
     retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
     streaming_tool_call_message_content,
 };
@@ -106,19 +106,15 @@ async fn cancel_stream_tool_lifecycles(
     Ok(())
 }
 
-/// Close the provider segment of a failed attempt.
-///
-/// A failed attempt ends its provider segment, whether the loop retries or
-/// gives up. The segment is reported as a transport error so downstream
-/// consumers keep the partial output of the attempt instead of discarding it,
-/// merging it into the next attempt, or replaying it later as still active.
+/// Close an active provider segment with the supplied terminal outcome.
 ///
 /// A segment the provider never opened has nothing to close, and an already
 /// closed segment was closed by its own terminal event; both are left as they
 /// are. Any other rejection is a real ordering defect and is propagated.
-fn close_failed_segment(
+fn close_active_segment(
     materializer: &mut ProviderSegmentMaterializer,
     on_event: Option<&OnEvent>,
+    outcome: ProviderSegmentOutcome,
 ) -> Result<(), AgentRunError> {
     let Some(segment_id) = materializer.segment.segment_id.clone() else {
         return Ok(());
@@ -126,17 +122,15 @@ fn close_failed_segment(
     if materializer.segment.outcome != ProviderSegmentOutcome::Active {
         return Ok(());
     }
-    materializer
-        .close(ProviderSegmentOutcome::TransportError)
-        .map_err(|error| {
-            AgentRunError::Other(anyhow::anyhow!(
-                "provider segment close rejected after a failed attempt: {error}"
-            ))
-        })?;
+    materializer.close(outcome).map_err(|error| {
+        AgentRunError::Other(anyhow::anyhow!(
+            "provider segment close rejected with outcome {outcome:?}: {error}"
+        ))
+    })?;
     if let Some(cb) = on_event {
         cb(RunnerEvent::SegmentClose {
             segment_id,
-            outcome: ProviderSegmentOutcome::TransportError,
+            outcome,
             usage: None,
         });
     }
@@ -178,6 +172,7 @@ pub async fn run_agent_loop_streaming_with_limits(
     hook_registry: Option<Arc<HookRegistry>>,
     sender_name: Option<String>,
     steer_inbox: Option<super::SteerInbox>,
+    cancellation_token: &CancellationToken,
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let native_tools = provider.supports_tools();
@@ -257,12 +252,17 @@ pub async fn run_agent_loop_streaming_with_limits(
     // Every agent-facing tool result is persisted before it enters LLM context.
     let tool_result_store = ToolResultStore::new(chelix_config::data_dir().join("sessions"));
 
-    dispatch_before_agent_start_hook(
-        hook_registry.as_ref(),
-        &session_key_for_hooks,
-        provider.id(),
-    )
-    .await?;
+    match cancellation_token
+        .run_until_cancelled(dispatch_before_agent_start_hook(
+            hook_registry.as_ref(),
+            &session_key_for_hooks,
+            provider.id(),
+        ))
+        .await
+    {
+        Some(result) => result?,
+        None => return Err(AgentRunError::Cancelled),
+    };
 
     let mut iterations = 0;
     let mut tool_call_budget = ToolCallBudget::new(limits.max_tools_threshold);
@@ -291,6 +291,9 @@ pub async fn run_agent_loop_streaming_with_limits(
         .map(|names| names.iter().cloned().collect::<HashSet<_>>());
 
     loop {
+        if cancellation_token.is_cancelled() {
+            return Err(AgentRunError::Cancelled);
+        }
         iterations += 1;
 
         // Re-compute schemas each iteration so schemas revealed via get_tool appear immediately.
@@ -353,7 +356,11 @@ pub async fn run_agent_loop_streaming_with_limits(
                 tool_count: schemas_for_api.len(),
                 iteration: iterations,
             };
-            match hooks.dispatch(&payload).await {
+            let hook_action = cancellation_token
+                .run_until_cancelled(hooks.dispatch(&payload))
+                .await
+                .ok_or(AgentRunError::Cancelled)?;
+            match hook_action {
                 Ok(HookAction::Block(reason)) => {
                     warn!(reason = %reason, "LLM call blocked by BeforeLLMCall hook");
                     return Err(AgentRunError::Other(anyhow::anyhow!(
@@ -431,7 +438,33 @@ pub async fn run_agent_loop_streaming_with_limits(
         let mut request_usage = Usage::default();
         let mut stream_error: Option<String> = None;
 
-        while let Some(event) = stream.next().await {
+        loop {
+            let event = tokio::select! {
+                biased;
+                () = cancellation_token.cancelled() => {
+                    if let Some(cb) = on_event {
+                        cb(RunnerEvent::ThinkingDone);
+                    }
+                    cancel_stream_tool_lifecycles(
+                        on_tool_lifecycle,
+                        &tool_calls,
+                        &mut tool_lifecycle_sequences,
+                        AGENT_RUN_CANCELLED_REASON,
+                        &context_budget,
+                    )
+                    .await?;
+                    close_active_segment(
+                        &mut materializer,
+                        on_event,
+                        ProviderSegmentOutcome::Cancelled,
+                    )?;
+                    return Err(AgentRunError::Cancelled);
+                },
+                event = stream.next() => event,
+            };
+            let Some(event) = event else {
+                break;
+            };
             match event {
                 StreamEvent::SegmentStart { segment_id } => {
                     materializer = ProviderSegmentMaterializer::new(segment_id.clone());
@@ -612,7 +645,11 @@ pub async fn run_agent_loop_streaming_with_limits(
         if let Some(err) = stream_error {
             // The attempt is over either way, so its segment is closed before
             // the loop decides whether to retry or to give up.
-            close_failed_segment(&mut materializer, on_event)?;
+            close_active_segment(
+                &mut materializer,
+                on_event,
+                ProviderSegmentOutcome::TransportError,
+            )?;
             if let Some(delay_ms) = next_retry_delay_ms(
                 &err,
                 &mut server_retries_remaining,
@@ -643,7 +680,15 @@ pub async fn run_agent_loop_streaming_with_limits(
                         delay_ms,
                     });
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                if cancellation_token
+                    .run_until_cancelled(tokio::time::sleep(std::time::Duration::from_millis(
+                        delay_ms,
+                    )))
+                    .await
+                    .is_none()
+                {
+                    return Err(AgentRunError::Cancelled);
+                }
                 continue;
             }
             return Err(AgentRunError::Other(anyhow::anyhow!(err)));
@@ -778,18 +823,30 @@ pub async fn run_agent_loop_streaming_with_limits(
             );
         }
 
-        if let Err(error) = dispatch_after_llm_call_hook(
-            hook_registry.as_ref(),
-            &session_key_for_hooks,
-            provider.name(),
-            provider.id(),
-            (!accumulated_text.is_empty()).then(|| accumulated_text.clone()),
-            &tool_calls,
-            &request_usage,
-            iterations,
-        )
-        .await
-        {
+        let after_llm_call = cancellation_token
+            .run_until_cancelled(dispatch_after_llm_call_hook(
+                hook_registry.as_ref(),
+                &session_key_for_hooks,
+                provider.name(),
+                provider.id(),
+                (!accumulated_text.is_empty()).then(|| accumulated_text.clone()),
+                &tool_calls,
+                &request_usage,
+                iterations,
+            ))
+            .await;
+        let Some(after_llm_call) = after_llm_call else {
+            cancel_stream_tool_lifecycles(
+                on_tool_lifecycle,
+                &tool_calls,
+                &mut tool_lifecycle_sequences,
+                AGENT_RUN_CANCELLED_REASON,
+                &context_budget,
+            )
+            .await?;
+            return Err(AgentRunError::Cancelled);
+        };
+        if let Err(error) = after_llm_call {
             cancel_stream_tool_lifecycles(
                 on_tool_lifecycle,
                 &tool_calls,
@@ -982,7 +1039,11 @@ pub async fn run_agent_loop_streaming_with_limits(
                         tool_call.id
                     ))
                 })?;
-            tool_futures.push(executor.execute(tool_call, sequence));
+            tool_futures.push(executor.execute_cancellable(
+                tool_call,
+                sequence,
+                cancellation_token,
+            ));
         }
         let results = futures::future::join_all(tool_futures)
             .await

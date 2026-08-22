@@ -33,15 +33,16 @@ pub type SteerInbox = std::sync::Arc<tokio::sync::Mutex<Vec<String>>>;
 // (`non_streaming`, `streaming`) can continue to import via `super::item_name`.
 pub(crate) use {
     helpers::{
-        AUTO_CONTINUE_NUDGE, MALFORMED_TOOL_RETRY_PROMPT, ToolCallBudget, UsageAccumulator,
-        apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
-        channel_binding_from_tool_context, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
-        dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, enrich_tool_arguments,
-        evaluate_context_budget, fallback_final_text_source, find_empty_tool_name_call,
-        finish_agent_run, has_named_tool_call, is_substantive_answer_text,
-        log_tool_argument_diagnostic, public_tool_arguments, record_answer_text,
-        resolve_tool_lookup, sanitize_tool_name, should_trigger_automatic_checkpoint,
-        split_context_for_compaction, streaming_tool_call_message_content,
+        AGENT_RUN_CANCELLED_REASON, AUTO_CONTINUE_NUDGE, MALFORMED_TOOL_RETRY_PROMPT,
+        ToolCallBudget, UsageAccumulator, apply_before_llm_call_modify_payload,
+        apply_loop_detector_intervention, channel_binding_from_tool_context,
+        deliver_tool_lifecycle, dispatch_after_llm_call_hook, dispatch_before_agent_start_hook,
+        empty_tool_name_retry_prompt, enrich_tool_arguments, evaluate_context_budget,
+        fallback_final_text_source, find_empty_tool_name_call, finish_agent_run,
+        has_named_tool_call, is_substantive_answer_text, log_tool_argument_diagnostic,
+        public_tool_arguments, record_answer_text, resolve_tool_lookup, sanitize_tool_name,
+        should_trigger_automatic_checkpoint, split_context_for_compaction,
+        streaming_tool_call_message_content,
     },
     tool_execution::{ToolInvocationExecutor, lifecycle_now_ms},
 };

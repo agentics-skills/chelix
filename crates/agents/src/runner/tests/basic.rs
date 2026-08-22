@@ -684,6 +684,327 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     assert!(input_ready.get("_tool_call_id").is_none());
 }
 
+struct InfiniteToolArgumentsProvider;
+
+#[async_trait]
+impl LlmProvider for InfiniteToolArgumentsProvider {
+    fn name(&self) -> &str {
+        "infinite-tool-arguments"
+    }
+
+    fn id(&self) -> &str {
+        "infinite-tool-arguments-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[serde_json::Value],
+    ) -> Result<CompletionResponse> {
+        anyhow::bail!("streaming runner must not call complete")
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::empty())
+    }
+
+    fn stream_with_tools_and_options(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+        _options: AgentToolControls,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        use tokio_stream::StreamExt;
+
+        let initial = tokio_stream::iter(vec![
+            StreamEvent::SegmentStart {
+                segment_id: chelix_common::ProviderSegmentId::new("segment-infinite-arguments"),
+            },
+            StreamEvent::ToolCallStart {
+                id: "call-infinite-arguments".into(),
+                name: "echo_tool".into(),
+                index: 0,
+            },
+        ]);
+        let deltas = futures::stream::unfold((), |_| async {
+            tokio::task::yield_now().await;
+            Some((
+                StreamEvent::ToolCallArgumentsDelta {
+                    index: 0,
+                    delta: r#"{"text":"same"}"#.into(),
+                },
+                (),
+            ))
+        });
+        Box::pin(initial.chain(deltas))
+    }
+}
+
+#[tokio::test]
+async fn streaming_tool_arguments_are_cancelled_without_waiting_for_stream_completion() {
+    let provider = Arc::new(InfiniteToolArgumentsProvider);
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(EchoTool));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let input_streaming_seen = Arc::new(tokio::sync::Notify::new());
+    let on_tool_lifecycle: OnToolLifecycle = {
+        let lifecycle_events = Arc::clone(&lifecycle_events);
+        let input_streaming_seen = Arc::clone(&input_streaming_seen);
+        Arc::new(move |event| {
+            if event.lifecycle.stage()
+                == chelix_common::tool_lifecycle::ToolLifecycleStage::InputStreaming
+            {
+                input_streaming_seen.notify_one();
+            }
+            lifecycle_events.lock().unwrap().push(event);
+            Box::pin(async { Ok(()) })
+        })
+    };
+    let runner_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_event: OnEvent = {
+        let runner_events = Arc::clone(&runner_events);
+        Box::new(move |event| runner_events.lock().unwrap().push(event))
+    };
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    let user_content = UserContent::text("repeat arguments forever");
+
+    let run = super::super::streaming::run_agent_loop_streaming_with_limits(
+        provider,
+        &tools,
+        &tools_config,
+        "You are a test bot.",
+        &user_content,
+        Some(&on_event),
+        Some(&on_tool_lifecycle),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &cancellation_token,
+        test_agent_loop_limits(),
+    );
+    let cancel = async {
+        input_streaming_seen.notified().await;
+        cancellation_token.cancel();
+    };
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        let (result, ()) = tokio::join!(run, cancel);
+        result
+    })
+    .await
+    .unwrap_or_else(|_| panic!("runner did not stop after cancellation"));
+
+    assert!(matches!(result, Err(AgentRunError::Cancelled)));
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let invocation_events = lifecycle_events
+        .iter()
+        .filter(|event| event.lifecycle.tool_call_id == "call-infinite-arguments")
+        .collect::<Vec<_>>();
+    assert!(invocation_events.iter().any(|event| {
+        event.lifecycle.stage() == chelix_common::tool_lifecycle::ToolLifecycleStage::InputStreaming
+    }));
+    assert!(matches!(
+        invocation_events.last().map(|event| &event.lifecycle.update),
+        Some(chelix_common::tool_lifecycle::ToolLifecycleUpdate::Cancelled {
+            arguments: None,
+            reason,
+        }) if reason == "Stopped by user."
+    ));
+    assert!(invocation_events.iter().all(|event| {
+        event.lifecycle.stage() != chelix_common::tool_lifecycle::ToolLifecycleStage::InputReady
+    }));
+    let runner_events = runner_events.lock().unwrap();
+    assert!(runner_events.iter().any(|event| {
+        matches!(event, RunnerEvent::SegmentClose {
+            outcome: chelix_common::ProviderSegmentOutcome::Cancelled,
+            ..
+        })
+    }));
+}
+
+struct NeverFinishesTool;
+
+#[async_trait]
+impl crate::tool_registry::AgentTool for NeverFinishesTool {
+    fn name(&self) -> &str {
+        "never_finishes"
+    }
+
+    fn description(&self) -> &str {
+        "Wait forever"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+        })
+    }
+
+    async fn execute(&self, _params: serde_json::Value) -> Result<serde_json::Value> {
+        std::future::pending().await
+    }
+}
+
+struct ExecutingToolProvider;
+
+#[async_trait]
+impl LlmProvider for ExecutingToolProvider {
+    fn name(&self) -> &str {
+        "executing-tool"
+    }
+
+    fn id(&self) -> &str {
+        "executing-tool-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[serde_json::Value],
+    ) -> Result<CompletionResponse> {
+        anyhow::bail!("streaming runner must not call complete")
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::empty())
+    }
+
+    fn stream_with_tools_and_options(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+        _options: AgentToolControls,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::iter(vec![
+            StreamEvent::ToolCallStart {
+                id: "call-never-finishes".into(),
+                name: "never_finishes".into(),
+                index: 0,
+            },
+            StreamEvent::ToolCallArgumentsDelta {
+                index: 0,
+                delta: "{}".into(),
+            },
+            StreamEvent::ToolCallComplete { index: 0 },
+            StreamEvent::Done(Usage::default()),
+        ]))
+    }
+}
+
+#[tokio::test]
+async fn executing_tool_is_cancelled_by_agent_run_token() {
+    let provider = Arc::new(ExecutingToolProvider);
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(NeverFinishesTool));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let executing_seen = Arc::new(tokio::sync::Notify::new());
+    let on_tool_lifecycle: OnToolLifecycle = {
+        let lifecycle_events = Arc::clone(&lifecycle_events);
+        let executing_seen = Arc::clone(&executing_seen);
+        Arc::new(move |event| {
+            if event.lifecycle.stage()
+                == chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+            {
+                executing_seen.notify_one();
+            }
+            lifecycle_events.lock().unwrap().push(event);
+            Box::pin(async { Ok(()) })
+        })
+    };
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    let user_content = UserContent::text("run the tool forever");
+
+    let run = super::super::streaming::run_agent_loop_streaming_with_limits(
+        provider,
+        &tools,
+        &tools_config,
+        "You are a test bot.",
+        &user_content,
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &cancellation_token,
+        test_agent_loop_limits(),
+    );
+    let cancel = async {
+        executing_seen.notified().await;
+        cancellation_token.cancel();
+    };
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        let (result, ()) = tokio::join!(run, cancel);
+        result
+    })
+    .await
+    .unwrap_or_else(|_| panic!("running tool did not stop after cancellation"));
+
+    assert!(matches!(result, Err(AgentRunError::Cancelled)));
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let invocation_events = lifecycle_events
+        .iter()
+        .filter(|event| event.lifecycle.tool_call_id == "call-never-finishes")
+        .collect::<Vec<_>>();
+    assert!(invocation_events.iter().any(|event| {
+        event.lifecycle.stage() == chelix_common::tool_lifecycle::ToolLifecycleStage::Executing
+    }));
+    assert!(matches!(
+        invocation_events.last().map(|event| &event.lifecycle.update),
+        Some(chelix_common::tool_lifecycle::ToolLifecycleUpdate::Cancelled {
+            arguments: Some(arguments),
+            reason,
+        }) if arguments == &serde_json::json!({}) && reason == "Stopped by user."
+    ));
+    assert!(invocation_events.iter().all(|event| {
+        event.lifecycle.stage() != chelix_common::tool_lifecycle::ToolLifecycleStage::Completed
+    }));
+}
+
 #[tokio::test]
 async fn test_waiting_for_execution_receipt_blocks_tool_dispatch() {
     let provider = Arc::new(ToolCallContextStreamingProvider {
@@ -781,6 +1102,76 @@ async fn test_non_streaming_runner_dispatches_before_agent_start_hook() {
         HookPayload::BeforeAgentStart { session_key, model }
             if session_key == "session-123" && model == "mock-model"
     ));
+}
+
+struct HangingBeforeLlmHook {
+    entered: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait]
+impl HookHandler for HangingBeforeLlmHook {
+    fn name(&self) -> &str {
+        "hanging-before-llm-hook"
+    }
+
+    fn events(&self) -> &[HookEvent] {
+        static EVENTS: [HookEvent; 1] = [HookEvent::BeforeLLMCall];
+        &EVENTS
+    }
+
+    async fn handle(
+        &self,
+        _event: HookEvent,
+        _payload: &HookPayload,
+    ) -> chelix_common::error::Result<HookAction> {
+        self.entered.notify_one();
+        std::future::pending().await
+    }
+}
+
+#[tokio::test]
+async fn hanging_before_llm_hook_is_cancelled_by_agent_run_token() {
+    let provider = Arc::new(MockProvider {
+        response_text: "must not be reached".into(),
+    });
+    let tools = ToolRegistry::new();
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let mut hooks = HookRegistry::new();
+    hooks.register(Arc::new(HangingBeforeLlmHook {
+        entered: Arc::clone(&entered),
+    }));
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    let user_content = UserContent::text("wait in hook");
+
+    let run = super::super::streaming::run_agent_loop_streaming_with_limits(
+        provider,
+        &tools,
+        &tools_config,
+        "You are a test bot.",
+        &user_content,
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::new(hooks)),
+        None,
+        None,
+        &cancellation_token,
+        test_agent_loop_limits(),
+    );
+    let cancel = async {
+        entered.notified().await;
+        cancellation_token.cancel();
+    };
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        let (result, ()) = tokio::join!(run, cancel);
+        result
+    })
+    .await
+    .unwrap_or_else(|_| panic!("runner did not stop while BeforeLLMCall hook was pending"));
+
+    assert!(matches!(result, Err(AgentRunError::Cancelled)));
 }
 
 struct InjectBeforeLlmSystemHook;
