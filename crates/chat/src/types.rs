@@ -207,6 +207,12 @@ pub(crate) struct AssistantTurnOutput {
     pub llm_api_response: Option<Value>,
 }
 
+pub(crate) enum ChatRunOutcome {
+    Completed(Box<AssistantTurnOutput>),
+    Cancelled,
+    Failed,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_chat_final_broadcast(
     run_id: &str,

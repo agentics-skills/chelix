@@ -22,6 +22,7 @@ use std::sync::Arc;
 use {
     chelix_agents::model::{CompletionOptions, LlmProvider, values_to_chat_messages},
     chelix_sessions::{PersistedMessage, store::SessionStore},
+    tokio_util::sync::CancellationToken,
     tracing::info,
 };
 
@@ -180,6 +181,20 @@ impl CheckpointOutcome {
     }
 }
 
+#[derive(Debug)]
+pub(crate) enum CancellableCompactionOutcome {
+    Completed(CheckpointOutcome),
+    Cancelled,
+}
+
+struct PreparedCheckpoint {
+    message: serde_json::Value,
+    model: String,
+    input_tokens: u32,
+    output_tokens: u32,
+    messages_summarized: u32,
+}
+
 /// Summarize the session and append a checkpoint message.
 ///
 /// The request is built to share the provider prompt-cache prefix with the
@@ -218,10 +233,62 @@ pub(crate) async fn summarize_session_from_prompt(
     store: &Arc<SessionStore>,
     session_key: &str,
     provider: &dyn LlmProvider,
-    mut messages: Vec<chelix_agents::ChatMessage>,
+    messages: Vec<chelix_agents::ChatMessage>,
     continuation_messages: &[chelix_agents::ChatMessage],
     tools: &[serde_json::Value],
 ) -> error::Result<CheckpointOutcome> {
+    let prepared = prepare_checkpoint_from_prompt(
+        store,
+        session_key,
+        provider,
+        messages,
+        continuation_messages,
+        tools,
+    )
+    .await?;
+    append_prepared_checkpoint(store, session_key, prepared).await
+}
+
+pub(crate) async fn summarize_session_from_prompt_cancellable(
+    store: &Arc<SessionStore>,
+    session_key: &str,
+    provider: &dyn LlmProvider,
+    messages: Vec<chelix_agents::ChatMessage>,
+    continuation_messages: &[chelix_agents::ChatMessage],
+    tools: &[serde_json::Value],
+    cancellation_token: &CancellationToken,
+) -> error::Result<CancellableCompactionOutcome> {
+    let Some(prepared) = cancellation_token
+        .run_until_cancelled(prepare_checkpoint_from_prompt(
+            store,
+            session_key,
+            provider,
+            messages,
+            continuation_messages,
+            tools,
+        ))
+        .await
+    else {
+        return Ok(CancellableCompactionOutcome::Cancelled);
+    };
+    let prepared = prepared?;
+    if cancellation_token.is_cancelled() {
+        return Ok(CancellableCompactionOutcome::Cancelled);
+    }
+
+    // Once persistence starts, let the checkpoint commit finish atomically.
+    let outcome = append_prepared_checkpoint(store, session_key, prepared).await?;
+    Ok(CancellableCompactionOutcome::Completed(outcome))
+}
+
+async fn prepare_checkpoint_from_prompt(
+    store: &Arc<SessionStore>,
+    session_key: &str,
+    provider: &dyn LlmProvider,
+    mut messages: Vec<chelix_agents::ChatMessage>,
+    continuation_messages: &[chelix_agents::ChatMessage],
+    tools: &[serde_json::Value],
+) -> error::Result<PreparedCheckpoint> {
     let history = store
         .read(session_key)
         .await
@@ -274,29 +341,41 @@ pub(crate) async fn summarize_session_from_prompt(
         response.usage.output_tokens,
         u32::try_from(messages_summarized).unwrap_or(u32::MAX),
     );
-    let message = checkpoint.to_value();
+    Ok(PreparedCheckpoint {
+        message: checkpoint.to_value(),
+        model: provider.id().to_string(),
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens,
+        messages_summarized: u32::try_from(messages_summarized).unwrap_or(u32::MAX),
+    })
+}
 
+async fn append_prepared_checkpoint(
+    store: &Arc<SessionStore>,
+    session_key: &str,
+    prepared: PreparedCheckpoint,
+) -> error::Result<CheckpointOutcome> {
     let index = store
-        .append_with_index(session_key, &message)
+        .append_with_index(session_key, &prepared.message)
         .await
         .map_err(|source| Error::external("failed to append checkpoint", source))?;
 
     info!(
         session = %session_key,
-        model = provider.id(),
-        input_tokens = response.usage.input_tokens,
-        output_tokens = response.usage.output_tokens,
-        messages_summarized,
+        model = %prepared.model,
+        input_tokens = prepared.input_tokens,
+        output_tokens = prepared.output_tokens,
+        messages_summarized = prepared.messages_summarized,
         "compaction checkpoint appended"
     );
 
     Ok(CheckpointOutcome {
-        message,
+        message: prepared.message,
         index,
-        model: provider.id().to_string(),
-        input_tokens: response.usage.input_tokens,
-        output_tokens: response.usage.output_tokens,
-        messages_summarized: u32::try_from(messages_summarized).unwrap_or(u32::MAX),
+        model: prepared.model,
+        input_tokens: prepared.input_tokens,
+        output_tokens: prepared.output_tokens,
+        messages_summarized: prepared.messages_summarized,
     })
 }
 
@@ -515,6 +594,50 @@ mod tests {
         }
     }
 
+    struct HangingProvider {
+        entered: tokio::sync::Notify,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for HangingProvider {
+        fn name(&self) -> &str {
+            "hanging"
+        }
+
+        fn id(&self) -> &str {
+            "hanging-model"
+        }
+
+        fn max_output_tokens(&self) -> Option<u32> {
+            Some(12_800)
+        }
+
+        async fn complete(
+            &self,
+            _messages: &[ChatMessage],
+            _tools: &[serde_json::Value],
+        ) -> anyhow::Result<CompletionResponse> {
+            std::future::pending().await
+        }
+
+        async fn complete_with_options(
+            &self,
+            _messages: &[ChatMessage],
+            _tools: &[serde_json::Value],
+            _options: &CompletionOptions,
+        ) -> anyhow::Result<CompletionResponse> {
+            self.entered.notify_one();
+            std::future::pending().await
+        }
+
+        fn stream(
+            &self,
+            _messages: Vec<ChatMessage>,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            Box::pin(tokio_stream::empty())
+        }
+    }
+
     fn test_store() -> (tempfile::TempDir, Arc<SessionStore>) {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -585,6 +708,72 @@ mod tests {
         assert_eq!(outcome.index, before.len());
         assert_eq!(outcome.model, "mock-model");
         assert_eq!(outcome.messages_summarized, 2);
+    }
+
+    #[tokio::test]
+    async fn automatic_summary_returns_the_committed_checkpoint() {
+        let (_dir, store) = test_store();
+        seed_history(&store, "committed-summary").await;
+        let before = store.read("committed-summary").await.unwrap();
+        let provider = MockProvider::new(Some("<summary>committed</summary>"));
+        let cancellation_token = CancellationToken::new();
+
+        let result = summarize_session_from_prompt_cancellable(
+            &store,
+            "committed-summary",
+            &provider,
+            vec![ChatMessage::system("system")],
+            &[],
+            &[],
+            &cancellation_token,
+        )
+        .await
+        .unwrap();
+        let outcome = match result {
+            CancellableCompactionOutcome::Completed(outcome) => outcome,
+            CancellableCompactionOutcome::Cancelled => {
+                panic!("committed checkpoint was reported as cancelled")
+            },
+        };
+
+        let after = store.read("committed-summary").await.unwrap();
+        assert_eq!(after.len(), before.len() + 1);
+        assert_eq!(outcome.index, before.len());
+        assert_eq!(after[outcome.index], outcome.message);
+    }
+
+    #[tokio::test]
+    async fn automatic_summary_request_stops_without_appending_after_cancellation() {
+        let (_dir, store) = test_store();
+        seed_history(&store, "cancel-summary").await;
+        let before = store.read("cancel-summary").await.unwrap();
+        let provider = HangingProvider {
+            entered: tokio::sync::Notify::new(),
+        };
+        let cancellation_token = CancellationToken::new();
+
+        let compaction = summarize_session_from_prompt_cancellable(
+            &store,
+            "cancel-summary",
+            &provider,
+            vec![ChatMessage::system("system")],
+            &[],
+            &[],
+            &cancellation_token,
+        );
+        tokio::pin!(compaction);
+        tokio::select! {
+            () = provider.entered.notified() => {},
+            result = &mut compaction => panic!("summary request completed before cancellation: {result:?}"),
+        }
+        cancellation_token.cancel();
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(1), compaction)
+            .await
+            .unwrap_or_else(|_| panic!("summary request did not stop after cancellation"))
+            .unwrap();
+        assert!(matches!(result, CancellableCompactionOutcome::Cancelled));
+        assert_eq!(store.read("cancel-summary").await.unwrap(), before);
     }
 
     #[tokio::test]

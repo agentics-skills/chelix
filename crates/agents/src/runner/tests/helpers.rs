@@ -10,6 +10,7 @@ use {
     chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload, HookRegistry},
     std::{pin::Pin, sync::Arc},
     tokio_stream::Stream,
+    tokio_util::sync::CancellationToken,
 };
 
 // Re-export commonly used items for test submodules.
@@ -268,6 +269,7 @@ pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
     steer_inbox: Option<super::super::SteerInbox>,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
+    let cancellation_token = CancellationToken::new();
     super::super::streaming::run_agent_loop_streaming_with_limits(
         provider,
         tools,
@@ -281,6 +283,7 @@ pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
         hook_registry,
         sender_name,
         steer_inbox,
+        &cancellation_token,
         test_agent_loop_limits(),
     )
     .await
@@ -301,6 +304,7 @@ pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
+    let cancellation_token = CancellationToken::new();
     super::super::streaming::run_agent_loop_streaming_with_limits(
         provider,
         tools,
@@ -314,6 +318,7 @@ pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
         hook_registry,
         sender_name,
         steer_inbox,
+        &cancellation_token,
         limits,
     )
     .await
@@ -333,6 +338,7 @@ pub(super) async fn run_agent_loop_streaming_with_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
+    let cancellation_token = CancellationToken::new();
     super::super::streaming::run_agent_loop_streaming_with_limits(
         provider,
         tools,
@@ -346,6 +352,7 @@ pub(super) async fn run_agent_loop_streaming_with_limits(
         hook_registry,
         sender_name,
         steer_inbox,
+        &cancellation_token,
         limits,
     )
     .await

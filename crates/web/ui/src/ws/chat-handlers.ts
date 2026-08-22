@@ -734,6 +734,10 @@ function handleAutoCompactDone(p: ChatPayload, activePage: boolean, eventSession
 	renderCheckpointFromPayload(p, activePage, activePage, eventSession);
 }
 
+function handleAutoCompactCancelled(p: ChatPayload, activePage: boolean): void {
+	if (activePage) removeCompactingStatus(p);
+}
+
 function structuredChatError(p: ChatPayload): ChatError | null {
 	return p.error && typeof p.error === "object" ? p.error : null;
 }
@@ -749,6 +753,7 @@ function handleChatAutoCompact(p: ChatPayload, isActive: boolean, isChatPage: bo
 	const activePage = isActive && isChatPage;
 	if (p.phase === "start") handleAutoCompactStart(p, activePage);
 	if (p.phase === "done") handleAutoCompactDone(p, activePage, eventSession);
+	if (p.phase === "cancelled") handleAutoCompactCancelled(p, activePage);
 	if (p.phase === "error") handleAutoCompactError(p, activePage);
 }
 

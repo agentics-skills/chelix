@@ -10,6 +10,7 @@ use std::{
 use {
     serde_json::Value,
     tokio::sync::{Mutex, RwLock},
+    tokio_util::sync::CancellationToken,
     tracing::{info, warn},
 };
 
@@ -26,7 +27,10 @@ use {
         },
         tool_registry::ToolRegistry,
     },
-    chelix_common::tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleStage, ToolLifecycleUpdate},
+    chelix_common::{
+        ContextBudgetMetadata,
+        tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleStage, ToolLifecycleUpdate},
+    },
     chelix_config::{AgentRuntimeLimits, ToolMode},
     chelix_sessions::{PersistedMessage, store::SessionStore},
 };
@@ -55,8 +59,8 @@ use crate::{
     runtime::ChatRuntime,
     service::{
         ActiveAssistantDraft, EventForwarderResult, build_persisted_tool_call,
-        finalize_persisted_assistant_message, persist_active_assistant_draft,
-        persist_final_assistant_segment,
+        finalize_aborted_tool_segment, finalize_persisted_assistant_message,
+        latest_tool_segment_index, persist_active_assistant_draft, persist_final_assistant_segment,
     },
     types::*,
 };
@@ -150,6 +154,50 @@ async fn persist_tool_loop_partial(
             "assistant persistence dependencies are inconsistent",
         )),
     }
+}
+
+async fn persist_aborted_tool_loop(
+    session_store: Option<&Arc<SessionStore>>,
+    active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
+    session_key: &str,
+    tool_segment_indices: &HashMap<String, usize>,
+) -> crate::error::Result<Option<(Value, usize)>> {
+    if let Some(partial) =
+        persist_tool_loop_partial(session_store, active_partial_assistant, session_key).await?
+    {
+        return Ok(Some(partial));
+    }
+
+    let Some(store) = session_store else {
+        return Ok(None);
+    };
+    let Some(message_index) = latest_tool_segment_index(tool_segment_indices) else {
+        return Ok(None);
+    };
+    let finalized = store
+        .update_typed_at(session_key, message_index, |existing| {
+            let duration_ms = match &existing {
+                PersistedMessage::Assistant { created_at, .. } => created_at
+                    .map(|started_at| now_ms().saturating_sub(started_at))
+                    .unwrap_or_default(),
+                _ => 0,
+            };
+            finalize_aborted_tool_segment(existing, duration_ms)
+        })
+        .await
+        .map_err(|source| {
+            crate::error::Error::external(
+                "failed to finalize assistant tool segment after cancellation",
+                source,
+            )
+        })?;
+    if !matches!(finalized, PersistedMessage::Assistant { .. }) {
+        return Err(crate::error::Error::message(format!(
+            "message index {message_index} is not an assistant tool segment"
+        )));
+    }
+
+    Ok(Some((finalized.to_value(), message_index)))
 }
 
 fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, usize)>) {
@@ -545,9 +593,73 @@ async fn dispatch_completed_tool_side_effects(
     }
 }
 
+#[derive(Clone, Copy)]
+enum AutoCompactionTerminal<'a> {
+    Cancelled,
+    Done(&'a compaction::CheckpointOutcome),
+    Error(&'a str),
+}
+
+fn auto_compaction_terminal_payload(
+    run_id: &str,
+    session_key: &str,
+    context_budget: &ContextBudgetMetadata,
+    terminal: AutoCompactionTerminal<'_>,
+) -> Value {
+    match terminal {
+        AutoCompactionTerminal::Cancelled => serde_json::json!({
+            "runId": run_id,
+            "sessionKey": session_key,
+            "state": "auto_compact",
+            "phase": "cancelled",
+            "reason": "agent_loop_threshold",
+            "contextBudget": context_budget,
+        }),
+        AutoCompactionTerminal::Done(outcome) => {
+            let mut payload = serde_json::json!({
+                "runId": run_id,
+                "sessionKey": session_key,
+                "state": "auto_compact",
+                "phase": "done",
+                "reason": "agent_loop_threshold",
+                "contextBudget": context_budget,
+            });
+            if let (Some(obj), Some(meta)) = (
+                payload.as_object_mut(),
+                outcome.broadcast_metadata().as_object().cloned(),
+            ) {
+                obj.extend(meta);
+            }
+            payload
+        },
+        AutoCompactionTerminal::Error(error) => serde_json::json!({
+            "runId": run_id,
+            "sessionKey": session_key,
+            "state": "auto_compact",
+            "phase": "error",
+            "error": error,
+        }),
+    }
+}
+
+async fn finish_auto_compaction(
+    state: &Arc<dyn ChatRuntime>,
+    run_id: &str,
+    session_key: &str,
+    context_budget: &ContextBudgetMetadata,
+    terminal: AutoCompactionTerminal<'_>,
+) {
+    let payload = auto_compaction_terminal_payload(run_id, session_key, context_budget, terminal);
+    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+    if let AutoCompactionTerminal::Done(outcome) = terminal {
+        notify_channels_of_compaction(state, session_key, outcome).await;
+    }
+}
+
 pub(crate) async fn run_with_tools(
     persona: PromptPersona,
     runtime_limits: AgentRuntimeLimits,
+    cancellation_token: &CancellationToken,
     state: &Arc<dyn ChatRuntime>,
     model_store: &Arc<RwLock<DisabledModelsStore>>,
     run_id: &str,
@@ -579,7 +691,7 @@ pub(crate) async fn run_with_tools(
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
     sender_name: Option<String>,
     tool_controls: Option<AgentToolControls>,
-) -> Option<AssistantTurnOutput> {
+) -> ChatRunOutcome {
     let run_started = Instant::now();
     info!(
         agent_id,
@@ -630,7 +742,7 @@ pub(crate) async fn run_with_tools(
             let payload_val = serde_json::to_value(&error_payload).unwrap();
             terminal_runs.write().await.insert(run_id.to_string());
             broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-            return None;
+            return ChatRunOutcome::Failed;
         },
     };
 
@@ -1120,6 +1232,7 @@ pub(crate) async fn run_with_tools(
             hook_registry.clone(),
             sender_name.clone(),
             Some(steer_inbox.clone()),
+            cancellation_token,
             AgentLoopLimits {
                 max_tools_threshold: runtime_limits.max_tools_threshold,
                 max_tool_result_bytes: Some(runtime_limits.max_tool_result_bytes),
@@ -1153,7 +1266,7 @@ pub(crate) async fn run_with_tools(
                 completed_usage.saturating_add_assign(&request.usage);
                 completed_raw_responses.extend(request.raw_llm_responses.iter().cloned());
 
-                let context_budget = &request.metadata;
+                let context_budget = request.metadata;
                 info!(
                     run_id,
                     session = session_key,
@@ -1182,79 +1295,121 @@ pub(crate) async fn run_with_tools(
 
                 // All tool-call events precede this trigger in the ordered
                 // queue. Wait until they are persisted before checkpointing.
-                event_barrier.wait_for(event_barrier.snapshot()).await;
+                let event_target = event_barrier.snapshot();
+                if cancellation_token
+                    .run_until_cancelled(event_barrier.wait_for(event_target))
+                    .await
+                    .is_none()
+                {
+                    finish_auto_compaction(
+                        state,
+                        run_id,
+                        session_key,
+                        &context_budget,
+                        AutoCompactionTerminal::Cancelled,
+                    )
+                    .await;
+                    break Err(AgentRunError::Cancelled);
+                }
 
-                let outcome = match compaction::summarize_session_from_prompt(
+                let outcome = match compaction::summarize_session_from_prompt_cancellable(
                     store,
                     session_key,
                     &*provider_ref,
                     request.summary_messages,
                     &request.continuation_messages,
                     &request.tool_schemas,
+                    cancellation_token,
                 )
                 .await
                 {
-                    Ok(outcome) => outcome,
-                    Err(error) => {
-                        warn!(run_id, error = %error, "automatic compaction failed");
-                        broadcast(
+                    Ok(compaction::CancellableCompactionOutcome::Completed(outcome)) => outcome,
+                    Ok(compaction::CancellableCompactionOutcome::Cancelled) => {
+                        finish_auto_compaction(
                             state,
-                            "chat",
-                            serde_json::json!({
-                                "runId": run_id,
-                                "sessionKey": session_key,
-                                "state": "auto_compact",
-                                "phase": "error",
-                                "error": error.to_string(),
-                            }),
-                            BroadcastOpts::default(),
+                            run_id,
+                            session_key,
+                            &context_budget,
+                            AutoCompactionTerminal::Cancelled,
                         )
                         .await;
-                        break Err(AgentRunError::Other(anyhow::anyhow!(error.to_string())));
+                        break Err(AgentRunError::Cancelled);
+                    },
+                    Err(error) => {
+                        warn!(run_id, error = %error, "automatic compaction failed");
+                        let error_message = error.to_string();
+                        finish_auto_compaction(
+                            state,
+                            run_id,
+                            session_key,
+                            &context_budget,
+                            AutoCompactionTerminal::Error(&error_message),
+                        )
+                        .await;
+                        break Err(AgentRunError::Other(anyhow::anyhow!(error_message)));
                     },
                 };
 
-                let compacted_chat =
-                    match compaction::reload_checkpoint_context(store, session_key, &outcome).await
-                    {
-                        Ok(context) => context,
-                        Err(error) => {
-                            warn!(run_id, error = %error, "automatic compaction reload failed");
-                            broadcast(
-                                state,
-                                "chat",
-                                serde_json::json!({
-                                    "runId": run_id,
-                                    "sessionKey": session_key,
-                                    "state": "auto_compact",
-                                    "phase": "error",
-                                    "error": error.to_string(),
-                                }),
-                                BroadcastOpts::default(),
-                            )
-                            .await;
-                            break Err(AgentRunError::Other(anyhow::anyhow!(error.to_string())));
-                        },
-                    };
+                if cancellation_token.is_cancelled() {
+                    finish_auto_compaction(
+                        state,
+                        run_id,
+                        session_key,
+                        &context_budget,
+                        AutoCompactionTerminal::Done(&outcome),
+                    )
+                    .await;
+                    break Err(AgentRunError::Cancelled);
+                }
+
+                let compacted_chat = match cancellation_token
+                    .run_until_cancelled(compaction::reload_checkpoint_context(
+                        store,
+                        session_key,
+                        &outcome,
+                    ))
+                    .await
+                {
+                    Some(Ok(context)) => context,
+                    None => {
+                        finish_auto_compaction(
+                            state,
+                            run_id,
+                            session_key,
+                            &context_budget,
+                            AutoCompactionTerminal::Done(&outcome),
+                        )
+                        .await;
+                        break Err(AgentRunError::Cancelled);
+                    },
+                    Some(Err(error)) => {
+                        warn!(run_id, error = %error, "automatic compaction reload failed");
+                        let error_message = error.to_string();
+                        finish_auto_compaction(
+                            state,
+                            run_id,
+                            session_key,
+                            &context_budget,
+                            AutoCompactionTerminal::Error(&error_message),
+                        )
+                        .await;
+                        break Err(AgentRunError::Other(anyhow::anyhow!(error_message)));
+                    },
+                };
                 next_history = Some(compacted_chat);
                 resume_from_history = true;
 
-                let mut payload = serde_json::json!({
-                    "runId": run_id,
-                    "sessionKey": session_key,
-                    "state": "auto_compact",
-                    "phase": "done",
-                    "reason": "agent_loop_threshold",
-                    "contextBudget": context_budget,
-                });
-                if let (Some(obj), Some(meta)) = (
-                    payload.as_object_mut(),
-                    outcome.broadcast_metadata().as_object().cloned(),
-                ) {
-                    obj.extend(meta);
+                finish_auto_compaction(
+                    state,
+                    run_id,
+                    session_key,
+                    &context_budget,
+                    AutoCompactionTerminal::Done(&outcome),
+                )
+                .await;
+                if cancellation_token.is_cancelled() {
+                    break Err(AgentRunError::Cancelled);
                 }
-                broadcast(state, "chat", payload, BroadcastOpts::default()).await;
-                notify_channels_of_compaction(state, session_key, &outcome).await;
             },
             Err(error) => break Err(error),
         }
@@ -1284,6 +1439,54 @@ pub(crate) async fn run_with_tools(
     };
 
     match result {
+        Err(AgentRunError::Cancelled) => {
+            let partial = match persist_aborted_tool_loop(
+                session_store,
+                active_partial_assistant.as_ref(),
+                session_key,
+                &tool_segment_indices,
+            )
+            .await
+            {
+                Ok(partial) => partial,
+                Err(error) => {
+                    let error = error.to_string();
+                    warn!(run_id, %error, "failed to persist cancelled agent run");
+                    state.set_run_error(run_id, error.clone()).await;
+                    let error_obj = serde_json::json!({
+                        "title": "Failed to stop assistant cleanly",
+                        "detail": error,
+                    });
+                    deliver_channel_error(state, session_key, &error_obj).await;
+                    terminal_runs.write().await.insert(run_id.to_string());
+                    broadcast(
+                        state,
+                        "chat",
+                        serde_json::json!({
+                            "state": "error",
+                            "runId": run_id,
+                            "sessionKey": session_key,
+                            "error": error_obj,
+                        }),
+                        BroadcastOpts::default(),
+                    )
+                    .await;
+                    return ChatRunOutcome::Failed;
+                },
+            };
+            let mut payload = serde_json::json!({
+                "state": "aborted",
+                "runId": run_id,
+                "sessionKey": session_key,
+            });
+            if let Some((partial_message, message_index)) = partial {
+                payload["partialMessage"] = partial_message;
+                payload["messageIndex"] = serde_json::json!(message_index);
+            }
+            terminal_runs.write().await.insert(run_id.to_string());
+            broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+            ChatRunOutcome::Cancelled
+        },
         Ok(result) => {
             clear_unsupported_model(state, model_store, model_id).await;
 
@@ -1352,7 +1555,7 @@ pub(crate) async fn run_with_tools(
                 attach_partial_to_error_payload(&mut payload_val, partial);
                 terminal_runs.write().await.insert(run_id.to_string());
                 broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-                return None;
+                return ChatRunOutcome::Failed;
             }
 
             let canonical_tool_segment_index = match &result.final_text_source {
@@ -1393,7 +1596,7 @@ pub(crate) async fn run_with_tools(
                         attach_partial_to_error_payload(&mut payload_val, partial);
                         terminal_runs.write().await.insert(run_id.to_string());
                         broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-                        return None;
+                        return ChatRunOutcome::Failed;
                     };
                     Some(message_index)
                 },
@@ -1500,7 +1703,7 @@ pub(crate) async fn run_with_tools(
                         let payload_val = serde_json::to_value(&error_payload).unwrap();
                         terminal_runs.write().await.insert(run_id.to_string());
                         broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-                        return None;
+                        return ChatRunOutcome::Failed;
                     },
                 }
             }
@@ -1545,7 +1748,7 @@ pub(crate) async fn run_with_tools(
                 )
                 .await;
             }
-            Some(assistant_output)
+            ChatRunOutcome::Completed(Box::new(assistant_output))
         },
         Err(e) => {
             let runner_error = e.to_string();
@@ -1579,7 +1782,7 @@ pub(crate) async fn run_with_tools(
             attach_partial_to_error_payload(&mut payload_val, partial);
             terminal_runs.write().await.insert(run_id.to_string());
             broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-            None
+            ChatRunOutcome::Failed
         },
     }
 }
@@ -1667,6 +1870,99 @@ mod tests {
             score: 0.9,
             text: text.into(),
         }
+    }
+
+    #[tokio::test]
+    async fn aborted_tool_loop_finalizes_the_latest_persisted_segment_without_a_draft() {
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
+        let store = Arc::new(SessionStore::new(directory.path().to_path_buf()));
+        let drafts = Arc::new(RwLock::new(HashMap::new()));
+        let first = ActiveAssistantDraft::new("run-1", "model", "provider", None, None)
+            .to_persisted_message(
+                Some(vec![build_persisted_tool_call("call-1", "tool", None)]),
+                None,
+            );
+        let second = ActiveAssistantDraft::new("run-1", "model", "provider", None, None)
+            .to_persisted_message(
+                Some(vec![build_persisted_tool_call("call-2", "tool", None)]),
+                None,
+            );
+        let first_index = store
+            .append_with_index("session-1", &first.to_value())
+            .await
+            .unwrap_or_else(|error| panic!("first tool segment persists: {error}"));
+        let second_index = store
+            .append_with_index("session-1", &second.to_value())
+            .await
+            .unwrap_or_else(|error| panic!("second tool segment persists: {error}"));
+        let tool_segment_indices = HashMap::from([
+            ("call-1".to_owned(), first_index),
+            ("call-2".to_owned(), second_index),
+        ]);
+
+        let persisted = persist_aborted_tool_loop(
+            Some(&store),
+            Some(&drafts),
+            "session-1",
+            &tool_segment_indices,
+        )
+        .await
+        .unwrap_or_else(|error| panic!("aborted tool segment finalizes: {error}"));
+        let (message, message_index) =
+            persisted.unwrap_or_else(|| panic!("finalized tool segment is returned"));
+
+        assert_eq!(message_index, second_index);
+        assert!(message["durationMs"].is_number());
+        let history = store
+            .read_typed("session-1")
+            .await
+            .unwrap_or_else(|error| panic!("tool segment history reads: {error}"));
+        assert!(matches!(
+            &history[first_index],
+            PersistedMessage::Assistant {
+                duration_ms: None,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &history[second_index],
+            PersistedMessage::Assistant {
+                duration_ms: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn auto_compaction_terminal_payload_preserves_checkpoint_visibility() {
+        let context_budget = ContextBudgetMetadata::default();
+        let cancelled = auto_compaction_terminal_payload(
+            "run-1",
+            "session-1",
+            &context_budget,
+            AutoCompactionTerminal::Cancelled,
+        );
+        assert_eq!(cancelled["phase"], "cancelled");
+        assert!(cancelled.get("checkpoint").is_none());
+
+        let checkpoint = compaction::CheckpointOutcome {
+            message: serde_json::json!({"role": "checkpoint", "summary": "summary"}),
+            index: 4,
+            model: "model".to_string(),
+            input_tokens: 10,
+            output_tokens: 5,
+            messages_summarized: 4,
+        };
+        let done = auto_compaction_terminal_payload(
+            "run-1",
+            "session-1",
+            &context_budget,
+            AutoCompactionTerminal::Done(&checkpoint),
+        );
+        assert_eq!(done["phase"], "done");
+        assert_eq!(done["messageIndex"], 4);
+        assert_eq!(done["checkpoint"], checkpoint.message);
     }
 
     #[test]
