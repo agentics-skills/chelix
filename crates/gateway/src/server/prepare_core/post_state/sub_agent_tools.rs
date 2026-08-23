@@ -154,7 +154,7 @@ impl SubAgentRuntime {
             .resolve(serde_json::json!({ "key": session_key.clone() }))
             .await
             .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-        let label = sub_agent_label(agent_id, task);
+        let label = sub_agent_label(task);
         self.session_metadata
             .configure_subagent_session(
                 &session_key,
@@ -536,9 +536,8 @@ fn response_field<'a>(response: &'a Value, name: &str) -> chelix_tools::Result<&
         .ok_or_else(|| chelix_tools::Error::message(format!("chat response is missing {name}")))
 }
 
-fn sub_agent_label(agent_id: &str, task: &str) -> String {
-    let task_preview = task.trim().chars().take(64).collect::<String>();
-    format!("{agent_id}: {task_preview}")
+fn sub_agent_label(task: &str) -> String {
+    task.trim().chars().take(64).collect()
 }
 
 fn tool_error(error: impl std::fmt::Display) -> chelix_tools::Error {
