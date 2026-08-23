@@ -2232,11 +2232,13 @@ version = "0.1.0"
 dependencies = [
  "chelix-common",
  "fd-lock",
+ "lru",
  "serde",
  "serde_json",
  "sqlx",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tracing",
  "uuid",
@@ -6984,6 +6986,15 @@ dependencies = [
  "thiserror 2.0.18",
  "ttf-parser",
  "weezl",
+]
+
+[[package]]
+name = "lru"
+version = "0.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d2f2f9b4ba7e6b24d95e7e899329d35be83bcded72c8540cdd5368932d1d90a"
+dependencies = [
+ "hashbrown 0.17.0",
 ]
 
 [[package]]

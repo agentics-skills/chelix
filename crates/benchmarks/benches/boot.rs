@@ -1,4 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+use std::sync::OnceLock;
+
 fn main() {
     divan::main();
 }
@@ -96,6 +98,55 @@ const SESSION_KEYS: &[&str] = &[
 #[divan::bench(args = SESSION_KEYS)]
 fn session_key_to_filename(key: &str) -> String {
     divan::black_box(chelix_sessions::store::SessionStore::key_to_filename(key))
+}
+
+struct SessionAppendFixture {
+    store: chelix_sessions::store::SessionStore,
+    message: serde_json::Value,
+    _dir: tempfile::TempDir,
+}
+
+static SESSION_APPEND_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+fn session_append_runtime() -> &'static tokio::runtime::Runtime {
+    SESSION_APPEND_RUNTIME.get_or_init(|| tokio::runtime::Runtime::new().unwrap())
+}
+
+fn session_append_fixture(new_record_bytes: usize) -> SessionAppendFixture {
+    let dir = tempfile::tempdir().unwrap();
+    let history = (0..100_000)
+        .map(|record| format!("{{\"record\":{record}}}\n"))
+        .collect::<String>();
+    std::fs::write(dir.path().join("main.jsonl"), history).unwrap();
+    let store = chelix_sessions::store::SessionStore::new(dir.path().to_path_buf());
+    session_append_runtime()
+        .block_on(store.append_with_index("main", &serde_json::json!({"warm": true})))
+        .unwrap();
+    SessionAppendFixture {
+        store,
+        message: serde_json::json!({"content": "x".repeat(new_record_bytes)}),
+        _dir: dir,
+    }
+}
+
+/// Benchmark the warm indexed append path after the one-time history scan.
+#[divan::bench(
+    args = [32, 1_024, 16_384],
+    min_time = 0,
+    sample_count = 20,
+    sample_size = 1,
+    skip_ext_time = true
+)]
+fn warm_session_indexed_append(bencher: divan::Bencher, new_record_bytes: usize) {
+    bencher
+        .with_inputs(|| session_append_fixture(new_record_bytes))
+        .bench_local_values(|fixture| {
+            divan::black_box(
+                session_append_runtime()
+                    .block_on(fixture.store.append_with_index("main", &fixture.message))
+                    .unwrap(),
+            )
+        });
 }
 
 fn build_sanitize_input(payload_bytes: usize) -> String {

@@ -12,6 +12,7 @@ pub mod prompt_queue;
 pub mod session_events;
 pub mod state_store;
 pub mod store;
+mod tail_cursor;
 pub mod tool_results;
 pub mod ui_history;
 
