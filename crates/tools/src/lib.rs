@@ -39,6 +39,7 @@ pub mod sessions_manage;
 pub mod skill_tools;
 pub mod spawn_agent;
 pub mod spawn_agent_tasks;
+pub mod sub_agent;
 pub mod task_list;
 pub mod terminal_command;
 pub mod tools_service;

@@ -24,7 +24,10 @@ use chelix_metrics::{counter, histogram};
 
 use chelix_agents::tool_registry::AgentTool;
 
-use crate::{command::CommandOptions, sandbox::SandboxRouter};
+use crate::{
+    command::CommandOptions,
+    sandbox::{Sandbox, SandboxId, SandboxRouter},
+};
 
 // ── Category mapping ────────────────────────────────────────────────────────
 
@@ -241,8 +244,7 @@ fn categorize_packages(packages: &[String]) -> Vec<(&'static str, Vec<&str>)> {
 /// Query the sandbox container for installed packages via `dpkg-query`.
 ///
 /// Returns `None` if the container is not reachable (not running, etc.).
-async fn query_sandbox_packages(router: &SandboxRouter, session_key: &str) -> Option<Vec<String>> {
-    let id = router.sandbox_id_for(session_key);
+async fn query_sandbox_packages(backend: &dyn Sandbox, id: &SandboxId) -> Option<Vec<String>> {
     let opts = CommandOptions {
         timeout: std::time::Duration::from_secs(5),
         ..Default::default()
@@ -251,7 +253,7 @@ async fn query_sandbox_packages(router: &SandboxRouter, session_key: &str) -> Op
     // dpkg-query with a format string to get one package name per line.
     let cmd = "dpkg-query -W -f='${Package}\n'";
 
-    match router.backend().run_command(&id, cmd, &opts).await {
+    match backend.run_command(id, cmd, &opts).await {
         Ok(result) if result.exit_code == 0 => {
             let packages: Vec<String> = result
                 .stdout
@@ -366,18 +368,21 @@ impl AgentTool for SandboxPackagesTool {
         });
 
         // Hybrid: try querying the running sandbox container for extra packages.
-        let session_key = params
-            .get("_session_key")
+        let sandbox_key = params
+            .get("_sandbox_id")
+            .or_else(|| params.get("_session_key"))
             .and_then(|v| v.as_str())
             .unwrap_or("main");
 
-        if router.enabled()
-            && let Some(sandbox_pkgs) = query_sandbox_packages(router, session_key).await
-        {
-            let extras = extra_packages(&sandbox_pkgs, packages);
-            if !extras.is_empty() {
-                result["additional_installed"] = json!(extras);
-                result["additional_installed_count"] = json!(extras.len());
+        if router.enabled() {
+            let id = router.sandbox_id_for(sandbox_key);
+            if let Some(sandbox_pkgs) = query_sandbox_packages(router.backend().as_ref(), &id).await
+            {
+                let extras = extra_packages(&sandbox_pkgs, packages);
+                if !extras.is_empty() {
+                    result["additional_installed"] = json!(extras);
+                    result["additional_installed_count"] = json!(extras.len());
+                }
             }
         }
 
@@ -408,10 +413,16 @@ mod tests {
             packages,
             ..Default::default()
         };
-        let router = Arc::new(SandboxRouter::with_backend(
-            config,
-            Arc::new(crate::sandbox::NoSandbox),
-        ));
+        let router = Arc::new(
+            SandboxRouter::with_backend(
+                config,
+                Arc::new(crate::sandbox::NoSandbox),
+                Some(Arc::new(
+                    crate::sandbox::owner::PassthroughSandboxOwnerResolver,
+                )),
+            )
+            .unwrap(),
+        );
         SandboxPackagesTool::new(router)
     }
 

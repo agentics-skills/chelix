@@ -510,6 +510,14 @@ pub mod config {
     pub const VALIDATION_ERRORS_TOTAL: &str = "chelix_config_validation_errors_total";
 }
 
+/// Sub-agent session coordination metrics.
+pub mod sub_agent {
+    /// Sub-agent runs grouped by mode and status.
+    pub const RUNS_TOTAL: &str = "chelix_sub_agent_runs_total";
+    /// Sub-agent run duration grouped by mode.
+    pub const RUN_DURATION_SECONDS: &str = "chelix_sub_agent_run_duration_seconds";
+}
+
 /// Spawn agent (sub-agent) metrics
 pub mod spawn {
     /// Total sub-agents spawned (label: mode=blocking|nonblocking)

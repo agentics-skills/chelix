@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::{
         Arc,
@@ -11,12 +12,48 @@ use std::{
 #[cfg(target_os = "macos")]
 use super::apple::*;
 use {
-    super::{containers::*, docker::*, router::*, types::*},
+    super::{
+        containers::*,
+        docker::*,
+        owner::{PassthroughSandboxOwnerResolver, SandboxOwnerResolver},
+        router::*,
+        types::*,
+    },
     crate::{
         command::{CommandOptions, CommandOutput},
         error::{Error, Result},
     },
 };
+
+fn test_owner_resolver() -> Option<Arc<dyn SandboxOwnerResolver>> {
+    Some(Arc::new(PassthroughSandboxOwnerResolver))
+}
+
+struct MappingSandboxOwnerResolver {
+    owners: HashMap<String, String>,
+}
+
+#[async_trait::async_trait]
+impl SandboxOwnerResolver for MappingSandboxOwnerResolver {
+    async fn resolve_owner_key(&self, session_key: &str) -> Result<String> {
+        self.owners.get(session_key).cloned().ok_or_else(|| {
+            Error::message(format!(
+                "sandbox owner for session {session_key:?} was not found"
+            ))
+        })
+    }
+}
+
+fn mapping_owner_resolver(
+    owners: impl IntoIterator<Item = (&'static str, &'static str)>,
+) -> Option<Arc<dyn SandboxOwnerResolver>> {
+    Some(Arc::new(MappingSandboxOwnerResolver {
+        owners: owners
+            .into_iter()
+            .map(|(session, owner)| (session.to_string(), owner.to_string()))
+            .collect(),
+    }))
+}
 
 struct TestSandbox {
     backend: SandboxBackendId,

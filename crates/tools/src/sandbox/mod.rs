@@ -7,6 +7,7 @@ pub(crate) mod apple;
 pub(crate) mod containers;
 pub(crate) mod docker;
 pub mod env;
+pub mod owner;
 pub(crate) mod paths;
 pub(crate) mod provision;
 pub mod router;
@@ -29,6 +30,7 @@ pub use {
     },
     docker::{DockerSandbox, NoSandbox},
     env::ExecEnv,
+    owner::SandboxOwnerResolver,
     paths::shared_home_dir_path,
     router::{SandboxEvent, SandboxRouter, create_sandbox},
     types::{

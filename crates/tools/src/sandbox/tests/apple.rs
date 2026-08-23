@@ -20,7 +20,7 @@ fn test_sandbox_router_explicit_apple_container_backend() {
         None,
         None,
     ));
-    let router = SandboxRouter::with_backend(config, backend);
+    let router = SandboxRouter::with_backend(config, backend, test_owner_resolver()).unwrap();
     assert_eq!(router.backend_id(), SandboxBackendId::AppleContainer);
 }
 

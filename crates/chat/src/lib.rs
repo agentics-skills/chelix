@@ -11,6 +11,9 @@ mod service;
 mod streaming;
 mod types;
 
+#[cfg(test)]
+pub(crate) static DATA_DIR_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 pub mod chat_error;
 pub mod error;
 pub mod runtime;

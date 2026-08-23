@@ -375,6 +375,7 @@ fn test_runtime_context_injected_when_provided() {
         sandbox: Some(PromptSandboxRuntimeContext {
             backend: Some("docker".into()),
             scope: Some("session".into()),
+            container: None,
             image: Some("chelix-sandbox:abc123".into()),
             home: Some("/home/sandbox".into()),
             workspace_path: Some("/home/chelix/.chelix".into()),

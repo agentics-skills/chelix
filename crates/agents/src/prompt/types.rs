@@ -70,6 +70,7 @@ pub struct PromptHostRuntimeContext {
 pub struct PromptSandboxRuntimeContext {
     pub backend: Option<String>,
     pub scope: Option<String>,
+    pub container: Option<String>,
     pub image: Option<String>,
     pub home: Option<String>,
     pub workspace_path: Option<String>,

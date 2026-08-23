@@ -59,6 +59,16 @@ impl std::str::FromStr for ExternalAgentKind {
     }
 }
 
+/// System-prompt persona selected for a session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum PromptProfile {
+    #[default]
+    Chat,
+    Subagent,
+}
+
 /// A single session entry in the metadata index.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEntry {
@@ -85,6 +95,8 @@ pub struct SessionEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_session_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_owner_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_point: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_disabled: Option<bool>,
@@ -92,6 +104,8 @@ pub struct SessionEntry {
     pub preview: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
+    #[serde(default)]
+    pub prompt_profile: PromptProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_agent_kind: Option<ExternalAgentKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,10 +194,12 @@ impl SessionMetadata {
                 worktree_branch: None,
                 channel_binding: None,
                 parent_session_key: None,
+                sandbox_owner_key: None,
                 fork_point: None,
                 mcp_disabled: None,
                 preview: None,
                 agent_id: None,
+                prompt_profile: PromptProfile::default(),
                 external_agent_kind: None,
                 external_session_id: None,
                 version: 0,
@@ -203,6 +219,24 @@ impl SessionMetadata {
     pub fn set_reasoning_effort(&mut self, key: &str, reasoning_effort: Option<String>) {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.reasoning_effort = reasoning_effort;
+            entry.updated_at = now_ms();
+            entry.version += 1;
+        }
+    }
+
+    /// Select the system-prompt profile for a session.
+    pub fn set_prompt_profile(&mut self, key: &str, prompt_profile: PromptProfile) {
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.prompt_profile = prompt_profile;
+            entry.updated_at = now_ms();
+            entry.version += 1;
+        }
+    }
+
+    /// Assign the resolved sandbox owner key for a session.
+    pub fn set_sandbox_owner_key(&mut self, key: &str, owner_key: Option<String>) {
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.sandbox_owner_key = owner_key;
             entry.updated_at = now_ms();
             entry.version += 1;
         }
@@ -337,10 +371,12 @@ struct SessionRow {
     worktree_branch: Option<String>,
     channel_binding: Option<String>,
     parent_session_key: Option<String>,
+    sandbox_owner_key: Option<String>,
     fork_point: Option<i32>,
     mcp_disabled: Option<i32>,
     preview: Option<String>,
     agent_id: Option<String>,
+    prompt_profile: PromptProfile,
     external_agent_kind: Option<String>,
     external_session_id: Option<String>,
     version: i64,
@@ -363,10 +399,12 @@ impl From<SessionRow> for SessionEntry {
             worktree_branch: r.worktree_branch,
             channel_binding: r.channel_binding,
             parent_session_key: r.parent_session_key,
+            sandbox_owner_key: r.sandbox_owner_key,
             fork_point: r.fork_point.map(|v| v as u32),
             mcp_disabled: r.mcp_disabled.map(|v| v != 0),
             preview: r.preview,
             agent_id: r.agent_id,
+            prompt_profile: r.prompt_profile,
             external_agent_kind: r
                 .external_agent_kind
                 .as_deref()
@@ -430,10 +468,12 @@ impl SqliteSessionMetadata {
                 worktree_branch TEXT,
                 channel_binding     TEXT,
                 parent_session_key  TEXT,
+                sandbox_owner_key   TEXT,
                 fork_point          INTEGER,
                 mcp_disabled        INTEGER,
                 preview             TEXT,
                 agent_id            TEXT,
+                prompt_profile      TEXT NOT NULL DEFAULT 'chat',
                 external_agent_kind TEXT,
                 external_session_id TEXT,
                 version             INTEGER NOT NULL DEFAULT 0
@@ -464,15 +504,19 @@ impl SqliteSessionMetadata {
         Ok(())
     }
 
-    pub async fn get(&self, key: &str) -> Option<SessionEntry> {
-        match sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
+    pub async fn try_get(&self, key: &str) -> Result<Option<SessionEntry>> {
+        let row = sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
             .bind(key)
             .fetch_optional(&self.pool)
-            .await
-        {
-            Ok(row) => row.map(Into::into),
-            Err(e) => {
-                tracing::error!("sessions.get failed: {e}");
+            .await?;
+        Ok(row.map(Into::into))
+    }
+
+    pub async fn get(&self, key: &str) -> Option<SessionEntry> {
+        match self.try_get(key).await {
+            Ok(entry) => entry,
+            Err(error) => {
+                tracing::error!(%error, session_key = key, "sessions.get failed");
                 None
             },
         }
@@ -724,6 +768,40 @@ impl SqliteSessionMetadata {
         });
     }
 
+    /// Select the system-prompt profile for a session.
+    pub async fn set_prompt_profile(&self, key: &str, prompt_profile: PromptProfile) -> Result<()> {
+        let now = now_ms() as i64;
+        sqlx::query(
+            "UPDATE sessions SET prompt_profile = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+        )
+        .bind(prompt_profile)
+        .bind(now)
+        .bind(key)
+        .execute(&self.pool)
+        .await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Assign the resolved sandbox owner key for a session.
+    pub async fn set_sandbox_owner_key(&self, key: &str, owner_key: Option<&str>) -> Result<()> {
+        let now = now_ms() as i64;
+        sqlx::query(
+            "UPDATE sessions SET sandbox_owner_key = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+        )
+        .bind(owner_key)
+        .bind(now)
+        .bind(key)
+        .execute(&self.pool)
+        .await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(())
+    }
+
     /// Assign (or unassign) a session to an agent persona.
     pub async fn set_agent_id(&self, key: &str, agent_id: Option<&str>) -> Result<()> {
         let now = now_ms() as i64;
@@ -778,6 +856,58 @@ impl SqliteSessionMetadata {
         Ok(entry)
     }
 
+    /// Configure all persisted attributes of a newly created sub-agent session atomically.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn configure_subagent_session(
+        &self,
+        key: &str,
+        label: &str,
+        parent_session_key: &str,
+        sandbox_owner_key: &str,
+        agent_id: &str,
+        model: &str,
+        reasoning_effort: &str,
+    ) -> Result<SessionEntry> {
+        let now = now_ms() as i64;
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET label = ?,
+                   parent_session_key = ?,
+                   sandbox_owner_key = ?,
+                   agent_id = ?,
+                   model = ?,
+                   reasoning_effort = ?,
+                   prompt_profile = ?,
+                   updated_at = ?,
+                   version = version + 1
+               WHERE key = ?"#,
+        )
+        .bind(label)
+        .bind(parent_session_key)
+        .bind(sandbox_owner_key)
+        .bind(agent_id)
+        .bind(model)
+        .bind(reasoning_effort)
+        .bind(PromptProfile::Subagent)
+        .bind(now)
+        .bind(key)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() != 1 {
+            return Err(crate::Error::message(format!(
+                "session '{key}' was not created before sub-agent configuration"
+            )));
+        }
+        let entry = self
+            .try_get(key)
+            .await?
+            .ok_or_else(|| crate::Error::message(format!("session '{key}' disappeared")))?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
     /// List all sessions belonging to a given agent.
     pub async fn list_by_agent_id(&self, agent_id: &str) -> Result<Vec<SessionEntry>> {
         let rows = sqlx::query_as::<_, SessionRow>(
@@ -818,17 +948,25 @@ impl SqliteSessionMetadata {
     }
 
     /// List all sessions that are children of the given parent key.
-    pub async fn list_children(&self, parent_key: &str) -> Vec<SessionEntry> {
-        sqlx::query_as::<_, SessionRow>(
+    pub async fn list_children_result(&self, parent_key: &str) -> Result<Vec<SessionEntry>> {
+        let rows = sqlx::query_as::<_, SessionRow>(
             "SELECT * FROM sessions WHERE parent_session_key = ? ORDER BY created_at ASC",
         )
         .bind(parent_key)
         .fetch_all(&self.pool)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(Into::into)
-        .collect()
+        .await?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    /// List all sessions that are children of the given parent key.
+    pub async fn list_children(&self, parent_key: &str) -> Vec<SessionEntry> {
+        match self.list_children_result(parent_key).await {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::error!(%error, parent_session_key = parent_key, "sessions.list_children failed");
+                Vec::new()
+            },
+        }
     }
 
     pub async fn remove(&self, key: &str) -> Option<SessionEntry> {

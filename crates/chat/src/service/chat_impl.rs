@@ -849,7 +849,11 @@ impl ChatService for LiveChatService {
         let sandbox_config = router.config();
         let effective_image = router.default_image().await;
         let container_name = {
-            let id = router.sandbox_id_for(&session_key);
+            let owner_key = session_entry
+                .as_ref()
+                .and_then(|entry| entry.sandbox_owner_key.as_deref())
+                .unwrap_or(&session_key);
+            let id = router.sandbox_id_for(owner_key);
             format!(
                 "{}-{}",
                 sandbox_config
@@ -1369,12 +1373,14 @@ mod tests {
             worktree_branch: None,
             channel_binding: None,
             parent_session_key: None,
+            sandbox_owner_key: None,
             fork_point: None,
             mcp_disabled: None,
             preview: None,
             last_seen_message_count: 0,
             version: 0,
             agent_id: None,
+            prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
             external_agent_kind: None,
             external_session_id: None,
             reasoning_effort: None,

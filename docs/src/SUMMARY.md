@@ -23,6 +23,7 @@
 - [Generative UI with A2UI](a2ui.md)
 - [MCP Servers](mcp.md)
 - [External Agents](external-agents.md)
+- [Sub-Agent Delegation](sub-agent.md)
 - [Memory](memory.md)
   - [Memory Surfaces](memory-surfaces.md)
 - [Hooks](hooks.md)

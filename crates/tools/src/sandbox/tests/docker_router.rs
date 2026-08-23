@@ -115,7 +115,7 @@ fn test_container_name_conflict_detection() {
 fn router_with_real_backend(config: SandboxConfig) -> SandboxRouter {
     let backend: Arc<dyn Sandbox> =
         Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
-    SandboxRouter::with_backend(config, backend)
+    SandboxRouter::with_backend(config, backend, test_owner_resolver()).unwrap()
 }
 
 #[test]
@@ -152,7 +152,7 @@ async fn test_sandbox_router_on_with_nonisolating_backend_fails_closed() {
         mode: SandboxMode::On,
         ..Default::default()
     };
-    let router = SandboxRouter::with_backend(config, backend);
+    let router = SandboxRouter::with_backend(config, backend, test_owner_resolver()).unwrap();
 
     assert!(router.enabled());
     assert!(router.resolve_env("main").await.is_err());
@@ -219,6 +219,57 @@ fn test_sandbox_router_sandbox_id_for() {
     // Plain alphanumeric keys pass through unchanged.
     let id2 = router.sandbox_id_for("main");
     assert_eq!(id2.key, "main");
+}
+
+#[tokio::test]
+async fn parent_and_child_share_sandbox_id_but_unrelated_session_does_not() {
+    let backend: Arc<dyn Sandbox> =
+        Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let router = SandboxRouter::with_backend(
+        SandboxConfig::default(),
+        backend,
+        mapping_owner_resolver([
+            ("session:parent", "session:parent"),
+            ("session:child", "session:parent"),
+            ("session:unrelated", "session:unrelated"),
+        ]),
+    )
+    .unwrap();
+
+    let (_, parent) = router
+        .prepare_command_session("session:parent")
+        .await
+        .unwrap();
+    let (_, child) = router
+        .prepare_command_session("session:child")
+        .await
+        .unwrap();
+    let (_, unrelated) = router
+        .prepare_command_session("session:unrelated")
+        .await
+        .unwrap();
+
+    assert_eq!(parent.scope, child.scope);
+    assert_eq!(parent.key, child.key);
+    assert_ne!(parent.key, unrelated.key);
+}
+
+#[tokio::test]
+async fn cleanup_for_non_owner_does_not_call_backend_cleanup() {
+    let backend = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let routed_backend: Arc<dyn Sandbox> = backend.clone();
+    let router = SandboxRouter::with_backend(
+        SandboxConfig::default(),
+        routed_backend,
+        mapping_owner_resolver([
+            ("session:parent", "session:parent"),
+            ("session:child", "session:parent"),
+        ]),
+    )
+    .unwrap();
+
+    router.cleanup_session("session:child").await.unwrap();
+    assert_eq!(backend.cleanup_calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

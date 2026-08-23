@@ -15,8 +15,6 @@ use {
 };
 
 const KEYWORDS: [&str; 4] = ["dark", "spicy", "duplicate", "forget"];
-static DATA_DIR_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
 struct DataDirGuard;
 
 impl Drop for DataDirGuard {
@@ -191,7 +189,7 @@ async fn setup_agent_memory(
 
 #[tokio::test]
 async fn memory_forget_deletes_selected_scoped_chunk() {
-    let _lock = DATA_DIR_TEST_LOCK.lock().await;
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
     let _guard = DataDirGuard;
     let (manager, _tmp, memory_path) = setup_agent_memory(
         "writer",
@@ -236,7 +234,7 @@ async fn memory_forget_deletes_selected_scoped_chunk() {
 
 #[tokio::test]
 async fn memory_forget_refuses_ambiguous_exact_text() {
-    let _lock = DATA_DIR_TEST_LOCK.lock().await;
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
     let _guard = DataDirGuard;
     let (manager, _tmp, memory_path) = setup_agent_memory(
         "writer",
@@ -277,7 +275,7 @@ async fn memory_forget_refuses_ambiguous_exact_text() {
 async fn agent_scoped_memory_mutations_reject_symlink_target() {
     use {chelix_agents::memory_writer::MemoryWriter, std::os::unix::fs::symlink};
 
-    let _lock = DATA_DIR_TEST_LOCK.lock().await;
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
     let _guard = DataDirGuard;
     let (manager, _tmp, memory_path) = setup_agent_memory("writer", "original memory\n", 4).await;
     std::fs::remove_file(&memory_path).unwrap();
@@ -308,7 +306,7 @@ fn count_exact_occurrences_accepts_line_ending_variants() {
 
 #[tokio::test]
 async fn memory_forget_reports_unreadable_files_as_issues() {
-    let _lock = DATA_DIR_TEST_LOCK.lock().await;
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
     let _guard = DataDirGuard;
     let (manager, _tmp, memory_path) =
         setup_agent_memory("writer", "Color preference dark mode\n", 4).await;

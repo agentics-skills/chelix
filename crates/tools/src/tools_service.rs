@@ -914,10 +914,16 @@ mod tests {
             ensure_ready_calls: AtomicUsize::new(0),
         });
         let routed_backend: Arc<dyn Sandbox> = backend.clone();
-        let router = Arc::new(SandboxRouter::with_backend(
-            SandboxConfig::default(),
-            routed_backend,
-        ));
+        let router = Arc::new(
+            SandboxRouter::with_backend(
+                SandboxConfig::default(),
+                routed_backend,
+                Some(Arc::new(
+                    crate::sandbox::owner::PassthroughSandboxOwnerResolver,
+                )),
+            )
+            .unwrap_or_else(|error| panic!("test sandbox router failed: {error}")),
+        );
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(1))
             .timeout(Duration::from_secs(5))
@@ -950,10 +956,16 @@ mod tests {
             ensure_ready_calls: AtomicUsize::new(0),
         });
         let routed_backend: Arc<dyn Sandbox> = backend;
-        let router = Arc::new(SandboxRouter::with_backend(
-            SandboxConfig::default(),
-            routed_backend,
-        ));
+        let router = Arc::new(
+            SandboxRouter::with_backend(
+                SandboxConfig::default(),
+                routed_backend,
+                Some(Arc::new(
+                    crate::sandbox::owner::PassthroughSandboxOwnerResolver,
+                )),
+            )
+            .unwrap_or_else(|error| panic!("test sandbox router failed: {error}")),
+        );
 
         let service = ManagedToolsService::start(router)
             .await

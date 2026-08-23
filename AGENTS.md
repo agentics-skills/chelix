@@ -227,6 +227,8 @@ or retry-count workarounds to hide flakiness.
 
 ## Code Quality
 
+Create only focused, non-duplicative tests that are necessary for verification and long-term maintenance, keep each test within the responsibility boundaries of the unit under test without exercising unrelated functionality, and never add throwaway tests solely to validate a theory.
+
 Explicitly commands exactly from the list:
 
 ```bash
