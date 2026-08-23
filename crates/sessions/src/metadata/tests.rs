@@ -889,3 +889,69 @@ fn test_agent_id_serde_default() {
     let meta = SessionMetadata::load(path).unwrap();
     assert!(meta.get("main").unwrap().agent_id.is_none());
 }
+
+#[tokio::test]
+async fn configure_subagent_session_sets_agreed_child_metadata() {
+    let pool = sqlite_pool().await;
+    let meta = SqliteSessionMetadata::new(pool);
+    meta.upsert("root", None).await.unwrap();
+    meta.upsert("session:child", None).await.unwrap();
+
+    let entry = meta
+        .configure_subagent_session(
+            "session:child",
+            "reviewer: inspect",
+            "root",
+            "root",
+            "reviewer",
+            "model-id",
+            "high",
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(entry.parent_session_key.as_deref(), Some("root"));
+    assert_eq!(entry.sandbox_owner_key.as_deref(), Some("root"));
+    assert_eq!(entry.agent_id.as_deref(), Some("reviewer"));
+    assert_eq!(entry.model.as_deref(), Some("model-id"));
+}
+
+#[tokio::test]
+async fn nested_subagent_persists_root_sandbox_owner() {
+    let pool = sqlite_pool().await;
+    let meta = SqliteSessionMetadata::new(pool);
+    meta.upsert("root", None).await.unwrap();
+    meta.upsert("session:first", None).await.unwrap();
+    meta.configure_subagent_session(
+        "session:first",
+        "first",
+        "root",
+        "root",
+        "worker",
+        "model-id",
+        "high",
+    )
+    .await
+    .unwrap();
+
+    let first = meta.try_get("session:first").await.unwrap().unwrap();
+    let resolved_owner = first
+        .sandbox_owner_key
+        .clone()
+        .unwrap_or_else(|| first.key.clone());
+    meta.upsert("session:second", None).await.unwrap();
+    let second = meta
+        .configure_subagent_session(
+            "session:second",
+            "second",
+            "session:first",
+            &resolved_owner,
+            "worker",
+            "model-id",
+            "high",
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(second.sandbox_owner_key.as_deref(), Some("root"));
+}

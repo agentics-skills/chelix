@@ -551,6 +551,13 @@ impl SessionService for LiveSessionService {
                 "session '{key}' cannot be archived"
             )));
         }
+        if p.parent_session_key.is_some()
+            && entry.prompt_profile == chelix_sessions::metadata::PromptProfile::Subagent
+        {
+            return Err(ServiceError::message(format!(
+                "session '{key}' is a sub-agent session and cannot be reparented"
+            )));
+        }
         if p.label.is_some() {
             let _ = self.metadata.upsert(key, p.label).await;
         }

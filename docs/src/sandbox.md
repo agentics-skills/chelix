@@ -196,6 +196,24 @@ sandbox overrides.
 The Sandboxes settings page displays this value as a read-only `On`/`Off`
 indicator. Change the policy in `chelix.toml` and restart Chelix.
 
+## Sub-Agent Sandbox Ownership
+
+A delegated child session persists the already resolved sandbox owner of its
+parent. If the parent has no separate owner key, the parent's own session key is
+stored. Nested delegated sessions keep the same root owner instead of resolving
+the parent chain at execution time.
+
+The owner and all delegated descendants therefore use one sandbox container.
+Cleanup removes that container only when requested for the owner session;
+cleanup requested for a non-owner child is a no-op.
+
+Sharing the container does not share terminal ownership. A terminal created by
+the parent is inaccessible to its children, and a terminal created by a child is
+inaccessible to the parent and sibling sessions.
+
+A persisted owner key that references a missing session is an explicit routing
+error and does not fall back to the child's own key.
+
 ## Shared data directory
 
 Every isolated backend mounts Chelix's `data_dir()` read-write at the identical

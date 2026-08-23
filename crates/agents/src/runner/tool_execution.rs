@@ -82,11 +82,10 @@ impl ToolInvocationExecutor<'_> {
         }
         let (tool, resolved_name) = resolve_tool_lookup(self.tools, sanitized.as_ref());
         let execution_name = resolved_name.into_owned();
+        let public_arguments = public_tool_arguments(&tool_call.arguments);
         let mut execution_arguments = tool_call.arguments.clone();
         enrich_tool_arguments(&mut execution_arguments, self.tool_context, &tool_call.id);
         log_tool_argument_diagnostic(&execution_name, tool_call.argument_diagnostic.as_ref());
-
-        let public_arguments = public_tool_arguments(&execution_arguments);
         let validation_error = if matches!(self.tool_choice, Some(ToolChoice::None)) {
             Some(format!(
                 "tool `{execution_name}` cannot be called: tool use is disabled for this turn"
@@ -100,8 +99,8 @@ impl ToolInvocationExecutor<'_> {
             ))
         } else if let Some(ref tool) = tool {
             let schema = tool.parameters_schema();
-            match validate_tool_args(&schema, &execution_arguments) {
-                Ok(()) => tool.validate(&execution_arguments).err().map(|error| {
+            match validate_tool_args(&schema, &tool_call.arguments) {
+                Ok(()) => tool.validate(&tool_call.arguments).err().map(|error| {
                     warn!(
                         tool = %execution_name,
                         error = %error,

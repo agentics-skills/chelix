@@ -77,26 +77,27 @@ Each agent can also override `AGENTS.md` and `TOOLS.md` in its own workspace.
 When either file is absent, all agents use the corresponding root workspace
 file. No agent ID receives additional file fallback rules.
 
-## Spawning an Agent
+## Delegating to an Agent
 
-Select any configured agent with the `agent` parameter:
+Use `sub_agent` discovery before selecting an agent for delegated work. An agent
+is available only when all of these conditions are met:
+
+1. `<data_dir>/agents/<id>/SUBAGENT.md` is non-empty after trimming;
+2. `[agents.<id>].model` is configured;
+3. `[agents.<id>].reasoning_effort` is configured.
 
 ```json
 {
-  "task": "Find all authentication-related code paths",
-  "context": "Return file paths and a concise synthesis.",
-  "agent": "research"
+  "action": {
+    "explore": {}
+  }
 }
 ```
 
-If `agent` is omitted, `spawn_agent` uses `[agents] default`. A missing agent ID
-is an error. Model selection order is:
-
-1. Explicit `spawn_agent.model`
-2. The selected agent's `model`
-3. The parent/default provider model
-
-`spawn_agent` is always excluded from the child tool registry.
+A delegated run requires an explicit agent ID returned by discovery, a non-empty
+task, and an explicit `"blocking"` or `"background"` mode. The run uses the
+selected agent's configured model and reasoning effort. See [Sub-Agent
+Delegation](sub-agent.md) for the action contract and lifecycle operations.
 
 ## Agent Fields
 

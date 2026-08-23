@@ -198,6 +198,7 @@ pub(crate) fn format_sandbox_runtime_line(sandbox: &PromptSandboxRuntimeContext)
     for (key, value) in [
         ("backend", sandbox.backend.as_deref()),
         ("scope", sandbox.scope.as_deref()),
+        ("container", sandbox.container.as_deref()),
         ("image", sandbox.image.as_deref()),
         ("home", sandbox.home.as_deref()),
         ("workspace_path", sandbox.workspace_path.as_deref()),

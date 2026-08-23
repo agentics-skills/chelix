@@ -234,3 +234,15 @@ Common coordinator flow:
 5. `sessions_history` to inspect progress
 6. `sessions_send` to dispatch next tasks
 7. `task_list` to track cross-session work items
+
+### Delegated Child Sessions
+
+Use [`sub_agent`](sub-agent.md) to delegate a bounded task to a persisted direct
+child session. Blocking mode returns the child response from the `run` call.
+Background mode returns a child session key and run ID; use `status`, `result`,
+or `cancel` only from the direct parent session. `list` returns that parent's
+direct children.
+
+The child stores its direct parent, selected agent, prompt profile, and resolved
+sandbox owner. General session visibility and messaging remain controlled by the
+session tools and session access policy described above.

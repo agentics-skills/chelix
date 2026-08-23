@@ -13,7 +13,10 @@ use {
         tool_registry::ToolSource,
     },
     chelix_config::{AgentMemoryWriteMode, LoadedWorkspaceMarkdown, MemoryStyle, PromptMemoryMode},
-    chelix_sessions::{metadata::SessionEntry, state_store::SessionStateStore},
+    chelix_sessions::{
+        metadata::{PromptProfile, SessionEntry},
+        state_store::SessionStateStore,
+    },
     chelix_tools::policy::{PolicyContext, resolve_effective_policy},
 };
 
@@ -99,10 +102,11 @@ pub(crate) fn resolve_prompt_agent_id(
     Ok(agent_id.to_string())
 }
 
-/// Load user profile, Soul, and workspace text for one agent.
+/// Load user profile, the selected persona prompt, and workspace text for one agent.
 pub(crate) fn load_prompt_persona_base_for_agent(
     config: &chelix_config::ChelixConfig,
     agent_id: &str,
+    prompt_profile: PromptProfile,
 ) -> crate::error::Result<PromptPersona> {
     let prompt_memory_mode = config.chat.prompt_memory_mode;
     let agent_write_mode = config.memory.agent_write_mode;
@@ -113,12 +117,24 @@ pub(crate) fn load_prompt_persona_base_for_agent(
         .cloned()
         .ok_or_else(|| crate::error::Error::message(format!("unknown agent '{agent_id}'")))?;
     let user = chelix_config::resolve_user_profile_from_config(config);
+    let soul_text = match prompt_profile {
+        PromptProfile::Chat => chelix_config::load_soul_for_agent(agent_id),
+        PromptProfile::Subagent => Some(
+            chelix_config::load_subagent_prompt_for_agent(agent_id)
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    crate::error::Error::message(format!(
+                        "agent '{agent_id}' requires a non-empty SUBAGENT.md for prompt_profile=subagent"
+                    ))
+                })?,
+        ),
+    };
     Ok(PromptPersona {
         config: config.clone(),
         agent_id: agent_id.to_string(),
         agent,
         user,
-        soul_text: chelix_config::load_soul_for_agent(agent_id),
+        soul_text,
         boot_text: chelix_config::load_boot_md_for_agent(agent_id),
         agents_text: chelix_config::load_agents_md_for_agent(agent_id),
         tools_text: chelix_config::load_tools_md_for_agent(agent_id),
@@ -206,7 +222,10 @@ pub(crate) async fn load_prompt_persona_for_session(
     state_store: Option<&SessionStateStore>,
 ) -> crate::error::Result<PromptPersona> {
     let agent_id = resolve_prompt_agent_id(config, session_entry)?;
-    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id)?;
+    let prompt_profile = session_entry
+        .map(|entry| entry.prompt_profile)
+        .unwrap_or_default();
+    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id, prompt_profile)?;
     let style = persona.config.memory.style;
     let mode = persona.config.chat.prompt_memory_mode;
     let write_mode = persona.config.memory.agent_write_mode;
@@ -371,6 +390,12 @@ pub(crate) fn build_tool_context(
     {
         tool_context["_channel"] = channel_value;
     }
+    if let Some(sandbox_id) = runtime_context
+        .and_then(|context| context.sandbox.as_ref())
+        .and_then(|sandbox| sandbox.container.as_deref())
+    {
+        tool_context["_sandbox_id"] = serde_json::json!(sandbox_id);
+    }
     if let Some(lang) = accept_language {
         tool_context["_accept_language"] = serde_json::json!(lang);
     }
@@ -401,9 +426,14 @@ pub(crate) async fn build_prompt_runtime_context(
             return None;
         }
         let config = router.config();
+        let owner_key = session_entry
+            .and_then(|entry| entry.sandbox_owner_key.as_deref())
+            .unwrap_or(session_key);
+        let sandbox_id = router.sandbox_id_for(owner_key);
         Some(PromptSandboxRuntimeContext {
             backend: Some(router.backend_id().to_string()),
             scope: Some(config.scope.to_string()),
+            container: Some(sandbox_id.key),
             image: Some(router.default_image().await),
             home: Some("/home/sandbox".to_string()),
             workspace_path: Some(data_dir_display.clone()),
@@ -620,6 +650,51 @@ pub(crate) fn build_policy_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct DataDirGuard;
+
+    impl Drop for DataDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_data_dir();
+        }
+    }
+
+    #[tokio::test]
+    async fn subagent_persona_uses_subagent_file_and_rejects_empty_content() {
+        let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
+        let _guard = DataDirGuard;
+        let dir = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary data directory failed: {error}"));
+        chelix_config::set_data_dir(dir.path().to_path_buf());
+        let workspace = chelix_config::agent_workspace_dir("reviewer");
+        std::fs::create_dir_all(&workspace)
+            .unwrap_or_else(|error| panic!("agent workspace setup failed: {error}"));
+        std::fs::write(workspace.join("SOUL.md"), "Chat persona")
+            .unwrap_or_else(|error| panic!("SOUL.md setup failed: {error}"));
+        std::fs::write(workspace.join("SUBAGENT.md"), "Delegated reviewer")
+            .unwrap_or_else(|error| panic!("SUBAGENT.md setup failed: {error}"));
+        let mut config = chelix_config::ChelixConfig::default();
+        config
+            .agents
+            .entries
+            .insert("reviewer".to_string(), chelix_config::AgentConfig {
+                name: "Reviewer".to_string(),
+                ..Default::default()
+            });
+
+        let subagent =
+            load_prompt_persona_base_for_agent(&config, "reviewer", PromptProfile::Subagent)
+                .unwrap_or_else(|error| panic!("sub-agent persona load failed: {error}"));
+        assert_eq!(subagent.soul_text.as_deref(), Some("Delegated reviewer"));
+
+        std::fs::write(workspace.join("SUBAGENT.md"), "  \n")
+            .unwrap_or_else(|error| panic!("empty SUBAGENT.md setup failed: {error}"));
+        let error =
+            load_prompt_persona_base_for_agent(&config, "reviewer", PromptProfile::Subagent)
+                .err()
+                .unwrap_or_else(|| panic!("empty SUBAGENT.md must fail"));
+        assert!(error.to_string().contains("non-empty SUBAGENT.md"));
+    }
 
     struct DummyTool(&'static str);
 

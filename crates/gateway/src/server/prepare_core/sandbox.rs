@@ -4,21 +4,69 @@
 use std::sync::Arc;
 
 use {
-    chelix_tools::sandbox::{SandboxBackendId, SandboxConfig, SandboxMode},
+    async_trait::async_trait,
+    chelix_sessions::metadata::SqliteSessionMetadata,
+    chelix_tools::sandbox::{SandboxBackendId, SandboxConfig, SandboxMode, SandboxOwnerResolver},
     tracing::{debug, info},
 };
+
+pub(super) struct SessionSandboxOwnerResolver {
+    session_metadata: Arc<SqliteSessionMetadata>,
+}
+
+impl SessionSandboxOwnerResolver {
+    pub(super) fn new(session_metadata: Arc<SqliteSessionMetadata>) -> Self {
+        Self { session_metadata }
+    }
+}
+
+#[async_trait]
+impl SandboxOwnerResolver for SessionSandboxOwnerResolver {
+    async fn resolve_owner_key(&self, session_key: &str) -> chelix_tools::error::Result<String> {
+        let session = self
+            .session_metadata
+            .try_get(session_key)
+            .await
+            .map_err(|error| chelix_tools::error::Error::message(error.to_string()))?
+            .ok_or_else(|| {
+                chelix_tools::error::Error::message(format!(
+                    "sandbox session {session_key:?} does not exist"
+                ))
+            })?;
+        let owner_key = session
+            .sandbox_owner_key
+            .unwrap_or_else(|| session.key.clone());
+        if owner_key != session.key {
+            let owner_exists = self
+                .session_metadata
+                .try_get(&owner_key)
+                .await
+                .map_err(|error| chelix_tools::error::Error::message(error.to_string()))?
+                .is_some();
+            if !owner_exists {
+                return Err(chelix_tools::error::Error::message(format!(
+                    "sandbox owner session {owner_key:?} referenced by {session_key:?} does not exist"
+                )));
+            }
+        }
+        Ok(owner_key)
+    }
+}
 
 /// Build the sandbox router with the selected global backend.
 pub(super) fn build_sandbox_router(
     sandbox_config: &SandboxConfig,
     container_prefix: &str,
     timezone: Option<&str>,
+    session_metadata: Arc<SqliteSessionMetadata>,
 ) -> anyhow::Result<chelix_tools::sandbox::SandboxRouter> {
     let mut config = sandbox_config.clone();
     config.container_prefix = Some(container_prefix.to_string());
     config.timezone = timezone.map(ToOwned::to_owned);
 
-    chelix_tools::sandbox::SandboxRouter::new(config)
+    let owner_resolver: Arc<dyn SandboxOwnerResolver> =
+        Arc::new(SessionSandboxOwnerResolver::new(session_metadata));
+    chelix_tools::sandbox::SandboxRouter::new(config, Some(owner_resolver))
         .map_err(|error| anyhow::anyhow!("failed to initialize sandbox: {error}"))
 }
 
@@ -114,6 +162,19 @@ mod tests {
 
     use super::*;
 
+    async fn sqlite_metadata() -> Arc<SqliteSessionMetadata> {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .unwrap_or_else(|error| panic!("test SQLite connection failed: {error}"));
+        chelix_projects::run_migrations(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("test project migrations failed: {error}"));
+        chelix_sessions::run_migrations(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("test session migrations failed: {error}"));
+        Arc::new(SqliteSessionMetadata::new(pool))
+    }
+
     struct RecordingBuildSandbox {
         build_calls: AtomicUsize,
     }
@@ -160,18 +221,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn session_owner_resolver_rejects_missing_referenced_owner() {
+        let metadata = sqlite_metadata().await;
+        metadata
+            .upsert("session:child", None)
+            .await
+            .unwrap_or_else(|error| panic!("child session setup failed: {error}"));
+        metadata
+            .set_sandbox_owner_key("session:child", Some("session:missing"))
+            .await
+            .unwrap_or_else(|error| panic!("child owner setup failed: {error}"));
+        let resolver = SessionSandboxOwnerResolver::new(metadata);
+
+        let error = resolver
+            .resolve_owner_key("session:child")
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("missing owner must fail"));
+        assert!(
+            error
+                .to_string()
+                .contains("referenced by \"session:child\" does not exist")
+        );
+    }
+
+    #[tokio::test]
     async fn sandbox_mode_off_skips_backend_image_build() {
         let backend = Arc::new(RecordingBuildSandbox {
             build_calls: AtomicUsize::new(0),
         });
         let sandbox_backend: Arc<dyn Sandbox> = backend.clone();
-        let router = Arc::new(SandboxRouter::with_backend(
-            SandboxConfig {
-                mode: SandboxMode::Off,
-                ..Default::default()
-            },
-            sandbox_backend,
-        ));
+        let router = Arc::new(
+            SandboxRouter::with_backend(
+                SandboxConfig {
+                    mode: SandboxMode::Off,
+                    ..Default::default()
+                },
+                sandbox_backend,
+                None,
+            )
+            .unwrap_or_else(|error| panic!("test sandbox router failed: {error}")),
+        );
 
         let result = prepare_sandbox_images(&router).await;
 

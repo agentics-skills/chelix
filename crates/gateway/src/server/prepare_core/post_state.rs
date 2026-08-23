@@ -7,6 +7,7 @@ use {
 
 mod credential_env;
 mod session_tools;
+mod sub_agent_tools;
 
 use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
 
@@ -691,6 +692,12 @@ pub(super) async fn complete_startup(
         ));
 
         session_tools::register_session_tools(
+            &mut tool_registry,
+            &state,
+            &session_store,
+            &session_metadata,
+        );
+        sub_agent_tools::register_sub_agent_tool(
             &mut tool_registry,
             &state,
             &session_store,

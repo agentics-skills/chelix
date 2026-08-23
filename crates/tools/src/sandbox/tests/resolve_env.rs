@@ -14,7 +14,8 @@ async fn resolve_env_returns_host_when_sandbox_is_off() {
         mode: SandboxMode::Off,
         ..Default::default()
     };
-    let router = SandboxRouter::with_backend(config, routed_backend);
+    let router =
+        SandboxRouter::with_backend(config, routed_backend, test_owner_resolver()).unwrap();
 
     let env = router.resolve_env("main").await;
 
@@ -26,7 +27,12 @@ async fn resolve_env_returns_host_when_sandbox_is_off() {
 async fn resolve_env_returns_sandbox_for_isolated_backend() {
     let backend = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
     let routed_backend: Arc<dyn Sandbox> = backend.clone();
-    let router = SandboxRouter::with_backend(SandboxConfig::default(), routed_backend.clone());
+    let router = SandboxRouter::with_backend(
+        SandboxConfig::default(),
+        routed_backend.clone(),
+        test_owner_resolver(),
+    )
+    .unwrap();
 
     let env = router.resolve_env("session:isolated").await;
 
@@ -51,7 +57,8 @@ async fn resolve_env_fails_closed_for_nonisolated_backend() {
         mode: SandboxMode::On,
         ..Default::default()
     };
-    let router = SandboxRouter::with_backend(config, Arc::new(NoSandbox));
+    let router =
+        SandboxRouter::with_backend(config, Arc::new(NoSandbox), test_owner_resolver()).unwrap();
 
     let error = match router.resolve_env("main").await {
         Err(error) => error,
@@ -71,7 +78,12 @@ async fn resolve_env_fails_closed_when_backend_is_unavailable() {
         None,
     ));
     let routed_backend: Arc<dyn Sandbox> = backend.clone();
-    let router = SandboxRouter::with_backend(SandboxConfig::default(), routed_backend);
+    let router = SandboxRouter::with_backend(
+        SandboxConfig::default(),
+        routed_backend,
+        test_owner_resolver(),
+    )
+    .unwrap();
 
     let error = match router.resolve_env("main").await {
         Err(error) => error,
@@ -90,7 +102,7 @@ async fn resolve_env_uses_one_global_policy_for_every_session() {
         mode: SandboxMode::On,
         ..Default::default()
     };
-    let router = SandboxRouter::with_backend(config, backend);
+    let router = SandboxRouter::with_backend(config, backend, test_owner_resolver()).unwrap();
 
     assert!(matches!(
         router.resolve_env("main").await,

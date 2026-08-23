@@ -2,10 +2,13 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use {tokio::sync::RwLock, tracing::info};
+use {
+    tokio::sync::RwLock,
+    tracing::{debug, info},
+};
 
 #[cfg(any(target_os = "macos", test))]
-use {async_trait::async_trait, tracing::debug};
+use async_trait::async_trait;
 
 #[cfg(target_os = "macos")]
 use super::apple::{AppleContainerSandbox, ensure_apple_container_service};
@@ -14,6 +17,7 @@ use {
         containers::{is_cli_available, is_docker_daemon_available, should_use_docker_backend},
         docker::{DockerSandbox, NoSandbox},
         env::ExecEnv,
+        owner::SandboxOwnerResolver,
         types::{
             Sandbox, SandboxBackend, SandboxBackendId, SandboxConfig, SandboxId, SandboxMode,
             SharedSandboxImage, ToolsServiceInstance, shared_sandbox_image,
@@ -532,13 +536,18 @@ pub struct SandboxRouter {
     effective_image: SharedSandboxImage,
     /// Event channel for sandbox lifecycle events (prepare/provision/build feedback).
     event_tx: tokio::sync::broadcast::Sender<SandboxEvent>,
-    /// Session keys that have already completed sandbox initialization.
+    owner_resolver: Option<Arc<dyn SandboxOwnerResolver>>,
+    /// Owner keys that have already completed sandbox initialization.
     /// Used to avoid repeating first-run preparation banners on every command.
     prepared_sessions: RwLock<HashSet<String>>,
 }
 
 impl SandboxRouter {
-    pub fn new(config: SandboxConfig) -> Result<Self> {
+    pub fn new(
+        config: SandboxConfig,
+        owner_resolver: Option<Arc<dyn SandboxOwnerResolver>>,
+    ) -> Result<Self> {
+        Self::require_owner_resolver(&config, owner_resolver.as_ref())?;
         let effective_image = shared_sandbox_image(&config);
         let backend =
             create_sandbox_with_global_image(config.clone(), Arc::clone(&effective_image))?;
@@ -548,6 +557,7 @@ impl SandboxRouter {
             backend,
             effective_image,
             event_tx,
+            owner_resolver,
             prepared_sessions: RwLock::new(HashSet::new()),
         })
     }
@@ -555,26 +565,61 @@ impl SandboxRouter {
     /// Create the canonical router for explicit global host execution.
     #[must_use]
     pub fn disabled() -> Self {
-        Self::with_backend(
-            SandboxConfig {
-                mode: SandboxMode::Off,
-                ..SandboxConfig::default()
-            },
-            Arc::new(NoSandbox),
-        )
-    }
-
-    /// Create a router with a custom sandbox backend (useful for testing).
-    pub fn with_backend(config: SandboxConfig, backend: Arc<dyn Sandbox>) -> Self {
+        let config = SandboxConfig {
+            mode: SandboxMode::Off,
+            ..SandboxConfig::default()
+        };
         let effective_image = shared_sandbox_image(&config);
         let (event_tx, _) = tokio::sync::broadcast::channel(32);
         Self {
             config,
+            backend: Arc::new(NoSandbox),
+            effective_image,
+            event_tx,
+            owner_resolver: None,
+            prepared_sessions: RwLock::new(HashSet::new()),
+        }
+    }
+
+    /// Create a router with a custom sandbox backend (useful for testing).
+    pub fn with_backend(
+        config: SandboxConfig,
+        backend: Arc<dyn Sandbox>,
+        owner_resolver: Option<Arc<dyn SandboxOwnerResolver>>,
+    ) -> Result<Self> {
+        Self::require_owner_resolver(&config, owner_resolver.as_ref())?;
+        let effective_image = shared_sandbox_image(&config);
+        let (event_tx, _) = tokio::sync::broadcast::channel(32);
+        Ok(Self {
+            config,
             backend,
             effective_image,
             event_tx,
+            owner_resolver,
             prepared_sessions: RwLock::new(HashSet::new()),
+        })
+    }
+
+    fn require_owner_resolver(
+        config: &SandboxConfig,
+        owner_resolver: Option<&Arc<dyn SandboxOwnerResolver>>,
+    ) -> Result<()> {
+        if config.mode == SandboxMode::On && owner_resolver.is_none() {
+            return Err(Error::message(
+                "sandbox mode is On, but no sandbox owner resolver is configured",
+            ));
         }
+        Ok(())
+    }
+
+    async fn resolve_owner_key(&self, session_key: &str) -> Result<String> {
+        if !self.enabled() {
+            return Ok(session_key.to_string());
+        }
+        let resolver = self.owner_resolver.as_ref().ok_or_else(|| {
+            Error::message("sandbox mode is On, but no sandbox owner resolver is configured")
+        })?;
+        resolver.resolve_owner_key(session_key).await
     }
 
     /// Subscribe to sandbox lifecycle events.
@@ -587,23 +632,23 @@ impl SandboxRouter {
         let _ = self.event_tx.send(event);
     }
 
-    /// Mark a session as preparing for sandbox first-run work.
-    /// Returns `true` only the first time for a session key.
-    pub async fn mark_preparing_once(&self, session_key: &str) -> bool {
+    /// Mark an owner as preparing for sandbox first-run work.
+    /// Returns `true` only the first time for an owner key.
+    pub async fn mark_preparing_once(&self, owner_key: &str) -> bool {
         self.prepared_sessions
             .write()
             .await
-            .insert(session_key.to_string())
+            .insert(owner_key.to_string())
     }
 
-    /// Clear preparation marker for a session (used on cleanup or prepare failure).
-    pub async fn clear_prepared_session(&self, session_key: &str) {
-        self.prepared_sessions.write().await.remove(session_key);
+    /// Clear preparation marker for an owner (used on cleanup or prepare failure).
+    pub async fn clear_prepared_session(&self, owner_key: &str) {
+        self.prepared_sessions.write().await.remove(owner_key);
     }
 
-    /// Clear per-session lifecycle markers after its global-backend runtime is removed.
-    pub async fn clear_runtime_state(&self, session_key: &str) {
-        self.clear_prepared_session(session_key).await;
+    /// Clear per-owner lifecycle markers after its global-backend runtime is removed.
+    pub async fn clear_runtime_state(&self, owner_key: &str) {
+        self.clear_prepared_session(owner_key).await;
     }
 
     /// Return whether the global sandbox policy is enabled.
@@ -642,10 +687,9 @@ impl SandboxRouter {
         )))
     }
 
-    /// Derive a SandboxId for a given session key.
-    /// The key is sanitized for use as a container name (only alphanumeric, dash, underscore, dot).
-    pub fn sandbox_id_for(&self, session_key: &str) -> SandboxId {
-        let sanitized: String = session_key
+    /// Derive a SandboxId from an already resolved sandbox owner key.
+    pub fn sandbox_id_for(&self, owner_key: &str) -> SandboxId {
+        let sanitized: String = owner_key
             .chars()
             .map(|c| {
                 if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
@@ -661,13 +705,21 @@ impl SandboxRouter {
         }
     }
 
-    /// Clean up sandbox resources for a session.
+    /// Clean up sandbox resources only when the requested session owns them.
     pub async fn cleanup_session(&self, session_key: &str) -> Result<()> {
-        let id = self.sandbox_id_for(session_key);
+        let owner_key = self.resolve_owner_key(session_key).await?;
+        if session_key != owner_key {
+            debug!(
+                session_key,
+                owner_key, "sandbox cleanup skipped for non-owner session"
+            );
+            return Ok(());
+        }
+        let id = self.sandbox_id_for(&owner_key);
         let backend = Arc::clone(&self.backend);
 
         backend.cleanup(&id).await?;
-        self.clear_prepared_session(session_key).await;
+        self.clear_prepared_session(&owner_key).await;
         Ok(())
     }
 
@@ -676,21 +728,23 @@ impl SandboxRouter {
         &self,
         session_key: &str,
     ) -> Result<(Arc<dyn Sandbox>, SandboxId)> {
-        let id = self.sandbox_id_for(session_key);
+        let owner_key = self.resolve_owner_key(session_key).await?;
+        let id = self.sandbox_id_for(&owner_key);
         let backend = Arc::clone(&self.backend);
         let image = self.default_image().await;
 
         info!(
             session = session_key,
+            owner = owner_key,
             sandbox_id = %id,
             backend = %backend.backend_id(),
             image,
             "sandbox ensure_ready"
         );
-        let announce_prepare = self.mark_preparing_once(session_key).await;
+        let announce_prepare = self.mark_preparing_once(&owner_key).await;
         if announce_prepare {
             self.emit_event(SandboxEvent::Preparing {
-                session_key: session_key.to_string(),
+                session_key: owner_key.clone(),
                 backend: backend.backend_id(),
                 image: image.clone(),
             });
@@ -698,9 +752,9 @@ impl SandboxRouter {
 
         if let Err(error) = backend.ensure_ready(&id).await {
             if announce_prepare {
-                self.clear_prepared_session(session_key).await;
+                self.clear_prepared_session(&owner_key).await;
                 self.emit_event(SandboxEvent::PrepareFailed {
-                    session_key: session_key.to_string(),
+                    session_key: owner_key.clone(),
                     backend: backend.backend_id(),
                     image: image.clone(),
                     error: error.to_string(),
@@ -711,7 +765,7 @@ impl SandboxRouter {
 
         if announce_prepare {
             self.emit_event(SandboxEvent::Prepared {
-                session_key: session_key.to_string(),
+                session_key: owner_key,
                 backend: backend.backend_id(),
                 image: image.clone(),
             });

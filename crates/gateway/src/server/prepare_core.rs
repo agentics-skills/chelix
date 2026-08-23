@@ -864,6 +864,7 @@ pub async fn prepare_gateway_core(
         &sandbox_config,
         &sandbox_container_prefix,
         config.user.timezone.as_ref().map(|tz| tz.name()),
+        Arc::clone(&session_metadata),
     )?);
 
     // ── Upstream proxy (user-configured) ─────────────────────────────────
@@ -930,10 +931,10 @@ pub async fn prepare_gateway_core(
                     if let Err(e) = prune_session_store.clear(key).await {
                         tracing::debug!(key, error = %e, "cron prune: failed to clear session");
                     }
-                    prune_session_metadata.remove(key).await;
                     if let Err(e) = prune_sandbox.cleanup_session(key).await {
                         tracing::debug!(key, error = %e, "cron prune: sandbox cleanup failed");
                     }
+                    prune_session_metadata.remove(key).await;
                     cleaned += 1;
                 }
 
