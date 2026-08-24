@@ -1,0 +1,34 @@
+//! Error type for the Linkup search tool.
+
+/// Failure raised by the Linkup client or `linkup_search` tool.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// Linkup rejected the configured API token.
+    #[error("{message}")]
+    Authorization { message: String },
+    /// Any other failure reported with the message exposed to the agent.
+    #[error("{message}")]
+    Message { message: String },
+    #[error(transparent)]
+    Request(#[from] reqwest::Error),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
+
+impl Error {
+    #[must_use]
+    pub fn message(message: impl Into<String>) -> Self {
+        Self::Message {
+            message: message.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn authorization(message: impl Into<String>) -> Self {
+        Self::Authorization {
+            message: message.into(),
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;

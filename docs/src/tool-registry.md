@@ -329,6 +329,49 @@ Both tools return strings and retain the default tool-result persistence and
 truncation policy. Full results therefore pass through the common runner pipeline
 and oversized in-context copies point to the persisted text file.
 
+## Linkup search tool
+
+The built-in `linkup_search` tool calls `POST https://api.linkup.so/v1/search`
+through one shared client. Its API token is read from `tools.linkup.token`:
+
+```toml
+[tools.linkup]
+token = "..."
+request_timeout_secs = 300
+```
+
+The tool description is `Search the web via Linkup API and return relevant
+results in Markdown.` Its public schema requires `query` and optionally accepts
+`onlySearchTheseDomains`, `dateFilter.fromDate`, `dateFilter.toDate`, and
+`maxResults`. Unknown public fields are rejected. `maxResults` defaults to `5`
+and has a minimum of `1`.
+
+Input normalization trims the query and rejects an empty value. Domains are
+trimmed, empty values are removed, an initial `http://` or `https://` and one
+trailing slash are removed, duplicates retain their first position, and the
+result is limited to 50 domains. Dates must use `YYYY-MM-DD`. The request keeps
+`depth = "standard"`, `outputType = "searchResults"`, and `includeImages = false`
+as fixed internal values that are not exposed in the tool schema.
+
+The shared client enforces at most 10 request starts per one-second window. A
+`429` response with a numeric `Retry-After` header starts or extends one shared
+cooldown across concurrent sessions. The client adds a 5-second buffer, caps the
+cooldown at 60 seconds, admits one probe after the cooldown, and retries the
+limited call once. A `429` without a usable `Retry-After` is returned without an
+invented delay or retry. A missing token or `401` response is an explicit
+authorization error.
+
+Successful results are returned as Markdown. The output starts with the query
+and normalized filters, then uses numbered results with `content` falling back
+to `snippet`. Responses containing an answer use an optional `Sources` section,
+and empty responses end with `No results found.` Markdown-sensitive text is
+escaped exactly before interpolation, while URLs and the answer body are kept
+unchanged.
+
+The tool returns a string and retains the default tool-result persistence and
+truncation policy. Full results therefore pass through the common runner pipeline
+and oversized in-context copies point to the persisted text file.
+
 ## DuckDuckGo search tool
 
 The built-in `duckduckgo_search` tool is exposed to the model with this

@@ -16,6 +16,7 @@ pub struct ToolsConfig {
     pub maps: MapsConfig,
     pub browser: BrowserConfig,
     pub context7: Context7Config,
+    pub linkup: LinkupConfig,
     pub duckduckgo: DuckDuckGoConfig,
     pub github: GitHubConfig,
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
@@ -61,6 +62,7 @@ impl Default for ToolsConfig {
             maps: MapsConfig::default(),
             browser: BrowserConfig::default(),
             context7: Context7Config::default(),
+            linkup: LinkupConfig::default(),
             duckduckgo: DuckDuckGoConfig::default(),
             github: GitHubConfig::default(),
             agent_timeout_secs: default_agent_timeout_secs(),
@@ -201,6 +203,41 @@ impl Default for Context7Config {
         Self {
             token: None,
             request_timeout_secs: DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS,
+        }
+    }
+}
+
+/// Linkup search tool configuration.
+pub const DEFAULT_LINKUP_REQUEST_TIMEOUT_SECS: u64 = 300;
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LinkupConfig {
+    /// Linkup API token used by `linkup_search`.
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token: Option<Secret<String>>,
+    /// Maximum duration of each Linkup HTTP request in seconds. Must be positive.
+    pub request_timeout_secs: u64,
+}
+
+impl std::fmt::Debug for LinkupConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkupConfig")
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .finish()
+    }
+}
+
+impl Default for LinkupConfig {
+    fn default() -> Self {
+        Self {
+            token: None,
+            request_timeout_secs: DEFAULT_LINKUP_REQUEST_TIMEOUT_SECS,
         }
     }
 }

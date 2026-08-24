@@ -1,0 +1,33 @@
+[package]
+description          = "Linkup API search tool for Chelix"
+edition.workspace    = true
+name                 = "chelix-linkup"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+anyhow         = { workspace = true }
+async-trait    = { workspace = true }
+chelix-agents  = { workspace = true }
+chelix-common  = { workspace = true }
+chelix-config  = { workspace = true }
+chelix-metrics = { optional = true, workspace = true }
+reqwest        = { workspace = true }
+secrecy        = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+thiserror      = { workspace = true }
+tokio          = { workspace = true }
+tracing        = { workspace = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+tokio   = { features = ["macros", "rt-multi-thread", "test-util"], workspace = true }
+
+[features]
+default = ["tracing"]
+metrics = ["dep:chelix-metrics"]
+tracing = []
+
+[lints]
+workspace = true

@@ -817,6 +817,7 @@ pub(super) fn apply_env_overrides_with_options(
         .map_err(|source| crate::Error::external("failed to apply env overrides", source))?;
     validate_provider_names(&config.providers, "environment overrides")?;
     validate_context7_request_timeout(&config, "environment overrides")?;
+    validate_linkup_request_timeout(&config, "environment overrides")?;
     Ok(config)
 }
 
@@ -938,6 +939,7 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     validate_provider_names(&config.providers, &context)?;
     validate_agent_ids(&config.agents, &context)?;
     validate_context7_request_timeout(&config, &context)?;
+    validate_linkup_request_timeout(&config, &context)?;
     Ok(config)
 }
 
@@ -945,6 +947,15 @@ fn validate_context7_request_timeout(config: &ChelixConfig, context: &str) -> cr
     if config.tools.context7.request_timeout_secs == 0 {
         return Err(crate::Error::message(format!(
             "invalid {context}: tools.context7.request_timeout_secs must be at least 1"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_linkup_request_timeout(config: &ChelixConfig, context: &str) -> crate::Result<()> {
+    if config.tools.linkup.request_timeout_secs == 0 {
+        return Err(crate::Error::message(format!(
+            "invalid {context}: tools.linkup.request_timeout_secs must be at least 1"
         )));
     }
     Ok(())

@@ -25,6 +25,7 @@ chelix-duckduckgo       = { optional = true, workspace = true }
 chelix-external-agents  = { workspace = true }
 chelix-github           = { optional = true, workspace = true }
 chelix-home-assistant   = { optional = true, workspace = true }
+chelix-linkup           = { optional = true, workspace = true }
 chelix-matrix           = { optional = true, workspace = true }
 chelix-mcp              = { workspace = true }
 chelix-mcp-agent-bridge = { workspace = true }
@@ -106,6 +107,7 @@ default = [
   "github",
   "graphql",
   "home-assistant",
+  "linkup",
   "matrix",
   "mdns",
   "metrics",
@@ -133,6 +135,7 @@ firecrawl = ["chelix-tools/firecrawl"]
 github = ["dep:chelix-github"]
 graphql = []
 home-assistant = ["dep:chelix-home-assistant"]
+linkup = ["dep:chelix-linkup"]
 local-embeddings = ["chelix-memory/local-embeddings"]
 matrix = ["dep:chelix-matrix"]
 mdns = ["dep:mdns-sd"]
@@ -142,6 +145,7 @@ metrics = [
   "chelix-discord?/metrics",
   "chelix-duckduckgo?/metrics",
   "chelix-github?/metrics",
+  "chelix-linkup?/metrics",
   "chelix-matrix/metrics",
   "chelix-metrics/sqlite",
   "chelix-signal?/metrics",

@@ -90,6 +90,7 @@ full = [
   "lang-rust",
   "lang-toml",
   "lang-typescript",
+  "linkup",
   "local-embeddings",
   "matrix",
   "mdns",
@@ -135,6 +136,7 @@ lang-ruby          = ["chelix-memory/lang-ruby"]
 lang-rust          = ["chelix-memory/lang-rust"]
 lang-toml          = ["chelix-memory/lang-toml"]
 lang-typescript    = ["chelix-memory/lang-typescript"]
+linkup             = ["chelix-gateway/linkup"]
 # jemalloc is intentionally unavailable on linux/aarch64 to avoid runtime
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
 lightweight        = ["jemalloc", "tls", "web-ui"]

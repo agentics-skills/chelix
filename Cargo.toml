@@ -24,6 +24,7 @@ default-members = [
   "crates/graphql",
   "crates/home-assistant",
   "crates/httpd",
+  "crates/linkup",
   "crates/matrix",
   "crates/mcp",
   "crates/mcp-agent-bridge",
@@ -82,6 +83,7 @@ members = [
   "crates/graphql",
   "crates/home-assistant",
   "crates/httpd",
+  "crates/linkup",
   "crates/matrix",
   "crates/mcp",
   "crates/media",
@@ -329,6 +331,7 @@ chelix-github           = { path = "crates/github" }
 chelix-graphql          = { path = "crates/graphql" }
 chelix-home-assistant   = { path = "crates/home-assistant" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }
+chelix-linkup           = { path = "crates/linkup" }
 chelix-matrix           = { path = "crates/matrix" }
 chelix-mcp              = { path = "crates/mcp" }
 chelix-mcp-agent-bridge = { path = "crates/mcp-agent-bridge" }

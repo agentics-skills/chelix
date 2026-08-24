@@ -318,6 +318,43 @@ request_timeout_secs = 0
 }
 
 #[test]
+fn linkup_request_timeout_is_accepted() {
+    let toml = r#"
+[tools.linkup]
+request_timeout_secs = 300
+"#;
+    let result = validate_toml_str(toml);
+    let invalid = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.path == "tools.linkup.request_timeout_secs");
+    assert!(
+        invalid.is_none(),
+        "positive Linkup timeout should be accepted, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn linkup_request_timeout_must_be_positive() {
+    let toml = r#"
+[tools.linkup]
+request_timeout_secs = 0
+"#;
+    let result = validate_toml_str(toml);
+    let invalid = result.diagnostics.iter().find(|diagnostic| {
+        diagnostic.path == "tools.linkup.request_timeout_secs"
+            && diagnostic.severity == Severity::Error
+            && diagnostic.category == "invalid-value"
+    });
+    assert!(
+        invalid.is_some(),
+        "expected tools.linkup.request_timeout_secs invalid-value error, got: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
 fn duckduckgo_request_timeout_must_be_positive() {
     let toml = r#"
 [tools.duckduckgo]
