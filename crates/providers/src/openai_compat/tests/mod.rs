@@ -139,7 +139,7 @@ fn normalize_null_only_empty_string_to_null() {
 #[test]
 fn normalize_array_schema_decodes_json_string_array() {
     let tools = vec![serde_json::json!({
-        "name": "spawn_agent",
+        "name": "array_tool",
         "parameters": {
             "type": "object",
             "properties": {
@@ -154,7 +154,7 @@ fn normalize_array_schema_decodes_json_string_array() {
     })];
     let mut tool_calls = vec![ToolCall {
         id: "call_1".to_string(),
-        name: "spawn_agent".to_string(),
+        name: "array_tool".to_string(),
         arguments: serde_json::json!({
             "task": "list files",
             "allow_tools": "[\"list_directory\",\"read_file\"]"

@@ -20,7 +20,6 @@ chelix-config         = { workspace = true }
 chelix-cron           = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 chelix-protocol       = { workspace = true }
-chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-sessions       = { workspace = true }
 chelix-skills         = { workspace = true }
@@ -45,7 +44,6 @@ mockito      = { workspace = true }
 sqlx         = { workspace = true }
 tempfile     = { workspace = true }
 tokio        = { features = ["macros", "rt-multi-thread"], workspace = true }
-tokio-stream = { workspace = true }
 
 [lints]
 workspace = true

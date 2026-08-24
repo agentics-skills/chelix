@@ -317,18 +317,6 @@ pub enum RunnerEvent {
     /// Text from the final iteration of the run.
     FinalText(String),
     Iteration(usize),
-    SubAgentStart {
-        task: String,
-        model: String,
-        depth: u64,
-    },
-    SubAgentEnd {
-        task: String,
-        model: String,
-        depth: u64,
-        iterations: usize,
-        tool_calls_made: usize,
-    },
     /// A transient LLM error occurred and the runner will retry.
     RetryingAfterError {
         error: String,

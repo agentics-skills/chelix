@@ -341,16 +341,6 @@ impl AgentRuntimeLimits {
             max_tool_result_bytes_source,
         }
     }
-
-    #[must_use]
-    pub fn resolve_for_spawned_agent(tools: &ToolsConfig, agent: &AgentConfig) -> Self {
-        let mut limits = Self::resolve(tools, agent);
-        if agent.timeout_secs.is_none() {
-            limits.timeout_secs = 0;
-            limits.timeout_source = AgentRuntimeLimitSource::GlobalTools;
-        }
-        limits
-    }
 }
 
 impl ChelixConfig {

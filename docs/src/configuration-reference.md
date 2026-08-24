@@ -44,7 +44,6 @@
   - [`agents`](#agents)
   - [`agents.<id>`](#agentsid)
   - [`agents.<id>.sessions`](#agentsidsessions)
-  - [`agents.<id>.memory`](#agentsidmemory)
   - [`agents.<id>.mcp`](#agentsidmcp)
   - [`agents.<id>.skills`](#agentsidskills)
   - [`skills`](#skills)
@@ -210,7 +209,7 @@ User profile collected during onboarding.
 
 | Key       | Type                 | Default  | Description                                                                                      |
 | --------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `default` | string               | required | Agent ID used by new sessions and by `spawn_agent` when its `agent` parameter is omitted.        |
+| `default` | string               | required | Agent ID used by new sessions.                                                                   |
 | `<id>`    | map of `AgentConfig` | `{}`     | User-owned agents keyed directly by ID. The configured `default` must reference one of these IDs. |
 
 ### `agents.<id>` — AgentConfig
@@ -227,17 +226,16 @@ User profile collected during onboarding.
 | `tools.preload`         | array                                                                     | `[]`     | Tool schemas exposed immediately in lazy registry mode. Names are resolved after effective policy filtering and do not grant access.                                                                                         |
 | `tool_controls`         | optional map                                                              | `null`   | Per-run `active_tools` and `tool_choice` defaults.                                                                                                                                                                            |
 | `max_tools_threshold`   | integer                                                                   | required | Maximum LLM-emitted tool calls in one agent-loop budget segment. Must be at least `1`.                                                                                                                                        |
-| `timeout_secs`          | optional integer                                                          | `null`   | Timeout in seconds for direct sessions and spawned runs using this agent. `0` disables the agent-specific timeout.                                                                                                            |
+| `timeout_secs`          | optional integer                                                          | `null`   | Timeout in seconds for sessions using this agent. `0` disables the agent-specific timeout.                                                                                                                                    |
 | `max_tool_result_bytes` | optional integer                                                          | `null`   | Maximum in-context bytes per tool result for this agent. Falls back to `tools.max_tool_result_bytes`.                                                                                                                         |
 | `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`   | Session access policy for inter-agent communication.                                                                                                                                                                         |
-| `memory`                | optional `AgentMemoryConfig`                                              | `null`   | Persistent memory configuration for spawned runs.                                                                                                                                                                            |
 | `reasoning_effort`      | optional enum: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | `null`   | Reasoning/thinking effort for models that support it.                                                                                                                                                                        |
 | `mcp`                   | optional `AgentMcpPolicy`                                                 | `null`   | MCP server allow or deny policy.                                                                                                                                                                                             |
 | `skills`                | optional `AgentSkillPolicy`                                               | `null`   | Per-agent skill visibility policy.                                                                                                                                                                                           |
 
-Unknown fields in an agent table are rejected. Chat prompt text is stored in
-`<data_dir>/agents/<id>/SOUL.md`; the prompt used by `spawn_agent` is stored in
-`<data_dir>/agents/<id>/SUBAGENT.md`.
+Unknown fields in an agent table are rejected. Sessions with the `chat` prompt
+profile load `<data_dir>/agents/<id>/SOUL.md`; sessions with the `subagent`
+prompt profile load `<data_dir>/agents/<id>/SUBAGENT.md`.
 
 ### `agents.<id>.sessions` (`SessionAccessPolicyConfig`)
 
@@ -247,13 +245,6 @@ Unknown fields in an agent table are rejected. Chat prompt text is stored in
 | `allowed_keys` | array           | `[]`    | Explicit session keys this agent can access in addition to prefix.  |
 | `can_send`     | bool            | `true`  | Whether the agent can send messages to sessions.                    |
 | `cross_agent`  | bool            | `false` | Whether the agent can access sessions owned by other agents.        |
-
-### `agents.<id>.memory` (`AgentMemoryConfig`)
-
-| Key         | Type                             | Default  | Description                                                                                                                                              |
-| ----------- | -------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scope`     | enum: `user`, `project`, `local` | `"user"` | Memory scope: `user` stores under `<data_dir>/agent-memory/<id>/`, `project` under `.chelix/agent-memory/<id>/`, and `local` under `.chelix/agent-memory-local/<id>/`. |
-| `max_lines` | integer                          | `200`    | Maximum lines loaded from `MEMORY.md`.                                                                                                                   |
 
 ### `agents.<id>.mcp` (`AgentMcpPolicy`)
 

@@ -137,7 +137,7 @@ Configure policy on an agent to control which sessions it can access:
 
 ```toml
 [agents.coordinator]
-tools.allow = ["sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list", "spawn_agent"]
+tools.allow = ["sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list", "sub_agent"]
 sessions.can_send = true
 
 [agents.observer]
@@ -158,44 +158,23 @@ When no policy is configured, all sessions are visible and sendable.
 
 ## Coordination Patterns
 
-Use `spawn_agent` when work is short-lived and synchronous. For longer delegated
-work, call `spawn_agent` with `nonblocking: true`; it returns a `task_id` while
-the sub-agent continues in the background. Use `spawn_status` to check progress,
-`spawn_result` to fetch the final output, `spawn_list` to recover task IDs after
-context loss, and `cancel_spawn` to stop work that is no longer needed.
+Use `sub_agent` for delegated work. `run` with `mode = "blocking"` returns the
+child response directly. `mode = "background"` returns a child session key for
+`status`, `result`, or `cancel`; `list` returns every direct child of the calling
+session. See [Sub-Agent Delegation](sub-agent.md) for the action schemas.
 
-Use `active_tools` and `tool_choice` to prevent model drift on small/cheap LLMs.
-These controls apply **per agent run** (not per iteration within a run) and are
-available on agents, `spawn_agent`, and `cron` `agentTurn` payloads.
+Use `active_tools` and `tool_choice` to constrain an agent run. These controls
+are configured on agents and supported by `cron` `agentTurn` payloads.
 
 - `active_tools` filters the tool schemas visible to the agent.
 - `tool_choice` controls provider-level tool selection:
-  - `auto` — model decides (default).
-  - `any` — model must call some tool but chooses which one.
-  - `none` — no tools sent; forces text-only output.
+  - `auto` — model decides.
+  - `any` — model must call a tool.
+  - `none` — no tools are sent.
   - `tool` + `name` — model must call the named tool.
 
-Supported on OpenAI (Responses and Chat Completions) and OpenAI-compatible
-providers.
-
-**Classify-then-generate pattern** — use two `spawn_agent` calls, each with its
-own tool controls:
-
-```json
-// Turn 1: forced classifier
-{
-  "task": "Classify whether the reply should be inline, file, or PR.",
-  "active_tools": ["classify_destination"],
-  "tool_choice": { "type": "tool", "name": "classify_destination" },
-  "nonblocking": true
-}
-// Turn 2: scoped generation (parent reads classifier result, spawns again)
-{
-  "task": "Generate the report in a file.",
-  "active_tools": ["overwrite_file"],
-  "tool_choice": { "type": "auto" }
-}
-```
+OpenAI Responses, OpenAI Chat Completions, and OpenAI-compatible providers
+support these controls.
 
 Example agent defaults:
 

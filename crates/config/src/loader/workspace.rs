@@ -192,7 +192,7 @@ pub fn load_soul_for_agent(agent_id: &str) -> Option<String> {
     load_workspace_markdown(agent_workspace_dir(agent_id).join("SOUL.md"))
 }
 
-/// Load the spawned-agent system prompt for a specific agent.
+/// Load the delegated-session system prompt for a specific agent.
 pub fn load_subagent_prompt_for_agent(agent_id: &str) -> Option<String> {
     load_workspace_markdown(agent_workspace_dir(agent_id).join("SUBAGENT.md"))
 }
@@ -269,7 +269,7 @@ pub fn save_soul_for_agent(agent_id: &str, soul: Option<&str>) -> crate::Result<
     save_agent_prompt(agent_id, "SOUL.md", soul)
 }
 
-/// Persist the spawned-agent system prompt into an agent's workspace directory.
+/// Persist the delegated-session system prompt into an agent's workspace directory.
 pub fn save_subagent_prompt_for_agent(
     agent_id: &str,
     prompt: Option<&str>,

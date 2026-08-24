@@ -208,10 +208,9 @@ port = {port}                           # Port number (auto-generated for this i
 # AGENTS
 # ══════════════════════════════════════════════════════════════════════════════
 # Agents are user-owned configuration. The `default` ID is used for new chat
-# sessions and when `spawn_agent.agent` is omitted. Agent display data and
-# structural runtime settings live here. Chat prompts live in
-# `agents/<id>/SOUL.md`; spawned-agent prompts live in
-# `agents/<id>/SUBAGENT.md`.
+# sessions. Agent display data and structural runtime settings live here.
+# Sessions with the `chat` prompt profile load `agents/<id>/SOUL.md`; delegated
+# child sessions load `agents/<id>/SUBAGENT.md`.
 #
 # `max_tools_threshold` is required and limits actual LLM-emitted tool calls in
 # each agent-loop segment. Every call in a parallel batch counts; a batch that
