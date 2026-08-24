@@ -17,8 +17,6 @@ const INTERNAL_PARAMETERS: &[&str] = &[
     "_conn_id",
     "_tool_call_id",
     "_run_id",
-    "active_tools",
-    "tool_choice",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

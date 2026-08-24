@@ -238,21 +238,6 @@ impl ToolRegistry {
         schemas
     }
 
-    pub fn list_schemas_allowed_by<F>(&self, mut predicate: F) -> Vec<serde_json::Value>
-    where
-        F: FnMut(&str) -> bool,
-    {
-        self.list_schemas()
-            .into_iter()
-            .filter(|schema| {
-                schema
-                    .get("name")
-                    .and_then(serde_json::Value::as_str)
-                    .is_some_and(&mut predicate)
-            })
-            .collect()
-    }
-
     /// Public tools available in the current filtered registry.
     ///
     /// Ignores lazy schema visibility: every tool is returned, including

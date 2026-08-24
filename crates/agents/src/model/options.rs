@@ -1,9 +1,9 @@
-use super::{AgentToolControls, ToolChoice};
+use super::ToolChoice;
 
 /// Per-request controls for a non-streaming completion.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CompletionOptions {
-    pub tool_controls: AgentToolControls,
+    pub tool_choice: Option<ToolChoice>,
     pub max_output_tokens: Option<u32>,
 }
 
@@ -20,20 +20,11 @@ impl CompletionOptions {
     /// implement forced tool selection.
     pub fn reject_forced_tool_choice(&self, provider_name: &str) -> anyhow::Result<()> {
         if matches!(
-            self.tool_controls.tool_choice,
+            self.tool_choice,
             Some(ToolChoice::Tool { .. } | ToolChoice::Any)
         ) {
             anyhow::bail!("provider {provider_name} does not support forced tool_choice");
         }
         Ok(())
-    }
-}
-
-impl From<AgentToolControls> for CompletionOptions {
-    fn from(tool_controls: AgentToolControls) -> Self {
-        Self {
-            tool_controls,
-            max_output_tokens: None,
-        }
     }
 }

@@ -15,8 +15,8 @@ use {
     crate::{
         lazy_tools::wrap_registry_lazy,
         model::{
-            AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
-            Usage, UserContent,
+            ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
+            UserContent,
         },
         tool_registry::AgentTool,
     },
@@ -106,7 +106,7 @@ impl LlmProvider for ScriptedToolProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(stream_events(self.next_round())))
     }
@@ -337,6 +337,7 @@ async fn full_budget_still_allows_a_final_text_only_model_round() {
         None,
         None,
         None,
+        None,
         threshold_limits(1),
     )
     .await
@@ -368,6 +369,7 @@ async fn rejected_recognized_calls_consume_the_budget() {
         &tools,
         "Test bot",
         &UserContent::text("Retry rejected calls"),
+        None,
         None,
         None,
         None,
@@ -409,6 +411,7 @@ async fn lazy_get_tool_and_revealed_target_each_consume_one_unit() {
         &lazy_registry,
         "Test bot",
         &UserContent::text("Reveal and run the target"),
+        None,
         None,
         None,
         None,

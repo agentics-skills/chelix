@@ -6,8 +6,7 @@ use {
     super::helpers::*,
     crate::{
         model::{
-            AgentToolControls, ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
-            Usage,
+            ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
         },
         tool_registry::AgentTool,
     },
@@ -215,7 +214,7 @@ impl LlmProvider for RoundAwareLoopProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(stream_events(
             self.next_call(&messages, &tools),

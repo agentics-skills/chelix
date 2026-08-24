@@ -129,8 +129,8 @@ impl LiveChatService {
             .map(String::from);
         let explicit_model = params.get("model").and_then(|v| v.as_str());
         let requested_reasoning_effort_override = requested_reasoning_effort(&params);
-        let tool_controls =
-            chelix_config::schema::AgentToolControls::from_tool_context(Some(&params));
+        let tool_choice = chelix_config::schema::tool_choice_from_request_params(&params)
+            .map_err(|error| format!("invalid 'tool_choice' parameter: {error}"))?;
         // Use streaming-only mode if explicitly requested or if no tools are registered.
         let explicit_stream_only = params
             .get("stream_only")
@@ -913,7 +913,7 @@ impl LiveChatService {
                         &active_event_forwarders,
                         &terminal_runs,
                         sender_name,
-                        Some(tool_controls),
+                        tool_choice,
                     )
                     .await
                 }

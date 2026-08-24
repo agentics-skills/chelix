@@ -17,7 +17,7 @@ use {
 use {
     chelix_agents::{
         AgentRunError, ChatMessage, UserContent,
-        model::AgentToolControls,
+        model::ToolChoice,
         prompt::{
             PromptRuntimeContext, build_system_prompt_minimal_runtime_details,
             build_system_prompt_with_session_runtime_details,
@@ -690,7 +690,7 @@ pub(crate) async fn run_with_tools(
     >,
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
     sender_name: Option<String>,
-    tool_controls: Option<AgentToolControls>,
+    tool_choice: Option<ToolChoice>,
 ) -> ChatRunOutcome {
     let run_started = Instant::now();
     info!(
@@ -1153,17 +1153,6 @@ pub(crate) async fn run_with_tools(
         runtime_context,
     );
     tool_context["_run_id"] = serde_json::json!(run_id);
-    if let Some(controls) = tool_controls {
-        if let Some(active_tools) = controls.active_tools {
-            tool_context["active_tools"] = serde_json::json!(active_tools);
-        }
-        if let Some(tool_choice) = controls.tool_choice {
-            match serde_json::to_value(tool_choice) {
-                Ok(value) => tool_context["tool_choice"] = value,
-                Err(error) => warn!(%error, "failed to serialize tool_choice control"),
-            }
-        }
-    }
 
     // Create a shared steer inbox that the gateway can push steering text into.
     // A background task polls the ChatRuntime and forwards any `/steer` text.
@@ -1203,6 +1192,7 @@ pub(crate) async fn run_with_tools(
             Some(&on_tool_lifecycle),
             next_history.take(),
             Some(tool_context.clone()),
+            tool_choice.clone(),
             hook_registry.clone(),
             sender_name.clone(),
             Some(steer_inbox.clone()),

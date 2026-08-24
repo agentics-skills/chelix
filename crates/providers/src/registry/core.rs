@@ -8,8 +8,8 @@ use std::{
 
 use {
     chelix_agents::model::{
-        AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
-        ReasoningEffort, StreamEvent,
+        ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, ReasoningEffort,
+        StreamEvent, ToolChoice,
     },
     chelix_common::{ModelMetadata, ModelModality},
     tokio_stream::Stream,
@@ -102,10 +102,10 @@ impl LlmProvider for RegistryModelProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        options: AgentToolControls,
+        tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         self.inner
-            .stream_with_tools_and_options(messages, tools, options)
+            .stream_with_tools_and_options(messages, tools, tool_choice)
     }
 
     fn reasoning_effort(&self) -> Option<ReasoningEffort> {

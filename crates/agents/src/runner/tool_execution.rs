@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use {
     chelix_common::{
@@ -41,7 +41,6 @@ pub(crate) struct ToolInvocationExecutor<'a> {
     pub hook_registry: Option<&'a Arc<HookRegistry>>,
     pub session_key: &'a str,
     pub channel: Option<&'a ChannelBinding>,
-    pub active_tool_names: Option<&'a HashSet<String>>,
     pub tool_choice: Option<&'a ToolChoice>,
     pub on_lifecycle: Option<&'a OnToolLifecycle>,
     pub context_budget: &'a ContextBudgetMetadata,
@@ -89,13 +88,6 @@ impl ToolInvocationExecutor<'_> {
         let validation_error = if matches!(self.tool_choice, Some(ToolChoice::None)) {
             Some(format!(
                 "tool `{execution_name}` cannot be called: tool use is disabled for this turn"
-            ))
-        } else if self
-            .active_tool_names
-            .is_some_and(|active| !active.contains(&execution_name))
-        {
-            Some(format!(
-                "tool `{execution_name}` is not active for this turn; choose one of the currently available tools"
             ))
         } else if let Some(ref tool) = tool {
             let schema = tool.parameters_schema();

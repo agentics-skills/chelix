@@ -281,16 +281,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ("preload", Leaf),
                 ])),
             ),
-            (
-                "tool_controls",
-                Struct(HashMap::from([
-                    ("active_tools", Leaf),
-                    (
-                        "tool_choice",
-                        Struct(HashMap::from([("type", Leaf), ("name", Leaf)])),
-                    ),
-                ])),
-            ),
             ("max_tools_threshold", Leaf),
             ("timeout_secs", Leaf),
             ("max_tool_result_bytes", Leaf),

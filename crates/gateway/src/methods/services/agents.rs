@@ -468,23 +468,6 @@ fn validate_agent_config(agent: &chelix_config::AgentConfig) -> Result<(), Error
             "max_tools_threshold must be at least 1",
         ));
     }
-    if let Some(chelix_config::schema::ToolChoice::Tool { name }) = &agent.tool_controls.tool_choice
-    {
-        if name.trim().is_empty() {
-            return Err(ErrorShape::new(
-                error_codes::INVALID_REQUEST,
-                "forced tool_choice requires a non-empty name",
-            ));
-        }
-        if let Some(active_tools) = &agent.tool_controls.active_tools
-            && !active_tools.iter().any(|active| active == name)
-        {
-            return Err(ErrorShape::new(
-                error_codes::INVALID_REQUEST,
-                "forced tool_choice must be included in active_tools",
-            ));
-        }
-    }
     Ok(())
 }
 

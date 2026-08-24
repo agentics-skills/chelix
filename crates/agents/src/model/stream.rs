@@ -3,7 +3,7 @@ use std::{pin::Pin, sync::Arc, time::Duration};
 use {async_trait::async_trait, futures::StreamExt, tokio_stream::Stream};
 
 use super::{
-    AgentToolControls, CompletionOptions, ReasoningEffort, ToolChoice,
+    CompletionOptions, ReasoningEffort, ToolChoice,
     chat::ChatMessage,
     types::{CompletionResponse, Usage},
 };
@@ -149,9 +149,9 @@ pub trait LlmProvider: Send + Sync {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        options: AgentToolControls,
+        tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        if let Err(error) = reject_unsupported_tool_choice(self.name(), &options) {
+        if let Err(error) = reject_unsupported_tool_choice(self.name(), tool_choice.as_ref()) {
             return Box::pin(tokio_stream::once(StreamEvent::Error(error.to_string())));
         }
         self.stream_with_tools(messages, tools)
@@ -235,12 +235,9 @@ pub trait LlmProvider: Send + Sync {
 
 fn reject_unsupported_tool_choice(
     provider_name: &str,
-    options: &AgentToolControls,
+    tool_choice: Option<&ToolChoice>,
 ) -> anyhow::Result<()> {
-    if matches!(
-        options.tool_choice,
-        Some(ToolChoice::Tool { .. } | ToolChoice::Any)
-    ) {
+    if matches!(tool_choice, Some(ToolChoice::Tool { .. } | ToolChoice::Any)) {
         anyhow::bail!("provider {provider_name} does not support forced tool_choice");
     }
     Ok(())

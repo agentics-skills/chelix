@@ -280,6 +280,7 @@ pub async fn run_silent_memory_turn_with_prompt(
         None,
         None,
         None,
+        None,
         AgentLoopLimits {
             max_tools_threshold,
             max_tool_result_bytes: None,

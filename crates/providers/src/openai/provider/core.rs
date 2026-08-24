@@ -8,8 +8,7 @@ use {
 };
 
 use chelix_agents::model::{
-    AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
-    StreamEvent, ToolChoice,
+    ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, ToolChoice,
 };
 
 use super::super::{OpenAiProvider, OpenAiProviderCapabilities};
@@ -289,18 +288,18 @@ impl LlmProvider for OpenAiProvider {
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        self.stream_with_tools_and_options(messages, tools, AgentToolControls::default())
+        self.stream_with_tools_and_options(messages, tools, None)
     }
 
     fn stream_with_tools_and_options(
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        options: AgentToolControls,
+        tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         match (self.wire_api, self.stream_transport) {
             (WireApi::Responses, ProviderStreamTransport::Sse) => {
-                self.stream_responses_sse(messages, tools, options)
+                self.stream_responses_sse(messages, tools, tool_choice)
             },
             (WireApi::Responses, _) => {
                 // WebSocket / Auto both go through the WS path which already
@@ -309,20 +308,20 @@ impl LlmProvider for OpenAiProvider {
                     messages,
                     tools,
                     matches!(self.stream_transport, ProviderStreamTransport::Auto),
-                    options,
+                    tool_choice,
                     true,
                 )
             },
             (WireApi::ChatCompletions, ProviderStreamTransport::Sse) => {
-                self.stream_with_tools_sse(messages, tools, options)
+                self.stream_with_tools_sse(messages, tools, tool_choice)
             },
             (WireApi::ChatCompletions, ProviderStreamTransport::Websocket) => {
                 // WebSocket always uses Responses wire format; SSE fallback
                 // uses Chat Completions SSE.
-                self.stream_with_tools_websocket(messages, tools, false, options, false)
+                self.stream_with_tools_websocket(messages, tools, false, tool_choice, false)
             },
             (WireApi::ChatCompletions, ProviderStreamTransport::Auto) => {
-                self.stream_with_tools_websocket(messages, tools, true, options, false)
+                self.stream_with_tools_websocket(messages, tools, true, tool_choice, false)
             },
         }
     }
@@ -330,9 +329,9 @@ impl LlmProvider for OpenAiProvider {
 
 pub(crate) fn apply_openai_responses_tool_choice(
     body: &mut serde_json::Value,
-    options: &AgentToolControls,
+    tool_choice: Option<&ToolChoice>,
 ) -> anyhow::Result<()> {
-    match options.tool_choice.as_ref() {
+    match tool_choice {
         None | Some(ToolChoice::Auto) => {
             if body.get("tools").is_some() {
                 body["tool_choice"] = serde_json::json!("auto");
@@ -370,9 +369,9 @@ pub(crate) fn apply_openai_responses_tool_choice(
 /// instead of the Responses API's `{"type": "function", "name": "..."}`.
 pub(crate) fn apply_openai_chat_tool_choice(
     body: &mut serde_json::Value,
-    options: &AgentToolControls,
+    tool_choice: Option<&ToolChoice>,
 ) -> anyhow::Result<()> {
-    match options.tool_choice.as_ref() {
+    match tool_choice {
         None | Some(ToolChoice::Auto) => {
             // Chat Completions doesn't require an explicit tool_choice for auto.
         },

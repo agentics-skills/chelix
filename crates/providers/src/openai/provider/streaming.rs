@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use chelix_agents::model::{AgentToolControls, ChatMessage, StreamEvent};
+use chelix_agents::model::{ChatMessage, StreamEvent, ToolChoice};
 
 use super::OpenAiProvider;
 
@@ -24,7 +24,7 @@ impl OpenAiProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        options: AgentToolControls,
+        tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(async_stream::stream! {
             let (instructions, input) = split_responses_instructions_and_input(messages);
@@ -48,7 +48,7 @@ impl OpenAiProvider {
                     },
                 }
             }
-            if let Err(error) = super::core::apply_openai_responses_tool_choice(&mut body, &options) {
+            if let Err(error) = super::core::apply_openai_responses_tool_choice(&mut body, tool_choice.as_ref()) {
                 yield StreamEvent::Error(error.to_string());
                 return;
             }
@@ -196,7 +196,7 @@ impl OpenAiProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        options: AgentToolControls,
+        tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(async_stream::stream! {
             let mut openai_messages = self.serialize_messages_for_request(&messages);
@@ -218,7 +218,7 @@ impl OpenAiProvider {
                     },
                 }
             }
-            if let Err(error) = super::core::apply_openai_chat_tool_choice(&mut body, &options) {
+            if let Err(error) = super::core::apply_openai_chat_tool_choice(&mut body, tool_choice.as_ref()) {
                 yield StreamEvent::Error(error.to_string());
                 return;
             }

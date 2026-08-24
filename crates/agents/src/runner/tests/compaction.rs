@@ -267,6 +267,7 @@ async fn automatic_checkpoint_trigger_stops_before_provider_call() {
         None,
         None,
         None,
+        None,
         AgentLoopLimits {
             automatic_checkpointing: true,
             ..test_agent_loop_limits()
@@ -368,6 +369,7 @@ async fn isolated_runner_does_not_trigger_session_checkpointing() {
         None,
         None,
         None,
+        None,
         AgentLoopLimits {
             automatic_checkpointing: false,
             ..test_agent_loop_limits()
@@ -394,6 +396,7 @@ async fn checkpoint_resume_does_not_repeat_original_user_message() {
         &UserContent::text("original user message"),
         None,
         Some(checkpoint_history),
+        None,
         None,
         None,
         None,
