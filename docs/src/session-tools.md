@@ -163,28 +163,25 @@ child response directly. `mode = "background"` returns a child session key for
 `status`, `result`, or `cancel`; `list` returns every direct child of the calling
 session. See [Sub-Agent Delegation](sub-agent.md) for the action schemas.
 
-Use `active_tools` and `tool_choice` to constrain an agent run. These controls
-are configured on agents and supported by `cron` `agentTurn` payloads.
+Use `tool_choice` as a top-level request parameter for `chat.send` and
+`chat.send_sync`, or in a `cron` `agentTurn` payload, to control provider-level
+tool selection:
 
-- `active_tools` filters the tool schemas visible to the agent.
-- `tool_choice` controls provider-level tool selection:
-  - `auto` — model decides.
-  - `any` — model must call a tool.
-  - `none` — no tools are sent.
-  - `tool` + `name` — model must call the named tool.
+- `auto` — model decides.
+- `any` — model must call a tool.
+- `none` — no tools are sent.
+- `tool` + `name` — model must call the named tool.
 
 OpenAI Responses, OpenAI Chat Completions, and OpenAI-compatible providers
-support these controls.
+support `tool_choice`.
 
-Example agent defaults:
+Example direct chat request:
 
-```toml
-[agents.destination-router.tool_controls]
-active_tools = ["classify_destination"]
-
-[agents.destination-router.tool_controls.tool_choice]
-type = "tool"
-name = "classify_destination"
+```json
+{
+  "text": "Generate the report in a file.",
+  "tool_choice": { "type": "any" }
+}
 ```
 
 Example scheduled agent turn:
@@ -193,7 +190,6 @@ Example scheduled agent turn:
 {
   "kind": "agentTurn",
   "message": "Generate the report in a file.",
-  "active_tools": ["overwrite_file"],
   "tool_choice": { "type": "any" }
 }
 ```

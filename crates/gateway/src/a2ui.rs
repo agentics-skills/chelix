@@ -463,9 +463,7 @@ fn validate_render_params(params: &Value) -> Result<ValidatedInteraction> {
         .as_object()
         .context("render_a2ui parameters must be an object")?;
     for key in object.keys() {
-        if matches!(key.as_str(), "messages" | "active_tools" | "tool_choice")
-            || key.starts_with('_')
-        {
+        if key == "messages" || key.starts_with('_') {
             continue;
         }
         bail!("unknown render_a2ui parameter `{key}`");

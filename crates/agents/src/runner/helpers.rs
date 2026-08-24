@@ -734,7 +734,7 @@ pub(crate) fn evaluate_context_budget(
     }
 }
 
-pub(crate) fn channel_binding_from_tool_context(
+pub(crate) fn channel_binding_from_internal_params(
     session_key: &str,
     tool_context: Option<&serde_json::Value>,
 ) -> Option<ChannelBinding> {

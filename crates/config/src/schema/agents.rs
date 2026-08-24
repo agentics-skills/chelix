@@ -54,56 +54,14 @@ pub enum ToolChoice {
     Tool { name: String },
 }
 
-/// Per-agent-run controls for tool visibility and provider tool selection.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AgentToolControls {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub active_tools: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<ToolChoice>,
-}
-
-impl AgentToolControls {
-    #[must_use]
-    pub fn from_tool_context(tool_context: Option<&serde_json::Value>) -> Self {
-        let Some(context) = tool_context else {
-            return Self::default();
-        };
-
-        let active_tools = context.get("active_tools").and_then(|value| {
-            value.as_array().map(|items| {
-                items
-                    .iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .map(str::trim)
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_string)
-                    .collect::<Vec<_>>()
-            })
-        });
-
-        let tool_choice =
-            context.get("tool_choice").and_then(|value| {
-                match serde_json::from_value::<ToolChoice>(value.clone()) {
-                    Ok(choice) => Some(choice),
-                    Err(error) => {
-                        tracing::warn!(%error, "ignoring invalid tool_choice control");
-                        None
-                    },
-                }
-            });
-
-        Self {
-            active_tools,
-            tool_choice,
-        }
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.active_tools.is_none() && self.tool_choice.is_none()
-    }
+pub fn tool_choice_from_request_params(
+    request_params: &serde_json::Value,
+) -> serde_json::Result<Option<ToolChoice>> {
+    request_params
+        .get("tool_choice")
+        .cloned()
+        .map(serde_json::from_value::<ToolChoice>)
+        .transpose()
 }
 
 impl AgentsConfig {
@@ -358,8 +316,6 @@ pub struct AgentConfig {
     pub model: Option<String>,
     #[serde(default)]
     pub tools: AgentToolPolicy,
-    #[serde(default, skip_serializing_if = "AgentToolControls::is_empty")]
-    pub tool_controls: AgentToolControls,
     /// Maximum LLM-initiated tool calls per agent loop segment.
     pub max_tools_threshold: usize,
     /// Timeout in seconds for sessions using this agent.
@@ -405,7 +361,6 @@ impl Default for AgentConfig {
             voice_persona_id: None,
             model: None,
             tools: AgentToolPolicy::default(),
-            tool_controls: AgentToolControls::default(),
             max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
             timeout_secs: None,
             max_tool_result_bytes: None,
@@ -433,42 +388,43 @@ mod tests {
     }
 
     #[test]
-    fn tool_controls_parse_from_tool_context() {
-        let context = serde_json::json!({
-            "active_tools": ["classify_destination", "overwrite_file"],
-            "tool_choice": { "type": "tool", "name": "classify_destination" }
+    fn tool_choice_parses_from_request_params() {
+        let params = serde_json::json!({
+            "tool_choice": { "type": "tool", "name": "overwrite_file" }
         });
 
-        let controls = AgentToolControls::from_tool_context(Some(&context));
-
-        assert_eq!(
-            controls.active_tools,
-            Some(vec![
-                "classify_destination".to_string(),
-                "overwrite_file".to_string(),
-            ])
-        );
-        assert_eq!(
-            controls.tool_choice,
-            Some(ToolChoice::Tool {
-                name: "classify_destination".to_string(),
-            })
-        );
+        assert!(matches!(
+            tool_choice_from_request_params(&params),
+            Ok(Some(ToolChoice::Tool { name })) if name == "overwrite_file"
+        ));
     }
 
     #[test]
-    fn tool_controls_parse_any_variant() {
-        let context = serde_json::json!({
+    fn tool_choice_parses_any_variant() {
+        let params = serde_json::json!({
             "tool_choice": { "type": "any" }
         });
-        let controls = AgentToolControls::from_tool_context(Some(&context));
-        assert_eq!(controls.tool_choice, Some(ToolChoice::Any));
-        assert!(controls.active_tools.is_none());
+
+        assert!(matches!(
+            tool_choice_from_request_params(&params),
+            Ok(Some(ToolChoice::Any))
+        ));
     }
 
     #[test]
-    fn tool_controls_none_context_returns_default() {
-        let controls = AgentToolControls::from_tool_context(None);
-        assert!(controls.is_empty());
+    fn absent_tool_choice_returns_none() {
+        assert!(matches!(
+            tool_choice_from_request_params(&serde_json::json!({})),
+            Ok(None)
+        ));
+    }
+
+    #[test]
+    fn invalid_tool_choice_returns_error() {
+        let params = serde_json::json!({
+            "tool_choice": { "type": "tool" }
+        });
+
+        assert!(tool_choice_from_request_params(&params).is_err());
     }
 }

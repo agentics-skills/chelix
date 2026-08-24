@@ -1,7 +1,7 @@
 // ── Reasoning effort ──────────────────────────────────────────────────────
 
 /// Re-export from config so downstream crates can use agent model-level types together.
-pub use chelix_config::schema::{AgentToolControls, ReasoningEffort, ToolChoice};
+pub use chelix_config::schema::{ReasoningEffort, ToolChoice};
 
 mod types;
 pub use types::{

@@ -6,8 +6,8 @@ use {
     super::helpers::*,
     crate::{
         model::{
-            AgentToolControls, ChatMessage, CompletionOptions, CompletionResponse, LlmProvider,
-            StreamEvent, ToolCall, Usage,
+            ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
+            ToolChoice, Usage,
         },
         tool_parsing::new_synthetic_tool_call_id,
     },
@@ -266,7 +266,7 @@ impl LlmProvider for NoToolsStreamingRoutingProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         self.stream_with_options_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -371,7 +371,7 @@ impl LlmProvider for IterationOwnedResponsesProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         let call = self
             .stream_calls
@@ -559,7 +559,7 @@ impl LlmProvider for ToolCallContextStreamingProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         let call = self
             .stream_calls
@@ -731,7 +731,7 @@ impl LlmProvider for InfiniteToolArgumentsProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         use tokio_stream::StreamExt;
 
@@ -796,6 +796,7 @@ async fn streaming_tool_arguments_are_cancelled_without_waiting_for_stream_compl
         &user_content,
         Some(&on_event),
         Some(&on_tool_lifecycle),
+        None,
         None,
         None,
         None,
@@ -915,7 +916,7 @@ impl LlmProvider for ExecutingToolProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _options: AgentToolControls,
+        _tool_choice: Option<ToolChoice>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(vec![
             StreamEvent::ToolCallStart {
@@ -965,6 +966,7 @@ async fn executing_tool_is_cancelled_by_agent_run_token() {
         &user_content,
         None,
         Some(&on_tool_lifecycle),
+        None,
         None,
         None,
         None,
@@ -1150,6 +1152,7 @@ async fn hanging_before_llm_hook_is_cancelled_by_agent_run_token() {
         &tools_config,
         "You are a test bot.",
         &user_content,
+        None,
         None,
         None,
         None,

@@ -821,7 +821,7 @@ mod tests {
             .clone();
         assert_eq!(seen_options.len(), 1);
         assert_eq!(seen_options[0].max_output_tokens, Some(12_800));
-        assert_eq!(seen_options[0].tool_controls, Default::default());
+        assert_eq!(seen_options[0].tool_choice, None);
     }
 
     #[tokio::test]

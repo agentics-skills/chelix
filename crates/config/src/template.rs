@@ -232,13 +232,6 @@ port = {port}                           # Port number (auto-generated for this i
 # deny = []
 # preload = ["read_file", "list_directory", "ripgrep"]
 #
-# [agents.main.tool_controls]
-# active_tools = ["classify_destination"]
-#
-# [agents.main.tool_controls.tool_choice]
-# type = "tool"                     # auto | any | none | tool
-# name = "classify_destination"
-#
 # [agents.main.mcp]
 # allow_servers = ["github", "memory"]
 #

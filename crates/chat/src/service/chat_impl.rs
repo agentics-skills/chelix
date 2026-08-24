@@ -155,8 +155,8 @@ impl ChatService for LiveChatService {
 
         let explicit_model = params.get("model").and_then(|v| v.as_str());
         let requested_reasoning_effort_override = requested_reasoning_effort(&params);
-        let tool_controls =
-            chelix_config::schema::AgentToolControls::from_tool_context(Some(&params));
+        let tool_choice = chelix_config::schema::tool_choice_from_request_params(&params)
+            .map_err(|error| format!("invalid 'tool_choice' parameter: {error}"))?;
         let stream_only = !self.has_tools_sync();
 
         // Resolve session key from explicit override.
@@ -408,7 +408,7 @@ impl ChatService for LiveChatService {
                 &active_event_forwarders,
                 &terminal_runs,
                 None, // send_sync: no sender name
-                Some(tool_controls),
+                tool_choice,
             )
             .await
         };

@@ -116,7 +116,6 @@ Each `[agents.<id>]` table supports:
 - `voice_persona_id`;
 - `model`;
 - `tools.allow`, `tools.deny`, and `tools.preload`;
-- `tool_controls.active_tools` and `tool_controls.tool_choice`;
 - `max_tools_threshold`;
 - `timeout_secs`;
 - `max_tool_result_bytes`;

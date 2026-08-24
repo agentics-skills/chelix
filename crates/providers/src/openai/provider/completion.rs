@@ -254,7 +254,7 @@ impl OpenAiProvider {
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(self.prepare_chat_tools(tools)?);
         }
-        super::core::apply_openai_chat_tool_choice(&mut body, &options.tool_controls)?;
+        super::core::apply_openai_chat_tool_choice(&mut body, options.tool_choice.as_ref())?;
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
         }
@@ -349,7 +349,7 @@ impl OpenAiProvider {
         if !tools.is_empty() {
             body["tools"] = serde_json::Value::Array(to_responses_api_tools(tools)?);
         }
-        super::core::apply_openai_responses_tool_choice(&mut body, &options.tool_controls)?;
+        super::core::apply_openai_responses_tool_choice(&mut body, options.tool_choice.as_ref())?;
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_output_tokens"] = serde_json::json!(max_output_tokens);
         }

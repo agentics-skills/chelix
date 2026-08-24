@@ -1,6 +1,6 @@
 //! Non-streaming agent loop with explicit runtime limits.
 
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use {
     anyhow::Result,
@@ -14,9 +14,7 @@ use chelix_common::{
 };
 
 use crate::{
-    model::{
-        AgentToolControls, ChatMessage, CompletionOptions, LlmProvider, ToolChoice, UserContent,
-    },
+    model::{ChatMessage, CompletionOptions, LlmProvider, ToolChoice, UserContent},
     response_sanitizer::recover_tool_calls_from_content,
     tool_loop_detector::ToolCallFingerprint,
     tool_parsing::{looks_like_failed_tool_call, parse_tool_calls_from_text},
@@ -28,7 +26,7 @@ use super::{
     FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT, OnEvent, OnToolLifecycle, RunnerEvent,
     RunnerToolCall, RunnerToolLifecycleEvent, ToolCallBudget, ToolInvocationExecutor,
     UsageAccumulator, apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
-    channel_binding_from_tool_context, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
+    channel_binding_from_internal_params, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, fallback_final_text_source,
     find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
     lifecycle_now_ms, record_answer_text,
@@ -76,6 +74,7 @@ pub async fn run_agent_loop_with_context_and_limits(
     on_tool_lifecycle: Option<&OnToolLifecycle>,
     history: Option<Vec<ChatMessage>>,
     tool_context: Option<serde_json::Value>,
+    tool_choice: Option<ToolChoice>,
     hook_registry: Option<Arc<HookRegistry>>,
     sender_name: Option<String>,
     limits: AgentLoopLimits,
@@ -152,7 +151,7 @@ pub async fn run_agent_loop_with_context_and_limits(
         .unwrap_or("main")
         .to_string();
     let channel_for_hooks =
-        channel_binding_from_tool_context(&session_key_for_hooks, tool_context.as_ref());
+        channel_binding_from_internal_params(&session_key_for_hooks, tool_context.as_ref());
 
     // Every agent-facing tool result is persisted before it enters LLM context.
     let tool_result_store = ToolResultStore::new(chelix_config::data_dir().join("sessions"));
@@ -180,11 +179,6 @@ pub async fn run_agent_loop_with_context_and_limits(
         tools_config.agent_loop_detector_strip_tools_on_second_fire,
     );
     let mut strip_tools_next_iter = false;
-    let tool_controls = AgentToolControls::from_tool_context(tool_context.as_ref());
-    let active_tool_names = tool_controls
-        .active_tools
-        .as_ref()
-        .map(|names| names.iter().cloned().collect::<HashSet<_>>());
 
     loop {
         iterations += 1;
@@ -193,12 +187,8 @@ pub async fn run_agent_loop_with_context_and_limits(
         // When the loop detector has escalated to stage 2, do not send tools
         // for this single turn so the model is forced to respond in text.
         let schemas_for_api = if native_tools && !strip_tools_next_iter {
-            let schemas = if let Some(active) = active_tool_names.as_ref() {
-                tools.list_schemas_allowed_by(|name| active.contains(name))
-            } else {
-                tools.list_schemas()
-            };
-            match tool_controls.tool_choice.as_ref() {
+            let schemas = tools.list_schemas();
+            match tool_choice.as_ref() {
                 Some(ToolChoice::None) => vec![],
                 Some(ToolChoice::Any) if schemas.is_empty() => {
                     return Err(AgentRunError::Other(anyhow::anyhow!(
@@ -296,7 +286,10 @@ pub async fn run_agent_loop_with_context_and_limits(
         let completion_result = if schemas_for_api.is_empty() {
             provider.complete(&messages, &[]).await
         } else {
-            let completion_options = CompletionOptions::from(tool_controls.clone());
+            let completion_options = CompletionOptions {
+                tool_choice: tool_choice.clone(),
+                max_output_tokens: None,
+            };
             provider
                 .complete_with_options(&messages, &schemas_for_api, &completion_options)
                 .await
@@ -586,8 +579,7 @@ pub async fn run_agent_loop_with_context_and_limits(
             hook_registry: hook_registry.as_ref(),
             session_key: &session_key_for_hooks,
             channel: channel_for_hooks.as_ref(),
-            active_tool_names: active_tool_names.as_ref(),
-            tool_choice: tool_controls.tool_choice.as_ref(),
+            tool_choice: tool_choice.as_ref(),
             on_lifecycle: on_tool_lifecycle,
             context_budget: &context_budget,
         };
