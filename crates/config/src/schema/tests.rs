@@ -106,6 +106,42 @@ request_timeout_secs = 45
 }
 
 #[test]
+fn linkup_request_timeout_defaults_to_five_minutes() {
+    let config: ChelixConfig = toml::from_str("").unwrap();
+    assert_eq!(
+        config.tools.linkup.request_timeout_secs,
+        DEFAULT_LINKUP_REQUEST_TIMEOUT_SECS
+    );
+    assert_eq!(DEFAULT_LINKUP_REQUEST_TIMEOUT_SECS, 300);
+}
+
+#[test]
+fn linkup_config_parses_token_and_timeout_without_exposing_the_token() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools.linkup]
+token = "linkup-secret"
+request_timeout_secs = 45
+"#,
+    )
+    .unwrap();
+    assert_eq!(config.tools.linkup.request_timeout_secs, 45);
+    assert_eq!(
+        config
+            .tools
+            .linkup
+            .token
+            .as_ref()
+            .map(ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("linkup-secret")
+    );
+    let debug = format!("{:?}", config.tools.linkup);
+    assert!(debug.contains("[REDACTED]"));
+    assert!(!debug.contains("linkup-secret"));
+}
+
+#[test]
 fn duckduckgo_request_timeout_defaults_to_five_minutes() {
     let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(

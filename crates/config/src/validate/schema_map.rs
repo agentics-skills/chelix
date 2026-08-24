@@ -168,6 +168,13 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
+    let linkup = || {
+        Struct(HashMap::from([
+            ("token", Leaf),
+            ("request_timeout_secs", Leaf),
+        ]))
+    };
+
     let duckduckgo = || Struct(HashMap::from([("request_timeout_secs", Leaf)]));
 
     let github = || {
@@ -182,6 +189,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("execute_command", execute_command()),
             ("browser", browser()),
             ("context7", context7()),
+            ("linkup", linkup()),
             ("duckduckgo", duckduckgo()),
             ("github", github()),
             (

@@ -614,6 +614,9 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "context7")]
         chelix_context7::register_tools(&mut tool_registry, &config.tools.context7);
 
+        #[cfg(feature = "linkup")]
+        chelix_linkup::register_tools(&mut tool_registry, &config.tools.linkup);
+
         #[cfg(feature = "github")]
         chelix_github::register_tools(&mut tool_registry, &config.tools.github);
 

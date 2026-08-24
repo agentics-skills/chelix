@@ -335,6 +335,13 @@ port = {port}                           # Port number (auto-generated for this i
 # token = "ctx7sk-..."               # Context7 API token
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
+# ── Linkup Search ─────────────────────────────────────────────────────────────
+# linkup_search calls the Linkup API with this token.
+
+# [tools.linkup]
+# token = "..."                     # Linkup API token
+# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
+
 # ── DuckDuckGo Search ─────────────────────────────────────────────────────────
 # request_timeout_secs covers the complete search lifecycle: shared queue wait,
 # retry/backoff, the HTTP request, and response body reading.

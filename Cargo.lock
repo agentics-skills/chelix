@@ -1714,6 +1714,7 @@ dependencies = [
  "chelix-external-agents",
  "chelix-github",
  "chelix-home-assistant",
+ "chelix-linkup",
  "chelix-matrix",
  "chelix-mcp",
  "chelix-mcp-agent-bridge",
@@ -1895,6 +1896,26 @@ dependencies = [
  "urlencoding",
  "uuid",
  "webauthn-rs",
+]
+
+[[package]]
+name = "chelix-linkup"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "mockito",
+ "reqwest 0.13.2",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

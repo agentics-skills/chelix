@@ -56,6 +56,7 @@
 - **Tools — Web & Data**
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
   - [`tools.context7`](#toolscontext7)
+  - [`tools.linkup`](#toolslinkup)
   - [`tools.duckduckgo`](#toolsduckduckgo)
   - [`tools.github`](#toolsgithub)
   - [`tools.maps`](#toolsmaps)
@@ -400,6 +401,13 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | --------------------- | --------------- | ------- | ------------------------------------------------------------------ |
 | token                 | optional string | —       | Context7 API token used by every `context7_*` tool.                |
 | request_timeout_secs  | integer         | `300`   | Per-request Context7 HTTP timeout in seconds. Must be at least `1`. |
+
+### `tools.linkup` — LinkupConfig
+
+| Key                  | Type            | Default | Description                                                     |
+| -------------------- | --------------- | ------- | --------------------------------------------------------------- |
+| token                | optional string | —       | Linkup API token used by `linkup_search`.                       |
+| request_timeout_secs | integer         | `300`   | Per-request Linkup HTTP timeout in seconds. Must be at least `1`. |
 
 ### `tools.duckduckgo` — DuckDuckGoConfig
 

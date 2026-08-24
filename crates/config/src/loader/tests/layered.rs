@@ -617,6 +617,31 @@ fn initialize_config_rejects_zero_context7_request_timeout() {
 }
 
 #[test]
+fn initialize_config_rejects_zero_linkup_request_timeout() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config_path = dir.path().join("chelix.toml");
+    let invalid = "[tools.linkup]\nrequest_timeout_secs = 0\n";
+    std::fs::write(&config_path, invalid).expect("write config");
+    set_config_dir(dir.path().to_path_buf());
+
+    let result = initialize_config();
+
+    clear_config_dir();
+    let error = result.expect_err("zero Linkup request timeout must fail initialization");
+    assert!(
+        error
+            .to_string()
+            .contains("tools.linkup.request_timeout_secs must be at least 1"),
+        "error should identify the invalid Linkup timeout: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(config_path).expect("read config"),
+        invalid
+    );
+}
+
+#[test]
 fn initialize_config_creates_config_only_when_missing() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
