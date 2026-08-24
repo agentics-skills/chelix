@@ -34,8 +34,8 @@ pub fn validate_agent_id(id: &str) -> Result<(), &'static str> {
 
 /// User-owned agent registry.
 ///
-/// `default` selects the agent used for sessions and `spawn_agent` calls that
-/// do not specify one. Every other key under `[agents]` is an agent ID.
+/// `default` selects the agent used for new sessions. Every other key under
+/// `[agents]` is an agent ID.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentsConfig {
@@ -280,38 +280,6 @@ pub struct AgentToolPolicy {
     pub preload: Vec<String>,
 }
 
-/// Scope for per-agent persistent memory.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MemoryScope {
-    /// User-global: `~/.chelix/agent-memory/<agent>/`
-    #[default]
-    User,
-    /// Project-local: `.chelix/agent-memory/<agent>/`
-    Project,
-    /// Untracked local: `.chelix/agent-memory-local/<agent>/`
-    Local,
-}
-
-/// Persistent memory configuration for an agent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AgentMemoryConfig {
-    /// Memory scope: where the MEMORY.md is stored.
-    pub scope: MemoryScope,
-    /// Maximum lines to load from MEMORY.md (default: 200).
-    pub max_lines: usize,
-}
-
-impl Default for AgentMemoryConfig {
-    fn default() -> Self {
-        Self {
-            scope: MemoryScope::default(),
-            max_lines: 200,
-        }
-    }
-}
-
 /// Session access policy configuration for an agent.
 ///
 /// Controls which sessions an agent can see and interact with via
@@ -394,7 +362,7 @@ pub struct AgentConfig {
     pub tool_controls: AgentToolControls,
     /// Maximum LLM-initiated tool calls per agent loop segment.
     pub max_tools_threshold: usize,
-    /// Timeout in seconds for the sub-agent.
+    /// Timeout in seconds for sessions using this agent.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
     /// Maximum in-context bytes per tool result before truncation.
@@ -404,9 +372,6 @@ pub struct AgentConfig {
     /// Session access policy for inter-agent communication.
     #[serde(default)]
     pub sessions: Option<SessionAccessPolicyConfig>,
-    /// Persistent per-agent memory configuration.
-    #[serde(default)]
-    pub memory: Option<AgentMemoryConfig>,
     /// Reasoning/thinking effort level for models that support extended thinking.
     ///
     /// Controls extended thinking for models that support it (e.g. Claude Opus,
@@ -445,7 +410,6 @@ impl Default for AgentConfig {
             timeout_secs: None,
             max_tool_result_bytes: None,
             sessions: None,
-            memory: None,
             reasoning_effort: None,
             mcp: AgentMcpPolicy::default(),
             skills: AgentSkillPolicy::default(),

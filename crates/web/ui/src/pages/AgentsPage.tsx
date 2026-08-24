@@ -252,7 +252,7 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 							className="provider-key-input"
 							value={values.subagentPrompt}
 							onInput={(event) => setField("subagentPrompt", targetValue(event))}
-							placeholder="System prompt used by spawn_agent"
+							placeholder="System prompt used by sub_agent"
 							rows={10}
 							style={{ resize: "vertical", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}
 						/>
@@ -421,8 +421,8 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 				</button>
 			</div>
 			<p className="text-xs text-[var(--muted)] max-w-[680px]" style={{ margin: 0 }}>
-				Every agent can be selected in chat and passed to <code>spawn_agent</code>. Soul is used in chat; Sub-Agent
-				system prompt is used by spawned runs.
+				Every agent can be selected in chat. Soul is used in chat; Sub-Agent system prompt is used by
+				<code>sub_agent</code> for delegated child sessions.
 			</p>
 			{error && (
 				<span className="text-xs" style={{ color: "var(--error)" }}>

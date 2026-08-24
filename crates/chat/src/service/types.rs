@@ -347,7 +347,7 @@ pub struct LiveChatService {
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
     /// Startup configuration snapshot for non-agent chat settings.
     pub(in crate::service) config: chelix_config::ChelixConfig,
-    /// Live agent registry shared with agent CRUD and `spawn_agent`.
+    /// Live agent registry shared with agent CRUD and chat runs.
     pub(in crate::service) agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
     /// Source used to reload `[tools]` before each new agent run.
     pub(in crate::service) tools_config_source: chelix_config::ToolsConfigSource,

@@ -78,7 +78,7 @@ fn sanitize_tool_name_strips_numeric_suffix() {
 
 #[test]
 fn sanitize_tool_name_strips_functions_prefix() {
-    assert_eq!(sanitize_tool_name("functions_spawn_agent"), "spawn_agent");
+    assert_eq!(sanitize_tool_name("functions_sub_agent"), "sub_agent");
     assert_eq!(
         sanitize_tool_name("functions_execute_command"),
         "execute_command"
@@ -87,7 +87,7 @@ fn sanitize_tool_name_strips_functions_prefix() {
 
 #[test]
 fn sanitize_tool_name_strips_prefix_and_suffix() {
-    assert_eq!(sanitize_tool_name("functions_spawn_agent_6"), "spawn_agent");
+    assert_eq!(sanitize_tool_name("functions_sub_agent_6"), "sub_agent");
     assert_eq!(
         sanitize_tool_name("functions_execute_command_2"),
         "execute_command"
@@ -100,7 +100,7 @@ fn sanitize_tool_name_preserves_legitimate_underscores() {
     assert_eq!(sanitize_tool_name("memory_save"), "memory_save");
     assert_eq!(sanitize_tool_name("memory_forget"), "memory_forget");
     assert_eq!(sanitize_tool_name("memory_delete"), "memory_delete");
-    assert_eq!(sanitize_tool_name("spawn_agent"), "spawn_agent");
+    assert_eq!(sanitize_tool_name("sub_agent"), "sub_agent");
     assert_eq!(sanitize_tool_name("get_user_location"), "get_user_location");
 }
 

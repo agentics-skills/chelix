@@ -1,7 +1,4 @@
-use {
-    super::*,
-    crate::{AgentRuntimeLimitSource, AgentRuntimeLimits},
-};
+use {super::*, crate::AgentRuntimeLimitSource};
 
 #[test]
 fn agent_runtime_limits_use_required_threshold_and_global_timeout() {
@@ -81,66 +78,6 @@ model = "openai/gpt-5.2"
             .to_string()
             .contains("max_tools_threshold")
     );
-}
-
-#[test]
-fn spawned_agent_runtime_limits_preserve_default_no_timeout() {
-    let config: ChelixConfig = toml::from_str(
-        r#"
-[agents.quick]
-name = "Quick"
-max_tools_threshold = 7
-"#,
-    )
-    .unwrap();
-
-    let agent = config.agents.get("quick").unwrap();
-    let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, agent);
-    assert_eq!(limits.timeout_secs, 0);
-    assert_eq!(limits.max_tools_threshold, 7);
-}
-
-#[test]
-fn spawned_agent_runtime_limits_ignore_global_timeout_without_agent_override() {
-    let config: ChelixConfig = toml::from_str(
-        r#"
-[tools]
-agent_timeout_secs = 1800
-
-[agents.deep]
-name = "Deep"
-max_tools_threshold = 80
-"#,
-    )
-    .unwrap();
-
-    let agent = config.agents.get("deep").unwrap();
-    let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, agent);
-    assert_eq!(limits.timeout_secs, 0);
-    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::GlobalTools);
-    assert_eq!(limits.max_tools_threshold, 80);
-}
-
-#[test]
-fn spawned_agent_runtime_limits_use_agent_timeout() {
-    let config: ChelixConfig = toml::from_str(
-        r#"
-[tools]
-agent_timeout_secs = 1800
-
-[agents.deep]
-name = "Deep"
-timeout_secs = 600
-max_tools_threshold = 80
-"#,
-    )
-    .unwrap();
-
-    let agent = config.agents.get("deep").unwrap();
-    let limits = AgentRuntimeLimits::resolve_for_spawned_agent(&config.tools, agent);
-    assert_eq!(limits.timeout_secs, 600);
-    assert_eq!(limits.timeout_source, AgentRuntimeLimitSource::Agent);
-    assert_eq!(limits.max_tools_threshold, 80);
 }
 
 #[test]

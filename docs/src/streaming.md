@@ -146,8 +146,6 @@ Ordinary runner-event handling in the chat service:
 | `ThinkingDone`                      | Broadcasts `thinking_done`                                 |
 | `TextDelta(text)`                   | Broadcasts `delta` with `text` field                       |
 | `Iteration(n)`                      | Broadcasts `iteration`                                     |
-| `SubAgentStart`                     | Broadcasts `sub_agent_start`                               |
-| `SubAgentEnd`                       | Broadcasts `sub_agent_end`                                 |
 | `AutoContinue`                      | Broadcasts `notice` ("Auto-continue")                      |
 | `RetryingAfterError`                | Broadcasts `retrying`                                      |
 | `LoopInterventionFired`             | Broadcasts `notice` ("Loop detected")                      |

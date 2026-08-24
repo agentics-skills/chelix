@@ -25,7 +25,7 @@ pub struct CreateSessionRequest {
     pub label: Option<String>,
     pub model_override: Option<ModelOverride>,
     pub project_id: Option<String>,
-    /// Session that spawned this one. Drives the parent/child tree in the
+    /// Direct parent session. Drives the parent/child tree in the
     /// UI (same mechanism as session forks).
     pub parent_session_key: Option<String>,
 }

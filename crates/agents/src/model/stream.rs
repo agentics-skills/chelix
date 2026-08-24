@@ -168,8 +168,8 @@ pub trait LlmProvider: Send + Sync {
     /// Return a new provider with reasoning effort set, if supported.
     ///
     /// Returns `None` for providers that don't support reasoning effort.
-    /// Used by sub-agent spawning to apply per-agent reasoning settings
-    /// without mutating the shared registry provider.
+    /// Used to apply per-session reasoning settings without mutating the
+    /// shared registry provider.
     fn with_reasoning_effort(
         self: Arc<Self>,
         _effort: ReasoningEffort,

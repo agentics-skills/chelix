@@ -149,7 +149,7 @@ test.describe("Agents settings page", () => {
 		await expect(newBtn).toBeVisible();
 		await newBtn.click();
 
-		// One form configures both chat and spawned-agent prompts.
+		// One form configures chat and delegated-session prompts.
 		await expect(page.getByText("Create Agent", { exact: true })).toBeVisible();
 		await expect(page.getByPlaceholder("e.g. writer, coder, researcher")).toBeVisible();
 		await expect(page.getByPlaceholder("Creative Writer")).toBeVisible();
@@ -190,7 +190,7 @@ test.describe("Agents settings page", () => {
 		await idInput.fill("e2e-test-agent");
 		await nameInput.fill("E2E Test Agent");
 		await page.getByPlaceholder("System prompt used in chat").fill("Chat-only soul prompt.");
-		await page.getByPlaceholder("System prompt used by spawn_agent").fill("Spawn-only system prompt.");
+		await page.getByPlaceholder("System prompt used by sub_agent").fill("Delegated-session system prompt.");
 		await page.getByRole("button", { name: "Create", exact: true }).click();
 
 		// Should return to the list and show the new agent
@@ -206,9 +206,9 @@ test.describe("Agents settings page", () => {
 
 		const editNameInput = page.getByPlaceholder("Creative Writer");
 		await expect(page.getByPlaceholder("System prompt used in chat")).toHaveValue("Chat-only soul prompt.");
-		await expect(page.getByPlaceholder("System prompt used by spawn_agent")).toHaveValue("Spawn-only system prompt.");
+		await expect(page.getByPlaceholder("System prompt used by sub_agent")).toHaveValue("Delegated-session system prompt.");
 		await editNameInput.fill("E2E Renamed Agent");
-		await page.getByPlaceholder("System prompt used by spawn_agent").fill("Updated spawn prompt.");
+		await page.getByPlaceholder("System prompt used by sub_agent").fill("Updated delegated-session prompt.");
 		await page.getByRole("button", { name: "Save", exact: true }).click();
 
 		// Should return to the list with updated name

@@ -85,7 +85,7 @@ of what the global layer allows. Other providers are unaffected.
 
 ## Layer 3 — Per-Agent
 
-Each agent can restrict tools for both chat sessions and spawned runs.
+Each agent can restrict tools for every session that uses it.
 
 ```toml
 [agents.researcher]
