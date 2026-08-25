@@ -3,6 +3,124 @@
 Chelix supports multiple LLM providers through a trait-based architecture.
 Configure providers through the web UI or directly in configuration files.
 
+## Model Registry Business Logic
+
+### Configuration Source
+
+The only source of model composition and model parameters is the service
+configuration.
+
+The registry is built only from `[providers.<name>.models."<model-id>"]` tables.
+
+The `/models` request is forbidden and is never performed.
+
+Defaults are forbidden for all parameters. A missing optional parameter is not
+substituted and is not sent to the provider.
+
+### Registry Record Contents
+
+A registry record contains the model ID, the provider name, and the parameters
+below. The record has no other fields.
+
+### Mandatory Parameters
+
+- `context_length`
+- `max_input_tokens`
+- `max_output_tokens`
+- `input_modalities`
+- `output_modalities`
+- `tool_calling`
+- `streaming`
+- `zeroDataRetentionEnabled`
+- `reasoning_supported_efforts`
+
+### Optional Parameters
+
+- `reasoning_summary`
+- `reasoning_include`
+
+A `reasoning_include` value goes to the API with a prefix: `encrypted_content`
+is sent as `reasoning.encrypted_content`.
+
+### Value Validity Criteria
+
+- `context_length`, `max_input_tokens`, `max_output_tokens` — greater than zero
+- `max_input_tokens + max_output_tokens` does not exceed `context_length`
+- `input_modalities`, `output_modalities` — non-empty, without duplicates
+- `reasoning_include` — without duplicates
+
+### Non-Reasoning Model
+
+A non-reasoning model is defined explicitly by an empty array:
+
+```toml
+reasoning_supported_efforts = []
+```
+
+When `reasoning_supported_efforts` is empty, the `reasoning_summary` and
+`reasoning_include` parameters are forbidden.
+
+### supported_efforts
+
+A non-empty `reasoning_supported_efforts` makes the model reasoning-capable
+regardless of its contents: `["none"]` and `["off"]` are reasoning-capable, as
+is any other explicitly specified value.
+
+There is no interference with or restriction on the set of
+`reasoning_supported_efforts` levels listed in the configuration.
+
+Forbidden: a local value allowlist, filtering, renaming, replacement,
+reordering, autocompletion.
+
+### Load Refusal
+
+Service load refusal is caused by:
+
+- a missing mandatory parameter
+- a value violating the validity criteria
+- `reasoning_summary` or `reasoning_include` with an empty
+  `reasoning_supported_efforts`
+- an unknown key in the model settings (the common configuration validator)
+- an enabled provider without a single model
+
+The registry is built atomically: a partial registry is not published, a
+problematic model is not excluded for the sake of continuing startup.
+
+The error contains the provider, the model ID, and the field name when the
+field is applicable.
+
+### Example: reasoning model
+
+```toml
+[providers.custom-meta.models."muse-spark-1.2"]
+context_length = 1048576
+max_input_tokens = 983040
+max_output_tokens = 65536
+input_modalities = ["text", "image", "audio", "file"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = true
+reasoning_supported_efforts = ["low", "medium", "high"]
+reasoning_summary = "detailed"
+reasoning_include = ["encrypted_content"]
+```
+
+### Example: non-reasoning model
+
+```toml
+[providers.custom-meta.models."muse-flash-0.9"]
+context_length = 262144
+max_input_tokens = 196608
+max_output_tokens = 65536
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
+```
+
 ## Available Providers
 
 ### API Key Providers
