@@ -1049,19 +1049,14 @@ impl MemoryForgetTool {
 
         let registry = self.providers.read().await;
         if let Some(model) = session_model {
-            if let Some(provider) = registry.get(&model) {
-                return Ok(provider);
-            }
-            warn!(
-                session_key,
-                model, "memory_forget could not resolve session model, falling back"
-            );
+            return registry.get(&model).ok_or_else(|| {
+                anyhow::anyhow!("memory_forget session model '{model}' is not registered")
+            });
         }
 
-        registry
-            .first_with_tools()
-            .or_else(|| registry.first())
-            .ok_or_else(|| anyhow::anyhow!("no LLM provider is configured for memory_forget"))
+        registry.first_with_tools().ok_or_else(|| {
+            anyhow::anyhow!("no LLM provider can run memory_forget with its configured tool_mode")
+        })
     }
 }
 

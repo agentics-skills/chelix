@@ -62,7 +62,7 @@ fn new_text_tool_call(
 /// Tries parsers in priority order: fenced, XML function, bare JSON.
 pub fn parse_tool_calls_from_text(text: &str) -> (Vec<ToolCall>, Option<String>) {
     let mut blocks: Vec<ParsedBlock> = Vec::new();
-    let fenced_code_ranges = markdown_fenced_code_ranges(text);
+    let fenced_code_ranges = markdown_code_ranges(text);
 
     // 1. Find all fenced ```tool_call blocks.
     collect_fenced_blocks(text, &mut blocks);
@@ -176,18 +176,22 @@ fn has_failed_fenced_tool_call(text: &str) -> bool {
     false
 }
 
-fn markdown_fenced_code_ranges(text: &str) -> Vec<(usize, usize)> {
+fn markdown_code_ranges(text: &str) -> Vec<(usize, usize)> {
     let mut ranges = Vec::new();
     let mut search_from = 0;
+    let bytes = text.as_bytes();
 
-    while let Some(start_rel) = text[search_from..].find("```") {
+    while let Some(start_rel) = text[search_from..].find('`') {
         let start = search_from + start_rel;
-        let after_open = start + 3;
-        let Some(end_rel) = text[after_open..].find("```") else {
-            ranges.push((start, text.len()));
-            break;
-        };
-        let end = after_open + end_rel + 3;
+        let delimiter_len = bytes[start..]
+            .iter()
+            .take_while(|byte| **byte == b'`')
+            .count();
+        let after_open = start + delimiter_len;
+        let delimiter = &text[start..after_open];
+        let end = text[after_open..]
+            .find(delimiter)
+            .map_or(text.len(), |end_rel| after_open + end_rel + delimiter_len);
         ranges.push((start, end));
         search_from = end;
     }
@@ -202,7 +206,7 @@ fn is_inside_ranges(pos: usize, ranges: &[(usize, usize)]) -> bool {
 }
 
 fn strip_markdown_code_for_tool_heuristic(text: &str) -> String {
-    let ranges = markdown_fenced_code_ranges(text);
+    let ranges = markdown_code_ranges(text);
     if ranges.is_empty() {
         return text.to_string();
     }
@@ -861,6 +865,12 @@ detected malformed tool call in stream, requesting retry
 ```
 
 The fix is to avoid treating quoted code as an executable tool call."#;
+        assert!(!looks_like_failed_tool_call(&Some(text.into())));
+    }
+
+    #[test]
+    fn inline_tool_json_example_is_not_malformed_tool_call() {
+        let text = r#"Request shape: `{"tool_choice": {"type": "tool"}}`."#;
         assert!(!looks_like_failed_tool_call(&Some(text.into())));
     }
 

@@ -11,7 +11,8 @@ use {serde_json::Value, tokio::sync::RwLock, tokio_util::sync::CancellationToken
 use {
     chelix_agents::tool_registry::ToolRegistry,
     chelix_common::{
-        ActiveToolInvocation, MaterializerError, ProviderItemUpdate, ProviderSegmentMaterializer,
+        ActiveToolInvocation, MaterializerError, ProviderItemUpdate, ProviderSegmentId,
+        ProviderSegmentMaterializer,
     },
     chelix_providers::ProviderRegistry,
     chelix_service_traits::SessionMutationCoordinator,
@@ -61,6 +62,19 @@ pub(crate) struct EventForwarderResult {
     pub(crate) error: Option<String>,
 }
 
+pub(crate) fn validate_tool_mode_compatibility(
+    tool_mode: ToolMode,
+    supports_tools: bool,
+    model_id: &str,
+) -> Result<(), String> {
+    if matches!(tool_mode, ToolMode::Native) && !supports_tools {
+        return Err(format!(
+            "model '{model_id}' is configured with tool_mode = \"native\" but does not support native tool calling"
+        ));
+    }
+    Ok(())
+}
+
 impl ActiveAssistantDraft {
     pub(crate) fn new(
         run_id: &str,
@@ -85,6 +99,16 @@ impl ActiveAssistantDraft {
         update: &ProviderItemUpdate,
     ) -> Result<(), MaterializerError> {
         self.materializer.apply_update(update)
+    }
+
+    pub(crate) fn start_segment(&mut self, segment_id: ProviderSegmentId) {
+        if self.materializer.segment.segment_id.as_ref() == Some(&segment_id) {
+            return;
+        }
+
+        let mut next = self.next_segment();
+        next.materializer = ProviderSegmentMaterializer::new(segment_id);
+        *self = next;
     }
 
     pub(crate) fn next_segment(&self) -> Self {
@@ -552,7 +576,7 @@ impl LiveChatService {
         }
     }
 
-    /// Resolve a provider from session metadata, history, or first registered.
+    /// Resolve a provider from session metadata or history, or select one for tools.
     pub(in crate::service) async fn resolve_provider(
         &self,
         session_key: &str,
@@ -568,12 +592,23 @@ impl LiveChatService {
             .iter()
             .rev()
             .find_map(|m| m.get("model").and_then(|v| v.as_str()).map(String::from));
-        let model_id = session_model.or(history_model);
 
-        model_id
-            .and_then(|id| reg.get(&id))
-            .or_else(|| reg.first())
-            .ok_or_else(|| error::Error::message("no LLM providers configured"))
+        let provider = if let Some(model_id) = session_model.or(history_model) {
+            reg.get(&model_id).ok_or_else(|| {
+                error::Error::message(format!("model '{model_id}' is not registered"))
+            })?
+        } else {
+            reg.first_with_tools().ok_or_else(|| {
+                error::Error::message("no LLM provider can run tools with its configured tool_mode")
+            })?
+        };
+        validate_tool_mode_compatibility(
+            provider.tool_mode(),
+            provider.supports_tools(),
+            provider.id(),
+        )
+        .map_err(error::Error::message)?;
+        Ok(provider)
     }
 
     /// Resolve the active session key for a connection.
@@ -796,12 +831,13 @@ mod tests {
             finalize_aborted_tool_segment, finalize_persisted_assistant_message,
             latest_tool_segment_index, persist_active_assistant_draft,
             persist_final_assistant_segment, runtime_config_for_agent_run,
+            validate_tool_mode_compatibility,
         },
         crate::types::AssistantTurnOutput,
         chelix_agents::model::Usage,
         chelix_common::{
-            ProviderItemId, ProviderItemPosition, ProviderItemUpdate, ProviderItemUpdatePayload,
-            ProviderSegmentId,
+            MaterializerError, ProviderItemId, ProviderItemPosition, ProviderItemUpdate,
+            ProviderItemUpdatePayload, ProviderSegmentId,
         },
         chelix_sessions::{PersistedMessage, store::SessionStore},
         std::{collections::HashMap, sync::Arc},
@@ -857,6 +893,89 @@ mod tests {
         ]);
 
         assert_eq!(latest_tool_segment_index(&segments), Some(11));
+    }
+
+    #[test]
+    fn tool_mode_validation_rejects_unsupported_native_only() {
+        assert!(
+            validate_tool_mode_compatibility(chelix_config::ToolMode::Native, true, "native-model")
+                .is_ok()
+        );
+        assert!(
+            validate_tool_mode_compatibility(chelix_config::ToolMode::Text, false, "text-model")
+                .is_ok()
+        );
+        assert!(
+            validate_tool_mode_compatibility(chelix_config::ToolMode::Off, false, "off-model")
+                .is_ok()
+        );
+        assert_eq!(
+            validate_tool_mode_compatibility(
+                chelix_config::ToolMode::Native,
+                false,
+                "chat-only-model",
+            ),
+            Err(
+                "model 'chat-only-model' is configured with tool_mode = \"native\" but does not support native tool calling"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn active_assistant_draft_rolls_to_new_announced_segment() {
+        let mut draft = ActiveAssistantDraft::new("run-1", "model-1", "provider-1", None, Some(7));
+        let first_segment = ProviderSegmentId::new("segment-a");
+        let second_segment = ProviderSegmentId::new("segment-b");
+
+        draft.start_segment(first_segment.clone());
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: first_segment.clone(),
+                item_id: ProviderItemId::new("message-a"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDone {
+                    text: "first".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("first segment update succeeds: {error}"));
+
+        draft.start_segment(second_segment.clone());
+        draft
+            .apply_update(&ProviderItemUpdate {
+                segment_id: second_segment.clone(),
+                item_id: ProviderItemId::new("message-b"),
+                position: ProviderItemPosition::new(0),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDone {
+                    text: "second".to_string(),
+                },
+            })
+            .unwrap_or_else(|error| panic!("second segment update succeeds: {error}"));
+
+        assert_eq!(
+            draft.materializer.segment.segment_id.as_ref(),
+            Some(&second_segment)
+        );
+        assert_eq!(
+            draft.materializer.segment.message_text().as_deref(),
+            Some("second")
+        );
+
+        assert!(matches!(
+            draft.apply_update(&ProviderItemUpdate {
+                segment_id: first_segment,
+                item_id: ProviderItemId::new("stale-message"),
+                position: ProviderItemPosition::new(1),
+                update_seq: 1,
+                payload: ProviderItemUpdatePayload::MessageDone {
+                    text: "stale".to_string(),
+                },
+            }),
+            Err(MaterializerError::SegmentIdMismatch { expected, actual })
+                if expected == "segment-b" && actual == "segment-a"
+        ));
     }
 
     #[test]

@@ -146,3 +146,80 @@ supported_efforts = ["none"]
         TOOL_MODEL_ID
     );
 }
+
+#[test]
+fn first_with_tools_honors_explicit_modes_without_fallback() {
+    const TEXT_MODEL_ID: &str = "openai::text-mode";
+    const OFF_MODEL_ID: &str = "custom-disabled-tools::off-mode";
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.openai]
+api_key = "test-key"
+fetch_models = false
+tool_mode = "text"
+
+[providers.openai.models.text-mode]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = false
+streaming = true
+zeroDataRetentionEnabled = true
+
+[providers.openai.models.text-mode.reasoning]
+supported_efforts = ["none"]
+
+[providers.custom-disabled-tools]
+api_key = "test-key"
+base_url = "https://example.invalid/v1"
+fetch_models = false
+tool_mode = "off"
+
+[providers.custom-disabled-tools.models.off-mode]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = true
+
+[providers.custom-disabled-tools.models.off-mode.reasoning]
+supported_efforts = ["none"]
+"#,
+    )
+    .unwrap_or_else(|error| panic!("explicit tool mode config should deserialize: {error}"));
+
+    let mut registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
+    let text_provider = registry
+        .get(TEXT_MODEL_ID)
+        .unwrap_or_else(|| panic!("text-mode model should be registered"));
+    let off_provider = registry
+        .get(OFF_MODEL_ID)
+        .unwrap_or_else(|| panic!("off-mode model should be registered"));
+
+    assert_eq!(text_provider.tool_mode(), ToolMode::Text);
+    assert!(!text_provider.supports_tools());
+    assert_eq!(off_provider.tool_mode(), ToolMode::Off);
+    assert!(off_provider.supports_tools());
+    assert_eq!(
+        registry
+            .first_with_tools()
+            .unwrap_or_else(|| panic!("explicit text-mode model should be selected"))
+            .id(),
+        TEXT_MODEL_ID
+    );
+
+    assert!(registry.unregister(TEXT_MODEL_ID));
+    assert_eq!(
+        registry
+            .first()
+            .unwrap_or_else(|| panic!("off-mode model should remain registered"))
+            .id(),
+        OFF_MODEL_ID
+    );
+    assert!(registry.first_with_tools().is_none());
+}

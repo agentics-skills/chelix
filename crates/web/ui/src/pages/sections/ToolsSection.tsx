@@ -70,7 +70,7 @@ function ToolCallingSummary({ supportsTools, toolCount }: ToolCallingSummaryProp
 			<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
 				{supportsTools
 					? "Built-in, MCP, and runtime-routed tools available to the active model."
-					: "The current model is chat-only, so the agent cannot call tools in this session."}
+					: "The configured tool mode is off, so the agent cannot call tools in this session."}
 			</div>
 		</div>
 	);
@@ -111,8 +111,7 @@ function ToolCallingWarning({ supportsTools }: { supportsTools: boolean }): VNod
 	return (
 		<div className="rounded border border-[var(--warn)] bg-[var(--surface2)] p-3 max-w-[1100px]">
 			<div className="text-xs text-[var(--muted)] leading-relaxed">
-				Tools are unavailable because the current model does not support tool calling. Switch to a tool-capable model in{" "}
-				<strong className="text-[var(--text)]">Settings {"\u2192"} LLMs</strong> and refresh this page.
+				Tools are unavailable because the configured tool mode is off.
 			</div>
 		</div>
 	);

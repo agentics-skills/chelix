@@ -215,14 +215,17 @@ impl ProviderRegistry {
             .cloned()
     }
 
-    /// Return the first provider supporting tools, or the first provider overall.
+    /// Return the first provider that can run tools with its configured tool mode.
     pub fn first_with_tools(&self) -> Option<Arc<dyn LlmProvider>> {
         self.models
             .iter()
             .filter_map(|model| self.providers.get(&model.id))
-            .find(|provider| provider.supports_tools())
+            .find(|provider| match provider.tool_mode() {
+                chelix_config::ToolMode::Native => provider.supports_tools(),
+                chelix_config::ToolMode::Text => true,
+                chelix_config::ToolMode::Off => false,
+            })
             .cloned()
-            .or_else(|| self.first())
     }
 
     pub fn list_models(&self) -> &[ModelInfo] {
