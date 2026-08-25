@@ -9,7 +9,6 @@ use std::{
 };
 
 use {
-    chelix_config::schema::ToolMode,
     serde_json::Value,
     tokio::sync::{Mutex, Notify, RwLock, mpsc, oneshot},
     tracing::{debug, info, warn},
@@ -486,27 +485,5 @@ impl ChannelStreamDispatcher {
             return HashSet::new();
         }
         self.completed.lock().await.clone()
-    }
-}
-
-/// Resolve the effective tool mode for a provider.
-///
-/// Combines the provider's `tool_mode()` override with its `supports_tools()`
-/// capability to determine how tools should be dispatched:
-/// - `Native` — provider handles tool schemas via API (OpenAI function calling, etc.)
-/// - `Text` — tools are described in the prompt; the runner parses tool calls from text
-/// - `Off` — no tools at all
-pub(crate) fn effective_tool_mode(provider: &dyn chelix_agents::model::LlmProvider) -> ToolMode {
-    match provider.tool_mode() {
-        Some(ToolMode::Native) => ToolMode::Native,
-        Some(ToolMode::Text) => ToolMode::Text,
-        Some(ToolMode::Off) => ToolMode::Off,
-        Some(ToolMode::Auto) | None => {
-            if provider.supports_tools() {
-                ToolMode::Native
-            } else {
-                ToolMode::Text
-            }
-        },
     }
 }

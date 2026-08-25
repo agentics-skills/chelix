@@ -20,7 +20,7 @@ use {
         model::{ChatMessage, LlmProvider},
         tool_registry::{AgentTool, ToolRegistry},
     },
-    chelix_config::{AgentMemoryWriteMode, MemoryStyle, ToolMode},
+    chelix_config::{AgentMemoryWriteMode, MemoryStyle},
     chelix_memory::writer::{ensure_memory_target_not_symlink, remove_exact_text},
     chelix_providers::ProviderRegistry,
     chelix_sessions::metadata::SqliteSessionMetadata,
@@ -1049,19 +1049,14 @@ impl MemoryForgetTool {
 
         let registry = self.providers.read().await;
         if let Some(model) = session_model {
-            if let Some(provider) = registry.get(&model) {
-                return Ok(provider);
-            }
-            warn!(
-                session_key,
-                model, "memory_forget could not resolve session model, falling back"
-            );
+            return registry.get(&model).ok_or_else(|| {
+                anyhow::anyhow!("memory_forget session model '{model}' is not registered")
+            });
         }
 
-        registry
-            .first_with_tools()
-            .or_else(|| registry.first())
-            .ok_or_else(|| anyhow::anyhow!("no LLM provider is configured for memory_forget"))
+        registry.first_with_tools().ok_or_else(|| {
+            anyhow::anyhow!("no LLM provider can run memory_forget with its configured tool_mode")
+        })
     }
 }
 
@@ -1206,28 +1201,6 @@ pub(crate) fn install_agent_scoped_memory_tools(
             agent_id.to_string(),
             write_mode,
         )));
-    }
-}
-
-/// Resolve the effective tool mode for a provider.
-///
-/// Combines the provider's `tool_mode()` override with its `supports_tools()`
-/// capability to determine how tools should be dispatched:
-/// - `Native` -- provider handles tool schemas via API (OpenAI function calling, etc.)
-/// - `Text` -- tools are described in the prompt; the runner parses tool calls from text
-/// - `Off` -- no tools at all
-pub(crate) fn effective_tool_mode(provider: &dyn LlmProvider) -> ToolMode {
-    match provider.tool_mode() {
-        Some(ToolMode::Native) => ToolMode::Native,
-        Some(ToolMode::Text) => ToolMode::Text,
-        Some(ToolMode::Off) => ToolMode::Off,
-        Some(ToolMode::Auto) | None => {
-            if provider.supports_tools() {
-                ToolMode::Native
-            } else {
-                ToolMode::Text
-            }
-        },
     }
 }
 

@@ -4,7 +4,7 @@ use {
     super::{ProviderRegistry, registration::openai_builtin_capabilities},
     crate::openai::ResponsesWebSocketPolicy,
     chelix_agents::model::ReasoningEffort,
-    chelix_config::ChelixConfig,
+    chelix_config::{ChelixConfig, ToolMode},
 };
 
 #[test]
@@ -86,4 +86,140 @@ include = ["reasoning.encrypted_content"]
             .map(ReasoningEffort::as_str),
         Some("max")
     );
+}
+
+#[test]
+fn model_tool_capability_remains_separate_from_native_mode() {
+    const CHAT_ONLY_MODEL_ID: &str = "custom-ai-capability::chat-only";
+    const TOOL_MODEL_ID: &str = "custom-ai-capability::tool-capable";
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.custom-ai-capability]
+api_key = "test-key"
+base_url = "https://example.invalid/v1"
+fetch_models = false
+
+[providers.custom-ai-capability.models.chat-only]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = false
+streaming = true
+
+[providers.custom-ai-capability.models.chat-only.reasoning]
+supported_efforts = ["none"]
+
+[providers.custom-ai-capability.models.tool-capable]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+
+[providers.custom-ai-capability.models.tool-capable.reasoning]
+supported_efforts = ["none"]
+"#,
+    )
+    .unwrap_or_else(|error| panic!("capability config should deserialize: {error}"));
+
+    let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
+    let chat_only = registry
+        .get(CHAT_ONLY_MODEL_ID)
+        .unwrap_or_else(|| panic!("chat-only model should be registered"));
+    let tool_capable = registry
+        .get(TOOL_MODEL_ID)
+        .unwrap_or_else(|| panic!("tool-capable model should be registered"));
+
+    assert_eq!(chat_only.tool_mode(), ToolMode::Native);
+    assert_eq!(tool_capable.tool_mode(), ToolMode::Native);
+    assert!(!chat_only.supports_tools());
+    assert!(tool_capable.supports_tools());
+    assert_eq!(
+        registry
+            .first_with_tools()
+            .unwrap_or_else(|| panic!("tool-capable model should be selected"))
+            .id(),
+        TOOL_MODEL_ID
+    );
+}
+
+#[test]
+fn first_with_tools_honors_explicit_modes_without_fallback() {
+    const TEXT_MODEL_ID: &str = "openai::text-mode";
+    const OFF_MODEL_ID: &str = "custom-disabled-tools::off-mode";
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.openai]
+api_key = "test-key"
+fetch_models = false
+tool_mode = "text"
+
+[providers.openai.models.text-mode]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = false
+streaming = true
+zeroDataRetentionEnabled = true
+
+[providers.openai.models.text-mode.reasoning]
+supported_efforts = ["none"]
+
+[providers.custom-disabled-tools]
+api_key = "test-key"
+base_url = "https://example.invalid/v1"
+fetch_models = false
+tool_mode = "off"
+
+[providers.custom-disabled-tools.models.off-mode]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = true
+
+[providers.custom-disabled-tools.models.off-mode.reasoning]
+supported_efforts = ["none"]
+"#,
+    )
+    .unwrap_or_else(|error| panic!("explicit tool mode config should deserialize: {error}"));
+
+    let mut registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
+    let text_provider = registry
+        .get(TEXT_MODEL_ID)
+        .unwrap_or_else(|| panic!("text-mode model should be registered"));
+    let off_provider = registry
+        .get(OFF_MODEL_ID)
+        .unwrap_or_else(|| panic!("off-mode model should be registered"));
+
+    assert_eq!(text_provider.tool_mode(), ToolMode::Text);
+    assert!(!text_provider.supports_tools());
+    assert_eq!(off_provider.tool_mode(), ToolMode::Off);
+    assert!(off_provider.supports_tools());
+    assert_eq!(
+        registry
+            .first_with_tools()
+            .unwrap_or_else(|| panic!("explicit text-mode model should be selected"))
+            .id(),
+        TEXT_MODEL_ID
+    );
+
+    assert!(registry.unregister(TEXT_MODEL_ID));
+    assert_eq!(
+        registry
+            .first()
+            .unwrap_or_else(|| panic!("off-mode model should remain registered"))
+            .id(),
+        OFF_MODEL_ID
+    );
+    assert!(registry.first_with_tools().is_none());
 }

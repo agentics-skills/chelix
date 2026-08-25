@@ -276,7 +276,7 @@ url = "http://192.168.0.9:11434"
 
 #[test]
 fn tool_mode_all_values_parse_correctly() {
-    for mode in ["auto", "native", "text", "off"] {
+    for mode in ["native", "text", "off"] {
         let toml = format!(
             r#"
 [providers.openai]

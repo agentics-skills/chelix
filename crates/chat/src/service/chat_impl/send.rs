@@ -288,13 +288,22 @@ impl LiveChatService {
                     format!("model '{}' not found. available: {:?}", id, available)
                 })?
             } else if !stream_only {
-                reg.first_with_tools()
-                    .ok_or_else(|| "no LLM providers configured".to_string())?
+                reg.first_with_tools().ok_or_else(|| {
+                    "no LLM provider can run tools with its configured tool_mode".to_string()
+                })?
             } else {
                 reg.first()
                     .ok_or_else(|| "no LLM providers configured".to_string())?
             }
         };
+        if !stream_only {
+            validate_tool_mode_compatibility(
+                provider.tool_mode(),
+                provider.supports_tools(),
+                provider.id(),
+            )
+            .map_err(ServiceError::message)?;
+        }
         info!(
             session = %session_key,
             provider = provider.name(),
@@ -635,17 +644,6 @@ impl LiveChatService {
         let run_id_clone = run_id.clone();
         let tool_registry = Arc::clone(&self.tool_registry);
         let hook_registry = self.hook_registry.clone();
-
-        // Log if tool mode is active but the provider doesn't support tools.
-        // Note: We don't broadcast to the user here - they chose the model knowing
-        // its limitations. The UI should show capabilities when selecting a model.
-        if !stream_only && !provider.supports_tools() {
-            debug!(
-                provider = provider.name(),
-                model = provider.id(),
-                "selected provider does not support tool calling"
-            );
-        }
 
         info!(
             run_id = %run_id,

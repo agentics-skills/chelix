@@ -44,7 +44,7 @@ pub struct OpenAiProvider {
     client: &'static reqwest::Client,
     stream_transport: chelix_config::schema::ProviderStreamTransport,
     wire_api: chelix_config::schema::WireApi,
-    tool_mode_override: Option<chelix_config::ToolMode>,
+    tool_mode: chelix_config::ToolMode,
     /// Optional reasoning effort level for o-series models.
     reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
     /// Resolved Responses API reasoning summary detail for this model.

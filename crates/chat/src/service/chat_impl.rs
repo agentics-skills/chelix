@@ -33,7 +33,6 @@ use {
 };
 
 use crate::{
-    agent_loop::effective_tool_mode,
     channels::notify_channels_of_compaction,
     compaction,
     message::{
@@ -98,6 +97,10 @@ fn send_sync_model_id<'a>(
     session_entry: Option<&'a chelix_sessions::metadata::SessionEntry>,
 ) -> Option<&'a str> {
     explicit_model.or_else(|| session_entry.and_then(|entry| entry.model.as_deref()))
+}
+
+fn tool_mode_enables_tools(tool_mode: ToolMode) -> bool {
+    !matches!(tool_mode, ToolMode::Off)
 }
 
 async fn resolve_send_sync_outcome<F, Fut>(result: ChatRunOutcome, on_failed: F) -> ServiceResult
@@ -222,6 +225,14 @@ impl ChatService for LiveChatService {
             reg.get(model_id)
                 .ok_or_else(|| format!("model '{model_id}' not found"))?
         };
+        if !stream_only {
+            validate_tool_mode_compatibility(
+                provider.tool_mode(),
+                provider.supports_tools(),
+                provider.id(),
+            )
+            .map_err(ServiceError::message)?;
+        }
         let persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
@@ -676,22 +687,17 @@ impl ChatService for LiveChatService {
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
             .map_err(ServiceError::message)?;
-        let (provider_arc, provider_name, supports_tools) = {
-            let reg = self.providers.read().await;
-            let session_model = session_entry.as_ref().and_then(|e| e.model.as_deref());
-            let provider = match session_model {
-                Some(id) => reg.get(id),
-                None => reg.first(),
-            };
-            (
-                provider.clone(),
-                provider.as_ref().map(|p| p.name().to_string()),
-                provider
-                    .as_ref()
-                    .map(|p| p.supports_tools())
-                    .unwrap_or(true),
-            )
-        };
+        let messages = self
+            .session_store
+            .read(&session_key)
+            .await
+            .unwrap_or_default();
+        let provider = self
+            .resolve_provider(&session_key, &messages)
+            .await
+            .map_err(ServiceError::message)?;
+        let provider_name = provider.name().to_string();
+        let tools_enabled = tool_mode_enables_tools(provider.tool_mode());
         let session_info = serde_json::json!({
             "key": session_key,
             "messageCount": message_count,
@@ -753,33 +759,26 @@ impl ChatService for LiveChatService {
             serde_json::json!(null)
         };
 
-        // Tools (only include if the provider supports tool calling)
+        // Tools (only include when the configured tool mode enables them)
         let mcp_disabled = session_entry
             .as_ref()
             .and_then(|e| e.mcp_disabled)
             .unwrap_or(false);
-        // Read history once: the token usage below reuses it, and the tool
-        // catalog needs it to restore lazy schema visibility.
-        let messages = self
-            .session_store
-            .read(&session_key)
-            .await
-            .unwrap_or_default();
+        // `messages` is reused for token usage and lazy schema visibility.
         // `tools` is the UI discovery catalog (name + description of every
         // allowed public tool, plus `get_tool` in lazy mode). `toolSchemaCount`
         // separately reports how many parameter schemas are currently visible.
-        let (tools, tool_schema_count): (Vec<Value>, usize) = if supports_tools {
+        let (tools, tool_schema_count): (Vec<Value>, usize) = if tools_enabled {
             let registry_guard = self.tool_registry.read().await;
             let list_agent_id = prompt_persona.agent_id.clone();
             let list_ctx = PolicyContext {
                 agent_id: list_agent_id.clone(),
                 ..Default::default()
             };
-            let memory_setup = provider_arc.as_ref().and_then(|provider| {
-                self.state
-                    .memory_manager()
-                    .map(|manager| (manager, Arc::clone(provider)))
-            });
+            let memory_setup = self
+                .state
+                .memory_manager()
+                .map(|manager| (manager, Arc::clone(&provider)));
             match prepare_run_registry(
                 &registry_guard,
                 &prompt_persona.config,
@@ -871,9 +870,9 @@ impl ChatService for LiveChatService {
             "image": effective_image,
             "containerName": container_name,
         });
-        // Discover enabled skills/plugins (only if provider supports tools and
+        // Discover enabled skills/plugins (only if the configured mode enables tools and
         // `[skills] enabled` is true — see #655).
-        let skills_list: Vec<Value> = if supports_tools {
+        let skills_list: Vec<Value> = if tools_enabled {
             discover_skills_if_enabled(&prompt_persona.config)
                 .await
                 .iter()
@@ -889,8 +888,8 @@ impl ChatService for LiveChatService {
             vec![]
         };
 
-        // MCP servers (only if provider supports tools)
-        let mcp_servers = if supports_tools {
+        // MCP servers (only if the configured mode enables tools)
+        let mcp_servers = if tools_enabled {
             self.state
                 .mcp_service()
                 .list()
@@ -910,7 +909,7 @@ impl ChatService for LiveChatService {
             "mcpDisabled": mcp_disabled,
             "sandbox": sandbox_info,
             "promptMemory": prompt_persona.memory_status,
-            "supportsTools": supports_tools,
+            "supportsTools": tools_enabled,
             "tokenUsage": {
                 "inputTokens": usage.session_input_tokens,
                 "outputTokens": usage.session_output_tokens,
@@ -946,9 +945,9 @@ impl ChatService for LiveChatService {
             .resolve_provider(&session_key, &history)
             .await
             .map_err(ServiceError::message)?;
-        let tool_mode = effective_tool_mode(&*provider);
+        let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
-        let tools_enabled = !matches!(tool_mode, ToolMode::Off);
+        let tools_enabled = tool_mode_enables_tools(tool_mode);
 
         // Build runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
@@ -1093,9 +1092,9 @@ impl ChatService for LiveChatService {
             .resolve_provider(&session_key, &history)
             .await
             .map_err(ServiceError::message)?;
-        let tool_mode = effective_tool_mode(&*provider);
+        let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
-        let tools_enabled = !matches!(tool_mode, ToolMode::Off);
+        let tools_enabled = tool_mode_enables_tools(tool_mode);
 
         // Build runtime context.
         let session_entry = self.session_metadata.get(&session_key).await;
@@ -1353,11 +1352,14 @@ mod tests {
     };
 
     use {
-        chelix_sessions::metadata::SessionEntry, tokio::sync::RwLock,
+        chelix_config::ToolMode, chelix_sessions::metadata::SessionEntry, tokio::sync::RwLock,
         tokio_util::sync::CancellationToken,
     };
 
-    use super::{ChatRunOutcome, LiveChatService, resolve_send_sync_outcome, send_sync_model_id};
+    use super::{
+        ChatRunOutcome, LiveChatService, resolve_send_sync_outcome, send_sync_model_id,
+        tool_mode_enables_tools,
+    };
 
     fn session_entry_with_model(model: Option<&str>) -> SessionEntry {
         SessionEntry {
@@ -1385,6 +1387,13 @@ mod tests {
             external_session_id: None,
             reasoning_effort: None,
         }
+    }
+
+    #[test]
+    fn tool_mode_enables_tools_except_when_off() {
+        assert!(tool_mode_enables_tools(ToolMode::Native));
+        assert!(tool_mode_enables_tools(ToolMode::Text));
+        assert!(!tool_mode_enables_tools(ToolMode::Off));
     }
 
     #[test]

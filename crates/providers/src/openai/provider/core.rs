@@ -37,7 +37,7 @@ impl OpenAiProvider {
             client: crate::shared_http_client(),
             stream_transport: ProviderStreamTransport::Sse,
             wire_api: WireApi::ChatCompletions,
-            tool_mode_override: None,
+            tool_mode: chelix_config::ToolMode::default(),
             reasoning_effort: None,
             reasoning_summary: None,
             reasoning_include: Vec::new(),
@@ -67,7 +67,7 @@ impl OpenAiProvider {
 
     #[must_use]
     pub fn with_tool_mode(mut self, mode: chelix_config::ToolMode) -> Self {
-        self.tool_mode_override = Some(mode);
+        self.tool_mode = mode;
         self
     }
 
@@ -108,7 +108,7 @@ impl OpenAiProvider {
             client: self.client,
             stream_transport: self.stream_transport,
             wire_api: self.wire_api,
-            tool_mode_override: self.tool_mode_override,
+            tool_mode: self.tool_mode,
             reasoning_effort: self.reasoning_effort.clone(),
             reasoning_summary: self.reasoning_summary,
             reasoning_include: self.reasoning_include.clone(),
@@ -227,15 +227,11 @@ impl LlmProvider for OpenAiProvider {
     }
 
     fn supports_tools(&self) -> bool {
-        match self.tool_mode_override {
-            Some(chelix_config::ToolMode::Native) => true,
-            Some(chelix_config::ToolMode::Text | chelix_config::ToolMode::Off) => false,
-            Some(chelix_config::ToolMode::Auto) | None => false,
-        }
+        matches!(self.tool_mode, chelix_config::ToolMode::Native)
     }
 
-    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
-        self.tool_mode_override
+    fn tool_mode(&self) -> chelix_config::ToolMode {
+        self.tool_mode
     }
 
     async fn complete(

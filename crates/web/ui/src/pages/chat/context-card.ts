@@ -165,7 +165,7 @@ export function renderContextToolsSection(card: HTMLElement, data: ChatContextPa
 	const tools = data.tools || [];
 	const sec = ctxSection("Tools");
 	if (data.supportsTools === false) {
-		sec.appendChild(ctxEl("div", "ctx-disabled", "Tools disabled \u2014 model doesn't support tool calling"));
+		sec.appendChild(ctxEl("div", "ctx-disabled", "Tools disabled \u2014 configured tool mode is off"));
 	} else if (tools.length > 0) {
 		const wrap = ctxEl("div", "ctx-tool-wrap");
 		tools.forEach((t) => {
@@ -192,7 +192,7 @@ export function renderContextSkillsSection(card: HTMLElement, data: ChatContextP
 	const skills = data.skills || [];
 	const sec = ctxSection("Skills & Plugins");
 	if (data.supportsTools === false) {
-		sec.appendChild(ctxEl("div", "ctx-disabled", "Skills disabled \u2014 model doesn't support tool calling"));
+		sec.appendChild(ctxEl("div", "ctx-disabled", "Skills disabled \u2014 configured tool mode is off"));
 	} else if (skills.length > 0) {
 		const wrap = ctxEl("div", "ctx-tool-wrap");
 		skills.forEach((s) => {
@@ -216,7 +216,7 @@ export function renderContextMcpSection(card: HTMLElement, data: ChatContextPayl
 	const servers = data.mcpServers || [];
 	const sec = ctxSection("MCP Tools");
 	if (data.supportsTools === false) {
-		sec.appendChild(ctxEl("div", "ctx-disabled", "MCP tools disabled \u2014 model doesn't support tool calling"));
+		sec.appendChild(ctxEl("div", "ctx-disabled", "MCP tools disabled \u2014 configured tool mode is off"));
 	} else if (data.mcpDisabled) {
 		sec.appendChild(ctxEl("div", "ctx-disabled", "MCP tools disabled for this session"));
 	} else {

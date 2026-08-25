@@ -49,7 +49,6 @@ use crate::{
     },
     chat_error::{parse_agent_run_error, parse_chat_error},
     compaction,
-    memory_tools::effective_tool_mode,
     message::apply_voice_reply_suffix,
     models::DisabledModelsStore,
     prompt::{
@@ -701,7 +700,7 @@ pub(crate) async fn run_with_tools(
         "resolved agent runtime limits"
     );
 
-    let tool_mode = effective_tool_mode(&*provider);
+    let tool_mode = provider.tool_mode();
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
@@ -930,13 +929,21 @@ pub(crate) async fn run_with_tools(
                     "state": "thinking_done",
                     "seq": seq,
                 }),
-                RunnerEvent::SegmentStart { segment_id } => serde_json::json!({
-                    "runId": run_id,
-                    "sessionKey": sk,
-                    "state": "segment_start",
-                    "segmentId": segment_id.0,
-                    "seq": seq,
-                }),
+                RunnerEvent::SegmentStart { segment_id } => {
+                    if let Some(ref map) = active_partial_for_events {
+                        let mut drafts = map.write().await;
+                        if let Some(draft) = drafts.get_mut(&sk) {
+                            draft.start_segment(segment_id.clone());
+                        }
+                    }
+                    serde_json::json!({
+                        "runId": run_id,
+                        "sessionKey": sk,
+                        "state": "segment_start",
+                        "segmentId": segment_id.0,
+                        "seq": seq,
+                    })
+                },
                 RunnerEvent::ProviderItemUpdate(update) => {
                     if let Some(ref map) = active_partial_for_events {
                         let mut drafts = map.write().await;
@@ -1057,16 +1064,6 @@ pub(crate) async fn run_with_tools(
                     "seq": seq,
                 }),
                 RunnerEvent::RetryingAfterError { error, delay_ms } => {
-                    // The failed attempt closed its provider segment; the retry
-                    // opens the next one. Without rolling the draft here its
-                    // materializer stays on the closed segment and rejects the
-                    // first update of the new attempt.
-                    if let Some(ref map) = active_partial_for_events {
-                        let mut drafts = map.write().await;
-                        if let Some(draft) = drafts.get_mut(&sk) {
-                            *draft = draft.next_segment();
-                        }
-                    }
                     let error_obj =
                         parse_chat_error(&error, Some(provider_name_for_events.as_str()));
                     if error_obj.get("type").and_then(|v| v.as_str()) == Some("rate_limit_exceeded")

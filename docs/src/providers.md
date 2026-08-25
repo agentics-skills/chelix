@@ -145,7 +145,7 @@ Each provider supports these options:
 | `fetch_models`     | `true`   | Discover available models from the API     |
 | `stream_transport` | `"sse"`  | `"sse"`, `"websocket"`, or `"auto"`        |
 | `alias`            | —        | Custom label for metrics                   |
-| `tool_mode`        | `"auto"` | `"auto"`, `"native"`, `"text"`, or `"off"` |
+| `tool_mode`        | `"native"` | `"native"`, `"text"`, or `"off"`          |
 
 ## Provider Setup
 
