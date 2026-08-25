@@ -33,7 +33,6 @@ use {
 };
 
 use crate::{
-    agent_loop::effective_tool_mode,
     channels::notify_channels_of_compaction,
     compaction,
     message::{
@@ -946,7 +945,7 @@ impl ChatService for LiveChatService {
             .resolve_provider(&session_key, &history)
             .await
             .map_err(ServiceError::message)?;
-        let tool_mode = effective_tool_mode(&*provider);
+        let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
         let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
@@ -1093,7 +1092,7 @@ impl ChatService for LiveChatService {
             .resolve_provider(&session_key, &history)
             .await
             .map_err(ServiceError::message)?;
-        let tool_mode = effective_tool_mode(&*provider);
+        let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
         let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 

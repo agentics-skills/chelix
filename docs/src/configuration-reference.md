@@ -698,7 +698,7 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `stream_transport` | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
 | `wire_api`         | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
 | `alias`            | optional string                         | —                    | Alias used in metrics labels instead of the provider name.     |
-| `tool_mode`        | enum (`auto`, `native`, `text`, `off`)  | `"auto"`             | How tool calling is handled for this provider.                 |
+| `tool_mode`        | enum (`native`, `text`, `off`)          | `"native"`           | How tool calling is handled for this provider.                 |
 | `cache_retention`  | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
 | `policy`           | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
 

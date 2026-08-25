@@ -13,6 +13,8 @@ use chelix_common::{
     tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
 };
 
+use chelix_config::ToolMode;
+
 use crate::{
     model::{ChatMessage, CompletionOptions, LlmProvider, ToolChoice, UserContent},
     response_sanitizer::recover_tool_calls_from_content,
@@ -79,7 +81,9 @@ pub async fn run_agent_loop_with_context_and_limits(
     sender_name: Option<String>,
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
-    let native_tools = provider.supports_tools();
+    let tool_mode = provider.tool_mode();
+    let native_tools = matches!(tool_mode, ToolMode::Native);
+    let text_tools = matches!(tool_mode, ToolMode::Text);
     let max_tool_result_bytes = limits
         .max_tool_result_bytes
         .unwrap_or(tools_config.max_tool_result_bytes);
@@ -90,6 +94,7 @@ pub async fn run_agent_loop_with_context_and_limits(
     info!(
         provider = provider.name(),
         model = provider.id(),
+        ?tool_mode,
         native_tools,
         tools_count = tools.list_names().len(),
         is_multimodal,
@@ -344,27 +349,26 @@ pub async fn run_agent_loop_with_context_and_limits(
             trace!(iteration = iterations, text = %text, "LLM response text");
         }
 
-        // Fallback: parse tool calls from model text if the provider returned
-        // no structured tool calls (some providers/models emit text-based calls).
-        if response.tool_calls.is_empty()
+        // Text mode parses tool calls from model text.
+        if text_tools
+            && response.tool_calls.is_empty()
             && let Some(ref text) = response.text
         {
             let (parsed, remaining) = parse_tool_calls_from_text(text);
             if !parsed.is_empty() {
                 info!(
-                    native_tools,
                     count = parsed.len(),
                     first_tool = %parsed[0].name,
-                    "parsed tool call(s) from text fallback"
+                    "parsed text-mode tool call(s)"
                 );
                 response.text = remaining;
                 response.tool_calls = parsed;
             }
         }
 
-        // One-shot retry for malformed tool calls: if the text looks like a
-        // failed tool call attempt, ask the model to retry with exact format.
-        if response.tool_calls.is_empty()
+        // Text mode retries one malformed tool call with the exact format.
+        if text_tools
+            && response.tool_calls.is_empty()
             && looks_like_failed_tool_call(&response.text)
             && malformed_retry_count == 0
         {
@@ -377,8 +381,8 @@ pub async fn run_agent_loop_with_context_and_limits(
             continue;
         }
 
-        // Fallback: recover tool calls from XML blocks (<function_call>, <tool_call>).
-        if !native_tools
+        // Text mode also accepts XML tool call blocks.
+        if text_tools
             && response.tool_calls.is_empty()
             && let Some(ref text) = response.text
         {

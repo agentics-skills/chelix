@@ -113,6 +113,7 @@ port = {port}                           # Port number (auto-generated for this i
 #   fetch_models - Discover models from provider API when available (default: true)
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
 #   alias     - Custom name for metrics labels (useful for multiple instances)
+#   tool_mode - Tool calling mode: "native", "text", or "off" (default: "native")
 #   policy    - Per-provider tool policy override (allow/deny lists)
 #   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
 #

@@ -115,12 +115,11 @@ pub trait LlmProvider: Send + Sync {
         false
     }
 
-    /// Configured tool mode for this provider, if any.
+    /// Configured tool mode for this provider.
     ///
-    /// Returns `None` when the provider has no explicit tool mode override
-    /// (the caller should fall back to `Auto` behavior based on `supports_tools()`).
-    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
-        None
+    /// Defaults to native tool calling.
+    fn tool_mode(&self) -> chelix_config::ToolMode {
+        chelix_config::ToolMode::default()
     }
 
     /// Stream a completion, yielding delta/done/error events.

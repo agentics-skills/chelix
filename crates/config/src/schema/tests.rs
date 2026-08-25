@@ -699,7 +699,6 @@ fn browser_config_rejects_sandbox_override() {
 #[test]
 fn tool_mode_serde_round_trip() {
     for (variant, expected_str) in [
-        (ToolMode::Auto, r#""auto""#),
         (ToolMode::Native, r#""native""#),
         (ToolMode::Text, r#""text""#),
         (ToolMode::Off, r#""off""#),
@@ -718,12 +717,7 @@ fn tool_mode_toml_round_trip() {
         mode: ToolMode,
     }
 
-    for variant in [
-        ToolMode::Auto,
-        ToolMode::Native,
-        ToolMode::Text,
-        ToolMode::Off,
-    ] {
+    for variant in [ToolMode::Native, ToolMode::Text, ToolMode::Off] {
         let w = Wrapper { mode: variant };
         let toml_str = toml::to_string(&w).unwrap();
         let parsed: Wrapper = toml::from_str(&toml_str).unwrap();
@@ -732,14 +726,14 @@ fn tool_mode_toml_round_trip() {
 }
 
 #[test]
-fn tool_mode_default_is_auto() {
-    assert_eq!(ToolMode::default(), ToolMode::Auto);
+fn tool_mode_default_is_native() {
+    assert_eq!(ToolMode::default(), ToolMode::Native);
 }
 
 #[test]
-fn provider_entry_tool_mode_defaults_to_auto() {
+fn provider_entry_tool_mode_defaults_to_native() {
     let entry = ProviderEntry::default();
-    assert_eq!(entry.tool_mode, ToolMode::Auto);
+    assert_eq!(entry.tool_mode, ToolMode::Native);
 }
 
 #[test]

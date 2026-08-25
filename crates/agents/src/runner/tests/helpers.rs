@@ -574,7 +574,7 @@ impl LlmProvider for ToolCallingProvider {
     }
 }
 
-/// Non-native provider that returns tool calls as text blocks.
+/// Text-mode provider that returns tool calls as text blocks.
 pub(super) struct TextToolCallingProvider {
     pub call_count: std::sync::atomic::AtomicUsize,
 }
@@ -601,8 +601,8 @@ impl LlmProvider for TextToolCallingProvider {
         Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
-    fn supports_tools(&self) -> bool {
-        false
+    fn tool_mode(&self) -> chelix_config::ToolMode {
+        chelix_config::ToolMode::Text
     }
 
     async fn complete(

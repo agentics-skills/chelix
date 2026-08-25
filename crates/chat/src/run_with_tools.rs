@@ -49,7 +49,6 @@ use crate::{
     },
     chat_error::{parse_agent_run_error, parse_chat_error},
     compaction,
-    memory_tools::effective_tool_mode,
     message::apply_voice_reply_suffix,
     models::DisabledModelsStore,
     prompt::{
@@ -701,7 +700,7 @@ pub(crate) async fn run_with_tools(
         "resolved agent runtime limits"
     );
 
-    let tool_mode = effective_tool_mode(&*provider);
+    let tool_mode = provider.tool_mode();
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 

@@ -2158,20 +2158,21 @@ async fn test_text_based_tool_calling() {
     }));
 }
 
-/// Native-tool provider that emits XML-like function text instead of
-/// structured tool calls.
-struct NativeTextFunctionProvider {
+const NATIVE_TEXT_TOOL_CALL: &str = "```tool_call\n{\"tool\": \"process\", \"arguments\": {\"action\": \"start\", \"command\": \"pwd\"}}\n```";
+
+/// Native-mode provider that emits a textual tool call instead of a structured call.
+struct NativeTextToolCallProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
 #[async_trait]
-impl LlmProvider for NativeTextFunctionProvider {
+impl LlmProvider for NativeTextToolCallProvider {
     fn name(&self) -> &str {
-        "mock-native-function"
+        "mock-native-text-tool-call"
     }
 
     fn id(&self) -> &str {
-        "mock-native-function"
+        "mock-native-text-tool-call"
     }
 
     fn context_window(&self) -> Option<u32> {
@@ -2186,69 +2187,40 @@ impl LlmProvider for NativeTextFunctionProvider {
         Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
-    fn supports_tools(&self) -> bool {
-        true
-    }
-
     async fn complete(
         &self,
-        messages: &[ChatMessage],
+        _messages: &[ChatMessage],
         _tools: &[serde_json::Value],
     ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
+        self.call_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: Some(
-                    "<function=process>\n<parameter=action>\nstart\n</parameter>\n<parameter=command>\npwd\n</parameter>\n</function>\n</tool_call>"
-                        .into(),
-                ),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 20,
-                    ..Default::default()
-                },
-            })
-        } else {
-            let tool_content = messages
-                .iter()
-                .find_map(|m| {
-                    if let ChatMessage::Tool { content, .. } = m {
-                        Some(content.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or("");
-            let tool_result: serde_json::Value = serde_json::from_str(tool_content)
-                .unwrap_or_else(|error| panic!("tool result should be JSON: {error}"));
-            assert_eq!(tool_result["received"]["action"], "start");
-            assert_eq!(tool_result["received"]["command"], "pwd");
-            Ok(CompletionResponse {
-                text: Some("Process started for pwd".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 30,
-                    output_tokens: 10,
-                    ..Default::default()
-                },
-            })
-        }
+        Ok(CompletionResponse {
+            text: Some(NATIVE_TEXT_TOOL_CALL.to_string()),
+            tool_calls: vec![],
+            usage: Usage {
+                input_tokens: 10,
+                output_tokens: 20,
+                ..Default::default()
+            },
+        })
     }
 
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.call_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(tokio_stream::iter(vec![
+            StreamEvent::Delta(NATIVE_TEXT_TOOL_CALL.to_string()),
+            StreamEvent::Done(Usage::default()),
+        ]))
     }
 }
 
 #[tokio::test]
-async fn test_native_text_function_tool_calling_non_streaming() {
-    let provider = Arc::new(NativeTextFunctionProvider {
+async fn test_native_mode_does_not_parse_text_tool_call_non_streaming() {
+    let provider = Arc::new(NativeTextToolCallProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
@@ -2257,12 +2229,11 @@ async fn test_native_text_function_tool_calling_non_streaming() {
     let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
 
-    let uc = UserContent::text("execute pwd");
     let result = run_agent_loop_with_tool_lifecycle(
-        provider,
+        Arc::clone(&provider) as Arc<dyn LlmProvider>,
         &tools,
         "You are a test bot.",
-        &uc,
+        &UserContent::text("show the tool call as text"),
         None,
         Some(&on_tool_lifecycle),
         None,
@@ -2270,28 +2241,50 @@ async fn test_native_text_function_tool_calling_non_streaming() {
     .await
     .unwrap();
 
-    assert!(
-        result.output.text.contains("pwd"),
-        "got: {}",
-        result.output.text
+    assert_eq!(result.output.text, NATIVE_TEXT_TOOL_CALL);
+    assert_eq!(result.iterations, 1);
+    assert_eq!(result.tool_calls_made, 0);
+    assert_eq!(
+        provider
+            .call_count
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
     );
-    assert_eq!(result.iterations, 2, "should take 2 iterations");
-    assert_eq!(result.tool_calls_made, 1, "should execute 1 tool call");
+    assert!(lifecycle_events.lock().unwrap().is_empty());
+}
 
-    let lifecycle_events = lifecycle_events.lock().unwrap();
-    let input_ready = lifecycle_events.iter().find_map(|event| {
-        if let chelix_common::tool_lifecycle::ToolLifecycleUpdate::InputReady { arguments } =
-            &event.lifecycle.update
-        {
-            Some((&event.lifecycle.tool_name, arguments))
-        } else {
-            None
-        }
+#[tokio::test]
+async fn test_native_mode_does_not_parse_text_tool_call_streaming() {
+    let provider = Arc::new(NativeTextToolCallProvider {
+        call_count: std::sync::atomic::AtomicUsize::new(0),
     });
-    let (name, arguments) = input_ready.expect("input-ready lifecycle event must be emitted");
-    assert_eq!(name, "process");
-    assert_eq!(arguments["action"], "start");
-    assert_eq!(arguments["command"], "pwd");
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(TestProcessTool));
+
+    let result = run_agent_loop_streaming(
+        Arc::clone(&provider) as Arc<dyn LlmProvider>,
+        &tools,
+        "You are a test bot.",
+        &UserContent::text("show the tool call as text"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.output.text, NATIVE_TEXT_TOOL_CALL);
+    assert_eq!(result.iterations, 1);
+    assert_eq!(result.tool_calls_made, 0);
+    assert_eq!(
+        provider
+            .call_count
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
 }
 
 // ── sanitize_tool_result tests ──────────────────────────────────

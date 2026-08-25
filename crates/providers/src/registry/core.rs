@@ -56,14 +56,10 @@ impl LlmProvider for RegistryModelProvider {
     }
 
     fn supports_tools(&self) -> bool {
-        match self.inner.tool_mode() {
-            Some(chelix_config::ToolMode::Native) => true,
-            Some(chelix_config::ToolMode::Text | chelix_config::ToolMode::Off) => false,
-            Some(chelix_config::ToolMode::Auto) | None => self.metadata.tool_calling,
-        }
+        self.metadata.tool_calling
     }
 
-    fn tool_mode(&self) -> Option<chelix_config::ToolMode> {
+    fn tool_mode(&self) -> chelix_config::ToolMode {
         self.inner.tool_mode()
     }
 

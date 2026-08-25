@@ -452,11 +452,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     // agents.*.reasoning_effort is provider-defined. Runtime validates
     // it against the selected model's resolved reasoning.supported_efforts.
 
-    // Unknown tool_mode values on provider entries
-    // Note: serde rejects truly invalid values at deserialization, but if a
-    // provider entry somehow comes through with a non-standard string we still
-    // want to warn at the TOML level.  The enum is auto/native/text/off.
-
     // Unknown channel types in channels.offered — accept built-in types plus
     // any dynamically configured types from `[channels.<type>]` sections.
     let mut valid_channel_types: Vec<&str> = crate::schema::KNOWN_CHANNEL_TYPES.to_vec();

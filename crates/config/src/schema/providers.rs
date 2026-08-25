@@ -55,19 +55,17 @@ pub struct ProvidersConfig {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ToolMode {
-    /// Detect automatically: native tool API if supported, else text-based fallback.
+    /// Use the native tool calling API.
     #[default]
-    Auto,
-    /// Force native tool calling API (provider must support it).
     Native,
-    /// Force text-based tool calling (prompt injection + parse).
+    /// Use text-based tool calling (prompt injection + parse).
     Text,
     /// Disable all tool support for this provider.
     Off,
 }
 
 const fn is_default_tool_mode(v: &ToolMode) -> bool {
-    matches!(v, ToolMode::Auto)
+    matches!(v, ToolMode::Native)
 }
 
 const fn is_default_cache_retention(v: &CacheRetention) -> bool {
@@ -172,10 +170,8 @@ pub struct ProviderEntry {
 
     /// How tool calling is handled for this provider.
     ///
-    /// - `auto` (default): use native tool API if the provider supports it,
-    ///   otherwise fall back to text-based prompt injection.
-    /// - `native`: force native tool calling.
-    /// - `text`: force text-based tool calling.
+    /// - `native` (default): use native tool calling.
+    /// - `text`: use text-based tool calling.
     /// - `off`: disable all tools for this provider.
     #[serde(default, skip_serializing_if = "is_default_tool_mode")]
     pub tool_mode: ToolMode,
@@ -241,7 +237,7 @@ impl Default for ProviderEntry {
             stream_transport: ProviderStreamTransport::Sse,
             wire_api: WireApi::ChatCompletions,
             alias: None,
-            tool_mode: ToolMode::Auto,
+            tool_mode: ToolMode::Native,
             cache_retention: CacheRetention::Short,
             policy: None,
             probe_timeout_secs: None,
