@@ -20,12 +20,6 @@ pub enum ProvidersCommand {
         #[arg(long)]
         key: String,
     },
-    /// Validate a provider's API key.
-    Validate {
-        /// Provider name.
-        #[arg(long)]
-        provider: String,
-    },
     /// Remove a provider's API key.
     RemoveKey {
         /// Provider name.
@@ -45,10 +39,6 @@ pub async fn run(client: &mut CtlClient, cmd: ProvidersCommand) -> anyhow::Resul
                 "providers.save_key",
                 json!({ "provider": provider, "key": key }),
             )
-            .await
-            .map_err(Into::into),
-        ProvidersCommand::Validate { provider } => client
-            .call("providers.validate_key", json!({ "provider": provider }))
             .await
             .map_err(Into::into),
         ProvidersCommand::RemoveKey { provider } => client

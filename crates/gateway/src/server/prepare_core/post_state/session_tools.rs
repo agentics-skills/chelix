@@ -334,13 +334,20 @@ async fn validate_base_model(
         )));
     };
 
+    validate_reasoning_effort(model, model_id, reasoning_effort)
+}
+
+fn validate_reasoning_effort(
+    model: &Value,
+    model_id: &str,
+    reasoning_effort: &ReasoningEffort,
+) -> chelix_tools::Result<()> {
     let supported_efforts = model
-        .get("reasoning")
-        .and_then(|reasoning| reasoning.get("supported_efforts"))
+        .get("reasoning_supported_efforts")
         .and_then(Value::as_array)
         .ok_or_else(|| {
             chelix_tools::Error::message(format!(
-                "model '{model_id}' has no reasoning.supported_efforts metadata"
+                "model '{model_id}' has no reasoning_supported_efforts metadata"
             ))
         })?;
     if !supported_efforts
@@ -387,4 +394,21 @@ fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Valu
             "version": version,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_reasoning_effort_reads_flat_registry_metadata() {
+        let model = serde_json::json!({
+            "id": "openai::gpt-test",
+            "reasoning_supported_efforts": ["low", "high"],
+        });
+        let result =
+            validate_reasoning_effort(&model, "openai::gpt-test", &ReasoningEffort::from("high"));
+
+        assert!(result.is_ok(), "listed reasoning effort should be accepted");
+    }
 }

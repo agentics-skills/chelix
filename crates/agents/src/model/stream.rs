@@ -217,16 +217,9 @@ pub trait LlmProvider: Send + Sync {
         Duration::from_secs(30)
     }
 
-    /// Check whether the provider is reachable and knows about this model.
+    /// Check whether the provider can serve this model.
     ///
-    /// Unlike [`probe()`](Self::probe), this does **not** require the model to
-    /// generate output. It uses lightweight endpoints such as `GET /v1/models`
-    /// or `POST /api/show` to verify model availability without triggering
-    /// model loading.
-    ///
-    /// The default implementation falls back to [`probe()`](Self::probe).
-    /// Providers should override this with a catalog/listing check whenever
-    /// the server supports one.
+    /// The default implementation runs [`probe()`](Self::probe).
     async fn check_availability(&self) -> anyhow::Result<()> {
         self.probe().await
     }

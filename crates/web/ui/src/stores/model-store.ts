@@ -21,12 +21,12 @@ export const selectedModel = computed<ModelInfo | null>(() => {
 /** True when the currently selected model supports extended thinking. */
 export const supportsReasoning = computed<boolean>(() => {
 	const m = selectedModel.value;
-	return (m?.reasoning.supported_efforts.length || 0) > 0;
+	return (m?.reasoning_supported_efforts.length || 0) > 0;
 });
 
 /** Reasoning efforts supported by the currently selected model. */
 export const supportedReasoningEfforts = computed<string[]>(() => {
-	return selectedModel.value?.reasoning.supported_efforts || [];
+	return selectedModel.value?.reasoning_supported_efforts || [];
 });
 
 // ── Methods ──────────────────────────────────────────────────

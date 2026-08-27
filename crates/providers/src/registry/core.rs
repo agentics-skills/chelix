@@ -112,7 +112,7 @@ impl LlmProvider for RegistryModelProvider {
         self: Arc<Self>,
         effort: ReasoningEffort,
     ) -> Option<Arc<dyn LlmProvider>> {
-        if !self.metadata.reasoning.supported_efforts.contains(&effort) {
+        if !self.metadata.reasoning_supported_efforts.contains(&effort) {
             return None;
         }
         let new_inner = Arc::clone(&self.inner).with_reasoning_effort(effort)?;
@@ -187,18 +187,6 @@ impl ProviderRegistry {
             self.models.retain(|model| model.id != id);
         }
         removed
-    }
-
-    pub(crate) fn remove_provider(&mut self, provider_name: &str) {
-        let model_ids: HashSet<String> = self
-            .models
-            .iter()
-            .filter(|model| model.provider == provider_name)
-            .map(|model| model.id.clone())
-            .collect();
-        self.models.retain(|model| model.provider != provider_name);
-        self.providers
-            .retain(|model_id, _| !model_ids.contains(model_id));
     }
 
     pub fn get(&self, model_id: &str) -> Option<Arc<dyn LlmProvider>> {

@@ -108,28 +108,32 @@ can be set via environment variables (e.g. `OPENAI_API_KEY` or
 `OPENROUTER_API_KEY`) or in the config file.
 
 ```toml
-[providers]
-offered = ["openai", "openrouter"]
-
-[providers.openai]
+[providers.custom-ai-example]
 enabled = true
-stream_transport = "sse"        # "sse", "websocket", or "auto"
+base_url = "https://ai.example.invalid/v1"
+wire_api = "responses"
 
-[providers.openai.models."gpt-5.3"]
-[providers.openai.models."gpt-5.2"]
+[providers.custom-ai-example.models."muse-flash-0.9"]
+context_length = 262144
+max_input_tokens = 196608
+max_output_tokens = 65536
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
 
 [chat]
-priority_models = ["gpt-5.2"]
+priority_models = ["custom-ai-example::muse-flash-0.9"]
 ```
 
-Selected models use one TOML form:
-`[providers.<name>.models."<raw-model-id>"]`. These tables form an ordered
-allowlist. Configuration wins field by field, `/models` discovery supplements
-missing metadata, and optional defaults apply last. Chelix excludes a model
-unless `context_length`,
-`max_input_tokens`, `max_output_tokens`, and
-`reasoning.supported_efforts` resolve to a valid record. Use
-`chat.priority_models` only for cross-provider selector ordering.
+The service configuration is the only source of model composition and model
+parameters. Every enabled provider must declare at least one complete
+`[providers.<name>.models."<raw-model-id>"]` table. A missing mandatory parameter,
+an invalid value, an unknown model setting, or an enabled provider without models
+refuses service load. Use `chat.priority_models` only for cross-provider selector
+ordering.
 
 See [Providers](providers.md) for the full list of supported providers and
 configuration options.

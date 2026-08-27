@@ -8,7 +8,7 @@ use std::{
 use secrecy::{ExposeSecret, Secret};
 
 use {
-    chelix_config::schema::{ModelConfigMap, ProvidersConfig},
+    chelix_config::schema::ProvidersConfig,
     chelix_service_traits::{ServiceError, ServiceResult},
 };
 
@@ -21,6 +21,10 @@ pub(crate) fn current_config_dir() -> PathBuf {
 }
 
 // ── Provider name helpers ──────────────────────────────────────────────────
+
+pub(crate) fn is_custom_provider(name: &str) -> bool {
+    name.starts_with("custom-")
+}
 
 pub(crate) fn normalize_provider_name(value: &str) -> String {
     chelix_config::normalize_provider_name(value).unwrap_or_default()
@@ -71,29 +75,22 @@ pub(crate) fn ui_offered_provider_set(offered_order: &[String]) -> Option<BTreeS
 
 // ── Merge saved keys into config ───────────────────────────────────────────
 
-fn merge_model_maps(preferred: &mut ModelConfigMap, fallback: ModelConfigMap) {
-    if preferred.is_empty() {
-        *preferred = fallback;
-        return;
-    }
-
-    preferred.iter_mut().for_each(|(model_id, metadata)| {
-        if let Some(fallback_metadata) = fallback.get(model_id) {
-            *metadata = std::mem::take(metadata).with_fallback(fallback_metadata.clone());
-        }
-    });
-}
-
-/// Merge persisted provider configs into a ProvidersConfig so the registry rebuild
-/// picks them up without needing env vars.
+/// Merge persisted LLM provider credentials into provider entries declared in
+/// the service configuration. Other credential-store namespaces remain available
+/// to their owning subsystems and do not create LLM provider entries.
 pub fn config_with_saved_keys(
     base: &ProvidersConfig,
     key_store: &KeyStore,
 ) -> ServiceResult<ProvidersConfig> {
     let mut config = base.clone();
 
-    for (name, saved) in key_store.load_all_configs() {
-        let entry = config.providers.entry(name).or_default();
+    for (name, saved) in key_store
+        .load_all_configs()
+        .map_err(ServiceError::message)?
+    {
+        let Some(entry) = config.providers.get_mut(&name) else {
+            continue;
+        };
 
         // Only override API key if config doesn't already have one.
         if let Some(key) = saved.api_key
@@ -111,8 +108,6 @@ pub fn config_with_saved_keys(
         {
             entry.base_url = Some(url);
         }
-
-        merge_model_maps(&mut entry.models, saved.models);
     }
 
     Ok(config)
@@ -181,7 +176,11 @@ pub fn detect_auto_provider_sources_with_overrides(
             sources.push(format!("config:[providers.{}].api_key", provider.name));
         }
 
-        if key_store.load(provider.name).is_some() {
+        if key_store
+            .load(provider.name)
+            .map_err(ServiceError::message)?
+            .is_some()
+        {
             sources.push(format!("file:{}", provider_keys_path.display()));
         }
 
@@ -203,19 +202,30 @@ pub fn detect_auto_provider_sources_with_overrides(
 mod tests {
     use {
         super::*,
-        chelix_config::schema::{PartialModelMetadata, PartialReasoningMetadata, ProviderEntry},
+        chelix_config::schema::{
+            ModelConfigMap, ModelModality, PartialModelMetadata, ProviderEntry,
+        },
     };
+
+    #[test]
+    fn custom_provider_prefix_is_explicit() {
+        assert!(is_custom_provider("custom-example"));
+        assert!(!is_custom_provider("openai"));
+    }
 
     fn model_metadata() -> PartialModelMetadata {
         PartialModelMetadata {
             context_length: Some(128_000),
             max_input_tokens: Some(96_000),
             max_output_tokens: Some(32_000),
-            reasoning: Some(PartialReasoningMetadata {
-                supported_efforts: Some(Vec::new()),
-                ..Default::default()
-            }),
-            ..Default::default()
+            input_modalities: Some(vec![ModelModality::Text]),
+            output_modalities: Some(vec![ModelModality::Text]),
+            tool_calling: Some(true),
+            streaming: Some(true),
+            zero_data_retention_enabled: Some(false),
+            reasoning_supported_efforts: Some(Vec::new()),
+            reasoning_summary: None,
+            reasoning_include: None,
         }
     }
 
@@ -226,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn config_with_saved_keys_merges_base_url_and_models() {
+    fn config_with_saved_keys_merges_credentials_without_changing_models() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
         store
@@ -234,15 +244,21 @@ mod tests {
                 "openai",
                 Some("sk-saved".into()),
                 Some("https://custom.api.com/v1".into()),
-                Some(model_map(&["gpt-4o"])),
             )
             .unwrap();
 
-        let base = ProvidersConfig::default();
+        let mut base = ProvidersConfig::default();
+        base.providers.insert("openai".into(), ProviderEntry {
+            models: model_map(&["gpt-4o"]),
+            ..Default::default()
+        });
         let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
         let entry = merged.get("openai").unwrap();
         assert_eq!(
-            entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
+            entry
+                .api_key
+                .as_ref()
+                .map(|key| key.expose_secret().as_str()),
             Some("sk-saved")
         );
         assert_eq!(entry.base_url.as_deref(), Some("https://custom.api.com/v1"));
@@ -253,61 +269,16 @@ mod tests {
     }
 
     #[test]
-    fn config_model_allowlist_and_fields_take_precedence_over_saved_metadata() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = KeyStore::with_path(dir.path().join("keys.json"));
-        let mut saved_models = model_map(&["gpt-4o", "gpt-5"]);
-        saved_models.get_mut("gpt-4o").unwrap().tool_calling = Some(true);
-        store
-            .save_config("openai", Some("sk-saved".into()), None, Some(saved_models))
-            .unwrap();
-
-        let mut configured_metadata = PartialModelMetadata {
-            context_length: Some(200_000),
-            tool_calling: Some(false),
-            ..Default::default()
-        };
-        configured_metadata.reasoning = Some(PartialReasoningMetadata::default());
-        let mut configured_models = ModelConfigMap::new();
-        configured_models.insert("gpt-4o".into(), configured_metadata);
-        let mut base = ProvidersConfig::default();
-        base.providers.insert("openai".into(), ProviderEntry {
-            models: configured_models,
-            ..Default::default()
-        });
-
-        let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
-        let models = &merged.get("openai").unwrap().models;
-        assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
-            "gpt-4o"
-        ]);
-        let metadata = models.get("gpt-4o").unwrap();
-        assert_eq!(metadata.context_length, Some(200_000));
-        assert_eq!(metadata.max_input_tokens, Some(96_000));
-        assert_eq!(metadata.max_output_tokens, Some(32_000));
-        assert_eq!(metadata.tool_calling, Some(false));
-        assert_eq!(
-            metadata
-                .reasoning
-                .as_ref()
-                .and_then(|reasoning| reasoning.supported_efforts.as_ref()),
-            Some(&Vec::new())
-        );
-    }
-
-    #[test]
-    fn config_with_saved_keys_merges() {
+    fn config_with_saved_keys_does_not_create_provider_entries() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
         store.save("openrouter", "saved-key").unwrap();
+        store.save("voice-elevenlabs", "voice-key").unwrap();
+        store.save("phone_twilio", "phone-key").unwrap();
 
         let base = ProvidersConfig::default();
         let merged = config_with_saved_keys(&base, &store).expect("merge saved keys");
-        let entry = merged.get("openrouter").unwrap();
-        assert_eq!(
-            entry.api_key.as_ref().map(|s| s.expose_secret().as_str()),
-            Some("saved-key")
-        );
+        assert!(merged.providers.is_empty());
     }
 
     #[test]

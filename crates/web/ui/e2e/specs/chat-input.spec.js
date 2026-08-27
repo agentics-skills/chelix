@@ -620,10 +620,9 @@ test.describe("Chat input and slash commands", () => {
 	test("model selector exposes long gateway model names", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		const modelId = "openrouter/provider/model-with-thinking-extended-beta";
-		const displayName = "OpenRouter Model With Thinking Extended Beta";
-		const fullTitle = `${displayName} (${modelId})`;
+		const fullTitle = modelId;
 
-		await setMockModels(page, [modelRecord({ id: modelId, displayName, provider: "requesty" })], modelId);
+		await setMockModels(page, [modelRecord({ id: modelId, provider: "requesty" })], modelId);
 
 		await page.locator("#modelComboBtn").click();
 		const dropdown = page.locator("#modelDropdown");

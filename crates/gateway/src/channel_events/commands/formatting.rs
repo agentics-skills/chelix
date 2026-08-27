@@ -15,7 +15,7 @@ pub(in crate::channel_events) fn unique_providers(models: &[serde_json::Value]) 
 
 /// Format a numbered model list, optionally filtered by provider.
 ///
-/// Each line is: `N. DisplayName [provider] *` (where `*` marks the current model).
+/// Each line is: `N. ModelId [provider] *` (where `*` marks the current model).
 /// Uses the global index (across all models) so the switch command works with
 /// the same numbering regardless of filtering.
 pub(in crate::channel_events) fn format_model_list(
@@ -27,7 +27,6 @@ pub(in crate::channel_events) fn format_model_list(
     for (i, m) in models.iter().enumerate() {
         let id = m.get("id").and_then(|v| v.as_str()).unwrap_or("?");
         let provider = m.get("provider").and_then(|v| v.as_str()).unwrap_or("");
-        let display = m.get("displayName").and_then(|v| v.as_str()).unwrap_or(id);
         if let Some(filter) = provider_filter
             && provider != filter
         {
@@ -38,7 +37,7 @@ pub(in crate::channel_events) fn format_model_list(
         } else {
             ""
         };
-        lines.push(format!("{}. {} [{}]{}", i + 1, display, provider, marker));
+        lines.push(format!("{}. {} [{}]{}", i + 1, id, provider, marker));
     }
     lines.join("\n")
 }

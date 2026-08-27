@@ -256,7 +256,7 @@ tool_mode = "text"
 }
 
 #[test]
-fn url_field_accepted_in_provider_entry() {
+fn legacy_url_field_is_rejected_in_provider_entry() {
     let toml = r#"
 [providers.openrouter]
 enabled = true
@@ -266,10 +266,10 @@ url = "http://192.168.0.9:11434"
     let unknown = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("providers.openrouter.url"));
+        .find(|d| d.category == "unknown-field" && d.path == "providers.openrouter.url");
     assert!(
-        unknown.is_none(),
-        "url should be accepted as a provider field alias, got: {:?}",
+        unknown.is_some(),
+        "legacy url field should be rejected, got: {:?}",
         result.diagnostics
     );
 }

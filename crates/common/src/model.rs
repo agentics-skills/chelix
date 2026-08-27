@@ -1,4 +1,4 @@
-//! Canonical model metadata shared by configuration, discovery, and runtime.
+//! Canonical model metadata shared by configuration and runtime.
 
 use {
     indexmap::IndexMap,
@@ -11,8 +11,8 @@ pub type ModelConfigMap = IndexMap<String, PartialModelMetadata>;
 
 /// Provider-defined reasoning/thinking effort level supported by a model.
 ///
-/// Values come from configured or discovered model metadata and are
-/// intentionally not restricted to a hard-coded vocabulary.
+/// Values come from configured model metadata and are intentionally not
+/// restricted to a hard-coded vocabulary.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ReasoningEffort(String);
@@ -72,7 +72,7 @@ impl ReasoningSummary {
 /// Additional reasoning payload requested from an OpenAI-compatible endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ReasoningInclude {
-    #[serde(rename = "reasoning.encrypted_content")]
+    #[serde(rename = "encrypted_content")]
     EncryptedContent,
 }
 
@@ -141,34 +141,7 @@ pub struct ResponsesReasoningItem {
     pub encrypted_content: String,
 }
 
-/// Partial reasoning metadata supplied by configuration or model discovery.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct PartialReasoningMetadata {
-    /// `Some([])` explicitly identifies a non-reasoning model.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub supported_efforts: Option<Vec<ReasoningEffort>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub summary: Option<ReasoningSummary>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub include: Option<Vec<ReasoningInclude>>,
-}
-
-impl PartialReasoningMetadata {
-    /// Fill absent fields from lower-priority metadata.
-    #[must_use]
-    pub fn with_fallback(self, fallback: Self) -> Self {
-        Self {
-            supported_efforts: self.supported_efforts.or(fallback.supported_efforts),
-            summary: self.summary.or(fallback.summary),
-            include: self.include.or(fallback.include),
-        }
-    }
-}
-
-/// Partial model metadata supplied by configuration or model discovery.
-///
-/// Configuration is merged over discovery field-by-field before resolution.
+/// Model metadata accepted at the configuration boundary before validation.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PartialModelMetadata {
@@ -193,35 +166,15 @@ pub struct PartialModelMetadata {
     )]
     pub zero_data_retention_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<PartialReasoningMetadata>,
+    pub reasoning_supported_efforts: Option<Vec<ReasoningEffort>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_summary: Option<ReasoningSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_include: Option<Vec<ReasoningInclude>>,
 }
 
 impl PartialModelMetadata {
-    /// Fill absent fields from lower-priority metadata.
-    #[must_use]
-    pub fn with_fallback(self, fallback: Self) -> Self {
-        let reasoning = match (self.reasoning, fallback.reasoning) {
-            (Some(preferred), Some(fallback)) => Some(preferred.with_fallback(fallback)),
-            (Some(preferred), None) => Some(preferred),
-            (None, fallback) => fallback,
-        };
-
-        Self {
-            context_length: self.context_length.or(fallback.context_length),
-            max_input_tokens: self.max_input_tokens.or(fallback.max_input_tokens),
-            max_output_tokens: self.max_output_tokens.or(fallback.max_output_tokens),
-            input_modalities: self.input_modalities.or(fallback.input_modalities),
-            output_modalities: self.output_modalities.or(fallback.output_modalities),
-            tool_calling: self.tool_calling.or(fallback.tool_calling),
-            streaming: self.streaming.or(fallback.streaming),
-            zero_data_retention_enabled: self
-                .zero_data_retention_enabled
-                .or(fallback.zero_data_retention_enabled),
-            reasoning,
-        }
-    }
-
-    /// Resolve mandatory values and apply the agreed optional defaults.
+    /// Resolve every mandatory value without inserting defaults.
     pub fn resolve(self) -> Result<ModelMetadata, ModelMetadataError> {
         let context_length = required(self.context_length, "context_length")?;
         let max_input_tokens = required(self.max_input_tokens, "max_input_tokens")?;
@@ -238,53 +191,30 @@ impl PartialModelMetadata {
             });
         }
 
-        let partial_reasoning = self.reasoning.ok_or(ModelMetadataError::MissingField(
-            "reasoning.supported_efforts",
-        ))?;
-        let supported_efforts = required(
-            partial_reasoning.supported_efforts,
-            "reasoning.supported_efforts",
-        )?;
-        ensure_unique(&supported_efforts, "reasoning.supported_efforts")?;
-
-        let reasoning = if supported_efforts.is_empty() {
-            if partial_reasoning.summary.is_some()
-                || partial_reasoning
-                    .include
-                    .as_ref()
-                    .is_some_and(|v| !v.is_empty())
-            {
-                return Err(ModelMetadataError::ReasoningOptionsOnUnsupportedModel);
-            }
-            ModelReasoningMetadata {
-                supported_efforts,
-                summary: None,
-                include: Vec::new(),
-            }
-        } else {
-            let include = partial_reasoning
-                .include
-                .unwrap_or_else(|| vec![ReasoningInclude::EncryptedContent]);
-            ensure_unique(&include, "reasoning.include")?;
-            ModelReasoningMetadata {
-                supported_efforts,
-                summary: Some(
-                    partial_reasoning
-                        .summary
-                        .unwrap_or(ReasoningSummary::Detailed),
-                ),
-                include,
-            }
-        };
-
-        let input_modalities = self
-            .input_modalities
-            .unwrap_or_else(|| vec![ModelModality::Text, ModelModality::Image]);
-        let output_modalities = self
-            .output_modalities
-            .unwrap_or_else(|| vec![ModelModality::Text]);
+        let input_modalities = required(self.input_modalities, "input_modalities")?;
+        let output_modalities = required(self.output_modalities, "output_modalities")?;
         ensure_non_empty_unique(&input_modalities, "input_modalities")?;
         ensure_non_empty_unique(&output_modalities, "output_modalities")?;
+
+        let reasoning_supported_efforts = required(
+            self.reasoning_supported_efforts,
+            "reasoning_supported_efforts",
+        )?;
+        if reasoning_supported_efforts.is_empty() {
+            if self.reasoning_summary.is_some() {
+                return Err(ModelMetadataError::ReasoningFieldOnUnsupportedModel(
+                    "reasoning_summary",
+                ));
+            }
+            if self.reasoning_include.is_some() {
+                return Err(ModelMetadataError::ReasoningFieldOnUnsupportedModel(
+                    "reasoning_include",
+                ));
+            }
+        }
+        if let Some(include) = self.reasoning_include.as_ref() {
+            ensure_unique(include, "reasoning_include")?;
+        }
 
         Ok(ModelMetadata {
             context_length,
@@ -292,16 +222,22 @@ impl PartialModelMetadata {
             max_output_tokens,
             input_modalities,
             output_modalities,
-            tool_calling: self.tool_calling.unwrap_or(true),
-            streaming: self.streaming.unwrap_or(true),
-            zero_data_retention_enabled: self.zero_data_retention_enabled.unwrap_or(true),
-            reasoning,
+            tool_calling: required(self.tool_calling, "tool_calling")?,
+            streaming: required(self.streaming, "streaming")?,
+            zero_data_retention_enabled: required(
+                self.zero_data_retention_enabled,
+                "zeroDataRetentionEnabled",
+            )?,
+            reasoning_supported_efforts,
+            reasoning_summary: self.reasoning_summary,
+            reasoning_include: self.reasoning_include,
         })
     }
 }
 
 /// Fully resolved model metadata stored by the registry and used at runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelMetadata {
     pub context_length: u32,
     pub max_input_tokens: u32,
@@ -312,7 +248,11 @@ pub struct ModelMetadata {
     pub streaming: bool,
     #[serde(rename = "zeroDataRetentionEnabled")]
     pub zero_data_retention_enabled: bool,
-    pub reasoning: ModelReasoningMetadata,
+    pub reasoning_supported_efforts: Vec<ReasoningEffort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_summary: Option<ReasoningSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_include: Option<Vec<ReasoningInclude>>,
 }
 
 impl ModelMetadata {
@@ -328,7 +268,7 @@ impl ModelMetadata {
 
     #[must_use]
     pub fn supports_reasoning(&self) -> bool {
-        !self.reasoning.supported_efforts.is_empty()
+        !self.reasoning_supported_efforts.is_empty()
     }
 }
 
@@ -343,11 +283,9 @@ impl From<&ModelMetadata> for PartialModelMetadata {
             tool_calling: Some(metadata.tool_calling),
             streaming: Some(metadata.streaming),
             zero_data_retention_enabled: Some(metadata.zero_data_retention_enabled),
-            reasoning: Some(PartialReasoningMetadata {
-                supported_efforts: Some(metadata.reasoning.supported_efforts.clone()),
-                summary: metadata.reasoning.summary,
-                include: Some(metadata.reasoning.include.clone()),
-            }),
+            reasoning_supported_efforts: Some(metadata.reasoning_supported_efforts.clone()),
+            reasoning_summary: metadata.reasoning_summary,
+            reasoning_include: metadata.reasoning_include.clone(),
         }
     }
 }
@@ -356,15 +294,6 @@ impl From<ModelMetadata> for PartialModelMetadata {
     fn from(metadata: ModelMetadata) -> Self {
         Self::from(&metadata)
     }
-}
-
-/// Fully resolved reasoning metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModelReasoningMetadata {
-    pub supported_efforts: Vec<ReasoningEffort>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub summary: Option<ReasoningSummary>,
-    pub include: Vec<ReasoningInclude>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -385,8 +314,8 @@ pub enum ModelMetadataError {
     EmptyList(&'static str),
     #[error("model metadata field `{0}` contains duplicate values")]
     DuplicateValues(&'static str),
-    #[error("reasoning summary/include cannot be set when supported_efforts is empty")]
-    ReasoningOptionsOnUnsupportedModel,
+    #[error("model metadata field `{0}` is forbidden when reasoning_supported_efforts is empty")]
+    ReasoningFieldOnUnsupportedModel(&'static str),
 }
 
 fn required<T>(value: Option<T>, field: &'static str) -> Result<T, ModelMetadataError> {
@@ -431,103 +360,121 @@ mod tests {
             context_length: Some(400_000),
             max_input_tokens: Some(272_000),
             max_output_tokens: Some(128_000),
-            reasoning: Some(PartialReasoningMetadata {
-                supported_efforts: Some(vec!["low".into(), "ultra".into()]),
-                ..Default::default()
-            }),
-            ..Default::default()
+            input_modalities: Some(vec![ModelModality::Text, ModelModality::Image]),
+            output_modalities: Some(vec![ModelModality::Text]),
+            tool_calling: Some(true),
+            streaming: Some(true),
+            zero_data_retention_enabled: Some(true),
+            reasoning_supported_efforts: Some(vec!["low".into(), "ultra".into()]),
+            reasoning_summary: Some(ReasoningSummary::Detailed),
+            reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
         }
     }
 
     #[test]
-    fn merge_uses_preferred_fields_and_supplements_missing_fields() {
-        let preferred = PartialModelMetadata {
-            context_length: Some(400_000),
-            tool_calling: Some(false),
-            reasoning: Some(PartialReasoningMetadata {
-                summary: Some(ReasoningSummary::Concise),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let fallback = PartialModelMetadata {
-            context_length: Some(200_000),
-            max_input_tokens: Some(272_000),
-            tool_calling: Some(true),
-            reasoning: Some(PartialReasoningMetadata {
-                supported_efforts: Some(vec!["ultra".into()]),
-                summary: Some(ReasoningSummary::Detailed),
-                include: Some(vec![ReasoningInclude::EncryptedContent]),
-            }),
-            ..Default::default()
-        };
-
-        let merged = preferred.with_fallback(fallback);
-        assert_eq!(merged.context_length, Some(400_000));
-        assert_eq!(merged.max_input_tokens, Some(272_000));
-        assert_eq!(merged.tool_calling, Some(false));
-        let reasoning = merged.reasoning.unwrap();
-        assert_eq!(reasoning.supported_efforts, Some(vec!["ultra".into()]));
-        assert_eq!(reasoning.summary, Some(ReasoningSummary::Concise));
+    fn resolve_preserves_complete_reasoning_metadata() {
+        let resolved = complete_partial().resolve().unwrap();
+        assert_eq!(resolved.context_length, 400_000);
+        assert_eq!(resolved.input_modalities, vec![
+            ModelModality::Text,
+            ModelModality::Image
+        ]);
         assert_eq!(
-            reasoning.include,
+            resolved
+                .reasoning_supported_efforts
+                .iter()
+                .map(ReasoningEffort::as_str)
+                .collect::<Vec<_>>(),
+            vec!["low", "ultra"]
+        );
+        assert_eq!(resolved.reasoning_summary, Some(ReasoningSummary::Detailed));
+        assert_eq!(
+            resolved.reasoning_include,
             Some(vec![ReasoningInclude::EncryptedContent])
         );
     }
 
     #[test]
-    fn resolve_applies_optional_defaults() {
-        let resolved = complete_partial().resolve().unwrap();
-        assert_eq!(resolved.input_modalities, vec![
-            ModelModality::Text,
-            ModelModality::Image
-        ]);
-        assert_eq!(resolved.output_modalities, vec![ModelModality::Text]);
-        assert!(resolved.tool_calling);
-        assert!(resolved.streaming);
-        assert!(resolved.zero_data_retention_enabled);
-        assert_eq!(resolved.reasoning.summary, Some(ReasoningSummary::Detailed));
-        assert_eq!(resolved.reasoning.include, vec![
-            ReasoningInclude::EncryptedContent
-        ]);
-    }
-
-    #[test]
     fn resolve_accepts_explicit_non_reasoning_model() {
         let mut partial = complete_partial();
-        partial.reasoning = Some(PartialReasoningMetadata {
-            supported_efforts: Some(Vec::new()),
-            ..Default::default()
-        });
+        partial.reasoning_supported_efforts = Some(Vec::new());
+        partial.reasoning_summary = None;
+        partial.reasoning_include = None;
 
         let resolved = partial.resolve().unwrap();
         assert!(!resolved.supports_reasoning());
-        assert_eq!(resolved.reasoning.summary, None);
-        assert!(resolved.reasoning.include.is_empty());
+        assert_eq!(resolved.reasoning_summary, None);
+        assert_eq!(resolved.reasoning_include, None);
     }
 
     #[test]
-    fn resolve_rejects_missing_mandatory_metadata() {
-        let error = PartialModelMetadata::default().resolve().unwrap_err();
-        assert_eq!(error, ModelMetadataError::MissingField("context_length"));
+    fn resolve_rejects_invalid_metadata() {
+        let cases = [
+            (
+                PartialModelMetadata::default(),
+                ModelMetadataError::MissingField("context_length"),
+            ),
+            (
+                {
+                    let mut metadata = complete_partial();
+                    metadata.input_modalities = Some(Vec::new());
+                    metadata
+                },
+                ModelMetadataError::EmptyList("input_modalities"),
+            ),
+            (
+                {
+                    let mut metadata = complete_partial();
+                    metadata.context_length = Some(399_999);
+                    metadata
+                },
+                ModelMetadataError::TokenLimitsExceedContext {
+                    context_length: 399_999,
+                    max_input_tokens: 272_000,
+                    max_output_tokens: 128_000,
+                },
+            ),
+            (
+                {
+                    let mut metadata = complete_partial();
+                    metadata.reasoning_supported_efforts = Some(Vec::new());
+                    metadata.reasoning_summary = None;
+                    metadata.reasoning_include = Some(Vec::new());
+                    metadata
+                },
+                ModelMetadataError::ReasoningFieldOnUnsupportedModel("reasoning_include"),
+            ),
+        ];
 
+        for (metadata, expected) in cases {
+            assert_eq!(metadata.resolve().unwrap_err(), expected);
+        }
+    }
+
+    #[test]
+    fn reasoning_efforts_preserve_duplicates_and_order() {
         let mut partial = complete_partial();
-        partial.reasoning = None;
-        let error = partial.resolve().unwrap_err();
+        partial.reasoning_supported_efforts =
+            Some(vec!["high".into(), "low".into(), "high".into()]);
+        let resolved = partial.resolve().unwrap();
         assert_eq!(
-            error,
-            ModelMetadataError::MissingField("reasoning.supported_efforts")
+            resolved
+                .reasoning_supported_efforts
+                .iter()
+                .map(ReasoningEffort::as_str)
+                .collect::<Vec<_>>(),
+            vec!["high", "low", "high"]
         );
     }
 
     #[test]
-    fn resolve_rejects_inconsistent_token_limits() {
-        let mut partial = complete_partial();
-        partial.context_length = Some(399_999);
-        assert!(matches!(
-            partial.resolve(),
-            Err(ModelMetadataError::TokenLimitsExceedContext { .. })
-        ));
+    fn reasoning_include_uses_config_value_and_wire_prefix() {
+        let json = serde_json::to_value(ReasoningInclude::EncryptedContent).unwrap();
+        assert_eq!(json, serde_json::json!("encrypted_content"));
+        assert_eq!(
+            ReasoningInclude::EncryptedContent.as_str(),
+            "reasoning.encrypted_content"
+        );
     }
 
     #[test]

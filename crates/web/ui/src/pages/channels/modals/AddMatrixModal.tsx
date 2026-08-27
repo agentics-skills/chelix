@@ -105,7 +105,7 @@ function matrixAddConfig(base: ChannelConfig, draft: MatrixDraft): ChannelConfig
 
 function defaultModelPlaceholder(): string {
 	const defaultModel = modelsSig.value[0];
-	return defaultModel ? `(default: ${defaultModel.display_name || defaultModel.id})` : "(server default)";
+	return defaultModel ? `(default: ${defaultModel.id})` : "(server default)";
 }
 
 export function AddMatrixModal(): VNode {

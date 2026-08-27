@@ -116,9 +116,12 @@ enabled = true
 context_length = 400000
 max_input_tokens = 272000
 max_output_tokens = 128000
-
-[providers.openai.models."gpt-5.2".reasoning]
-supported_efforts = []
+input_modalities = ["text", "image"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
 
 [auth]
 disabled = false

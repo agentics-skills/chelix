@@ -1,18 +1,15 @@
-//! Configuration helpers: API key resolution, model list normalization.
+//! Configuration helpers for provider credentials.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use {chelix_config::schema::ProvidersConfig, secrecy::ExposeSecret};
-
-use crate::model_id::configured_model_for_provider;
 
 /// Resolve an env value from overrides or process environment.
 pub(crate) fn env_value(env_overrides: &HashMap<String, String>, key: &str) -> Option<String> {
     chelix_config::env_value_with_overrides(env_overrides, key)
 }
 
-/// Resolve an API key from config (Secret) or environment variable,
-/// keeping the value wrapped in `Secret<String>` to avoid leaking it.
+/// Resolve an API key from config or environment without exposing it.
 pub(crate) fn resolve_api_key(
     config: &ProvidersConfig,
     provider: &str,
@@ -21,41 +18,8 @@ pub(crate) fn resolve_api_key(
 ) -> Option<secrecy::Secret<String>> {
     config
         .get(provider)
-        .and_then(|e| e.api_key.clone())
+        .and_then(|entry| entry.api_key.clone())
         .or_else(|| env_value(env_overrides, env_key).map(secrecy::Secret::new))
         .or_else(|| chelix_config::generic_provider_api_key_from_env(provider, env_overrides))
-        .filter(|s| !s.expose_secret().is_empty())
-}
-
-pub(crate) fn configured_models_for_provider(
-    config: &ProvidersConfig,
-    provider: &str,
-) -> Vec<String> {
-    let configured = config
-        .get(provider)
-        .map(|entry| entry.models.clone())
-        .unwrap_or_default();
-
-    normalize_unique_models(
-        configured
-            .into_iter()
-            .map(|(model, _)| configured_model_for_provider(model.trim()).to_string()),
-    )
-}
-
-pub(crate) fn normalize_unique_models(models: impl IntoIterator<Item = String>) -> Vec<String> {
-    let mut normalized_models = Vec::new();
-    let mut seen = HashSet::new();
-    for model in models {
-        let normalized = model.trim().to_string();
-        if normalized.is_empty() || !seen.insert(normalized.clone()) {
-            continue;
-        }
-        normalized_models.push(normalized);
-    }
-    normalized_models
-}
-
-pub(crate) fn should_fetch_models(config: &ProvidersConfig, provider: &str) -> bool {
-    config.get(provider).is_none_or(|entry| entry.fetch_models)
+        .filter(|secret| !secret.expose_secret().is_empty())
 }

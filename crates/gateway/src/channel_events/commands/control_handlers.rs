@@ -296,11 +296,6 @@ pub(in crate::channel_events) async fn handle_model(
             .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::invalid_input("model has no id"))?;
-        let display = chosen
-            .get("displayName")
-            .and_then(|v| v.as_str())
-            .unwrap_or(model_id);
-
         let patch_res = state
             .services
             .session
@@ -330,7 +325,7 @@ pub(in crate::channel_events) async fn handle_model(
         )
         .await;
 
-        Ok(format!("Model switched to: {display}"))
+        Ok(format!("Model switched to: {model_id}"))
     }
 }
 

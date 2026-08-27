@@ -526,9 +526,8 @@ fn providers_config_enabled_flag_still_applies_with_offered_allowlist() {
 }
 
 #[test]
-fn provider_entry_defaults_fetch_models_enabled() {
+fn provider_entry_defaults_models_empty() {
     let entry = ProviderEntry::default();
-    assert!(entry.fetch_models);
     assert!(entry.models.is_empty());
 }
 
@@ -762,16 +761,15 @@ fn provider_entry_tool_mode_persisted_when_non_default() {
 }
 
 #[test]
-fn provider_entry_url_alias_maps_to_base_url() {
-    let entry: ProviderEntry = toml::from_str(
+fn provider_entry_rejects_legacy_url_key() {
+    let result = toml::from_str::<ProviderEntry>(
         r#"
 enabled = true
 url = "http://192.168.0.9:11434"
 "#,
-    )
-    .unwrap();
+    );
 
-    assert_eq!(entry.base_url.as_deref(), Some("http://192.168.0.9:11434"));
+    assert!(result.is_err());
 }
 
 #[test]
@@ -866,9 +864,12 @@ wire_api = "responses"
 context_length = 400000
 max_input_tokens = 272000
 max_output_tokens = 128000
-
-[providers.custom-mn.models."gpt-5.3".reasoning]
-supported_efforts = ["low", "medium", "high"]
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["low", "medium", "high"]
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let entry = config.providers.get("custom-mn").unwrap();

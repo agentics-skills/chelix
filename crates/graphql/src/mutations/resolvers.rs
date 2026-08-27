@@ -638,14 +638,9 @@ impl ProviderMutation {
         from_service(s.provider_setup.save_key(input.0).await)
     }
 
-    async fn validate_key(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
+    async fn set_model_preferences(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(s.provider_setup.validate_key(input.0).await)
-    }
-
-    async fn save_models(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.save_models(input.0).await)
+        from_service(s.provider_setup.set_model_preferences(input.0).await)
     }
 
     async fn remove_key(&self, ctx: &Context<'_>, provider: String) -> Result<BoolResult> {
@@ -655,11 +650,6 @@ impl ProviderMutation {
                 .remove_key(serde_json::json!({ "provider": provider }))
                 .await,
         )
-    }
-
-    async fn add_custom(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.add_custom(input.0).await)
     }
 }
 

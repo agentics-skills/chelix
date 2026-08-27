@@ -1,23 +1,9 @@
 const { expect, test } = require("../base-test");
 const { modelRecord, navigateAndWait, waitForWsConnected, watchPageErrors } = require("../helpers");
 
-function modelMetadata(model) {
-	return {
-		context_length: model.context_length,
-		max_input_tokens: model.max_input_tokens,
-		max_output_tokens: model.max_output_tokens,
-		input_modalities: model.input_modalities,
-		output_modalities: model.output_modalities,
-		tool_calling: model.tool_calling,
-		streaming: model.streaming,
-		zeroDataRetentionEnabled: model.zeroDataRetentionEnabled,
-		reasoning: model.reasoning,
-	};
-}
-
-async function mockProviderModelContract(page, modelFixtures, providerFixtures) {
+async function mockProviderModelContract(page, modelFixtures, providerFixtures, { saveKeyError = null } = {}) {
 	await page.addInitScript(
-		({ models: injectedModels, providers: injectedProviders }) => {
+		({ models: injectedModels, providers: injectedProviders, saveKeyError: injectedSaveKeyError }) => {
 			window.__providerModelRequests = [];
 			const originalSend = WebSocket.prototype.send;
 
@@ -30,29 +16,58 @@ async function mockProviderModelContract(page, modelFixtures, providerFixtures) 
 				});
 			}
 
+			function respondError(socket, id, message) {
+				queueMicrotask(() => {
+					const event = new MessageEvent("message", {
+						data: JSON.stringify({
+							type: "res",
+							id,
+							ok: false,
+							error: { code: "INVALID_ARGUMENT", message },
+						}),
+					});
+					socket.onmessage?.(event);
+				});
+			}
+
+			function handleProviderRequest(socket, request) {
+				switch (request?.method) {
+					case "models.list":
+					case "models.list_all":
+						respond(socket, request.id, injectedModels);
+						return true;
+					case "providers.available":
+						respond(socket, request.id, injectedProviders);
+						return true;
+					case "models.test":
+					case "providers.set_model_preferences":
+						window.__providerModelRequests.push({ method: request.method, params: request.params || {} });
+						respond(socket, request.id, {});
+						return true;
+					case "providers.save_key":
+						window.__providerModelRequests.push({ method: request.method, params: request.params || {} });
+						if (injectedSaveKeyError) {
+							respondError(socket, request.id, injectedSaveKeyError);
+						} else {
+							respond(socket, request.id, {});
+						}
+						return true;
+					default:
+						return false;
+				}
+			}
+
 			WebSocket.prototype.send = function (data) {
 				try {
 					const request = JSON.parse(data);
-					if (request?.method === "models.list" || request?.method === "models.list_all") {
-						respond(this, request.id, injectedModels);
-						return;
-					}
-					if (request?.method === "providers.available") {
-						respond(this, request.id, injectedProviders);
-						return;
-					}
-					if (request?.method === "models.test" || request?.method === "providers.save_models") {
-						window.__providerModelRequests.push({ method: request.method, params: request.params || {} });
-						respond(this, request.id, {});
-						return;
-					}
+					if (handleProviderRequest(this, request)) return;
 				} catch {
 					// Fall through to the real WebSocket for unrelated requests.
 				}
 				return originalSend.call(this, data);
 			};
 		},
-		{ models: modelFixtures, providers: providerFixtures },
+		{ models: modelFixtures, providers: providerFixtures, saveKeyError },
 	);
 }
 
@@ -151,6 +166,52 @@ test.describe("Provider setup page", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
+	test("OpenAI Compatible saves credentials for a config-declared custom provider", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		const provider = {
+			name: "custom-ai-example",
+			displayName: "Example Compatible",
+			configured: false,
+			defaultBaseUrl: null,
+			baseUrl: null,
+			requiresModel: true,
+			keyOptional: false,
+			isCustom: true,
+			uiOrder: 40,
+		};
+
+		await mockProviderModelContract(page, [], [provider]);
+		await openProvidersPage(page);
+		await openProviderPicker(page);
+
+		const compatibleItem = page
+			.locator("#providerModalBody .provider-item")
+			.filter({ has: page.getByText("OpenAI Compatible", { exact: true }) })
+			.first();
+		await expect(compatibleItem).toBeVisible();
+		await compatibleItem.click();
+		await page.getByLabel("Configured provider", { exact: true }).selectOption("custom-ai-example");
+		await page.getByRole("button", { name: "Continue", exact: true }).click();
+		await page.locator("#providerModalBody input[type='password']").fill("sk-compatible");
+		await page.getByLabel("Endpoint", { exact: true }).fill("https://ai.example.invalid/v1");
+		await page.getByRole("button", { name: "Save", exact: true }).click();
+
+		await expect
+			.poll(() =>
+				page.evaluate(() => window.__providerModelRequests.find((request) => request.method === "providers.save_key")),
+			)
+			.toBeTruthy();
+		const saveRequest = await page.evaluate(() =>
+			window.__providerModelRequests.find((request) => request.method === "providers.save_key"),
+		);
+		expect(saveRequest.params).toEqual({
+			provider: "custom-ai-example",
+			apiKey: "sk-compatible",
+			baseUrl: "https://ai.example.invalid/v1",
+		});
+		expect(pageErrors).toEqual([]);
+	});
+
 	test("api key forms include provider key source hints", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		await openProvidersPage(page);
@@ -183,14 +244,53 @@ test.describe("Provider setup page", () => {
 		expect(pageErrors).toEqual([]);
 	});
 
-	test("renders complete registry records and saves an ordered metadata map", async ({ page }) => {
+	test("save key backend refusal renders in the provider error panel", async ({ page }) => {
+		const pageErrors = watchPageErrors(page);
+		const provider = {
+			name: "openai",
+			displayName: "OpenAI",
+			configured: false,
+			defaultBaseUrl: "https://api.openai.com/v1",
+			baseUrl: null,
+			requiresModel: false,
+			keyOptional: false,
+			isCustom: false,
+			uiOrder: 30,
+		};
+		const errorMessage = "enabled provider `openai` has no configured models";
+
+		await mockProviderModelContract(page, [], [provider], { saveKeyError: errorMessage });
+		await openProvidersPage(page);
+		await openProviderPicker(page);
+		const openaiItem = page
+			.locator("#providerModalBody .provider-item")
+			.filter({ has: page.getByText("OpenAI", { exact: true }) })
+			.first();
+		await expect(openaiItem).toBeVisible();
+		await openaiItem.click();
+		await page.locator("#providerModalBody input[type='password']").fill("sk-test");
+		await page.getByRole("button", { name: "Save", exact: true }).click();
+
+		const errorPanel = page.locator("#providerModal .alert-error-text");
+		await expect(errorPanel).toBeVisible();
+		await expect(errorPanel).toContainText(errorMessage);
+		await expect
+			.poll(() =>
+				page.evaluate(() => window.__providerModelRequests.find((request) => request.method === "providers.save_key")),
+			)
+			.toBeTruthy();
+		const saveRequest = await page.evaluate(() =>
+			window.__providerModelRequests.find((request) => request.method === "providers.save_key"),
+		);
+		expect(saveRequest.params).toEqual({ provider: "openai", apiKey: "sk-test" });
+		expect(pageErrors).toEqual([]);
+	});
+
+	test("renders complete registry records and saves a canonical model ID subset", async ({ page }) => {
 		const pageErrors = watchPageErrors(page);
 		const primaryModel = modelRecord({
 			id: "openai::gpt-5",
 			provider: "openai",
-			displayName: "GPT-5 Registry Record",
-			createdAt: 1_735_689_600,
-			recommended: true,
 			preferred: true,
 			disabled: false,
 			unsupported: true,
@@ -207,13 +307,11 @@ test.describe("Provider setup page", () => {
 			zeroDataRetentionEnabled: false,
 			supportedEfforts: ["minimal", "medium", "xhigh"],
 			reasoningSummary: "detailed",
-			reasoningInclude: ["reasoning.encrypted_content"],
+			reasoningInclude: ["encrypted_content"],
 		});
 		const secondaryModel = modelRecord({
 			id: "openai::o3-pro",
 			provider: "openai",
-			displayName: "O3 Pro Registry Record",
-			createdAt: 1_735_689_800,
 			contextLength: 200_000,
 			maxInputTokens: 160_000,
 			maxOutputTokens: 40_000,
@@ -232,7 +330,6 @@ test.describe("Provider setup page", () => {
 			configured: true,
 			defaultBaseUrl: "https://api.openai.com/v1",
 			baseUrl: null,
-			models: {},
 			requiresModel: false,
 			keyOptional: false,
 			isCustom: false,
@@ -258,9 +355,6 @@ test.describe("Provider setup page", () => {
 		expect(renderedFields).toEqual({
 			id: "openai::gpt-5",
 			provider: "openai",
-			display_name: "GPT-5 Registry Record",
-			created_at: "1735689600",
-			recommended: "true",
 			preferred: "true",
 			disabled: "false",
 			unsupported: "true",
@@ -275,34 +369,32 @@ test.describe("Provider setup page", () => {
 			tool_calling: "false",
 			streaming: "true",
 			zeroDataRetentionEnabled: "false",
-			"reasoning.supported_efforts": '["minimal","medium","xhigh"]',
-			"reasoning.summary": "detailed",
-			"reasoning.include": '["reasoning.encrypted_content"]',
+			reasoning_supported_efforts: '["minimal","medium","xhigh"]',
+			reasoning_summary: "detailed",
+			reasoning_include: '["encrypted_content"]',
 		});
 
 		await page.locator("#provider-openai").getByRole("button", { name: "Preferred Models", exact: true }).click();
 		await expect(page.locator("#providerModal")).toBeVisible();
 		const cards = page.locator("#providerModalBody .model-card");
-		await cards.filter({ hasText: "O3 Pro Registry Record" }).click();
-		await cards.filter({ hasText: "GPT-5 Registry Record" }).click();
+		await cards.filter({ hasText: "openai::o3-pro" }).click();
+		await cards.filter({ hasText: "openai::gpt-5" }).click();
 		await page.locator("#providerModalBody").getByRole("button", { name: "Save", exact: true }).click();
 
 		await expect
 			.poll(() =>
 				page.evaluate(() =>
-					window.__providerModelRequests.find((request) => request.method === "providers.save_models"),
+					window.__providerModelRequests.find((request) => request.method === "providers.set_model_preferences"),
 				),
 			)
 			.toBeTruthy();
 		const saveRequest = await page.evaluate(() =>
-			window.__providerModelRequests.find((request) => request.method === "providers.save_models"),
+			window.__providerModelRequests.find((request) => request.method === "providers.set_model_preferences"),
 		);
-		expect(saveRequest.params.provider).toBe("openai");
-		expect(Array.isArray(saveRequest.params.models)).toBe(false);
-		expect(Object.keys(saveRequest.params.models)).toEqual(["o3-pro", "gpt-5"]);
-		expect(saveRequest.params.models).toEqual({
-			"o3-pro": modelMetadata(secondaryModel),
-			"gpt-5": modelMetadata(primaryModel),
+
+		expect(saveRequest.params).toEqual({
+			provider: "openai",
+			modelIds: ["openai::o3-pro"],
 		});
 		expect(pageErrors).toEqual([]);
 	});

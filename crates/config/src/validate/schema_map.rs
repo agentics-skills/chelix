@@ -30,14 +30,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let reasoning_metadata = || {
-        Struct(HashMap::from([
-            ("supported_efforts", Array(Box::new(Leaf))),
-            ("summary", Leaf),
-            ("include", Array(Box::new(Leaf))),
-        ]))
-    };
-
     let model_metadata = || {
         Struct(HashMap::from([
             ("context_length", Leaf),
@@ -48,7 +40,9 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("tool_calling", Leaf),
             ("streaming", Leaf),
             ("zeroDataRetentionEnabled", Leaf),
-            ("reasoning", reasoning_metadata()),
+            ("reasoning_supported_efforts", Array(Box::new(Leaf))),
+            ("reasoning_summary", Leaf),
+            ("reasoning_include", Array(Box::new(Leaf))),
         ]))
     };
 
@@ -57,9 +51,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("enabled", Leaf),
             ("api_key", Leaf),
             ("base_url", Leaf),
-            ("url", Leaf),
             ("models", Map(Box::new(model_metadata()))),
-            ("fetch_models", Leaf),
             ("stream_transport", Leaf),
             ("wire_api", Leaf),
             ("alias", Leaf),
@@ -327,10 +319,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ),
         ("providers", MapWithFields {
             value: Box::new(provider_entry()),
-            fields: HashMap::from([
-                ("offered", Array(Box::new(Leaf))),
-                ("show_legacy_models", Leaf),
-            ]),
+            fields: HashMap::from([("offered", Array(Box::new(Leaf)))]),
         }),
         (
             "chat",

@@ -34,9 +34,8 @@ pub use {
     agents::*,
     chat::*,
     chelix_common::{
-        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, ModelReasoningMetadata,
-        PartialModelMetadata, PartialReasoningMetadata, ReasoningEffort, ReasoningInclude,
-        ReasoningSummary,
+        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
+        ReasoningEffort, ReasoningInclude, ReasoningSummary,
     },
     code_index::*,
     hooks::*,
@@ -406,14 +405,6 @@ where
 
 fn default_true() -> bool {
     true
-}
-
-const fn is_true(value: &bool) -> bool {
-    *value
-}
-
-const fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 const fn is_default_provider_stream_transport(value: &ProviderStreamTransport) -> bool {

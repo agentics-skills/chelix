@@ -405,33 +405,31 @@ pub struct ProviderInfo {
     pub configured: Option<bool>,
     #[serde(default)]
     pub auth_method: Option<String>,
-    #[serde(default)]
-    pub models: Option<Vec<String>>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default, alias = "displayName")]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-    #[serde(default)]
-    pub supports_tools: Option<bool>,
-    #[serde(default)]
-    pub supports_vision: Option<bool>,
-    #[serde(default)]
-    pub supports_reasoning: Option<bool>,
-    #[serde(default)]
-    pub supports_streaming: Option<bool>,
-    #[serde(default)]
-    pub context_window: Option<u64>,
-    #[serde(default)]
-    pub max_output_tokens: Option<u64>,
+    pub id: String,
+    pub provider: String,
+    pub preferred: bool,
+    pub disabled: bool,
+    pub unsupported: bool,
+    pub unsupported_reason: Option<String>,
+    pub unsupported_provider: Option<String>,
+    pub unsupported_updated_at: Option<u64>,
+    pub context_length: u32,
+    pub max_input_tokens: u32,
+    pub max_output_tokens: u32,
+    pub input_modalities: Vec<String>,
+    pub output_modalities: Vec<String>,
+    pub tool_calling: bool,
+    pub streaming: bool,
+    #[graphql(name = "zeroDataRetentionEnabled")]
+    #[serde(rename = "zeroDataRetentionEnabled")]
+    pub zero_data_retention_enabled: bool,
+    pub reasoning_supported_efforts: Vec<String>,
+    pub reasoning_summary: Option<String>,
+    pub reasoning_include: Option<Vec<String>>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]

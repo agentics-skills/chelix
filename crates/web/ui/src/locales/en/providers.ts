@@ -51,7 +51,6 @@ export default {
 		button: "Preferred Models",
 		title: "{{provider}} — Preferred Models",
 		loadingModels: "Loading models...",
-		noModelsAvailable: "No models available yet. Try running Detect All Models first.",
 		selectToPin: "Select models to pin at the top of the dropdown",
 		appearFirst: "Selected models appear first in the session model selector.",
 		noModelsSelected: "No models selected",

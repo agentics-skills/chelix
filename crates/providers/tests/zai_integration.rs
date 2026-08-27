@@ -5,13 +5,13 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::{collections::HashSet, time::Duration};
+use std::time::Duration;
 
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
     futures::StreamExt,
-    secrecy::{ExposeSecret, Secret},
+    secrecy::Secret,
 };
 
 const BASE_URL: &str = "https://api.z.ai/api/paas/v4";
@@ -273,48 +273,4 @@ async fn catalog_models_are_live() {
     }
     eprintln!("================================\n");
     assert!(alive.contains(&TEST_MODEL), "{TEST_MODEL} should be live");
-}
-
-#[tokio::test]
-#[ignore]
-async fn detect_new_models_via_api() {
-    let key = api_key();
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{BASE_URL}/models"))
-        .header("Authorization", format!("Bearer {}", key.expose_secret()))
-        .send()
-        .await
-        .expect("HTTP request should succeed");
-    if !resp.status().is_success() {
-        eprintln!("Z.AI /models returned {}", resp.status());
-        return;
-    }
-    let body: serde_json::Value = resp.json().await.expect("valid JSON");
-    let models = body.get("data").and_then(|d| d.as_array()).expect("data");
-    let known: HashSet<&str> = KNOWN_MODELS.iter().copied().collect();
-    let api_ids: Vec<&str> = models
-        .iter()
-        .filter_map(|m| m.get("id").and_then(|id| id.as_str()))
-        .collect();
-    eprintln!("\n=== Z.AI /models API ({} models) ===", api_ids.len());
-    for &k in KNOWN_MODELS {
-        let marker = if api_ids.contains(&k) {
-            "OK"
-        } else {
-            "MISSING"
-        };
-        eprintln!("  {marker} {k}");
-    }
-    let new: Vec<&&str> = api_ids
-        .iter()
-        .filter(|id| id.starts_with("glm-") && !known.contains(**id))
-        .collect();
-    if !new.is_empty() {
-        eprintln!("New GLM models ({}):", new.len());
-        for id in &new {
-            eprintln!("  NEW -> {id}");
-        }
-    }
-    eprintln!("===================================\n");
 }

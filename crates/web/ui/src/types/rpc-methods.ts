@@ -119,12 +119,10 @@ export interface RpcMethodMap {
 	"projects.upsert": unknown;
 
 	// ── Providers ───────────────────────────────────────────────
-	"providers.add_custom": unknown;
 	"providers.available": ProviderInfo[];
 	"providers.remove_key": unknown;
 	"providers.save_key": unknown;
-	"providers.save_models": unknown;
-	"providers.validate_key": unknown;
+	"providers.set_model_preferences": unknown;
 
 	// ── Sessions ────────────────────────────────────────────────
 	"sessions.clear_all": unknown;

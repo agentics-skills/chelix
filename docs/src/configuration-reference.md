@@ -680,65 +680,54 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 
 **Struct:** `ProvidersConfig`
 
-| Key                  | Type                        | Default | Description                                                                         |
-| -------------------- | --------------------------- | ------- | ----------------------------------------------------------------------------------- |
-| `offered`            | array of string             | `[]`    | Allowlist of enabled providers (also controls web UI pickers). Empty = all enabled. |
-| `show_legacy_models` | bool                        | `false` | Show models older than one year in the chat model selector.                         |
-| `<name>`             | `ProviderEntry` (see below) | —       | Provider-specific settings keyed by provider name.                                  |
+| Key      | Type                        | Default | Description                                                                         |
+| -------- | --------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `offered` | array of string            | `[]`    | Allowlist of enabled providers (also controls web UI pickers). Empty = all enabled. |
+| `<name>` | `ProviderEntry` (see below) | —       | Provider-specific settings keyed by provider name.                                  |
 
 ### `providers.<name>` — ProviderEntry
 
-| Key                | Type                                    | Default              | Description                                                    |
-| ------------------ | --------------------------------------- | -------------------- | -------------------------------------------------------------- |
-| `enabled`          | bool                                    | `true`               | Whether this provider is enabled.                              |
-| `api_key`          | optional string (secret)                | —                    | Override the API key. Env var takes precedence if set.         |
-| `base_url`         | optional string                         | —                    | Override the base URL. Alias: `url`.                           |
-| `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered allowlist entry and highest-priority metadata source.  |
-| `fetch_models`     | bool                                    | `true`               | Whether to fetch provider model catalogs dynamically.          |
-| `stream_transport` | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
-| `wire_api`         | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
-| `alias`            | optional string                         | —                    | Alias used in metrics labels instead of the provider name.     |
-| `tool_mode`        | enum (`native`, `text`, `off`)          | `"native"`           | How tool calling is handled for this provider.                 |
-| `cache_retention`  | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
-| `policy`           | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
+| Key                 | Type                                    | Default              | Description                                                    |
+| ------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------------- |
+| `enabled`           | bool                                    | `true`               | Whether this provider is enabled.                              |
+| `api_key`           | optional string (secret)                | —                    | Override the API key. Env var takes precedence if set.         |
+| `base_url`          | optional string                         | —                    | Override the base URL.                                         |
+| `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered complete model record.                                 |
+| `stream_transport`  | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
+| `wire_api`          | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
+| `alias`             | optional string                         | —                    | Alias used in metrics labels instead of the provider name.     |
+| `tool_mode`         | enum (`native`, `text`, `off`)          | `"native"`           | How tool calling is handled for this provider.                 |
+| `cache_retention`   | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
+| `policy`            | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
 
 ### `providers.<name>.models.<model_id>` — PartialModelMetadata
 
 Declare each model only as a
 `[providers.<name>.models."<raw-model-id>"]` table. The table name contains the
-provider's raw model ID. These tables form an ordered allowlist; with no model
-tables, every discovered model whose metadata resolves to a complete record is
-accepted. Configuration values take precedence field by field, provider
-`/models` discovery supplements missing fields, and optional defaults apply
-last. A model is excluded when mandatory metadata remains missing or its token
-limits/modalities/reasoning metadata are inconsistent.
+provider's raw model ID. The service configuration is the only source of model
+composition and parameters, and every enabled provider must declare at least one
+complete model record. Invalid or incomplete metadata refuses service load; the
+registry does not exclude a problematic model to continue startup.
 
-| Key                       | Type                        | Default            | Description                                                        |
-| ------------------------- | --------------------------- | ------------------ | ------------------------------------------------------------------ |
-| `context_length`          | optional positive integer   | —                  | Mandatory after config and discovery are merged.                   |
-| `max_input_tokens`        | optional positive integer   | —                  | Mandatory after merge; input + output must fit the context window. |
-| `max_output_tokens`       | optional positive integer   | —                  | Mandatory after merge; input + output must fit the context window. |
-| `input_modalities`        | array of modality           | `text`, `image`    | Accepted input media; must be non-empty and unique.                |
-| `output_modalities`       | array of modality           | `text`             | Produced output media; must be non-empty and unique.               |
-| `tool_calling`            | bool                        | `true`             | Whether native tool calling is supported.                          |
-| `streaming`               | bool                        | `true`             | Whether streaming is supported.                                    |
-| `zeroDataRetentionEnabled` | bool                       | `true`             | Whether zero-data-retention operation is supported.                |
-| `reasoning`               | `PartialReasoningMetadata`  | —                  | Reasoning metadata; `supported_efforts` is mandatory after merge.  |
+| Key                         | Type                      | Required | Description                                                               |
+| --------------------------- | ------------------------- | -------- | ------------------------------------------------------------------------- |
+| `context_length`            | positive integer          | yes      | Must be greater than zero.                                                |
+| `max_input_tokens`          | positive integer          | yes      | Input plus output must not exceed `context_length`.                       |
+| `max_output_tokens`         | positive integer          | yes      | Input plus output must not exceed `context_length`.                       |
+| `input_modalities`          | array of modality         | yes      | Accepted input media; must be non-empty and unique.                       |
+| `output_modalities`         | array of modality         | yes      | Produced output media; must be non-empty and unique.                      |
+| `tool_calling`              | bool                      | yes      | Whether native tool calling is supported.                                 |
+| `streaming`                 | bool                      | yes      | Whether streaming is supported.                                           |
+| `zeroDataRetentionEnabled`  | bool                      | yes      | Whether zero-data-retention operation is supported.                       |
+| `reasoning_supported_efforts` | array of string         | yes      | `[]` explicitly marks a non-reasoning model; values are not restricted.   |
+| `reasoning_summary`         | optional enum             | no       | `auto`, `concise`, or `detailed`; forbidden for a non-reasoning model.    |
+| `reasoning_include`         | optional array of enum    | no       | Unique `encrypted_content` values; forbidden for a non-reasoning model.   |
 
 Modalities are `text`, `image`, `audio`, `video`, and `file`.
-
-### `providers.<name>.models.<model_id>.reasoning` — PartialReasoningMetadata
-
-| Key                 | Type                      | Default                                      | Description                                                                  |
-| ------------------- | ------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------- |
-| `supported_efforts` | array of reasoning effort | —                                            | Mandatory after merge; `[]` explicitly marks a non-reasoning model.          |
-| `summary`           | optional enum             | `detailed` for reasoning models              | Metadata for reasoning-summary requests: `auto`, `concise`, or `detailed`.   |
-| `include`           | array of enum             | `reasoning.encrypted_content` when reasoning | Additional reasoning payload metadata.                                       |
-
-Supported effort values are `none`, `minimal`, `low`, `medium`, `high`,
-`xhigh`, and `max`. `summary` and `include` are metadata-only: they neither
-enable reasoning nor select an effort. They must not request reasoning options
-when `supported_efforts = []`.
+`reasoning_supported_efforts` values are preserved without filtering,
+renaming, replacement, or reordering. The `reasoning_include` configuration
+value `encrypted_content` is sent to the provider as
+`reasoning.encrypted_content`.
 
 ### `providers.<name>.policy`
 

@@ -1,7 +1,4 @@
-mod catalog;
 pub mod provider;
-
-pub use {crate::DiscoveredModel, catalog::fetch_models_from_api};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CacheControlPolicy {
@@ -49,8 +46,8 @@ pub struct OpenAiProvider {
     reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
     /// Resolved Responses API reasoning summary detail for this model.
     reasoning_summary: Option<chelix_common::ReasoningSummary>,
-    /// Resolved Responses API reasoning payloads requested for this model.
-    reasoning_include: Vec<chelix_common::ReasoningInclude>,
+    /// Configured Responses API reasoning payloads requested for this model.
+    reasoning_include: Option<Vec<chelix_common::ReasoningInclude>>,
     /// Prompt cache retention policy (used for OpenRouter Anthropic passthrough).
     cache_retention: chelix_config::CacheRetention,
     /// Explicit provider behavior policies. Never inferred from provider name or URL.

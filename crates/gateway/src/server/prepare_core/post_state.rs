@@ -27,7 +27,6 @@ use crate::{
         ExternalAgentChatService, ExternalAgentSessionService, GatewayExternalAgentService,
     },
     methods::MethodRegistry,
-    provider_setup::LiveProviderSetupService,
     services::GatewayServices,
     state::{DiscoveredHookInfo, GatewayState},
 };
@@ -56,7 +55,6 @@ pub(super) struct PostStateInputs {
     pub mcp_configured_count: usize,
     pub model_store: Arc<tokio::sync::RwLock<crate::chat::DisabledModelsStore>>,
     pub live_model_service: Arc<LiveModelService>,
-    pub provider_setup_service: Arc<LiveProviderSetupService>,
     pub live_mcp: Arc<crate::mcp_service::LiveMcpService>,
     pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
     pub code_index: Arc<chelix_code_index::CodeIndex>,
@@ -224,7 +222,6 @@ pub(super) async fn complete_startup(
         mcp_configured_count,
         model_store,
         live_model_service,
-        provider_setup_service,
         live_mcp,
         memory_manager,
         credential_store,
@@ -429,9 +426,6 @@ pub(super) async fn complete_startup(
 
     let _ = deferred_state.set(Arc::clone(&state));
 
-    provider_setup_service.set_broadcaster(Arc::new(crate::provider_setup::GatewayBroadcaster {
-        state: Arc::clone(&state),
-    }));
     live_model_service.set_state(crate::chat::GatewayChatRuntime::from_state(Arc::clone(
         &state,
     )));

@@ -109,59 +109,51 @@ port = {port}                           # Port number (auto-generated for this i
 #   enabled   - Whether to use this provider (default: true)
 #   api_key   - API key (or use env var like OPENAI_API_KEY)
 #   base_url  - Override API endpoint
-#   models.<model_id> - Ordered allowlist entry with per-model metadata (optional)
-#   fetch_models - Discover models from provider API when available (default: true)
+#   models.<model_id> - Ordered complete model metadata record (required)
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
 #   alias     - Custom name for metrics labels (useful for multiple instances)
 #   tool_mode - Tool calling mode: "native", "text", or "off" (default: "native")
 #   policy    - Per-provider tool policy override (allow/deny lists)
 #   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
 #
-# Declare selected models only as [providers.<name>.models."<raw-model-id>"]
-# tables. Tables are evaluated in declaration order. Configuration metadata wins
-# field by field; /models discovery fills missing fields; optional defaults apply
-# last. Models are excluded unless context_length, max_input_tokens,
-# max_output_tokens, and reasoning.supported_efforts resolve. With no model
-# tables, every discovered model with complete metadata is accepted.
+# Declare every model only as [providers.<name>.models."<raw-model-id>"]
+# with a complete metadata record. Tables are evaluated in declaration order.
+# An enabled provider must configure at least one model. Startup fails when any
+# mandatory field is absent or invalid; metadata is never discovered or defaulted.
 
 # [providers]
 # offered = ["openai", "openrouter", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
-# show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
 #   "openai", "deepinfra",
 #   "openrouter", "zai", "zai-code", "alibaba-coding"
 
+# Provider snippets stay disabled until a complete model table is added.
 # ── OpenAI ────────────────────────────────────────────────────
 # [providers.openai]
-# enabled = true
+# enabled = false
 # api_key = "sk-..."                          # Or set OPENAI_API_KEY env var
-# fetch_models = true
 # stream_transport = "sse"                     # "sse" | "websocket" | "auto"
 # base_url = "https://api.openai.com/v1"     # API endpoint (change for Azure, etc.)
 # alias = "openai"
-# [providers.openai.models."gpt-5.3"]
-# [providers.openai.models."gpt-5.2"]
 
 # ── DeepInfra ─────────────────────────────────────────────────
 # [providers.deepinfra]
-# enabled = true
+# enabled = false
 # api_key = "..."                             # Or set DEEPINFRA_API_KEY env var
 # base_url = "https://api.deepinfra.com/v1/openai"
 # alias = "deepinfra"
-# [providers.deepinfra.models."meta-llama/Llama-4-Maverick-17B-128E-Instruct"]
 
 # ── OpenRouter (multi-provider gateway) ───────────────────────
 # [providers.openrouter]
-# enabled = true
+# enabled = false
 # api_key = "..."                             # Or set OPENROUTER_API_KEY env var
 # base_url = "https://openrouter.ai/api/v1"
-# [providers.openrouter.models."anthropic/claude-3.5-sonnet"]
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPLETE MODEL METADATA EXAMPLE
+# MODEL METADATA EXAMPLE
 # ══════════════════════════════════════════════════════════════════════════════
-# The same table format carries complete metadata when config supplies it.
+# Every configured model uses this complete table format.
 #
 # [providers.custom-ai-example]
 # enabled = true
@@ -177,11 +169,9 @@ port = {port}                           # Port number (auto-generated for this i
 # tool_calling = true
 # streaming = true
 # zeroDataRetentionEnabled = true
-#
-# [providers.custom-ai-example.models."Combos/cx/gpt-sol".reasoning]
-# supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
-# summary = "detailed"
-# include = ["reasoning.encrypted_content"]
+# reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
+# reasoning_summary = "detailed"
+# reasoning_include = ["encrypted_content"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHAT SETTINGS

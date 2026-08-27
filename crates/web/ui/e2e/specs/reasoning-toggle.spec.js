@@ -6,16 +6,15 @@ const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "
 function reasoningModel() {
 	return modelRecord({
 		id: "openai::gpt-5.2",
-		displayName: "GPT-5.2",
 		provider: "openai",
 		supportedEfforts: REASONING_EFFORTS,
 		reasoningSummary: "detailed",
-		reasoningInclude: ["reasoning.encrypted_content"],
+		reasoningInclude: ["encrypted_content"],
 	});
 }
 
 function nonReasoningModel() {
-	return modelRecord({ id: "openai::gpt-4o", displayName: "GPT-4o", provider: "openai" });
+	return modelRecord({ id: "openai::gpt-4o", provider: "openai" });
 }
 
 /** Set mock models in the browser and freeze the store so bootstrap/WS cannot overwrite. */

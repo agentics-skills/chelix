@@ -1,11 +1,4 @@
-use {
-    serde_json::{Map, Value},
-    tracing::info,
-};
-
-pub(crate) fn progress_payload(value: Value) -> Map<String, Value> {
-    value.as_object().cloned().unwrap_or_default()
-}
+use {serde_json::Value, tracing::info};
 
 pub(crate) struct ProviderSetupTiming {
     operation: &'static str,

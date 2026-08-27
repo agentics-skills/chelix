@@ -17,9 +17,9 @@ pub use {
     error::{ChelixError, Error, FromMessage, Result},
     item_positions::ItemPositionAllocator,
     model::{
-        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, ModelReasoningMetadata,
-        PartialModelMetadata, PartialReasoningMetadata, ReasoningContent, ReasoningEffort,
-        ReasoningInclude, ReasoningSummary, ResponsesReasoningItem,
+        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
+        ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningSummary,
+        ResponsesReasoningItem,
     },
     provider_output::{
         MaterializerError, ProviderItemId, ProviderItemPosition, ProviderItemUpdate,

@@ -152,7 +152,7 @@ mod tests {
         async_trait::async_trait,
         chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
         chelix_auth::{AuthMode, ResolvedAuth},
-        chelix_common::{ModelMetadata, ModelModality, ModelReasoningMetadata},
+        chelix_common::{ModelMetadata, ModelModality},
         chelix_providers::{ModelInfo, ProviderRegistry},
         chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
         tokio::sync::RwLock,
@@ -249,9 +249,6 @@ mod tests {
             ModelInfo {
                 id: "mock-title".to_string(),
                 provider: "mock".to_string(),
-                display_name: "Mock Title".to_string(),
-                created_at: None,
-                recommended: false,
                 metadata: ModelMetadata {
                     context_length: 8_192,
                     max_input_tokens: 7_168,
@@ -261,11 +258,9 @@ mod tests {
                     tool_calling: false,
                     streaming: true,
                     zero_data_retention_enabled: true,
-                    reasoning: ModelReasoningMetadata {
-                        supported_efforts: Vec::new(),
-                        summary: None,
-                        include: Vec::new(),
-                    },
+                    reasoning_supported_efforts: Vec::new(),
+                    reasoning_summary: None,
+                    reasoning_include: None,
                 },
             },
             provider,

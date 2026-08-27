@@ -17,16 +17,14 @@ export { setSessionModel };
 
 export interface ModelLabelInfo {
 	id: string;
-	display_name?: string;
 }
 
 export function modelDisplayLabel(model: ModelLabelInfo): string {
-	return model.display_name || model.id;
+	return model.id;
 }
 
 export function modelTitle(model: ModelLabelInfo): string {
-	const label = modelDisplayLabel(model);
-	return model.display_name && model.display_name !== model.id ? `${model.display_name} (${model.id})` : label;
+	return model.id;
 }
 
 function updateModelComboLabel(model: ModelInfo): void {
@@ -57,7 +55,7 @@ export function selectModel(m: ModelInfo): void {
 	setSessionModel(
 		S.activeSessionKey,
 		m.id,
-		m.reasoning.supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "",
+		m.reasoning_supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "",
 	);
 	closeModelDropdown();
 	// Show notice if model doesn't support tools
@@ -105,7 +103,7 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 		meta.appendChild(prov);
 	}
 
-	if (m.reasoning.supported_efforts.length > 0) {
+	if (m.reasoning_supported_efforts.length > 0) {
 		const brainIcon = document.createElement("span");
 		brainIcon.className = "icon icon-xs icon-brain";
 		brainIcon.title = "Supports reasoning";
@@ -132,9 +130,9 @@ export function renderModelList(query: string): void {
 	const q = query.toLowerCase();
 	const allModels = modelStore.models.value;
 	const filtered = allModels.filter((m) => {
-		const label = (m.display_name || m.id).toLowerCase();
+		const id = m.id.toLowerCase();
 		const provider = (m.provider || "").toLowerCase();
-		return !q || label.indexOf(q) !== -1 || provider.indexOf(q) !== -1 || m.id.toLowerCase().indexOf(q) !== -1;
+		return !q || id.includes(q) || provider.includes(q);
 	});
 	if (filtered.length === 0) {
 		const empty = document.createElement("div");

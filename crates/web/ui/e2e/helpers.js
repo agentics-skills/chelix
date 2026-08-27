@@ -45,9 +45,6 @@ function watchPageErrors(page) {
 function modelRecord({
 	id,
 	provider,
-	displayName = id,
-	createdAt = null,
-	recommended = false,
 	preferred = false,
 	disabled = false,
 	unsupported = false,
@@ -64,20 +61,11 @@ function modelRecord({
 	zeroDataRetentionEnabled = true,
 	supportedEfforts = [],
 	reasoningSummary,
-	reasoningInclude = [],
+	reasoningInclude,
 }) {
-	const reasoning = {
-		supported_efforts: supportedEfforts,
-		include: reasoningInclude,
-	};
-	if (reasoningSummary !== undefined) reasoning.summary = reasoningSummary;
-
-	return {
+	const record = {
 		id,
 		provider,
-		display_name: displayName,
-		created_at: createdAt,
-		recommended,
 		preferred,
 		disabled,
 		unsupported,
@@ -92,8 +80,11 @@ function modelRecord({
 		tool_calling: toolCalling,
 		streaming,
 		zeroDataRetentionEnabled,
-		reasoning,
+		reasoning_supported_efforts: supportedEfforts,
 	};
+	if (reasoningSummary !== undefined) record.reasoning_summary = reasoningSummary;
+	if (reasoningInclude !== undefined) record.reasoning_include = reasoningInclude;
+	return record;
 }
 
 /**

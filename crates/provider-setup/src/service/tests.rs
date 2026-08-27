@@ -4,8 +4,7 @@ use {
     super::*,
     crate::KeyStore,
     chelix_config::schema::{
-        ModelConfigMap, ModelModality, PartialModelMetadata, PartialReasoningMetadata,
-        ProviderEntry, ProvidersConfig,
+        ModelConfigMap, ModelModality, PartialModelMetadata, ProviderEntry, ProvidersConfig,
     },
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{NoopProviderSetupService, ProviderSetupService},
@@ -36,10 +35,9 @@ fn complete_model_metadata() -> PartialModelMetadata {
         tool_calling: Some(true),
         streaming: Some(true),
         zero_data_retention_enabled: Some(true),
-        reasoning: Some(PartialReasoningMetadata {
-            supported_efforts: Some(Vec::new()),
-            ..Default::default()
-        }),
+        reasoning_supported_efforts: Some(Vec::new()),
+        reasoning_summary: None,
+        reasoning_include: None,
     }
 }
 
@@ -47,27 +45,6 @@ fn complete_model_map(ids: &[&str]) -> ModelConfigMap {
     ids.iter()
         .map(|id| ((*id).to_string(), complete_model_metadata()))
         .collect()
-}
-
-fn discovered_model_record(
-    id: &str,
-    created: i64,
-    output_modalities: &[&str],
-) -> serde_json::Value {
-    serde_json::json!({
-        "id": id,
-        "object": "model",
-        "created": created,
-        "context_length": 128_000,
-        "max_input_tokens": 96_000,
-        "max_output_tokens": 32_000,
-        "input_modalities": ["text", "image"],
-        "output_modalities": output_modalities,
-        "tool_calling": true,
-        "streaming": true,
-        "zeroDataRetentionEnabled": true,
-        "reasoning": { "supported_efforts": [] }
-    })
 }
 
 #[tokio::test]
@@ -79,10 +56,9 @@ async fn noop_service_returns_empty() {
 
 #[tokio::test]
 async fn remove_key_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .remove_key(serde_json::json!({"provider": "nonexistent"}))
@@ -92,20 +68,18 @@ async fn remove_key_rejects_unknown_provider() {
 
 #[tokio::test]
 async fn remove_key_rejects_missing_params() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     assert!(svc.remove_key(serde_json::json!({})).await.is_err());
 }
 
 #[tokio::test]
 async fn disabled_provider_is_not_reported_configured() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let provider = known_providers()
         .into_iter()
@@ -118,15 +92,17 @@ async fn disabled_provider_is_not_reported_configured() {
         ..Default::default()
     });
 
-    assert!(!svc.is_provider_configured(&provider, &config));
+    assert!(
+        !svc.is_provider_configured(&provider, &config)
+            .expect("provider configuration status")
+    );
 }
 
 #[tokio::test]
 async fn live_service_lists_providers() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
@@ -144,10 +120,9 @@ async fn live_service_lists_providers() {
 
 #[tokio::test]
 async fn available_marks_provider_configured_from_generic_provider_env() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None)
         .with_env_overrides(HashMap::from([
             ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
@@ -174,10 +149,9 @@ async fn available_marks_provider_configured_from_generic_provider_env() {
 
 #[tokio::test]
 async fn available_hides_unconfigured_providers_not_in_offered_list() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let config = ProvidersConfig {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
@@ -203,10 +177,9 @@ async fn available_hides_unconfigured_providers_not_in_offered_list() {
 
 #[tokio::test]
 async fn available_respects_offered_order() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let config = ProvidersConfig {
         offered: vec!["openrouter".into(), "openai".into(), "zai".into()],
         ..ProvidersConfig::default()
@@ -242,10 +215,9 @@ async fn available_respects_offered_order() {
 
 #[tokio::test]
 async fn available_hides_configured_provider_outside_offered() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let mut config = ProvidersConfig {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
@@ -285,7 +257,6 @@ async fn available_includes_configured_custom_provider_outside_offered() {
             "custom-openrouter-ai",
             Some("sk-test".into()),
             Some("https://openrouter.ai/api/v1".into()),
-            Some(complete_model_map(&["gpt-5.2"])),
             Some("openrouter.ai".into()),
         )
         .expect("save custom provider");
@@ -298,13 +269,13 @@ async fn available_includes_configured_custom_provider_outside_offered() {
         .providers
         .insert("custom-openrouter-ai".into(), ProviderEntry {
             enabled: true,
+            models: complete_model_map(&["gpt-5.2"]),
             ..Default::default()
         });
 
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let mut svc = live_provider_setup_service(registry, config, None);
     svc.key_store = key_store;
 
@@ -326,114 +297,106 @@ async fn available_includes_configured_custom_provider_outside_offered() {
         custom.get("displayName").and_then(|v| v.as_str()),
         Some("openrouter.ai")
     );
-    let models = custom
-        .get("models")
-        .and_then(|value| value.as_object())
-        .expect("models should use the canonical object-map contract");
-    assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
-        "gpt-5.2"
-    ]);
-    let metadata = models
-        .get("gpt-5.2")
-        .and_then(|value| value.as_object())
-        .expect("model metadata should be an object");
-    assert_eq!(
-        metadata
-            .get("context_length")
-            .and_then(|value| value.as_u64()),
-        Some(128_000)
-    );
-    assert_eq!(
-        metadata
-            .get("reasoning")
-            .and_then(|value| value.get("supported_efforts"))
-            .and_then(|value| value.as_array()),
-        Some(&Vec::new())
-    );
+    assert!(custom.get("models").is_none());
 }
 
 #[tokio::test]
-async fn available_serializes_config_first_ordered_model_map() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
-    let mut saved_models = complete_model_map(&["saved-only", "gpt-5", "gpt-4o"]);
-    saved_models
-        .get_mut("gpt-5")
-        .expect("saved gpt-5 metadata")
-        .context_length = Some(128_000);
-    key_store
-        .save_config("openai", Some("sk-test".into()), None, Some(saved_models))
-        .expect("save provider config");
+async fn available_includes_config_declared_custom_provider_without_saved_credentials() {
+    let mut config = ProvidersConfig {
+        offered: vec!["openai".into()],
+        ..ProvidersConfig::default()
+    };
+    config
+        .providers
+        .insert("custom-ai-example".into(), ProviderEntry {
+            enabled: true,
+            base_url: Some("https://ai.example.invalid/v1".into()),
+            models: complete_model_map(&["model-1"]),
+            ..Default::default()
+        });
 
-    let mut configured_models = ModelConfigMap::new();
-    configured_models.insert("gpt-5".into(), PartialModelMetadata {
-        context_length: Some(256_000),
-        ..Default::default()
-    });
-    configured_models.insert("gpt-4o".into(), PartialModelMetadata {
-        tool_calling: Some(false),
-        ..Default::default()
-    });
-    let mut config = ProvidersConfig::default();
-    config.providers.insert("openai".into(), ProviderEntry {
-        models: configured_models,
-        ..Default::default()
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let mut svc = live_provider_setup_service(registry, config, None);
-    svc.key_store = key_store;
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
+    let svc = live_provider_setup_service(registry, config, None);
 
     let result = svc.available().await.expect("providers.available");
-    let openai = result
+    let custom = result
         .as_array()
         .and_then(|providers| {
             providers.iter().find(|provider| {
-                provider.get("name").and_then(|value| value.as_str()) == Some("openai")
+                provider.get("name").and_then(|value| value.as_str()) == Some("custom-ai-example")
             })
         })
-        .expect("openai should be present");
-    let models = openai
-        .get("models")
-        .and_then(|value| value.as_object())
-        .expect("models should be an object map");
+        .expect("config-declared custom provider should be visible");
 
-    assert_eq!(models.keys().map(String::as_str).collect::<Vec<_>>(), vec![
-        "gpt-5", "gpt-4o"
-    ]);
     assert_eq!(
-        models
-            .get("gpt-5")
-            .and_then(|value| value.get("context_length"))
-            .and_then(|value| value.as_u64()),
-        Some(256_000)
+        custom.get("displayName").and_then(|value| value.as_str()),
+        Some("OpenAI Compatible (custom-ai-example)")
     );
     assert_eq!(
-        models
-            .get("gpt-5")
-            .and_then(|value| value.get("max_input_tokens"))
-            .and_then(|value| value.as_u64()),
-        Some(96_000)
-    );
-    assert_eq!(
-        models
-            .get("gpt-4o")
-            .and_then(|value| value.get("tool_calling"))
-            .and_then(|value| value.as_bool()),
+        custom.get("configured").and_then(|value| value.as_bool()),
         Some(false)
     );
-    assert!(models.get("saved-only").is_none());
+    assert_eq!(
+        custom.get("baseUrl").and_then(|value| value.as_str()),
+        Some("https://ai.example.invalid/v1")
+    );
+    assert_eq!(
+        custom.get("isCustom").and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert!(custom.get("models").is_none());
+}
+
+#[tokio::test]
+async fn save_key_configures_declared_custom_provider_without_mutating_models() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = ProvidersConfig::default();
+    config
+        .providers
+        .insert("custom-ai-example".into(), ProviderEntry {
+            enabled: true,
+            models: complete_model_map(&["model-1"]),
+            ..Default::default()
+        });
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
+    ));
+    let mut svc = live_provider_setup_service(Arc::clone(&registry), config, None);
+    svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
+
+    svc.save_key(serde_json::json!({
+        "provider": "custom-ai-example",
+        "apiKey": "sk-compatible",
+        "baseUrl": "https://ai.example.invalid/v1",
+    }))
+    .await
+    .expect("custom provider credentials should be saved");
+
+    let saved = svc
+        .key_store
+        .load_config("custom-ai-example")
+        .expect("load custom provider credentials")
+        .expect("saved custom provider credentials");
+    assert_eq!(saved.api_key.as_deref(), Some("sk-compatible"));
+    assert_eq!(
+        saved.base_url.as_deref(),
+        Some("https://ai.example.invalid/v1")
+    );
+
+    let registry_guard = registry.read().await;
+    let models = registry_guard.list_models();
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].id, "custom-ai-example::model-1");
+    assert_eq!(models[0].provider, "custom-ai-example");
 }
 
 #[tokio::test]
 async fn available_includes_default_base_urls() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
@@ -460,10 +423,9 @@ async fn available_includes_default_base_urls() {
 
 #[tokio::test]
 async fn save_key_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc
         .save_key(serde_json::json!({"provider": "nonexistent", "apiKey": "test"}))
@@ -473,10 +435,9 @@ async fn save_key_rejects_unknown_provider() {
 
 #[tokio::test]
 async fn save_key_rejects_missing_params() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     assert!(svc.save_key(serde_json::json!({})).await.is_err());
     assert!(
@@ -487,11 +448,149 @@ async fn save_key_rejects_missing_params() {
 }
 
 #[tokio::test]
+async fn save_key_rejects_invalid_candidate_before_mutating_state() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
+    let mut svc =
+        live_provider_setup_service(Arc::clone(&registry), ProvidersConfig::default(), None);
+    svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
+
+    let error = svc
+        .save_key(serde_json::json!({
+            "provider": "openai",
+            "apiKey": "sk-test",
+        }))
+        .await
+        .expect_err("enabled provider without models should fail")
+        .to_string();
+
+    assert!(error.contains("enabled provider `openai` has no configured models"));
+    assert!(
+        svc.key_store
+            .load_config("openai")
+            .expect("load provider credentials")
+            .is_none()
+    );
+    assert!(svc.config_snapshot().get("openai").is_none());
+    assert!(registry.read().await.list_models().is_empty());
+}
+
+#[tokio::test]
+async fn set_model_preferences_replaces_unique_raw_priority_without_mutating_registry_or_key_store()
+{
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut config = ProvidersConfig::default();
+    config.providers.insert("openai".into(), ProviderEntry {
+        api_key: Some(Secret::new("sk-test".into())),
+        models: complete_model_map(&["gpt-5", "gpt-4o"]),
+        ..Default::default()
+    });
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
+    ));
+    let mut svc = live_provider_setup_service(Arc::clone(&registry), config, None);
+    svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
+    let priorities = Arc::new(RwLock::new(vec![
+        "gpt-4o".to_string(),
+        "other::model".to_string(),
+    ]));
+    svc.set_priority_models(Arc::clone(&priorities));
+
+    svc.set_model_preferences(serde_json::json!({
+        "provider": "openai",
+        "modelIds": ["openai::gpt-5"],
+    }))
+    .await
+    .expect("canonical subset should be saved");
+
+    assert_eq!(priorities.read().await.as_slice(), [
+        "openai::gpt-5",
+        "other::model"
+    ]);
+    assert!(
+        svc.key_store
+            .load_config("openai")
+            .expect("load provider credentials")
+            .is_none()
+    );
+    let registry_guard = registry.read().await;
+    let models = registry_guard.list_models();
+    assert_eq!(models.len(), 2);
+    assert!(models.iter().any(|model| model.id == "openai::gpt-5"));
+    assert!(models.iter().any(|model| model.id == "openai::gpt-4o"));
+}
+
+#[tokio::test]
+async fn set_model_preferences_rejects_ambiguous_raw_priority_without_mutating_order() {
+    let mut config = ProvidersConfig::default();
+    for provider in ["openai", "openrouter"] {
+        config.providers.insert(provider.into(), ProviderEntry {
+            api_key: Some(Secret::new(format!("{provider}-key"))),
+            models: complete_model_map(&["shared-model"]),
+            ..Default::default()
+        });
+    }
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
+    ));
+    let mut svc = live_provider_setup_service(registry, config, None);
+    let priorities = Arc::new(RwLock::new(vec![
+        "shared-model".to_string(),
+        "other::model".to_string(),
+    ]));
+    svc.set_priority_models(Arc::clone(&priorities));
+
+    let error = svc
+        .set_model_preferences(serde_json::json!({
+            "provider": "openai",
+            "modelIds": ["openai::shared-model"],
+        }))
+        .await
+        .expect_err("ambiguous raw priority must be rejected")
+        .to_string();
+
+    assert!(error.contains("ambiguous raw model ID `shared-model`"));
+    assert_eq!(priorities.read().await.as_slice(), [
+        "shared-model",
+        "other::model"
+    ]);
+}
+
+#[tokio::test]
+async fn set_model_preferences_rejects_noncanonical_model_without_mutating_order() {
+    let mut config = ProvidersConfig::default();
+    config.providers.insert("openai".into(), ProviderEntry {
+        api_key: Some(Secret::new("sk-test".into())),
+        models: complete_model_map(&["gpt-5"]),
+        ..Default::default()
+    });
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
+    ));
+    let mut svc = live_provider_setup_service(registry, config, None);
+    let priorities = Arc::new(RwLock::new(vec!["openai::gpt-5".to_string()]));
+    svc.set_priority_models(Arc::clone(&priorities));
+
+    let error = svc
+        .set_model_preferences(serde_json::json!({
+            "provider": "openai",
+            "modelIds": ["gpt-5"],
+        }))
+        .await
+        .expect_err("raw model ID must be rejected")
+        .to_string();
+
+    assert!(error.contains("model `gpt-5` is not configured for provider `openai`"));
+    assert_eq!(priorities.read().await.as_slice(), ["openai::gpt-5"]);
+}
+
+#[tokio::test]
 async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let error = svc
@@ -510,10 +609,9 @@ async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
 
 #[tokio::test]
 async fn save_key_rejects_invalid_base_url_for_any_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let error = svc
@@ -530,54 +628,10 @@ async fn save_key_rejects_invalid_base_url_for_any_provider() {
 }
 
 #[tokio::test]
-async fn add_custom_rejects_completion_endpoint_base_url() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let error = svc
-        .add_custom(serde_json::json!({
-            "apiKey": "sk-test",
-            "baseUrl": "https://api.deepinfra.com/v1/openai/chat/completions",
-        }))
-        .await
-        .expect_err("custom completion endpoint should be rejected")
-        .to_string();
-
-    assert!(error.contains("API base URL"));
-    assert!(error.contains("https://api.deepinfra.com/v1/openai"));
-}
-
-#[tokio::test]
-async fn validate_key_rejects_custom_completion_endpoint_base_url() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let error = svc
-        .validate_key(serde_json::json!({
-            "provider": "custom-deepinfra-com",
-            "apiKey": "sk-test",
-            "baseUrl": "https://api.deepinfra.com/v1/openai/chat/completions",
-        }))
-        .await
-        .expect_err("custom completion endpoint validation should be rejected")
-        .to_string();
-
-    assert!(error.contains("API base URL"));
-    assert!(error.contains("https://api.deepinfra.com/v1/openai"));
-}
-
-#[tokio::test]
 async fn save_key_accepts_new_providers() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let _svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
 
     let providers = known_providers();
@@ -592,10 +646,9 @@ async fn save_key_accepts_new_providers() {
 
 #[tokio::test]
 async fn available_includes_new_providers() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
+    ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
@@ -611,314 +664,4 @@ async fn available_includes_new_providers() {
             "{expected} not found in available providers: {names:?}"
         );
     }
-}
-
-#[tokio::test]
-async fn validate_key_rejects_unknown_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({"provider": "nonexistent", "apiKey": "sk-test"}))
-        .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("unknown provider"));
-}
-
-#[tokio::test]
-async fn validate_key_rejects_missing_provider_param() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc.validate_key(serde_json::json!({})).await;
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("missing 'provider'")
-    );
-}
-
-#[tokio::test]
-async fn validate_key_rejects_missing_api_key_for_api_key_provider() {
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({"provider": "openai"}))
-        .await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("missing 'apiKey'"));
-}
-
-#[tokio::test]
-async fn validate_key_custom_provider_without_model_returns_discovered_models() {
-    use axum::{Json, Router, routing::get};
-
-    let app = Router::new().route(
-        "/models",
-        get(|| async {
-            Json(serde_json::json!({
-                "data": [
-                    discovered_model_record("gpt-4o", 1_700_000_000, &["text"]),
-                    discovered_model_record("gpt-4o-mini", 1_700_000_001, &["text"]),
-                    discovered_model_record("image-output", 1_700_000_002, &["image"])
-                ]
-            }))
-        }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "custom-test-server",
-            "apiKey": "sk-test",
-            "baseUrl": format!("http://{addr}")
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(true));
-    let models = result
-        .get("models")
-        .and_then(|v| v.as_array())
-        .expect("models array should be present");
-    assert!(
-        models
-            .iter()
-            .any(|m| m.get("id").and_then(|v| v.as_str()) == Some("custom-test-server::gpt-4o"))
-    );
-    assert!(
-        models.iter().any(
-            |m| m.get("id").and_then(|v| v.as_str()) == Some("custom-test-server::gpt-4o-mini")
-        )
-    );
-    assert!(
-        !models
-            .iter()
-            .any(|m| m.get("id").and_then(|v| v.as_str())
-                == Some("custom-test-server::image-output"))
-    );
-}
-
-#[tokio::test]
-async fn validate_key_custom_provider_uses_saved_base_url_when_request_omits_it() {
-    use axum::{Json, Router, routing::get};
-
-    let app = Router::new().route(
-        "/models",
-        get(|| async {
-            Json(serde_json::json!({
-                "data": [
-                    discovered_model_record("gpt-4o-mini", 1_700_000_001, &["text"])
-                ]
-            }))
-        }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    svc.key_store
-        .save_config(
-            "custom-test-server",
-            Some("sk-saved".into()),
-            Some(format!("http://{addr}")),
-            None,
-        )
-        .expect("save custom provider config");
-
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "custom-test-server",
-            "apiKey": "sk-test"
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(true));
-    let models = result
-        .get("models")
-        .and_then(|v| v.as_array())
-        .expect("models array should be present");
-    assert!(
-        models.iter().any(
-            |m| m.get("id").and_then(|v| v.as_str()) == Some("custom-test-server::gpt-4o-mini")
-        ),
-        "expected discovered model via saved base_url, got: {models:?}"
-    );
-}
-
-#[tokio::test]
-async fn validate_key_custom_provider_discovery_error_returns_invalid() {
-    use axum::{Router, http::StatusCode, routing::get};
-
-    let app = Router::new().route(
-        "/models",
-        get(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
-    );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "custom-test-server",
-            "apiKey": "sk-test",
-            "baseUrl": format!("http://{addr}")
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(false));
-    let error = result.get("error").and_then(|v| v.as_str()).unwrap_or("");
-    assert!(
-        error.contains("Failed to discover models"),
-        "unexpected error: {error}"
-    );
-}
-
-#[tokio::test]
-async fn validate_key_custom_provider_returns_discovered_models_without_probing() {
-    use {
-        axum::{
-            Json, Router,
-            http::StatusCode,
-            routing::{get, post},
-        },
-        std::sync::atomic::{AtomicBool, Ordering},
-    };
-
-    let completions_called = Arc::new(AtomicBool::new(false));
-    let cc1 = completions_called.clone();
-    let cc2 = completions_called.clone();
-
-    let app = Router::new()
-        .route(
-            "/models",
-            get(|| async {
-                Json(serde_json::json!({
-                    "data": [
-                        discovered_model_record("llama-3.1-70b", 1_700_000_000, &["text"]),
-                    ]
-                }))
-            }),
-        )
-        .route(
-            "/chat/completions",
-            post(move || async move {
-                cc1.store(true, Ordering::SeqCst);
-                StatusCode::INTERNAL_SERVER_ERROR
-            }),
-        )
-        .route(
-            "/v1/chat/completions",
-            post(move || async move {
-                cc2.store(true, Ordering::SeqCst);
-                StatusCode::INTERNAL_SERVER_ERROR
-            }),
-        );
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    let server = tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "custom-test-server",
-            "apiKey": "sk-test",
-            "baseUrl": format!("http://{addr}")
-        }))
-        .await
-        .expect("validate_key should return payload");
-    server.abort();
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(true));
-    assert!(
-        result.get("models").and_then(|v| v.as_array()).is_some(),
-        "should return discovered models"
-    );
-    assert!(
-        !completions_called.load(Ordering::SeqCst),
-        "chat completions endpoint must NOT be called when model is unset — \
-         the discovery path should return models directly (issue #502)"
-    );
-}
-
-#[tokio::test]
-async fn validate_key_custom_provider_connection_refused_returns_error() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind listener");
-    let addr = listener.local_addr().expect("local addr");
-    drop(listener);
-
-    let registry = Arc::new(RwLock::new(ProviderRegistry::from_config(
-        &ProvidersConfig::default(),
-        &HashMap::new(),
-    )));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc
-        .validate_key(serde_json::json!({
-            "provider": "custom-test-server",
-            "apiKey": "sk-test",
-            "baseUrl": format!("http://{addr}")
-        }))
-        .await
-        .expect("validate_key should return payload");
-
-    assert_eq!(result.get("valid").and_then(|v| v.as_bool()), Some(false));
-    let error = result.get("error").and_then(|v| v.as_str()).unwrap_or("");
-    assert!(
-        error.contains("Failed to discover models"),
-        "should report discovery failure, got: {error}"
-    );
 }

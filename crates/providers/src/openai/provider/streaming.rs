@@ -347,7 +347,8 @@ mod tests {
         },
         chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort, StreamEvent},
         chelix_common::{
-            ModelReasoningMetadata, ProviderSegmentOutcome, ReasoningInclude, ReasoningSummary,
+            ModelMetadata, ModelModality, ProviderSegmentOutcome, ReasoningInclude,
+            ReasoningSummary,
         },
         futures::StreamExt,
         secrecy::Secret,
@@ -419,10 +420,18 @@ mod tests {
                 format!("http://{addr}"),
             )
             .with_wire_api(chelix_config::schema::WireApi::Responses)
-            .with_reasoning_metadata(&ModelReasoningMetadata {
-                supported_efforts: vec![ReasoningEffort::from("high")],
-                summary: Some(ReasoningSummary::Detailed),
-                include: vec![ReasoningInclude::EncryptedContent],
+            .with_reasoning_metadata(&ModelMetadata {
+                context_length: 128_000,
+                max_input_tokens: 96_000,
+                max_output_tokens: 32_000,
+                input_modalities: vec![ModelModality::Text],
+                output_modalities: vec![ModelModality::Text],
+                tool_calling: true,
+                streaming: true,
+                zero_data_retention_enabled: false,
+                reasoning_supported_efforts: vec![ReasoningEffort::from("high")],
+                reasoning_summary: Some(ReasoningSummary::Detailed),
+                reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
             }),
         )
         .with_reasoning_effort(ReasoningEffort::from("high"))

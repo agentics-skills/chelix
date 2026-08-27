@@ -22,7 +22,7 @@ use {
         state::GatewayState,
     },
     chelix_projects::ProjectStore,
-    chelix_providers::{ProviderRegistry, discover_models},
+    chelix_providers::ProviderRegistry,
     chelix_sessions::{
         metadata::{SessionMetadata, SqliteSessionMetadata},
         session_events::SessionEventBus,
@@ -30,7 +30,7 @@ use {
     },
     secrecy::{ExposeSecret, Secret},
     std::{path::PathBuf, sync::Arc},
-    tracing::{debug, error, info, warn},
+    tracing::{debug, info, warn},
 };
 mod log_persistence;
 mod post_state;
@@ -110,9 +110,9 @@ pub async fn prepare_gateway_core(
     // first run after upgrade.  This is idempotent — once keys are in the
     // store the TOML entries are cleared and subsequent runs are a no-op.
     #[cfg(feature = "voice")]
-    crate::voice::migrate_voice_keys_to_key_store(&config);
+    crate::voice::migrate_voice_keys_to_key_store(&config)?;
     #[cfg(feature = "telephony")]
-    crate::methods::phone::merge_phone_keys(&mut config);
+    crate::methods::phone::merge_phone_keys(&mut config)?;
 
     // Merge any previously saved API keys into the provider config so they
     // survive gateway restarts without requiring env vars.
@@ -146,9 +146,10 @@ pub async fn prepare_gateway_core(
         }
     }
 
-    let registry = Arc::new(tokio::sync::RwLock::new(
-        ProviderRegistry::discover(&effective_providers, &config_env_overrides).await,
-    ));
+    let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_config(
+        &effective_providers,
+        &config_env_overrides,
+    )?));
     let (provider_summary, providers_available_at_startup) = {
         let reg = registry.read().await;
         log_startup_model_inventory(&reg);
@@ -163,56 +164,10 @@ pub async fn prepare_gateway_core(
             provider_summary = %provider_summary,
             config_path = %config_path.display(),
             provider_keys_path = %provider_keys_path.display(),
-            "no LLM providers resolved from configuration and model discovery; model/chat services remain active and will pick up providers after credentials are saved"
+            "no LLM providers resolved from configuration; model/chat services remain active and will pick up providers after credentials are saved"
         );
     }
     startup_mem_probe.checkpoint("providers.registry.initialized");
-
-    // Refresh dynamic provider model discovery daily.
-    const DYNAMIC_PROVIDER_MODEL_REFRESH_INTERVAL: std::time::Duration =
-        std::time::Duration::from_secs(24 * 60 * 60);
-    {
-        let registry_for_refresh = Arc::clone(&registry);
-        let provider_config_for_refresh = base_provider_config.clone();
-        let env_overrides_for_refresh = config_env_overrides.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(DYNAMIC_PROVIDER_MODEL_REFRESH_INTERVAL);
-            interval.tick().await;
-            loop {
-                interval.tick().await;
-                let key_store = crate::provider_setup::KeyStore::new();
-                let effective = match crate::provider_setup::config_with_saved_keys(
-                    &provider_config_for_refresh,
-                    &key_store,
-                ) {
-                    Ok(config) => config,
-                    Err(error) => {
-                        error!(
-                            error = %error,
-                            "daily provider model discovery skipped because config loading failed"
-                        );
-                        continue;
-                    },
-                };
-                let discovery = discover_models(&effective, &env_overrides_for_refresh, None).await;
-                let (new_models, model_count, provider_summary) = {
-                    let mut reg = registry_for_refresh.write().await;
-                    let new_models = reg.refresh_from_discovery(
-                        &effective,
-                        &env_overrides_for_refresh,
-                        &discovery,
-                    );
-                    (new_models, reg.list_models().len(), reg.provider_summary())
-                };
-                info!(
-                    models = model_count,
-                    new_models,
-                    provider_summary = %provider_summary,
-                    "daily provider model discovery refresh complete"
-                );
-            }
-        });
-    }
 
     // Create shared approval manager from config.
     let approval_manager = Arc::new(approval_manager_from_config(&config));
@@ -253,15 +208,11 @@ pub async fn prepare_gateway_core(
         crate::chat::DisabledModelsStore::load(),
     ));
 
-    let live_model_service = Arc::new(
-        LiveModelService::new(
-            Arc::clone(&registry),
-            Arc::clone(&model_store),
-            config.chat.priority_models.clone(),
-        )
-        .with_show_legacy_models(config.providers.show_legacy_models)
-        .with_discovery_config(effective_providers.clone(), config_env_overrides.clone()),
-    );
+    let live_model_service = Arc::new(LiveModelService::new(
+        Arc::clone(&registry),
+        Arc::clone(&model_store),
+        config.chat.priority_models.clone(),
+    ));
     services = services
         .with_model(Arc::clone(&live_model_service) as Arc<dyn crate::services::ModelService>);
 
@@ -493,7 +444,6 @@ pub async fn prepare_gateway_core(
         .manager()
         .set_env_overrides(runtime_env_overrides.clone())
         .await;
-    *live_model_service.env_overrides_handle().write().await = runtime_env_overrides.clone();
     live_mcp
         .set_credential_store(Arc::clone(&credential_store))
         .await;
@@ -1110,7 +1060,6 @@ pub async fn prepare_gateway_core(
         mcp_configured_count,
         model_store,
         live_model_service,
-        provider_setup_service,
         live_mcp,
         memory_manager,
         credential_store,

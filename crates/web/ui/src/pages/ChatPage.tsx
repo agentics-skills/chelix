@@ -518,7 +518,6 @@ function toggleMcp(): void {
 
 interface ModelNotice {
 	id: string;
-	display_name?: string;
 	provider?: string;
 	tool_calling?: boolean;
 }
@@ -531,7 +530,7 @@ export function showModelNotice(model: ModelNotice): void {
 	if (!tpl) return;
 	const card = (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
 	const nameEl = card.querySelector("[data-model-name]");
-	if (nameEl) nameEl.textContent = model.display_name || model.id;
+	if (nameEl) nameEl.textContent = model.id;
 	const providerEl = card.querySelector("[data-provider]");
 	if (providerEl) providerEl.textContent = model.provider || "local";
 	S.chatMsgBox.appendChild(card);

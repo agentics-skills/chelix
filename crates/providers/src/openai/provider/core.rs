@@ -1,4 +1,4 @@
-use std::{pin::Pin, time::Duration};
+use std::{future::Future, pin::Pin, time::Duration};
 
 use {
     async_trait::async_trait,
@@ -12,6 +12,16 @@ use chelix_agents::model::{
 };
 
 use super::super::{OpenAiProvider, OpenAiProviderCapabilities};
+
+async fn timed_probe(
+    timeout: Duration,
+    probe: impl Future<Output = anyhow::Result<()>>,
+) -> anyhow::Result<()> {
+    match tokio::time::timeout(timeout, probe).await {
+        Ok(result) => result,
+        Err(_) => anyhow::bail!("Connection timed out after {} seconds", timeout.as_secs()),
+    }
+}
 
 impl OpenAiProvider {
     pub fn new(api_key: secrecy::Secret<String>, model: String, base_url: String) -> Self {
@@ -40,7 +50,7 @@ impl OpenAiProvider {
             tool_mode: chelix_config::ToolMode::default(),
             reasoning_effort: None,
             reasoning_summary: None,
-            reasoning_include: Vec::new(),
+            reasoning_include: None,
             cache_retention: chelix_config::CacheRetention::Short,
             capabilities: OpenAiProviderCapabilities::DEFAULT,
             probe_timeout_secs: None,
@@ -79,12 +89,9 @@ impl OpenAiProvider {
 
     /// Apply the fully resolved per-model reasoning metadata.
     #[must_use]
-    pub fn with_reasoning_metadata(
-        mut self,
-        reasoning: &chelix_common::ModelReasoningMetadata,
-    ) -> Self {
-        self.reasoning_summary = reasoning.summary;
-        self.reasoning_include = reasoning.include.clone();
+    pub fn with_reasoning_metadata(mut self, metadata: &chelix_common::ModelMetadata) -> Self {
+        self.reasoning_summary = metadata.reasoning_summary;
+        self.reasoning_include = metadata.reasoning_include.clone();
         self
     }
 
@@ -170,11 +177,11 @@ impl OpenAiProvider {
         if !reasoning.is_empty() {
             body["reasoning"] = serde_json::Value::Object(reasoning);
         }
-        if !self.reasoning_include.is_empty() {
+        if let Some(include) = self.reasoning_include.as_ref() {
             body["include"] = serde_json::Value::Array(
-                self.reasoning_include
+                include
                     .iter()
-                    .map(|include| serde_json::json!(include.as_str()))
+                    .map(|value| serde_json::json!(value.as_str()))
                     .collect(),
             );
         }
@@ -275,7 +282,7 @@ impl LlmProvider for OpenAiProvider {
     }
 
     async fn check_availability(&self) -> anyhow::Result<()> {
-        self.check_model_in_catalog().await
+        timed_probe(self.probe_timeout_duration(), self.probe()).await
     }
 
     #[allow(clippy::collapsible_if)]
@@ -403,9 +410,18 @@ mod tests {
     use {
         super::*,
         chelix_agents::model::ReasoningEffort,
-        chelix_common::{ModelReasoningMetadata, ReasoningInclude, ReasoningSummary},
+        chelix_common::{ModelMetadata, ModelModality, ReasoningInclude, ReasoningSummary},
         std::sync::Arc,
     };
+
+    #[tokio::test]
+    async fn timed_probe_rejects_a_pending_request() {
+        let error = timed_probe(Duration::ZERO, std::future::pending::<anyhow::Result<()>>())
+            .await
+            .expect_err("pending probe should time out");
+
+        assert_eq!(error.to_string(), "Connection timed out after 0 seconds");
+    }
 
     #[test]
     fn chat_completions_reasoning_does_not_include_responses_options() {
@@ -415,10 +431,18 @@ mod tests {
             "https://api.openai.com/v1".to_string(),
             "openai".to_string(),
         )
-        .with_reasoning_metadata(&ModelReasoningMetadata {
-            supported_efforts: vec![ReasoningEffort::from("high")],
-            summary: Some(ReasoningSummary::Detailed),
-            include: vec![ReasoningInclude::EncryptedContent],
+        .with_reasoning_metadata(&ModelMetadata {
+            context_length: 128_000,
+            max_input_tokens: 96_000,
+            max_output_tokens: 32_000,
+            input_modalities: vec![ModelModality::Text],
+            output_modalities: vec![ModelModality::Text],
+            tool_calling: true,
+            streaming: true,
+            zero_data_retention_enabled: false,
+            reasoning_supported_efforts: vec![ReasoningEffort::from("high")],
+            reasoning_summary: Some(ReasoningSummary::Detailed),
+            reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
         });
         let mut body = serde_json::json!({});
 

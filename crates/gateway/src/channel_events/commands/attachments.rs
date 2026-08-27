@@ -209,19 +209,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
                 }))
                 .await;
 
-            let display: String = if let Ok(models_val) = state.services.model.list().await
-                && let Some(models) = models_val.as_array()
-            {
-                models
-                    .iter()
-                    .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(model))
-                    .and_then(|m| m.get("displayName").and_then(|v| v.as_str()))
-                    .unwrap_or(model)
-                    .to_string()
-            } else {
-                model.clone()
-            };
-            let msg = format!("Using {display}. Use /model to change.");
+            let msg = format!("Using {model}. Use /model to change.");
             state.push_channel_status_log(&session_key, msg).await;
         }
     } else {
@@ -246,11 +234,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
                 }))
                 .await;
 
-            let display = first
-                .get("displayName")
-                .and_then(|v| v.as_str())
-                .unwrap_or(id);
-            let msg = format!("Using {display}. Use /model to change.");
+            let msg = format!("Using {id}. Use /model to change.");
             state.push_channel_status_log(&session_key, msg).await;
         }
     }

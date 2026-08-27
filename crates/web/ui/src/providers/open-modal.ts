@@ -7,7 +7,7 @@
 import { sendRpc } from "../helpers";
 import type { RpcResponse } from "../types/rpc";
 import { showApiKeyForm } from "./auth-flow";
-import { showCustomProviderForm } from "./custom-provider";
+import { showOpenAiCompatibleForm } from "./openai-compatible";
 import { els } from "./shared";
 import type { ProviderInfo } from "./types";
 
@@ -62,28 +62,27 @@ export function openProviderModalImpl(): void {
 			m.body.appendChild(item);
 		});
 
-		// Separator + "OpenAI Compatible" entry
 		const separator = document.createElement("div");
 		separator.className = "border-t border-[var(--border)] my-2";
 		m.body.appendChild(separator);
 
-		const customItem = document.createElement("div");
-		customItem.className = "provider-item";
+		const compatibleItem = document.createElement("div");
+		compatibleItem.className = "provider-item";
 
-		const customName = document.createElement("span");
-		customName.className = "provider-item-name";
-		customName.textContent = "OpenAI Compatible";
-		customItem.appendChild(customName);
+		const compatibleName = document.createElement("span");
+		compatibleName.className = "provider-item-name";
+		compatibleName.textContent = "OpenAI Compatible";
+		compatibleItem.appendChild(compatibleName);
 
-		const customBadges = document.createElement("div");
-		customBadges.className = "badge-row";
-		const anyBadge = document.createElement("span");
-		anyBadge.className = "provider-item-badge api-key";
-		anyBadge.textContent = "Any Endpoint";
-		customBadges.appendChild(anyBadge);
-		customItem.appendChild(customBadges);
+		const compatibleBadges = document.createElement("div");
+		compatibleBadges.className = "badge-row";
+		const endpointBadge = document.createElement("span");
+		endpointBadge.className = "provider-item-badge api-key";
+		endpointBadge.textContent = "Any Endpoint";
+		compatibleBadges.appendChild(endpointBadge);
+		compatibleItem.appendChild(compatibleBadges);
 
-		customItem.addEventListener("click", showCustomProviderForm);
-		m.body.appendChild(customItem);
+		compatibleItem.addEventListener("click", () => showOpenAiCompatibleForm(providers));
+		m.body.appendChild(compatibleItem);
 	});
 }

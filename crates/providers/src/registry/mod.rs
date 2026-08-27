@@ -1,12 +1,8 @@
-//! Provider registry: model registration, lookup, discovery, and lifecycle.
+//! Provider registry: atomic config-only registration and lookup.
 
 mod core;
-mod discovery;
 pub mod registration;
 #[cfg(test)]
 mod tests;
 
-pub use self::{
-    core::*,
-    discovery::{DiscoveryResult, discover_models},
-};
+pub use self::core::*;

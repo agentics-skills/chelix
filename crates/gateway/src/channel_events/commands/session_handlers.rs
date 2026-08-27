@@ -116,23 +116,12 @@ pub(in crate::channel_events) async fn handle_new(
 
     let (model_id, model_display): (Option<String>, String) =
         if let Some(ref cm) = channel_defaults.model {
-            let d = models
-                .and_then(|ms| {
-                    ms.iter()
-                        .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(cm.as_str()))
-                        .and_then(|m| m.get("displayName").and_then(|v| v.as_str()))
-                })
-                .unwrap_or(cm.as_str());
-            (Some(cm.clone()), d.to_string())
+            (Some(cm.clone()), cm.clone())
         } else if let Some(ms) = models
             && let Some(first) = ms.first()
             && let Some(id) = first.get("id").and_then(|v| v.as_str())
         {
-            let d = first
-                .get("displayName")
-                .and_then(|v| v.as_str())
-                .unwrap_or(id);
-            (Some(id.to_string()), d.to_string())
+            (Some(id.to_string()), id.to_string())
         } else {
             (None, String::new())
         };

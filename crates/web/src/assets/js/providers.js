@@ -14,5 +14,4 @@ export const openProviderModal = (...args) => M.openProviderModal?.(...args);
 export const closeProviderModal = (...args) => M.closeProviderModal?.(...args);
 export const getProviderModal = (...args) => M.getProviderModal?.(...args);
 export const showApiKeyForm = (...args) => M.showApiKeyForm?.(...args);
-export const showCustomProviderForm = (...args) => M.showCustomProviderForm?.(...args);
 export const openModelSelectorForProvider = (...args) => M.openModelSelectorForProvider?.(...args);

@@ -24,14 +24,13 @@ fn openai_custom_base_url_disables_responses_websocket() {
 }
 
 #[test]
-fn custom_model_config_preserves_max_for_runtime_provider() {
+fn custom_model_config_preserves_metadata_for_runtime_provider() {
     const MODEL_ID: &str = "custom-ai-example::Combos/z.ai/glm";
     let config: ChelixConfig = toml::from_str(
         r#"
 [providers.custom-ai-example]
 api_key = "test-key"
 base_url = "https://example.invalid/v1"
-fetch_models = false
 
 [providers.custom-ai-example.models."Combos/z.ai/glm"]
 context_length = 400000
@@ -42,18 +41,17 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = true
-
-[providers.custom-ai-example.models."Combos/z.ai/glm".reasoning]
-supported_efforts = ["none", "minimal", "low", "medium", "high", "max"]
-summary = "detailed"
-include = ["reasoning.encrypted_content"]
+reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "max"]
+reasoning_summary = "detailed"
+reasoning_include = ["encrypted_content"]
 "#,
     )
     .unwrap_or_else(|error| {
         panic!("production custom-provider config should deserialize: {error}")
     });
 
-    let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
+    let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .unwrap_or_else(|error| panic!("complete model config should build: {error}"));
     let models = registry.list_models();
     let listed = models
         .iter()
@@ -62,8 +60,7 @@ include = ["reasoning.encrypted_content"]
     assert_eq!(
         listed
             .metadata
-            .reasoning
-            .supported_efforts
+            .reasoning_supported_efforts
             .iter()
             .map(ReasoningEffort::as_str)
             .collect::<Vec<_>>(),
@@ -97,7 +94,6 @@ fn model_tool_capability_remains_separate_from_native_mode() {
 [providers.custom-ai-capability]
 api_key = "test-key"
 base_url = "https://example.invalid/v1"
-fetch_models = false
 
 [providers.custom-ai-capability.models.chat-only]
 context_length = 128000
@@ -107,9 +103,8 @@ input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = false
 streaming = true
-
-[providers.custom-ai-capability.models.chat-only.reasoning]
-supported_efforts = ["none"]
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
 
 [providers.custom-ai-capability.models.tool-capable]
 context_length = 128000
@@ -119,14 +114,14 @@ input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
 streaming = true
-
-[providers.custom-ai-capability.models.tool-capable.reasoning]
-supported_efforts = ["none"]
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
 "#,
     )
     .unwrap_or_else(|error| panic!("capability config should deserialize: {error}"));
 
-    let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
+    let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .unwrap_or_else(|error| panic!("complete model config should build: {error}"));
     let chat_only = registry
         .get(CHAT_ONLY_MODEL_ID)
         .unwrap_or_else(|| panic!("chat-only model should be registered"));
@@ -155,7 +150,6 @@ fn first_with_tools_honors_explicit_modes_without_fallback() {
         r#"
 [providers.openai]
 api_key = "test-key"
-fetch_models = false
 tool_mode = "text"
 
 [providers.openai.models.text-mode]
@@ -167,14 +161,11 @@ output_modalities = ["text"]
 tool_calling = false
 streaming = true
 zeroDataRetentionEnabled = true
-
-[providers.openai.models.text-mode.reasoning]
-supported_efforts = ["none"]
+reasoning_supported_efforts = []
 
 [providers.custom-disabled-tools]
 api_key = "test-key"
 base_url = "https://example.invalid/v1"
-fetch_models = false
 tool_mode = "off"
 
 [providers.custom-disabled-tools.models.off-mode]
@@ -186,14 +177,13 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = true
-
-[providers.custom-disabled-tools.models.off-mode.reasoning]
-supported_efforts = ["none"]
+reasoning_supported_efforts = []
 "#,
     )
     .unwrap_or_else(|error| panic!("explicit tool mode config should deserialize: {error}"));
 
-    let mut registry = ProviderRegistry::from_config(&config.providers, &HashMap::new());
+    let mut registry = ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .unwrap_or_else(|error| panic!("complete model config should build: {error}"));
     let text_provider = registry
         .get(TEXT_MODEL_ID)
         .unwrap_or_else(|| panic!("text-mode model should be registered"));
@@ -222,4 +212,93 @@ supported_efforts = ["none"]
         OFF_MODEL_ID
     );
     assert!(registry.first_with_tools().is_none());
+}
+
+#[test]
+fn enabled_provider_without_models_is_rejected() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.openai]
+api_key = "test-key"
+"#,
+    )
+    .unwrap_or_else(|error| panic!("provider config should deserialize: {error}"));
+
+    let error = ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .err()
+        .unwrap_or_else(|| panic!("empty enabled provider should fail"));
+    assert!(
+        error
+            .to_string()
+            .contains("enabled provider `openai` has no configured models")
+    );
+}
+
+#[test]
+fn offered_allowlist_excludes_unselected_provider_from_enabled_set() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers]
+offered = ["openai"]
+
+[providers.openrouter]
+api_key = "test-key"
+"#,
+    )
+    .unwrap_or_else(|error| panic!("provider config should deserialize: {error}"));
+
+    assert!(!config.providers.is_enabled("openrouter"));
+    let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .unwrap_or_else(|error| {
+            panic!("excluded provider should not fail registry build: {error}")
+        });
+    assert!(registry.list_models().is_empty());
+}
+
+#[test]
+fn invalid_model_error_identifies_provider_and_model() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.openai]
+api_key = "test-key"
+
+[providers.openai.models.incomplete]
+context_length = 128000
+"#,
+    )
+    .unwrap_or_else(|error| panic!("partial boundary config should deserialize: {error}"));
+
+    let error = ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .err()
+        .unwrap_or_else(|| panic!("incomplete model should fail"));
+    let message = error.to_string();
+    assert!(message.contains("provider `openai` model `incomplete`"));
+    assert!(message.contains("max_input_tokens"));
+}
+
+#[test]
+fn registry_build_fails_as_a_unit_when_any_model_is_invalid() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.openai]
+api_key = "test-key"
+
+[providers.openai.models.valid]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
+
+[providers.openai.models.invalid]
+context_length = 128000
+"#,
+    )
+    .unwrap_or_else(|error| panic!("partial boundary config should deserialize: {error}"));
+
+    assert!(ProviderRegistry::from_config(&config.providers, &HashMap::new()).is_err());
 }

@@ -639,8 +639,7 @@ pub(crate) fn normalize_provider_key(value: &str) -> String {
 
 /// Returns `true` if the model matches the allowlist patterns.
 /// An empty pattern list means all models are allowed.
-/// Matching is case-insensitive against the full model ID, raw model ID, and
-/// display name:
+/// Matching is case-insensitive against the full and raw model IDs:
 /// - patterns with digits use exact-or-suffix matching (boundary aware)
 /// - patterns without digits use substring matching
 ///
@@ -666,12 +665,9 @@ pub fn model_matches_allowlist(model: &chelix_providers::ModelInfo, patterns: &[
     }
     let full = normalize_model_key(&model.id);
     let raw = normalize_model_key(chelix_providers::model_id::raw_model_id(&model.id));
-    let display = normalize_model_key(&model.display_name);
-    patterns.iter().any(|p| {
-        allowlist_pattern_matches_key(p, &full)
-            || allowlist_pattern_matches_key(p, &raw)
-            || allowlist_pattern_matches_key(p, &display)
-    })
+    patterns
+        .iter()
+        .any(|p| allowlist_pattern_matches_key(p, &full) || allowlist_pattern_matches_key(p, &raw))
 }
 
 pub(crate) fn provider_filter_from_params(params: &Value) -> Option<String> {
@@ -694,18 +690,14 @@ pub(crate) fn probe_max_parallel_per_provider(params: &Value) -> usize {
         .unwrap_or(1)
 }
 
-pub(crate) fn provider_model_entry(model_id: &str, display_name: &str) -> Value {
-    serde_json::json!({
-        "modelId": model_id,
-        "displayName": display_name,
-    })
+pub(crate) fn provider_model_entry(model_id: &str) -> Value {
+    serde_json::json!({ "modelId": model_id })
 }
 
 pub(crate) fn push_provider_model(
     grouped: &mut std::collections::BTreeMap<String, Vec<Value>>,
     provider_name: &str,
     model_id: &str,
-    display_name: &str,
 ) {
     if provider_name.trim().is_empty() || model_id.trim().is_empty() {
         return;
@@ -713,7 +705,7 @@ pub(crate) fn push_provider_model(
     grouped
         .entry(provider_name.to_string())
         .or_default()
-        .push(provider_model_entry(model_id, display_name));
+        .push(provider_model_entry(model_id));
 }
 
 pub(crate) fn is_safe_user_audio_filename(filename: &str) -> bool {

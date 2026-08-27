@@ -206,8 +206,7 @@ function HeartbeatJobStatus({ job }: { job: CronJob | null }): VNode | null {
 
 function defaultModelPlaceholder(): string {
 	if (!modelsSig.value.length) return "(server default)";
-	const m = modelsSig.value[0] as unknown as { displayName?: string; id: string };
-	return `(default: ${m.displayName || m.id})`;
+	return `(default: ${modelsSig.value[0].id})`;
 }
 
 const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;

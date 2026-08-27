@@ -450,7 +450,7 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     }
 
     // agents.*.reasoning_effort is provider-defined. Runtime validates
-    // it against the selected model's resolved reasoning.supported_efforts.
+    // it against the selected model's reasoning_supported_efforts.
 
     // Unknown channel types in channels.offered — accept built-in types plus
     // any dynamically configured types from `[channels.<type>]` sections.
@@ -664,9 +664,16 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
-    // Model records may be partial because discovery can supplement them.
-    // Validate every explicitly configured value without requiring absent ones.
     for (provider_name, provider_entry) in &config.providers.providers {
+        if config.providers.is_enabled(provider_name) && provider_entry.models.is_empty() {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "missing-field",
+                path: format!("providers.{provider_name}.models"),
+                message: "enabled provider must configure at least one model".into(),
+            });
+        }
+
         for (model_id, metadata) in &provider_entry.models {
             validate_model_metadata(
                 metadata,
@@ -686,67 +693,12 @@ fn validate_model_metadata(
     path: &str,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    for (field, value) in [
-        ("context_length", metadata.context_length),
-        ("max_input_tokens", metadata.max_input_tokens),
-        ("max_output_tokens", metadata.max_output_tokens),
-    ] {
-        validate_token_limit(value, &format!("{path}.{field}"), diagnostics);
-    }
-
-    if let (Some(context), Some(input), Some(output)) = (
-        metadata.context_length,
-        metadata.max_input_tokens,
-        metadata.max_output_tokens,
-    ) && input.saturating_add(output) > context
-    {
+    if let Err(error) = metadata.clone().resolve() {
         diagnostics.push(Diagnostic {
             severity: Severity::Error,
             category: "invalid-value",
             path: path.into(),
-            message: format!(
-                "max_input_tokens ({input}) + max_output_tokens ({output}) exceeds context_length ({context})"
-            ),
-        });
-    }
-
-    if metadata.reasoning.as_ref().is_some_and(|reasoning| {
-        reasoning
-            .supported_efforts
-            .as_ref()
-            .is_some_and(Vec::is_empty)
-            && (reasoning.summary.is_some()
-                || reasoning
-                    .include
-                    .as_ref()
-                    .is_some_and(|values| !values.is_empty()))
-    }) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "invalid-value",
-            path: format!("{path}.reasoning"),
-            message: "summary/include cannot be set when supported_efforts is empty".into(),
-        });
-    }
-}
-
-fn validate_token_limit(value: Option<u32>, path: &str, diagnostics: &mut Vec<Diagnostic>) {
-    let Some(value) = value else {
-        return;
-    };
-    if value == 0 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "invalid-value",
-            path: path.into(),
-            message: "token limit must be at least 1".into(),
-        });
-    } else if value > 10_000_000 {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "invalid-value",
-            path: path.into(),
-            message: format!("token limit is {value}, which is unusually large (> 10M)"),
+            message: error.to_string(),
         });
     }
 }

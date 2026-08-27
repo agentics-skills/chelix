@@ -247,8 +247,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             "phone.providers.all",
             Box::new(|ctx| {
                 Box::pin(async move {
-                    let result = phone::detect_phone_providers(&ctx.state.config);
-                    Ok(result)
+                    phone::detect_phone_providers(&ctx.state.config)
+                        .map_err(|error| ErrorShape::new("storage_error", error.to_string()))
                 })
             }),
         );
@@ -311,7 +311,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             &store_key,
                             Some(primary_credential.to_string()),
                             Some(secondary_credential.to_string()),
-                            None,
                         )
                         .map_err(|e| ErrorShape::new("storage_error", e.to_string()))?;
 

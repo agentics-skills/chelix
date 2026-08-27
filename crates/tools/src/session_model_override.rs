@@ -23,7 +23,7 @@ pub fn model_override_schema() -> Value {
                 "type": "string"
             },
             "reasoning_effort": {
-                "description": "Exact reasoning effort advertised by the selected model's reasoning.supported_efforts metadata. Required inside model_override. Do not pass null or empty strings.",
+                "description": "Exact reasoning effort advertised by the selected model's reasoning_supported_efforts metadata. Required inside model_override. Do not pass null or empty strings.",
                 "minLength": 1,
                 "type": "string"
             }

@@ -11,12 +11,10 @@ import {
 	providerBaseUrlError,
 	saveProviderKey,
 	testModel,
-	validateProviderKey,
 } from "../../provider-validation";
 import { targetValue } from "../../typed-events";
-import { modelConfigMapFromSelection, selectedModelIdsFromConfig } from "../../types/model";
 import { ErrorPanel } from "../shared";
-import type { KeyHelp, ModelSelectorRow, ProbeResult, ProviderInfo, RawModelRow, ValidationResult } from "../types";
+import type { KeyHelp, ModelSelectorRow, ProbeResult, ProviderInfo, RawModelRow } from "../types";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -63,23 +61,15 @@ export function ModelSelectCard({
 	return (
 		<button type="button" className={`model-card ${selected ? "selected" : ""}`} onClick={onToggle}>
 			<span className="flex flex-wrap items-center justify-between gap-2">
-				<span className="text-sm font-medium text-[var(--text)]">{model.display_name}</span>
+				<span className="text-sm font-medium text-[var(--text)]">{model.id}</span>
 				<span className="flex flex-wrap gap-2 justify-end">
 					{model.tool_calling ? <span className="recommended-badge">Tools</span> : null}
 					{probe === "probing" ? <span className="tier-badge">Probing{"\u2026"}</span> : null}
 					{probeError ? <span className="provider-item-badge warning">Unsupported</span> : null}
 				</span>
 			</span>
-			<span className="text-xs text-[var(--muted)] mt-1 font-mono">{model.id}</span>
 			{probeError ? (
 				<span className="text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5">{probeError}</span>
-			) : null}
-			{model.created_at ? (
-				<time
-					className="text-xs text-[var(--muted)] mt-0.5 opacity-60 block"
-					data-epoch-ms={model.created_at * 1000}
-					data-format="year-month"
-				/>
 			) : null}
 		</button>
 	);
@@ -102,7 +92,6 @@ interface OnboardingProviderRowProps {
 	setEndpoint: (v: string) => void;
 	savingModels: boolean;
 	error: string | null;
-	validationResult: ValidationResult | null;
 	onStartConfigure: (name: string) => void;
 	onCancelConfigure: () => void;
 	onSaveKey: (e: Event) => void;
@@ -113,12 +102,10 @@ interface OnboardingProviderRowProps {
 function ProviderRowHeader({
 	provider,
 	expanded,
-	validationResult,
 	onConfigure,
 }: {
 	provider: ProviderInfo;
 	expanded: boolean;
-	validationResult: ValidationResult | null;
 	onConfigure: () => void;
 }): VNode {
 	return (
@@ -127,9 +114,6 @@ function ProviderRowHeader({
 				<div className="flex items-center gap-2 flex-wrap">
 					<span className="text-sm font-medium text-[var(--text-strong)]">{provider.displayName}</span>
 					{provider.configured && <span className="provider-item-badge configured">configured</span>}
-					{validationResult?.ok === true && (
-						<span className="icon icon-md icon-check-circle inline-block" style={{ color: "var(--ok)" }} />
-					)}
 				</div>
 			</div>
 			{!expanded && (
@@ -210,33 +194,25 @@ function ProviderApiKeyForm(props: ProviderApiKeyFormProps): VNode {
 					key={`prov-${props.phase}`}
 					type="submit"
 					className="provider-btn provider-btn-sm"
-					disabled={props.phase === "validating"}
+					disabled={props.phase === "saving"}
 				>
-					{props.phase === "validating" ? "Saving\u2026" : "Save"}
+					{props.phase === "saving" ? "Saving\u2026" : "Save"}
 				</button>
 				<button
 					type="button"
 					className="provider-btn provider-btn-secondary provider-btn-sm"
 					onClick={props.onCancel}
-					disabled={props.phase === "validating"}
+					disabled={props.phase === "saving"}
 				>
 					Cancel
 				</button>
 			</div>
-			{props.phase === "validating" && (
-				<div className="text-xs text-[var(--muted)] mt-1">Discovering available models{"\u2026"}</div>
-			)}
 		</form>
 	);
 }
 
 function sortedProviderModels(models: ModelSelectorRow[]): ModelSelectorRow[] {
-	return models.slice().sort((first, second) => {
-		const recommendationOrder = Number(second.recommended) - Number(first.recommended);
-		if (recommendationOrder !== 0) return recommendationOrder;
-		const creationOrder = (second.created_at || 0) - (first.created_at || 0);
-		return creationOrder || first.display_name.localeCompare(second.display_name);
-	});
+	return models.slice().sort((first, second) => first.id.localeCompare(second.id));
 }
 
 interface ProviderModelFormProps {
@@ -256,7 +232,7 @@ function ProviderModelForm(props: ProviderModelFormProps): VNode {
 	const [showAllModels, setShowAllModels] = useState(false);
 	const search = props.modelSearch.toLowerCase();
 	const filtered = sortedProviderModels(props.models).filter(
-		(model) => !search || model.display_name.toLowerCase().includes(search) || model.id.toLowerCase().includes(search),
+		(model) => !search || model.id.toLowerCase().includes(search),
 	);
 	const visible = showAllModels || search ? filtered : filtered.slice(0, 3);
 	const hasMore = filtered.length > 3 && !search;
@@ -324,17 +300,14 @@ function ProviderModelForm(props: ProviderModelFormProps): VNode {
 				</button>
 			</div>
 			{props.saving && (
-				<div className="text-xs text-[var(--muted)] mt-1">
-					Saving credentials and validating selected models{"\u2026"}
-				</div>
+				<div className="text-xs text-[var(--muted)] mt-1">Saving selected model preferences{"\u2026"}</div>
 			)}
 		</div>
 	);
 }
 
 export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode {
-	const apiKeyForm =
-		props.configuring === props.provider.name && (props.phase === "form" || props.phase === "validating");
+	const apiKeyForm = props.configuring === props.provider.name && (props.phase === "form" || props.phase === "saving");
 	const modelForm = props.configuring === props.provider.name && props.phase === "selectModel";
 	const expanded = apiKeyForm || modelForm;
 	const rowRef = useRef<HTMLDivElement>(null);
@@ -346,12 +319,8 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 			<ProviderRowHeader
 				provider={props.provider}
 				expanded={expanded}
-				validationResult={props.validationResult}
 				onConfigure={() => props.onStartConfigure(props.provider.name)}
 			/>
-			{props.validationResult?.ok === false && !expanded && (
-				<div className="text-xs text-[var(--warning)] mt-1">{props.validationResult.message}</div>
-			)}
 			{apiKeyForm && (
 				<ProviderApiKeyForm
 					provider={props.provider}
@@ -400,7 +369,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [modelSelectProvider, setModelSelectProvider] = useState<string | null>(null);
 	const [apiKey, setApiKey] = useState("");
 	const [endpoint, setEndpoint] = useState("");
-	const [validationResults, setValidationResults] = useState<Record<string, ValidationResult>>({});
 
 	function refreshProviders(): Promise<unknown> {
 		return sendRpc<ProviderInfo[]>("providers.available", {}).then((res) => {
@@ -463,7 +431,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		if (!provider.configured) return false;
 		const existingModels = await loadModelsForProvider(provider.name);
 		if (existingModels.length === 0) return false;
-		const saved = selectedModelIdsFromConfig(existingModels, provider.models);
+		const saved = new Set(existingModels.filter((model) => model.preferred).map((model) => model.id));
 		setModelSelectProvider(provider.name);
 		setConfiguring(provider.name);
 		setProviderModels(existingModels);
@@ -491,7 +459,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			return;
 		}
 		setError(null);
-		setPhase("validating");
+		setPhase("saving");
 		const keyVal = apiKey.trim() || p.name;
 		const endpointVal = endpoint.trim() || null;
 		const endpointError = providerBaseUrlError(endpointVal);
@@ -501,25 +469,19 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			return;
 		}
 
-		validateProviderKey(p.name, keyVal, endpointVal)
-			.then(async (result: { valid: boolean; error?: string; models?: ModelSelectorRow[] }) => {
-				if (!result.valid) {
-					setPhase("form");
-					setError(result.error || "Validation failed.");
-					return;
-				}
-				const saveRes = await saveProviderKey(p.name, keyVal, endpointVal);
+		saveProviderKey(p.name, keyVal, endpointVal)
+			.then((saveRes) => {
 				if (!saveRes?.ok) {
 					setPhase("form");
 					setError((saveRes?.error as { message?: string })?.message || "Failed to save credentials.");
 					return;
 				}
-				setProviderModels(result.models || []);
-				setPhase("selectModel");
+				closeAll();
+				refreshProviders();
 			})
 			.catch((err: Error) => {
 				setPhase("form");
-				setError(err?.message || "Validation failed.");
+				setError(err?.message || "Failed to save credentials.");
 			});
 	}
 
@@ -555,25 +517,17 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		});
 	}
 
-	async function savePendingProviderCredentials(providerName: string): Promise<string | null> {
-		if (modelSelectProvider) return null;
-		const provider = providers.find((candidate) => candidate.name === providerName);
-		const keyValue = apiKey.trim() || provider?.name || "";
-		const endpointValue = endpoint.trim() || null;
-		const response = await saveProviderKey(providerName, keyValue, endpointValue);
-		return response?.ok ? null : (response?.error as { message?: string })?.message || "Failed to save credentials.";
-	}
-
 	async function saveSelectedModelPreferences(providerName: string): Promise<string | null> {
-		const models = modelConfigMapFromSelection(providerModels, selectedModels);
-		const response = await sendRpc("providers.save_models", { provider: providerName, models });
+		const response = await sendRpc("providers.set_model_preferences", {
+			provider: providerName,
+			modelIds: Array.from(selectedModels),
+		});
 		return response?.ok ? null : response?.error?.message || "Failed to save model preferences.";
 	}
 
-	function finishSelectedModelSave(providerName: string): void {
-		const [firstModelId] = selectedModels;
+	function finishSelectedModelSave(): void {
+		const firstModelId = selectedModels.values().next().value;
 		if (firstModelId) localStorage.setItem("chelix-model", firstModelId);
-		setValidationResults((prev) => ({ ...prev, [providerName]: { ok: true, message: null } }));
 		closeAll();
 		refreshProviders();
 	}
@@ -584,16 +538,15 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setSavingModels(true);
 		setError(null);
 		try {
-			const errorMessage =
-				(await savePendingProviderCredentials(providerName)) || (await saveSelectedModelPreferences(providerName));
+			const errorMessage = await saveSelectedModelPreferences(providerName);
 			if (errorMessage) {
 				setError(errorMessage);
 				return false;
 			}
-			finishSelectedModelSave(providerName);
+			finishSelectedModelSave();
 			return true;
 		} catch (err) {
-			setError((err as Error)?.message || "Failed to save credentials.");
+			setError((err as Error)?.message || "Failed to save model preferences.");
 			return false;
 		} finally {
 			setSavingModels(false);
@@ -636,7 +589,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				setEndpoint={setEndpoint}
 				savingModels={savingModels}
 				error={configuring === p.name ? error : null}
-				validationResult={validationResults[p.name] || null}
 				onStartConfigure={onStartConfigure}
 				onCancelConfigure={closeAll}
 				onSaveKey={onSaveKey}
@@ -664,7 +616,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			</p>
 			{configuredProviders.length > 0 ? (
 				<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 flex flex-col gap-2">
-					<div className="text-xs text-[var(--muted)]">Detected LLM providers</div>
+					<div className="text-xs text-[var(--muted)]">Configured LLM providers</div>
 					<div className="flex flex-wrap gap-2">
 						{configuredProviders.map((p) => (
 							<span key={p.name} className="provider-item-badge configured">
@@ -700,7 +652,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 					type="button"
 					className="provider-btn"
 					onClick={onContinue}
-					disabled={phase === "validating" || savingModels}
+					disabled={phase === "saving" || savingModels}
 				>
 					{t("common:actions.continue")}
 				</button>

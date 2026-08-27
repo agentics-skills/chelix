@@ -18,7 +18,7 @@ use {
 };
 
 use {
-    chelix_providers::{ProviderRegistry, discover_models, model_id::raw_model_id},
+    chelix_providers::{ProviderRegistry, model_id::raw_model_id},
     chelix_service_traits::{ModelService, ServiceError, ServiceResult},
 };
 
@@ -139,7 +139,6 @@ enum ProbeStatus {
 #[derive(Debug)]
 struct ProbeOutcome {
     model_id: String,
-    display_name: String,
     provider_name: String,
     status: ProbeStatus,
 }
@@ -148,7 +147,6 @@ struct ProbeOutcome {
 /// backoff, send a "ping" completion, and classify the result.
 async fn run_single_probe(
     model_id: String,
-    display_name: String,
     provider_name: String,
     provider: Arc<dyn chelix_agents::model::LlmProvider>,
     limiter: Arc<Semaphore>,
@@ -160,7 +158,6 @@ async fn run_single_probe(
         Err(_) => {
             return ProbeOutcome {
                 model_id,
-                display_name,
                 provider_name,
                 status: ProbeStatus::Error {
                     message: "probe limiter closed".to_string(),
@@ -173,7 +170,6 @@ async fn run_single_probe(
         Err(_) => {
             return ProbeOutcome {
                 model_id,
-                display_name,
                 provider_name,
                 status: ProbeStatus::Error {
                     message: "provider probe limiter closed".to_string(),
@@ -191,7 +187,6 @@ async fn run_single_probe(
         );
         return ProbeOutcome {
             model_id,
-            display_name,
             provider_name,
             status: ProbeStatus::Error {
                 message: format!(
@@ -210,7 +205,6 @@ async fn run_single_probe(
             rate_limiter.clear(&provider_name).await;
             ProbeOutcome {
                 model_id,
-                display_name,
                 provider_name,
                 status: ProbeStatus::Supported,
             }
@@ -232,7 +226,6 @@ async fn run_single_probe(
                 );
                 return ProbeOutcome {
                     model_id,
-                    display_name,
                     provider_name,
                     status: ProbeStatus::Error {
                         message: format!("{detail} (probe backoff {}ms)", backoff.as_millis()),
@@ -257,7 +250,6 @@ async fn run_single_probe(
                     .to_string();
                 ProbeOutcome {
                     model_id,
-                    display_name,
                     provider_name,
                     status: ProbeStatus::Unsupported {
                         detail,
@@ -267,7 +259,6 @@ async fn run_single_probe(
             } else {
                 ProbeOutcome {
                     model_id,
-                    display_name,
                     provider_name,
                     status: ProbeStatus::Error {
                         message: error_text,
@@ -277,7 +268,6 @@ async fn run_single_probe(
         },
         Err(_) => ProbeOutcome {
             model_id,
-            display_name,
             provider_name,
             status: ProbeStatus::Error {
                 message: format!("probe timeout after {}s", probe_timeout.as_secs()),
@@ -388,12 +378,6 @@ pub struct LiveModelService {
     /// Token used to cancel an in-flight `detect_supported` run.
     detect_cancel: Arc<RwLock<Option<CancellationToken>>>,
     priority_models: Arc<RwLock<Vec<String>>>,
-    show_legacy_models: bool,
-    /// Provider config for runtime model rediscovery.
-    providers_config: chelix_config::schema::ProvidersConfig,
-    /// Environment variable overrides for runtime model rediscovery.
-    /// Shared so the gateway can update it after loading UI-stored keys.
-    env_overrides: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl LiveModelService {
@@ -409,34 +393,7 @@ impl LiveModelService {
             detect_gate: Arc::new(Semaphore::new(1)),
             detect_cancel: Arc::new(RwLock::new(None)),
             priority_models: Arc::new(RwLock::new(priority_models)),
-            show_legacy_models: false,
-            providers_config: chelix_config::schema::ProvidersConfig::default(),
-            env_overrides: Arc::new(RwLock::new(HashMap::new())),
         }
-    }
-
-    pub fn with_show_legacy_models(mut self, show: bool) -> Self {
-        self.show_legacy_models = show;
-        self
-    }
-
-    /// Set the provider config and initial env overrides used for runtime
-    /// model rediscovery when "Detect All Models" is triggered.
-    pub fn with_discovery_config(
-        mut self,
-        providers_config: chelix_config::schema::ProvidersConfig,
-        env_overrides: HashMap<String, String>,
-    ) -> Self {
-        self.providers_config = providers_config;
-        self.env_overrides = Arc::new(RwLock::new(env_overrides));
-        self
-    }
-
-    /// Shared handle to the env overrides. Pass this to code that needs to
-    /// update the overrides after construction (e.g. when runtime UI-stored
-    /// API keys are loaded from the credential store).
-    pub fn env_overrides_handle(&self) -> Arc<RwLock<HashMap<String, String>>> {
-        Arc::clone(&self.env_overrides)
     }
 
     /// Shared handle to the priority models list. Pass this to services
@@ -463,10 +420,6 @@ impl LiveModelService {
         }
         let raw = normalize_model_key(raw_model_id(&model.id));
         if let Some(rank) = order.get(&raw) {
-            return *rank;
-        }
-        let display = normalize_model_key(&model.display_name);
-        if let Some(rank) = order.get(&display) {
             return *rank;
         }
         usize::MAX
@@ -501,11 +454,7 @@ impl LiveModelService {
                         Ordering::Equal
                     }
                 })
-                .then_with(|| {
-                    a.display_name
-                        .to_lowercase()
-                        .cmp(&b.display_name.to_lowercase())
-                })
+                .then_with(|| a.id.to_lowercase().cmp(&b.id.to_lowercase()))
                 .then_with(|| idx_a.cmp(idx_b))
         });
         ordered.into_iter().map(|(_, model)| model).collect()
@@ -579,20 +528,6 @@ impl ModelService for LiveModelService {
         let order = self.priority_order().await;
         let all_models = reg.list_models();
 
-        // Hide models older than 1 year from the chat selector unless the
-        // user opted in via `providers.show_legacy_models`.  Preferred models
-        // and models without a timestamp are never hidden.
-        let legacy_cutoff: Option<i64> = if self.show_legacy_models {
-            None
-        } else {
-            let one_year_ago = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64
-                - 365 * 24 * 60 * 60;
-            Some(one_year_ago)
-        };
-
         let prioritized = Self::prioritize_models(
             &order,
             all_models
@@ -605,16 +540,6 @@ impl ModelService for LiveModelService {
         let models: Vec<_> = prioritized
             .iter()
             .copied()
-            .filter(|m| {
-                let preferred = Self::priority_rank(&order, m) != usize::MAX;
-                if preferred {
-                    return true;
-                }
-                match (legacy_cutoff, m.created_at) {
-                    (Some(cutoff), Some(ts)) => ts >= cutoff,
-                    _ => true, // no cutoff or no timestamp -> keep
-                }
-            })
             .map(|m| {
                 let preferred = Self::priority_rank(&order, m) != usize::MAX;
                 Self::model_value(m, preferred, false, None)
@@ -741,30 +666,6 @@ impl ModelService for LiveModelService {
 
         let state = self.state.get().cloned();
 
-        // Phase 0: re-discover models from provider APIs so that newly
-        // added models (e.g. a model loaded into llama.cpp after startup)
-        // are found before probing.
-        {
-            let env_snapshot = self.env_overrides.read().await.clone();
-            let discovery = discover_models(
-                &self.providers_config,
-                &env_snapshot,
-                provider_filter.as_deref(),
-            )
-            .await;
-            if !discovery.is_empty() {
-                let mut reg = self.providers.write().await;
-                let new_count =
-                    reg.refresh_from_discovery(&self.providers_config, &env_snapshot, &discovery);
-                if new_count > 0 {
-                    tracing::info!(
-                        new_models = new_count,
-                        "rediscovery registered new models before probe"
-                    );
-                }
-            }
-        }
-
         // Phase 1: notify clients to refresh and show the full current model list first.
         if let Some(state) = state.as_ref() {
             broadcast(
@@ -789,14 +690,8 @@ impl ModelService for LiveModelService {
                 .filter(|m| !disabled.is_disabled(&m.id))
                 .filter(|m| provider_matches_filter(&m.provider, provider_filter.as_deref()))
                 .filter_map(|m| {
-                    reg.get(&m.id).map(|provider| {
-                        (
-                            m.id.clone(),
-                            m.display_name.clone(),
-                            provider.name().to_string(),
-                            provider,
-                        )
-                    })
+                    reg.get(&m.id)
+                        .map(|provider| (m.id.clone(), provider.name().to_string(), provider))
                 })
                 .collect::<Vec<_>>()
         };
@@ -827,13 +722,12 @@ impl ModelService for LiveModelService {
         let provider_limiter = Arc::new(ProbeProviderLimiter::new(max_parallel_per_provider));
         let rate_limiter = Arc::new(ProbeRateLimiter::default());
         let mut tasks = tokio::task::JoinSet::new();
-        for (model_id, display_name, provider_name, provider) in checks {
+        for (model_id, provider_name, provider) in checks {
             let limiter = Arc::clone(&limiter);
             let provider_limiter = Arc::clone(&provider_limiter);
             let rate_limiter = Arc::clone(&rate_limiter);
             tasks.spawn(run_single_probe(
                 model_id,
-                display_name,
                 provider_name,
                 provider,
                 limiter,
@@ -874,7 +768,6 @@ impl ModelService for LiveModelService {
                     errors += 1;
                     results.push(serde_json::json!({
                         "modelId": "",
-                        "displayName": "",
                         "provider": "",
                         "status": "error",
                         "error": format!("probe task failed: {err}"),
@@ -909,7 +802,6 @@ impl ModelService for LiveModelService {
                         &mut supported_by_provider,
                         &outcome.provider_name,
                         &outcome.model_id,
-                        &outcome.display_name,
                     );
                     let mut changed = false;
                     {
@@ -943,7 +835,6 @@ impl ModelService for LiveModelService {
 
                     results.push(serde_json::json!({
                         "modelId": outcome.model_id,
-                        "displayName": outcome.display_name,
                         "provider": outcome.provider_name,
                         "status": "supported",
                     }));
@@ -954,7 +845,6 @@ impl ModelService for LiveModelService {
                         &mut unsupported_by_provider,
                         &outcome.provider_name,
                         &outcome.model_id,
-                        &outcome.display_name,
                     );
                     let mut changed = false;
                     let mut updated_at_ms = now_ms();
@@ -996,7 +886,6 @@ impl ModelService for LiveModelService {
 
                     results.push(serde_json::json!({
                         "modelId": outcome.model_id,
-                        "displayName": outcome.display_name,
                         "provider": outcome.provider_name,
                         "status": "unsupported",
                         "error": detail,
@@ -1008,11 +897,9 @@ impl ModelService for LiveModelService {
                         &mut errors_by_provider,
                         &outcome.provider_name,
                         &outcome.model_id,
-                        &outcome.display_name,
                     );
                     results.push(serde_json::json!({
                         "modelId": outcome.model_id,
-                        "displayName": outcome.display_name,
                         "provider": outcome.provider_name,
                         "status": "error",
                         "error": message,

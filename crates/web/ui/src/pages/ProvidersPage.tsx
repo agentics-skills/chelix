@@ -238,9 +238,6 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 	const fields: Array<[string, string]> = [
 		["id", model.id],
 		["provider", model.provider],
-		["display_name", model.display_name],
-		["created_at", recordValue(model.created_at)],
-		["recommended", recordValue(model.recommended)],
 		["preferred", recordValue(model.preferred)],
 		["disabled", recordValue(model.disabled)],
 		["unsupported", recordValue(model.unsupported)],
@@ -255,9 +252,12 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 		["tool_calling", recordValue(model.tool_calling)],
 		["streaming", recordValue(model.streaming)],
 		["zeroDataRetentionEnabled", recordValue(model.zeroDataRetentionEnabled)],
-		["reasoning.supported_efforts", JSON.stringify(model.reasoning.supported_efforts)],
-		["reasoning.summary", recordValue(model.reasoning.summary)],
-		["reasoning.include", JSON.stringify(model.reasoning.include)],
+		["reasoning_supported_efforts", JSON.stringify(model.reasoning_supported_efforts)],
+		["reasoning_summary", recordValue(model.reasoning_summary)],
+		[
+			"reasoning_include",
+			model.reasoning_include === undefined ? "null" : JSON.stringify(model.reasoning_include),
+		],
 	];
 
 	return (
@@ -355,7 +355,7 @@ function ProviderModelRow({ model, onToggle }: ProviderModelRowProps): VNode {
 		<div className="flex items-start justify-between gap-3 py-1">
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2 min-w-0">
-					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.display_name}</div>
+					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.id}</div>
 					<ProviderModelBadges model={model} />
 				</div>
 				{model.unsupported && model.unsupported_reason ? (

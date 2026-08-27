@@ -127,10 +127,10 @@ reasoning_supported_efforts = []
 
 | Provider             | Config Name  | Env Variable         | Features                                                         |
 | -------------------- | ------------ | -------------------- | ---------------------------------------------------------------- |
-| **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision, model discovery                        |
-| **OpenRouter**       | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools, model discovery                                |
-| **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools, model discovery                                |
-| **Z.AI Coding Plan** | `zai-code`   | `Z_CODE_API_KEY`     | Streaming, tools, model discovery (Coding plan billing endpoint) |
+| **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision                        |
+| **OpenRouter**       | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools                                |
+| **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools                                |
+| **Z.AI Coding Plan** | `zai-code`   | `Z_CODE_API_KEY`     | Streaming, tools (Coding plan billing endpoint) |
 
 ### Custom OpenAI-Compatible
 
@@ -152,27 +152,10 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = true
-
-[providers.custom-ai-example.models."Combos/cx/gpt-sol".reasoning]
-supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
-summary = "detailed"
-include = ["reasoning.encrypted_content"]
+reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
+reasoning_summary = "detailed"
+reasoning_include = ["encrypted_content"]
 ```
-
-For a discovery-backed allowlist, use the same table format without fields:
-
-```toml
-[providers.custom-ai-example]
-enabled = true
-base_url = "https://ai.example.invalid/v1"
-wire_api = "responses"
-
-[providers.custom-ai-example.models."Combos/cx/gpt-sol"]
-[providers.custom-ai-example.models."Combos/cx/gpt-mini"]
-[providers.custom-ai-example.models."Combos/cx/gpt-nano"]
-```
-
-Chelix calls `/models` and merges returned metadata into those records.
 
 ### OpenAI-Compatible Tool Schemas
 
@@ -203,52 +186,50 @@ into an opaque provider `400` or a model that keeps calling a tool wrong.
 
 ## Configuration
 
-### Via Web UI (Recommended)
+### Via Web UI
 
-1. Open Chelix in your browser.
-2. Go to **Settings** → **Providers**.
-3. Choose a provider card.
-4. Complete OAuth or enter your API key.
-5. Select your preferred model.
+Use **Settings** → **Providers** to save credentials for a provider whose complete
+model records are already declared in the service configuration.
+
+The **OpenAI Compatible** entry lists config-declared `custom-*` providers. Select
+one to save its API key and API base URL. This flow does not discover models and
+does not write model metadata to `provider_keys.json`.
 
 ### Via Configuration Files
 
 Configure providers in `chelix.toml`:
 
 ```toml
-[providers]
-offered = ["openai", "openrouter"]
-
-[providers.openai]
+[providers.custom-ai-example]
 enabled = true
-stream_transport = "sse"              # "sse", "websocket", or "auto"
+base_url = "https://ai.example.invalid/v1"
+wire_api = "responses"
 
-[providers.openai.models."gpt-5.3"]
-[providers.openai.models."gpt-5.2"]
+[providers.custom-ai-example.models."muse-flash-0.9"]
+context_length = 262144
+max_input_tokens = 196608
+max_output_tokens = 65536
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
 
 [chat]
-priority_models = ["gpt-5.2"]
+priority_models = ["custom-ai-example::muse-flash-0.9"]
 ```
 
 ### Model Metadata Resolution
 
-Models are declared only as
-`[providers.<name>.models."<raw-model-id>"]` tables. The tables form an ordered
-allowlist and preserve declaration order. With no model tables, every
-discovered model that resolves completely is accepted.
+The service configuration is the only source of model composition and model
+parameters. Each enabled provider must declare at least one complete
+`[providers.<name>.models."<raw-model-id>"]` table.
 
-Chelix resolves each selected model in this order:
-
-1. Configuration metadata wins field by field.
-2. Provider `/models` metadata fills fields omitted by configuration.
-3. Optional defaults apply only after the merge.
-4. Incomplete or inconsistent records are excluded.
-
-The mandatory fields are `context_length`, `max_input_tokens`,
-`max_output_tokens`, and `reasoning.supported_efforts`. An empty
-`supported_efforts` array explicitly identifies a non-reasoning model.
-`reasoning.summary` and `reasoning.include` describe provider request metadata;
-they do not enable reasoning or select an effort.
+A missing mandatory parameter, an invalid value, an unknown model setting, or an
+enabled provider without models refuses service load. The registry is built
+atomically: no incomplete registry is published and no problematic model is
+excluded to continue startup.
 
 ### Provider Entry Options
 
@@ -260,7 +241,6 @@ Each provider supports these options:
 | `api_key`          | —        | API key (overrides env var)                |
 | `base_url`         | —        | Override API endpoint URL                  |
 | `models.<model_id>` | —       | Ordered model metadata table               |
-| `fetch_models`     | `true`   | Discover available models from the API     |
 | `stream_transport` | `"sse"`  | `"sse"`, `"websocket"`, or `"auto"`        |
 | `alias`            | —        | Custom label for metrics                   |
 | `tool_mode`        | `"native"` | `"native"`, `"text"`, or `"off"`          |
@@ -269,8 +249,13 @@ Each provider supports these options:
 
 ### OpenAI
 
-1. Get an API key from [platform.openai.com](https://platform.openai.com/).
-2. Set `OPENAI_API_KEY` in your environment.
+1. Declare complete model records under
+   `[providers.openai.models."<model-id>"]` in the service configuration.
+2. Get an API key from [platform.openai.com](https://platform.openai.com/).
+3. Set `OPENAI_API_KEY` in your environment, or save the credentials through
+   **Settings** → **Providers**. Credentials saved through provider setup are
+   persisted in `~/.config/chelix/provider_keys.json` and loaded for the
+   matching provider declared in the service configuration.
 
 ## Switching Models
 

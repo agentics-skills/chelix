@@ -11,12 +11,6 @@ pub(crate) struct OpenAiCompatDef {
     /// When `false`, a dummy API key (the provider name) is used if none is
     /// configured. Intended for local servers that don't authenticate.
     pub(crate) requires_api_key: bool,
-    /// Local-only providers are skipped unless the user has an explicit
-    /// `[providers.<name>]` entry, a `_BASE_URL` env var, or configured models.
-    /// This avoids probing localhost when nothing is running. Also ensures
-    /// model discovery is always attempted (never short-circuited by the
-    /// empty-catalog heuristic).
-    pub(crate) local_only: bool,
     /// Explicit provider behavior policies. Never inferred from provider name or URL.
     pub(crate) capabilities: OpenAiProviderCapabilities,
 }
@@ -28,7 +22,6 @@ impl OpenAiCompatDef {
         env_base_url_key: "",
         default_base_url: "",
         requires_api_key: true,
-        local_only: false,
         capabilities: OpenAiProviderCapabilities::DEFAULT,
     };
 }
@@ -136,7 +129,6 @@ mod tests {
             "https://coding-intl.dashscope.aliyuncs.com/v1"
         );
         assert!(alibaba.requires_api_key);
-        assert!(!alibaba.local_only);
     }
 
     /// Cross-validate that every provider registered in this crate appears in
