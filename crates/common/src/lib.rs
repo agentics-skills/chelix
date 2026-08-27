@@ -18,7 +18,7 @@ pub use {
     item_positions::ItemPositionAllocator,
     model::{
         ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
-        ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningSummary,
+        ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningState, ReasoningSummary,
         ResponsesReasoningItem,
     },
     provider_output::{

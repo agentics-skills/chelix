@@ -125,7 +125,7 @@ group_policy = "open"
 mention_mode = "mention"
 allowlist = ["U0123456789", "U9876543210"]
 channel_allowlist = ["C0123456789"]
-model = "anthropic/claude-sonnet-4"
+model = "openrouter::anthropic/claude-sonnet-4"
 model_provider = "openrouter"
 stream_mode = "edit_in_place"
 edit_throttle_ms = 500
@@ -133,11 +133,11 @@ thread_replies = true
 
 # Per-channel override: use a different model in a specific Slack channel
 [channels.slack.my-bot.channel_overrides.C0123456789]
-model = "gpt-4o"
+model = "openai::gpt-4o"
 
 # Per-user override: use a specific model/provider for a Slack user
 [channels.slack.my-bot.user_overrides.U0123456789]
-model = "anthropic/claude-sonnet-4"
+model = "openrouter::anthropic/claude-sonnet-4"
 model_provider = "openrouter"
 ```
 

@@ -37,6 +37,15 @@ impl From<String> for ReasoningEffort {
     }
 }
 
+/// Reasoning state resolved for a specific model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReasoningState {
+    /// The model has no configured reasoning efforts.
+    NotApplicable,
+    /// The exact provider-defined effort selected for a reasoning-capable model.
+    Effort(ReasoningEffort),
+}
+
 /// Input or output medium accepted by a model endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

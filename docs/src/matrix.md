@@ -365,7 +365,7 @@ mention_mode = "mention"
 room_allowlist = ["!ops:example.com", "#support:example.com"]
 user_allowlist = ["@alice:example.com", "@bob:example.com"]
 auto_join = "allowlist"
-model = "gpt-4.1"
+model = "openai::gpt-4.1"
 model_provider = "openai"
 stream_mode = "edit_in_place"
 edit_throttle_ms = 500
@@ -376,11 +376,11 @@ otp_self_approval = true
 otp_cooldown_secs = 300
 
 [channels.matrix.my-bot.channel_overrides."!ops:example.com"]
-model = "anthropic/claude-sonnet-4"
+model = "openrouter::anthropic/claude-sonnet-4"
 model_provider = "openrouter"
 
 [channels.matrix.my-bot.user_overrides."@alice:example.com"]
-model = "o3"
+model = "openai::o3"
 model_provider = "openai"
 ```
 

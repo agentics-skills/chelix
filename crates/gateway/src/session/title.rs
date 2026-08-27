@@ -213,7 +213,7 @@ mod tests {
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
         // Title generation refuses service without an explicit auxiliary model,
         // so the tests must configure the one registered below.
-        config.auxiliary.title_generation = Some("mock-title".to_string());
+        config.auxiliary.title_generation = Some("mock::mock-title".to_string());
         let state = GatewayState::with_options(
             ResolvedAuth {
                 mode: AuthMode::Token,

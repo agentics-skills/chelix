@@ -1,11 +1,74 @@
 use std::collections::HashMap;
 
 use {
-    super::{ProviderRegistry, registration::openai_builtin_capabilities},
+    super::{ModelResolutionError, ProviderRegistry, registration::openai_builtin_capabilities},
     crate::openai::ResponsesWebSocketPolicy,
     chelix_agents::model::ReasoningEffort,
+    chelix_common::ReasoningState,
     chelix_config::{ChelixConfig, ToolMode},
 };
+
+fn resolution_registry() -> ProviderRegistry {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[providers.custom-alpha]
+api_key = "test-key"
+base_url = "https://alpha.example.invalid/v1"
+
+[providers.custom-alpha.models.shared]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
+
+[providers.custom-alpha.models.reasoning]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["low", "high"]
+
+[providers.custom-alpha.models.none-only]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["none"]
+
+[providers.custom-beta]
+api_key = "test-key"
+base_url = "https://beta.example.invalid/v1"
+
+[providers.custom-beta.models.shared]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
+"#,
+    )
+    .unwrap_or_else(|error| panic!("resolution registry config should deserialize: {error}"));
+
+    ProviderRegistry::from_config(&config.providers, &HashMap::new())
+        .unwrap_or_else(|error| panic!("resolution registry should build: {error}"))
+}
 
 #[test]
 fn openai_default_base_url_enables_responses_websocket() {
@@ -212,6 +275,145 @@ reasoning_supported_efforts = []
         OFF_MODEL_ID
     );
     assert!(registry.first_with_tools().is_none());
+}
+
+#[test]
+fn registry_lookup_and_unregister_require_exact_canonical_ids() {
+    const ALPHA_MODEL_ID: &str = "custom-alpha::shared";
+    const BETA_MODEL_ID: &str = "custom-beta::shared";
+    let mut registry = resolution_registry();
+
+    assert_eq!(
+        registry
+            .get(ALPHA_MODEL_ID)
+            .unwrap_or_else(|| panic!("alpha model should resolve by its exact key"))
+            .id(),
+        ALPHA_MODEL_ID
+    );
+    assert_eq!(
+        registry
+            .get(BETA_MODEL_ID)
+            .unwrap_or_else(|| panic!("beta model should resolve by its exact key"))
+            .id(),
+        BETA_MODEL_ID
+    );
+    assert!(registry.get("shared").is_none());
+    assert!(!registry.unregister("shared"));
+    assert!(registry.get(ALPHA_MODEL_ID).is_some());
+    assert!(registry.get(BETA_MODEL_ID).is_some());
+
+    assert!(registry.unregister(ALPHA_MODEL_ID));
+    assert!(registry.get(ALPHA_MODEL_ID).is_none());
+    assert!(registry.get(BETA_MODEL_ID).is_some());
+}
+
+#[test]
+fn resolver_returns_typed_non_reasoning_and_applied_reasoning_states() {
+    let registry = resolution_registry();
+    let non_reasoning = registry
+        .resolve_model_reasoning(Some("custom-alpha::shared"), None)
+        .unwrap_or_else(|error| panic!("non-reasoning model should resolve: {error}"));
+    assert_eq!(
+        non_reasoning.model_reasoning().model_id(),
+        "custom-alpha::shared"
+    );
+    assert_eq!(
+        non_reasoning.model_reasoning().reasoning(),
+        &ReasoningState::NotApplicable
+    );
+    assert!(non_reasoning.provider().reasoning_effort().is_none());
+
+    let high = ReasoningEffort::from("high");
+    let reasoning = registry
+        .resolve_model_reasoning(Some("custom-alpha::reasoning"), Some(&high))
+        .unwrap_or_else(|error| panic!("reasoning model should resolve: {error}"));
+    assert_eq!(
+        reasoning.model_reasoning().reasoning(),
+        &ReasoningState::Effort(high.clone())
+    );
+    assert_eq!(reasoning.provider().reasoning_effort(), Some(high));
+
+    let none = ReasoningEffort::from("none");
+    let none_only = registry
+        .resolve_model_reasoning(Some("custom-alpha::none-only"), Some(&none))
+        .unwrap_or_else(|error| panic!("provider-defined none effort should resolve: {error}"));
+    assert_eq!(
+        none_only.model_reasoning().reasoning(),
+        &ReasoningState::Effort(none.clone())
+    );
+    assert_eq!(none_only.provider().reasoning_effort(), Some(none));
+}
+
+#[test]
+fn resolver_rejects_invalid_model_reasoning_selections() {
+    let registry = resolution_registry();
+    let cases = vec![
+        (None, None, ModelResolutionError::MissingModel),
+        (
+            Some("custom-alpha::reasoning"),
+            None,
+            ModelResolutionError::MissingReasoningEffort {
+                model_id: "custom-alpha::reasoning".to_string(),
+            },
+        ),
+        (
+            Some("custom-alpha::reasoning"),
+            Some(ReasoningEffort::from("")),
+            ModelResolutionError::EmptyReasoningEffort {
+                model_id: "custom-alpha::reasoning".to_string(),
+            },
+        ),
+        (
+            Some("custom-alpha::shared"),
+            Some(ReasoningEffort::from("none")),
+            ModelResolutionError::ReasoningEffortNotApplicable {
+                model_id: "custom-alpha::shared".to_string(),
+                reasoning_effort: "none".to_string(),
+            },
+        ),
+        (
+            Some("custom-alpha::missing"),
+            None,
+            ModelResolutionError::UnknownModel {
+                model_id: "custom-alpha::missing".to_string(),
+            },
+        ),
+        (
+            Some("reasoning"),
+            Some(ReasoningEffort::from("high")),
+            ModelResolutionError::NonCanonicalModelId {
+                model_id: "reasoning".to_string(),
+                canonical_model_id: "custom-alpha::reasoning".to_string(),
+            },
+        ),
+        (
+            Some("shared"),
+            None,
+            ModelResolutionError::AmbiguousModelId {
+                model_id: "shared".to_string(),
+                canonical_model_ids: vec![
+                    "custom-alpha::shared".to_string(),
+                    "custom-beta::shared".to_string(),
+                ],
+            },
+        ),
+        (
+            Some("custom-alpha::reasoning"),
+            Some(ReasoningEffort::from("medium")),
+            ModelResolutionError::UnsupportedReasoningEffort {
+                model_id: "custom-alpha::reasoning".to_string(),
+                reasoning_effort: "medium".to_string(),
+            },
+        ),
+    ];
+
+    for (model_id, reasoning_effort, expected) in cases {
+        let error = registry
+            .resolve_model_reasoning(model_id, reasoning_effort.as_ref())
+            .err()
+            .unwrap_or_else(|| panic!("invalid selection {model_id:?} should fail"));
+        assert_eq!(error, expected, "unexpected error for {model_id:?}");
+    }
 }
 
 #[test]
