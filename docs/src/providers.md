@@ -72,6 +72,16 @@ There is no interference with or restriction on the set of
 Forbidden: a local value allowlist, filtering, renaming, replacement,
 reordering, autocompletion.
 
+### Exact Runtime Model IDs
+
+A runtime registry key is the canonical namespaced model ID
+`<provider>::<raw-model-id>` returned by `models.list`.
+
+`ProviderRegistry::get()` and model/reasoning resolution accept only an exact
+canonical registry-key match. A raw model ID is never converted automatically.
+A raw ID with one or multiple suffix matches is rejected as noncanonical or
+ambiguous. Runtime model overrides must use an ID directly from `models.list`.
+
 ### Load Refusal
 
 Service load refusal is caused by:

@@ -38,7 +38,8 @@ export default {
 
 	// ── Reasoning toggle ─────────────────────────────────────
 	reasoningTooltip: "Reasoning effort",
-	reasoningOff: "Off",
+	reasoningSelect: "Select",
+	sessionStateUnavailable: "Session state is not available.",
 
 	// ── Debug panel ──────────────────────────────────────────
 	debugTooltip: "Show context debug info",

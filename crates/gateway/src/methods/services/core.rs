@@ -1023,12 +1023,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 }
 
                 if let Some(pid) = ctx.params.get("project_id").and_then(|v| v.as_str()) {
-                    let _ = ctx
-                        .state
+                    ctx.state
                         .services
                         .session
-                        .patch(serde_json::json!({ "key": key, "project_id": pid }))
-                        .await;
+                        .patch(serde_json::json!({ "key": key, "projectId": pid }))
+                        .await
+                        .map_err(ErrorShape::from)?;
 
                     // Auto-create worktree if project has auto_worktree enabled.
                     if let Ok(proj_val) = ctx
@@ -1068,15 +1068,15 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                     .filter(|s| !s.is_empty())
                                     .unwrap_or("chelix");
                                 let branch = format!("{prefix}/{key}");
-                                let _ = ctx
-                                    .state
+                                ctx.state
                                     .services
                                     .session
                                     .patch(serde_json::json!({
                                         "key": key,
-                                        "worktree_branch": branch,
+                                        "worktreeBranch": branch,
                                     }))
-                                    .await;
+                                    .await
+                                    .map_err(ErrorShape::from)?;
 
                                 if let Err(e) = chelix_projects::worktree::copy_project_config(
                                     project_dir,

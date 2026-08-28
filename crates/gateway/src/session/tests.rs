@@ -962,6 +962,56 @@ mod tests {
         pool
     }
 
+    fn patch_model_service(disabled_models: &[&str]) -> Arc<dyn ModelService> {
+        let config: chelix_config::ChelixConfig = toml::from_str(
+            r#"
+[providers.custom-patch]
+api_key = "test-key"
+base_url = "https://patch.example.invalid/v1"
+
+[providers.custom-patch.models.reasoning]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["low", "high"]
+
+[providers.custom-patch.models.plain]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = []
+"#,
+        )
+        .unwrap();
+        let registry = chelix_providers::ProviderRegistry::from_config(
+            &config.providers,
+            &std::collections::HashMap::new(),
+        )
+        .unwrap();
+        let disabled = crate::chat::DisabledModelsStore {
+            disabled: disabled_models
+                .iter()
+                .map(|model| (*model).to_string())
+                .collect(),
+            ..Default::default()
+        };
+        Arc::new(crate::chat::LiveModelService::new(
+            Arc::new(tokio::sync::RwLock::new(registry)),
+            Arc::new(tokio::sync::RwLock::new(disabled)),
+            Vec::new(),
+        ))
+    }
+
     #[tokio::test]
     async fn resolve_dispatches_session_start_with_channel_binding() {
         let dir = tempfile::tempdir().unwrap();
@@ -1130,6 +1180,152 @@ mod tests {
 
         let result = svc.clear_all().await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn patch_model_reasoning_persists_validated_pair_atomically() {
+        const KEY: &str = "session:model-patch";
+        const REASONING_MODEL: &str = "custom-patch::reasoning";
+        const PLAIN_MODEL: &str = "custom-patch::plain";
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata.upsert(KEY, None).await.unwrap();
+        metadata
+            .set_model_reasoning(
+                KEY,
+                REASONING_MODEL,
+                &chelix_common::ReasoningState::Effort("low".into()),
+            )
+            .await
+            .unwrap();
+        let service = LiveSessionService::new(store, Arc::clone(&metadata))
+            .with_model_service(patch_model_service(&[]));
+
+        let before = metadata.get(KEY).await.unwrap();
+        let response = service
+            .patch(serde_json::json!({
+                "key": KEY,
+                "model": REASONING_MODEL,
+                "reasoningEffort": "high",
+            }))
+            .await
+            .unwrap();
+        assert_eq!(response["model"], REASONING_MODEL);
+        assert_eq!(response["reasoningEffort"], "high");
+        let reasoning_entry = metadata.get(KEY).await.unwrap();
+        assert_eq!(reasoning_entry.model.as_deref(), Some(REASONING_MODEL));
+        assert_eq!(reasoning_entry.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(reasoning_entry.version, before.version + 1);
+
+        let response = service
+            .patch(serde_json::json!({
+                "key": KEY,
+                "model": PLAIN_MODEL,
+                "reasoningEffort": null,
+            }))
+            .await
+            .unwrap();
+        assert_eq!(response["model"], PLAIN_MODEL);
+        assert!(response["reasoningEffort"].is_null());
+        let plain_entry = metadata.get(KEY).await.unwrap();
+        assert_eq!(plain_entry.model.as_deref(), Some(PLAIN_MODEL));
+        assert!(plain_entry.reasoning_effort.is_none());
+        assert_eq!(plain_entry.version, reasoning_entry.version + 1);
+    }
+
+    #[tokio::test]
+    async fn patch_model_reasoning_rejects_invalid_pair_without_mutation() {
+        const KEY: &str = "session:model-patch-errors";
+        const REASONING_MODEL: &str = "custom-patch::reasoning";
+        const PLAIN_MODEL: &str = "custom-patch::plain";
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        metadata.upsert(KEY, None).await.unwrap();
+        metadata
+            .set_model_reasoning(
+                KEY,
+                REASONING_MODEL,
+                &chelix_common::ReasoningState::Effort("low".into()),
+            )
+            .await
+            .unwrap();
+        let service = LiveSessionService::new(store, Arc::clone(&metadata))
+            .with_model_service(patch_model_service(&[PLAIN_MODEL]));
+
+        let cases = [
+            (
+                "partial pair",
+                serde_json::json!({"key": KEY, "model": REASONING_MODEL}),
+                "must be provided together",
+            ),
+            (
+                "empty effort",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": REASONING_MODEL,
+                    "reasoningEffort": "",
+                }),
+                "must not be empty",
+            ),
+            (
+                "null effort",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": REASONING_MODEL,
+                    "reasoningEffort": null,
+                }),
+                "is required",
+            ),
+            (
+                "unknown model",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": "custom-patch::missing",
+                    "reasoningEffort": null,
+                }),
+                "not found in chat model registry",
+            ),
+            (
+                "disabled model",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": PLAIN_MODEL,
+                    "reasoningEffort": null,
+                }),
+                "not found in chat model registry",
+            ),
+            (
+                "unsupported effort",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": REASONING_MODEL,
+                    "reasoningEffort": "ultra",
+                }),
+                "does not support reasoning effort",
+            ),
+        ];
+
+        for (name, params, expected_error) in cases {
+            let before = metadata.get(KEY).await.unwrap();
+            let error = service.patch(params).await.unwrap_err();
+            assert!(
+                error.to_string().contains(expected_error),
+                "unexpected {name} error: {error}",
+            );
+            let after = metadata.get(KEY).await.unwrap();
+            assert_eq!(after.model, before.model, "{name} changed model");
+            assert_eq!(
+                after.reasoning_effort, before.reasoning_effort,
+                "{name} changed reasoning effort",
+            );
+            assert_eq!(after.version, before.version, "{name} changed version");
+        }
     }
 
     #[tokio::test]

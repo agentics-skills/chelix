@@ -605,6 +605,24 @@ impl chelix_service_traits::ModelService for MockModel {
         self.0.call("models.list_all", json!({}))
     }
 
+    async fn resolve_model_reasoning(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&chelix_service_traits::ReasoningEffort>,
+    ) -> Result<chelix_service_traits::ReasoningState, chelix_service_traits::ServiceError> {
+        self.0.call(
+            "models.resolve_model_reasoning",
+            json!({
+                "model": model,
+                "reasoningEffort": reasoning_effort,
+            }),
+        )?;
+        Ok(match reasoning_effort {
+            Some(effort) => chelix_service_traits::ReasoningState::Effort(effort.clone()),
+            None => chelix_service_traits::ReasoningState::NotApplicable,
+        })
+    }
+
     async fn disable(&self, p: Value) -> ServiceResult {
         self.0.call("models.disable", p)
     }

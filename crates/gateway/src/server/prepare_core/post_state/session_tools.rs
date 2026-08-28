@@ -277,7 +277,13 @@ async fn validate_model_and_reasoning_effort(
     model: &str,
     reasoning_effort: &ReasoningEffort,
 ) -> chelix_tools::Result<()> {
-    validate_base_model(state, model, reasoning_effort).await
+    state
+        .services
+        .model
+        .resolve_model_reasoning(model, Some(reasoning_effort))
+        .await
+        .map(|_| ())
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))
 }
 
 #[tracing::instrument(skip(state))]
@@ -305,61 +311,6 @@ async fn agent_model_and_reasoning(
         ))
     })?;
     Ok((model, effort))
-}
-
-#[tracing::instrument(skip(state))]
-async fn validate_base_model(
-    state: &GatewayState,
-    model_id: &str,
-    reasoning_effort: &ReasoningEffort,
-) -> chelix_tools::Result<()> {
-    let models = state
-        .services
-        .model
-        .list()
-        .await
-        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-    let Some(models) = models.as_array() else {
-        return Err(chelix_tools::Error::message(
-            "models.list returned an invalid response",
-        ));
-    };
-
-    let Some(model) = models
-        .iter()
-        .find(|model| model.get("id").and_then(Value::as_str) == Some(model_id))
-    else {
-        return Err(chelix_tools::Error::message(format!(
-            "model '{model_id}' not found in chat model registry"
-        )));
-    };
-
-    validate_reasoning_effort(model, model_id, reasoning_effort)
-}
-
-fn validate_reasoning_effort(
-    model: &Value,
-    model_id: &str,
-    reasoning_effort: &ReasoningEffort,
-) -> chelix_tools::Result<()> {
-    let supported_efforts = model
-        .get("reasoning_supported_efforts")
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            chelix_tools::Error::message(format!(
-                "model '{model_id}' has no reasoning_supported_efforts metadata"
-            ))
-        })?;
-    if !supported_efforts
-        .iter()
-        .any(|supported| supported.as_str() == Some(reasoning_effort.as_str()))
-    {
-        return Err(chelix_tools::Error::message(format!(
-            "model '{model_id}' does not support reasoning_effort '{}'",
-            reasoning_effort.as_str()
-        )));
-    }
-    Ok(())
 }
 
 fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Value {
@@ -394,21 +345,4 @@ fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Valu
             "version": version,
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn validate_reasoning_effort_reads_flat_registry_metadata() {
-        let model = serde_json::json!({
-            "id": "openai::gpt-test",
-            "reasoning_supported_efforts": ["low", "high"],
-        });
-        let result =
-            validate_reasoning_effort(&model, "openai::gpt-test", &ReasoningEffort::from("high"));
-
-        assert!(result.is_ok(), "listed reasoning effort should be accepted");
-    }
 }

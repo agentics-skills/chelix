@@ -11,7 +11,7 @@ import type { RpcResponse } from "../types/rpc";
 // ── Signals ──────────────────────────────────────────────────
 export const models = signal<ModelInfo[]>([]);
 export const selectedModelId = signal<string>(localStorage.getItem("chelix-model") || "");
-export const reasoningEffort = signal<string>(localStorage.getItem("chelix-reasoning-effort") || "");
+export const reasoningEffort = signal<string | null>(localStorage.getItem("chelix-reasoning-effort"));
 
 export const selectedModel = computed<ModelInfo | null>(() => {
 	const id = selectedModelId.value;
@@ -56,10 +56,14 @@ export function select(id: string): void {
 	selectedModelId.value = id;
 }
 
-/** Set the reasoning effort level. Empty string means off. */
-export function setReasoningEffort(effort: string): void {
-	reasoningEffort.value = effort || "";
-	localStorage.setItem("chelix-reasoning-effort", effort || "");
+/** Set the exact reasoning effort, or mark it as not applicable. */
+export function setReasoningEffort(effort: string | null): void {
+	reasoningEffort.value = effort;
+	if (effort === null) {
+		localStorage.removeItem("chelix-reasoning-effort");
+	} else {
+		localStorage.setItem("chelix-reasoning-effort", effort);
+	}
 }
 
 /** Look up a model by id. */

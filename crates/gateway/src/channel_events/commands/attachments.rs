@@ -190,52 +190,80 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
         params["_document_files"] = serde_json::json!(documents);
     }
 
-    // Forward the channel's default model if configured
-    if let Some(ref model) = meta.model {
-        params["model"] = serde_json::json!(model);
-
-        let session_has_model = if let Some(ref sm) = state.services.session_metadata {
-            sm.get(&session_key).await.and_then(|e| e.model).is_some()
-        } else {
-            false
-        };
-        if !session_has_model {
-            let _ = state
-                .services
-                .session
-                .patch(serde_json::json!({
-                    "key": &session_key,
-                    "model": model,
-                }))
-                .await;
-
-            let msg = format!("Using {model}. Use /model to change.");
-            state.push_channel_status_log(&session_key, msg).await;
+    // Persist a complete model/reasoning pair on first use. A channel model
+    // is explicit; otherwise only the selected agent's configured model is used.
+    let session_model = if let Some(ref metadata) = state.services.session_metadata {
+        metadata
+            .get(&session_key)
+            .await
+            .and_then(|entry| entry.model)
+    } else {
+        None
+    };
+    let model_to_assign = if let Some(model) = meta.model.as_ref() {
+        Some(model.clone())
+    } else if session_model.is_none() {
+        match super::super::channel_agent_model(state, &session_key).await {
+            Ok(model) => model,
+            Err(error) => {
+                if let Some(done_tx) = typing_done {
+                    let _ = done_tx.send(());
+                }
+                error!(%error, "channel attachment model resolution failed");
+                if let Some(outbound) = state.services.channel_outbound_arc() {
+                    let error_message = format!("⚠️ {error}");
+                    if let Err(send_error) = outbound
+                        .send_text(
+                            &reply_to.account_id,
+                            &reply_to.outbound_to(),
+                            &error_message,
+                            reply_to.message_id.as_deref(),
+                        )
+                        .await
+                    {
+                        warn!("failed to send error back to channel: {send_error}");
+                    }
+                }
+                return;
+            },
         }
     } else {
-        let session_has_model = if let Some(ref sm) = state.services.session_metadata {
-            sm.get(&session_key).await.and_then(|e| e.model).is_some()
-        } else {
-            false
-        };
-        if !session_has_model
-            && let Ok(models_val) = state.services.model.list().await
-            && let Some(models) = models_val.as_array()
-            && let Some(first) = models.first()
-            && let Some(id) = first.get("id").and_then(|v| v.as_str())
-        {
-            params["model"] = serde_json::json!(id);
-            let _ = state
-                .services
-                .session
-                .patch(serde_json::json!({
-                    "key": &session_key,
-                    "model": id,
-                }))
-                .await;
+        None
+    };
 
-            let msg = format!("Using {id}. Use /model to change.");
-            state.push_channel_status_log(&session_key, msg).await;
+    if let Some(model) = model_to_assign {
+        params["model"] = serde_json::json!(&model);
+        if session_model.is_none() {
+            match super::super::patch_channel_session_model(state, &session_key, &model).await {
+                Ok(patch) => {
+                    if let Some(reasoning_effort) = patch.get("reasoningEffort") {
+                        params["reasoningEffort"] = reasoning_effort.clone();
+                    }
+                    let message = format!("Using {model}. Use /model to change.");
+                    state.push_channel_status_log(&session_key, message).await;
+                },
+                Err(error) => {
+                    if let Some(done_tx) = typing_done {
+                        let _ = done_tx.send(());
+                    }
+                    error!(%error, "channel attachment model patch failed");
+                    if let Some(outbound) = state.services.channel_outbound_arc() {
+                        let error_message = format!("⚠️ {error}");
+                        if let Err(send_error) = outbound
+                            .send_text(
+                                &reply_to.account_id,
+                                &reply_to.outbound_to(),
+                                &error_message,
+                                reply_to.message_id.as_deref(),
+                            )
+                            .await
+                        {
+                            warn!("failed to send error back to channel: {send_error}");
+                        }
+                    }
+                    return;
+                },
+            }
         }
     }
 

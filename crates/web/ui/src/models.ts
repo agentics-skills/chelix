@@ -5,15 +5,123 @@ import { t } from "./i18n";
 import { showModelNotice } from "./pages/ChatPage";
 import * as S from "./state";
 import { modelStore } from "./stores/model-store";
+import { sessionStore } from "./stores/session-store";
 import type { ModelInfo } from "./types/model";
+import type { RpcResponse } from "./types/rpc";
+import type { SessionModelSelection, SessionPatchPayload } from "./types/session";
+import { showToast } from "./ui";
 
-function setSessionModel(sessionKey: string, modelId: string, reasoningEffort?: string): void {
-	const params: Record<string, string> = { key: sessionKey, model: modelId };
-	if (reasoningEffort !== undefined) params.reasoningEffort = reasoningEffort;
-	sendRpc("sessions.patch", params);
+function isSessionPatchPayload(payload: unknown, sessionKey: string): payload is SessionPatchPayload {
+	if (!payload || typeof payload !== "object") return false;
+	const value = payload as Partial<SessionPatchPayload>;
+	return (
+		value.key === sessionKey &&
+		typeof value.model === "string" &&
+		(value.reasoningEffort === null || typeof value.reasoningEffort === "string") &&
+		Number.isInteger(value.version) &&
+		(value.version as number) >= 0
+	);
 }
 
-export { setSessionModel };
+function applyConfirmedSessionModel(payload: SessionPatchPayload): void {
+	const session = sessionStore.getByKey(payload.key);
+	if (session) {
+		if (payload.version < session.version) {
+			restoreConfirmedSessionModel(payload.key);
+			return;
+		}
+		session.model = payload.model;
+		session.reasoningEffort = payload.reasoningEffort;
+		session.version = payload.version;
+		session.dataVersion.value++;
+	}
+	if (sessionStore.activeSessionKey.value !== payload.key) return;
+	modelStore.select(payload.model);
+	modelStore.setReasoningEffort(payload.reasoningEffort);
+	localStorage.setItem("chelix-model", payload.model);
+	const model = modelStore.getById(payload.model);
+	if (model) updateModelComboLabel(model);
+}
+
+export function requireSessionModelState(sessionKey: string): boolean {
+	if (sessionStore.getByKey(sessionKey)) return true;
+	showToast(t("chat:sessionStateUnavailable"), "error");
+	return false;
+}
+
+function restoreConfirmedSessionModel(sessionKey: string): void {
+	const session = sessionStore.getByKey(sessionKey);
+	if (!(session && sessionStore.activeSessionKey.value === sessionKey)) return;
+	modelStore.select(session.model);
+	modelStore.setReasoningEffort(session.reasoningEffort);
+	if (session.model) {
+		localStorage.setItem("chelix-model", session.model);
+	} else {
+		localStorage.removeItem("chelix-model");
+	}
+	const model = modelStore.getById(session.model);
+	if (model) {
+		updateModelComboLabel(model);
+	} else if (S.modelComboLabel) {
+		S.modelComboLabel.textContent = session.model;
+		S.modelComboLabel.title = session.model;
+	}
+}
+
+export async function setSessionModel(
+	sessionKey: string,
+	selection: SessionModelSelection,
+): Promise<RpcResponse<SessionPatchPayload>> {
+	if (!requireSessionModelState(sessionKey)) {
+		return {
+			ok: false,
+			error: { code: "UNAVAILABLE", message: t("chat:sessionStateUnavailable") },
+		};
+	}
+	try {
+		const response = await sendRpc("sessions.patch", { key: sessionKey, ...selection });
+		if (!response.ok) {
+			restoreConfirmedSessionModel(sessionKey);
+			showToast(response.error?.message || "Failed to update session model", "error");
+			return response;
+		}
+		if (!isSessionPatchPayload(response.payload, sessionKey)) {
+			restoreConfirmedSessionModel(sessionKey);
+			const invalidResponse: RpcResponse<SessionPatchPayload> = {
+				ok: false,
+				error: {
+					code: "INVALID_RESPONSE",
+					message: "Session model update returned invalid state",
+				},
+			};
+			showToast(invalidResponse.error?.message || "Failed to update session model", "error");
+			return invalidResponse;
+		}
+		applyConfirmedSessionModel(response.payload);
+		return response;
+	} catch (error) {
+		restoreConfirmedSessionModel(sessionKey);
+		const message = error instanceof Error ? error.message : "Failed to update session model";
+		showToast(message, "error");
+		return { ok: false, error: { code: "UNAVAILABLE", message } };
+	}
+}
+
+function modelSelection(model: ModelInfo): SessionModelSelection | null {
+	if (model.reasoning_supported_efforts.length === 0) {
+		return { model: model.id, reasoningEffort: null };
+	}
+	const reasoningEffort = modelStore.reasoningEffort.value;
+	if (reasoningEffort === null || !model.reasoning_supported_efforts.includes(reasoningEffort)) {
+		return null;
+	}
+	return { model: model.id, reasoningEffort };
+}
+
+export function selectedModelSelection(): SessionModelSelection | null {
+	const model = modelStore.selectedModel.value;
+	return model ? modelSelection(model) : null;
+}
 
 export interface ModelLabelInfo {
 	id: string;
@@ -49,14 +157,12 @@ export function fetchModels(): Promise<void> {
 }
 
 export function selectModel(m: ModelInfo): void {
+	if (!requireSessionModelState(S.activeSessionKey)) return;
+	const selection = modelSelection(m);
 	modelStore.select(m.id);
+	modelStore.setReasoningEffort(selection?.reasoningEffort ?? null);
 	updateModelComboLabel(m);
-	localStorage.setItem("chelix-model", m.id);
-	setSessionModel(
-		S.activeSessionKey,
-		m.id,
-		m.reasoning_supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "",
-	);
+	if (selection) void setSessionModel(S.activeSessionKey, selection);
 	closeModelDropdown();
 	// Show notice if model doesn't support tools
 	showModelNotice(m);

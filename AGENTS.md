@@ -227,6 +227,10 @@ or retry-count workarounds to hide flakiness.
 
 ## Code Quality
 
+Narrowing stated broad paths to a specific scope is forbidden.
+
+Running verification without applying autoformatting is forbidden. Reproduce the stated commands byte for byte.
+
 It is forbidden to create tests that test things that do not exist.
 
 Create only focused, non-duplicative tests that are necessary for verification and long-term maintenance, keep each test within the responsibility boundaries of the unit under test without exercising unrelated functionality, and never add throwaway tests solely to validate a theory.

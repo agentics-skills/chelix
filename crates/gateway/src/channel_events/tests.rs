@@ -255,6 +255,35 @@ fn format_pending_approvals_renders_numbered_commands() {
 }
 
 #[test]
+fn channel_model_metadata_preserves_explicit_reasoning_without_selecting_a_default() {
+    let reasoning_model = serde_json::json!({
+        "reasoning_supported_efforts": ["low", "high"],
+    });
+
+    assert_eq!(
+        reasoning_effort_for_model_metadata(&reasoning_model, Some("high".to_string())).unwrap(),
+        Some("high".to_string())
+    );
+    assert_eq!(
+        reasoning_effort_for_model_metadata(&reasoning_model, None).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn channel_model_metadata_uses_typed_not_applicable_for_non_reasoning() {
+    let non_reasoning_model = serde_json::json!({
+        "reasoning_supported_efforts": [],
+    });
+
+    assert_eq!(
+        reasoning_effort_for_model_metadata(&non_reasoning_model, Some("high".to_string()))
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
 fn channel_session_defaults_use_sender_override_for_group_commands() {
     let config = serde_json::json!({
         "model": "default-model",

@@ -572,6 +572,32 @@ impl ModelService for LiveModelService {
         Ok(serde_json::json!(models))
     }
 
+    async fn resolve_model_reasoning(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&chelix_common::ReasoningEffort>,
+    ) -> Result<chelix_common::ReasoningState, ServiceError> {
+        let models = self.list().await?;
+        let models = models
+            .as_array()
+            .ok_or_else(|| ServiceError::message("models.list returned an invalid response"))?;
+        if !models
+            .iter()
+            .any(|entry| entry.get("id").and_then(Value::as_str) == Some(model))
+        {
+            return Err(ServiceError::message(format!(
+                "model '{model}' not found in chat model registry"
+            )));
+        }
+
+        self.providers
+            .read()
+            .await
+            .resolve_model_reasoning(Some(model), reasoning_effort)
+            .map(|resolved| resolved.model_reasoning().reasoning().clone())
+            .map_err(ServiceError::message)
+    }
+
     async fn disable(&self, params: Value) -> ServiceResult {
         let model_id = params
             .get("modelId")

@@ -31,7 +31,7 @@ use {
 
 #[allow(unused_imports)]
 use crate::{
-    services::{ServiceError, ServiceResult, SessionService, TtsService},
+    services::{ModelService, ServiceError, ServiceResult, SessionService, TtsService},
     session_types::{PatchParams, TruncateTailParams, VoiceGenerateParams, parse_params},
     share_store::{
         ShareSnapshot, ShareStore, ShareVisibility, SharedImageAsset, SharedImageSet,
@@ -118,6 +118,7 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "key": &entry.key,
         "label": &entry.label,
         "model": &entry.model,
+        "reasoningEffort": &entry.reasoning_effort,
         "createdAt": entry.created_at,
         "updatedAt": entry.updated_at,
         "messageCount": entry.message_count,

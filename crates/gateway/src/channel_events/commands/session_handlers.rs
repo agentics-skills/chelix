@@ -20,6 +20,17 @@ use super::super::{
 
 // ── Session management command handlers ──────────────────────────
 
+fn require_channel_model_id(model_id: Option<String>) -> ChannelResult<String> {
+    let model_id = model_id
+        .ok_or_else(|| ChannelError::invalid_input("channel session model is not configured"))?;
+    if model_id.trim().is_empty() {
+        return Err(ChannelError::invalid_input(
+            "channel session model is not configured",
+        ));
+    }
+    Ok(model_id)
+}
+
 pub(in crate::channel_events) async fn handle_new(
     state: &Arc<GatewayState>,
     session_metadata: &SqliteSessionMetadata,
@@ -27,6 +38,22 @@ pub(in crate::channel_events) async fn handle_new(
     reply_to: &ChannelReplyTarget,
     sender_id: Option<&str>,
 ) -> ChannelResult<String> {
+    let old_entry = session_metadata.get(session_key).await;
+    let channel_defaults = resolve_channel_session_defaults(state, reply_to, sender_id).await;
+    let inherited_agent = old_entry
+        .as_ref()
+        .and_then(|entry| entry.agent_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let requested_agent = inherited_agent
+        .as_deref()
+        .or(channel_defaults.agent_id.as_deref());
+    let target_agent = resolve_channel_agent_id(state, session_key, requested_agent).await?;
+    let (agent_model, _) =
+        crate::session_reasoning::agent_defaults_for_agent(state, Some(&target_agent)).await;
+    let model_id = require_channel_model_id(channel_defaults.model.or(agent_model))?;
+
     // Create a new session with a fresh UUID key.
     let new_key = format!("session:{}", uuid::Uuid::new_v4());
     let binding_json = serde_json::to_string(reply_to)
@@ -53,13 +80,39 @@ pub(in crate::channel_events) async fn handle_new(
     session_metadata
         .set_channel_binding(&new_key, Some(binding_json.clone()))
         .await;
+    session_metadata
+        .set_agent_id(&new_key, Some(&target_agent))
+        .await
+        .map_err(|e| ChannelError::external("setting session agent", e))?;
+
+    // Validate and persist the complete pair before making the new session active.
+    if let Err(patch_error) =
+        super::super::patch_channel_session_model(state, &new_key, &model_id).await
+    {
+        let cleanup = state
+            .services
+            .session
+            .delete(serde_json::json!({ "key": &new_key, "force": true }))
+            .await;
+        if let Err(cleanup_error) = cleanup {
+            tracing::error!(
+                session = %new_key,
+                error = %patch_error,
+                cleanup_error = %cleanup_error,
+                "channel /new model validation and rollback failed"
+            );
+            return Err(ChannelError::unavailable(format!(
+                "model validation failed: {patch_error}; session rollback failed: {cleanup_error}"
+            )));
+        }
+        tracing::error!(session = %new_key, error = %patch_error, "channel /new model validation failed");
+        return Err(patch_error);
+    }
 
     // Ensure the old session also has a channel binding (for listing).
-    let old_entry = session_metadata.get(session_key).await;
-    let channel_defaults = resolve_channel_session_defaults(state, reply_to, sender_id).await;
     if old_entry
         .as_ref()
-        .and_then(|e| e.channel_binding.as_ref())
+        .and_then(|entry| entry.channel_binding.as_ref())
         .is_none()
     {
         session_metadata
@@ -67,22 +120,7 @@ pub(in crate::channel_events) async fn handle_new(
             .await;
     }
 
-    let inherited_agent = old_entry
-        .as_ref()
-        .and_then(|entry| entry.agent_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    let requested_agent = inherited_agent
-        .as_deref()
-        .or(channel_defaults.agent_id.as_deref());
-    let target_agent = resolve_channel_agent_id(state, session_key, requested_agent).await?;
-    session_metadata
-        .set_agent_id(&new_key, Some(&target_agent))
-        .await
-        .map_err(|e| ChannelError::external("setting session agent", e))?;
-
-    // Update forward mapping.
+    // Update the forward mapping only after the new session is valid.
     session_metadata
         .set_active_session(
             reply_to.channel_type.as_str(),
@@ -99,42 +137,12 @@ pub(in crate::channel_events) async fn handle_new(
         "channel /new: created new session"
     );
 
-    // Export the old session before the user moves on.
-    // NOTE: The active-session pointer has already been updated above, so the
-    // hook reads history by session_key directly rather than via the active
-    // mapping.  If export fails it is logged and swallowed — the old session's
-    // data remains in the store and can be exported manually.
+    // Export the old session after the active pointer has changed. The hook
+    // reads history by session_key directly; export failures remain logged by
+    // the hook path and the old session remains available for manual export.
     let hooks = state.inner.read().await.hook_registry.clone();
     if let Some(ref hooks) = hooks {
         crate::session::dispatch_command_hook(hooks, session_key, "new", sender_id).await;
-    }
-
-    // Assign a model to the new session: prefer the channel's
-    // configured model, fall back to the first registered model.
-    let models_val = state.services.model.list().await.ok();
-    let models = models_val.as_ref().and_then(|v| v.as_array());
-
-    let (model_id, model_display): (Option<String>, String) =
-        if let Some(ref cm) = channel_defaults.model {
-            (Some(cm.clone()), cm.clone())
-        } else if let Some(ms) = models
-            && let Some(first) = ms.first()
-            && let Some(id) = first.get("id").and_then(|v| v.as_str())
-        {
-            (Some(id.to_string()), id.to_string())
-        } else {
-            (None, String::new())
-        };
-
-    if let Some(ref mid) = model_id {
-        let _ = state
-            .services
-            .session
-            .patch(serde_json::json!({
-                "key": &new_key,
-                "model": mid,
-            }))
-            .await;
     }
 
     // Notify web UI so the session list refreshes.
@@ -152,13 +160,9 @@ pub(in crate::channel_events) async fn handle_new(
     )
     .await;
 
-    if model_display.is_empty() {
-        Ok("New session started.".to_string())
-    } else {
-        Ok(format!(
-            "New session started. Using *{model_display}*. Use /model to change."
-        ))
-    }
+    Ok(format!(
+        "New session started. Using *{model_id}*. Use /model to change."
+    ))
 }
 
 pub(in crate::channel_events) async fn handle_title(
@@ -464,4 +468,21 @@ pub(in crate::channel_events) async fn handle_attach(
     .await;
 
     Ok(format!("Attached here: {label}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_channel_model_id;
+
+    #[test]
+    fn channel_new_requires_an_explicit_model_id() {
+        assert_eq!(
+            require_channel_model_id(Some("provider::model".to_string()))
+                .ok()
+                .as_deref(),
+            Some("provider::model")
+        );
+        assert!(require_channel_model_id(None).is_err());
+        assert!(require_channel_model_id(Some("   ".to_string())).is_err());
+    }
 }

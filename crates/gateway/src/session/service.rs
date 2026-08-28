@@ -49,6 +49,7 @@ pub struct LiveSessionService {
     pub(super) store: Arc<SessionStore>,
     pub(super) metadata: Arc<SqliteSessionMetadata>,
     pub(super) agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+    pub(super) model_service: Arc<dyn ModelService>,
     pub(super) voice_persona_store: Option<Arc<crate::voice_persona::VoicePersonaStore>>,
     pub(super) tts_service: Option<Arc<dyn TtsService>>,
     pub(super) share_store: Option<Arc<ShareStore>>,
@@ -67,11 +68,13 @@ impl LiveSessionService {
         metadata: Arc<SqliteSessionMetadata>,
         sandbox_router: Arc<SandboxRouter>,
         agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+        model_service: Arc<dyn ModelService>,
     ) -> Self {
         Self {
             store,
             metadata,
             agents_config,
+            model_service,
             voice_persona_store: None,
             tts_service: None,
             share_store: None,
@@ -91,8 +94,15 @@ impl LiveSessionService {
         metadata: Arc<SqliteSessionMetadata>,
         sandbox_router: Arc<SandboxRouter>,
         agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+        model_service: Arc<dyn ModelService>,
     ) -> Self {
-        Self::from_router(store, metadata, sandbox_router, agents_config)
+        Self::from_router(
+            store,
+            metadata,
+            sandbox_router,
+            agents_config,
+            model_service,
+        )
     }
 
     #[cfg(test)]
@@ -112,6 +122,7 @@ impl LiveSessionService {
             metadata,
             Arc::new(SandboxRouter::disabled()),
             Arc::new(tokio::sync::RwLock::new(agents)),
+            Arc::new(crate::services::NoopModelService),
         )
     }
 
@@ -120,6 +131,12 @@ impl LiveSessionService {
         agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     ) -> Self {
         self.agents_config = agents_config;
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_model_service(mut self, model_service: Arc<dyn ModelService>) -> Self {
+        self.model_service = model_service;
         self
     }
 
@@ -558,16 +575,43 @@ impl SessionService for LiveSessionService {
                 "session '{key}' is a sub-agent session and cannot be reparented"
             )));
         }
+
+        let resolved_model = if p.model.is_some() || p.reasoning_effort.is_some() {
+            if p.model.is_some() && p.reasoning_effort.is_none() {
+                return Err(ServiceError::message(
+                    "model and reasoningEffort must be provided together",
+                ));
+            }
+            let model = match p.model.as_ref() {
+                Some(model) => model.as_deref(),
+                None => entry.model.as_deref(),
+            }
+            .ok_or_else(|| ServiceError::message("model is required"))?
+            .to_string();
+            let reasoning_effort = p.reasoning_effort.as_ref().and_then(Option::as_ref);
+            let reasoning = self
+                .model_service
+                .resolve_model_reasoning(&model, reasoning_effort)
+                .await?;
+            Some((model, reasoning))
+        } else {
+            None
+        };
+
+        if let Some(Some(parent_key)) = p.parent_session_key.as_ref()
+            && !parent_key.is_empty()
+        {
+            self.validate_parent_assignment(key, parent_key).await?;
+        }
+
         if p.label.is_some() {
             let _ = self.metadata.upsert(key, p.label).await;
         }
-        if p.model.is_some() {
-            self.metadata.set_model(key, p.model).await;
-        }
-        if p.reasoning_effort.is_some() {
+        if let Some((model, reasoning)) = resolved_model {
             self.metadata
-                .set_reasoning_effort(key, p.reasoning_effort)
-                .await;
+                .set_model_reasoning(key, &model, &reasoning)
+                .await
+                .map_err(ServiceError::message)?;
         }
         if let Some(archived) = p.archived {
             self.metadata.set_archived(key, archived).await;
@@ -587,9 +631,6 @@ impl SessionService for LiveSessionService {
         }
         if let Some(parent_opt) = p.parent_session_key {
             let parent = parent_opt.filter(|s| !s.is_empty());
-            if let Some(ref parent_key) = parent {
-                self.validate_parent_assignment(key, parent_key).await?;
-            }
             // Changing the parent invalidates any fork point recorded for the
             // previous relationship.
             self.metadata.set_parent(key, parent, None).await;

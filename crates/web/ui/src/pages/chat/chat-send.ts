@@ -13,7 +13,7 @@ import {
 	uploadDocumentAttachment,
 } from "../../media-drop";
 import { appendUserMessageActions } from "../../message-actions";
-import { setSessionModel } from "../../models";
+import { selectedModelSelection, setSessionModel } from "../../models";
 import {
 	bumpSessionCount,
 	cacheOutgoingUserMessage,
@@ -40,7 +40,7 @@ export interface ChatSendParams {
 	_document_files?: UploadedDocumentFile[];
 	_seq: number;
 	model?: string;
-	reasoningEffort?: string;
+	reasoningEffort?: string | null;
 }
 
 export type ChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -151,13 +151,20 @@ export function resetComposerAfterSend(): void {
 	if (window.innerWidth < 768) S.chatInput?.blur();
 }
 
-export function applySelectedModelToChatParams(chatParams: ChatSendParams): void {
-	const modelId = modelStore.selectedModelId.value;
-	if (!modelId) return;
-	const reasoningEffort = modelStore.supportsReasoning.value ? modelStore.reasoningEffort.value : "";
-	chatParams.model = modelId;
-	chatParams.reasoningEffort = reasoningEffort;
-	setSessionModel(S.activeSessionKey, modelId, reasoningEffort);
+export async function applySelectedModelToChatParams(chatParams: ChatSendParams): Promise<boolean> {
+	const selection = selectedModelSelection();
+	if (!selection) {
+		if (!modelStore.selectedModel.value) {
+			chatAddMsg("error", "Select a model before sending a message");
+			return false;
+		}
+		chatAddMsg("error", "Select one of the model's supported reasoning efforts");
+		return false;
+	}
+	chatParams.model = selection.model;
+	chatParams.reasoningEffort = selection.reasoningEffort;
+	const response = await setSessionModel(S.activeSessionKey, selection);
+	return response.ok;
 }
 
 export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
@@ -366,15 +373,18 @@ async function sendChatAsync(): Promise<void> {
 	try {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
 		const previousChatSeq = S.chatSeq;
-		S.setChatSeq(previousChatSeq + 1);
-		const msg = await buildChatMessage(text, S.chatSeq);
-		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
+		const modelParams: ChatSendParams = { _seq: previousChatSeq + 1 };
+		if (!(await applySelectedModelToChatParams(modelParams))) return;
+		const msg = await buildChatMessage(text, modelParams._seq);
+		S.setChatSeq(modelParams._seq);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
 		const chatParams = msg.params;
+		chatParams.model = modelParams.model;
+		chatParams.reasoningEffort = modelParams.reasoningEffort;
 		const userEl = msg.el;
 		if (userEl) highlightCodeBlocks(userEl);
-		applySelectedModelToChatParams(chatParams);
+		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
 		bumpSessionCount(S.activeSessionKey, 1);
 		cacheOutgoingUserMessage(S.activeSessionKey, chatParams);
 		seedSessionPreviewFromUserText(S.activeSessionKey, text);

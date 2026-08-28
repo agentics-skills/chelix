@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use {async_trait::async_trait, serde_json::Value, tracing::warn};
 
+pub use chelix_common::{ReasoningEffort, ReasoningState};
+
 use crate::{ServiceError, ServiceResult};
 
 #[async_trait]
@@ -860,6 +862,11 @@ impl UpdateService for NoopUpdateService {
 pub trait ModelService: Send + Sync {
     async fn list(&self) -> ServiceResult;
     async fn list_all(&self) -> ServiceResult;
+    async fn resolve_model_reasoning(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&ReasoningEffort>,
+    ) -> Result<ReasoningState, ServiceError>;
     async fn disable(&self, params: Value) -> ServiceResult;
     async fn enable(&self, params: Value) -> ServiceResult;
     async fn detect_supported(&self, params: Value) -> ServiceResult;
@@ -885,6 +892,16 @@ impl ModelService for NoopModelService {
 
     async fn list_all(&self) -> ServiceResult {
         Ok(serde_json::json!([]))
+    }
+
+    async fn resolve_model_reasoning(
+        &self,
+        _model: &str,
+        _reasoning_effort: Option<&ReasoningEffort>,
+    ) -> Result<ReasoningState, ServiceError> {
+        Err(model_service_not_configured_error(
+            "models.resolve_model_reasoning",
+        ))
     }
 
     async fn disable(&self, _params: Value) -> ServiceResult {

@@ -14,7 +14,7 @@ interface NormalizedSessionMeta {
 	key: string;
 	label: string;
 	model: string;
-	reasoningEffort: string;
+	reasoningEffort: string | null;
 	provider: string;
 	projectId: string;
 	messageCount: number;
@@ -51,12 +51,16 @@ function firstNonEmptyString(values: Array<string | null | undefined>): string |
 	return values.find(Boolean) || null;
 }
 
-function normalizeSessionMeta(serverData: SessionMeta, reasoningEffortFallback = ""): NormalizedSessionMeta {
+function normalizeSessionMeta(
+	serverData: SessionMeta,
+	currentReasoningEffort: string | null = null,
+): NormalizedSessionMeta {
 	return {
 		key: serverData.key,
 		label: stringValue(serverData.label),
 		model: stringValue(serverData.model),
-		reasoningEffort: serverData.reasoningEffort ?? reasoningEffortFallback,
+		reasoningEffort:
+			serverData.reasoningEffort === undefined ? currentReasoningEffort : serverData.reasoningEffort,
 		provider: stringValue(serverData.provider),
 		projectId: stringValue(serverData.projectId),
 		messageCount: numberValue(serverData.messageCount),
@@ -91,7 +95,7 @@ export class Session {
 	key: string;
 	label: string;
 	model: string;
-	reasoningEffort: string;
+	reasoningEffort: string | null;
 	provider: string;
 	projectId: string;
 	messageCount: number;
@@ -321,9 +325,26 @@ function mergeSessionData(existing: Map<string, Session>, data: SessionMeta): Se
 	return session;
 }
 
-export function setAll(serverSessions: SessionMeta[]): void {
+function mergeSessions(serverSessions: SessionMeta[]): Session[] {
 	const existing = new Map(sessions.value.map((session) => [session.key, session]));
-	sessions.value = serverSessions.map((data) => mergeSessionData(existing, data));
+	return serverSessions.map((data) => mergeSessionData(existing, data));
+}
+
+export function setAll(serverSessions: SessionMeta[]): void {
+	sessions.value = mergeSessions(serverSessions);
+}
+
+/**
+ * Replace listed sessions while retaining an existing active session omitted by pagination.
+ */
+export function setListed(serverSessions: SessionMeta[]): void {
+	const currentActiveSession = activeSession.value;
+	const listedSessions = mergeSessions(serverSessions);
+	if (currentActiveSession && !listedSessions.some((session) => session.key === currentActiveSession.key)) {
+		sessions.value = insertSessionInOrder(listedSessions, currentActiveSession);
+		return;
+	}
+	sessions.value = listedSessions;
 }
 
 /**
@@ -411,6 +432,7 @@ export const sessionStore = {
 	showArchivedSessions,
 	Session,
 	setAll,
+	setListed,
 	upsert,
 	remove,
 	fetch,

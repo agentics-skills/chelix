@@ -6,15 +6,18 @@
 
 use serde::Deserialize;
 
-use {crate::services::ServiceError, chelix_sessions::store::UserMessageTarget};
+use {
+    crate::services::ServiceError, chelix_common::ReasoningEffort,
+    chelix_sessions::store::UserMessageTarget,
+};
 
-/// Params for `session.patch`.
+/// Params for `sessions.patch`.
 ///
 /// All fields except `key` are optional — only provided fields are updated.
 ///
-/// Fields that can be cleared (set to null) use `Option<Option<String>>`:
+/// Fields with meaningful `null` values use `Option<Option<T>>`:
 /// - outer `None` → field was absent from the request (no-op)
-/// - `Some(None)` → field was explicitly `null` (clear it)
+/// - `Some(None)` → field was explicitly `null`
 /// - `Some(Some(v))` → field was set to value `v`
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -22,23 +25,19 @@ pub struct PatchParams {
     pub key: String,
     #[serde(default)]
     pub label: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default, alias = "reasoning_effort")]
-    pub reasoning_effort: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub model: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub reasoning_effort: Option<Option<ReasoningEffort>>,
     #[serde(default)]
     pub archived: Option<bool>,
-    #[serde(default, deserialize_with = "double_option", alias = "project_id")]
+    #[serde(default, deserialize_with = "double_option")]
     pub project_id: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option", alias = "worktree_branch")]
+    #[serde(default, deserialize_with = "double_option")]
     pub worktree_branch: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option", alias = "mcp_disabled")]
+    #[serde(default, deserialize_with = "double_option")]
     pub mcp_disabled: Option<Option<bool>>,
-    #[serde(
-        default,
-        deserialize_with = "double_option",
-        alias = "parent_session_key"
-    )]
+    #[serde(default, deserialize_with = "double_option")]
     pub parent_session_key: Option<Option<String>>,
 }
 
@@ -110,80 +109,46 @@ mod tests {
     use {super::*, serde_json::json};
 
     #[test]
-    fn patch_params_minimal() {
-        let p: PatchParams = serde_json::from_value(json!({"key": "main"})).unwrap();
-        assert_eq!(p.key, "main");
-        assert!(p.label.is_none());
-        assert!(p.model.is_none());
-        assert!(p.reasoning_effort.is_none());
-        assert!(p.archived.is_none());
-        assert!(p.project_id.is_none());
-    }
-
-    #[test]
-    fn patch_params_with_fields() {
+    fn patch_params_accepts_canonical_payload() {
         let p: PatchParams = serde_json::from_value(json!({
             "key": "main",
             "label": "My Chat",
-            "model": "gpt-4o",
+            "model": "openai::gpt-5.2",
             "reasoningEffort": "high",
             "archived": true,
-            "mcpDisabled": false,
-        }))
-        .unwrap();
-        assert_eq!(p.label.as_deref(), Some("My Chat"));
-        assert_eq!(p.model.as_deref(), Some("gpt-4o"));
-        assert_eq!(p.reasoning_effort.as_deref(), Some("high"));
-        assert_eq!(p.archived, Some(true));
-        assert_eq!(p.mcp_disabled, Some(Some(false)));
-    }
-
-    #[test]
-    fn patch_params_rejects_removed_sandbox_fields() {
-        for field in ["sandboxEnabled", "sandboxImage", "sandboxBackend"] {
-            let result: Result<PatchParams, _> = serde_json::from_value(json!({
-                "key": "main",
-                field: true,
-            }));
-            assert!(result.is_err(), "removed field {field} must be rejected");
-        }
-    }
-
-    #[test]
-    fn patch_params_accepts_legacy_snake_case_fields() {
-        let p: PatchParams = serde_json::from_value(json!({
-            "key": "main",
-            "reasoning_effort": "medium",
-            "project_id": "proj-1",
-            "worktree_branch": "feature/abc",
-            "mcp_disabled": true,
-        }))
-        .unwrap();
-        assert_eq!(p.reasoning_effort.as_deref(), Some("medium"));
-        assert_eq!(p.project_id, Some(Some("proj-1".to_string())));
-        assert_eq!(p.worktree_branch, Some(Some("feature/abc".to_string())));
-        assert_eq!(p.mcp_disabled, Some(Some(true)));
-    }
-
-    #[test]
-    fn patch_params_null_project_id() {
-        let p: PatchParams = serde_json::from_value(json!({
-            "key": "main",
             "projectId": null,
+            "worktreeBranch": "feature/abc",
+            "mcpDisabled": false,
+            "parentSessionKey": null,
         }))
         .unwrap();
-        // Outer Some = field was present; inner None = value was null (clear).
+        assert_eq!(p.key, "main");
+        assert_eq!(p.label.as_deref(), Some("My Chat"));
+        assert_eq!(
+            p.model.as_ref().and_then(Option::as_deref),
+            Some("openai::gpt-5.2")
+        );
+        assert_eq!(
+            p.reasoning_effort
+                .as_ref()
+                .and_then(Option::as_ref)
+                .map(ReasoningEffort::as_str),
+            Some("high"),
+        );
+        assert_eq!(p.archived, Some(true));
         assert!(matches!(p.project_id, Some(None)));
+        assert_eq!(p.worktree_branch, Some(Some("feature/abc".to_string())));
+        assert_eq!(p.mcp_disabled, Some(Some(false)));
+        assert!(matches!(p.parent_session_key, Some(None)));
     }
 
     #[test]
-    fn patch_params_set_project_id() {
-        let p: PatchParams = serde_json::from_value(json!({
+    fn patch_params_rejects_additional_field() {
+        let result: Result<PatchParams, _> = serde_json::from_value(json!({
             "key": "main",
-            "projectId": "proj-1",
-        }))
-        .unwrap();
-        assert_eq!(p.project_id, Some(Some("proj-1".to_string())));
+            "additionalField": true,
+        }));
+        assert!(result.is_err());
     }
 
     #[test]

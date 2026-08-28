@@ -13,7 +13,7 @@ import type {
 	ChatPromptQueuePayload,
 } from "./chat";
 import type { ModelInfo, ProviderInfo } from "./model";
-import type { SessionMeta, SetSessionAgentPayload } from "./session";
+import type { SessionMeta, SessionPatchPayload, SetSessionAgentPayload } from "./session";
 
 /** Maps every RPC method to its response payload type. */
 export interface RpcMethodMap {
@@ -127,7 +127,7 @@ export interface RpcMethodMap {
 	// ── Sessions ────────────────────────────────────────────────
 	"sessions.clear_all": unknown;
 	"sessions.delete": unknown;
-	"sessions.patch": { result?: Record<string, unknown> };
+	"sessions.patch": SessionPatchPayload;
 	"sessions.search": SessionMeta[];
 	"sessions.switch": unknown;
 	"sessions.voice.generate": { audio?: string; ttsProvider?: string };

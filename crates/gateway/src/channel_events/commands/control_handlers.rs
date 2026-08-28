@@ -296,15 +296,8 @@ pub(in crate::channel_events) async fn handle_model(
             .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::invalid_input("model has no id"))?;
-        let patch_res = state
-            .services
-            .session
-            .patch(serde_json::json!({
-                "key": session_key,
-                "model": model_id,
-            }))
-            .await
-            .map_err(ChannelError::unavailable)?;
+        let patch_res =
+            super::super::patch_channel_session_model(state, session_key, model_id).await?;
         let version = patch_res
             .get("version")
             .and_then(|v| v.as_u64())

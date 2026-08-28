@@ -187,6 +187,88 @@ fn config_string(value: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn reasoning_effort_for_model_metadata(
+    model: &serde_json::Value,
+    configured_effort: Option<String>,
+) -> ChannelResult<Option<String>> {
+    let supported_efforts = model
+        .get("reasoning_supported_efforts")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            ChannelError::unavailable("model metadata missing reasoning_supported_efforts")
+        })?;
+    Ok(if supported_efforts.is_empty() {
+        None
+    } else {
+        configured_effort
+    })
+}
+
+async fn channel_agent_model(
+    state: &GatewayState,
+    session_key: &str,
+) -> ChannelResult<Option<String>> {
+    let metadata = state
+        .services
+        .session_metadata
+        .as_ref()
+        .ok_or_else(|| ChannelError::unavailable("session metadata is not available"))?;
+    let entry = metadata
+        .get(session_key)
+        .await
+        .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
+    let (model, _) =
+        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref()).await;
+    Ok(model)
+}
+
+async fn patch_channel_session_model(
+    state: &GatewayState,
+    session_key: &str,
+    model_id: &str,
+) -> ChannelResult<serde_json::Value> {
+    let metadata = state
+        .services
+        .session_metadata
+        .as_ref()
+        .ok_or_else(|| ChannelError::unavailable("session metadata is not available"))?;
+    let entry = metadata
+        .get(session_key)
+        .await
+        .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
+    let (_, agent_reasoning_effort) =
+        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref()).await;
+    let configured_effort = entry.reasoning_effort.or(agent_reasoning_effort);
+
+    let models_value = state
+        .services
+        .model
+        .list()
+        .await
+        .map_err(ChannelError::unavailable)?;
+    let models = models_value
+        .as_array()
+        .ok_or_else(|| ChannelError::unavailable("models.list returned a non-array response"))?;
+    let model = models
+        .iter()
+        .find(|model| model.get("id").and_then(serde_json::Value::as_str) == Some(model_id))
+        .ok_or_else(|| {
+            ChannelError::invalid_input(format!("model '{model_id}' is not available"))
+        })?;
+    let reasoning_effort = reasoning_effort_for_model_metadata(model, configured_effort)?;
+
+    state
+        .services
+        .session
+        .patch(serde_json::json!({
+            "key": session_key,
+            "model": model_id,
+            "reasoningEffort": reasoning_effort,
+        }))
+        .await
+        .map_err(ChannelError::unavailable)
+}
+
 fn override_map<'a>(
     config: &'a serde_json::Value,
     key: &str,

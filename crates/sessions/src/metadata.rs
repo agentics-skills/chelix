@@ -6,7 +6,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde::{Deserialize, Serialize};
+use {
+    chelix_common::ReasoningState,
+    serde::{Deserialize, Serialize},
+};
 
 use crate::Result;
 
@@ -559,6 +562,38 @@ impl SqliteSessionMetadata {
             });
         }
         Ok(entry)
+    }
+
+    /// Persist one validated model/reasoning selection in a single update.
+    pub async fn set_model_reasoning(
+        &self,
+        key: &str,
+        model: &str,
+        reasoning: &ReasoningState,
+    ) -> Result<SessionEntry> {
+        let reasoning_effort = match reasoning {
+            ReasoningState::NotApplicable => None,
+            ReasoningState::Effort(effort) => Some(effort.as_str()),
+        };
+        let now = now_ms() as i64;
+        let result = sqlx::query(
+            "UPDATE sessions SET model = ?, reasoning_effort = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+        )
+        .bind(model)
+        .bind(reasoning_effort)
+        .bind(now)
+        .bind(key)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(sqlx::Error::RowNotFound.into());
+        }
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        self.get(key)
+            .await
+            .ok_or_else(|| sqlx::Error::RowNotFound.into())
     }
 
     pub async fn set_model(&self, key: &str, model: Option<String>) {
