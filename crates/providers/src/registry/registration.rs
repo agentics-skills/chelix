@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use {
-    anyhow::{Result, anyhow, bail},
+    anyhow::{Result, anyhow},
     chelix_agents::model::LlmProvider,
     chelix_common::{ModelMetadata, PartialModelMetadata},
     chelix_config::schema::{ProviderEntry, ProvidersConfig},
@@ -76,10 +76,6 @@ fn resolve_configured_models(
     let mut resolved = HashMap::with_capacity(config.providers.len());
     for (provider_name, entry) in &config.providers {
         let enabled = config.is_enabled(provider_name);
-        if enabled && entry.models.is_empty() {
-            bail!("enabled provider `{provider_name}` has no configured models");
-        }
-
         let models = entry
             .models
             .iter()

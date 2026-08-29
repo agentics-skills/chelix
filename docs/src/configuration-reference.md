@@ -705,9 +705,11 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 Declare each model only as a
 `[providers.<name>.models."<raw-model-id>"]` table. The table name contains the
 provider's raw model ID. The service configuration is the only source of model
-composition and parameters, and every enabled provider must declare at least one
-complete model record. Invalid or incomplete metadata refuses service load; the
-registry does not exclude a problematic model to continue startup.
+composition and parameters. A provider may declare no models regardless of its
+status, and provider credentials can be saved without model records. Every model
+record that is present must be complete. Invalid or incomplete metadata refuses
+service load; the registry does not exclude a problematic model to continue
+startup.
 
 | Key                         | Type                      | Required | Description                                                               |
 | --------------------------- | ------------------------- | -------- | ------------------------------------------------------------------------- |
@@ -719,15 +721,18 @@ registry does not exclude a problematic model to continue startup.
 | `tool_calling`              | bool                      | yes      | Whether native tool calling is supported.                                 |
 | `streaming`                 | bool                      | yes      | Whether streaming is supported.                                           |
 | `zeroDataRetentionEnabled`  | bool                      | yes      | Whether zero-data-retention operation is supported.                       |
-| `reasoning_supported_efforts` | array of string         | yes      | `[]` explicitly marks a non-reasoning model; values are not restricted.   |
-| `reasoning_summary`         | optional enum             | no       | `auto`, `concise`, or `detailed`; forbidden for a non-reasoning model.    |
-| `reasoning_include`         | optional array of enum    | no       | Unique `encrypted_content` values; forbidden for a non-reasoning model.   |
+| `reasoning_supported_efforts` | non-empty array of string | yes    | Provider-defined ordered values; empty strings are invalid.               |
+| `reasoning_summary`         | optional enum             | no       | `auto`, `concise`, or `detailed`.                                         |
+| `reasoning_include`         | optional array of enum    | no       | Unique `encrypted_content` values.                                        |
 
 Modalities are `text`, `image`, `audio`, `video`, and `file`.
 `reasoning_supported_efforts` values are preserved without filtering,
-renaming, replacement, or reordering. The `reasoning_include` configuration
-value `encrypted_content` is sent to the provider as
-`reasoning.encrypted_content`.
+renaming, replacement, or reordering. `off` is not required, so `["low"]` is
+valid. Exact `["off"]` is the only non-reasoning API path; `reasoning_summary`
+and `reasoning_include` are allowed in that configuration and are preserved up
+to the reasoning-policy boundary. The `reasoning_include` configuration value
+`encrypted_content` is sent to the provider as `reasoning.encrypted_content`
+when the policy returns a reasoning request.
 
 ### `providers.<name>.policy`
 

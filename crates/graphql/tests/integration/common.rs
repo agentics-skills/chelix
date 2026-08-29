@@ -609,7 +609,7 @@ impl chelix_service_traits::ModelService for MockModel {
         &self,
         model: &str,
         reasoning_effort: Option<&chelix_service_traits::ReasoningEffort>,
-    ) -> Result<chelix_service_traits::ReasoningState, chelix_service_traits::ServiceError> {
+    ) -> Result<chelix_service_traits::ReasoningEffort, chelix_service_traits::ServiceError> {
         self.0.call(
             "models.resolve_model_reasoning",
             json!({
@@ -617,9 +617,8 @@ impl chelix_service_traits::ModelService for MockModel {
                 "reasoningEffort": reasoning_effort,
             }),
         )?;
-        Ok(match reasoning_effort {
-            Some(effort) => chelix_service_traits::ReasoningState::Effort(effort.clone()),
-            None => chelix_service_traits::ReasoningState::NotApplicable,
+        reasoning_effort.cloned().ok_or_else(|| {
+            chelix_service_traits::ServiceError::message("reasoning effort is required")
         })
     }
 

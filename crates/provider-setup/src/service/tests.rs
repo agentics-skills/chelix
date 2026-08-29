@@ -35,7 +35,7 @@ fn complete_model_metadata() -> PartialModelMetadata {
         tool_calling: Some(true),
         streaming: Some(true),
         zero_data_retention_enabled: Some(true),
-        reasoning_supported_efforts: Some(Vec::new()),
+        reasoning_supported_efforts: Some(vec!["low".into()]),
         reasoning_summary: None,
         reasoning_include: None,
     }
@@ -453,8 +453,17 @@ async fn save_key_rejects_invalid_candidate_before_mutating_state() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let mut svc =
-        live_provider_setup_service(Arc::clone(&registry), ProvidersConfig::default(), None);
+    let mut invalid_metadata = complete_model_metadata();
+    invalid_metadata.reasoning_supported_efforts = Some(Vec::new());
+    let invalid_models: ModelConfigMap = [("invalid".to_string(), invalid_metadata)]
+        .into_iter()
+        .collect();
+    let mut config = ProvidersConfig::default();
+    config.providers.insert("openai".into(), ProviderEntry {
+        models: invalid_models.clone(),
+        ..Default::default()
+    });
+    let mut svc = live_provider_setup_service(Arc::clone(&registry), config, None);
     svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
 
     let error = svc
@@ -463,17 +472,23 @@ async fn save_key_rejects_invalid_candidate_before_mutating_state() {
             "apiKey": "sk-test",
         }))
         .await
-        .expect_err("enabled provider without models should fail")
+        .expect_err("invalid model metadata should fail")
         .to_string();
 
-    assert!(error.contains("enabled provider `openai` has no configured models"));
+    assert!(error.contains("reasoning_supported_efforts"));
+    assert!(error.contains("must not be empty"));
     assert!(
         svc.key_store
             .load_config("openai")
             .expect("load provider credentials")
             .is_none()
     );
-    assert!(svc.config_snapshot().get("openai").is_none());
+    let snapshot = svc.config_snapshot();
+    let openai = snapshot
+        .get("openai")
+        .expect("original provider config should remain");
+    assert!(openai.api_key.is_none());
+    assert_eq!(openai.models, invalid_models);
     assert!(registry.read().await.list_models().is_empty());
 }
 

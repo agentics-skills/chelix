@@ -989,7 +989,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 "#,
         )
         .unwrap();
@@ -1196,7 +1196,7 @@ reasoning_supported_efforts = []
             .set_model_reasoning(
                 KEY,
                 REASONING_MODEL,
-                &chelix_common::ReasoningState::Effort("low".into()),
+                &chelix_common::ReasoningEffort::from("low"),
             )
             .await
             .unwrap();
@@ -1223,15 +1223,15 @@ reasoning_supported_efforts = []
             .patch(serde_json::json!({
                 "key": KEY,
                 "model": PLAIN_MODEL,
-                "reasoningEffort": null,
+                "reasoningEffort": "low",
             }))
             .await
             .unwrap();
         assert_eq!(response["model"], PLAIN_MODEL);
-        assert!(response["reasoningEffort"].is_null());
+        assert_eq!(response["reasoningEffort"], "low");
         let plain_entry = metadata.get(KEY).await.unwrap();
         assert_eq!(plain_entry.model.as_deref(), Some(PLAIN_MODEL));
-        assert!(plain_entry.reasoning_effort.is_none());
+        assert_eq!(plain_entry.reasoning_effort.as_deref(), Some("low"));
         assert_eq!(plain_entry.version, reasoning_entry.version + 1);
     }
 
@@ -1250,7 +1250,7 @@ reasoning_supported_efforts = []
             .set_model_reasoning(
                 KEY,
                 REASONING_MODEL,
-                &chelix_common::ReasoningState::Effort("low".into()),
+                &chelix_common::ReasoningEffort::from("low"),
             )
             .await
             .unwrap();

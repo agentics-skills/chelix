@@ -229,7 +229,7 @@ impl OpenAiProvider {
                 model = %self.model,
                 messages_count = openai_messages.len(),
                 tools_count = tools.len(),
-                reasoning_effort = ?self.reasoning_effort,
+                reasoning_effort = ?self.selected_reasoning_effort(),
                 "openai stream_with_tools request (sse)"
             );
             trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai stream request body (sse)");
@@ -345,14 +345,10 @@ mod tests {
         axum::{
             Json, Router, body::Body, http::header::CONTENT_TYPE, response::Response, routing::post,
         },
-        chelix_agents::model::{ChatMessage, LlmProvider, ReasoningEffort, StreamEvent},
-        chelix_common::{
-            ModelMetadata, ModelModality, ProviderSegmentOutcome, ReasoningInclude,
-            ReasoningSummary,
-        },
+        chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent},
+        chelix_common::ProviderSegmentOutcome,
         futures::StreamExt,
         secrecy::Secret,
-        std::sync::Arc,
     };
 
     use super::OpenAiProvider;
@@ -391,7 +387,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn responses_sse_sends_resolved_reasoning_metadata_and_stateless_flags() {
+    async fn responses_sse_sends_stateless_flags() {
         let (request_tx, mut request_rx) = tokio::sync::mpsc::unbounded_channel();
         let app = Router::new().route(
             "/v1/responses",
@@ -413,29 +409,12 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
 
-        let provider = Arc::new(
-            OpenAiProvider::new(
-                Secret::new("test-key".to_string()),
-                "gpt-5.4".to_string(),
-                format!("http://{addr}"),
-            )
-            .with_wire_api(chelix_config::schema::WireApi::Responses)
-            .with_reasoning_metadata(&ModelMetadata {
-                context_length: 128_000,
-                max_input_tokens: 96_000,
-                max_output_tokens: 32_000,
-                input_modalities: vec![ModelModality::Text],
-                output_modalities: vec![ModelModality::Text],
-                tool_calling: true,
-                streaming: true,
-                zero_data_retention_enabled: false,
-                reasoning_supported_efforts: vec![ReasoningEffort::from("high")],
-                reasoning_summary: Some(ReasoningSummary::Detailed),
-                reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
-            }),
+        let provider = OpenAiProvider::new(
+            Secret::new("test-key".to_string()),
+            "gpt-5.4".to_string(),
+            format!("http://{addr}"),
         )
-        .with_reasoning_effort(ReasoningEffort::from("high"))
-        .unwrap();
+        .with_wire_api(chelix_config::schema::WireApi::Responses);
 
         let events: Vec<_> = provider
             .stream(vec![ChatMessage::user("hello")])
@@ -446,14 +425,6 @@ mod tests {
         assert!(matches!(events.as_slice(), [StreamEvent::Done(_)]));
         assert_eq!(request["stream"], true);
         assert_eq!(request["store"], false);
-        assert_eq!(
-            request["reasoning"],
-            serde_json::json!({"effort": "high", "summary": "detailed"})
-        );
-        assert_eq!(
-            request["include"],
-            serde_json::json!(["reasoning.encrypted_content"])
-        );
     }
 
     #[tokio::test]

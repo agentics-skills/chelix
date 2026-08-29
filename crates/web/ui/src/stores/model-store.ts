@@ -18,12 +18,6 @@ export const selectedModel = computed<ModelInfo | null>(() => {
 	return models.value.find((m) => m.id === id) || null;
 });
 
-/** True when the currently selected model supports extended thinking. */
-export const supportsReasoning = computed<boolean>(() => {
-	const m = selectedModel.value;
-	return (m?.reasoning_supported_efforts.length || 0) > 0;
-});
-
 /** Reasoning efforts supported by the currently selected model. */
 export const supportedReasoningEfforts = computed<string[]>(() => {
 	return selectedModel.value?.reasoning_supported_efforts || [];
@@ -34,6 +28,14 @@ export const supportedReasoningEfforts = computed<string[]>(() => {
 /** Replace the full model list (e.g. after fetch or bootstrap). */
 export function setAll(arr: ModelInfo[]): void {
 	models.value = arr || [];
+}
+
+/** Return the selected compatible effort or the model's first configured effort. */
+export function reasoningEffortForModel(model: ModelInfo): string {
+	const selectedEffort = reasoningEffort.value;
+	return selectedEffort !== null && model.reasoning_supported_efforts.includes(selectedEffort)
+		? selectedEffort
+		: model.reasoning_supported_efforts[0];
 }
 
 /** Fetch models from the server via RPC. */
@@ -47,6 +49,7 @@ export function fetch(): Promise<void> {
 		const found = models.value.find((m) => m.id === saved);
 		const model = found || models.value[0];
 		select(model.id);
+		setReasoningEffort(reasoningEffortForModel(model));
 		if (!found) localStorage.setItem("chelix-model", model.id);
 	});
 }
@@ -56,7 +59,7 @@ export function select(id: string): void {
 	selectedModelId.value = id;
 }
 
-/** Set the exact reasoning effort, or mark it as not applicable. */
+/** Set an exact reasoning effort or clear an incoming legacy session value. */
 export function setReasoningEffort(effort: string | null): void {
 	reasoningEffort.value = effort;
 	if (effort === null) {
@@ -76,8 +79,8 @@ export const modelStore = {
 	selectedModelId,
 	selectedModel,
 	reasoningEffort,
-	supportsReasoning,
 	supportedReasoningEfforts,
+	reasoningEffortForModel,
 	setAll,
 	fetch,
 	select,

@@ -62,7 +62,7 @@ impl OpenAiProvider {
             model = %self.model,
             messages_count = messages.len(),
             tools_count = tools.len(),
-            reasoning_effort = ?self.reasoning_effort,
+            reasoning_effort = ?self.selected_reasoning_effort(),
             "openai complete request"
         );
         trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai request body");
@@ -309,7 +309,7 @@ mod tests {
             response::Response,
             routing::post,
         },
-        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, ReasoningEffort},
+        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider},
         secrecy::Secret,
         tokio::sync::Mutex,
     };
@@ -372,46 +372,6 @@ mod tests {
                 .expect("capture server should run");
         });
         (format!("http://{address}/v1"), captured)
-    }
-
-    #[tokio::test]
-    async fn max_reasoning_effort_is_sent_exactly_in_both_openai_wire_formats() {
-        let (base_url, captured) = start_capture_server().await;
-        let messages = [ChatMessage::user("hello")];
-
-        let chat = Arc::new(OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "Combos/z.ai/glm".to_string(),
-            base_url.clone(),
-            "custom-ai-example".to_string(),
-        ));
-        let chat = chat
-            .with_reasoning_effort(ReasoningEffort::from("max"))
-            .expect("chat provider should accept max");
-        chat.complete(&messages, &[])
-            .await
-            .expect("chat fixture should complete");
-
-        let responses = Arc::new(
-            OpenAiProvider::new_with_name(
-                Secret::new("test-key".to_string()),
-                "Combos/z.ai/glm".to_string(),
-                base_url,
-                "custom-ai-example".to_string(),
-            )
-            .with_wire_api(chelix_config::WireApi::Responses),
-        );
-        let responses = responses
-            .with_reasoning_effort(ReasoningEffort::from("max"))
-            .expect("responses provider should accept max");
-        responses
-            .complete(&messages, &[])
-            .await
-            .expect("responses fixture should complete");
-
-        let captured = captured.lock().await;
-        assert_eq!(captured["/v1/chat/completions"]["reasoning_effort"], "max");
-        assert_eq!(captured["/v1/responses"]["reasoning"]["effort"], "max");
     }
 
     #[tokio::test]

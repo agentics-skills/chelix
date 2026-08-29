@@ -4,7 +4,6 @@
 // provider-defined effort. The selected effort is sent together with the model.
 
 import { effect } from "@preact/signals";
-import { t } from "./i18n";
 import { requireSessionModelState, setSessionModel } from "./models";
 import * as S from "./state";
 import { modelStore } from "./stores/model-store";
@@ -14,10 +13,10 @@ let reasoningComboBtn: HTMLElement | null = null;
 let reasoningComboLabel: HTMLElement | null = null;
 let reasoningDropdown: HTMLElement | null = null;
 let reasoningDropdownList: HTMLElement | null = null;
-let disposeVisibility: (() => void) | null = null;
+let disposeLabel: (() => void) | null = null;
 
-function effortLabel(effort: string | null): string {
-	return effort ?? t("chat:reasoningSelect");
+function effortLabel(effort: string): string {
+	return effort;
 }
 
 function renderOptions(): void {
@@ -84,16 +83,10 @@ export function bindReasoningToggle(): void {
 
 	document.addEventListener("click", handleOutsideClick);
 
-	// Reactively show/hide the combo based on model reasoning support
-	disposeVisibility = effect(() => {
-		const show = modelStore.supportsReasoning.value;
-		const supportedEfforts = modelStore.supportedReasoningEfforts.value;
-		reasoningCombo?.classList.toggle("hidden", !show);
-		const selectedEffort = modelStore.reasoningEffort.value;
-		const displayedEffort =
-			selectedEffort !== null && supportedEfforts.includes(selectedEffort) ? selectedEffort : null;
-		if (reasoningComboLabel) {
-			reasoningComboLabel.textContent = effortLabel(displayedEffort);
+	disposeLabel = effect(() => {
+		const model = modelStore.selectedModel.value;
+		if (model && reasoningComboLabel) {
+			reasoningComboLabel.textContent = effortLabel(modelStore.reasoningEffortForModel(model));
 		}
 	});
 }
@@ -101,15 +94,12 @@ export function bindReasoningToggle(): void {
 /** Restore reasoning toggle state from a session's stored reasoning effort. */
 export function restoreReasoningEffort(storedEffort?: string | null): void {
 	modelStore.setReasoningEffort(storedEffort ?? null);
-	if (reasoningComboLabel) {
-		reasoningComboLabel.textContent = effortLabel(modelStore.reasoningEffort.value);
-	}
 }
 
 export function unbindReasoningToggle(): void {
 	document.removeEventListener("click", handleOutsideClick);
-	disposeVisibility?.();
-	disposeVisibility = null;
+	disposeLabel?.();
+	disposeLabel = null;
 	reasoningCombo = null;
 	reasoningComboBtn = null;
 	reasoningComboLabel = null;

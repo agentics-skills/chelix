@@ -197,9 +197,6 @@ impl LiveProviderSetupService {
                     provider_raw_model_ids.insert(raw_id);
                 }
             }
-            if provider_model_ids.is_empty() {
-                return Err(format!("provider `{provider_name}` has no configured models").into());
-            }
             for model_id in &model_ids {
                 if !provider_model_ids.contains(model_id) {
                     return Err(format!(

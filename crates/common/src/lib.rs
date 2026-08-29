@@ -7,6 +7,7 @@ pub mod http_client;
 pub mod item_positions;
 pub mod model;
 pub mod provider_output;
+pub mod reasoning_policy;
 pub mod secret_serde;
 pub mod ssrf;
 pub mod tool_lifecycle;
@@ -18,7 +19,7 @@ pub use {
     item_positions::ItemPositionAllocator,
     model::{
         ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
-        ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningState, ReasoningSummary,
+        ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningSummary,
         ResponsesReasoningItem,
     },
     provider_output::{
@@ -27,5 +28,6 @@ pub use {
         ProviderSegmentId, ProviderSegmentMaterializer, ProviderSegmentOutcome, ReasoningItem,
         ReasoningPart,
     },
+    reasoning_policy::{ReasoningPolicyDecision, ReasoningRequestState, resolve_reasoning_policy},
     tool_lifecycle::ActiveToolInvocation,
 };

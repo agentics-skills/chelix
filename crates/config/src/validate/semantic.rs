@@ -665,15 +665,6 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     }
 
     for (provider_name, provider_entry) in &config.providers.providers {
-        if config.providers.is_enabled(provider_name) && provider_entry.models.is_empty() {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Error,
-                category: "missing-field",
-                path: format!("providers.{provider_name}.models"),
-                message: "enabled provider must configure at least one model".into(),
-            });
-        }
-
         for (model_id, metadata) in &provider_entry.models {
             validate_model_metadata(
                 metadata,

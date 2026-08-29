@@ -11,19 +11,26 @@ import type { RpcResponse } from "./types/rpc";
 import type { SessionModelSelection, SessionPatchPayload } from "./types/session";
 import { showToast } from "./ui";
 
-function isSessionPatchPayload(payload: unknown, sessionKey: string): payload is SessionPatchPayload {
+type ConfirmedSessionModelPayload = SessionPatchPayload & SessionModelSelection;
+
+function isConfirmedSessionModelPayload(
+	payload: unknown,
+	sessionKey: string,
+): payload is ConfirmedSessionModelPayload {
 	if (!payload || typeof payload !== "object") return false;
 	const value = payload as Partial<SessionPatchPayload>;
 	return (
 		value.key === sessionKey &&
 		typeof value.model === "string" &&
-		(value.reasoningEffort === null || typeof value.reasoningEffort === "string") &&
+		value.model.length > 0 &&
+		typeof value.reasoningEffort === "string" &&
+		value.reasoningEffort.length > 0 &&
 		Number.isInteger(value.version) &&
 		(value.version as number) >= 0
 	);
 }
 
-function applyConfirmedSessionModel(payload: SessionPatchPayload): void {
+function applyConfirmedSessionModel(payload: ConfirmedSessionModelPayload): void {
 	const session = sessionStore.getByKey(payload.key);
 	if (session) {
 		if (payload.version < session.version) {
@@ -85,7 +92,7 @@ export async function setSessionModel(
 			showToast(response.error?.message || "Failed to update session model", "error");
 			return response;
 		}
-		if (!isSessionPatchPayload(response.payload, sessionKey)) {
+		if (!isConfirmedSessionModelPayload(response.payload, sessionKey)) {
 			restoreConfirmedSessionModel(sessionKey);
 			const invalidResponse: RpcResponse<SessionPatchPayload> = {
 				ok: false,
@@ -107,15 +114,11 @@ export async function setSessionModel(
 	}
 }
 
-function modelSelection(model: ModelInfo): SessionModelSelection | null {
-	if (model.reasoning_supported_efforts.length === 0) {
-		return { model: model.id, reasoningEffort: null };
-	}
-	const reasoningEffort = modelStore.reasoningEffort.value;
-	if (reasoningEffort === null || !model.reasoning_supported_efforts.includes(reasoningEffort)) {
-		return null;
-	}
-	return { model: model.id, reasoningEffort };
+function modelSelection(model: ModelInfo): SessionModelSelection {
+	return {
+		model: model.id,
+		reasoningEffort: modelStore.reasoningEffortForModel(model),
+	};
 }
 
 export function selectedModelSelection(): SessionModelSelection | null {
@@ -158,9 +161,9 @@ export function selectModel(m: ModelInfo): void {
 	if (!requireSessionModelState(S.activeSessionKey)) return;
 	const selection = modelSelection(m);
 	modelStore.select(m.id);
-	modelStore.setReasoningEffort(selection?.reasoningEffort ?? null);
+	modelStore.setReasoningEffort(selection.reasoningEffort);
 	updateModelComboLabel(m);
-	if (selection) void setSessionModel(S.activeSessionKey, selection);
+	void setSessionModel(S.activeSessionKey, selection);
 	closeModelDropdown();
 	// Show notice if model doesn't support tools
 	showModelNotice(m);
@@ -206,13 +209,11 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 		meta.appendChild(prov);
 	}
 
-	if (m.reasoning_supported_efforts.length > 0) {
-		const brainIcon = document.createElement("span");
-		brainIcon.className = "icon icon-xs icon-brain";
-		brainIcon.title = "Supports reasoning";
-		brainIcon.style.cssText = "opacity:0.5;flex-shrink:0;";
-		meta.appendChild(brainIcon);
-	}
+	const brainIcon = document.createElement("span");
+	brainIcon.className = "icon icon-xs icon-brain";
+	brainIcon.title = "Reasoning";
+	brainIcon.style.cssText = "opacity:0.5;flex-shrink:0;";
+	meta.appendChild(brainIcon);
 
 	if (meta.childNodes.length > 0) el.appendChild(meta);
 	el.addEventListener("click", () => selectModel(m));

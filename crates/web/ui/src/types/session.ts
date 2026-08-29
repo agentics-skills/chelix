@@ -52,12 +52,14 @@ export interface SessionMeta {
 /** Complete model/reasoning selection persisted for a session. */
 export interface SessionModelSelection {
 	model: string;
-	reasoningEffort: string | null;
+	reasoningEffort: string;
 }
 
 /** Authoritative session state returned by `sessions.patch`. */
-export interface SessionPatchPayload extends SessionModelSelection {
+export interface SessionPatchPayload {
 	key: string;
+	model: string;
+	reasoningEffort: string | null;
 	version: number;
 }
 

@@ -37,15 +37,6 @@ impl From<String> for ReasoningEffort {
     }
 }
 
-/// Reasoning state resolved for a specific model.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReasoningState {
-    /// The model has no configured reasoning efforts.
-    NotApplicable,
-    /// The exact provider-defined effort selected for a reasoning-capable model.
-    Effort(ReasoningEffort),
-}
-
 /// Input or output medium accepted by a model endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -209,18 +200,7 @@ impl PartialModelMetadata {
             self.reasoning_supported_efforts,
             "reasoning_supported_efforts",
         )?;
-        if reasoning_supported_efforts.is_empty() {
-            if self.reasoning_summary.is_some() {
-                return Err(ModelMetadataError::ReasoningFieldOnUnsupportedModel(
-                    "reasoning_summary",
-                ));
-            }
-            if self.reasoning_include.is_some() {
-                return Err(ModelMetadataError::ReasoningFieldOnUnsupportedModel(
-                    "reasoning_include",
-                ));
-            }
-        }
+        ensure_non_empty_strings(&reasoning_supported_efforts, "reasoning_supported_efforts")?;
         if let Some(include) = self.reasoning_include.as_ref() {
             ensure_unique(include, "reasoning_include")?;
         }
@@ -274,11 +254,6 @@ impl ModelMetadata {
     pub fn supports_output(&self, modality: ModelModality) -> bool {
         self.output_modalities.contains(&modality)
     }
-
-    #[must_use]
-    pub fn supports_reasoning(&self) -> bool {
-        !self.reasoning_supported_efforts.is_empty()
-    }
 }
 
 impl From<&ModelMetadata> for PartialModelMetadata {
@@ -323,8 +298,8 @@ pub enum ModelMetadataError {
     EmptyList(&'static str),
     #[error("model metadata field `{0}` contains duplicate values")]
     DuplicateValues(&'static str),
-    #[error("model metadata field `{0}` is forbidden when reasoning_supported_efforts is empty")]
-    ReasoningFieldOnUnsupportedModel(&'static str),
+    #[error("model metadata field `{0}` contains an empty string")]
+    EmptyString(&'static str),
 }
 
 fn required<T>(value: Option<T>, field: &'static str) -> Result<T, ModelMetadataError> {
@@ -346,6 +321,19 @@ where
         return Err(ModelMetadataError::EmptyList(field));
     }
     ensure_unique(values, field)
+}
+
+fn ensure_non_empty_strings(
+    values: &[ReasoningEffort],
+    field: &'static str,
+) -> Result<(), ModelMetadataError> {
+    if values.is_empty() {
+        return Err(ModelMetadataError::EmptyList(field));
+    }
+    if values.iter().any(|value| value.as_str().is_empty()) {
+        return Err(ModelMetadataError::EmptyString(field));
+    }
+    Ok(())
 }
 
 fn ensure_unique<T>(values: &[T], field: &'static str) -> Result<(), ModelMetadataError>
@@ -404,19 +392,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_accepts_explicit_non_reasoning_model() {
-        let mut partial = complete_partial();
-        partial.reasoning_supported_efforts = Some(Vec::new());
-        partial.reasoning_summary = None;
-        partial.reasoning_include = None;
-
-        let resolved = partial.resolve().unwrap();
-        assert!(!resolved.supports_reasoning());
-        assert_eq!(resolved.reasoning_summary, None);
-        assert_eq!(resolved.reasoning_include, None);
-    }
-
-    #[test]
     fn resolve_rejects_invalid_metadata() {
         let cases = [
             (
@@ -447,11 +422,26 @@ mod tests {
                 {
                     let mut metadata = complete_partial();
                     metadata.reasoning_supported_efforts = Some(Vec::new());
-                    metadata.reasoning_summary = None;
-                    metadata.reasoning_include = Some(Vec::new());
                     metadata
                 },
-                ModelMetadataError::ReasoningFieldOnUnsupportedModel("reasoning_include"),
+                ModelMetadataError::EmptyList("reasoning_supported_efforts"),
+            ),
+            (
+                {
+                    let mut metadata = complete_partial();
+                    metadata.reasoning_supported_efforts = Some(vec!["".into()]);
+                    metadata
+                },
+                ModelMetadataError::EmptyString("reasoning_supported_efforts"),
+            ),
+            (
+                {
+                    let mut metadata = complete_partial();
+                    metadata.reasoning_supported_efforts =
+                        Some(vec!["low".into(), "".into(), "high".into()]);
+                    metadata
+                },
+                ModelMetadataError::EmptyString("reasoning_supported_efforts"),
             ),
         ];
 

@@ -13,7 +13,7 @@ export interface ModelMetadata {
 	tool_calling: boolean;
 	streaming: boolean;
 	zeroDataRetentionEnabled: boolean;
-	reasoning_supported_efforts: string[];
+	reasoning_supported_efforts: [string, ...string[]];
 	reasoning_summary?: ReasoningSummary;
 	reasoning_include?: ReasoningInclude[];
 }

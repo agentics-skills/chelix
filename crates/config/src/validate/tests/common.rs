@@ -121,7 +121,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 
 [auth]
 disabled = false

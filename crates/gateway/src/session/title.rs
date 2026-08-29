@@ -258,7 +258,7 @@ mod tests {
                     tool_calling: false,
                     streaming: true,
                     zero_data_retention_enabled: true,
-                    reasoning_supported_efforts: Vec::new(),
+                    reasoning_supported_efforts: vec!["low".into()],
                     reasoning_summary: None,
                     reasoning_include: None,
                 },

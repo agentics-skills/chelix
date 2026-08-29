@@ -122,18 +122,23 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["off"]
+reasoning_summary = "detailed"
+reasoning_include = ["encrypted_content"]
 
 [chat]
 priority_models = ["custom-ai-example::muse-flash-0.9"]
 ```
 
 The service configuration is the only source of model composition and model
-parameters. Every enabled provider must declare at least one complete
-`[providers.<name>.models."<raw-model-id>"]` table. A missing mandatory parameter,
-an invalid value, an unknown model setting, or an enabled provider without models
-refuses service load. Use `chat.priority_models` only for cross-provider selector
-ordering.
+parameters. A provider may declare no models regardless of its status, and saving
+provider credentials does not require model records. Every model table that is
+present must be complete: a missing mandatory parameter, an invalid value, or an
+unknown model setting refuses service load. `reasoning_supported_efforts` must be
+a non-empty array without empty strings; `["low"]` is valid without `off`. Exact
+`["off"]` is the only non-reasoning API path, and `reasoning_summary` and
+`reasoning_include` remain valid configuration for it. Use `chat.priority_models`
+only for cross-provider selector ordering.
 
 See [Providers](providers.md) for the full list of supported providers and
 configuration options.

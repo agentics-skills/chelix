@@ -7,7 +7,7 @@ use std::{
 };
 
 use {
-    chelix_common::ReasoningState,
+    chelix_common::ReasoningEffort,
     serde::{Deserialize, Serialize},
 };
 
@@ -569,18 +569,14 @@ impl SqliteSessionMetadata {
         &self,
         key: &str,
         model: &str,
-        reasoning: &ReasoningState,
+        reasoning_effort: &ReasoningEffort,
     ) -> Result<SessionEntry> {
-        let reasoning_effort = match reasoning {
-            ReasoningState::NotApplicable => None,
-            ReasoningState::Effort(effort) => Some(effort.as_str()),
-        };
         let now = now_ms() as i64;
         let result = sqlx::query(
             "UPDATE sessions SET model = ?, reasoning_effort = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
         .bind(model)
-        .bind(reasoning_effort)
+        .bind(reasoning_effort.as_str())
         .bind(now)
         .bind(key)
         .execute(&self.pool)

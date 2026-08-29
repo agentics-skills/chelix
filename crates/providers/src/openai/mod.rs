@@ -33,6 +33,13 @@ pub(crate) enum SystemMessageRewriteStrategy {
     MergeLeadingSystem,
 }
 
+#[derive(Debug, Clone)]
+struct OpenAiReasoningMetadata {
+    supported_efforts: Vec<chelix_common::ReasoningEffort>,
+    summary: Option<chelix_common::ReasoningSummary>,
+    include: Option<Vec<chelix_common::ReasoningInclude>>,
+}
+
 pub struct OpenAiProvider {
     api_key: secrecy::Secret<String>,
     model: String,
@@ -42,12 +49,10 @@ pub struct OpenAiProvider {
     stream_transport: chelix_config::schema::ProviderStreamTransport,
     wire_api: chelix_config::schema::WireApi,
     tool_mode: chelix_config::ToolMode,
-    /// Optional reasoning effort level for o-series models.
-    reasoning_effort: Option<chelix_agents::model::ReasoningEffort>,
-    /// Resolved Responses API reasoning summary detail for this model.
-    reasoning_summary: Option<chelix_common::ReasoningSummary>,
-    /// Configured Responses API reasoning payloads requested for this model.
-    reasoning_include: Option<Vec<chelix_common::ReasoningInclude>>,
+    /// Exact configured metadata used to build a selected request state.
+    reasoning_metadata: Option<OpenAiReasoningMetadata>,
+    /// Complete reasoning state after an effort has been selected.
+    reasoning_request: Option<chelix_common::ReasoningRequestState>,
     /// Prompt cache retention policy (used for OpenRouter Anthropic passthrough).
     cache_retention: chelix_config::CacheRetention,
     /// Explicit provider behavior policies. Never inferred from provider name or URL.

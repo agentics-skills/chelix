@@ -109,7 +109,7 @@ port = {port}                           # Port number (auto-generated for this i
 #   enabled   - Whether to use this provider (default: true)
 #   api_key   - API key (or use env var like OPENAI_API_KEY)
 #   base_url  - Override API endpoint
-#   models.<model_id> - Ordered complete model metadata record (required)
+#   models.<model_id> - Ordered complete model metadata record when present
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
 #   alias     - Custom name for metrics labels (useful for multiple instances)
 #   tool_mode - Tool calling mode: "native", "text", or "off" (default: "native")
@@ -117,8 +117,10 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Declare every model only as [providers.<name>.models."<raw-model-id>"]
 # with a complete metadata record. Tables are evaluated in declaration order.
-# An enabled provider must configure at least one model. Startup fails when any
-# mandatory field is absent or invalid; metadata is never discovered or defaulted.
+# A provider may declare no models regardless of status. Every present model must
+# contain all mandatory valid fields; metadata is never discovered or defaulted.
+# reasoning_supported_efforts must be non-empty and contain no empty strings.
+# ["off"] is the only non-reasoning API path; ["low"] is valid without "off".
 
 # [providers]
 # offered = ["openai", "openrouter", "zai"]
@@ -127,7 +129,7 @@ port = {port}                           # Port number (auto-generated for this i
 #   "openai", "deepinfra",
 #   "openrouter", "zai", "zai-code", "alibaba-coding"
 
-# Provider snippets stay disabled until a complete model table is added.
+# Provider snippets are examples; model tables can be added independently.
 # ── OpenAI ────────────────────────────────────────────────────
 # [providers.openai]
 # enabled = false

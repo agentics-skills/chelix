@@ -268,7 +268,7 @@ impl ModelService for LiveModelService {
         &self,
         model: &str,
         reasoning_effort: Option<&chelix_common::ReasoningEffort>,
-    ) -> Result<chelix_common::ReasoningState, ServiceError> {
+    ) -> Result<chelix_common::ReasoningEffort, ServiceError> {
         let models = self.list().await?;
         let models = models
             .as_array()
@@ -286,7 +286,7 @@ impl ModelService for LiveModelService {
             .read()
             .await
             .resolve_model_reasoning(Some(model), reasoning_effort)
-            .map(|resolved| resolved.model_reasoning().reasoning().clone())
+            .map(|resolved| resolved.model_reasoning().reasoning_effort().clone())
             .map_err(ServiceError::message)
     }
 

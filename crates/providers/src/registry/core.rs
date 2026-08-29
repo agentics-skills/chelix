@@ -11,7 +11,7 @@ use {
         ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, ReasoningEffort,
         StreamEvent, ToolChoice,
     },
-    chelix_common::{ModelMetadata, ModelModality, ReasoningState},
+    chelix_common::{ModelMetadata, ModelModality},
     tokio_stream::Stream,
 };
 
@@ -20,11 +20,11 @@ use crate::{
     model_id::{namespaced_model_id, raw_model_id},
 };
 
-/// Canonical model ID paired with its validated reasoning state.
+/// Canonical model ID paired with its validated reasoning effort.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedModelReasoning {
     model_id: String,
-    reasoning: ReasoningState,
+    reasoning_effort: ReasoningEffort,
 }
 
 impl ResolvedModelReasoning {
@@ -34,10 +34,10 @@ impl ResolvedModelReasoning {
         &self.model_id
     }
 
-    /// Reasoning state validated against the selected model metadata.
+    /// Exact reasoning effort validated against the selected model metadata.
     #[must_use]
-    pub const fn reasoning(&self) -> &ReasoningState {
-        &self.reasoning
+    pub const fn reasoning_effort(&self) -> &ReasoningEffort {
+        &self.reasoning_effort
     }
 }
 
@@ -83,13 +83,6 @@ pub enum ModelResolutionError {
     MissingReasoningEffort { model_id: String },
     #[error("reasoning effort must not be empty for model `{model_id}`")]
     EmptyReasoningEffort { model_id: String },
-    #[error(
-        "reasoning effort `{reasoning_effort}` is not applicable to non-reasoning model `{model_id}`"
-    )]
-    ReasoningEffortNotApplicable {
-        model_id: String,
-        reasoning_effort: String,
-    },
     #[error("model `{model_id}` does not support reasoning effort `{reasoning_effort}`")]
     UnsupportedReasoningEffort {
         model_id: String,
@@ -304,43 +297,32 @@ impl ProviderRegistry {
             .cloned()
             .ok_or_else(|| self.model_lookup_error(model_id))?;
 
-        if reasoning_effort.is_some_and(|effort| effort.as_str().is_empty()) {
+        let effort =
+            reasoning_effort.ok_or_else(|| ModelResolutionError::MissingReasoningEffort {
+                model_id: model.id.clone(),
+            })?;
+        if effort.as_str().is_empty() {
             return Err(ModelResolutionError::EmptyReasoningEffort {
                 model_id: model.id.clone(),
             });
         }
-
-        let (reasoning, provider) = if model.metadata.supports_reasoning() {
-            let effort =
-                reasoning_effort.ok_or_else(|| ModelResolutionError::MissingReasoningEffort {
-                    model_id: model.id.clone(),
-                })?;
-            if !model.metadata.reasoning_supported_efforts.contains(effort) {
-                return Err(ModelResolutionError::UnsupportedReasoningEffort {
-                    model_id: model.id.clone(),
-                    reasoning_effort: effort.as_str().to_string(),
-                });
-            }
-            let provider = Arc::clone(&provider)
-                .with_reasoning_effort(effort.clone())
-                .ok_or_else(|| ModelResolutionError::ReasoningEffortApplicationFailed {
-                    model_id: model.id.clone(),
-                    reasoning_effort: effort.as_str().to_string(),
-                })?;
-            (ReasoningState::Effort(effort.clone()), provider)
-        } else if let Some(effort) = reasoning_effort {
-            return Err(ModelResolutionError::ReasoningEffortNotApplicable {
+        if !model.metadata.reasoning_supported_efforts.contains(effort) {
+            return Err(ModelResolutionError::UnsupportedReasoningEffort {
                 model_id: model.id.clone(),
                 reasoning_effort: effort.as_str().to_string(),
             });
-        } else {
-            (ReasoningState::NotApplicable, provider)
-        };
+        }
+        let provider = Arc::clone(&provider)
+            .with_reasoning_effort(effort.clone())
+            .ok_or_else(|| ModelResolutionError::ReasoningEffortApplicationFailed {
+                model_id: model.id.clone(),
+                reasoning_effort: effort.as_str().to_string(),
+            })?;
 
         Ok(ResolvedModel {
             model_reasoning: ResolvedModelReasoning {
                 model_id: model.id.clone(),
-                reasoning,
+                reasoning_effort: effort.clone(),
             },
             provider,
         })

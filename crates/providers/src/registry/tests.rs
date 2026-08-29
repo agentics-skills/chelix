@@ -4,7 +4,6 @@ use {
     super::{ModelResolutionError, ProviderRegistry, registration::openai_builtin_capabilities},
     crate::openai::ResponsesWebSocketPolicy,
     chelix_agents::model::ReasoningEffort,
-    chelix_common::ReasoningState,
     chelix_config::{ChelixConfig, ToolMode},
 };
 
@@ -24,7 +23,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 
 [providers.custom-alpha.models.reasoning]
 context_length = 128000
@@ -61,7 +60,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 "#,
     )
     .unwrap_or_else(|error| panic!("resolution registry config should deserialize: {error}"));
@@ -167,7 +166,7 @@ output_modalities = ["text"]
 tool_calling = false
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 
 [providers.custom-ai-capability.models.tool-capable]
 context_length = 128000
@@ -178,7 +177,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 "#,
     )
     .unwrap_or_else(|error| panic!("capability config should deserialize: {error}"));
@@ -224,7 +223,7 @@ output_modalities = ["text"]
 tool_calling = false
 streaming = true
 zeroDataRetentionEnabled = true
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 
 [providers.custom-disabled-tools]
 api_key = "test-key"
@@ -240,7 +239,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = true
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 "#,
     )
     .unwrap_or_else(|error| panic!("explicit tool mode config should deserialize: {error}"));
@@ -308,39 +307,28 @@ fn registry_lookup_and_unregister_require_exact_canonical_ids() {
 }
 
 #[test]
-fn resolver_returns_typed_non_reasoning_and_applied_reasoning_states() {
+fn resolver_returns_typed_applied_reasoning_efforts() {
     let registry = resolution_registry();
-    let non_reasoning = registry
-        .resolve_model_reasoning(Some("custom-alpha::shared"), None)
-        .unwrap_or_else(|error| panic!("non-reasoning model should resolve: {error}"));
-    assert_eq!(
-        non_reasoning.model_reasoning().model_id(),
-        "custom-alpha::shared"
-    );
-    assert_eq!(
-        non_reasoning.model_reasoning().reasoning(),
-        &ReasoningState::NotApplicable
-    );
-    assert!(non_reasoning.provider().reasoning_effort().is_none());
+    let low = ReasoningEffort::from("low");
+    let shared = registry
+        .resolve_model_reasoning(Some("custom-alpha::shared"), Some(&low))
+        .unwrap_or_else(|error| panic!("single-effort model should resolve: {error}"));
+    assert_eq!(shared.model_reasoning().model_id(), "custom-alpha::shared");
+    assert_eq!(shared.model_reasoning().reasoning_effort(), &low);
+    assert_eq!(shared.provider().reasoning_effort(), Some(low));
 
     let high = ReasoningEffort::from("high");
     let reasoning = registry
         .resolve_model_reasoning(Some("custom-alpha::reasoning"), Some(&high))
-        .unwrap_or_else(|error| panic!("reasoning model should resolve: {error}"));
-    assert_eq!(
-        reasoning.model_reasoning().reasoning(),
-        &ReasoningState::Effort(high.clone())
-    );
+        .unwrap_or_else(|error| panic!("multi-effort model should resolve: {error}"));
+    assert_eq!(reasoning.model_reasoning().reasoning_effort(), &high);
     assert_eq!(reasoning.provider().reasoning_effort(), Some(high));
 
     let none = ReasoningEffort::from("none");
     let none_only = registry
         .resolve_model_reasoning(Some("custom-alpha::none-only"), Some(&none))
         .unwrap_or_else(|error| panic!("provider-defined none effort should resolve: {error}"));
-    assert_eq!(
-        none_only.model_reasoning().reasoning(),
-        &ReasoningState::Effort(none.clone())
-    );
+    assert_eq!(none_only.model_reasoning().reasoning_effort(), &none);
     assert_eq!(none_only.provider().reasoning_effort(), Some(none));
 }
 
@@ -361,14 +349,6 @@ fn resolver_rejects_invalid_model_reasoning_selections() {
             Some(ReasoningEffort::from("")),
             ModelResolutionError::EmptyReasoningEffort {
                 model_id: "custom-alpha::reasoning".to_string(),
-            },
-        ),
-        (
-            Some("custom-alpha::shared"),
-            Some(ReasoningEffort::from("none")),
-            ModelResolutionError::ReasoningEffortNotApplicable {
-                model_id: "custom-alpha::shared".to_string(),
-                reasoning_effort: "none".to_string(),
             },
         ),
         (
@@ -417,44 +397,50 @@ fn resolver_rejects_invalid_model_reasoning_selections() {
 }
 
 #[test]
-fn enabled_provider_without_models_is_rejected() {
-    let config: ChelixConfig = toml::from_str(
-        r#"
-[providers.openai]
-api_key = "test-key"
-"#,
-    )
-    .unwrap_or_else(|error| panic!("provider config should deserialize: {error}"));
-
-    let error = ProviderRegistry::from_config(&config.providers, &HashMap::new())
-        .err()
-        .unwrap_or_else(|| panic!("empty enabled provider should fail"));
-    assert!(
-        error
-            .to_string()
-            .contains("enabled provider `openai` has no configured models")
-    );
-}
-
-#[test]
 fn offered_allowlist_excludes_unselected_provider_from_enabled_set() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [providers]
 offered = ["openai"]
 
+[providers.openai]
+api_key = "test-key"
+
+[providers.openai.models.selected]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["low"]
+
 [providers.openrouter]
 api_key = "test-key"
+
+[providers.openrouter.models.excluded]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["low"]
 "#,
     )
     .unwrap_or_else(|error| panic!("provider config should deserialize: {error}"));
 
+    assert!(config.providers.is_enabled("openai"));
     assert!(!config.providers.is_enabled("openrouter"));
     let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new())
-        .unwrap_or_else(|error| {
-            panic!("excluded provider should not fail registry build: {error}")
-        });
-    assert!(registry.list_models().is_empty());
+        .unwrap_or_else(|error| panic!("filtered registry should build: {error}"));
+    assert!(registry.get("openai::selected").is_some());
+    assert!(registry.get("openrouter::excluded").is_none());
+    assert_eq!(registry.list_models().len(), 1);
 }
 
 #[test]
@@ -494,7 +480,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["low"]
 
 [providers.openai.models.invalid]
 context_length = 128000

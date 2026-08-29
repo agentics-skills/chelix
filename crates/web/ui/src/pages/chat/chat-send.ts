@@ -24,10 +24,9 @@ import {
 	setSessionReplying,
 } from "../../sessions";
 import * as S from "../../state";
-import { modelStore } from "../../stores/model-store";
 import { sessionStore } from "../../stores/session-store";
 import type { RpcResponse } from "../../types/rpc";
-import type { SessionMeta } from "../../types/session";
+import type { SessionMeta, SessionModelSelection } from "../../types/session";
 import type { QueuedPrompt } from "../../types/ws-events";
 import { setQueuedPrompts } from "./prompt-queue";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
@@ -40,7 +39,7 @@ export interface ChatSendParams {
 	_document_files?: UploadedDocumentFile[];
 	_seq: number;
 	model?: string;
-	reasoningEffort?: string | null;
+	reasoningEffort?: string;
 }
 
 export type ChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -151,20 +150,18 @@ export function resetComposerAfterSend(): void {
 	if (window.innerWidth < 768) S.chatInput?.blur();
 }
 
-export async function applySelectedModelToChatParams(chatParams: ChatSendParams): Promise<boolean> {
+export async function applySelectedModelToChatParams(
+	chatParams: ChatSendParams,
+): Promise<SessionModelSelection | null> {
 	const selection = selectedModelSelection();
 	if (!selection) {
-		if (!modelStore.selectedModel.value) {
-			chatAddMsg("error", "Select a model before sending a message");
-			return false;
-		}
-		chatAddMsg("error", "Select one of the model's supported reasoning efforts");
-		return false;
+		chatAddMsg("error", "Select a model before sending a message");
+		return null;
 	}
 	chatParams.model = selection.model;
 	chatParams.reasoningEffort = selection.reasoningEffort;
 	const response = await setSessionModel(S.activeSessionKey, selection);
-	return response.ok;
+	return response.ok ? selection : null;
 }
 
 export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
@@ -374,14 +371,16 @@ async function sendChatAsync(): Promise<void> {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
 		const previousChatSeq = S.chatSeq;
 		const modelParams: ChatSendParams = { _seq: previousChatSeq + 1 };
-		if (!(await applySelectedModelToChatParams(modelParams))) return;
+		const modelSelection = await applySelectedModelToChatParams(modelParams);
+		if (!modelSelection) return;
 		const msg = await buildChatMessage(text, modelParams._seq);
 		S.setChatSeq(modelParams._seq);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
-		const chatParams = msg.params;
-		chatParams.model = modelParams.model;
-		chatParams.reasoningEffort = modelParams.reasoningEffort;
+		const chatParams: ChatSendParams & SessionModelSelection = {
+			...msg.params,
+			...modelSelection,
+		};
 		const userEl = msg.el;
 		if (userEl) highlightCodeBlocks(userEl);
 		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);

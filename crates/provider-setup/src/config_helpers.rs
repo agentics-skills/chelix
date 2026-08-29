@@ -223,7 +223,7 @@ mod tests {
             tool_calling: Some(true),
             streaming: Some(true),
             zero_data_retention_enabled: Some(false),
-            reasoning_supported_efforts: Some(Vec::new()),
+            reasoning_supported_efforts: Some(vec!["low".into()]),
             reasoning_summary: None,
             reasoning_include: None,
         }
