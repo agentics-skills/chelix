@@ -35,7 +35,6 @@ use {
 
 use crate::{
     error,
-    models::DisabledModelsStore,
     prompt::{
         apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
         discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
@@ -340,7 +339,6 @@ pub(crate) fn latest_tool_segment_index(
 
 pub struct LiveChatService {
     pub(in crate::service) providers: Arc<RwLock<ProviderRegistry>>,
-    pub(in crate::service) model_store: Arc<RwLock<DisabledModelsStore>>,
     pub(in crate::service) state: Arc<dyn ChatRuntime>,
     pub(in crate::service) active_runs: Arc<RwLock<HashMap<String, CancellationToken>>>,
     pub(in crate::service) active_runs_by_session: Arc<RwLock<HashMap<String, String>>>,
@@ -394,7 +392,6 @@ async fn runtime_config_for_agent_run(
 impl LiveChatService {
     pub fn new(
         providers: Arc<RwLock<ProviderRegistry>>,
-        model_store: Arc<RwLock<DisabledModelsStore>>,
         state: Arc<dyn ChatRuntime>,
         session_store: Arc<SessionStore>,
         session_metadata: Arc<SqliteSessionMetadata>,
@@ -406,7 +403,6 @@ impl LiveChatService {
         let prompt_queue = Arc::new(PromptQueue::new(prompt_queue_store, Arc::clone(&state)));
         Self {
             providers,
-            model_store,
             state,
             active_runs: Arc::new(RwLock::new(HashMap::new())),
             active_runs_by_session: Arc::new(RwLock::new(HashMap::new())),

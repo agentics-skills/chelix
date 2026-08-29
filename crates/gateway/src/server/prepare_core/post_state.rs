@@ -53,7 +53,6 @@ pub(super) struct PostStateInputs {
     pub registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
     pub provider_summary: String,
     pub mcp_configured_count: usize,
-    pub model_store: Arc<tokio::sync::RwLock<crate::chat::DisabledModelsStore>>,
     pub live_model_service: Arc<LiveModelService>,
     pub live_mcp: Arc<crate::mcp_service::LiveMcpService>,
     pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
@@ -220,7 +219,6 @@ pub(super) async fn complete_startup(
         registry,
         provider_summary,
         mcp_configured_count,
-        model_store,
         live_model_service,
         live_mcp,
         memory_manager,
@@ -805,7 +803,6 @@ pub(super) async fn complete_startup(
         let shared_tool_registry = Arc::new(tokio::sync::RwLock::new(tool_registry));
         let mut chat_service = LiveChatService::new(
             Arc::clone(&registry),
-            Arc::clone(&model_store),
             crate::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),

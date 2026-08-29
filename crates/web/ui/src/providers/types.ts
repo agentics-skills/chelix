@@ -11,8 +11,3 @@ export interface ProviderModalElements {
 	title: HTMLElement;
 	close: HTMLElement;
 }
-
-export interface ProbeResult {
-	error?: string;
-	timeout?: boolean;
-}

@@ -23,10 +23,6 @@ export interface ModelInfo extends ModelMetadata {
 	provider: string;
 	preferred?: boolean;
 	disabled?: boolean;
-	unsupported?: boolean;
-	unsupported_reason?: string | null;
-	unsupported_provider?: string | null;
-	unsupported_updated_at?: number | null;
 }
 
 export interface ProviderInfo {

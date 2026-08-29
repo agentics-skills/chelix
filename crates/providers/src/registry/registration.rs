@@ -314,7 +314,6 @@ fn configure_openai_transport(
     provider = provider
         .with_stream_transport(entry.stream_transport)
         .with_cache_retention(entry.cache_retention)
-        .with_probe_timeout_secs(entry.probe_timeout_secs)
         .with_tool_mode(entry.tool_mode);
     if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
         provider = provider.with_wire_api(entry.wire_api);

@@ -103,13 +103,10 @@ export interface RpcMethodMap {
 	"memory.status": unknown;
 
 	// ── Models ──────────────────────────────────────────────────
-	"models.cancel_detect": unknown;
-	"models.detect_supported": unknown;
 	"models.disable": unknown;
 	"models.enable": unknown;
 	"models.list": ModelInfo[];
 	"models.list_all": ModelInfo[];
-	"models.test": unknown;
 
 	// ── Projects ────────────────────────────────────────────────
 	"projects.complete_path": unknown;

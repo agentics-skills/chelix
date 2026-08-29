@@ -15,7 +15,3 @@ export interface KeyHelp {
 	url?: string;
 	label?: string;
 }
-
-export interface ProbeResult {
-	error?: string;
-}

@@ -670,7 +670,6 @@ impl LiveChatService {
                 .set_model(&session_key, Some(model_id.clone()))
                 .await;
         }
-        let model_store = Arc::clone(&self.model_store);
         let session_store = Arc::clone(&self.session_store);
         let session_metadata = Arc::clone(&self.session_metadata);
         let session_agent_id_clone = session_agent_id.clone();
@@ -857,7 +856,6 @@ impl LiveChatService {
                         persona,
                         &cancellation_token,
                         &state,
-                        &model_store,
                         &run_id_clone,
                         provider,
                         &model_id,
@@ -884,10 +882,8 @@ impl LiveChatService {
                         runtime_limits,
                         &cancellation_token,
                         &state,
-                        &model_store,
                         &run_id_clone,
                         provider,
-                        &model_id,
                         &tool_registry,
                         &user_content,
                         &provider_name,

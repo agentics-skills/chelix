@@ -289,7 +289,6 @@ impl ChatService for LiveChatService {
         let hook_registry = self.hook_registry.clone();
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
-        let model_store = Arc::clone(&self.model_store);
         let user_message_index = history.len();
 
         if !ephemeral {
@@ -365,7 +364,6 @@ impl ChatService for LiveChatService {
                 persona,
                 &cancellation_token,
                 &state,
-                &model_store,
                 &run_id,
                 provider,
                 &model_id,
@@ -392,10 +390,8 @@ impl ChatService for LiveChatService {
                 runtime_limits,
                 &cancellation_token,
                 &state,
-                &model_store,
                 &run_id,
                 provider,
-                &model_id,
                 &tool_registry,
                 &user_content,
                 &provider_name,

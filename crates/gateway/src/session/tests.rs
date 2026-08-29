@@ -1003,7 +1003,6 @@ reasoning_supported_efforts = []
                 .iter()
                 .map(|model| (*model).to_string())
                 .collect(),
-            ..Default::default()
         };
         Arc::new(crate::chat::LiveModelService::new(
             Arc::new(tokio::sync::RwLock::new(registry)),

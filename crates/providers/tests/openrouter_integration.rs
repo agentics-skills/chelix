@@ -190,16 +190,7 @@ async fn multi_turn_tool_use() {
     assert!(r2.text.is_some(), "should have text after tool result");
 }
 
-// ── Probe & streaming ────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn probe_succeeds() {
-    make_provider(TEST_MODEL)
-        .probe()
-        .await
-        .expect("probe should succeed");
-}
+// ── Streaming ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 #[ignore]

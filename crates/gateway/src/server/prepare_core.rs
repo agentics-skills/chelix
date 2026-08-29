@@ -205,7 +205,7 @@ pub async fn prepare_gateway_core(
     }
 
     let model_store = Arc::new(tokio::sync::RwLock::new(
-        crate::chat::DisabledModelsStore::load(),
+        crate::chat::DisabledModelsStore::load()?,
     ));
 
     let live_model_service = Arc::new(LiveModelService::new(
@@ -1059,7 +1059,6 @@ pub async fn prepare_gateway_core(
         registry,
         provider_summary,
         mcp_configured_count,
-        model_store,
         live_model_service,
         live_mcp,
         memory_manager,

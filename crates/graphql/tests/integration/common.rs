@@ -630,18 +630,6 @@ impl chelix_service_traits::ModelService for MockModel {
     async fn enable(&self, p: Value) -> ServiceResult {
         self.0.call("models.enable", p)
     }
-
-    async fn detect_supported(&self, p: Value) -> ServiceResult {
-        self.0.call("models.detect_supported", p)
-    }
-
-    async fn cancel_detect(&self) -> ServiceResult {
-        self.0.call("models.cancel_detect", json!({}))
-    }
-
-    async fn test(&self, p: Value) -> ServiceResult {
-        self.0.call("models.test", p)
-    }
 }
 
 #[async_trait::async_trait]

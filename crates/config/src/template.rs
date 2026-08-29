@@ -114,7 +114,6 @@ port = {port}                           # Port number (auto-generated for this i
 #   alias     - Custom name for metrics labels (useful for multiple instances)
 #   tool_mode - Tool calling mode: "native", "text", or "off" (default: "native")
 #   policy    - Per-provider tool policy override (allow/deny lists)
-#   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
 #
 # Declare every model only as [providers.<name>.models."<raw-model-id>"]
 # with a complete metadata record. Tables are evaluated in declaration order.

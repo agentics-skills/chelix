@@ -3,19 +3,11 @@
 import { sendRpc } from "../helpers";
 import { fetchModels } from "../models";
 import { providerApiKeyHelp } from "../provider-key-help";
-import type { TestModelResult } from "../provider-validation";
-import {
-	humanizeProbeError,
-	isModelServiceNotConfigured,
-	isTimeoutError,
-	providerBaseUrlError,
-	saveProviderKey,
-	testModel,
-} from "../provider-validation";
+import { providerBaseUrlError, saveProviderKey } from "../provider-validation";
 import * as S from "../state";
 import type { RpcResponse } from "../types/rpc";
 import { closeProviderModal, els, OPENAI_COMPATIBLE_PROVIDERS, openProviderModal, setFormError } from "./shared";
-import type { ModelEntry, ProbeResult, ProviderInfo } from "./types";
+import type { ModelEntry, ProviderInfo } from "./types";
 
 // ── API key form ─────────────────────────────────────────────
 
@@ -213,32 +205,6 @@ function showMultiModelSelector(
 
 	const selectedIds: Set<string> = new Set(savedModels);
 
-	type ModelProbeState = "probing" | "ok" | ProbeResult;
-	const probeResults = new Map<string, ModelProbeState>();
-
-	function applyModelProbeResult(modelId: string, result: TestModelResult): void {
-		const error = result.error || "";
-		if (isModelServiceNotConfigured(error)) {
-			probeResults.delete(modelId);
-			return;
-		}
-		if (!result.ok && isTimeoutError(error)) {
-			probeResults.set(modelId, { error: "Slow to respond (may still work)", timeout: true });
-			return;
-		}
-		probeResults.set(modelId, result.ok ? "ok" : { error: humanizeProbeError(error || "Unsupported") as string });
-	}
-
-	function probeModel(modelId: string): void {
-		if (probeResults.has(modelId)) return;
-		probeResults.set(modelId, "probing");
-		renderCards(searchInp?.value.trim() || null);
-		testModel(modelId).then((result: TestModelResult) => {
-			applyModelProbeResult(modelId, result);
-			renderCards(searchInp?.value.trim() || null);
-		});
-	}
-
 	const wrapper = document.createElement("div");
 	wrapper.className = "provider-key-form flex flex-col min-h-0 flex-1";
 
@@ -297,30 +263,20 @@ function showMultiModelSelector(
 		return badge;
 	}
 
-	function failedProbe(probe: ModelProbeState | undefined): ProbeResult | null {
-		return typeof probe === "object" ? probe : null;
-	}
-
-	function createModelBadges(model: ModelEntry, probe: ModelProbeState | undefined): HTMLDivElement {
+	function createModelBadges(model: ModelEntry): HTMLDivElement {
 		const badges = document.createElement("div");
 		badges.className = "flex gap-2";
 		if (model.tool_calling) badges.appendChild(createModelBadge("recommended-badge", "Tools"));
-		if (probe === "probing") badges.appendChild(createModelBadge("tier-badge", "Probing\u2026"));
-		const failure = failedProbe(probe);
-		if (failure) {
-			const className = failure.timeout ? "tier-badge" : "provider-item-badge warning";
-			badges.appendChild(createModelBadge(className, failure.timeout ? "Slow" : "Unsupported"));
-		}
 		return badges;
 	}
 
-	function createModelHeader(model: ModelEntry, probe: ModelProbeState | undefined): HTMLDivElement {
+	function createModelHeader(model: ModelEntry): HTMLDivElement {
 		const header = document.createElement("div");
 		header.className = "flex items-center justify-between";
 		const name = document.createElement("span");
 		name.className = "text-sm font-medium text-[var(--text)] truncate";
 		name.textContent = model.id;
-		header.append(name, createModelBadges(model, probe));
+		header.append(name, createModelBadges(model));
 		return header;
 	}
 
@@ -331,21 +287,11 @@ function showMultiModelSelector(
 		card.appendChild(idLine);
 	}
 
-	function appendModelProbeError(card: HTMLElement, probe: ModelProbeState | undefined): void {
-		const error = failedProbe(probe)?.error;
-		if (!error) return;
-		const errorLine = document.createElement("div");
-		errorLine.className = "text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5";
-		errorLine.textContent = error;
-		card.appendChild(errorLine);
-	}
-
 	function toggleSelectedModel(modelId: string): void {
 		if (selectedIds.has(modelId)) {
 			selectedIds.delete(modelId);
 		} else {
 			selectedIds.add(modelId);
-			probeModel(modelId);
 		}
 		renderCards(searchInp?.value.trim() || null);
 		updateStatus();
@@ -354,10 +300,8 @@ function showMultiModelSelector(
 	function createModelCard(model: ModelEntry): HTMLDivElement {
 		const card = document.createElement("div");
 		card.className = `model-card ${selectedIds.has(model.id) ? "selected" : ""}`;
-		const probe = probeResults.get(model.id);
-		card.appendChild(createModelHeader(model, probe));
+		card.appendChild(createModelHeader(model));
 		appendModelId(card, model.id);
-		appendModelProbeError(card, probe);
 		card.addEventListener("click", () => toggleSelectedModel(model.id));
 		return card;
 	}

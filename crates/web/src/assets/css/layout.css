@@ -384,12 +384,6 @@ header .cmd-palette-header-kbd {
 
 .model-dropdown-item.selected { color: var(--accent); }
 
-.model-dropdown-item-unsupported .model-item-label {
-  opacity: 0.72;
-  text-decoration: line-through;
-  text-decoration-color: var(--warn);
-}
-
 .model-item-label {
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -409,18 +403,6 @@ header .cmd-palette-header-kbd {
   gap: 6px;
   margin-left: 8px;
   flex-shrink: 0;
-}
-
-.model-item-unsupported {
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.42);
-  color: var(--warn);
-  border-radius: 9999px;
-  padding: 1px 6px;
-  font-size: 0.62rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 
 .model-dropdown-divider {

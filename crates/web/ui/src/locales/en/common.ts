@@ -112,7 +112,6 @@ export default {
 		noMatches: "No matches",
 		searchModels: "Search models\u2026",
 		noMatchingModels: "No matching models",
-		unsupported: "unsupported",
 	},
 	modals: {
 		addProvider: "Add Provider",

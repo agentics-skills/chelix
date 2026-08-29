@@ -10,8 +10,7 @@ use crate::{
     scalars::Json,
     services,
     types::{
-        BoolResult, McpOAuthStartResult, ModelTestResult, SessionShareResult, TranscriptionResult,
-        TtsConvertResult,
+        BoolResult, McpOAuthStartResult, SessionShareResult, TranscriptionResult, TtsConvertResult,
     },
 };
 
@@ -613,16 +612,6 @@ impl ModelMutation {
     async fn disable(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
         from_service(s.model.disable(input.0).await)
-    }
-
-    async fn detect_supported(&self, ctx: &Context<'_>) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.model.detect_supported(serde_json::json!({})).await)
-    }
-
-    async fn test(&self, ctx: &Context<'_>, input: Json) -> Result<ModelTestResult> {
-        let s = services!(ctx);
-        from_service(s.model.test(input.0).await)
     }
 }
 

@@ -5,16 +5,10 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
 import { providerApiKeyHelp } from "../../provider-key-help";
-import {
-	humanizeProbeError,
-	isModelServiceNotConfigured,
-	providerBaseUrlError,
-	saveProviderKey,
-	testModel,
-} from "../../provider-validation";
+import { providerBaseUrlError, saveProviderKey } from "../../provider-validation";
 import { targetValue } from "../../typed-events";
 import { ErrorPanel } from "../shared";
-import type { KeyHelp, ModelSelectorRow, ProbeResult, ProviderInfo, RawModelRow } from "../types";
+import type { KeyHelp, ModelSelectorRow, ProviderInfo, RawModelRow } from "../types";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -49,28 +43,20 @@ function toModelSelectorRow(modelRow: RawModelRow): ModelSelectorRow {
 export function ModelSelectCard({
 	model,
 	selected,
-	probe,
 	onToggle,
 }: {
 	model: ModelSelectorRow;
 	selected: boolean;
-	probe: string | ProbeResult | undefined;
 	onToggle: () => void;
 }): VNode {
-	const probeError = probe && probe !== "ok" && probe !== "probing" ? (probe as ProbeResult).error || "" : "";
 	return (
 		<button type="button" className={`model-card ${selected ? "selected" : ""}`} onClick={onToggle}>
 			<span className="flex flex-wrap items-center justify-between gap-2">
 				<span className="text-sm font-medium text-[var(--text)]">{model.id}</span>
 				<span className="flex flex-wrap gap-2 justify-end">
 					{model.tool_calling ? <span className="recommended-badge">Tools</span> : null}
-					{probe === "probing" ? <span className="tier-badge">Probing{"\u2026"}</span> : null}
-					{probeError ? <span className="provider-item-badge warning">Unsupported</span> : null}
 				</span>
 			</span>
-			{probeError ? (
-				<span className="text-xs font-medium text-[var(--danger,#ef4444)] mt-0.5">{probeError}</span>
-			) : null}
 		</button>
 	);
 }
@@ -83,7 +69,6 @@ interface OnboardingProviderRowProps {
 	phase: string;
 	providerModels: ModelSelectorRow[];
 	selectedModels: Set<string>;
-	probeResults: Map<string, string | ProbeResult>;
 	modelSearch: string;
 	setModelSearch: (v: string) => void;
 	apiKey: string;
@@ -218,7 +203,6 @@ function sortedProviderModels(models: ModelSelectorRow[]): ModelSelectorRow[] {
 interface ProviderModelFormProps {
 	models: ModelSelectorRow[];
 	selectedModels: Set<string>;
-	probeResults: Map<string, string | ProbeResult>;
 	modelSearch: string;
 	setModelSearch: (value: string) => void;
 	saving: boolean;
@@ -258,7 +242,6 @@ function ProviderModelForm(props: ProviderModelFormProps): VNode {
 							key={model.id}
 							model={model}
 							selected={props.selectedModels.has(model.id)}
-							probe={props.probeResults.get(model.id)}
 							onToggle={() => props.onToggle(model.id)}
 						/>
 					))
@@ -338,7 +321,6 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 				<ProviderModelForm
 					models={props.providerModels}
 					selectedModels={props.selectedModels}
-					probeResults={props.probeResults}
 					modelSearch={props.modelSearch}
 					setModelSearch={props.setModelSearch}
 					saving={props.savingModels}
@@ -363,7 +345,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [phase, setPhase] = useState("form");
 	const [providerModels, setProviderModels] = useState<ModelSelectorRow[]>([]);
 	const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
-	const [probeResults, setProbeResults] = useState<Map<string, string | ProbeResult>>(new Map());
 	const [modelSearch, setModelSearch] = useState("");
 	const [savingModels, setSavingModels] = useState(false);
 	const [modelSelectProvider, setModelSelectProvider] = useState<string | null>(null);
@@ -413,7 +394,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setPhase("form");
 		setProviderModels([]);
 		setSelectedModels(new Set());
-		setProbeResults(new Map());
 		setModelSearch("");
 		setSavingModels(false);
 		setApiKey("");
@@ -485,34 +465,11 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			});
 	}
 
-	function probeModelAsync(modelId: string): void {
-		setProbeResults((prev) => {
-			const next = new Map(prev);
-			next.set(modelId, "probing");
-			return next;
-		});
-		testModel(modelId).then((result: { ok: boolean; error?: string }) => {
-			setProbeResults((prev) => {
-				const next = new Map(prev);
-				if (isModelServiceNotConfigured(result.error || "")) next.delete(modelId);
-				else
-					next.set(
-						modelId,
-						result.ok ? "ok" : { error: humanizeProbeError(result.error || "Unsupported") as string | undefined },
-					);
-				return next;
-			});
-		});
-	}
-
 	function onToggleModel(modelId: string): void {
 		setSelectedModels((prev) => {
 			const next = new Set(prev);
 			if (next.has(modelId)) next.delete(modelId);
-			else {
-				next.add(modelId);
-				probeModelAsync(modelId);
-			}
+			else next.add(modelId);
 			return next;
 		});
 	}
@@ -580,7 +537,6 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				phase={configuring === p.name ? phase : "form"}
 				providerModels={configuring === p.name ? providerModels : []}
 				selectedModels={configuring === p.name ? selectedModels : new Set()}
-				probeResults={configuring === p.name ? probeResults : new Map()}
 				modelSearch={configuring === p.name ? modelSearch : ""}
 				setModelSearch={setModelSearch}
 				apiKey={apiKey}

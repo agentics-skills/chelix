@@ -58,7 +58,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("tool_mode", Leaf),
             ("cache_retention", Leaf),
             ("policy", tool_policy_entry()),
-            ("probe_timeout_secs", Leaf),
         ]))
     };
 

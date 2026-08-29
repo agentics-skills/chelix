@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin, time::Duration};
+use std::pin::Pin;
 
 use {
     async_trait::async_trait,
@@ -12,16 +12,6 @@ use chelix_agents::model::{
 };
 
 use super::super::{OpenAiProvider, OpenAiProviderCapabilities};
-
-async fn timed_probe(
-    timeout: Duration,
-    probe: impl Future<Output = anyhow::Result<()>>,
-) -> anyhow::Result<()> {
-    match tokio::time::timeout(timeout, probe).await {
-        Ok(result) => result,
-        Err(_) => anyhow::bail!("Connection timed out after {} seconds", timeout.as_secs()),
-    }
-}
 
 impl OpenAiProvider {
     pub fn new(api_key: secrecy::Secret<String>, model: String, base_url: String) -> Self {
@@ -53,7 +43,6 @@ impl OpenAiProvider {
             reasoning_include: None,
             cache_retention: chelix_config::CacheRetention::Short,
             capabilities: OpenAiProviderCapabilities::DEFAULT,
-            probe_timeout_secs: None,
         }
     }
 
@@ -95,13 +84,6 @@ impl OpenAiProvider {
         self
     }
 
-    /// Set the completion-based probe timeout override (seconds).
-    #[must_use]
-    pub fn with_probe_timeout_secs(mut self, secs: Option<u64>) -> Self {
-        self.probe_timeout_secs = secs;
-        self
-    }
-
     /// Create a copy of this provider.
     ///
     /// Centralises the field-by-field copy so callers like
@@ -121,7 +103,6 @@ impl OpenAiProvider {
             reasoning_include: self.reasoning_include.clone(),
             cache_retention: self.cache_retention,
             capabilities: self.capabilities,
-            probe_timeout_secs: self.probe_timeout_secs,
         }
     }
 
@@ -270,21 +251,6 @@ impl LlmProvider for OpenAiProvider {
         self.stream_with_tools(messages, vec![])
     }
 
-    async fn probe(&self) -> anyhow::Result<()> {
-        match self.wire_api {
-            WireApi::Responses => self.probe_responses().await,
-            WireApi::ChatCompletions => self.probe_chat_completions().await,
-        }
-    }
-
-    fn probe_timeout(&self) -> Duration {
-        self.probe_timeout_duration()
-    }
-
-    async fn check_availability(&self) -> anyhow::Result<()> {
-        timed_probe(self.probe_timeout_duration(), self.probe()).await
-    }
-
     #[allow(clippy::collapsible_if)]
     fn stream_with_tools(
         &self,
@@ -413,15 +379,6 @@ mod tests {
         chelix_common::{ModelMetadata, ModelModality, ReasoningInclude, ReasoningSummary},
         std::sync::Arc,
     };
-
-    #[tokio::test]
-    async fn timed_probe_rejects_a_pending_request() {
-        let error = timed_probe(Duration::ZERO, std::future::pending::<anyhow::Result<()>>())
-            .await
-            .expect_err("pending probe should time out");
-
-        assert_eq!(error.to_string(), "Connection timed out after 0 seconds");
-    }
 
     #[test]
     fn chat_completions_reasoning_does_not_include_responses_options() {

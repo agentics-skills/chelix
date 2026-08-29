@@ -5,8 +5,6 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::time::Duration;
-
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
@@ -16,22 +14,6 @@ use {
 
 const BASE_URL: &str = "https://api.z.ai/api/paas/v4";
 const TEST_MODEL: &str = "glm-4.5-flash";
-
-const KNOWN_MODELS: &[&str] = &[
-    "glm-5",
-    "glm-4.7",
-    "glm-4.7-flash",
-    "glm-4.7-flashx",
-    "glm-4.6",
-    "glm-4.6v",
-    "glm-4.6v-flash",
-    "glm-4.5",
-    "glm-4.5-air",
-    "glm-4.5-airx",
-    "glm-4.5-flash",
-    "glm-4.5v",
-    "glm-4-32b-0414-128k",
-];
 
 fn api_key() -> Secret<String> {
     Secret::new(std::env::var("Z_API_KEY").expect("Z_API_KEY must be set for integration tests"))
@@ -44,24 +26,6 @@ fn make_provider(model: &str) -> OpenAiProvider {
         BASE_URL.to_string(),
         "zai".to_string(),
     )
-}
-
-async fn probe_with_retries(model: &str) -> Result<(), String> {
-    let mut last_error = String::new();
-
-    for attempt in 1..=3 {
-        match make_provider(model).probe().await {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                last_error = error.to_string();
-                if attempt < 3 {
-                    tokio::time::sleep(Duration::from_secs(attempt)).await;
-                }
-            },
-        }
-    }
-
-    Err(last_error)
 }
 
 fn weather_tool() -> serde_json::Value {
@@ -219,16 +183,7 @@ async fn multi_turn_tool_use() {
     assert!(r2.text.is_some(), "should have text after tool result");
 }
 
-// ── Probe & streaming ────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn probe_succeeds() {
-    make_provider(TEST_MODEL)
-        .probe()
-        .await
-        .expect("probe should succeed");
-}
+// ── Streaming ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 #[ignore]
@@ -249,28 +204,4 @@ async fn stream_emits_delta_and_done() {
         }
     }
     assert!(saw_delta && saw_done);
-}
-
-// ── Model catalog ────────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn catalog_models_are_live() {
-    let mut alive = Vec::new();
-    let mut dead = Vec::new();
-    for &m in KNOWN_MODELS {
-        match probe_with_retries(m).await {
-            Ok(()) => alive.push(m),
-            Err(e) => dead.push((m, e)),
-        }
-    }
-    eprintln!("\n=== Z.AI Model Catalog Health ===");
-    for m in &alive {
-        eprintln!("  OK {m}");
-    }
-    for (m, e) in &dead {
-        eprintln!("  DEAD {m}: {e}");
-    }
-    eprintln!("================================\n");
-    assert!(alive.contains(&TEST_MODEL), "{TEST_MODEL} should be live");
 }

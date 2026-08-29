@@ -83,8 +83,6 @@ export default {
 		modelCount: "{{count}} model selected",
 		modelCount_plural: "{{count}} models selected",
 		tools: "Tools",
-		probing: "Probing\u2026",
-		unsupported: "Unsupported",
 		apiKey: "API Key",
 		apiKeyOptional: "(optional)",
 		apiKeyPlaceholder: "sk-...",
@@ -99,7 +97,6 @@ export default {
 		validationFailed: "Validation failed. Please check your credentials.",
 		validationError: "Validation failed.",
 		failedToSave: "Failed to save credentials.",
-		modelTestFailed: "Model test failed. Check your model ID.",
 	},
 
 	// ── Voice step ───────────────────────────────────────────

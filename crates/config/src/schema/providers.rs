@@ -177,15 +177,6 @@ pub struct ProviderEntry {
     /// routed through this provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<ToolPolicyConfig>,
-
-    /// Timeout in seconds for completion-based model probes.
-    ///
-    /// Increase this for slow providers that need extra time to respond to
-    /// the first probe request.
-    ///
-    /// `None` (default) uses the built-in 30-second timeout.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub probe_timeout_secs: Option<u64>,
 }
 
 impl std::fmt::Debug for ProviderEntry {
@@ -201,7 +192,6 @@ impl std::fmt::Debug for ProviderEntry {
             .field("tool_mode", &self.tool_mode)
             .field("cache_retention", &self.cache_retention)
             .field("policy", &self.policy)
-            .field("probe_timeout_secs", &self.probe_timeout_secs)
             .finish()
     }
 }
@@ -219,7 +209,6 @@ impl Default for ProviderEntry {
             tool_mode: ToolMode::Native,
             cache_retention: CacheRetention::Short,
             policy: None,
-            probe_timeout_secs: None,
         }
     }
 }

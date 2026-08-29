@@ -97,7 +97,7 @@ async fn browser_shutdown_with_grace_times_out() {
 
 #[test]
 fn model_service_not_configured_error_returns_expected_message() {
-    let error = model_service_not_configured_error("models.test");
+    let error = model_service_not_configured_error("models.disable");
     assert_eq!(error.to_string(), "model service not configured");
 }
 

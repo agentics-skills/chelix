@@ -869,9 +869,6 @@ pub trait ModelService: Send + Sync {
     ) -> Result<ReasoningState, ServiceError>;
     async fn disable(&self, params: Value) -> ServiceResult;
     async fn enable(&self, params: Value) -> ServiceResult;
-    async fn detect_supported(&self, params: Value) -> ServiceResult;
-    async fn cancel_detect(&self) -> ServiceResult;
-    async fn test(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopModelService;
@@ -910,20 +907,6 @@ impl ModelService for NoopModelService {
 
     async fn enable(&self, _params: Value) -> ServiceResult {
         Err(model_service_not_configured_error("models.enable"))
-    }
-
-    async fn detect_supported(&self, _params: Value) -> ServiceResult {
-        Err(model_service_not_configured_error(
-            "models.detect_supported",
-        ))
-    }
-
-    async fn cancel_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "ok": true, "cancelled": false }))
-    }
-
-    async fn test(&self, _params: Value) -> ServiceResult {
-        Err(model_service_not_configured_error("models.test"))
     }
 }
 

@@ -765,46 +765,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             })
         }),
     );
-    reg.register(
-        "models.detect_supported",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .model
-                    .detect_supported(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "models.cancel_detect",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .model
-                    .cancel_detect()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "models.test",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .model
-                    .test(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
     // Provider setup
     reg.register(
         "providers.available",

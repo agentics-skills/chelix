@@ -52,7 +52,4 @@ pub struct OpenAiProvider {
     cache_retention: chelix_config::CacheRetention,
     /// Explicit provider behavior policies. Never inferred from provider name or URL.
     capabilities: OpenAiProviderCapabilities,
-    /// Optional override for the completion-based probe timeout (seconds).
-    /// `None` uses the trait default (30s).
-    probe_timeout_secs: Option<u64>,
 }

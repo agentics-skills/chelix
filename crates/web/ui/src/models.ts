@@ -147,8 +147,6 @@ export function fetchModels(): Promise<void> {
 		const model = modelStore.selectedModel.value;
 		if (model) updateModelComboLabel(model);
 
-		// If the dropdown is currently open, re-render to reflect updated flags
-		// (for example when a model becomes unsupported via a WS event).
 		if (S.modelDropdown && !S.modelDropdown.classList.contains("hidden")) {
 			const query = S.modelSearchInput ? (S.modelSearchInput as HTMLInputElement).value.trim() : "";
 			renderModelList(query);
@@ -190,7 +188,6 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 	const el = document.createElement("div");
 	el.className = "model-dropdown-item";
 	if (m.id === currentId) el.classList.add("selected");
-	if (m.unsupported) el.classList.add("model-dropdown-item-unsupported");
 
 	const label = document.createElement("span");
 	label.className = "model-item-label";
@@ -215,14 +212,6 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 		brainIcon.title = "Supports reasoning";
 		brainIcon.style.cssText = "opacity:0.5;flex-shrink:0;";
 		meta.appendChild(brainIcon);
-	}
-
-	if (m.unsupported) {
-		const badge = document.createElement("span");
-		badge.className = "model-item-unsupported";
-		badge.textContent = t("common:labels.unsupported");
-		if (m.unsupported_reason) badge.title = m.unsupported_reason;
-		meta.appendChild(badge);
 	}
 
 	if (meta.childNodes.length > 0) el.appendChild(meta);

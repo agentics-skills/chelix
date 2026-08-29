@@ -195,14 +195,7 @@ async fn multi_turn_tool_use() {
     );
 }
 
-// ── Probe & streaming ────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn probe_succeeds() {
-    let p = make_provider(TEST_MODEL);
-    p.probe().await.expect("probe should succeed");
-}
+// ── Streaming ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 #[ignore]

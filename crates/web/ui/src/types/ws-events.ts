@@ -401,10 +401,7 @@ export interface OperationProgressPayload {
 	done?: boolean;
 }
 
-export interface ModelsUpdatedPayload {
-	phase?: string;
-	[key: string]: unknown;
-}
+export type ModelsUpdatedPayload = Record<string, unknown>;
 
 export interface WsErrorPayload {
 	message?: string;

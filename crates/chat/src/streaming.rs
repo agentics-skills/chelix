@@ -25,14 +25,13 @@ use {
 };
 
 use crate::{
-    agent_loop::{ChannelStreamDispatcher, clear_unsupported_model, mark_unsupported_model},
+    agent_loop::ChannelStreamDispatcher,
     channels::{
         deliver_channel_error, deliver_channel_replies, generate_tts_audio,
         send_retry_status_to_channels,
     },
     chat_error::parse_chat_error,
     message::apply_voice_reply_suffix,
-    models::DisabledModelsStore,
     prompt::prompt_build_limits_from_config,
     runtime::ChatRuntime,
     service::{
@@ -249,7 +248,6 @@ pub(crate) async fn run_streaming(
     persona: PromptPersona,
     cancellation_token: &CancellationToken,
     state: &Arc<dyn ChatRuntime>,
-    model_store: &Arc<RwLock<DisabledModelsStore>>,
     run_id: &str,
     provider: Arc<dyn chelix_agents::model::LlmProvider>,
     model_id: &str,
@@ -512,8 +510,6 @@ pub(crate) async fn run_streaming(
                     push_capped_provider_raw_event(&mut raw_llm_responses, raw);
                 },
                 StreamEvent::Done(usage) => {
-                    clear_unsupported_model(state, model_store, model_id).await;
-
                     // Record streaming completion metrics.
                     #[cfg(feature = "metrics")]
                     {
@@ -864,14 +860,6 @@ pub(crate) async fn run_streaming(
                         dispatcher.finish().await;
                     }
                     state.set_run_error(run_id, terminal_error.clone()).await;
-                    mark_unsupported_model(
-                        state,
-                        model_store,
-                        model_id,
-                        provider_name,
-                        &provider_error_obj,
-                    )
-                    .await;
                     let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                     deliver_channel_error(state, session_key, &error_obj).await;
                     let error_payload = ChatErrorBroadcast {

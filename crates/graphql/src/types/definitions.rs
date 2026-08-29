@@ -413,10 +413,6 @@ pub struct ModelInfo {
     pub provider: String,
     pub preferred: bool,
     pub disabled: bool,
-    pub unsupported: bool,
-    pub unsupported_reason: Option<String>,
-    pub unsupported_provider: Option<String>,
-    pub unsupported_updated_at: Option<u64>,
     pub context_length: u32,
     pub max_input_tokens: u32,
     pub max_output_tokens: u32,
@@ -441,14 +437,6 @@ pub struct McpOAuthStartResult {
     pub oauth_pending: Option<bool>,
     #[serde(default)]
     pub auth_url: Option<String>,
-}
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelTestResult {
-    pub ok: bool,
-    #[serde(default)]
-    pub model_id: Option<String>,
 }
 
 // ── Skills ──────────────────────────────────────────────────────────────────
