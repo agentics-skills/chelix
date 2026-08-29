@@ -47,27 +47,49 @@ is sent as `reasoning.encrypted_content`.
 - `context_length`, `max_input_tokens`, `max_output_tokens` — greater than zero
 - `max_input_tokens + max_output_tokens` does not exceed `context_length`
 - `input_modalities`, `output_modalities` — non-empty, without duplicates
+- `reasoning_supported_efforts` — a non-empty array without empty strings
 - `reasoning_include` — without duplicates
 
 ### Non-Reasoning Model
 
-A non-reasoning model is defined explicitly by an empty array:
+The only configuration that activates the non-reasoning path when calling the
+LLM provider API is:
 
 ```toml
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["off"]
 ```
 
-When `reasoning_supported_efforts` is empty, the `reasoning_summary` and
-`reasoning_include` parameters are forbidden.
+`off` is not mandatory and may be absent from `reasoning_supported_efforts`.
+Validation that requires `off` to be present is forbidden.
+
+Until the provider API request is built, `off` is an ordinary selected effort
+from `reasoning_supported_efforts`. Configuration, the registry, resolution,
+sessions, persistence, and the UI do not classify the model as non-reasoning
+and do not create a separate flag, enum, or state for that purpose.
+
+A single shared transport-neutral reasoning-policy helper applied at the
+provider API request boundary alone interprets exact ordered `["off"]` as non-reasoning.
+It returns closed `Omit | Send { effort, summary, include }`; `Omit` contains no reasoning values.
+`Send` preserves selected typed effort and unchanged optional fields; serializers only encode the result.
+
+`reasoning_summary` and `reasoning_include` are valid configuration fields for
+`["off"]`. Special validation of those fields outside the reasoning-policy
+helper is forbidden.
+
+`["off", "low"]` with selected effort `off` is not a non-reasoning model. It is
+an ordinary reasoning configuration that sends the effort,
+`reasoning_summary`, and `reasoning_include` according to the general rules.
 
 ### supported_efforts
 
-A non-empty `reasoning_supported_efforts` makes the model reasoning-capable
-regardless of its contents: `["none"]` and `["off"]` are reasoning-capable, as
-is any other explicitly specified value.
+`reasoning_supported_efforts` always contains at least one non-empty value.
+Every selected effort is an ordinary provider-defined value until the
+reasoning-policy helper and must be present in the model's array.
 
 There is no interference with or restriction on the set of
-`reasoning_supported_efforts` levels listed in the configuration.
+`reasoning_supported_efforts` levels listed in the configuration, except that
+empty strings are forbidden. In particular, `off` is neither added nor required
+automatically.
 
 Forbidden: a local value allowlist, filtering, renaming, replacement,
 reordering, autocompletion.
@@ -87,9 +109,9 @@ ambiguous. Runtime model overrides must use an ID directly from `models.list`.
 Service load refusal is caused by:
 
 - a missing mandatory parameter
-- a value violating the validity criteria
-- `reasoning_summary` or `reasoning_include` with an empty
-  `reasoning_supported_efforts`
+- a value violating the validity criteria, including
+  `reasoning_supported_efforts = []`, `[""]`, or an array containing any empty
+  string
 - an unknown key in the model settings (the common configuration validator)
 - an enabled provider without a single model
 
@@ -128,7 +150,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["off"]
 ```
 
 ## Available Providers
@@ -224,7 +246,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = []
+reasoning_supported_efforts = ["off"]
 
 [chat]
 priority_models = ["custom-ai-example::muse-flash-0.9"]
