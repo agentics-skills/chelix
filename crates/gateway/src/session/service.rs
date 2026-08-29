@@ -589,11 +589,11 @@ impl SessionService for LiveSessionService {
             .ok_or_else(|| ServiceError::message("model is required"))?
             .to_string();
             let reasoning_effort = p.reasoning_effort.as_ref().and_then(Option::as_ref);
-            let reasoning = self
-                .model_service
-                .resolve_model_reasoning(&model, reasoning_effort)
-                .await?;
-            Some((model, reasoning))
+            Some(
+                self.model_service
+                    .resolve_model_reasoning(&model, reasoning_effort)
+                    .await?,
+            )
         } else {
             None
         };
@@ -607,9 +607,13 @@ impl SessionService for LiveSessionService {
         if p.label.is_some() {
             let _ = self.metadata.upsert(key, p.label).await;
         }
-        if let Some((model, reasoning)) = resolved_model {
+        if let Some(model_reasoning) = resolved_model {
             self.metadata
-                .set_model_reasoning(key, &model, &reasoning)
+                .set_model_reasoning(
+                    key,
+                    model_reasoning.model_id(),
+                    model_reasoning.reasoning_effort(),
+                )
                 .await
                 .map_err(ServiceError::message)?;
         }

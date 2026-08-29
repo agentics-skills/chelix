@@ -6,3 +6,5 @@ pub mod registration;
 mod tests;
 
 pub use self::core::*;
+
+pub type ResolvedModelReasoning = chelix_common::ResolvedModelReasoning;

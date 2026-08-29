@@ -37,6 +37,53 @@ impl From<String> for ReasoningEffort {
     }
 }
 
+/// Canonical model ID paired with its required reasoning effort after resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedModelReasoning {
+    model_id: String,
+    reasoning_effort: ReasoningEffort,
+}
+
+impl ResolvedModelReasoning {
+    /// Build a structurally complete pair after registry resolution.
+    pub fn try_new(
+        model_id: String,
+        reasoning_effort: ReasoningEffort,
+    ) -> Result<Self, ResolvedModelReasoningError> {
+        if model_id.is_empty() {
+            return Err(ResolvedModelReasoningError::EmptyModelId);
+        }
+        if reasoning_effort.as_str().is_empty() {
+            return Err(ResolvedModelReasoningError::EmptyReasoningEffort);
+        }
+        Ok(Self {
+            model_id,
+            reasoning_effort,
+        })
+    }
+
+    /// Exact canonical key used by the provider registry.
+    #[must_use]
+    pub fn model_id(&self) -> &str {
+        &self.model_id
+    }
+
+    /// Exact reasoning effort validated against the selected model metadata.
+    #[must_use]
+    pub const fn reasoning_effort(&self) -> &ReasoningEffort {
+        &self.reasoning_effort
+    }
+}
+
+/// Structural errors rejected before a resolved pair can exist.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ResolvedModelReasoningError {
+    #[error("resolved model ID must not be empty")]
+    EmptyModelId,
+    #[error("resolved reasoning effort must not be empty")]
+    EmptyReasoningEffort,
+}
+
 /// Input or output medium accepted by a model endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -365,6 +412,40 @@ mod tests {
             reasoning_supported_efforts: Some(vec!["low".into(), "ultra".into()]),
             reasoning_summary: Some(ReasoningSummary::Detailed),
             reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
+        }
+    }
+
+    #[test]
+    fn resolved_model_reasoning_preserves_complete_values() {
+        let resolved = ResolvedModelReasoning::try_new(
+            "custom-example::model".to_string(),
+            ReasoningEffort::from("low"),
+        )
+        .unwrap();
+
+        assert_eq!(resolved.model_id(), "custom-example::model");
+        assert_eq!(resolved.reasoning_effort().as_str(), "low");
+    }
+
+    #[test]
+    fn resolved_model_reasoning_rejects_empty_values() {
+        let cases = [
+            (
+                "",
+                ReasoningEffort::from("low"),
+                ResolvedModelReasoningError::EmptyModelId,
+            ),
+            (
+                "custom-example::model",
+                ReasoningEffort::from(""),
+                ResolvedModelReasoningError::EmptyReasoningEffort,
+            ),
+        ];
+
+        for (model_id, reasoning_effort, expected) in cases {
+            let error = ResolvedModelReasoning::try_new(model_id.to_string(), reasoning_effort)
+                .unwrap_err();
+            assert_eq!(error, expected);
         }
     }
 

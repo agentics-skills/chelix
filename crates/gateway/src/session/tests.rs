@@ -1286,16 +1286,16 @@ reasoning_supported_efforts = ["low"]
                 serde_json::json!({
                     "key": KEY,
                     "model": "custom-patch::missing",
-                    "reasoningEffort": null,
+                    "reasoningEffort": "low",
                 }),
-                "not found in chat model registry",
+                "is not registered",
             ),
             (
                 "disabled model",
                 serde_json::json!({
                     "key": KEY,
                     "model": PLAIN_MODEL,
-                    "reasoningEffort": null,
+                    "reasoningEffort": "low",
                 }),
                 "not found in chat model registry",
             ),

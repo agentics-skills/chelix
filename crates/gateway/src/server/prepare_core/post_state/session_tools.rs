@@ -3,6 +3,7 @@ use std::sync::Arc;
 use {
     chelix_agents::tool_registry::ToolRegistry,
     chelix_config::schema::ReasoningEffort,
+    chelix_service_traits::ResolvedModelReasoning,
     chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
     serde_json::Value,
 };
@@ -114,7 +115,7 @@ fn build_create_session(
                 let parent_session_key = req.parent_session_key.clone();
 
                 validate_agent_id(&state, &agent_id).await?;
-                let (model, reasoning_effort) = resolve_model_and_reasoning_effort(
+                let model_reasoning = resolve_model_and_reasoning_effort(
                     &state,
                     &agent_id,
                     req.model_override.as_ref(),
@@ -138,10 +139,13 @@ fn build_create_session(
                 if let Some(label) = req.label {
                     patch.insert("label".to_string(), serde_json::json!(label));
                 }
-                patch.insert("model".to_string(), serde_json::json!(model));
+                patch.insert(
+                    "model".to_string(),
+                    serde_json::json!(model_reasoning.model_id()),
+                );
                 patch.insert(
                     "reasoningEffort".to_string(),
-                    serde_json::json!(reasoning_effort.as_str()),
+                    serde_json::json!(model_reasoning.reasoning_effort().as_str()),
                 );
                 if let Some(project_id) = req.project_id {
                     patch.insert("projectId".to_string(), serde_json::json!(project_id));
@@ -203,10 +207,10 @@ fn build_send_to_session(
                     "_session_key": req.key,
                 });
                 if let Some(model_override) = req.model_override {
-                    let model = model_from_override(&state, &model_override).await?;
-                    params["model"] = serde_json::json!(model);
+                    let model_reasoning = model_from_override(&state, &model_override).await?;
+                    params["model"] = serde_json::json!(model_reasoning.model_id());
                     params["reasoningEffort"] =
-                        serde_json::json!(model_override.reasoning_effort.as_str());
+                        serde_json::json!(model_reasoning.reasoning_effort().as_str());
                 }
                 let chat = state.chat();
                 if req.wait_for_reply {
@@ -243,7 +247,7 @@ async fn resolve_model_and_reasoning_effort(
     state: &GatewayState,
     agent_id: &str,
     model_override: Option<&chelix_tools::session_model_override::ModelOverride>,
-) -> chelix_tools::Result<(String, ReasoningEffort)> {
+) -> chelix_tools::Result<ResolvedModelReasoning> {
     let (model, effort) = if let Some(model_override) = model_override {
         (
             model_override.model.clone(),
@@ -253,22 +257,20 @@ async fn resolve_model_and_reasoning_effort(
         agent_model_and_reasoning(state, agent_id).await?
     };
 
-    validate_model_and_reasoning_effort(state, &model, &effort).await?;
-    Ok((model, effort))
+    validate_model_and_reasoning_effort(state, &model, &effort).await
 }
 
 #[tracing::instrument(skip(state, model_override))]
 async fn model_from_override(
     state: &GatewayState,
     model_override: &chelix_tools::session_model_override::ModelOverride,
-) -> chelix_tools::Result<String> {
+) -> chelix_tools::Result<ResolvedModelReasoning> {
     validate_model_and_reasoning_effort(
         state,
         &model_override.model,
         &model_override.reasoning_effort,
     )
-    .await?;
-    Ok(model_override.model.clone())
+    .await
 }
 
 #[tracing::instrument(skip(state))]
@@ -276,13 +278,12 @@ async fn validate_model_and_reasoning_effort(
     state: &GatewayState,
     model: &str,
     reasoning_effort: &ReasoningEffort,
-) -> chelix_tools::Result<()> {
+) -> chelix_tools::Result<ResolvedModelReasoning> {
     state
         .services
         .model
         .resolve_model_reasoning(model, Some(reasoning_effort))
         .await
-        .map(|_| ())
         .map_err(|error| chelix_tools::Error::message(error.to_string()))
 }
 

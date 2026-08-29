@@ -897,7 +897,7 @@ impl SqliteSessionMetadata {
         sandbox_owner_key: &str,
         agent_id: &str,
         model: &str,
-        reasoning_effort: &str,
+        reasoning_effort: &ReasoningEffort,
     ) -> Result<SessionEntry> {
         let now = now_ms() as i64;
         let result = sqlx::query(
@@ -918,7 +918,7 @@ impl SqliteSessionMetadata {
         .bind(sandbox_owner_key)
         .bind(agent_id)
         .bind(model)
-        .bind(reasoning_effort)
+        .bind(reasoning_effort.as_str())
         .bind(PromptProfile::Subagent)
         .bind(now)
         .bind(key)

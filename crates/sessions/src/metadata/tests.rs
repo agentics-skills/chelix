@@ -865,7 +865,7 @@ async fn configure_subagent_session_sets_agreed_child_metadata() {
             "root",
             "reviewer",
             "model-id",
-            "high",
+            &ReasoningEffort::from("high"),
         )
         .await
         .unwrap();
@@ -889,7 +889,7 @@ async fn nested_subagent_persists_root_sandbox_owner() {
         "root",
         "worker",
         "model-id",
-        "high",
+        &ReasoningEffort::from("high"),
     )
     .await
     .unwrap();
@@ -908,7 +908,7 @@ async fn nested_subagent_persists_root_sandbox_owner() {
             &resolved_owner,
             "worker",
             "model-id",
-            "high",
+            &ReasoningEffort::from("high"),
         )
         .await
         .unwrap();

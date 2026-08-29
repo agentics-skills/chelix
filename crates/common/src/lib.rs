@@ -20,7 +20,7 @@ pub use {
     model::{
         ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
         ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningSummary,
-        ResponsesReasoningItem,
+        ResolvedModelReasoning, ResolvedModelReasoningError, ResponsesReasoningItem,
     },
     provider_output::{
         MaterializerError, ProviderItemId, ProviderItemPosition, ProviderItemUpdate,

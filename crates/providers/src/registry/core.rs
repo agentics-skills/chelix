@@ -11,7 +11,7 @@ use {
         ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, ReasoningEffort,
         StreamEvent, ToolChoice,
     },
-    chelix_common::{ModelMetadata, ModelModality},
+    chelix_common::{ModelMetadata, ModelModality, ResolvedModelReasoningError},
     tokio_stream::Stream,
 };
 
@@ -20,26 +20,7 @@ use crate::{
     model_id::{namespaced_model_id, raw_model_id},
 };
 
-/// Canonical model ID paired with its validated reasoning effort.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedModelReasoning {
-    model_id: String,
-    reasoning_effort: ReasoningEffort,
-}
-
-impl ResolvedModelReasoning {
-    /// Exact canonical key used by the provider registry.
-    #[must_use]
-    pub fn model_id(&self) -> &str {
-        &self.model_id
-    }
-
-    /// Exact reasoning effort validated against the selected model metadata.
-    #[must_use]
-    pub const fn reasoning_effort(&self) -> &ReasoningEffort {
-        &self.reasoning_effort
-    }
-}
+use super::ResolvedModelReasoning;
 
 /// Runtime provider resolved from one validated model/reasoning pair.
 #[derive(Clone)]
@@ -301,29 +282,36 @@ impl ProviderRegistry {
             reasoning_effort.ok_or_else(|| ModelResolutionError::MissingReasoningEffort {
                 model_id: model.id.clone(),
             })?;
-        if effort.as_str().is_empty() {
-            return Err(ModelResolutionError::EmptyReasoningEffort {
-                model_id: model.id.clone(),
-            });
-        }
-        if !model.metadata.reasoning_supported_efforts.contains(effort) {
+        let model_reasoning = ResolvedModelReasoning::try_new(model.id.clone(), effort.clone())
+            .map_err(|error| match error {
+                ResolvedModelReasoningError::EmptyModelId => ModelResolutionError::UnknownModel {
+                    model_id: model.id.clone(),
+                },
+                ResolvedModelReasoningError::EmptyReasoningEffort => {
+                    ModelResolutionError::EmptyReasoningEffort {
+                        model_id: model.id.clone(),
+                    }
+                },
+            })?;
+        if !model
+            .metadata
+            .reasoning_supported_efforts
+            .contains(model_reasoning.reasoning_effort())
+        {
             return Err(ModelResolutionError::UnsupportedReasoningEffort {
                 model_id: model.id.clone(),
-                reasoning_effort: effort.as_str().to_string(),
+                reasoning_effort: model_reasoning.reasoning_effort().as_str().to_string(),
             });
         }
         let provider = Arc::clone(&provider)
-            .with_reasoning_effort(effort.clone())
+            .with_reasoning_effort(model_reasoning.reasoning_effort().clone())
             .ok_or_else(|| ModelResolutionError::ReasoningEffortApplicationFailed {
                 model_id: model.id.clone(),
-                reasoning_effort: effort.as_str().to_string(),
+                reasoning_effort: model_reasoning.reasoning_effort().as_str().to_string(),
             })?;
 
         Ok(ResolvedModel {
-            model_reasoning: ResolvedModelReasoning {
-                model_id: model.id.clone(),
-                reasoning_effort: effort.clone(),
-            },
+            model_reasoning,
             provider,
         })
     }

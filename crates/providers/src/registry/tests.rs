@@ -47,6 +47,17 @@ streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["none"]
 
+[providers.custom-alpha.models.off-only]
+context_length = 128000
+max_input_tokens = 96000
+max_output_tokens = 32000
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["off"]
+
 [providers.custom-beta]
 api_key = "test-key"
 base_url = "https://beta.example.invalid/v1"
@@ -298,6 +309,8 @@ fn registry_lookup_and_unregister_require_exact_canonical_ids() {
     );
     assert!(registry.get("shared").is_none());
     assert!(!registry.unregister("shared"));
+    assert!(registry.get("reasoning").is_none());
+    assert!(!registry.unregister("reasoning"));
     assert!(registry.get(ALPHA_MODEL_ID).is_some());
     assert!(registry.get(BETA_MODEL_ID).is_some());
 
@@ -330,6 +343,13 @@ fn resolver_returns_typed_applied_reasoning_efforts() {
         .unwrap_or_else(|error| panic!("provider-defined none effort should resolve: {error}"));
     assert_eq!(none_only.model_reasoning().reasoning_effort(), &none);
     assert_eq!(none_only.provider().reasoning_effort(), Some(none));
+
+    let off = ReasoningEffort::from("off");
+    let off_only = registry
+        .resolve_model_reasoning(Some("custom-alpha::off-only"), Some(&off))
+        .unwrap_or_else(|error| panic!("provider-defined off effort should resolve: {error}"));
+    assert_eq!(off_only.model_reasoning().reasoning_effort(), &off);
+    assert_eq!(off_only.provider().reasoning_effort(), Some(off));
 }
 
 #[test]

@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
+    chelix_common::ReasoningEffort,
     chelix_service_traits::ChatService,
     chelix_sessions::{
         message::PersistedMessage,
@@ -20,7 +21,7 @@ use crate::state::GatewayState;
 struct DiscoverableAgent {
     id: String,
     model: String,
-    reasoning_effort: String,
+    reasoning_effort: ReasoningEffort,
 }
 
 struct SubAgentRuntime {
@@ -122,6 +123,13 @@ impl SubAgentRuntime {
     ) -> chelix_tools::Result<Value> {
         let started = Instant::now();
         let agent = self.discoverable_agent(agent_id).await?;
+        let model_reasoning = self
+            .state
+            .services
+            .model
+            .resolve_model_reasoning(&agent.model, Some(&agent.reasoning_effort))
+            .await
+            .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
         let parent = self
             .session_metadata
             .try_get(parent_session_key)
@@ -162,8 +170,8 @@ impl SubAgentRuntime {
                 parent_session_key,
                 &owner_key,
                 agent_id,
-                &agent.model,
-                &agent.reasoning_effort,
+                model_reasoning.model_id(),
+                model_reasoning.reasoning_effort(),
             )
             .await
             .map_err(tool_error)?;
@@ -344,15 +352,11 @@ fn discoverable_agent_from_config(
             "agent {agent_id:?} has no configured model and is not available from sub_agent explore"
         ))
     })?;
-    let reasoning_effort = agent
-        .reasoning_effort
-        .as_ref()
-        .map(|effort| effort.as_str().to_string())
-        .ok_or_else(|| {
-            chelix_tools::Error::message(format!(
-                "agent {agent_id:?} has no configured reasoning_effort and is not available from sub_agent explore"
-            ))
-        })?;
+    let reasoning_effort = agent.reasoning_effort.clone().ok_or_else(|| {
+        chelix_tools::Error::message(format!(
+            "agent {agent_id:?} has no configured reasoning_effort and is not available from sub_agent explore"
+        ))
+    })?;
     Ok(DiscoverableAgent {
         id: agent_id.to_string(),
         model,
@@ -608,7 +612,6 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        chelix_common::ReasoningEffort,
         chelix_service_traits::ServiceResult,
         std::sync::atomic::{AtomicUsize, Ordering},
     };
@@ -711,7 +714,7 @@ mod tests {
                 parent_session_key,
                 "reviewer",
                 "provider/model",
-                "high",
+                &ReasoningEffort::from("high"),
             )
             .await
             .unwrap();

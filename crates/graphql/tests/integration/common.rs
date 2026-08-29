@@ -609,7 +609,8 @@ impl chelix_service_traits::ModelService for MockModel {
         &self,
         model: &str,
         reasoning_effort: Option<&chelix_service_traits::ReasoningEffort>,
-    ) -> Result<chelix_service_traits::ReasoningEffort, chelix_service_traits::ServiceError> {
+    ) -> Result<chelix_service_traits::ResolvedModelReasoning, chelix_service_traits::ServiceError>
+    {
         self.0.call(
             "models.resolve_model_reasoning",
             json!({
@@ -617,9 +618,11 @@ impl chelix_service_traits::ModelService for MockModel {
                 "reasoningEffort": reasoning_effort,
             }),
         )?;
-        reasoning_effort.cloned().ok_or_else(|| {
+        let reasoning_effort = reasoning_effort.cloned().ok_or_else(|| {
             chelix_service_traits::ServiceError::message("reasoning effort is required")
-        })
+        })?;
+        chelix_service_traits::ResolvedModelReasoning::try_new(model.to_string(), reasoning_effort)
+            .map_err(chelix_service_traits::ServiceError::message)
     }
 
     async fn disable(&self, p: Value) -> ServiceResult {

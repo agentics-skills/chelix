@@ -17,7 +17,7 @@ use {
 
 use {
     chelix_providers::{ProviderRegistry, model_id::raw_model_id},
-    chelix_service_traits::{ModelService, ServiceError, ServiceResult},
+    chelix_service_traits::{ModelService, ResolvedModelReasoning, ServiceError, ServiceResult},
 };
 
 use crate::{
@@ -268,26 +268,29 @@ impl ModelService for LiveModelService {
         &self,
         model: &str,
         reasoning_effort: Option<&chelix_common::ReasoningEffort>,
-    ) -> Result<chelix_common::ReasoningEffort, ServiceError> {
+    ) -> Result<ResolvedModelReasoning, ServiceError> {
+        let resolved = {
+            let registry = self.providers.read().await;
+            registry
+                .resolve_model_reasoning(Some(model), reasoning_effort)
+                .map(|resolved| resolved.model_reasoning().clone())
+                .map_err(ServiceError::message)?
+        };
+
         let models = self.list().await?;
         let models = models
             .as_array()
             .ok_or_else(|| ServiceError::message("models.list returned an invalid response"))?;
         if !models
             .iter()
-            .any(|entry| entry.get("id").and_then(Value::as_str) == Some(model))
+            .any(|entry| entry.get("id").and_then(Value::as_str) == Some(resolved.model_id()))
         {
             return Err(ServiceError::message(format!(
                 "model '{model}' not found in chat model registry"
             )));
         }
 
-        self.providers
-            .read()
-            .await
-            .resolve_model_reasoning(Some(model), reasoning_effort)
-            .map(|resolved| resolved.model_reasoning().reasoning_effort().clone())
-            .map_err(ServiceError::message)
+        Ok(resolved)
     }
 
     async fn disable(&self, params: Value) -> ServiceResult {
