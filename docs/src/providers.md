@@ -10,7 +10,7 @@ Configure providers through the web UI or directly in configuration files.
 The only source of model composition and model parameters is the service
 configuration.
 
-The registry is built only from `[providers.<name>.models."<model-id>"]` tables.
+The registry is built only from model tables of providers selected by `providers.offered` (an empty list selects all providers) whose `enabled` setting is `true`.
 
 The `/models` request is forbidden and is never performed.
 
@@ -106,14 +106,14 @@ ambiguous. Runtime model overrides must use an ID directly from `models.list`.
 
 ### Load Refusal
 
-Service load refusal is caused by:
+Service load behavior:
 
-- a missing mandatory parameter
-- a value violating the validity criteria, including
+- A missing mandatory parameter causes service load refusal.
+- A value violating the validity criteria, including
   `reasoning_supported_efforts = []`, `[""]`, or an array containing any empty
-  string
-- an unknown key in the model settings (the common configuration validator)
-- an enabled provider without a single model
+  string, causes service load refusal.
+- An unknown key in the model settings causes service load refusal.
+- A provider without configured models does not cause an error or service load refusal, regardless of its configured status.
 
 The registry is built atomically: a partial registry is not published, a
 problematic model is not excluded for the sake of continuing startup.
@@ -220,8 +220,8 @@ into an opaque provider `400` or a model that keeps calling a tool wrong.
 
 ### Via Web UI
 
-Use **Settings** → **Providers** to save credentials for a provider whose complete
-model records are already declared in the service configuration.
+Use **Settings** → **Providers** to save credentials for a provider. This flow
+does not require model records to be declared before credentials are saved.
 
 The **OpenAI Compatible** entry lists config-declared `custom-*` providers. Select
 one to save its API key and API base URL. This flow does not discover models and
@@ -255,13 +255,13 @@ priority_models = ["custom-ai-example::muse-flash-0.9"]
 ### Model Metadata Resolution
 
 The service configuration is the only source of model composition and model
-parameters. Each enabled provider must declare at least one complete
-`[providers.<name>.models."<raw-model-id>"]` table.
+parameters. The registry includes configured model tables only for providers selected
+by `providers.offered` (an empty list selects all) whose `enabled` setting is `true`.
 
-A missing mandatory parameter, an invalid value, an unknown model setting, or an
-enabled provider without models refuses service load. The registry is built
-atomically: no incomplete registry is published and no problematic model is
-excluded to continue startup.
+A provider without configured models does not cause an error or service load
+refusal, regardless of its configured status. Missing or invalid mandatory model
+metadata and unknown model settings still refuse service load. Registry construction
+is atomic: no problematic configured model is excluded to continue startup.
 
 ### Provider Entry Options
 
