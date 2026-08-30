@@ -296,12 +296,7 @@ pub(in crate::channel_events) async fn handle_model(
             .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::invalid_input("model has no id"))?;
-        let patch_res =
-            super::super::patch_channel_session_model(state, session_key, model_id).await?;
-        let version = patch_res
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let patch = super::super::patch_channel_session_model(state, session_key, model_id).await?;
 
         broadcast(
             state,
@@ -309,7 +304,7 @@ pub(in crate::channel_events) async fn handle_model(
             serde_json::json!({
                 "kind": "patched",
                 "sessionKey": session_key,
-                "version": version,
+                "version": patch.version,
             }),
             BroadcastOpts {
                 drop_if_slow: true,
@@ -318,7 +313,10 @@ pub(in crate::channel_events) async fn handle_model(
         )
         .await;
 
-        Ok(format!("Model switched to: {model_id}"))
+        Ok(format!(
+            "Model switched to: {} (reasoning effort: {})",
+            patch.model, patch.reasoning_effort
+        ))
     }
 }
 

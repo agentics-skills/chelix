@@ -980,7 +980,7 @@ streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low", "high"]
 
-[providers.custom-patch.models.plain]
+[providers.custom-patch.models.off]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -989,7 +989,7 @@ output_modalities = ["text"]
 tool_calling = true
 streaming = true
 zeroDataRetentionEnabled = false
-reasoning_supported_efforts = ["low"]
+reasoning_supported_efforts = ["off"]
 "#,
         )
         .unwrap();
@@ -1185,7 +1185,7 @@ reasoning_supported_efforts = ["low"]
     async fn patch_model_reasoning_persists_validated_pair_atomically() {
         const KEY: &str = "session:model-patch";
         const REASONING_MODEL: &str = "custom-patch::reasoning";
-        const PLAIN_MODEL: &str = "custom-patch::plain";
+        const OFF_MODEL: &str = "custom-patch::off";
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1222,24 +1222,41 @@ reasoning_supported_efforts = ["low"]
         let response = service
             .patch(serde_json::json!({
                 "key": KEY,
-                "model": PLAIN_MODEL,
                 "reasoningEffort": "low",
             }))
             .await
             .unwrap();
-        assert_eq!(response["model"], PLAIN_MODEL);
+        assert_eq!(response["model"], REASONING_MODEL);
         assert_eq!(response["reasoningEffort"], "low");
-        let plain_entry = metadata.get(KEY).await.unwrap();
-        assert_eq!(plain_entry.model.as_deref(), Some(PLAIN_MODEL));
-        assert_eq!(plain_entry.reasoning_effort.as_deref(), Some("low"));
-        assert_eq!(plain_entry.version, reasoning_entry.version + 1);
+        let reasoning_only_entry = metadata.get(KEY).await.unwrap();
+        assert_eq!(reasoning_only_entry.model.as_deref(), Some(REASONING_MODEL));
+        assert_eq!(
+            reasoning_only_entry.reasoning_effort.as_deref(),
+            Some("low")
+        );
+        assert_eq!(reasoning_only_entry.version, reasoning_entry.version + 1);
+
+        let response = service
+            .patch(serde_json::json!({
+                "key": KEY,
+                "model": OFF_MODEL,
+                "reasoningEffort": "off",
+            }))
+            .await
+            .unwrap();
+        assert_eq!(response["model"], OFF_MODEL);
+        assert_eq!(response["reasoningEffort"], "off");
+        let off_entry = metadata.get(KEY).await.unwrap();
+        assert_eq!(off_entry.model.as_deref(), Some(OFF_MODEL));
+        assert_eq!(off_entry.reasoning_effort.as_deref(), Some("off"));
+        assert_eq!(off_entry.version, reasoning_only_entry.version + 1);
     }
 
     #[tokio::test]
     async fn patch_model_reasoning_rejects_invalid_pair_without_mutation() {
         const KEY: &str = "session:model-patch-errors";
         const REASONING_MODEL: &str = "custom-patch::reasoning";
-        const PLAIN_MODEL: &str = "custom-patch::plain";
+        const OFF_MODEL: &str = "custom-patch::off";
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1255,13 +1272,31 @@ reasoning_supported_efforts = ["low"]
             .await
             .unwrap();
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
-            .with_model_service(patch_model_service(&[PLAIN_MODEL]));
+            .with_model_service(patch_model_service(&[OFF_MODEL]));
 
         let cases = [
             (
                 "partial pair",
                 serde_json::json!({"key": KEY, "model": REASONING_MODEL}),
                 "must be provided together",
+            ),
+            (
+                "empty model",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": "",
+                    "reasoningEffort": "low",
+                }),
+                "is not registered",
+            ),
+            (
+                "null model",
+                serde_json::json!({
+                    "key": KEY,
+                    "model": null,
+                    "reasoningEffort": "low",
+                }),
+                "model is required",
             ),
             (
                 "empty effort",
@@ -1294,8 +1329,8 @@ reasoning_supported_efforts = ["low"]
                 "disabled model",
                 serde_json::json!({
                     "key": KEY,
-                    "model": PLAIN_MODEL,
-                    "reasoningEffort": "low",
+                    "model": OFF_MODEL,
+                    "reasoningEffort": "off",
                 }),
                 "not found in chat model registry",
             ),

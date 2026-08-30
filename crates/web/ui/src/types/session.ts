@@ -17,7 +17,7 @@ export interface SessionMeta {
 	id: number;
 	key: string;
 	label?: string;
-	model?: string;
+	model?: string | null;
 	reasoningEffort?: string | null;
 	provider?: string;
 	createdAt?: number;
@@ -58,7 +58,7 @@ export interface SessionModelSelection {
 /** Authoritative session state returned by `sessions.patch`. */
 export interface SessionPatchPayload {
 	key: string;
-	model: string;
+	model: string | null;
 	reasoningEffort: string | null;
 	version: number;
 }

@@ -59,7 +59,7 @@ export function select(id: string): void {
 	selectedModelId.value = id;
 }
 
-/** Set an exact reasoning effort or clear an incoming legacy session value. */
+/** Set an exact reasoning effort or clear unavailable session state. */
 export function setReasoningEffort(effort: string | null): void {
 	reasoningEffort.value = effort;
 	if (effort === null) {

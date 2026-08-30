@@ -255,31 +255,27 @@ fn format_pending_approvals_renders_numbered_commands() {
 }
 
 #[test]
-fn channel_model_metadata_preserves_explicit_reasoning_without_selecting_a_default() {
+fn channel_reasoning_effort_selection_matches_ui_pair_contract() {
     let reasoning_model = serde_json::json!({
         "reasoning_supported_efforts": ["low", "high"],
     });
+    for (configured, expected) in [
+        (Some("high"), "high"),
+        (None, "low"),
+        (Some("unsupported"), "low"),
+    ] {
+        assert_eq!(
+            select_channel_reasoning_effort(&reasoning_model, configured).unwrap(),
+            expected
+        );
+    }
 
-    assert_eq!(
-        reasoning_effort_for_model_metadata(&reasoning_model, Some("high".to_string())).unwrap(),
-        Some("high".to_string())
-    );
-    assert_eq!(
-        reasoning_effort_for_model_metadata(&reasoning_model, None).unwrap(),
-        None
-    );
-}
-
-#[test]
-fn channel_model_metadata_uses_typed_not_applicable_for_non_reasoning() {
-    let non_reasoning_model = serde_json::json!({
-        "reasoning_supported_efforts": [],
+    let off_model = serde_json::json!({
+        "reasoning_supported_efforts": ["off"],
     });
-
     assert_eq!(
-        reasoning_effort_for_model_metadata(&non_reasoning_model, Some("high".to_string()))
-            .unwrap(),
-        None
+        select_channel_reasoning_effort(&off_model, Some("high")).unwrap(),
+        "off"
     );
 }
 

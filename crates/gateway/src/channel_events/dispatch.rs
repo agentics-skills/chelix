@@ -185,8 +185,8 @@ pub(in crate::channel_events) async fn dispatch_to_chat(
             params["_document_files"] = serde_json::json!(documents);
         }
 
-        // Persist a complete model/reasoning pair on first use. A channel model
-        // is explicit; otherwise only the selected agent's configured model is used.
+        // Persist a complete model/reasoning pair on first use. Once the shared
+        // channel session is initialized, keep per-sender channel models runtime-only.
         let session_model = if let Some(ref metadata) = state.services.session_metadata {
             metadata
                 .get(&session_key)
@@ -195,70 +195,62 @@ pub(in crate::channel_events) async fn dispatch_to_chat(
         } else {
             None
         };
-        let model_to_assign = if let Some(model) = meta.model.as_ref() {
-            Some(model.clone())
-        } else if session_model.is_none() {
-            match channel_agent_model(state, &session_key).await {
-                Ok(model) => model,
-                Err(error) => {
-                    if let Some(done_tx) = typing_done {
-                        let _ = done_tx.send(());
-                    }
-                    error!(%error, "channel model resolution failed");
-                    if let Some(outbound) = state.services.channel_outbound_arc() {
-                        let error_message = format!("⚠️ {error}");
-                        if let Err(send_error) = outbound
-                            .send_text(
-                                &reply_to.account_id,
-                                &reply_to.outbound_to(),
-                                &error_message,
-                                reply_to.message_id.as_deref(),
-                            )
-                            .await
-                        {
-                            warn!("failed to send error back to channel: {send_error}");
-                        }
-                    }
-                    return;
-                },
-            }
-        } else {
-            None
-        };
-
-        if let Some(model) = model_to_assign {
-            params["model"] = serde_json::json!(&model);
+        let model_reasoning: ChannelResult<Option<(String, String, bool)>> = async {
             if session_model.is_none() {
-                match patch_channel_session_model(state, &session_key, &model).await {
-                    Ok(patch) => {
-                        if let Some(reasoning_effort) = patch.get("reasoningEffort") {
-                            params["reasoningEffort"] = reasoning_effort.clone();
-                        }
-                        let message = format!("Using {model}. Use /model to change.");
-                        state.push_channel_status_log(&session_key, message).await;
-                    },
-                    Err(error) => {
-                        if let Some(done_tx) = typing_done {
-                            let _ = done_tx.send(());
-                        }
-                        error!(%error, "channel model patch failed");
-                        if let Some(outbound) = state.services.channel_outbound_arc() {
-                            let error_message = format!("⚠️ {error}");
-                            if let Err(send_error) = outbound
-                                .send_text(
-                                    &reply_to.account_id,
-                                    &reply_to.outbound_to(),
-                                    &error_message,
-                                    reply_to.message_id.as_deref(),
-                                )
-                                .await
-                            {
-                                warn!("failed to send error back to channel: {send_error}");
-                            }
-                        }
-                        return;
-                    },
+                let model = if let Some(model) = meta.model.as_ref() {
+                    model.clone()
+                } else {
+                    channel_agent_model(state, &session_key)
+                        .await?
+                        .ok_or_else(|| {
+                            ChannelError::invalid_input("channel session model is not configured")
+                        })?
+                };
+                let patch = patch_channel_session_model(state, &session_key, &model).await?;
+                Ok(Some((patch.model, patch.reasoning_effort, true)))
+            } else if let Some(model) = meta.model.as_deref() {
+                let resolved = resolve_channel_runtime_model(state, &session_key, model).await?;
+                Ok(Some((
+                    resolved.model_id().to_string(),
+                    resolved.reasoning_effort().as_str().to_string(),
+                    false,
+                )))
+            } else {
+                Ok(None)
+            }
+        }
+        .await;
+
+        let model_reasoning = match model_reasoning {
+            Ok(model_reasoning) => model_reasoning,
+            Err(error) => {
+                if let Some(done_tx) = typing_done {
+                    let _ = done_tx.send(());
                 }
+                error!(%error, "channel model resolution failed");
+                if let Some(outbound) = state.services.channel_outbound_arc() {
+                    let error_message = format!("⚠️ {error}");
+                    if let Err(send_error) = outbound
+                        .send_text(
+                            &reply_to.account_id,
+                            &reply_to.outbound_to(),
+                            &error_message,
+                            reply_to.message_id.as_deref(),
+                        )
+                        .await
+                    {
+                        warn!("failed to send error back to channel: {send_error}");
+                    }
+                }
+                return;
+            },
+        };
+        if let Some((model, reasoning_effort, persisted)) = model_reasoning {
+            params["model"] = serde_json::json!(&model);
+            params["reasoningEffort"] = serde_json::json!(reasoning_effort);
+            if persisted {
+                let message = format!("Using {model}. Use /model to change.");
+                state.push_channel_status_log(&session_key, message).await;
             }
         }
 

@@ -11,6 +11,7 @@ use {
         ChannelAttachment, ChannelEvent, ChannelEventSink, ChannelMessageMeta, ChannelReplyTarget,
         Error as ChannelError, Result as ChannelResult, SavedChannelFile,
     },
+    chelix_common::{ReasoningEffort, ResolvedModelReasoning},
     chelix_sessions::metadata::{SessionEntry, SqliteSessionMetadata},
     chelix_tools::approval::PendingApprovalView,
 };
@@ -187,21 +188,35 @@ fn config_string(value: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn reasoning_effort_for_model_metadata(
+fn select_channel_reasoning_effort(
     model: &serde_json::Value,
-    configured_effort: Option<String>,
-) -> ChannelResult<Option<String>> {
+    configured_effort: Option<&str>,
+) -> ChannelResult<String> {
     let supported_efforts = model
         .get("reasoning_supported_efforts")
         .and_then(serde_json::Value::as_array)
         .ok_or_else(|| {
             ChannelError::unavailable("model metadata missing reasoning_supported_efforts")
         })?;
-    Ok(if supported_efforts.is_empty() {
-        None
-    } else {
-        configured_effort
-    })
+
+    if let Some(configured_effort) = configured_effort.filter(|effort| !effort.trim().is_empty())
+        && supported_efforts
+            .iter()
+            .any(|supported| supported.as_str() == Some(configured_effort))
+    {
+        return Ok(configured_effort.to_string());
+    }
+
+    supported_efforts
+        .first()
+        .and_then(serde_json::Value::as_str)
+        .filter(|effort| !effort.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            ChannelError::unavailable(
+                "model metadata has no configured reasoning_supported_efforts",
+            )
+        })
 }
 
 async fn channel_agent_model(
@@ -222,11 +237,11 @@ async fn channel_agent_model(
     Ok(model)
 }
 
-async fn patch_channel_session_model(
+async fn channel_reasoning_effort_candidate(
     state: &GatewayState,
     session_key: &str,
     model_id: &str,
-) -> ChannelResult<serde_json::Value> {
+) -> ChannelResult<Option<String>> {
     let metadata = state
         .services
         .session_metadata
@@ -238,7 +253,10 @@ async fn patch_channel_session_model(
         .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
     let (_, agent_reasoning_effort) =
         crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref()).await;
-    let configured_effort = entry.reasoning_effort.or(agent_reasoning_effort);
+    let configured_effort = entry
+        .reasoning_effort
+        .filter(|effort| !effort.trim().is_empty())
+        .or_else(|| agent_reasoning_effort.filter(|effort| !effort.trim().is_empty()));
 
     let models_value = state
         .services
@@ -249,15 +267,41 @@ async fn patch_channel_session_model(
     let models = models_value
         .as_array()
         .ok_or_else(|| ChannelError::unavailable("models.list returned a non-array response"))?;
-    let model = models
+    let Some(model) = models
         .iter()
         .find(|model| model.get("id").and_then(serde_json::Value::as_str) == Some(model_id))
-        .ok_or_else(|| {
-            ChannelError::invalid_input(format!("model '{model_id}' is not available"))
-        })?;
-    let reasoning_effort = reasoning_effort_for_model_metadata(model, configured_effort)?;
+    else {
+        return Ok(configured_effort);
+    };
 
-    state
+    select_channel_reasoning_effort(model, configured_effort.as_deref()).map(Some)
+}
+
+struct PatchedChannelModelReasoning {
+    model: String,
+    reasoning_effort: String,
+    version: u64,
+}
+
+async fn patch_channel_session_model(
+    state: &GatewayState,
+    session_key: &str,
+    model_id: &str,
+) -> ChannelResult<PatchedChannelModelReasoning> {
+    let reasoning_effort = channel_reasoning_effort_candidate(state, session_key, model_id).await?;
+    let Some(reasoning_effort) = reasoning_effort else {
+        state
+            .services
+            .model
+            .resolve_model_reasoning(model_id, None)
+            .await
+            .map_err(ChannelError::unavailable)?;
+        return Err(ChannelError::unavailable(
+            "model resolver returned an incomplete model/reasoning pair",
+        ));
+    };
+
+    let patch = state
         .services
         .session
         .patch(serde_json::json!({
@@ -265,6 +309,42 @@ async fn patch_channel_session_model(
             "model": model_id,
             "reasoningEffort": reasoning_effort,
         }))
+        .await
+        .map_err(ChannelError::unavailable)?;
+    let model = patch
+        .get("model")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ChannelError::unavailable("sessions.patch returned no model"))?;
+    let reasoning_effort = patch
+        .get("reasoningEffort")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| ChannelError::unavailable("sessions.patch returned no reasoning effort"))?;
+    let version = patch
+        .get("version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| ChannelError::unavailable("sessions.patch returned no version"))?;
+
+    Ok(PatchedChannelModelReasoning {
+        model: model.to_string(),
+        reasoning_effort: reasoning_effort.to_string(),
+        version,
+    })
+}
+
+async fn resolve_channel_runtime_model(
+    state: &GatewayState,
+    session_key: &str,
+    model_id: &str,
+) -> ChannelResult<ResolvedModelReasoning> {
+    let reasoning_effort = channel_reasoning_effort_candidate(state, session_key, model_id).await?;
+    let reasoning_effort = reasoning_effort.map(ReasoningEffort::from);
+
+    state
+        .services
+        .model
+        .resolve_model_reasoning(model_id, reasoning_effort.as_ref())
         .await
         .map_err(ChannelError::unavailable)
 }

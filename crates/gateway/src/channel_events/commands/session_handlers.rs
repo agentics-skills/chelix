@@ -86,28 +86,29 @@ pub(in crate::channel_events) async fn handle_new(
         .map_err(|e| ChannelError::external("setting session agent", e))?;
 
     // Validate and persist the complete pair before making the new session active.
-    if let Err(patch_error) =
-        super::super::patch_channel_session_model(state, &new_key, &model_id).await
-    {
-        let cleanup = state
-            .services
-            .session
-            .delete(serde_json::json!({ "key": &new_key, "force": true }))
-            .await;
-        if let Err(cleanup_error) = cleanup {
-            tracing::error!(
-                session = %new_key,
-                error = %patch_error,
-                cleanup_error = %cleanup_error,
-                "channel /new model validation and rollback failed"
-            );
-            return Err(ChannelError::unavailable(format!(
-                "model validation failed: {patch_error}; session rollback failed: {cleanup_error}"
-            )));
-        }
-        tracing::error!(session = %new_key, error = %patch_error, "channel /new model validation failed");
-        return Err(patch_error);
-    }
+    let patch = match super::super::patch_channel_session_model(state, &new_key, &model_id).await {
+        Ok(patch) => patch,
+        Err(patch_error) => {
+            let cleanup = state
+                .services
+                .session
+                .delete(serde_json::json!({ "key": &new_key, "force": true }))
+                .await;
+            if let Err(cleanup_error) = cleanup {
+                tracing::error!(
+                    session = %new_key,
+                    error = %patch_error,
+                    cleanup_error = %cleanup_error,
+                    "channel /new model validation and rollback failed"
+                );
+                return Err(ChannelError::unavailable(format!(
+                    "model validation failed: {patch_error}; session rollback failed: {cleanup_error}"
+                )));
+            }
+            tracing::error!(session = %new_key, error = %patch_error, "channel /new model validation failed");
+            return Err(patch_error);
+        },
+    };
 
     // Ensure the old session also has a channel binding (for listing).
     if old_entry
@@ -161,7 +162,8 @@ pub(in crate::channel_events) async fn handle_new(
     .await;
 
     Ok(format!(
-        "New session started. Using *{model_id}*. Use /model to change."
+        "New session started. Using *{}* (reasoning effort: {}). Use /model to change.",
+        patch.model, patch.reasoning_effort
     ))
 }
 

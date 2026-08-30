@@ -158,15 +158,28 @@ export function fetchModels(): Promise<void> {
 }
 
 export function selectModel(m: ModelInfo): void {
-	if (!requireSessionModelState(S.activeSessionKey)) return;
+	const sessionKey = S.activeSessionKey;
+	if (!requireSessionModelState(sessionKey)) return;
 	const selection = modelSelection(m);
 	modelStore.select(m.id);
 	modelStore.setReasoningEffort(selection.reasoningEffort);
 	updateModelComboLabel(m);
-	void setSessionModel(S.activeSessionKey, selection);
+	void setSessionModel(sessionKey, selection).then((response) => {
+		if (!(response.ok && response.payload)) return;
+		const payload = response.payload;
+		const session = sessionStore.getByKey(sessionKey);
+		if (
+			sessionStore.activeSessionKey.value === sessionKey &&
+			payload.model === selection.model &&
+			payload.reasoningEffort === selection.reasoningEffort &&
+			session?.model === payload.model &&
+			session.reasoningEffort === payload.reasoningEffort &&
+			session.version === payload.version
+		) {
+			showModelNotice(m);
+		}
+	});
 	closeModelDropdown();
-	// Show notice if model doesn't support tools
-	showModelNotice(m);
 }
 
 export function openModelDropdown(): void {
