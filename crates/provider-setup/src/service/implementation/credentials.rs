@@ -117,6 +117,38 @@ impl LiveProviderSetupService {
 
         let candidate = self.prospective_config_without_saved_provider(provider_name)?;
         let new_registry = self.build_registry(&candidate)?;
+        let prospective_model_ids = new_registry
+            .list_models()
+            .iter()
+            .map(|model| model.id.clone())
+            .collect::<HashSet<_>>();
+        let removed_model_ids = {
+            let registry = self.registry.read().await;
+            registry
+                .list_models()
+                .iter()
+                .filter(|model| !prospective_model_ids.contains(&model.id))
+                .map(|model| model.id.clone())
+                .collect::<HashSet<_>>()
+        };
+        let mut agent_ids = if let Some(agents_config) = self.agents_config.as_ref() {
+            let agents = agents_config.read().await;
+            agents
+                .entries
+                .iter()
+                .filter(|(_, agent)| removed_model_ids.contains(&agent.model))
+                .map(|(agent_id, _)| agent_id.clone())
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        agent_ids.sort_unstable();
+        if !agent_ids.is_empty() {
+            return Err(ServiceError::message(format!(
+                "provider '{provider_name}' supplies models configured for agents: {}",
+                agent_ids.join(", ")
+            )));
+        }
 
         if is_custom_provider(provider_name) {
             // Custom provider: remove key store entry + disable.

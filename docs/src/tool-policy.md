@@ -89,7 +89,10 @@ Each agent can restrict tools for every session that uses it.
 
 ```toml
 [agents.researcher]
-model = "openai/gpt-5.2"
+name = "Researcher"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+max_tools_threshold = 128
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```
@@ -201,6 +204,10 @@ tool (nothing was denied at the group layer, so nothing accumulates).
 
 ```toml
 [agents.researcher]
+name = "Researcher"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+max_tools_threshold = 128
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command"]
 ```

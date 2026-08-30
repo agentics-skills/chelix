@@ -219,10 +219,7 @@ fn select_channel_reasoning_effort(
         })
 }
 
-async fn channel_agent_model(
-    state: &GatewayState,
-    session_key: &str,
-) -> ChannelResult<Option<String>> {
+async fn channel_agent_model(state: &GatewayState, session_key: &str) -> ChannelResult<String> {
     let metadata = state
         .services
         .session_metadata
@@ -233,7 +230,9 @@ async fn channel_agent_model(
         .await
         .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
     let (model, _) =
-        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref()).await;
+        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref())
+            .await
+            .map_err(ChannelError::unavailable)?;
     Ok(model)
 }
 
@@ -252,11 +251,13 @@ async fn channel_reasoning_effort_candidate(
         .await
         .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
     let (_, agent_reasoning_effort) =
-        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref()).await;
+        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref())
+            .await
+            .map_err(ChannelError::unavailable)?;
     let configured_effort = entry
         .reasoning_effort
         .filter(|effort| !effort.trim().is_empty())
-        .or_else(|| agent_reasoning_effort.filter(|effort| !effort.trim().is_empty()));
+        .or_else(|| Some(agent_reasoning_effort.as_str().to_string()));
 
     let models_value = state
         .services

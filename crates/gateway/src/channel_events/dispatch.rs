@@ -200,11 +200,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat(
                 let model = if let Some(model) = meta.model.as_ref() {
                     model.clone()
                 } else {
-                    channel_agent_model(state, &session_key)
-                        .await?
-                        .ok_or_else(|| {
-                            ChannelError::invalid_input("channel session model is not configured")
-                        })?
+                    channel_agent_model(state, &session_key).await?
                 };
                 let patch = patch_channel_session_model(state, &session_key, &model).await?;
                 Ok(Some((patch.model, patch.reasoning_effort, true)))

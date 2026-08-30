@@ -3,8 +3,7 @@ use std::sync::Arc;
 use tracing::{debug, error, warn};
 
 use chelix_channels::{
-    ChannelAttachment, ChannelMessageMeta, ChannelReplyTarget, Error as ChannelError,
-    Result as ChannelResult,
+    ChannelAttachment, ChannelMessageMeta, ChannelReplyTarget, Result as ChannelResult,
 };
 
 use crate::{
@@ -208,11 +207,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
             let model = if let Some(model) = meta.model.as_ref() {
                 model.clone()
             } else {
-                super::super::channel_agent_model(state, &session_key)
-                    .await?
-                    .ok_or_else(|| {
-                        ChannelError::invalid_input("channel session model is not configured")
-                    })?
+                super::super::channel_agent_model(state, &session_key).await?
             };
             let patch =
                 super::super::patch_channel_session_model(state, &session_key, &model).await?;

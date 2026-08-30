@@ -11,7 +11,7 @@ use chelix_config::{AgentConfig, ChelixConfig, GeoLocation, Timezone, UserProfil
 
 use crate::{
     Context, Error, Result,
-    state::{WizardState, WizardStep},
+    state::{AgentIdentityDraft, WizardState, WizardStep},
 };
 
 /// Live onboarding service backed by a `WizardState` and config persistence.
@@ -123,7 +123,7 @@ impl LiveOnboardingService {
         }
 
         let mut state = WizardState::new();
-        state.agent = default_agent.clone();
+        state.agent = AgentIdentityDraft::from_agent(default_agent);
         state.user = chelix_config::resolve_user_profile_from_config(&config);
 
         let response = step_response(&state);
@@ -141,11 +141,12 @@ impl LiveOnboardingService {
             let mut config = self.load_existing()?;
             let (default_id, _) = configured_default_agent(&config)?;
             let default_id = default_id.to_string();
-
-            config
+            let default_agent = config
                 .agents
                 .entries
-                .insert(default_id.clone(), state.agent.clone());
+                .get_mut(&default_id)
+                .context("configured default agent disappeared")?;
+            state.agent.apply_to(default_agent);
             config.user = state.user.clone();
 
             self.save(&config)?;
@@ -158,7 +159,7 @@ impl LiveOnboardingService {
                 "prompt": state.prompt(),
                 "done": true,
                 "agent_id": default_id,
-                "agent": state.agent.clone(),
+                "agent": config.agents.entries.get(&default_id),
                 "user": config.user.clone(),
             });
             *guard = None;
@@ -193,7 +194,6 @@ impl LiveOnboardingService {
     /// Return the canonical user profile stored under `[user]`.
     pub fn user_get(&self) -> Result<Value> {
         let config = self.load_existing()?;
-        configured_default_agent(&config)?;
         serde_json::to_value(config.user).context("failed to serialize user profile")
     }
 
@@ -203,8 +203,16 @@ impl LiveOnboardingService {
             serde_json::from_value(params).context("invalid user update payload")?;
         let user = update.into_profile();
         let mut config = self.load_existing()?;
-        let (_, default_agent) = configured_default_agent(&config)?;
-        let agent_name_is_set = !default_agent.name.trim().is_empty();
+        let agent_name_is_set = match config
+            .agents
+            .resolve_state()
+            .map_err(|error| Error::message(error.to_string()))?
+        {
+            chelix_config::AgentsConfigState::Setup => false,
+            chelix_config::AgentsConfigState::Configured { default_agent, .. } => {
+                !default_agent.name.trim().is_empty()
+            },
+        };
 
         config.user = user.clone();
         self.save(&config)?;
@@ -221,16 +229,19 @@ impl LiveOnboardingService {
 
 /// Return the configured default agent without normalization or fallback.
 fn configured_default_agent(config: &ChelixConfig) -> Result<(&str, &AgentConfig)> {
-    let default_id = config.agents.default.as_str();
-    if default_id.trim().is_empty() {
-        return Err(Error::message("agents.default is empty"));
+    match config
+        .agents
+        .resolve_state()
+        .map_err(|error| Error::message(error.to_string()))?
+    {
+        chelix_config::AgentsConfigState::Setup => Err(Error::message(
+            "default agent is not configured; configure a provider and model, then complete web onboarding",
+        )),
+        chelix_config::AgentsConfigState::Configured {
+            default_id,
+            default_agent,
+        } => Ok((default_id, default_agent)),
     }
-    let agent = config.agents.entries.get(default_id).ok_or_else(|| {
-        Error::message(format!(
-            "default agent \"{default_id}\" is not defined under [agents]"
-        ))
-    })?;
-    Ok((default_id, agent))
 }
 
 /// Path to the `.onboarded` sentinel file in the data directory.
@@ -274,13 +285,14 @@ mod tests {
     fn write_config(path: &std::path::Path, default_id: &str) {
         let mut config = ChelixConfig::default();
         config.agents.default = default_id.to_string();
-        config
-            .agents
-            .entries
-            .insert(default_id.to_string(), AgentConfig {
-                name: "chelix".to_string(),
-                ..AgentConfig::default()
-            });
+        config.agents.entries.insert(
+            default_id.to_string(),
+            AgentConfig::new(
+                "chelix",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
         chelix_config::loader::save_config_to_path(path, &config).unwrap();
     }
 
@@ -380,6 +392,35 @@ mod tests {
             saved.user.timezone.as_ref().map(Timezone::name),
             Some("America/New_York")
         );
+        chelix_config::clear_data_dir();
+    }
+
+    #[test]
+    fn user_profile_round_trip_is_valid_during_setup() {
+        let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        chelix_config::set_data_dir(dir.path().to_path_buf());
+        let config_path = dir.path().join("chelix.toml");
+        chelix_config::loader::save_config_to_path(&config_path, &ChelixConfig::default()).unwrap();
+        let service = LiveOnboardingService::new(config_path.clone());
+
+        let initial = service.user_get().unwrap();
+        assert!(initial["name"].is_null());
+
+        let updated = service
+            .user_update(json!({
+                "name": "Alice",
+                "timezone": "America/New_York"
+            }))
+            .unwrap();
+        assert_eq!(updated["name"], "Alice");
+
+        let saved = chelix_config::loader::load_config(&config_path).unwrap();
+        assert!(matches!(
+            saved.agents.resolve_state(),
+            Ok(chelix_config::AgentsConfigState::Setup)
+        ));
+        assert!(!dir.path().join(".onboarded").exists());
         chelix_config::clear_data_dir();
     }
 

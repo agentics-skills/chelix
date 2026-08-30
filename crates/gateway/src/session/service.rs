@@ -111,12 +111,14 @@ impl LiveSessionService {
             default: "main".to_string(),
             ..Default::default()
         };
-        agents
-            .entries
-            .insert("main".to_string(), chelix_config::AgentConfig {
-                name: "Chelix".to_string(),
-                ..Default::default()
-            });
+        agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Chelix",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
         Self::from_router(
             store,
             metadata,

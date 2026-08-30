@@ -88,11 +88,14 @@ allowed_models = ["legacy-model"]
 }
 
 #[test]
-fn empty_config_requires_default_agent() {
+fn empty_config_is_valid_agent_setup_state() {
     let result = validate_toml_str("");
-    assert!(result.diagnostics.iter().any(|diagnostic| {
-        diagnostic.severity == Severity::Error && diagnostic.path == "agents.default"
-    }));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.severity != Severity::Error)
+    );
 }
 
 #[test]
@@ -103,6 +106,8 @@ default = "main"
 
 [agents.main]
 name = "Chelix"
+model = "openai::gpt-5.2"
+reasoning_effort = "low"
 max_tools_threshold = 128
 
 [server]

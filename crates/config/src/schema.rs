@@ -189,15 +189,21 @@ pub struct ResolvedIdentity {
 
 impl ResolvedIdentity {
     pub fn from_config(config: &ChelixConfig) -> crate::Result<Self> {
-        let default_id = config.agents.default.as_str();
-        if default_id.trim().is_empty() {
-            return Err(crate::Error::message("agents.default is empty"));
-        }
-        let agent = config.agents.entries.get(default_id).ok_or_else(|| {
-            crate::Error::message(format!(
-                "default agent \"{default_id}\" is not defined under [agents]"
-            ))
-        })?;
+        let (default_id, agent) = match config
+            .agents
+            .resolve_state()
+            .map_err(|error| crate::Error::message(error.to_string()))?
+        {
+            AgentsConfigState::Setup => {
+                return Err(crate::Error::message(
+                    "default agent is not configured during setup",
+                ));
+            },
+            AgentsConfigState::Configured {
+                default_id,
+                default_agent,
+            } => (default_id, default_agent),
+        };
         if agent.name.trim().is_empty() {
             return Err(crate::Error::message(format!(
                 "default agent \"{default_id}\" has an empty name"
@@ -210,6 +216,53 @@ impl ResolvedIdentity {
             user_name: config.user.name.clone(),
         })
     }
+}
+
+/// Stable network and container slug used while no agent exists yet.
+pub const SETUP_INSTANCE_SLUG: &str = "chelix-setup";
+
+/// Resolve one instance slug from the exact configured/setup agents state.
+pub fn resolve_instance_slug(config: &ChelixConfig) -> crate::Result<String> {
+    match config
+        .agents
+        .resolve_state()
+        .map_err(|error| crate::Error::message(error.to_string()))?
+    {
+        AgentsConfigState::Setup => Ok(SETUP_INSTANCE_SLUG.to_string()),
+        AgentsConfigState::Configured {
+            default_id,
+            default_agent,
+        } => {
+            let name_slug = sanitize_instance_slug(&default_agent.name);
+            if name_slug.is_empty() {
+                Ok(default_id.to_string())
+            } else {
+                Ok(name_slug)
+            }
+        },
+    }
+}
+
+fn sanitize_instance_slug(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for character in value.to_lowercase().chars() {
+        let mapped = if character.is_ascii_alphanumeric() {
+            character
+        } else {
+            '-'
+        };
+        if mapped == '-' {
+            if !last_dash {
+                out.push(mapped);
+            }
+            last_dash = true;
+        } else {
+            out.push(mapped);
+            last_dash = false;
+        }
+    }
+    out.trim_matches('-').to_string()
 }
 
 /// Root configuration.

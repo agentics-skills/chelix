@@ -29,6 +29,8 @@ default = "main"
 
 [agents.main]
 name = "Chelix"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#;
 
@@ -37,12 +39,14 @@ fn test_agents() -> chelix_config::AgentsConfig {
         default: "main".to_owned(),
         ..Default::default()
     };
-    agents
-        .entries
-        .insert("main".to_owned(), chelix_config::AgentConfig {
-            name: "Chelix".to_owned(),
-            ..Default::default()
-        });
+    agents.entries.insert(
+        "main".to_owned(),
+        chelix_config::AgentConfig::new(
+            "Chelix",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        ),
+    );
     agents
 }
 

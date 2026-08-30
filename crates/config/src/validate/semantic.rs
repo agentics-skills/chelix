@@ -326,6 +326,22 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
                 message: "agent name must not be empty".into(),
             });
         }
+        if agent.model.trim().is_empty() {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "invalid-value",
+                path: format!("agents.{name}.model"),
+                message: "agent model must not be empty".into(),
+            });
+        }
+        if agent.reasoning_effort.as_str().trim().is_empty() {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "invalid-value",
+                path: format!("agents.{name}.reasoning_effort"),
+                message: "agent reasoning_effort must not be empty".into(),
+            });
+        }
         if agent.max_tools_threshold == 0 {
             diagnostics.push(Diagnostic {
                 severity: Severity::Error,
@@ -430,27 +446,21 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         }
     }
 
-    if config.agents.default.trim().is_empty() {
+    if let Err(error) = config.agents.resolve_state() {
+        let category = match &error {
+            crate::schema::AgentsConfigStateError::MissingDefault => "missing-field",
+            crate::schema::AgentsConfigStateError::DefaultNotConfigured { .. } => "invalid-value",
+        };
         diagnostics.push(Diagnostic {
             severity: Severity::Error,
-            category: "missing-field",
+            category,
             path: "agents.default".into(),
-            message: "agents.default must name a configured agent".into(),
-        });
-    } else if !config.agents.entries.contains_key(&config.agents.default) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "invalid-value",
-            path: "agents.default".into(),
-            message: format!(
-                "default agent \"{}\" is not defined under [agents]",
-                config.agents.default
-            ),
+            message: error.to_string(),
         });
     }
 
-    // agents.*.reasoning_effort is provider-defined. Runtime validates
-    // it against the selected model's reasoning_supported_efforts.
+    // Registry loading validates each required model/reasoning pair against
+    // the exact canonical model metadata.
 
     // Unknown channel types in channels.offered — accept built-in types plus
     // any dynamically configured types from `[channels.<type>]` sections.

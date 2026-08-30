@@ -8,7 +8,7 @@ use {
         http::StatusCode,
         response::{Html, IntoResponse},
     },
-    chelix_gateway::{session_reasoning::agent_defaults_for_agent, state::GatewayState},
+    chelix_gateway::state::GatewayState,
     tracing::warn,
 };
 
@@ -56,7 +56,7 @@ pub(crate) static SPA_ROUTES: SpaRoutes = SpaRoutes {
 /// (gon pattern — see CLAUDE.md § Server-Injected Data).
 #[derive(serde::Serialize)]
 pub(crate) struct GonData {
-    pub(crate) identity: chelix_config::ResolvedIdentity,
+    pub(crate) identity: Option<chelix_config::ResolvedIdentity>,
     version: String,
     port: u16,
     counts: NavCounts,
@@ -225,10 +225,8 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             .map(|text| truncate_preview(text, SESSION_PREVIEW_MAX_CHARS));
         let agent_id = entry.agent_id.clone();
         let agent_id_camel = agent_id.clone();
-        let (agent_model, agent_reasoning) =
-            agent_defaults_for_agent(gw, agent_id.as_deref()).await;
-        let model = entry.model.clone().or(agent_model);
-        let reasoning_effort = entry.reasoning_effort.clone().or(agent_reasoning);
+        let model = entry.model.clone();
+        let reasoning_effort = entry.reasoning_effort.clone();
 
         recent.push(serde_json::json!({
             "id": entry.id,
@@ -371,7 +369,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
     let gon_start = std::time::Instant::now();
 
     let port = gw.port;
-    let identity = crate::resolve_default_agent_presentation(gw).await?;
+    let identity = crate::resolve_optional_default_agent_presentation(gw).await?;
     tracing::debug!(
         elapsed_ms = gon_start.elapsed().as_millis(),
         "gon: identity"
@@ -466,47 +464,52 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
         .as_ref()
         .ok_or_else(|| crate::Error::message("agent configuration is not available"))?;
     let guard = agents_config.read().await;
-    let default_id = guard.default.as_str();
-    if default_id.trim().is_empty() {
-        return Err(crate::Error::message("agents.default is empty"));
-    }
-    if !guard.entries.contains_key(default_id) {
-        return Err(crate::Error::message(format!(
-            "default agent \"{default_id}\" is not defined under [agents]"
-        )));
-    }
-    let mut sorted_agents = guard.entries.iter().collect::<Vec<_>>();
-    sorted_agents.sort_by_key(|(id, _)| *id);
-    let mut entries = Vec::with_capacity(sorted_agents.len());
-    for (id, agent) in sorted_agents {
-        let mut value = serde_json::to_value(agent).map_err(|error| {
-            crate::Error::message(format!("failed to serialize agent \"{id}\": {error}"))
-        })?;
-        let object = value.as_object_mut().ok_or_else(|| {
-            crate::Error::message(format!("agent \"{id}\" did not serialize to an object"))
-        })?;
-        object.insert("id".to_string(), serde_json::json!(id));
-        object.insert(
-            "is_default".to_string(),
-            serde_json::json!(id == default_id),
-        );
-        object.insert(
-            "soul".to_string(),
-            serde_json::json!(chelix_config::load_soul_for_agent(id)),
-        );
-        object.insert(
-            "subagent_prompt".to_string(),
-            serde_json::json!(chelix_config::load_subagent_prompt_for_agent(id)),
-        );
-        entries.push(value);
-    }
-    let agents = serde_json::json!({
-        "default_id": default_id,
-        "agents": entries,
-        "defaults": {
-            "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+    let agents = match guard
+        .resolve_state()
+        .map_err(|error| crate::Error::message(error.to_string()))?
+    {
+        chelix_config::schema::AgentsConfigState::Setup => serde_json::json!({
+            "default_id": "",
+            "agents": [],
+            "defaults": {
+                "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+            },
+        }),
+        chelix_config::schema::AgentsConfigState::Configured { default_id, .. } => {
+            let mut sorted_agents = guard.entries.iter().collect::<Vec<_>>();
+            sorted_agents.sort_by_key(|(id, _)| *id);
+            let mut entries = Vec::with_capacity(sorted_agents.len());
+            for (id, agent) in sorted_agents {
+                let mut value = serde_json::to_value(agent).map_err(|error| {
+                    crate::Error::message(format!("failed to serialize agent \"{id}\": {error}"))
+                })?;
+                let object = value.as_object_mut().ok_or_else(|| {
+                    crate::Error::message(format!("agent \"{id}\" did not serialize to an object"))
+                })?;
+                object.insert("id".to_string(), serde_json::json!(id));
+                object.insert(
+                    "is_default".to_string(),
+                    serde_json::json!(id == default_id),
+                );
+                object.insert(
+                    "soul".to_string(),
+                    serde_json::json!(chelix_config::load_soul_for_agent(id)),
+                );
+                object.insert(
+                    "subagent_prompt".to_string(),
+                    serde_json::json!(chelix_config::load_subagent_prompt_for_agent(id)),
+                );
+                entries.push(value);
+            }
+            serde_json::json!({
+                "default_id": default_id,
+                "agents": entries,
+                "defaults": {
+                    "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+                },
+            })
         },
-    });
+    };
 
     tracing::warn!(elapsed_ms = gon_start.elapsed().as_millis(), "gon: agents");
 
@@ -614,6 +617,7 @@ pub(crate) static PROCESS_STARTED_AT_MS: std::sync::LazyLock<u64> =
     });
 
 pub(crate) const SHARE_IMAGE_URL: &str = "https://raw.githubusercontent.com/agentics-skills/chelix/master/crates/web/src/assets/icons/icon-512.png";
+const PRODUCT_NAME: &str = "Chelix";
 
 // Shiki is now bundled by Vite — no CDN URL needed.
 
@@ -742,6 +746,24 @@ pub(crate) fn build_share_meta(identity: &chelix_config::ResolvedIdentity) -> Sh
 
 pub(crate) fn identity_name(identity: &chelix_config::ResolvedIdentity) -> &str {
     identity.name.trim()
+}
+
+fn build_spa_share_meta(identity: Option<&chelix_config::ResolvedIdentity>) -> ShareMeta {
+    match identity {
+        Some(identity) => build_share_meta(identity),
+        None => ShareMeta {
+            title: format!("{PRODUCT_NAME}: AI assistant"),
+            description: format!(
+                "{PRODUCT_NAME} is a personal AI assistant. Multi-provider models, tools, memory, sandboxed execution, and channel access in one Rust binary."
+            ),
+            site_name: PRODUCT_NAME.to_owned(),
+            image_alt: format!("{PRODUCT_NAME} - personal AI assistant"),
+        },
+    }
+}
+
+fn spa_identity_name(identity: Option<&chelix_config::ResolvedIdentity>) -> &str {
+    identity.map_or(PRODUCT_NAME, identity_name)
 }
 
 fn build_asset_prefix() -> String {
@@ -887,7 +909,7 @@ pub(crate) async fn render_spa_template(
 
     let body = match template {
         SpaTemplate::Index => {
-            let share_meta = build_share_meta(&gon.identity);
+            let share_meta = build_spa_share_meta(gon.identity.as_ref());
             let gon_json = script_safe_json(&gon);
             let template = IndexHtmlTemplate {
                 build_ts: &build_ts,
@@ -915,7 +937,7 @@ pub(crate) async fn render_spa_template(
         },
         SpaTemplate::Login => {
             let gon_json = script_safe_json(&gon);
-            let page_title = identity_name(&gon.identity).to_owned();
+            let page_title = spa_identity_name(gon.identity.as_ref()).to_owned();
             let template = LoginHtmlTemplate {
                 build_ts: &build_ts,
                 asset_prefix: &asset_prefix,
@@ -937,7 +959,7 @@ pub(crate) async fn render_spa_template(
         },
         SpaTemplate::Onboarding => {
             let gon_json = script_safe_json(&gon);
-            let page_title = format!("{} onboarding", identity_name(&gon.identity));
+            let page_title = format!("{} onboarding", spa_identity_name(gon.identity.as_ref()));
             let template = OnboardingHtmlTemplate {
                 build_ts: &build_ts,
                 asset_prefix: &asset_prefix,

@@ -20,11 +20,10 @@ default value.
 The response contains `agents`. Each entry contains `id`, `name`, and
 `description`.
 
-An agent is available only when:
-
-1. `<data_dir>/agents/<id>/SUBAGENT.md` is non-empty after trimming;
-2. `[agents.<id>].model` is configured;
-3. `[agents.<id>].reasoning_effort` is configured.
+An agent is available only when
+`<data_dir>/agents/<id>/SUBAGENT.md` is non-empty after trimming. Every
+configured agent already has a required model/reasoning pair validated through
+the live model registry.
 
 ## Run
 

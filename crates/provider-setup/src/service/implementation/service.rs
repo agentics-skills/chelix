@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret, Secret};
 use {async_trait::async_trait, serde_json::Value, tokio::sync::RwLock};
 
 use {
-    chelix_config::schema::ProvidersConfig,
+    chelix_config::{AgentsConfig, schema::ProvidersConfig},
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{ProviderSetupService, ServiceError, ServiceResult},
 };
@@ -47,6 +47,7 @@ pub struct LiveProviderSetupService {
     /// Shared priority models list from `LiveModelService`. Updated when the
     /// ordered model selection changes so the dropdown reflects that order.
     pub(crate) priority_models: Option<Arc<RwLock<Vec<String>>>>,
+    pub(crate) agents_config: Option<Arc<RwLock<AgentsConfig>>>,
     /// Static env overrides (for example config `[env]`) used when resolving
     /// provider credentials without mutating the process environment.
     pub(crate) env_overrides: HashMap<String, String>,
@@ -68,6 +69,7 @@ impl LiveProviderSetupService {
             key_store: KeyStore::new(),
             deploy_platform,
             priority_models: None,
+            agents_config: None,
             env_overrides: HashMap::new(),
             error_parser: default_error_parser,
         }
@@ -75,6 +77,11 @@ impl LiveProviderSetupService {
 
     pub fn with_env_overrides(mut self, env_overrides: HashMap<String, String>) -> Self {
         self.env_overrides = env_overrides;
+        self
+    }
+
+    pub fn with_agents_config(mut self, agents_config: Arc<RwLock<AgentsConfig>>) -> Self {
+        self.agents_config = Some(agents_config);
         self
     }
 

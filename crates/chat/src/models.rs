@@ -95,6 +95,7 @@ pub struct LiveModelService {
     disabled: Arc<RwLock<DisabledModelsStore>>,
     state: Arc<OnceCell<Arc<dyn ChatRuntime>>>,
     priority_models: Arc<RwLock<Vec<String>>>,
+    agents_config: Option<Arc<RwLock<chelix_config::AgentsConfig>>>,
 }
 
 impl LiveModelService {
@@ -108,7 +109,31 @@ impl LiveModelService {
             disabled,
             state: Arc::new(OnceCell::new()),
             priority_models: Arc::new(RwLock::new(priority_models)),
+            agents_config: None,
         }
+    }
+
+    pub fn with_agents_config(
+        mut self,
+        agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
+    ) -> Self {
+        self.agents_config = Some(agents_config);
+        self
+    }
+
+    async fn configured_agent_ids_for_model(&self, model_id: &str) -> Vec<String> {
+        let Some(agents_config) = self.agents_config.as_ref() else {
+            return Vec::new();
+        };
+        let agents = agents_config.read().await;
+        let mut agent_ids = agents
+            .entries
+            .iter()
+            .filter(|(_, agent)| agent.model == model_id)
+            .map(|(agent_id, _)| agent_id.clone())
+            .collect::<Vec<_>>();
+        agent_ids.sort_unstable();
+        agent_ids
     }
 
     /// Shared handle to the priority models list. Pass this to services
@@ -299,6 +324,14 @@ impl ModelService for LiveModelService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'modelId' parameter".to_string())?;
 
+        let agent_ids = self.configured_agent_ids_for_model(model_id).await;
+        if !agent_ids.is_empty() {
+            return Err(ServiceError::message(format!(
+                "model '{model_id}' is configured for agents: {}",
+                agent_ids.join(", ")
+            )));
+        }
+
         info!(model = %model_id, "disabling model");
 
         let mut disabled = self.disabled.write().await;
@@ -338,5 +371,45 @@ impl ModelService for LiveModelService {
             "ok": true,
             "modelId": model_id,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn disabling_configured_agent_model_is_rejected_before_mutation()
+    -> Result<(), ServiceError> {
+        let mut agents = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..Default::default()
+        };
+        agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
+        let disabled = Arc::new(RwLock::new(DisabledModelsStore::default()));
+        let service = LiveModelService::new(
+            Arc::new(RwLock::new(ProviderRegistry::empty())),
+            Arc::clone(&disabled),
+            Vec::new(),
+        )
+        .with_agents_config(Arc::new(RwLock::new(agents)));
+
+        let Err(error) = service
+            .disable(serde_json::json!({ "modelId": "test::model" }))
+            .await
+        else {
+            return Err(ServiceError::message("configured model was disabled"));
+        };
+
+        assert!(error.to_string().contains("main"));
+        assert!(disabled.read().await.disabled.is_empty());
+        Ok(())
     }
 }

@@ -175,6 +175,8 @@ default = "main"
 
 [agents.main]
 name = "Chelix"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 
 [env]

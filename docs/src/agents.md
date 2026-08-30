@@ -4,22 +4,13 @@ Agents define the model, prompts, tool policy, session access, MCP access, and
 skill visibility used by chat and delegated child sessions. Each agent has one
 TOML entry and one workspace directory.
 
-## Starter Agents
+## First-Run Setup
 
-On first run, Chelix writes these agents to `chelix.toml`:
-
-- `main`
-- `research`
-- `coder`
-- `reviewer`
-- `qa`
-- `ux`
-- `docs`
-- `coordinator`
-
-Their workspace files are created under `<data_dir>/agents/<id>/`. Starter
-agents can be edited or deleted like agents created in the UI. The current
-default must be changed before that agent can be deleted.
+Chelix does not create incomplete starter agents. A first-run configuration has
+no agent entries and no default agent. After provider setup exposes a registered
+model, onboarding requires the user to select that canonical model and one of
+its supported reasoning efforts before it creates the first agent and makes it
+the default.
 
 ## Configuration
 
@@ -34,7 +25,7 @@ default = "main"
 name = "Chelix"
 emoji = "🤖"
 description = "General-purpose assistant"
-model = "openai/gpt-5.2"
+model = "openai::gpt-5.2"
 reasoning_effort = "high"
 max_tools_threshold = 128
 
@@ -83,11 +74,9 @@ Call `sub_agent` with `explore` before selecting an agent:
 }
 ```
 
-An agent is listed only when all three requirements are met:
-
-1. `SUBAGENT.md` is non-empty after trimming;
-2. `model` is configured;
-3. `reasoning_effort` is configured.
+An agent is listed only when `SUBAGENT.md` is non-empty after trimming. Every
+configured agent already has a required model/reasoning pair validated through
+the live model registry.
 
 Start a delegated child session with the exact agent ID returned by `explore`:
 
@@ -125,7 +114,9 @@ Each `[agents.<id>]` table supports:
 - `mcp.allow_servers` or `mcp.deny_servers`;
 - `skills.allow` and `skills.deny`.
 
-`name` and `max_tools_threshold` are required. Unknown fields are rejected.
+`name`, `model`, `reasoning_effort`, and `max_tools_threshold` are required.
+The model must use its canonical registry ID, and the effort must be supported
+by that model. Unknown fields are rejected.
 
 ## Tool Policy
 

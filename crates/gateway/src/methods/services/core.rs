@@ -2,7 +2,7 @@ use super::*;
 
 use chelix_common::ActiveToolInvocation;
 
-use crate::session_reasoning::{enrich_session_entry_for_ui, materialize_agent_session_defaults};
+use crate::session_reasoning::materialize_agent_session_defaults;
 
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
@@ -1003,7 +1003,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .or_else(|| entry_obj.get("agentId"))
                         .and_then(|value| value.as_str())
                 {
-                    materialize_agent_session_defaults(&ctx.state, key, agent_id).await;
+                    materialize_agent_session_defaults(&ctx.state, key, agent_id)
+                        .await
+                        .map_err(ErrorShape::from)?;
                 }
 
                 // Mark the session as seen so unread state clears.
@@ -1160,11 +1162,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     );
                     if let Some(prompts) = queued_prompts.get("prompts") {
                         obj.insert("queuedPrompts".to_string(), prompts.clone());
-                    }
-                    if let Some(entry_obj) =
-                        obj.get_mut("entry").and_then(|value| value.as_object_mut())
-                    {
-                        enrich_session_entry_for_ui(&ctx.state, entry_obj).await;
                     }
                 }
 

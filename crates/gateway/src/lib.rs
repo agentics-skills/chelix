@@ -34,6 +34,7 @@ pub mod mcp_service;
 pub mod mdns;
 pub mod message_log_store;
 pub mod methods;
+pub mod model_reasoning;
 pub mod onboarding;
 pub(crate) mod operation_progress;
 pub mod project;

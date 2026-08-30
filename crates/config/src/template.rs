@@ -216,8 +216,9 @@ port = {port}                           # Port number (auto-generated for this i
 # name = "Chelix"
 # emoji = "🤖"
 # description = "General-purpose assistant"
+# model = "openai::gpt-5.2"
+# reasoning_effort = "medium"
 # max_tools_threshold = {max_tools_threshold}
-# model = "openai/gpt-5.2"
 #
 # [agents.main.tools]
 # allow = []
@@ -559,52 +560,17 @@ port = {port}                           # Port number (auto-generated for this i
 
 /// Generate the user config written on first run.
 ///
-/// Starter agents are materialized in the user-owned layer so subsequent
-/// edits and deletions are never restored from managed defaults.
+/// No starter agent is emitted before the user has selected a registered
+/// canonical model and one of that model's supported reasoning efforts.
 pub fn first_run_config_template(port: u16) -> String {
     let base = default_config_template(port);
-    let max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD;
     format!(
         r#"{base}
 # ══════════════════════════════════════════════════════════════════════════════
-# STARTER AGENTS
+# AGENT SETUP
 # ══════════════════════════════════════════════════════════════════════════════
-
-[agents]
-default = "main"
-
-[agents.main]
-name = "chelix"
-description = "Default agent"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.research]
-name = "Researcher"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.coder]
-name = "Coder"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.reviewer]
-name = "Reviewer"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.qa]
-name = "QA"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.ux]
-name = "UX Designer"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.docs]
-name = "Docs Writer"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.coordinator]
-name = "Coordinator"
-max_tools_threshold = {max_tools_threshold}
+# No incomplete starter agents are created. Configure a provider, then create
+# the first agent with an explicit model and reasoning_effort in onboarding.
 "#
     )
 }
@@ -614,13 +580,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_run_agents_use_default_max_tools_threshold() -> Result<(), toml::de::Error> {
+    fn first_run_config_uses_exact_empty_agent_setup_state() -> Result<(), toml::de::Error> {
         let config: crate::ChelixConfig = toml::from_str(&first_run_config_template(18_789))?;
 
-        assert_eq!(config.agents.entries.len(), 8);
-        assert!(config.agents.entries.values().all(|agent| {
-            agent.max_tools_threshold == crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-        }));
+        assert!(matches!(
+            config.agents.resolve_state(),
+            Ok(crate::schema::AgentsConfigState::Setup)
+        ));
         Ok(())
     }
 }

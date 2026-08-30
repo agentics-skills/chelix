@@ -123,13 +123,13 @@ impl SubAgentRuntime {
     ) -> chelix_tools::Result<Value> {
         let started = Instant::now();
         let agent = self.discoverable_agent(agent_id).await?;
-        let model_reasoning = self
-            .state
-            .services
-            .model
-            .resolve_model_reasoning(&agent.model, Some(&agent.reasoning_effort))
-            .await
-            .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
+        let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+            self.state.services.model.as_ref(),
+            &agent.model,
+            &agent.reasoning_effort,
+        )
+        .await
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
         let parent = self
             .session_metadata
             .try_get(parent_session_key)
@@ -347,20 +347,10 @@ fn discoverable_agent_from_config(
             "agent {agent_id:?} has no non-empty SUBAGENT.md and is not available from sub_agent explore"
         )));
     }
-    let model = agent.model.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent {agent_id:?} has no configured model and is not available from sub_agent explore"
-        ))
-    })?;
-    let reasoning_effort = agent.reasoning_effort.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent {agent_id:?} has no configured reasoning_effort and is not available from sub_agent explore"
-        ))
-    })?;
     Ok(DiscoverableAgent {
         id: agent_id.to_string(),
-        model,
-        reasoning_effort,
+        model: agent.model.clone(),
+        reasoning_effort: agent.reasoning_effort.clone(),
     })
 }
 
@@ -685,12 +675,11 @@ mod tests {
     }
 
     fn configured_agent() -> chelix_config::AgentConfig {
-        chelix_config::AgentConfig {
-            name: "Reviewer".to_string(),
-            model: Some("provider/model".to_string()),
-            reasoning_effort: Some(ReasoningEffort::from("high")),
-            ..chelix_config::AgentConfig::default()
-        }
+        chelix_config::AgentConfig::new(
+            "Reviewer",
+            "provider::model",
+            ReasoningEffort::from("high"),
+        )
     }
 
     async fn sqlite_metadata() -> SqliteSessionMetadata {
@@ -713,7 +702,7 @@ mod tests {
                 parent_session_key,
                 parent_session_key,
                 "reviewer",
-                "provider/model",
+                "provider::model",
                 &ReasoningEffort::from("high"),
             )
             .await
@@ -721,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn discoverable_agent_requires_prompt_model_and_reasoning_effort() {
+    fn discoverable_agent_requires_non_empty_prompt() {
         let configured = configured_agent();
         discoverable_agent_from_config(
             "reviewer",
@@ -735,26 +724,6 @@ mod tests {
         let error = discoverable_agent_from_config("reviewer", &configured, Some("  ".to_string()))
             .unwrap_err();
         assert!(error.to_string().contains("no non-empty SUBAGENT.md"));
-
-        let mut without_model = configured.clone();
-        without_model.model = None;
-        let error = discoverable_agent_from_config(
-            "reviewer",
-            &without_model,
-            Some("Review the task".to_string()),
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("no configured model"));
-
-        let mut without_effort = configured;
-        without_effort.reasoning_effort = None;
-        let error = discoverable_agent_from_config(
-            "reviewer",
-            &without_effort,
-            Some("Review the task".to_string()),
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("no configured reasoning_effort"));
     }
 
     #[test]

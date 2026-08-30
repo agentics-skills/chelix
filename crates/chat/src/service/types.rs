@@ -846,12 +846,14 @@ mod tests {
             default: "main".to_string(),
             ..Default::default()
         };
-        initial
-            .entries
-            .insert("main".to_string(), chelix_config::AgentConfig {
-                name: "Main".to_string(),
-                ..Default::default()
-            });
+        initial.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
         let live = RwLock::new(initial);
         let base = chelix_config::ChelixConfig::default();
         let tools = chelix_config::ToolsConfigSource::snapshot(
@@ -866,12 +868,14 @@ mod tests {
             let mut agents = live.write().await;
             agents.entries.remove("main");
             agents.default = "writer".to_string();
-            agents
-                .entries
-                .insert("writer".to_string(), chelix_config::AgentConfig {
-                    name: "Writer".to_string(),
-                    ..Default::default()
-                });
+            agents.entries.insert(
+                "writer".to_string(),
+                chelix_config::AgentConfig::new(
+                    "Writer",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                ),
+            );
         }
 
         let updated = runtime_config_for_agent_run(&base, &live, &tools).await?;

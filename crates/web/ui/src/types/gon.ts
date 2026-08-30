@@ -77,7 +77,8 @@ export interface GonAgentEntry {
 	max_tools_threshold: number;
 	emoji?: string | null;
 	description?: string | null;
-	model?: string | null;
+	model: string;
+	reasoning_effort: string;
 	soul?: string | null;
 	subagent_prompt?: string | null;
 	[key: string]: unknown;
@@ -215,7 +216,7 @@ export interface UpdateAvailability {
  * Mirrors the Rust `GonData` struct in `crates/web/src/templates.rs`.
  */
 export interface GonData {
-	identity: ResolvedIdentity;
+	identity: ResolvedIdentity | null;
 	version: string;
 	port: number;
 	counts: NavCounts;

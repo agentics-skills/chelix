@@ -39,9 +39,20 @@ fn load_config_with_aliases(
     let raw = std::fs::read_to_string(path).map_err(|source| {
         crate::Error::external(format!("failed to read {}", path.display()), source)
     })?;
+    load_config_source_with_aliases(&raw, path, apply_third_party_aliases, std::env::vars())
+}
 
+fn load_config_source_with_aliases<I>(
+    raw: &str,
+    path: &Path,
+    apply_third_party_aliases: bool,
+    env_vars: I,
+) -> crate::Result<ChelixConfig>
+where
+    I: IntoIterator<Item = (String, String)>,
+{
     // First pass: resolve process env vars, parse to extract [env] section.
-    let first_pass = substitute_env(&raw);
+    let first_pass = substitute_env(raw);
     let preliminary: ChelixConfig = parse_config(&first_pass, path)?;
 
     // Second pass: re-substitute using both process env and [env] values.
@@ -49,11 +60,11 @@ fn load_config_with_aliases(
     let config = if preliminary.env.is_empty() {
         preliminary
     } else {
-        let second_pass = crate::env_subst::substitute_env_with_overrides(&raw, &preliminary.env);
+        let second_pass = crate::env_subst::substitute_env_with_overrides(raw, &preliminary.env);
         parse_config(&second_pass, path)?
     };
 
-    apply_env_overrides_with_options(config, std::env::vars(), apply_third_party_aliases)
+    apply_env_overrides_with_options(config, env_vars.into_iter(), apply_third_party_aliases)
 }
 
 /// Load and parse the config file with env substitution and includes.
@@ -97,7 +108,6 @@ pub fn initialize_config() -> crate::Result<ChelixConfig> {
         let mut config = ChelixConfig::default();
         config.server.port = generate_random_port();
         write_default_config(&default_path, &config)?;
-        materialize_starter_agent_workspaces()?;
         info!(
             path = %default_path.display(),
             "wrote default config template"
@@ -187,15 +197,31 @@ fn load_layered_config_toml(
     let user_raw = std::fs::read_to_string(user_path).map_err(|source| {
         crate::Error::external(format!("failed to read {}", user_path.display()), source)
     })?;
+    load_layered_config_toml_source(
+        &user_raw,
+        user_path,
+        apply_third_party_aliases,
+        std::env::vars(),
+    )
+}
 
+pub(super) fn load_layered_config_toml_source<I>(
+    user_raw: &str,
+    user_path: &Path,
+    apply_third_party_aliases: bool,
+    env_vars: I,
+) -> crate::Result<ChelixConfig>
+where
+    I: IntoIterator<Item = (String, String)>,
+{
     // Two-pass env substitution on the user file (same as load_config).
-    let user_first_pass = substitute_env(&user_raw);
+    let user_first_pass = substitute_env(user_raw);
     let preliminary: ChelixConfig = parse_config(&user_first_pass, user_path)?;
 
     let user_substituted = if preliminary.env.is_empty() {
         user_first_pass
     } else {
-        crate::env_subst::substitute_env_with_overrides(&user_raw, &preliminary.env)
+        crate::env_subst::substitute_env_with_overrides(user_raw, &preliminary.env)
     };
 
     // Load defaults TOML and deep merge defaults ← user overrides.
@@ -206,7 +232,24 @@ fn load_layered_config_toml(
         user_path,
     )?;
 
-    apply_env_overrides_with_options(config, std::env::vars(), apply_third_party_aliases)
+    apply_env_overrides_with_options(config, env_vars.into_iter(), apply_third_party_aliases)
+}
+
+/// Load an in-memory candidate through the same layered pipeline as the next startup.
+///
+/// The logical path is the raw-save target because its extension selects the startup parser.
+pub fn load_layered_config_candidate(user_raw: &str) -> crate::Result<ChelixConfig> {
+    let user_path = find_or_default_config_path();
+    let is_toml = user_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
+
+    if is_toml {
+        load_layered_config_toml_source(user_raw, &user_path, true, std::env::vars())
+    } else {
+        load_config_source_with_aliases(user_raw, &user_path, true, std::env::vars())
+    }
 }
 
 fn find_config_file_in(dir: &Path) -> Option<PathBuf> {

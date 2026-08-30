@@ -3,8 +3,12 @@
 use {
     super::*,
     crate::KeyStore,
-    chelix_config::schema::{
-        ModelConfigMap, ModelModality, PartialModelMetadata, ProviderEntry, ProvidersConfig,
+    chelix_config::{
+        AgentConfig, AgentsConfig,
+        schema::{
+            ModelConfigMap, ModelModality, PartialModelMetadata, ProviderEntry, ProvidersConfig,
+            ReasoningEffort,
+        },
     },
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{NoopProviderSetupService, ProviderSetupService},
@@ -73,6 +77,40 @@ async fn remove_key_rejects_missing_params() {
     ));
     let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
     assert!(svc.remove_key(serde_json::json!({})).await.is_err());
+}
+
+#[tokio::test]
+async fn remove_key_rejects_provider_alias_used_by_configured_agent_before_mutation() {
+    let mut config = ProvidersConfig::default();
+    config.providers.insert("openai".into(), ProviderEntry {
+        api_key: Some(Secret::new("sk-test".into())),
+        models: complete_model_map(&["gpt-5"]),
+        alias: Some("oai".into()),
+        ..Default::default()
+    });
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
+    ));
+    let mut agents = AgentsConfig {
+        default: "main".into(),
+        ..Default::default()
+    };
+    agents.entries.insert(
+        "main".into(),
+        AgentConfig::new("Main", "oai::gpt-5", ReasoningEffort::from("low")),
+    );
+    let svc = live_provider_setup_service(Arc::clone(&registry), config, None)
+        .with_agents_config(Arc::new(RwLock::new(agents)));
+
+    let error = svc
+        .remove_key(serde_json::json!({ "provider": "openai" }))
+        .await
+        .expect_err("configured agent provider must not be removed")
+        .to_string();
+
+    assert!(error.contains("main"));
+    assert!(svc.config_snapshot().is_enabled("openai"));
+    assert!(registry.read().await.get("oai::gpt-5").is_some());
 }
 
 #[tokio::test]

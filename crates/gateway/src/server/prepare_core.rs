@@ -160,12 +160,27 @@ pub async fn prepare_gateway_core(
         let provider_keys_path = chelix_config::config_dir()
             .unwrap_or_else(|| PathBuf::from(".chelix"))
             .join("provider_keys.json");
-        warn!(
-            provider_summary = %provider_summary,
-            config_path = %config_path.display(),
-            provider_keys_path = %provider_keys_path.display(),
-            "no LLM providers resolved from configuration; model/chat services remain active and will pick up providers after credentials are saved"
-        );
+        match config.agents.resolve_state() {
+            Ok(chelix_config::AgentsConfigState::Setup) => warn!(
+                provider_summary = %provider_summary,
+                config_path = %config_path.display(),
+                provider_keys_path = %provider_keys_path.display(),
+                "no LLM providers resolved during setup; model/chat services remain active for provider configuration"
+            ),
+            Ok(chelix_config::AgentsConfigState::Configured { .. }) => warn!(
+                provider_summary = %provider_summary,
+                config_path = %config_path.display(),
+                provider_keys_path = %provider_keys_path.display(),
+                "no LLM providers resolved; configured agent registry validation will fail"
+            ),
+            Err(error) => warn!(
+                provider_summary = %provider_summary,
+                config_path = %config_path.display(),
+                provider_keys_path = %provider_keys_path.display(),
+                %error,
+                "agent registry is structurally invalid; configured agent registry validation will fail"
+            ),
+        }
     }
     startup_mem_probe.checkpoint("providers.registry.initialized");
 
@@ -204,15 +219,22 @@ pub async fn prepare_gateway_core(
         services.stt = Arc::new(LiveSttService::new(SttServiceConfig::default()));
     }
 
+    let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
     let model_store = Arc::new(tokio::sync::RwLock::new(
         crate::chat::DisabledModelsStore::load()?,
     ));
 
-    let live_model_service = Arc::new(LiveModelService::new(
-        Arc::clone(&registry),
-        Arc::clone(&model_store),
-        config.chat.priority_models.clone(),
-    ));
+    let live_model_service = Arc::new(
+        LiveModelService::new(
+            Arc::clone(&registry),
+            Arc::clone(&model_store),
+            config.chat.priority_models.clone(),
+        )
+        .with_agents_config(Arc::clone(&agents_config)),
+    );
+    crate::model_reasoning::validate_agents_config(live_model_service.as_ref(), &config.agents)
+        .await
+        .map_err(|error| anyhow::anyhow!("agent configuration validation failed: {error}"))?;
     services = services
         .with_model(Arc::clone(&live_model_service) as Arc<dyn crate::services::ModelService>);
 
@@ -223,6 +245,7 @@ pub async fn prepare_gateway_core(
         crate::provider_setup::ProviderConfigPersistence::Filesystem,
     )
     .with_env_overrides(config_env_overrides.clone())
+    .with_agents_config(Arc::clone(&agents_config))
     .with_error_parser(crate::chat_error::parse_chat_error);
     provider_setup.set_priority_models(live_model_service.priority_models_handle());
     let provider_setup_service = Arc::new(provider_setup);
@@ -534,8 +557,6 @@ pub async fn prepare_gateway_core(
     let prompt_queue_store = Arc::new(chelix_sessions::SessionPromptQueueStore::new(
         db_pool.clone(),
     ));
-
-    let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
 
     let voice_persona_store = Arc::new(crate::voice_persona::VoicePersonaStore::new(
         db_pool.clone(),

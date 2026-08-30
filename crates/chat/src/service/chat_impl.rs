@@ -54,16 +54,11 @@ use super::*;
 
 pub(super) fn resolved_turn_reasoning_effort(
     session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
-    persona: &PromptPersona,
+    agent: &chelix_config::AgentConfig,
 ) -> Option<String> {
-    if let Some(reasoning_effort) = session_entry.and_then(|entry| entry.reasoning_effort.clone()) {
-        return Some(reasoning_effort);
-    }
-    persona
-        .agent
-        .reasoning_effort
-        .as_ref()
-        .map(|effort| effort.as_str().to_string())
+    session_entry
+        .and_then(|entry| entry.reasoning_effort.clone())
+        .or_else(|| Some(agent.reasoning_effort.as_str().to_owned()))
 }
 
 pub(super) fn requested_reasoning_effort(params: &Value) -> Option<String> {
@@ -239,7 +234,7 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
         let session_agent_id = persona.agent_id.clone();
         let resolved_reasoning_effort = requested_reasoning_effort_override
-            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona));
+            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent));
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona

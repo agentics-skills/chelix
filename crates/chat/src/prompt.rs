@@ -674,13 +674,14 @@ mod tests {
         std::fs::write(workspace.join("SUBAGENT.md"), "Delegated reviewer")
             .unwrap_or_else(|error| panic!("SUBAGENT.md setup failed: {error}"));
         let mut config = chelix_config::ChelixConfig::default();
-        config
-            .agents
-            .entries
-            .insert("reviewer".to_string(), chelix_config::AgentConfig {
-                name: "Reviewer".to_string(),
-                ..Default::default()
-            });
+        config.agents.entries.insert(
+            "reviewer".to_string(),
+            chelix_config::AgentConfig::new(
+                "Reviewer",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
 
         let subagent =
             load_prompt_persona_base_for_agent(&config, "reviewer", PromptProfile::Subagent)
@@ -742,7 +743,11 @@ mod tests {
             .entries
             .insert("locked".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec![]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Locked",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let filtered = apply_runtime_tool_filters(
@@ -772,7 +777,11 @@ mod tests {
             .entries
             .insert("github-only".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec!["github".into()]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "GitHub only",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let filtered = apply_runtime_tool_filters(
@@ -810,7 +819,11 @@ mod tests {
                         "unknown_tool".into(),
                     ],
                 },
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Preloaded",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
         let history = [serde_json::json!({
             "role": "assistant",

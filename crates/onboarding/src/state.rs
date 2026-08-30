@@ -3,9 +3,10 @@
 use chelix_config::{AgentConfig, UserProfile};
 
 /// Steps in the onboarding wizard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WizardStep {
+    #[default]
     Welcome,
     UserName,
     AgentName,
@@ -14,27 +15,40 @@ pub enum WizardStep {
     Done,
 }
 
-/// The wizard state, advanced one step at a time.
-#[derive(Debug, Clone)]
-pub struct WizardState {
-    pub step: WizardStep,
-    pub user: UserProfile,
-    pub agent: AgentConfig,
+/// Editable presentation fields for an already configured agent.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct AgentIdentityDraft {
+    pub name: String,
+    pub emoji: Option<String>,
 }
 
-impl Default for WizardState {
-    fn default() -> Self {
-        Self::new()
+impl AgentIdentityDraft {
+    #[must_use]
+    pub fn from_agent(agent: &AgentConfig) -> Self {
+        Self {
+            name: agent.name.clone(),
+            emoji: agent.emoji.clone(),
+        }
+    }
+
+    pub fn apply_to(&self, agent: &mut AgentConfig) {
+        agent.name.clone_from(&self.name);
+        agent.emoji.clone_from(&self.emoji);
     }
 }
 
+/// The wizard state, advanced one step at a time.
+#[derive(Debug, Clone, Default)]
+pub struct WizardState {
+    pub step: WizardStep,
+    pub user: UserProfile,
+    pub agent: AgentIdentityDraft,
+}
+
 impl WizardState {
+    #[must_use]
     pub fn new() -> Self {
-        Self {
-            step: WizardStep::Welcome,
-            user: UserProfile::default(),
-            agent: AgentConfig::default(),
-        }
+        Self::default()
     }
 
     /// The prompt text to display for the current step.
@@ -87,6 +101,7 @@ impl WizardState {
         }
     }
 
+    #[must_use]
     pub fn is_done(&self) -> bool {
         self.step == WizardStep::Done
     }

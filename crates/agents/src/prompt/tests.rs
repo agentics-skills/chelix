@@ -197,9 +197,12 @@ fn test_documentation_section_falls_back_to_public_docs() {
 fn test_agent_injected_into_prompt() {
     let tools = ToolRegistry::new();
     let agent = AgentConfig {
-        name: "Momo".into(),
         emoji: Some("🦜".into()),
-        ..Default::default()
+        ..AgentConfig::new(
+            "Momo",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        )
     };
     let user = UserProfile {
         name: Some("Alice".into()),
@@ -230,10 +233,11 @@ fn test_agent_injected_into_prompt() {
 #[test]
 fn test_custom_soul_injected() {
     let tools = ToolRegistry::new();
-    let agent = AgentConfig {
-        name: "Rex".into(),
-        ..Default::default()
-    };
+    let agent = AgentConfig::new(
+        "Rex",
+        "test::model",
+        chelix_config::schema::ReasoningEffort::from("off"),
+    );
     let prompt = build_system_prompt_with_session_runtime(
         &tools,
         true,

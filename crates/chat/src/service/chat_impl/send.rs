@@ -578,7 +578,7 @@ impl LiveChatService {
             "chat.send: persona loaded"
         );
         let resolved_reasoning_effort = requested_reasoning_effort_override
-            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona));
+            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent));
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);

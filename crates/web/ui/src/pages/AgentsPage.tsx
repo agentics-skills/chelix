@@ -8,6 +8,7 @@ import { refresh as refreshGon } from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import { fetchSessions } from "../sessions";
 import { targetValue } from "../typed-events";
+import type { ModelInfo } from "../types/model";
 import { confirmDialog } from "../ui";
 
 interface UnknownRecord {
@@ -19,7 +20,8 @@ interface AgentEntry extends UnknownRecord {
 	name: string;
 	emoji?: string | null;
 	description?: string | null;
-	model?: string | null;
+	model: string;
+	reasoning_effort: string;
 	max_tools_threshold: number;
 	is_default?: boolean;
 	soul?: string;
@@ -32,6 +34,7 @@ interface AgentFormValues {
 	emoji: string;
 	description: string;
 	model: string;
+	reasoningEffort: string;
 	maxToolsThreshold: string;
 	soul: string;
 	subagentPrompt: string;
@@ -46,7 +49,6 @@ interface AgentFormProps {
 
 const WS_RETRY_LIMIT = 75;
 const WS_RETRY_DELAY_MS = 200;
-const FALLBACK_MAX_TOOLS_THRESHOLD = 128;
 
 let containerRef: HTMLElement | null = null;
 
@@ -59,25 +61,62 @@ function optionalString(value: string): string | null {
 	return trimmed || null;
 }
 
-function parseDefaultMaxToolsThreshold(value: unknown): number {
-	if (!(isRecord(value) && isRecord(value.defaults))) return FALLBACK_MAX_TOOLS_THRESHOLD;
+function isAgentsListPayload(value: unknown): value is Parameters<typeof parseAgentsListPayload>[0] {
+	return isRecord(value) && Array.isArray(value.agents) && typeof value.default_id === "string";
+}
+
+function parseDefaultMaxToolsThreshold(value: unknown): number | null {
+	if (!(isRecord(value) && isRecord(value.defaults))) return null;
 	const threshold = value.defaults.max_tools_threshold;
-	return typeof threshold === "number" && Number.isSafeInteger(threshold) && threshold >= 1
-		? threshold
-		: FALLBACK_MAX_TOOLS_THRESHOLD;
+	return typeof threshold === "number" && Number.isSafeInteger(threshold) && threshold >= 1 ? threshold : null;
 }
 
 function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 	const id = typeof value.id === "string" ? value.id : "";
 	const name = typeof value.name === "string" ? value.name : "";
+	const model = typeof value.model === "string" ? value.model : "";
+	const reasoningEffort = typeof value.reasoning_effort === "string" ? value.reasoning_effort : "";
 	const maxToolsThreshold = value.max_tools_threshold;
-	if (!(id && name && typeof maxToolsThreshold === "number")) return null;
+	if (
+		!(
+			id &&
+			name &&
+			model &&
+			reasoningEffort &&
+			typeof maxToolsThreshold === "number" &&
+			Number.isSafeInteger(maxToolsThreshold) &&
+			maxToolsThreshold >= 1
+		)
+	)
+		return null;
 	return {
 		...value,
 		id,
 		name,
+		model,
+		reasoning_effort: reasoningEffort,
 		max_tools_threshold: maxToolsThreshold,
 	};
+}
+
+function selectableModels(value: unknown): ModelInfo[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.filter((entry): entry is ModelInfo => {
+			if (!isRecord(entry)) return false;
+			return (
+				typeof entry.id === "string" &&
+				entry.id.length > 0 &&
+				Array.isArray(entry.reasoning_supported_efforts) &&
+				entry.reasoning_supported_efforts.length > 0 &&
+				entry.reasoning_supported_efforts.every((effort) => typeof effort === "string" && effort.length > 0)
+			);
+		})
+		.filter((entry) => entry.disabled !== true);
+}
+
+function reasoningEffortsFor(models: ModelInfo[], modelId: string): string[] {
+	return models.find((model) => model.id === modelId)?.reasoning_supported_efforts || [];
 }
 
 function agentConfigForSave(agent: AgentEntry | null, values: AgentFormValues): UnknownRecord {
@@ -88,7 +127,8 @@ function agentConfigForSave(agent: AgentEntry | null, values: AgentFormValues): 
 		name: values.name.trim(),
 		emoji: optionalString(values.emoji),
 		description: optionalString(values.description),
-		model: optionalString(values.model),
+		model: values.model,
+		reasoning_effort: values.reasoningEffort,
 		max_tools_threshold: Number(values.maxToolsThreshold),
 	};
 }
@@ -110,12 +150,35 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 		emoji: agent?.emoji || "",
 		description: agent?.description || "",
 		model: agent?.model || "",
+		reasoningEffort: agent?.reasoning_effort || "",
 		maxToolsThreshold: String(agent?.max_tools_threshold || defaultMaxToolsThreshold),
 		soul: agent?.soul || "",
 		subagentPrompt: agent?.subagent_prompt || "",
 	});
+	const [models, setModels] = useState<ModelInfo[]>([]);
+	const [loadingModels, setLoadingModels] = useState(true);
+	const [modelsError, setModelsError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const supportedReasoningEfforts = reasoningEffortsFor(models, values.model);
+
+	useEffect(() => {
+		let cancelled = false;
+		sendRpc<ModelInfo[]>("models.list", {}).then((response) => {
+			if (cancelled) return;
+			setLoadingModels(false);
+			if (!response.ok) {
+				setModelsError(response.error?.message || "Failed to load configured models.");
+				return;
+			}
+			const loadedModels = selectableModels(response.payload);
+			setModels(loadedModels);
+			setModelsError(loadedModels.length === 0 ? "No configured models are available." : null);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
 	function setField<K extends keyof AgentFormValues>(key: K, value: AgentFormValues[K]): void {
 		setValues((current) => ({ ...current, [key]: value }));
@@ -139,6 +202,18 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 		}
 		if (!Number.isSafeInteger(threshold) || threshold < 1) {
 			setError("Max tools threshold must be a positive integer.");
+			return;
+		}
+		if (!values.model) {
+			setError("Model is required.");
+			return;
+		}
+		if (!models.some((model) => model.id === values.model)) {
+			setError("Select an available configured model.");
+			return;
+		}
+		if (!supportedReasoningEfforts.includes(values.reasoningEffort)) {
+			setError("Select a reasoning effort supported by the model.");
 			return;
 		}
 
@@ -202,13 +277,39 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 						/>
 					</label>
 					<label className="flex flex-col gap-1">
-						<span className="text-xs text-[var(--muted)]">Model</span>
-						<input
+						<span className="text-xs text-[var(--muted)]">Model *</span>
+						<select
 							className="provider-key-input"
 							value={values.model}
-							onInput={(event) => setField("model", targetValue(event))}
-							placeholder="Optional model override"
-						/>
+							disabled={loadingModels || models.length === 0}
+							onChange={(event) => {
+								setField("model", targetValue(event));
+								setField("reasoningEffort", "");
+							}}
+						>
+							<option value="">Select a model</option>
+							{models.map((model) => (
+								<option key={model.id} value={model.id}>
+									{model.id}
+								</option>
+							))}
+						</select>
+					</label>
+					<label className="flex flex-col gap-1">
+						<span className="text-xs text-[var(--muted)]">Reasoning effort *</span>
+						<select
+							className="provider-key-input"
+							value={values.reasoningEffort}
+							disabled={!values.model || supportedReasoningEfforts.length === 0}
+							onChange={(event) => setField("reasoningEffort", targetValue(event))}
+						>
+							<option value="">Select reasoning effort</option>
+							{supportedReasoningEfforts.map((effort) => (
+								<option key={effort} value={effort}>
+									{effort}
+								</option>
+							))}
+						</select>
 					</label>
 				</div>
 
@@ -259,6 +360,11 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 					</label>
 				</div>
 
+				{modelsError && (
+					<span className="text-xs" style={{ color: "var(--error)" }}>
+						{modelsError}
+					</span>
+				)}
 				{error && (
 					<span className="text-xs" style={{ color: "var(--error)" }}>
 						{error}
@@ -272,7 +378,7 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 						type="button"
 						className="provider-btn provider-btn-sm provider-btn-primary"
 						onClick={save}
-						disabled={saving}
+						disabled={saving || loadingModels || models.length === 0}
 					>
 						{saving ? "Saving…" : agent ? "Save" : "Create"}
 					</button>
@@ -310,7 +416,9 @@ function AgentCard({
 							{isDefault && <span className="recommended-badge">Default</span>}
 						</div>
 						{agent.description && <p className="text-xs text-[var(--muted)] mt-1">{agent.description}</p>}
-						{agent.model && <p className="text-xs text-[var(--muted)] mt-1">Model: {agent.model}</p>}
+						<p className="text-xs text-[var(--muted)] mt-1">
+							Model: {agent.model} · reasoning: {agent.reasoning_effort}
+						</p>
 					</div>
 				</div>
 			</div>
@@ -336,13 +444,16 @@ function AgentCard({
 function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	const [agents, setAgents] = useState<AgentEntry[]>([]);
 	const [defaultId, setDefaultId] = useState("");
-	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState(FALLBACK_MAX_TOOLS_THRESHOLD);
+	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState<number | null>(null);
 	const [editing, setEditing] = useState<"new" | AgentEntry | null>(subPath === "new" ? "new" : null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	function fetchAgents(): void {
 		setIsLoading(true);
+		setAgents([]);
+		setDefaultId("");
+		setDefaultMaxToolsThreshold(null);
 		let attempts = 0;
 		function load(): void {
 			sendRpc("agents.list", {}).then((response) => {
@@ -359,12 +470,28 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					setError(response?.error?.message || "Failed to load agents");
 					return;
 				}
-				const parsed = parseAgentsListPayload(response.payload as Parameters<typeof parseAgentsListPayload>[0]);
+				if (!isAgentsListPayload(response.payload)) {
+					setError("Agent list returned invalid configuration data.");
+					return;
+				}
+				const parsed = parseAgentsListPayload(response.payload);
+				const defaultThreshold = parseDefaultMaxToolsThreshold(response.payload);
+				if (defaultThreshold === null) {
+					setError("Agent list returned invalid defaults data.");
+					return;
+				}
+				const validAgents: AgentEntry[] = [];
+				for (const entry of parsed.agents) {
+					const agent = toAgentEntry(entry);
+					if (!agent) {
+						setError("Agent list returned invalid configuration data.");
+						return;
+					}
+					validAgents.push(agent);
+				}
 				setDefaultId(parsed.defaultId);
-				setDefaultMaxToolsThreshold(parseDefaultMaxToolsThreshold(response.payload));
-				setAgents(
-					parsed.agents.map((entry) => toAgentEntry(entry)).filter((entry): entry is AgentEntry => entry !== null),
-				);
+				setDefaultMaxToolsThreshold(defaultThreshold);
+				setAgents(validAgents);
 				setError(null);
 			});
 		}
@@ -401,7 +528,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		});
 	}
 
-	if (editing) {
+	if (editing && defaultMaxToolsThreshold !== null) {
 		return (
 			<AgentForm
 				agent={editing === "new" ? null : editing}
@@ -416,7 +543,12 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<div className="flex items-center gap-3 flex-wrap">
 				<h2 className="text-lg font-medium text-[var(--text-strong)]">Agents</h2>
-				<button type="button" className="provider-btn provider-btn-sm" onClick={() => setEditing("new")}>
+				<button
+					type="button"
+					className="provider-btn provider-btn-sm"
+					onClick={() => setEditing("new")}
+					disabled={defaultMaxToolsThreshold === null}
+				>
 					New Agent
 				</button>
 			</div>

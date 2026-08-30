@@ -44,7 +44,7 @@ Omit `model_override` to use the selected agent's configured model. `model_overr
 is for advanced intentional overrides only. When it is provided, both
 `model_override.model` and `model_override.reasoning_effort` are mandatory. The
 model must be the base ID shown in the chat model registry (`models.list`) and
-must support reasoning. The tool stores `model` and `reasoning_effort` as
+must support the selected effort. The tool stores `model` and `reasoning_effort` as
 separate session fields, for example:
 
 ```json
@@ -57,10 +57,9 @@ separate session fields, for example:
 }
 ```
 
-If `model` is omitted, the selected agent must have both
-`[agents.<agent_id>].model` and
-`[agents.<agent_id>].reasoning_effort` configured. Otherwise the tool returns
-an explicit error explaining which agent field is missing.
+When `model_override` is omitted, the tool uses the selected agent's required
+model/reasoning pair. Agent pairs are validated against the live model registry
+at startup and whenever an agent is created or updated.
 
 Sessions created by an agent are automatically linked to the calling session as
 children (`parentSessionKey`), so the sessions sidebar renders them nested under
@@ -137,10 +136,18 @@ Configure policy on an agent to control which sessions it can access:
 
 ```toml
 [agents.coordinator]
+name = "Coordinator"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+max_tools_threshold = 128
 tools.allow = ["sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list", "sub_agent"]
 sessions.can_send = true
 
 [agents.observer]
+name = "Observer"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+max_tools_threshold = 128
 tools.allow = ["sessions_list", "sessions_history", "sessions_search"]
 sessions.key_prefix = "agent:research:"
 sessions.can_send = false

@@ -83,7 +83,7 @@ fn build_explore_sessions(
                         "emoji": agent.emoji,
                         "isDefault": id == &default_id,
                         "model": agent.model,
-                        "reasoningEffort": agent.reasoning_effort.as_ref().map(ReasoningEffort::as_str),
+                        "reasoningEffort": agent.reasoning_effort.as_str(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -279,12 +279,13 @@ async fn validate_model_and_reasoning_effort(
     model: &str,
     reasoning_effort: &ReasoningEffort,
 ) -> chelix_tools::Result<ResolvedModelReasoning> {
-    state
-        .services
-        .model
-        .resolve_model_reasoning(model, Some(reasoning_effort))
-        .await
-        .map_err(|error| chelix_tools::Error::message(error.to_string()))
+    crate::model_reasoning::resolve_model_reasoning(
+        state.services.model.as_ref(),
+        model,
+        reasoning_effort,
+    )
+    .await
+    .map_err(|error| chelix_tools::Error::message(error.to_string()))
 }
 
 #[tracing::instrument(skip(state))]
@@ -301,17 +302,7 @@ async fn agent_model_and_reasoning(
     let agent = guard
         .get(agent_id)
         .ok_or_else(|| chelix_tools::Error::message(format!("agent '{agent_id}' not found")))?;
-    let model = agent.model.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no model; pass model+reasoning_effort or configure [agents.{agent_id}].model"
-        ))
-    })?;
-    let effort = agent.reasoning_effort.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no reasoning_effort; pass model+reasoning_effort or configure [agents.{agent_id}].reasoning_effort"
-        ))
-    })?;
-    Ok((model, effort))
+    Ok((agent.model.clone(), agent.reasoning_effort.clone()))
 }
 
 fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Value {
@@ -346,4 +337,130 @@ fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Valu
             "version": version,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use {
+        async_trait::async_trait,
+        chelix_service_traits::{ModelService, ServiceError, ServiceResult},
+        chelix_tools::{
+            session_model_override::ModelOverride, sessions_manage::CreateSessionRequest,
+        },
+    };
+
+    struct ExactModelService;
+
+    #[async_trait]
+    impl ModelService for ExactModelService {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn resolve_model_reasoning(
+            &self,
+            model: &str,
+            reasoning_effort: Option<&ReasoningEffort>,
+        ) -> Result<ResolvedModelReasoning, ServiceError> {
+            let effort = reasoning_effort
+                .ok_or_else(|| ServiceError::message("reasoning effort is required"))?;
+            if model != "test::valid" || effort.as_str() != "medium" {
+                return Err(ServiceError::message(format!(
+                    "unsupported pair '{model}' + '{}'",
+                    effort.as_str()
+                )));
+            }
+            ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
+                .map_err(|error| ServiceError::message(error.to_string()))
+        }
+
+        async fn disable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn enable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    async fn create_test_state() -> Result<
+        (
+            Arc<GatewayState>,
+            Arc<SqliteSessionMetadata>,
+            tempfile::TempDir,
+        ),
+        Box<dyn std::error::Error>,
+    > {
+        let dir = tempfile::tempdir()?;
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await?;
+        chelix_projects::run_migrations(&pool).await?;
+        SqliteSessionMetadata::init(&pool).await?;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        let mut agents = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..Default::default()
+        };
+        agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new("Main", "test::valid", ReasoningEffort::from("medium")),
+        );
+        let agents_config = Arc::new(tokio::sync::RwLock::new(agents));
+        let model_service: Arc<dyn ModelService> = Arc::new(ExactModelService);
+        let session_service = crate::session::LiveSessionService::from_router(
+            Arc::clone(&store),
+            Arc::clone(&metadata),
+            Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+            Arc::clone(&agents_config),
+            Arc::clone(&model_service),
+        );
+        let services = crate::services::GatewayServices::noop()
+            .with_session(Arc::new(session_service))
+            .with_model(model_service)
+            .with_agents_config(agents_config)
+            .with_session_metadata(Arc::clone(&metadata));
+        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        Ok((state, metadata, dir))
+    }
+
+    fn create_request(key: &str, model: &str) -> CreateSessionRequest {
+        CreateSessionRequest {
+            key: key.to_string(),
+            agent_id: "main".to_string(),
+            label: None,
+            model_override: Some(ModelOverride {
+                model: model.to_string(),
+                reasoning_effort: ReasoningEffort::from("medium"),
+            }),
+            project_id: None,
+            parent_session_key: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn model_validation_precedes_session_metadata_mutation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (state, metadata, _dir) = create_test_state().await?;
+        let create = build_create_session(state, Arc::clone(&metadata));
+        create(create_request("session:valid", "test::valid")).await?;
+        let valid_entry = metadata
+            .get("session:valid")
+            .await
+            .ok_or_else(|| std::io::Error::other("valid session metadata was not created"))?;
+        assert_eq!(valid_entry.model.as_deref(), Some("test::valid"));
+        assert_eq!(valid_entry.reasoning_effort.as_deref(), Some("medium"));
+
+        let (state, metadata, _dir) = create_test_state().await?;
+        let create = build_create_session(state, Arc::clone(&metadata));
+        let invalid = create(create_request("session:invalid", "test::invalid")).await;
+        assert!(invalid.is_err());
+        assert!(metadata.get("session:invalid").await.is_none());
+        Ok(())
+    }
 }

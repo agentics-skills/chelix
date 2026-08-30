@@ -45,6 +45,10 @@ credentials to chat.
      setup are persisted in `~/.config/chelix/provider_keys.json` and loaded for
      matching providers declared in the service configuration.
 
+3. Complete the onboarding identity step. Chelix creates no incomplete starter
+   agents: select a registered canonical model and one of its supported
+   reasoning efforts to create the first agent and make it the default.
+
 ## 4. Chat
 
 Go to the **Chat** tab and start a conversation:

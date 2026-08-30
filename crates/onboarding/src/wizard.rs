@@ -4,7 +4,10 @@ use std::io::{BufRead, Write};
 
 use chelix_config::{AgentConfig, find_or_default_config_path};
 
-use crate::{Context, Error, Result, state::WizardState};
+use crate::{
+    Context, Error, Result,
+    state::{AgentIdentityDraft, WizardState},
+};
 
 /// Run the interactive onboarding wizard in the terminal.
 pub async fn run_onboarding() -> Result<()> {
@@ -32,7 +35,7 @@ pub async fn run_onboarding() -> Result<()> {
     }
 
     let mut state = WizardState::new();
-    state.agent = default_agent;
+    state.agent = AgentIdentityDraft::from_agent(&default_agent);
     state.user = user;
 
     let stdin = std::io::stdin();
@@ -47,7 +50,12 @@ pub async fn run_onboarding() -> Result<()> {
         state.advance(&line);
     }
 
-    config.agents.entries.insert(default_id, state.agent);
+    let default_agent = config
+        .agents
+        .entries
+        .get_mut(&default_id)
+        .ok_or_else(|| Error::message("configured default agent disappeared"))?;
+    state.agent.apply_to(default_agent);
     config.user = state.user;
 
     chelix_config::loader::save_config_to_path(&config_path, &config)
@@ -61,13 +69,14 @@ pub async fn run_onboarding() -> Result<()> {
 
 /// Return the configured default agent without normalization or fallback.
 fn configured_default_agent(config: &chelix_config::ChelixConfig) -> Result<&AgentConfig> {
-    let default_id = config.agents.default.as_str();
-    if default_id.trim().is_empty() {
-        return Err(Error::message("agents.default is empty"));
+    match config
+        .agents
+        .resolve_state()
+        .map_err(|error| Error::message(error.to_string()))?
+    {
+        chelix_config::AgentsConfigState::Setup => Err(Error::message(
+            "default agent is not configured; configure a provider and model, then complete web onboarding",
+        )),
+        chelix_config::AgentsConfigState::Configured { default_agent, .. } => Ok(default_agent),
     }
-    config.agents.entries.get(default_id).ok_or_else(|| {
-        Error::message(format!(
-            "default agent \"{default_id}\" is not defined under [agents]"
-        ))
-    })
 }

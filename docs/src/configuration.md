@@ -95,11 +95,19 @@ default = "main"
 
 [agents.main]
 name = "Chelix"                 # Agent display name
+model = "openai::gpt-5.2"       # Required canonical registry model ID
+reasoning_effort = "medium"     # Required effort supported by this model
 max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 
 [tools]
 agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
 ```
+
+A first-run configuration contains no agents until provider setup exposes at
+least one registered model. Onboarding then creates the first agent with an
+explicit canonical model ID and one of that model's supported reasoning
+efforts. Once any agent exists, `[agents].default` must reference a configured
+agent and every agent must include both fields.
 
 ## LLM Providers
 
@@ -481,6 +489,8 @@ default = "main"
 
 [agents.main]
 name = "Atlas"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
 max_tools_threshold = 128
 
 [tools]

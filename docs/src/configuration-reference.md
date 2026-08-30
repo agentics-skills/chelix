@@ -208,10 +208,14 @@ User profile collected during onboarding.
 
 ### `agents` — AgentsConfig
 
-| Key       | Type                 | Default  | Description                                                                                      |
-| --------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `default` | string               | required | Agent ID used by new sessions.                                                                   |
-| `<id>`    | map of `AgentConfig` | `{}`     | User-owned agents keyed directly by ID. The configured `default` must reference one of these IDs. |
+| Key       | Type                 | Default | Description                                                                                                              |
+| --------- | -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `default` | string               | `""`    | Agent ID used by new sessions. Required to reference an existing agent once any agent is configured.                     |
+| `<id>`    | map of `AgentConfig` | `{}`    | User-owned agents keyed directly by ID. The configured `default` must reference one of these IDs.                         |
+
+The exact first-run setup state has an empty `default` and no agent entries. An
+empty `default` is invalid as soon as any agent exists; a non-empty `default`
+must reference a configured agent.
 
 ### `agents.<id>` — AgentConfig
 
@@ -221,7 +225,7 @@ User profile collected during onboarding.
 | `emoji`                 | optional string                                                           | `null`   | Agent emoji identifier.                                                                                                                                                                                                      |
 | `description`           | optional string                                                           | `null`   | Short agent description.                                                                                                                                                                                                     |
 | `voice_persona_id`      | optional string                                                           | `null`   | Voice persona identifier.                                                                                                                                                                                                    |
-| `model`                 | optional string                                                           | `null`   | Model override for this agent.                                                                                                                                                                                               |
+| `model`                 | string                                                                    | required | Canonical model ID from the live model registry, such as `openai::gpt-5.2`.                                                                                                                                                   |
 | `tools.allow`           | array                                                                     | `[]`     | Tool whitelist. An empty list allows every tool not denied by another policy entry.                                                                                                                                          |
 | `tools.deny`            | array                                                                     | `[]`     | Tool deny list, applied after `allow`.                                                                                                                                                                                        |
 | `tools.preload`         | array                                                                     | `[]`     | Tool schemas exposed immediately in lazy registry mode. Names are resolved after effective policy filtering and do not grant access.                                                                                         |
@@ -229,11 +233,13 @@ User profile collected during onboarding.
 | `timeout_secs`          | optional integer                                                          | `null`   | Timeout in seconds for sessions using this agent. `0` disables the agent-specific timeout.                                                                                                                                    |
 | `max_tool_result_bytes` | optional integer                                                          | `null`   | Maximum in-context bytes per tool result for this agent. Falls back to `tools.max_tool_result_bytes`.                                                                                                                         |
 | `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`   | Session access policy for inter-agent communication.                                                                                                                                                                         |
-| `reasoning_effort`      | optional enum: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | `null`   | Reasoning/thinking effort for models that support it.                                                                                                                                                                        |
+| `reasoning_effort`      | string                                                                    | required | Provider-defined reasoning effort supported by the selected model. Non-reasoning models use their registered effort, such as `off`.                                                                                          |
 | `mcp`                   | optional `AgentMcpPolicy`                                                 | `null`   | MCP server allow or deny policy.                                                                                                                                                                                             |
 | `skills`                | optional `AgentSkillPolicy`                                               | `null`   | Per-agent skill visibility policy.                                                                                                                                                                                           |
 
-Unknown fields in an agent table are rejected. Sessions with the `chat` prompt
+At startup, every configured model/reasoning pair is resolved through the live
+model registry. Unknown models and efforts unsupported by the selected model
+are rejected. Unknown fields in an agent table are rejected. Sessions with the `chat` prompt
 profile load `<data_dir>/agents/<id>/SOUL.md`; sessions with the `subagent`
 prompt profile load `<data_dir>/agents/<id>/SUBAGENT.md`.
 

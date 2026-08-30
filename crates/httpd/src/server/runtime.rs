@@ -21,35 +21,8 @@ pub(super) struct FinalizeGatewayArgs<'a> {
 }
 #[cfg(feature = "mdns")]
 pub(super) fn instance_slug(config: &chelix_config::ChelixConfig) -> crate::error::Result<String> {
-    let base = chelix_config::ResolvedIdentity::from_config(config)
-        .map_err(|error| crate::Error::Config(error.to_string()))?
-        .name
-        .to_lowercase();
-    let mut out = String::new();
-    let mut last_dash = false;
-    for ch in base.chars() {
-        let mapped = if ch.is_ascii_alphanumeric() {
-            ch
-        } else {
-            '-'
-        };
-        if mapped == '-' {
-            if !last_dash {
-                out.push(mapped);
-            }
-            last_dash = true;
-        } else {
-            out.push(mapped);
-            last_dash = false;
-        }
-    }
-    let out = out.trim_matches('-').to_string();
-    if out.is_empty() {
-        return Err(crate::Error::Config(
-            "default agent name cannot produce an mDNS slug".to_string(),
-        ));
-    }
-    Ok(out)
+    chelix_config::resolve_instance_slug(config)
+        .map_err(|error| crate::Error::Config(error.to_string()))
 }
 
 pub(super) async fn finalize_prepared_gateway(

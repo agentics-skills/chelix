@@ -360,7 +360,11 @@ mod tests {
                     deny: Vec::new(),
                     preload: Vec::new(),
                 },
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Researcher",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -525,7 +529,11 @@ mod tests {
             .entries
             .insert("restricted".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Deny(vec!["home-assistant".into()]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Restricted",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -561,7 +569,11 @@ mod tests {
             .entries
             .insert("allow-only".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec!["github".into()]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Allow only",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -584,7 +596,11 @@ mod tests {
             .entries
             .insert("open".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::All,
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Open",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -609,7 +625,11 @@ mod tests {
             .entries
             .insert("locked".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec![]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Locked",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {

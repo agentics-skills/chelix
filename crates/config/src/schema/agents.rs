@@ -44,6 +44,27 @@ pub struct AgentsConfig {
     pub entries: HashMap<String, AgentConfig>,
 }
 
+/// Exact lifecycle state of the user-owned agent registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentsConfigState<'a> {
+    /// First-run setup before the user has configured any agent.
+    Setup,
+    /// A configured registry with a valid default-agent reference.
+    Configured {
+        default_id: &'a str,
+        default_agent: &'a AgentConfig,
+    },
+}
+
+/// Structural error in the top-level agents registry.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AgentsConfigStateError {
+    #[error("agents.default must name a configured agent when agent entries exist")]
+    MissingDefault,
+    #[error("default agent \"{default_id}\" is not defined under [agents]")]
+    DefaultNotConfigured { default_id: String },
+}
+
 /// Per-request tool choice requested by the agent harness.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -70,9 +91,31 @@ impl AgentsConfig {
         self.entries.get(id)
     }
 
+    /// Resolve either the exact empty setup state or a complete configured state.
+    pub fn resolve_state(&self) -> Result<AgentsConfigState<'_>, AgentsConfigStateError> {
+        if self.default.is_empty() && self.entries.is_empty() {
+            return Ok(AgentsConfigState::Setup);
+        }
+        if self.default.trim().is_empty() {
+            return Err(AgentsConfigStateError::MissingDefault);
+        }
+        let default_agent = self.entries.get(&self.default).ok_or_else(|| {
+            AgentsConfigStateError::DefaultNotConfigured {
+                default_id: self.default.clone(),
+            }
+        })?;
+        Ok(AgentsConfigState::Configured {
+            default_id: &self.default,
+            default_agent,
+        })
+    }
+
     #[must_use]
     pub fn default_agent(&self) -> Option<&AgentConfig> {
-        self.get(&self.default)
+        match self.resolve_state().ok()? {
+            AgentsConfigState::Setup => None,
+            AgentsConfigState::Configured { default_agent, .. } => Some(default_agent),
+        }
     }
 }
 
@@ -312,8 +355,8 @@ pub struct AgentConfig {
     pub description: Option<String>,
     #[serde(default)]
     pub voice_persona_id: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
+    /// Canonical namespaced model ID returned by `models.list`.
+    pub model: String,
     #[serde(default)]
     pub tools: AgentToolPolicy,
     /// Maximum LLM-initiated tool calls per agent loop segment.
@@ -330,11 +373,8 @@ pub struct AgentConfig {
     pub sessions: Option<SessionAccessPolicyConfig>,
     /// Reasoning/thinking effort level for models that support extended thinking.
     ///
-    /// Controls extended thinking for models that support it (e.g. Claude Opus,
-    /// OpenAI o-series). Higher values enable deeper reasoning but increase
-    /// latency and token usage.
-    #[serde(default)]
-    pub reasoning_effort: Option<ReasoningEffort>,
+    /// The required provider-defined effort selected for `model`.
+    pub reasoning_effort: ReasoningEffort,
     /// Per-agent MCP server access control.
     ///
     /// Controls which MCP servers are visible to this agent:
@@ -352,20 +392,25 @@ pub struct AgentConfig {
     pub skills: AgentSkillPolicy,
 }
 
-impl Default for AgentConfig {
-    fn default() -> Self {
+impl AgentConfig {
+    /// Construct a complete agent configuration with explicit model settings.
+    pub fn new(
+        name: impl Into<String>,
+        model: impl Into<String>,
+        reasoning_effort: ReasoningEffort,
+    ) -> Self {
         Self {
-            name: String::new(),
+            name: name.into(),
             emoji: None,
             description: None,
             voice_persona_id: None,
-            model: None,
+            model: model.into(),
             tools: AgentToolPolicy::default(),
             max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
             timeout_secs: None,
             max_tool_result_bytes: None,
             sessions: None,
-            reasoning_effort: None,
+            reasoning_effort,
             mcp: AgentMcpPolicy::default(),
             skills: AgentSkillPolicy::default(),
         }
@@ -385,6 +430,28 @@ mod tests {
         );
         assert_eq!(validate_agent_id("QA"), Err(INVALID_AGENT_ID_MESSAGE));
         assert_eq!(validate_agent_id("-qa"), Err(INVALID_AGENT_ID_MESSAGE));
+    }
+
+    #[test]
+    fn agents_state_distinguishes_setup_and_configured_registry() {
+        let mut agents = AgentsConfig::default();
+        assert!(matches!(
+            agents.resolve_state(),
+            Ok(AgentsConfigState::Setup)
+        ));
+
+        agents.default = "main".to_string();
+        agents.entries.insert(
+            "main".to_string(),
+            AgentConfig::new("Main", "test::model", ReasoningEffort::from("off")),
+        );
+        assert!(matches!(
+            agents.resolve_state(),
+            Ok(AgentsConfigState::Configured {
+                default_id: "main",
+                ..
+            })
+        ));
     }
 
     #[test]
