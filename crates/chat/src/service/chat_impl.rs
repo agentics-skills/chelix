@@ -42,8 +42,8 @@ use crate::{
     prompt::{
         apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
         clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
-        load_prompt_persona_for_session, prepare_run_registry, prompt_build_limits_from_config,
-        resolve_prompt_agent_id,
+        load_prompt_persona_for_agent, load_prompt_persona_for_session, prepare_run_registry,
+        prompt_build_limits_from_config, resolve_prompt_agent_id,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -57,7 +57,8 @@ pub(super) fn resolved_turn_reasoning_effort(
     agent: &chelix_config::AgentConfig,
 ) -> Option<String> {
     session_entry
-        .and_then(|entry| entry.reasoning_effort.clone())
+        .and_then(|entry| entry.reasoning_effort())
+        .map(|effort| effort.as_str().to_string())
         .or_else(|| Some(agent.reasoning_effort.as_str().to_owned()))
 }
 
@@ -89,9 +90,66 @@ pub(super) fn apply_reasoning_effort_to_provider(
 
 fn send_sync_model_id<'a>(
     explicit_model: Option<&'a str>,
+    requested_agent_pair: Option<&'a chelix_common::ResolvedModelReasoning>,
     session_entry: Option<&'a chelix_sessions::metadata::SessionEntry>,
 ) -> Option<&'a str> {
-    explicit_model.or_else(|| session_entry.and_then(|entry| entry.model.as_deref()))
+    explicit_model
+        .or_else(|| requested_agent_pair.map(chelix_common::ResolvedModelReasoning::model_id))
+        .or_else(|| session_entry.and_then(|entry| entry.model()))
+}
+
+async fn ensure_send_sync_session_agent(
+    metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
+    entry: chelix_sessions::metadata::SessionEntry,
+    agent_id: &str,
+) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
+    if entry
+        .agent_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty())
+    {
+        return Ok(entry);
+    }
+    let model_reasoning = entry
+        .model_reasoning()
+        .cloned()
+        .ok_or_else(|| ServiceError::message("LLM session has no model/reasoning pair"))?;
+    metadata
+        .assign_agent(&entry.key, agent_id, &model_reasoning)
+        .await
+        .map_err(ServiceError::message)
+}
+
+async fn persist_send_sync_session_backing(
+    metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
+    session_entry: Option<chelix_sessions::metadata::SessionEntry>,
+    session_key: &str,
+    model_reasoning: &chelix_common::ResolvedModelReasoning,
+    agent_id: &str,
+) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
+    match session_entry {
+        Some(entry) if entry.model_reasoning().is_none() => metadata
+            .promote_external_to_llm(session_key, model_reasoning, agent_id)
+            .await
+            .map(chelix_sessions::metadata::PromoteExternalToLlmOutcome::into_entry)
+            .map_err(ServiceError::message),
+        Some(entry) => ensure_send_sync_session_agent(metadata, entry, agent_id).await,
+        None => match metadata
+            .ensure_llm_session(session_key, None, model_reasoning, Some(agent_id))
+            .await
+            .map_err(ServiceError::message)?
+        {
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry) => Ok(entry),
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+                ensure_send_sync_session_agent(metadata, entry, agent_id).await
+            },
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(_) => metadata
+                .promote_external_to_llm(session_key, model_reasoning, agent_id)
+                .await
+                .map(chelix_sessions::metadata::PromoteExternalToLlmOutcome::into_entry)
+                .map_err(ServiceError::message),
+        },
+    }
 }
 
 fn tool_mode_enables_tools(tool_mode: ToolMode) -> bool {
@@ -178,46 +236,44 @@ impl ChatService for LiveChatService {
             seq: None,
             run_id: None,
         };
-        if !ephemeral {
-            self.session_store
-                .append(&session_key, &user_msg.to_value())
-                .await
-                .map_err(ServiceError::message)?;
-
-            // Ensure this session appears in the sessions list.
-            let _ = self.session_metadata.upsert(&session_key, None).await;
-        }
-        if let Some(agent_id) = requested_agent_id.as_deref()
-            && let Err(error) = self
-                .session_metadata
-                .set_agent_id(&session_key, Some(agent_id))
-                .await
-        {
-            warn!(
-                session = %session_key,
-                agent_id,
-                error = %error,
-                "send_sync: failed to assign requested agent to session"
-            );
-        }
-        if !ephemeral {
-            let ui_message_count = self
-                .session_store
-                .ui_message_count(&session_key)
-                .await
-                .map_err(ServiceError::message)?;
-            self.session_metadata
-                .touch(&session_key, ui_message_count)
-                .await;
-        }
-
-        let session_entry = self.session_metadata.get(&session_key).await;
-        let model_id = send_sync_model_id(explicit_model, session_entry.as_ref()).ok_or_else(|| {
-            format!("session '{session_key}' has no model; pass 'model' explicitly or set the session model")
-        })?;
+        let mut session_entry = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
+        let runtime_config = self
+            .load_runtime_config_for_agent_run()
+            .await
+            .map_err(ServiceError::message)?;
+        let requested_agent_pair = if let Some(agent_id) = requested_agent_id.as_deref() {
+            let agent = runtime_config.agents.get(agent_id).ok_or_else(|| {
+                ServiceError::message(format!("agent '{agent_id}' is not configured"))
+            })?;
+            let registry = self.providers.read().await;
+            Some(
+                registry
+                    .resolve_model_reasoning(Some(&agent.model), Some(&agent.reasoning_effort))
+                    .map_err(|error| ServiceError::message(error.to_string()))?
+                    .model_reasoning()
+                    .clone(),
+            )
+        } else {
+            None
+        };
+        let model_id = send_sync_model_id(
+            explicit_model,
+            requested_agent_pair.as_ref(),
+            session_entry.as_ref(),
+        )
+            .ok_or_else(|| {
+                format!(
+                    "session '{session_key}' has no model; pass 'model' explicitly or set the session model"
+                )
+            })?;
         let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
-            let reg = self.providers.read().await;
-            reg.get(model_id)
+            let registry = self.providers.read().await;
+            registry
+                .get(model_id)
                 .ok_or_else(|| format!("model '{model_id}' not found"))?
         };
         if !stream_only {
@@ -228,19 +284,90 @@ impl ChatService for LiveChatService {
             )
             .map_err(ServiceError::message)?;
         }
-        let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+        let prompt_profile = session_entry
+            .as_ref()
+            .map(|entry| entry.prompt_profile)
+            .unwrap_or_default();
+        let persona = if let Some(agent_id) = requested_agent_id.as_deref() {
+            load_prompt_persona_for_agent(
+                &runtime_config,
+                &session_key,
+                agent_id,
+                prompt_profile,
+                self.session_state_store.as_deref(),
+            )
             .await
-            .map_err(ServiceError::message)?;
+        } else {
+            load_prompt_persona_for_session(
+                &runtime_config,
+                &session_key,
+                session_entry.as_ref(),
+                self.session_state_store.as_deref(),
+            )
+            .await
+        }
+        .map_err(ServiceError::message)?;
         let session_agent_id = persona.agent_id.clone();
         let resolved_reasoning_effort = requested_reasoning_effort_override
+            .or_else(|| {
+                requested_agent_pair
+                    .as_ref()
+                    .map(chelix_common::ResolvedModelReasoning::reasoning_effort)
+                    .map(ReasoningEffort::as_str)
+                    .map(str::to_string)
+            })
             .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent));
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
+        let reasoning_effort = resolved_reasoning_effort.as_deref().ok_or_else(|| {
+            ServiceError::message(format!("session '{session_key}' has no reasoning effort"))
+        })?;
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            provider.id().to_string(),
+            ReasoningEffort::from(reasoning_effort),
+        )
+        .map_err(|error| ServiceError::message(error.to_string()))?;
         let runtime_limits = persona
             .config
             .agent_runtime_limits(&session_agent_id)
             .map_err(ServiceError::message)?;
+
+        if !ephemeral {
+            if let (Some(agent_id), Some(agent_pair)) =
+                (requested_agent_id.as_deref(), requested_agent_pair.as_ref())
+            {
+                session_entry = Some(
+                    self.session_metadata
+                        .create_or_assign_agent(&session_key, agent_id, agent_pair)
+                        .await
+                        .map_err(ServiceError::message)?,
+                );
+            }
+            session_entry = Some(
+                persist_send_sync_session_backing(
+                    self.session_metadata.as_ref(),
+                    session_entry,
+                    &session_key,
+                    &model_reasoning,
+                    &session_agent_id,
+                )
+                .await?,
+            );
+
+            self.session_store
+                .append(&session_key, &user_msg.to_value())
+                .await
+                .map_err(ServiceError::message)?;
+            let ui_message_count = self
+                .session_store
+                .ui_message_count(&session_key)
+                .await
+                .map_err(ServiceError::message)?;
+            self.session_metadata
+                .touch(&session_key, ui_message_count)
+                .await
+                .map_err(ServiceError::message)?;
+        }
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
@@ -435,7 +562,10 @@ impl ChatService for LiveChatService {
         }
 
         if !ephemeral && let Ok(count) = self.session_store.ui_message_count(&session_key).await {
-            self.session_metadata.touch(&session_key, count).await;
+            self.session_metadata
+                .touch(&session_key, count)
+                .await
+                .map_err(ServiceError::message)?;
         }
 
         resolve_send_sync_outcome(result, || async {
@@ -453,7 +583,10 @@ impl ChatService for LiveChatService {
                 .await;
             // Update metadata so the session shows in the UI.
             if let Ok(count) = self.session_store.ui_message_count(&session_key).await {
-                self.session_metadata.touch(&session_key, count).await;
+                self.session_metadata
+                    .touch(&session_key, count)
+                    .await
+                    .map_err(ServiceError::message)?;
             }
 
             Err(error_msg.into())
@@ -568,8 +701,14 @@ impl ChatService for LiveChatService {
         }
 
         // Reset metadata message count and preview.
-        self.session_metadata.touch(&session_key, 0).await;
-        self.session_metadata.set_preview(&session_key, None).await;
+        self.session_metadata
+            .touch(&session_key, 0)
+            .await
+            .map_err(ServiceError::message)?;
+        self.session_metadata
+            .set_preview(&session_key, None)
+            .await
+            .map_err(ServiceError::message)?;
 
         // Notify all WebSocket clients so the web UI clears the session
         // even when /clear is issued from a channel (e.g. Telegram).
@@ -633,7 +772,8 @@ impl ChatService for LiveChatService {
             .unwrap_or(0);
         self.session_metadata
             .touch(&session_key, message_count)
-            .await;
+            .await
+            .map_err(ServiceError::message)?;
 
         // Broadcast the checkpoint so all connected clients render the
         // persistent checkpoint card without a reload.
@@ -673,7 +813,11 @@ impl ChatService for LiveChatService {
             .ui_message_count(&session_key)
             .await
             .unwrap_or(0);
-        let session_entry = self.session_metadata.get(&session_key).await;
+        let session_entry = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         let prompt_persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
@@ -692,7 +836,7 @@ impl ChatService for LiveChatService {
         let session_info = serde_json::json!({
             "key": session_key,
             "messageCount": message_count,
-            "model": session_entry.as_ref().and_then(|e| e.model.as_deref()),
+            "model": session_entry.as_ref().and_then(|entry| entry.model()),
             "provider": provider_name,
             "label": session_entry.as_ref().and_then(|e| e.label.as_deref()),
             "projectId": session_entry.as_ref().and_then(|e| e.project_id.as_deref()),
@@ -817,7 +961,7 @@ impl ChatService for LiveChatService {
         // Context window from the session's provider
         let context_window = {
             let reg = self.providers.read().await;
-            let session_model = session_entry.as_ref().and_then(|e| e.model.as_deref());
+            let session_model = session_entry.as_ref().and_then(|entry| entry.model());
             let provider = if let Some(id) = session_model {
                 reg.get(id)
                     .ok_or_else(|| format!("model '{id}' is not registered"))?
@@ -941,7 +1085,11 @@ impl ChatService for LiveChatService {
         let tools_enabled = tool_mode_enables_tools(tool_mode);
 
         // Build runtime context.
-        let session_entry = self.session_metadata.get(&session_key).await;
+        let session_entry = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         let persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
@@ -967,7 +1115,8 @@ impl ChatService for LiveChatService {
         // Resolve project context.
         let project_context = self
             .resolve_project_context(&session_key, conn_id.as_deref())
-            .await;
+            .await
+            .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
@@ -1088,7 +1237,11 @@ impl ChatService for LiveChatService {
         let tools_enabled = tool_mode_enables_tools(tool_mode);
 
         // Build runtime context.
-        let session_entry = self.session_metadata.get(&session_key).await;
+        let session_entry = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         let persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
@@ -1114,7 +1267,8 @@ impl ChatService for LiveChatService {
         // Resolve project context.
         let project_context = self
             .resolve_project_context(&session_key, conn_id.as_deref())
-            .await;
+            .await
+            .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
@@ -1229,7 +1383,11 @@ impl ChatService for LiveChatService {
 
     async fn refresh_prompt_memory(&self, params: Value) -> ServiceResult {
         let session_key = self.resolve_session_key_from_params(&params).await;
-        let session_entry = self.session_metadata.get(&session_key).await;
+        let session_entry = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         let runtime_config = self
             .load_runtime_config_for_agent_run()
             .await
@@ -1336,6 +1494,7 @@ impl ChatService for LiveChatService {
 mod tests {
     use std::{
         collections::{HashMap, HashSet},
+        pin::Pin,
         sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -1343,21 +1502,223 @@ mod tests {
     };
 
     use {
-        chelix_config::ToolMode, chelix_sessions::metadata::SessionEntry, tokio::sync::RwLock,
+        chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent},
+        chelix_common::{ModelMetadata, ModelModality},
+        chelix_config::ToolMode,
+        chelix_providers::{ModelInfo, ProviderRegistry},
+        chelix_service_traits::{
+            ChatService, McpService, NoopMcpService, NoopProjectService, NoopTtsService,
+            ProjectService, TtsService,
+        },
+        chelix_sessions::{
+            SessionPromptQueueStore,
+            metadata::{
+                ExternalAgentKind, ExternalSessionIdentity, SessionBacking, SessionEntry,
+                SqliteSessionMetadata,
+            },
+            store::SessionStore,
+        },
+        serde_json::Value,
+        tokio::sync::RwLock,
+        tokio_stream::Stream,
         tokio_util::sync::CancellationToken,
     };
 
     use super::{
-        ChatRunOutcome, LiveChatService, resolve_send_sync_outcome, send_sync_model_id,
-        tool_mode_enables_tools,
+        ChatRunOutcome, LiveChatService, persist_send_sync_session_backing,
+        resolve_send_sync_outcome, send_sync_model_id, tool_mode_enables_tools,
     };
 
+    struct ValidationTestRuntime {
+        sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
+        tts: NoopTtsService,
+        project: NoopProjectService,
+        mcp: NoopMcpService,
+    }
+
+    impl Default for ValidationTestRuntime {
+        fn default() -> Self {
+            Self {
+                sandbox_router: Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+                tts: NoopTtsService,
+                project: NoopProjectService,
+                mcp: NoopMcpService,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::runtime::ChatRuntime for ValidationTestRuntime {
+        async fn broadcast(&self, _topic: &str, _payload: Value) {}
+
+        async fn push_channel_reply(
+            &self,
+            _session_key: &str,
+            _target: chelix_channels::ChannelReplyTarget,
+        ) {
+        }
+
+        async fn drain_channel_replies(
+            &self,
+            _session_key: &str,
+        ) -> Vec<chelix_channels::ChannelReplyTarget> {
+            Vec::new()
+        }
+
+        async fn peek_channel_replies(
+            &self,
+            _session_key: &str,
+        ) -> Vec<chelix_channels::ChannelReplyTarget> {
+            Vec::new()
+        }
+
+        async fn push_channel_status_log(&self, _session_key: &str, _message: String) {}
+
+        async fn drain_channel_status_log(&self, _session_key: &str) -> Vec<String> {
+            Vec::new()
+        }
+
+        async fn set_run_error(&self, _run_id: &str, _error: String) {}
+
+        async fn active_session_key(&self, _conn_id: &str) -> Option<String> {
+            None
+        }
+
+        async fn active_project_id(&self, _conn_id: &str) -> Option<String> {
+            None
+        }
+
+        fn hostname(&self) -> &str {
+            "test"
+        }
+
+        fn sandbox_router(&self) -> &Arc<chelix_tools::sandbox::SandboxRouter> {
+            &self.sandbox_router
+        }
+
+        fn memory_manager(&self) -> Option<&chelix_memory::runtime::DynMemoryRuntime> {
+            None
+        }
+
+        async fn cached_location(&self) -> Option<chelix_config::GeoLocation> {
+            None
+        }
+
+        async fn tts_overrides(
+            &self,
+            _session_key: &str,
+            _channel_key: &str,
+        ) -> (
+            Option<crate::runtime::TtsOverride>,
+            Option<crate::runtime::TtsOverride>,
+        ) {
+            (None, None)
+        }
+
+        fn channel_outbound(&self) -> Option<Arc<dyn chelix_channels::ChannelOutbound>> {
+            None
+        }
+
+        fn channel_stream_outbound(
+            &self,
+        ) -> Option<Arc<dyn chelix_channels::ChannelStreamOutbound>> {
+            None
+        }
+
+        fn tts_service(&self) -> &dyn TtsService {
+            &self.tts
+        }
+
+        fn project_service(&self) -> &dyn ProjectService {
+            &self.project
+        }
+
+        fn mcp_service(&self) -> &dyn McpService {
+            &self.mcp
+        }
+
+        async fn chat_service(&self) -> Arc<dyn ChatService> {
+            panic!("chat service is not used by validation tests")
+        }
+
+        async fn last_run_error(&self, _run_id: &str) -> Option<String> {
+            None
+        }
+
+        async fn send_push_notification(
+            &self,
+            _title: &str,
+            _body: &str,
+            _url: Option<&str>,
+            _session_key: Option<&str>,
+        ) -> crate::error::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    struct ValidationProvider;
+
+    #[async_trait::async_trait]
+    impl LlmProvider for ValidationProvider {
+        fn name(&self) -> &str {
+            "test"
+        }
+
+        fn id(&self) -> &str {
+            "model"
+        }
+
+        async fn complete(
+            &self,
+            _messages: &[ChatMessage],
+            _tools: &[Value],
+        ) -> anyhow::Result<CompletionResponse> {
+            panic!("provider must not run for rejected validation cases")
+        }
+
+        fn stream(
+            &self,
+            _messages: Vec<ChatMessage>,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            Box::pin(tokio_stream::empty())
+        }
+    }
+
+    fn validation_model_metadata() -> ModelMetadata {
+        ModelMetadata {
+            context_length: 8_192,
+            max_input_tokens: 4_096,
+            max_output_tokens: 1_024,
+            input_modalities: vec![ModelModality::Text],
+            output_modalities: vec![ModelModality::Text],
+            tool_calling: false,
+            streaming: true,
+            zero_data_retention_enabled: false,
+            reasoning_supported_efforts: vec![chelix_common::ReasoningEffort::from("off")],
+            reasoning_summary: None,
+            reasoning_include: None,
+        }
+    }
+
     fn session_entry_with_model(model: Option<&str>) -> SessionEntry {
+        let backing = match model {
+            Some(model) => SessionBacking::llm(
+                chelix_common::ResolvedModelReasoning::try_new(
+                    model.to_string(),
+                    chelix_common::ReasoningEffort::from("off"),
+                )
+                .unwrap_or_else(|error| panic!("valid test pair: {error}")),
+            ),
+            None => SessionBacking::external(ExternalSessionIdentity::new(
+                ExternalAgentKind::Codex,
+                None,
+            )),
+        };
         SessionEntry {
             key: "session:test".to_string(),
             id: "test".to_string(),
             label: None,
-            model: model.map(str::to_string),
+            backing,
             created_at: 0,
             updated_at: 0,
             message_count: 0,
@@ -1374,9 +1735,6 @@ mod tests {
             version: 0,
             agent_id: None,
             prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-            external_agent_kind: None,
-            external_session_id: None,
-            reasoning_effort: None,
         }
     }
 
@@ -1392,7 +1750,7 @@ mod tests {
         let entry = session_entry_with_model(Some("preset-model"));
 
         assert_eq!(
-            send_sync_model_id(Some("override-model"), Some(&entry)),
+            send_sync_model_id(Some("override-model"), None, Some(&entry)),
             Some("override-model")
         );
     }
@@ -1401,7 +1759,202 @@ mod tests {
     fn send_sync_uses_session_model_without_override() {
         let entry = session_entry_with_model(Some("preset-model"));
 
-        assert_eq!(send_sync_model_id(None, Some(&entry)), Some("preset-model"));
+        assert_eq!(
+            send_sync_model_id(None, None, Some(&entry)),
+            Some("preset-model")
+        );
+    }
+
+    async fn validation_test_service() -> (
+        tempfile::TempDir,
+        LiveChatService,
+        Arc<SqliteSessionMetadata>,
+        Arc<SessionStore>,
+    ) {
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .unwrap_or_else(|error| panic!("test database connection: {error}"));
+        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("projects table setup: {error}"));
+        SqliteSessionMetadata::init(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("session metadata setup: {error}"));
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool.clone()));
+        let session_store = Arc::new(SessionStore::new(directory.path().to_path_buf()));
+        let original_pair = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )
+        .unwrap_or_else(|error| panic!("original test pair: {error}"));
+        metadata
+            .create_llm_session("main", Some("Main"), &original_pair, Some("main"))
+            .await
+            .unwrap_or_else(|error| panic!("original session setup: {error}"));
+
+        let mut agents = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..chelix_config::AgentsConfig::default()
+        };
+        agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_common::ReasoningEffort::from("off"),
+            ),
+        );
+        agents.entries.insert(
+            "other".to_string(),
+            chelix_config::AgentConfig::new(
+                "Other",
+                "test::model",
+                chelix_common::ReasoningEffort::from("off"),
+            ),
+        );
+        let config = chelix_config::ChelixConfig {
+            agents: agents.clone(),
+            ..chelix_config::ChelixConfig::default()
+        };
+        let agents_config = Arc::new(RwLock::new(agents));
+        let mut registry = ProviderRegistry::empty();
+        registry.register(
+            ModelInfo {
+                id: "model".to_string(),
+                provider: "test".to_string(),
+                metadata: validation_model_metadata(),
+            },
+            Arc::new(ValidationProvider),
+        );
+        let runtime: Arc<dyn crate::runtime::ChatRuntime> =
+            Arc::new(ValidationTestRuntime::default());
+        let service = LiveChatService::new(
+            Arc::new(RwLock::new(registry)),
+            runtime,
+            Arc::clone(&session_store),
+            Arc::clone(&metadata),
+            Arc::new(SessionPromptQueueStore::new(pool)),
+            config.clone(),
+            agents_config,
+            chelix_config::ToolsConfigSource::snapshot(config.tools),
+        );
+        (directory, service, metadata, session_store)
+    }
+
+    #[tokio::test]
+    async fn rejected_send_sync_agent_selection_preserves_entry_and_history() {
+        let (_directory, service, metadata, session_store) = validation_test_service().await;
+        let cases = [
+            (
+                "unknown explicit model",
+                serde_json::json!({
+                    "_session_key": "main",
+                    "text": "hello",
+                    "agent_id": "other",
+                    "model": "test::missing",
+                    "reasoningEffort": "off",
+                }),
+            ),
+            (
+                "unsupported effort",
+                serde_json::json!({
+                    "_session_key": "main",
+                    "text": "hello",
+                    "agent_id": "other",
+                    "model": "test::model",
+                    "reasoningEffort": "high",
+                }),
+            ),
+        ];
+
+        for (name, params) in cases {
+            let before = metadata
+                .get("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: load entry before: {error}"))
+                .unwrap_or_else(|| panic!("{name}: entry exists before"));
+            let history_before = session_store
+                .read("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: read history before: {error}"));
+
+            let result = service.send_sync(params).await;
+            assert!(result.is_err(), "{name} unexpectedly succeeded");
+
+            let after = metadata
+                .get("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: load entry after: {error}"))
+                .unwrap_or_else(|| panic!("{name}: entry exists after"));
+            let history_after = session_store
+                .read("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: read history after: {error}"));
+            assert_eq!(after.agent_id, before.agent_id, "{name}: agent changed");
+            assert_eq!(after.backing, before.backing, "{name}: backing changed");
+            assert_eq!(after.version, before.version, "{name}: version changed");
+            assert_eq!(
+                after.updated_at, before.updated_at,
+                "{name}: timestamp changed"
+            );
+            assert_eq!(history_after, history_before, "{name}: history changed");
+        }
+    }
+
+    #[tokio::test]
+    async fn send_sync_persistence_promotes_external_only_with_identity_and_agent() {
+        const KEY: &str = "session:external-send-sync";
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .unwrap_or_else(|error| panic!("test database connection: {error}"));
+        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("projects table setup: {error}"));
+        SqliteSessionMetadata::init(&pool)
+            .await
+            .unwrap_or_else(|error| panic!("session metadata setup: {error}"));
+        let metadata = SqliteSessionMetadata::new(pool);
+        metadata
+            .bind_external(
+                KEY,
+                None,
+                &ExternalSessionIdentity::new(
+                    ExternalAgentKind::Codex,
+                    Some("external-1".to_string()),
+                ),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("external session setup: {error}"));
+        let existing = metadata
+            .get(KEY)
+            .await
+            .unwrap_or_else(|error| panic!("external session load: {error}"));
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("high"),
+        )
+        .unwrap_or_else(|error| panic!("test model/reasoning pair: {error}"));
+
+        let entry =
+            persist_send_sync_session_backing(&metadata, existing, KEY, &model_reasoning, "main")
+                .await
+                .unwrap_or_else(|error| panic!("send_sync backing persistence: {error}"));
+
+        assert!(matches!(entry.backing, SessionBacking::LlmExternal { .. }));
+        assert_eq!(entry.model(), Some("test::model"));
+        assert_eq!(
+            entry
+                .reasoning_effort()
+                .map(chelix_common::ReasoningEffort::as_str),
+            Some("high")
+        );
+        assert_eq!(entry.external_agent_kind(), Some(ExternalAgentKind::Codex));
+        assert_eq!(entry.external_session_id(), Some("external-1"));
+        assert_eq!(entry.agent_id.as_deref(), Some("main"));
     }
 
     #[tokio::test]

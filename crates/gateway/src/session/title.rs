@@ -45,8 +45,12 @@ async fn try_generate_title_if_needed(
     let Some(session_metadata) = state.services.session_metadata.as_ref() else {
         return Ok(None);
     };
-    let entry = match session_metadata.get(session_key).await {
-        Some(e) => e,
+    let entry = match session_metadata
+        .get(session_key)
+        .await
+        .context("failed to load session metadata for auto-title")?
+    {
+        Some(entry) => entry,
         None => return Ok(None),
     };
 
@@ -121,7 +125,7 @@ pub(crate) async fn generate_title_for_session(
     // Persist the title as the session label and read back the
     // entry atomically so the broadcast version is consistent.
     let entry = session_metadata
-        .upsert(session_key, Some(title.clone()))
+        .update_label(session_key, Some(&title))
         .await
         .with_context(|| format!("failed to persist title for session {session_key}"))?;
 
@@ -163,6 +167,14 @@ mod tests {
 
     struct MockTitleProvider {
         result: Result<&'static str>,
+    }
+
+    fn title_pair() -> chelix_common::ResolvedModelReasoning {
+        chelix_common::ResolvedModelReasoning::try_new(
+            "mock::mock-title".to_string(),
+            chelix_common::ReasoningEffort::from("low"),
+        )
+        .unwrap()
     }
 
     #[async_trait]
@@ -267,7 +279,10 @@ mod tests {
         );
         state.inner.write().await.llm_providers = Some(Arc::new(RwLock::new(registry)));
 
-        session_metadata.upsert("session:test", None).await.unwrap();
+        session_metadata
+            .create_llm_session("session:test", None, &title_pair(), Some("main"))
+            .await
+            .unwrap();
         session_store
             .append(
                 "session:test",
@@ -304,6 +319,7 @@ mod tests {
             .unwrap()
             .get("session:test")
             .await
+            .unwrap()
             .and_then(|entry| entry.label);
         assert_eq!(label.as_deref(), Some("Docker Deployment"));
     }
@@ -331,7 +347,10 @@ mod tests {
         let metadata = state.services.session_metadata.as_ref().unwrap();
         let store = state.services.session_store.as_ref().unwrap();
 
-        metadata.upsert("main", None).await.unwrap();
+        metadata
+            .create_llm_session("main", None, &title_pair(), Some("main"))
+            .await
+            .unwrap();
         store
             .append(
                 "main",
@@ -350,7 +369,11 @@ mod tests {
         let title = generate_title_for_session(&state, "main").await.unwrap();
 
         assert_eq!(title, None);
-        let label = metadata.get("main").await.and_then(|entry| entry.label);
+        let label = metadata
+            .get("main")
+            .await
+            .unwrap()
+            .and_then(|entry| entry.label);
         assert_eq!(label, None);
     }
 
@@ -362,7 +385,12 @@ mod tests {
         .await;
         let metadata = state.services.session_metadata.as_ref().unwrap();
         metadata
-            .upsert("session:short", Some("Existing Label".to_string()))
+            .create_llm_session(
+                "session:short",
+                Some("Existing Label"),
+                &title_pair(),
+                Some("main"),
+            )
             .await
             .unwrap();
 
@@ -374,6 +402,7 @@ mod tests {
         let label = metadata
             .get("session:short")
             .await
+            .unwrap()
             .and_then(|entry| entry.label);
         assert_eq!(label.as_deref(), Some("Existing Label"));
     }

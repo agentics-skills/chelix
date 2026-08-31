@@ -8,7 +8,7 @@ use chelix_channels::{
 
 use crate::state::GatewayState;
 
-use super::super::{default_channel_session_key, resolve_channel_session};
+use super::super::resolve_channel_session;
 
 pub(in crate::channel_events) async fn request_sender_approval(
     state: &Arc<tokio::sync::OnceCell<Arc<GatewayState>>>,
@@ -47,10 +47,13 @@ pub(in crate::channel_events) async fn save_channel_voice(
     reply_to: &ChannelReplyTarget,
 ) -> Option<String> {
     let state = state.get()?;
-    let session_key = if let Some(ref sm) = state.services.session_metadata {
-        resolve_channel_session(reply_to, sm).await
-    } else {
-        default_channel_session_key(reply_to)
+    let metadata = state.services.session_metadata.as_ref()?;
+    let session_key = match resolve_channel_session(reply_to, metadata).await {
+        Ok(session_key) => session_key,
+        Err(error) => {
+            warn!(%error, "failed to resolve channel session for media");
+            return None;
+        },
     };
     let store = state.services.session_store.as_ref()?;
     match store.save_media(&session_key, filename, audio_data).await {
@@ -75,10 +78,13 @@ pub(in crate::channel_events) async fn save_channel_attachment(
     reply_to: &ChannelReplyTarget,
 ) -> Option<SavedChannelFile> {
     let state = state.get()?;
-    let session_key = if let Some(ref sm) = state.services.session_metadata {
-        resolve_channel_session(reply_to, sm).await
-    } else {
-        default_channel_session_key(reply_to)
+    let metadata = state.services.session_metadata.as_ref()?;
+    let session_key = match resolve_channel_session(reply_to, metadata).await {
+        Ok(session_key) => session_key,
+        Err(error) => {
+            warn!(%error, "failed to resolve channel session for media");
+            return None;
+        },
     };
     let store = state.services.session_store.as_ref()?;
     match store.save_media(&session_key, filename, file_data).await {

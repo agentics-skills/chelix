@@ -215,6 +215,28 @@ pub(crate) async fn load_prompt_memory_for_session(
     }
 }
 
+pub(crate) async fn load_prompt_persona_for_agent(
+    config: &chelix_config::ChelixConfig,
+    session_key: &str,
+    agent_id: &str,
+    prompt_profile: PromptProfile,
+    state_store: Option<&SessionStateStore>,
+) -> crate::error::Result<PromptPersona> {
+    let mut persona = load_prompt_persona_base_for_agent(config, agent_id, prompt_profile)?;
+    let style = persona.config.memory.style;
+    let mode = persona.config.chat.prompt_memory_mode;
+    let write_mode = persona.config.memory.agent_write_mode;
+    let (memory, snapshot_active) = if memory_style_allows_prompt(style) {
+        load_prompt_memory_for_session(session_key, agent_id, mode, state_store).await
+    } else {
+        (None, false)
+    };
+    persona.memory_text = memory.as_ref().map(|entry| entry.content.clone());
+    persona.memory_status =
+        prompt_memory_status(style, mode, write_mode, snapshot_active, memory.as_ref());
+    Ok(persona)
+}
+
 pub(crate) async fn load_prompt_persona_for_session(
     config: &chelix_config::ChelixConfig,
     session_key: &str,
@@ -225,19 +247,7 @@ pub(crate) async fn load_prompt_persona_for_session(
     let prompt_profile = session_entry
         .map(|entry| entry.prompt_profile)
         .unwrap_or_default();
-    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id, prompt_profile)?;
-    let style = persona.config.memory.style;
-    let mode = persona.config.chat.prompt_memory_mode;
-    let write_mode = persona.config.memory.agent_write_mode;
-    let (memory, snapshot_active) = if memory_style_allows_prompt(style) {
-        load_prompt_memory_for_session(session_key, &agent_id, mode, state_store).await
-    } else {
-        (None, false)
-    };
-    persona.memory_text = memory.as_ref().map(|entry| entry.content.clone());
-    persona.memory_status =
-        prompt_memory_status(style, mode, write_mode, snapshot_active, memory.as_ref());
-    Ok(persona)
+    load_prompt_persona_for_agent(config, session_key, &agent_id, prompt_profile, state_store).await
 }
 
 pub(crate) fn prompt_build_limits_from_config(

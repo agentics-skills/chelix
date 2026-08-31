@@ -119,6 +119,7 @@ impl GatewayApprovalBroadcaster {
         let target = session_metadata
             .get(session_key)
             .await
+            .map_err(|error| chelix_tools::Error::message(error.to_string()))?
             .and_then(|entry| channel_reply_target_for_entry(&entry));
         let Some(target) = target else {
             return Ok(());
@@ -243,8 +244,12 @@ mod tests {
             id: "1".into(),
             key: "telegram:bot-main:-100123".into(),
             label: None,
-            model: None,
-            reasoning_effort: None,
+            backing: chelix_sessions::metadata::SessionBacking::external(
+                chelix_sessions::metadata::ExternalSessionIdentity::new(
+                    chelix_sessions::metadata::ExternalAgentKind::Codex,
+                    None,
+                ),
+            ),
             created_at: 0,
             updated_at: 0,
             message_count: 0,
@@ -268,8 +273,6 @@ mod tests {
             preview: None,
             agent_id: None,
             prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-            external_agent_kind: None,
-            external_session_id: None,
             version: 0,
         };
 
@@ -284,8 +287,12 @@ mod tests {
             id: "1".into(),
             key: "session:abc".into(),
             label: None,
-            model: None,
-            reasoning_effort: None,
+            backing: chelix_sessions::metadata::SessionBacking::external(
+                chelix_sessions::metadata::ExternalSessionIdentity::new(
+                    chelix_sessions::metadata::ExternalAgentKind::Codex,
+                    None,
+                ),
+            ),
             created_at: 0,
             updated_at: 0,
             message_count: 0,
@@ -301,8 +308,6 @@ mod tests {
             preview: None,
             agent_id: None,
             prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-            external_agent_kind: None,
-            external_session_id: None,
             version: 0,
         };
 

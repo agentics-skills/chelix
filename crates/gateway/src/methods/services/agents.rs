@@ -194,6 +194,7 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                 .await?;
 
                 let default_id = default_agent_id_for_ctx(&ctx).await?;
+                let default_pair = resolved_agent_pair(&ctx, &default_id).await?;
                 let mut reassigned_sessions = 0_u64;
                 if let Some(metadata) = &ctx.state.services.session_metadata {
                     let sessions = metadata.list_by_agent_id(&id).await.map_err(|error| {
@@ -201,7 +202,7 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                     })?;
                     for session in sessions {
                         metadata
-                            .set_agent_id(&session.key, Some(&default_id))
+                            .assign_agent(&session.key, &default_id, &default_pair)
                             .await
                             .map_err(|error| {
                                 ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
@@ -278,31 +279,23 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                     .ok_or_else(|| {
                         ErrorShape::new(error_codes::UNAVAILABLE, "session metadata not available")
                     })?;
-                metadata.upsert(session_key, None).await.map_err(|error| {
-                    ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
-                })?;
-                let (agent_model, agent_reasoning) =
-                    agent_defaults_for_agent(&ctx.state, Some(&agent_id))
-                        .await
-                        .map_err(|error| {
-                            ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string())
-                        })?;
+                let model_reasoning = resolved_agent_pair(&ctx, &agent_id).await?;
                 let entry = metadata
-                    .assign_agent_with_defaults(
-                        session_key,
-                        &agent_id,
-                        Some(&agent_model),
-                        Some(agent_reasoning.as_str()),
-                    )
+                    .create_or_assign_agent(session_key, &agent_id, &model_reasoning)
                     .await
                     .map_err(|error| {
                         ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
                     })?;
+                ctx.state
+                    .services
+                    .external_agent
+                    .shutdown_session(session_key)
+                    .await;
                 Ok(serde_json::json!({
                     "ok": true,
                     "agent_id": agent_id,
-                    "model": entry.model,
-                    "reasoningEffort": entry.reasoning_effort,
+                    "model": entry.model(),
+                    "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
                     "version": entry.version,
                 }))
             })
@@ -465,6 +458,23 @@ fn validate_agent_shape(agent: &chelix_config::AgentConfig) -> Result<(), ErrorS
         ));
     }
     Ok(())
+}
+
+#[cfg(feature = "agent")]
+async fn resolved_agent_pair(
+    ctx: &MethodContext,
+    agent_id: &str,
+) -> Result<chelix_service_traits::ResolvedModelReasoning, ErrorShape> {
+    let (model, reasoning_effort) = agent_defaults_for_agent(&ctx.state, Some(agent_id))
+        .await
+        .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))?;
+    crate::model_reasoning::resolve_model_reasoning(
+        ctx.state.services.model.as_ref(),
+        &model,
+        &reasoning_effort,
+    )
+    .await
+    .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))
 }
 
 #[cfg(feature = "agent")]

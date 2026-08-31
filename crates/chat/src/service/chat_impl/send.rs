@@ -269,11 +269,16 @@ impl LiveChatService {
         };
 
         // Resolve model: explicit param → session metadata → first registered.
+        let mut session_entry = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         let session_model = if explicit_model.is_none() {
-            self.session_metadata
-                .get(&session_key)
-                .await
-                .and_then(|e| e.model)
+            session_entry
+                .as_ref()
+                .and_then(|entry| entry.model())
+                .map(str::to_string)
         } else {
             None
         };
@@ -316,7 +321,8 @@ impl LiveChatService {
         // Resolve project context for this connection's active project.
         let project_context = self
             .resolve_project_context(&session_key, conn_id.as_deref())
-            .await;
+            .await
+            .map_err(ServiceError::message)?;
 
         // Generate run_id early so we can link the user message to its agent run.
         let run_id = uuid::Uuid::new_v4().to_string();
@@ -336,17 +342,6 @@ impl LiveChatService {
         );
         let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
 
-        // Update metadata.
-        let _ = self.session_metadata.upsert(&session_key, None).await;
-        let ui_message_count = self
-            .session_store
-            .ui_message_count(&session_key)
-            .await
-            .map_err(ServiceError::message)?;
-        self.session_metadata
-            .touch(&session_key, ui_message_count)
-            .await;
-
         // If this is a web UI message on a channel-bound session, attach the
         // channel reply target so the run-start path can route the final
         // response back to the channel.
@@ -355,7 +350,7 @@ impl LiveChatService {
             && params.get("channel").is_none();
 
         if is_web_message
-            && let Some(entry) = self.session_metadata.get(&session_key).await
+            && let Some(entry) = session_entry.as_ref()
             && let Some(ref binding_json) = entry.channel_binding
             && let Ok(target) =
                 serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
@@ -370,8 +365,8 @@ impl LiveChatService {
                     target.thread_id.as_deref(),
                 )
                 .await
-                .map(|k| k == session_key)
-                .unwrap_or(true);
+                .map_err(ServiceError::message)?
+                .is_none_or(|key| key == session_key);
 
             if is_active {
                 match serde_json::to_value(&target) {
@@ -424,7 +419,6 @@ impl LiveChatService {
                 client_seq = ?client_seq,
                 "chat.send: dispatching MessageReceived hook"
             );
-            let session_entry = self.session_metadata.get(&session_key).await;
             let channel = params
                 .get("channel")
                 .and_then(|v| v.as_str())
@@ -554,7 +548,6 @@ impl LiveChatService {
         };
 
         // Load one live agent-registry snapshot for the whole run.
-        let session_entry = self.session_metadata.get(&session_key).await;
         let persona = self
             .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
             .await
@@ -581,6 +574,85 @@ impl LiveChatService {
             .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent));
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
+        let reasoning_effort = resolved_reasoning_effort.as_deref().ok_or_else(|| {
+            ServiceError::message(format!("session '{session_key}' has no reasoning effort"))
+        })?;
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            provider.id().to_string(),
+            ReasoningEffort::from(reasoning_effort),
+        )
+        .map_err(|error| ServiceError::message(error.to_string()))?;
+        session_entry = Some(match session_entry {
+            Some(entry) if entry.model_reasoning().is_none() => self
+                .session_metadata
+                .promote_external_to_llm(&session_key, &model_reasoning, &session_agent_id)
+                .await
+                .map_err(ServiceError::message)?
+                .into_entry(),
+            Some(entry)
+                if entry.model() != Some(model_reasoning.model_id())
+                    || entry.reasoning_effort() != Some(model_reasoning.reasoning_effort()) =>
+            {
+                self.session_metadata
+                    .set_model_reasoning(&session_key, &model_reasoning)
+                    .await
+                    .map_err(ServiceError::message)?
+            },
+            Some(entry) => entry,
+            None => match self
+                .session_metadata
+                .ensure_llm_session(
+                    &session_key,
+                    None,
+                    &model_reasoning,
+                    Some(&session_agent_id),
+                )
+                .await
+                .map_err(ServiceError::message)?
+            {
+                chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry) => entry,
+                chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+                    if entry
+                        .agent_id
+                        .as_deref()
+                        .is_some_and(|id| !id.trim().is_empty())
+                    {
+                        entry
+                    } else {
+                        let persisted_model_reasoning =
+                            entry.model_reasoning().cloned().ok_or_else(|| {
+                                ServiceError::message(format!(
+                                    "session '{session_key}' has no model/reasoning pair"
+                                ))
+                            })?;
+                        self.session_metadata
+                            .assign_agent(
+                                &session_key,
+                                &session_agent_id,
+                                &persisted_model_reasoning,
+                            )
+                            .await
+                            .map_err(ServiceError::message)?
+                    }
+                },
+                chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(_) => self
+                    .session_metadata
+                    .promote_external_to_llm(&session_key, &model_reasoning, &session_agent_id)
+                    .await
+                    .map_err(ServiceError::message)?
+                    .into_entry(),
+            },
+        });
+        let ui_message_count = self
+            .session_store
+            .ui_message_count(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
+        self.session_metadata
+            .touch(&session_key, ui_message_count)
+            .await
+            .map_err(ServiceError::message)?;
+
         let runtime_limits = persona.config.agent_runtime_limits(&session_agent_id);
         match &runtime_limits {
             Ok(limits) => info!(
@@ -658,18 +730,6 @@ impl LiveChatService {
 
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
-        if self
-            .session_metadata
-            .get(&session_key)
-            .await
-            .and_then(|entry| entry.model)
-            .as_deref()
-            != Some(model_id.as_str())
-        {
-            self.session_metadata
-                .set_model(&session_key, Some(model_id.clone()))
-                .await;
-        }
         let session_store = Arc::clone(&self.session_store);
         let session_metadata = Arc::clone(&self.session_metadata);
         let session_agent_id_clone = session_agent_id.clone();
@@ -742,14 +802,19 @@ impl LiveChatService {
         .await;
 
         // Set preview from the first user message if not already set.
-        if let Some(entry) = self.session_metadata.get(&session_key).await
+        if let Some(entry) = self
+            .session_metadata
+            .get(&session_key)
+            .await
+            .map_err(ServiceError::message)?
             && entry.preview.is_none()
         {
             let preview_text = extract_preview_from_value(&user_msg.to_value());
             if let Some(preview) = preview_text {
                 self.session_metadata
                     .set_preview(&session_key, Some(&preview))
-                    .await;
+                    .await
+                    .map_err(ServiceError::message)?;
             }
         }
 
@@ -969,7 +1034,13 @@ impl LiveChatService {
             };
 
             if let Ok(count) = session_store.ui_message_count(&session_key_clone).await {
-                session_metadata.touch(&session_key_clone, count).await;
+                if let Err(error) = session_metadata.touch(&session_key_clone, count).await {
+                    tracing::error!(
+                        session = %session_key_clone,
+                        %error,
+                        "failed to update session message count"
+                    );
+                }
 
                 // ── Periodic background memory extraction ──────────────
                 // Every `auto_extract_interval` turns, spawn a background

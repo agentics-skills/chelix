@@ -122,52 +122,44 @@ fn build_create_session(
                 )
                 .await?;
 
-                state
-                    .services
-                    .session
-                    .resolve(serde_json::json!({ "key": key.clone() }))
-                    .await
-                    .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-
                 metadata
-                    .set_agent_id(&key, Some(&agent_id))
+                    .create_llm_session(
+                        &key,
+                        req.label.as_deref(),
+                        &model_reasoning,
+                        Some(&agent_id),
+                    )
                     .await
                     .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
 
-                let mut patch = serde_json::Map::new();
-                patch.insert("key".to_string(), serde_json::json!(key.clone()));
-                if let Some(label) = req.label {
-                    patch.insert("label".to_string(), serde_json::json!(label));
+                if let Some(project_id) = req.project_id.as_deref() {
+                    metadata
+                        .set_project_id(&key, Some(project_id))
+                        .await
+                        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
                 }
-                patch.insert(
-                    "model".to_string(),
-                    serde_json::json!(model_reasoning.model_id()),
-                );
-                patch.insert(
-                    "reasoningEffort".to_string(),
-                    serde_json::json!(model_reasoning.reasoning_effort().as_str()),
-                );
-                if let Some(project_id) = req.project_id {
-                    patch.insert("projectId".to_string(), serde_json::json!(project_id));
-                }
-                state
-                    .services
-                    .session
-                    .patch(Value::Object(patch))
-                    .await
-                    .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-
-                // Link the new session to its creator so the UI renders it as a child.
-                if let Some(parent) = parent_session_key
+                if let Some(parent) = parent_session_key.as_deref()
                     && parent != key
-                    && metadata.get(&parent).await.is_some()
+                    && metadata
+                        .get(parent)
+                        .await
+                        .map_err(|error| chelix_tools::Error::message(error.to_string()))?
+                        .is_some()
                 {
-                    metadata.set_parent(&key, Some(parent), None).await;
+                    metadata
+                        .set_parent(&key, Some(parent), None)
+                        .await
+                        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
                 }
-
-                let entry = metadata.get(&key).await.ok_or_else(|| {
-                    chelix_tools::Error::message(format!("session '{key}' not found after create"))
-                })?;
+                let entry = metadata
+                    .get(&key)
+                    .await
+                    .map_err(|error| chelix_tools::Error::message(error.to_string()))?
+                    .ok_or_else(|| {
+                        chelix_tools::Error::message(format!(
+                            "session '{key}' disappeared after create"
+                        ))
+                    })?;
                 Ok(session_entry_payload(entry))
             })
         },
@@ -306,11 +298,14 @@ async fn agent_model_and_reasoning(
 }
 
 fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Value {
+    let model = entry.model().map(str::to_string);
+    let reasoning_effort = entry
+        .reasoning_effort()
+        .map(|effort| effort.as_str().to_string());
     let chelix_sessions::metadata::SessionEntry {
         id,
         key,
         label,
-        model,
         created_at,
         updated_at,
         message_count,
@@ -327,6 +322,7 @@ fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Valu
             "key": key,
             "label": label,
             "model": model,
+            "reasoningEffort": reasoning_effort,
             "createdAt": created_at,
             "updatedAt": updated_at,
             "messageCount": message_count,
@@ -451,16 +447,19 @@ mod tests {
         create(create_request("session:valid", "test::valid")).await?;
         let valid_entry = metadata
             .get("session:valid")
-            .await
+            .await?
             .ok_or_else(|| std::io::Error::other("valid session metadata was not created"))?;
-        assert_eq!(valid_entry.model.as_deref(), Some("test::valid"));
-        assert_eq!(valid_entry.reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(valid_entry.model(), Some("test::valid"));
+        assert_eq!(
+            valid_entry.reasoning_effort().map(ReasoningEffort::as_str),
+            Some("medium")
+        );
 
         let (state, metadata, _dir) = create_test_state().await?;
         let create = build_create_session(state, Arc::clone(&metadata));
         let invalid = create(create_request("session:invalid", "test::invalid")).await;
         assert!(invalid.is_err());
-        assert!(metadata.get("session:invalid").await.is_none());
+        assert!(metadata.get("session:invalid").await?.is_none());
         Ok(())
     }
 }

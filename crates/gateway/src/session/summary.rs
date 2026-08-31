@@ -44,8 +44,14 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
     };
 
     // Read session metadata once for both provider resolution and agent ID.
-    let session_entry = if let Some(ref meta) = state.services.session_metadata {
-        meta.get(session_key).await
+    let session_entry = if let Some(ref metadata) = state.services.session_metadata {
+        match metadata.get(session_key).await {
+            Ok(entry) => entry,
+            Err(error) => {
+                warn!(session = %session_key, %error, "session summary: metadata load failed");
+                return;
+            },
+        }
     } else {
         None
     };
@@ -57,7 +63,9 @@ pub(crate) async fn run_session_summary_if_enabled(state: &Arc<GatewayState>, se
             return;
         };
         let reg = registry.read().await;
-        let session_model = session_entry.as_ref().and_then(|e| e.model.clone());
+        let session_model = session_entry
+            .as_ref()
+            .and_then(|entry| entry.model().map(str::to_string));
         let resolved = session_model
             .and_then(|id| reg.get(&id))
             .or_else(|| reg.first());

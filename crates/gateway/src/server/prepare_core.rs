@@ -24,9 +24,7 @@ use {
     chelix_projects::ProjectStore,
     chelix_providers::ProviderRegistry,
     chelix_sessions::{
-        metadata::{SessionMetadata, SqliteSessionMetadata},
-        session_events::SessionEventBus,
-        store::SessionStore,
+        metadata::SqliteSessionMetadata, session_events::SessionEventBus, store::SessionStore,
     },
     secrecy::{ExposeSecret, Secret},
     std::{path::PathBuf, sync::Arc},
@@ -515,31 +513,7 @@ pub async fn prepare_gateway_core(
         std::fs::rename(&projects_toml_path, &bak).ok();
     }
 
-    // Migrate from metadata.json if it exists.
     let sessions_dir = data_dir.join("sessions");
-    let metadata_json_path = sessions_dir.join("metadata.json");
-    if metadata_json_path.exists() {
-        info!("migrating metadata.json to SQLite");
-        if let Ok(old_meta) = SessionMetadata::load(metadata_json_path.clone()) {
-            let sqlite_meta = SqliteSessionMetadata::new(db_pool.clone());
-            for entry in old_meta.list() {
-                if let Err(e) = sqlite_meta.upsert(&entry.key, entry.label.clone()).await {
-                    tracing::warn!("failed to migrate session {}: {e}", entry.key);
-                }
-                if entry.model.is_some() {
-                    sqlite_meta.set_model(&entry.key, entry.model.clone()).await;
-                }
-                sqlite_meta.touch(&entry.key, entry.message_count).await;
-                if entry.project_id.is_some() {
-                    sqlite_meta
-                        .set_project_id(&entry.key, entry.project_id.clone())
-                        .await;
-                }
-            }
-        }
-        let bak = metadata_json_path.with_extension("json.bak");
-        std::fs::rename(&metadata_json_path, &bak).ok();
-    }
 
     // Wire stores.
     let project_store: Arc<dyn ProjectStore> =
@@ -902,8 +876,12 @@ pub async fn prepare_gateway_core(
                     if let Err(e) = prune_sandbox.cleanup_session(key).await {
                         tracing::debug!(key, error = %e, "cron prune: sandbox cleanup failed");
                     }
-                    prune_session_metadata.remove(key).await;
-                    cleaned += 1;
+                    match prune_session_metadata.remove(key).await {
+                        Ok(_) => cleaned += 1,
+                        Err(error) => {
+                            tracing::error!(key, %error, "cron prune: metadata removal failed");
+                        },
+                    }
                 }
 
                 match prune_store.prune_runs_before(before_ms).await {
@@ -1052,7 +1030,8 @@ pub async fn prepare_gateway_core(
         .with_project_store(Arc::clone(&project_store))
         .with_state_store(Arc::clone(&session_state_store))
         .with_prompt_queue_store(Arc::clone(&prompt_queue_store))
-        .with_browser_service(Arc::clone(&services.browser));
+        .with_browser_service(Arc::clone(&services.browser))
+        .with_session_mutations(Arc::clone(&session_mutations));
         if let Some(ref manager) = memory_manager {
             session_svc = session_svc.with_memory_manager(Arc::clone(manager));
         }

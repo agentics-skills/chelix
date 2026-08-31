@@ -526,7 +526,13 @@ async fn resolve_agent_voice_persona_id(
     agents_config: &tokio::sync::RwLock<chelix_config::AgentsConfig>,
     session_key: &str,
 ) -> Option<String> {
-    let entry = meta.get(session_key).await?;
+    let entry = match meta.get(session_key).await {
+        Ok(entry) => entry?,
+        Err(error) => {
+            tracing::error!(session = %session_key, %error, "failed to resolve session voice persona");
+            return None;
+        },
+    };
     let agent_id = entry
         .agent_id
         .as_deref()

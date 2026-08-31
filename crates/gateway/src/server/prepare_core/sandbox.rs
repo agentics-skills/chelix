@@ -223,8 +223,13 @@ mod tests {
     #[tokio::test]
     async fn session_owner_resolver_rejects_missing_referenced_owner() {
         let metadata = sqlite_metadata().await;
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )
+        .unwrap_or_else(|error| panic!("valid test pair: {error}"));
         metadata
-            .upsert("session:child", None)
+            .create_llm_session("session:child", None, &model_reasoning, Some("main"))
             .await
             .unwrap_or_else(|error| panic!("child session setup failed: {error}"));
         metadata

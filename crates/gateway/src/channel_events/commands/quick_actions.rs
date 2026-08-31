@@ -35,8 +35,12 @@ pub(in crate::channel_events) async fn handle_btw(
     };
     // Resolve session model via async DB lookup *before* acquiring the
     // registry read lock to avoid holding the lock across an await point.
-    let session_model = if let Some(ref meta) = state.services.session_metadata {
-        meta.get(session_key).await.and_then(|e| e.model.clone())
+    let session_model = if let Some(ref metadata) = state.services.session_metadata {
+        metadata
+            .get(session_key)
+            .await
+            .map_err(ChannelError::unavailable)?
+            .and_then(|entry| entry.model().map(str::to_string))
     } else {
         None
     };

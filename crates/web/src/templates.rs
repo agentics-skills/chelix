@@ -197,8 +197,15 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
         return Vec::new();
     };
 
+    let entries = match metadata.list().await {
+        Ok(entries) => entries,
+        Err(error) => {
+            tracing::error!(%error, "failed to build recent sessions snapshot");
+            return Vec::new();
+        },
+    };
     let mut recent = Vec::new();
-    for entry in metadata.list().await.into_iter().take(limit) {
+    for entry in entries.into_iter().take(limit) {
         let active_channel = if let Some(ref binding_json) = entry.channel_binding {
             if let Ok(target) =
                 serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
@@ -211,6 +218,12 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
                         target.thread_id.as_deref(),
                     )
                     .await
+                    .map_err(|error| {
+                        tracing::error!(session = %entry.key, %error, "failed to resolve active channel session");
+                        error
+                    })
+                    .ok()
+                    .flatten()
                     .unwrap_or_else(|| default_channel_session_key(&target))
                     == entry.key
             } else {
@@ -225,8 +238,10 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             .map(|text| truncate_preview(text, SESSION_PREVIEW_MAX_CHARS));
         let agent_id = entry.agent_id.clone();
         let agent_id_camel = agent_id.clone();
-        let model = entry.model.clone();
-        let reasoning_effort = entry.reasoning_effort.clone();
+        let model = entry.model().map(str::to_string);
+        let reasoning_effort = entry
+            .reasoning_effort()
+            .map(|effort| effort.as_str().to_string());
 
         recent.push(serde_json::json!({
             "id": entry.id,

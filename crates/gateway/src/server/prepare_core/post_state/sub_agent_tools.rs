@@ -156,22 +156,15 @@ impl SubAgentRuntime {
         }
 
         let session_key = format!("session:{}", uuid::Uuid::new_v4());
-        self.state
-            .services
-            .session
-            .resolve(serde_json::json!({ "key": session_key.clone() }))
-            .await
-            .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
         let label = sub_agent_label(task);
         self.session_metadata
-            .configure_subagent_session(
+            .create_subagent_session(
                 &session_key,
                 &label,
                 parent_session_key,
                 &owner_key,
                 agent_id,
-                model_reasoning.model_id(),
-                model_reasoning.reasoning_effort(),
+                &model_reasoning,
             )
             .await
             .map_err(tool_error)?;
@@ -689,21 +682,34 @@ mod tests {
         SqliteSessionMetadata::new(pool)
     }
 
+    fn test_model_reasoning() -> chelix_common::ResolvedModelReasoning {
+        chelix_common::ResolvedModelReasoning::try_new(
+            "provider::model".to_string(),
+            ReasoningEffort::from("high"),
+        )
+        .unwrap_or_else(|error| panic!("valid test pair: {error}"))
+    }
+
+    async fn create_parent(metadata: &SqliteSessionMetadata, session_key: &str) {
+        metadata
+            .create_llm_session(session_key, None, &test_model_reasoning(), Some("main"))
+            .await
+            .unwrap();
+    }
+
     async fn configure_child(
         metadata: &SqliteSessionMetadata,
         session_key: &str,
         parent_session_key: &str,
     ) {
-        metadata.upsert(session_key, None).await.unwrap();
         metadata
-            .configure_subagent_session(
+            .create_subagent_session(
                 session_key,
                 "Reviewer task",
                 parent_session_key,
                 parent_session_key,
                 "reviewer",
-                "provider::model",
-                &ReasoningEffort::from("high"),
+                &test_model_reasoning(),
             )
             .await
             .unwrap();
@@ -741,8 +747,8 @@ mod tests {
     #[tokio::test]
     async fn lifecycle_actions_do_not_access_foreign_children() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
-        metadata.upsert("session:other", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
+        create_parent(&metadata, "session:other").await;
         configure_child(&metadata, "session:own-child", "session:parent").await;
         configure_child(&metadata, "session:foreign-child", "session:other").await;
         let chat = LifecycleChatService::new(
@@ -791,7 +797,7 @@ mod tests {
     #[tokio::test]
     async fn background_result_is_extracted_only_from_the_tracked_run() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
@@ -859,7 +865,7 @@ mod tests {
     #[tokio::test]
     async fn result_requires_an_inactive_chat_run() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
@@ -886,7 +892,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_preserves_active_and_completed_abort_results() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let active = LifecycleChatService::new(
             true,

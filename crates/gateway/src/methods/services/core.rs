@@ -2,8 +2,6 @@ use super::*;
 
 use chelix_common::ActiveToolInvocation;
 
-use crate::session_reasoning::materialize_agent_session_defaults;
-
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     replying: bool,
@@ -943,7 +941,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 };
                 let was_existing_session =
                     if let Some(ref metadata) = ctx.state.services.session_metadata {
-                        metadata.get(key).await.is_some()
+                        metadata
+                            .get(key)
+                            .await
+                            .map_err(|error| {
+                                ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
+                            })?
+                            .is_some()
                     } else {
                         false
                     };
@@ -993,20 +997,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             format!("session resolve failed: {e}"),
                         )
                     })?;
-
-                if !was_existing_session
-                    && let Some(entry_obj) = result
-                        .get_mut("entry")
-                        .and_then(|value| value.as_object_mut())
-                    && let Some(agent_id) = entry_obj
-                        .get("agent_id")
-                        .or_else(|| entry_obj.get("agentId"))
-                        .and_then(|value| value.as_str())
-                {
-                    materialize_agent_session_defaults(&ctx.state, key, agent_id)
-                        .await
-                        .map_err(ErrorShape::from)?;
-                }
 
                 // Mark the session as seen so unread state clears.
                 ctx.state.services.session.mark_seen(key).await;

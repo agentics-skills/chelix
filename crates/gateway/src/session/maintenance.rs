@@ -18,18 +18,66 @@ impl LiveSessionService {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        let delete_order = self.collect_session_delete_order(key).await;
-        for session_key in delete_order {
-            self.delete_single_session(&session_key, force).await?;
+        let delete_order = self.collect_session_delete_order(key).await?;
+        let mut reservation_keys = delete_order.clone();
+        reservation_keys.sort();
+        let mut reservations = Vec::with_capacity(reservation_keys.len());
+        for session_key in &reservation_keys {
+            reservations.push(self.session_mutations.reserve_mutation(session_key).await);
+        }
+        let mut mutation_permits = Vec::with_capacity(reservations.len());
+        for reservation in reservations {
+            mutation_permits.push(reservation.acquire().await.map_err(ServiceError::message)?);
         }
 
-        Ok(serde_json::json!({ "ok": true }))
+        let mut entries = Vec::with_capacity(delete_order.len());
+        for session_key in &delete_order {
+            let entry = self
+                .metadata
+                .get(session_key)
+                .await
+                .map_err(ServiceError::message)?
+                .ok_or_else(|| {
+                    ServiceError::message(format!("session '{session_key}' not found"))
+                })?;
+            self.preflight_session_delete(&entry, force).await?;
+            entries.push(entry);
+        }
+
+        let deleted_entries = self
+            .metadata
+            .remove_session_tree(key, &delete_order)
+            .await
+            .map_err(ServiceError::message)?;
+        debug_assert_eq!(deleted_entries.len(), entries.len());
+
+        let mut cleanup_errors = Vec::new();
+        for entry in &deleted_entries {
+            self.cleanup_deleted_session(entry, &mut cleanup_errors)
+                .await;
+        }
+        drop(mutation_permits);
+
+        if cleanup_errors.is_empty() {
+            Ok(serde_json::json!({ "ok": true }))
+        } else {
+            Err(ServiceError::message(format!(
+                "session metadata deletion committed, but lifecycle cleanup was incomplete: {}",
+                cleanup_errors.join("; ")
+            )))
+        }
     }
 
     pub(super) async fn truncate_tail_impl(&self, params: Value) -> ServiceResult {
         let params: TruncateTailParams = parse_params(params)?;
         let key = params.key().map_err(ServiceError::message)?.to_string();
         let target = params.target().map_err(ServiceError::message)?;
+
+        self.metadata
+            .get(&key)
+            .await
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))?;
 
         let truncate = self
             .store
@@ -39,22 +87,25 @@ impl LiveSessionService {
         let retained_history = self.store.read(&key).await.map_err(ServiceError::message)?;
         let preview = extract_preview(&retained_history);
 
-        self.metadata
-            .upsert(&key, None)
-            .await
-            .map_err(ServiceError::message)?;
         let ui_message_count = self
             .store
             .ui_message_count(&key)
             .await
             .map_err(ServiceError::message)?;
-        self.metadata.touch(&key, ui_message_count).await;
-        self.metadata.set_preview(&key, preview.as_deref()).await;
+        self.metadata
+            .touch(&key, ui_message_count)
+            .await
+            .map_err(ServiceError::message)?;
+        self.metadata
+            .set_preview(&key, preview.as_deref())
+            .await
+            .map_err(ServiceError::message)?;
 
         let entry = self
             .metadata
             .get(&key)
             .await
+            .map_err(ServiceError::message)?
             .ok_or_else(|| format!("session '{key}' not found after truncation"))?;
 
         Ok(serde_json::json!({
@@ -69,7 +120,10 @@ impl LiveSessionService {
         }))
     }
 
-    async fn collect_session_delete_order(&self, root_key: &str) -> Vec<String> {
+    async fn collect_session_delete_order(
+        &self,
+        root_key: &str,
+    ) -> Result<Vec<String>, ServiceError> {
         let mut order = Vec::new();
         let mut seen = HashSet::new();
         let mut stack = vec![root_key.to_string()];
@@ -79,94 +133,121 @@ impl LiveSessionService {
                 continue;
             }
             order.push(key.clone());
-            for child in self.metadata.list_children(&key).await {
+            for child in self
+                .metadata
+                .list_children(&key)
+                .await
+                .map_err(ServiceError::message)?
+            {
                 stack.push(child.key);
             }
         }
 
         order.reverse();
-        order
+        Ok(order)
     }
 
-    async fn delete_single_session(&self, key: &str, force: bool) -> Result<(), ServiceError> {
-        // Check for worktree cleanup before deleting metadata.
-        if let Some(entry) = self.metadata.get(key).await
-            && entry.worktree_branch.is_some()
-            && let Some(ref project_id) = entry.project_id
-            && let Some(ref project_store) = self.project_store
-            && let Ok(Some(project)) = project_store.get(project_id).await
+    async fn preflight_session_delete(
+        &self,
+        entry: &chelix_sessions::metadata::SessionEntry,
+        force: bool,
+    ) -> Result<(), ServiceError> {
+        if force || entry.worktree_branch.is_none() {
+            return Ok(());
+        }
+        let Some(project_id) = entry.project_id.as_deref() else {
+            return Ok(());
+        };
+        let Some(project_store) = self.project_store.as_ref() else {
+            return Ok(());
+        };
+        let Some(project) = project_store
+            .get(project_id)
+            .await
+            .map_err(ServiceError::message)?
+        else {
+            return Ok(());
+        };
+        let worktree_dir = project.directory.join(".chelix-worktrees").join(&entry.key);
+        if worktree_dir.exists()
+            && chelix_projects::WorktreeManager::has_uncommitted_changes(&worktree_dir)
+                .await
+                .map_err(ServiceError::message)?
         {
-            let project_dir = &project.directory;
-            let wt_dir = project_dir.join(".chelix-worktrees").join(key);
+            return Err(ServiceError::message(
+                "worktree has uncommitted changes; use force: true to delete anyway",
+            ));
+        }
+        Ok(())
+    }
 
-            // Safety checks unless force is set.
-            if !force
-                && wt_dir.exists()
-                && let Ok(true) =
-                    chelix_projects::WorktreeManager::has_uncommitted_changes(&wt_dir).await
-            {
-                return Err(
-                    "worktree has uncommitted changes; use force: true to delete anyway".into(),
-                );
-            }
-
-            // Run teardown command if configured.
-            if let Some(ref cmd) = project.teardown_command
-                && wt_dir.exists()
-                && let Err(e) =
-                    chelix_projects::WorktreeManager::run_teardown(&wt_dir, cmd, project_dir, key)
+    async fn cleanup_deleted_session(
+        &self,
+        entry: &chelix_sessions::metadata::SessionEntry,
+        errors: &mut Vec<String>,
+    ) {
+        let key = &entry.key;
+        if entry.worktree_branch.is_some()
+            && let Some(project_id) = entry.project_id.as_deref()
+            && let Some(project_store) = self.project_store.as_ref()
+        {
+            match project_store.get(project_id).await {
+                Ok(Some(project)) => {
+                    let project_dir = &project.directory;
+                    let worktree_dir = project_dir.join(".chelix-worktrees").join(key);
+                    if let Some(command) = project.teardown_command.as_deref()
+                        && worktree_dir.exists()
+                        && let Err(error) = chelix_projects::WorktreeManager::run_teardown(
+                            &worktree_dir,
+                            command,
+                            project_dir,
+                            key,
+                        )
                         .await
-            {
-                tracing::warn!("worktree teardown failed: {e}");
+                    {
+                        errors.push(format!("session '{key}' worktree teardown: {error}"));
+                    }
+                    if let Err(error) =
+                        chelix_projects::WorktreeManager::cleanup(project_dir, key).await
+                    {
+                        errors.push(format!("session '{key}' worktree cleanup: {error}"));
+                    }
+                },
+                Ok(None) => {},
+                Err(error) => {
+                    errors.push(format!("session '{key}' project lookup: {error}"));
+                },
             }
-
-            if let Err(e) = chelix_projects::WorktreeManager::cleanup(project_dir, key).await {
-                tracing::warn!("worktree cleanup failed: {e}");
-            }
         }
 
-        self.store.clear(key).await.map_err(ServiceError::message)?;
-
-        // Clean up lifecycle resources for this session when global mode is On.
-        if let Err(e) = self.sandbox_router.cleanup_session(key).await {
-            tracing::warn!("sandbox cleanup for session {key}: {e}");
+        if let Err(error) = self.store.clear(key).await {
+            errors.push(format!("session '{key}' history cleanup: {error}"));
         }
-
-        // Cascade-delete session state.
-        if let Some(ref state_store) = self.state_store
-            && let Err(e) = state_store.delete_session(key).await
+        if let Err(error) = self.sandbox_router.cleanup_session(key).await {
+            errors.push(format!("session '{key}' sandbox cleanup: {error}"));
+        }
+        if let Some(state_store) = self.state_store.as_ref()
+            && let Err(error) = state_store.delete_session(key).await
         {
-            tracing::warn!("session state cleanup for {key}: {e}");
+            errors.push(format!("session '{key}' state cleanup: {error}"));
         }
-
-        // Cascade-delete queued prompts. The queue table has no foreign key on
-        // the session, so leftover rows would be replayed if the key is ever
-        // reused by a fork or a channel binding.
-        if let Some(ref prompt_queue) = self.prompt_queue_store
-            && let Err(e) = prompt_queue.clear(key).await
+        if let Some(prompt_queue) = self.prompt_queue_store.as_ref()
+            && let Err(error) = prompt_queue.clear(key).await
         {
-            tracing::warn!("prompt queue cleanup for {key}: {e}");
+            errors.push(format!("session '{key}' prompt queue cleanup: {error}"));
+        }
+        if let Err(error) = self.cleanup_session_memory_exports(key).await {
+            errors.push(format!("session '{key}' memory export cleanup: {error}"));
         }
 
-        self.metadata.clear_active_session_mappings(key).await;
-
-        if let Err(e) = self.cleanup_session_memory_exports(key).await {
-            tracing::warn!(session = %key, error = %e, "session memory export cleanup failed");
-        }
-
-        self.metadata.remove(key).await;
-
-        // Dispatch SessionEnd hook (read-only).
-        if let Some(ref hooks) = self.hook_registry {
+        if let Some(hooks) = self.hook_registry.as_ref() {
             let payload = chelix_common::hooks::HookPayload::SessionEnd {
                 session_key: key.to_string(),
             };
-            if let Err(e) = hooks.dispatch(&payload).await {
-                warn!(session = %key, error = %e, "SessionEnd hook failed");
+            if let Err(error) = hooks.dispatch(&payload).await {
+                warn!(session = %key, %error, "SessionEnd hook failed");
             }
         }
-
-        Ok(())
     }
 
     async fn cleanup_session_memory_exports(&self, key: &str) -> Result<(), anyhow::Error> {
@@ -263,6 +344,19 @@ impl LiveSessionService {
             return Err(format!("forkPoint {fork_point} exceeds message count {msg_count}").into());
         }
 
+        let parent = self
+            .metadata
+            .get(parent_key)
+            .await
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| ServiceError::message(format!("session '{parent_key}' not found")))?;
+        let parent_agent = self.resolve_agent_id_for_entry(&parent).await?;
+        let model_reasoning = parent.model_reasoning().cloned().ok_or_else(|| {
+            ServiceError::message(format!(
+                "session '{parent_key}' has no LLM model/reasoning pair"
+            ))
+        })?;
+
         let new_key = format!("session:{}", uuid::Uuid::new_v4());
         let forked_messages: Vec<Value> = messages[..fork_point].to_vec();
 
@@ -271,9 +365,13 @@ impl LiveSessionService {
             .await
             .map_err(ServiceError::message)?;
 
-        let _entry = self
-            .metadata
-            .upsert(&new_key, label)
+        self.metadata
+            .create_llm_session(
+                &new_key,
+                label.as_deref(),
+                &model_reasoning,
+                Some(&parent_agent),
+            )
             .await
             .map_err(ServiceError::message)?;
 
@@ -282,50 +380,35 @@ impl LiveSessionService {
             .ui_message_count(&new_key)
             .await
             .map_err(ServiceError::message)?;
-        self.metadata.touch(&new_key, ui_message_count).await;
+        self.metadata
+            .touch(&new_key, ui_message_count)
+            .await
+            .map_err(ServiceError::message)?;
 
-        // Inherit model, project, mcp_disabled, and agent_id from parent.
-        if let Some(parent) = self.metadata.get(parent_key).await {
-            let parent_agent = self.resolve_agent_id_for_entry(&parent).await?;
-            if parent.model.is_some() {
-                self.metadata.set_model(&new_key, parent.model).await;
-            }
-            if parent.project_id.is_some() {
-                self.metadata
-                    .set_project_id(&new_key, parent.project_id)
-                    .await;
-            }
-            if parent.mcp_disabled.is_some() {
-                self.metadata
-                    .set_mcp_disabled(&new_key, parent.mcp_disabled)
-                    .await;
-            }
-            let _ = self
-                .metadata
-                .set_agent_id(&new_key, Some(&parent_agent))
-                .await;
-        } else {
-            let default_agent = self.default_agent_id().await?;
-            let _ = self
-                .metadata
-                .set_agent_id(&new_key, Some(&default_agent))
-                .await;
+        if let Some(project_id) = parent.project_id.as_deref() {
+            self.metadata
+                .set_project_id(&new_key, Some(project_id))
+                .await
+                .map_err(ServiceError::message)?;
+        }
+        if parent.mcp_disabled.is_some() {
+            self.metadata
+                .set_mcp_disabled(&new_key, parent.mcp_disabled)
+                .await
+                .map_err(ServiceError::message)?;
         }
 
-        // Set parent relationship.
         self.metadata
-            .set_parent(
-                &new_key,
-                Some(parent_key.to_string()),
-                Some(fork_point as u32),
-            )
-            .await;
+            .set_parent(&new_key, Some(parent_key), Some(fork_point as u32))
+            .await
+            .map_err(ServiceError::message)?;
 
         // Re-fetch after all mutations to get the final version.
         let final_entry = self
             .metadata
             .get(&new_key)
             .await
+            .map_err(ServiceError::message)?
             .ok_or_else(|| format!("forked session '{new_key}' not found after creation"))?;
         Ok(serde_json::json!({
             "sessionKey": new_key,
@@ -345,7 +428,11 @@ impl LiveSessionService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
 
-        let children = self.metadata.list_children(key).await;
+        let children = self
+            .metadata
+            .list_children(key)
+            .await
+            .map_err(ServiceError::message)?;
         let items: Vec<Value> = children
             .into_iter()
             .map(|e| {
@@ -393,7 +480,12 @@ impl LiveSessionService {
         let enriched: Vec<Value> = {
             let mut out = Vec::with_capacity(results.len());
             for r in results {
-                let (label, archived) = match self.metadata.get(&r.session_key).await {
+                let (label, archived) = match self
+                    .metadata
+                    .get(&r.session_key)
+                    .await
+                    .map_err(ServiceError::message)?
+                {
                     Some(entry) => (entry.label, entry.archived),
                     None => (None, false),
                 };
@@ -419,12 +511,15 @@ impl LiveSessionService {
     }
 
     pub(super) async fn mark_seen_impl(&self, key: &str) {
-        self.metadata.mark_seen(key).await;
+        if let Err(error) = self.metadata.mark_seen(key).await {
+            tracing::error!(session = %key, %error, "failed to mark session as seen");
+        }
     }
 
     pub(super) async fn clear_all_impl(&self) -> ServiceResult {
-        let all = self.metadata.list().await;
+        let all = self.metadata.list().await.map_err(ServiceError::message)?;
         let mut deleted = 0u32;
+        let mut failures = Vec::new();
 
         for entry in &all {
             // Keep main, channel-bound (telegram) and cron sessions.
@@ -435,14 +530,21 @@ impl LiveSessionService {
             {
                 continue;
             }
-            if self.metadata.get(&entry.key).await.is_none() {
+            if self
+                .metadata
+                .get(&entry.key)
+                .await
+                .map_err(ServiceError::message)?
+                .is_none()
+            {
                 continue;
             }
 
             // Reuse delete logic via params.
             let params = serde_json::json!({ "key": entry.key, "force": true });
-            if let Err(e) = self.delete_impl(params).await {
-                warn!(session = %entry.key, error = %e, "clear_all: failed to delete session");
+            if let Err(error) = self.delete_impl(params).await {
+                warn!(session = %entry.key, %error, "clear_all: failed to delete session");
+                failures.push(format!("session '{}': {error}", entry.key));
                 continue;
             }
             deleted += 1;
@@ -454,7 +556,15 @@ impl LiveSessionService {
             browser.close_all().await;
         }
 
-        Ok(serde_json::json!({ "deleted": deleted }))
+        if failures.is_empty() {
+            Ok(serde_json::json!({ "deleted": deleted }))
+        } else {
+            Err(ServiceError::message(format!(
+                "clear_all deleted {deleted} sessions, but {} deletions failed: {}",
+                failures.len(),
+                failures.join("; ")
+            )))
+        }
     }
 
     pub(super) async fn run_detail_impl(&self, params: Value) -> ServiceResult {

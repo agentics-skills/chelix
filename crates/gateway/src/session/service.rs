@@ -16,14 +16,12 @@ fn default_channel_session_key(target: &chelix_channels::ChannelReplyTarget) -> 
 async fn is_current_channel_session(
     metadata: &SqliteSessionMetadata,
     entry: &chelix_sessions::metadata::SessionEntry,
-) -> bool {
+) -> Result<bool, ServiceError> {
     let Some(binding_json) = entry.channel_binding.as_deref() else {
-        return false;
+        return Ok(false);
     };
-    let Ok(target) = serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
-    else {
-        return false;
-    };
+    let target = serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
+        .map_err(ServiceError::message)?;
 
     let active_key = metadata
         .get_active_session(
@@ -33,15 +31,16 @@ async fn is_current_channel_session(
             target.thread_id.as_deref(),
         )
         .await
+        .map_err(ServiceError::message)?
         .unwrap_or_else(|| default_channel_session_key(&target));
-    active_key == entry.key
+    Ok(active_key == entry.key)
 }
 
 async fn is_archivable_entry(
     metadata: &SqliteSessionMetadata,
     entry: &chelix_sessions::metadata::SessionEntry,
-) -> bool {
-    entry.key != "main" && !is_current_channel_session(metadata, entry).await
+) -> Result<bool, ServiceError> {
+    Ok(entry.key != "main" && !is_current_channel_session(metadata, entry).await?)
 }
 
 /// Live session service backed by JSONL store + SQLite metadata.
@@ -60,6 +59,7 @@ pub struct LiveSessionService {
     pub(super) prompt_queue_store: Option<Arc<SessionPromptQueueStore>>,
     pub(super) browser_service: Option<Arc<dyn crate::services::BrowserService>>,
     pub(super) memory_manager: Option<DynMemoryRuntime>,
+    pub(super) session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
 }
 
 impl LiveSessionService {
@@ -85,6 +85,9 @@ impl LiveSessionService {
             prompt_queue_store: None,
             browser_service: None,
             memory_manager: None,
+            session_mutations: Arc::new(
+                chelix_service_traits::SessionMutationCoordinator::default(),
+            ),
         }
     }
 
@@ -133,6 +136,14 @@ impl LiveSessionService {
         agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     ) -> Self {
         self.agents_config = agents_config;
+        self
+    }
+
+    pub fn with_session_mutations(
+        mut self,
+        session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
+    ) -> Self {
+        self.session_mutations = session_mutations;
         self
     }
 
@@ -222,7 +233,12 @@ impl LiveSessionService {
                 "session '{key}' cannot be its own parent"
             )));
         }
-        let Some(parent_entry) = self.metadata.get(parent_key).await else {
+        let Some(parent_entry) = self
+            .metadata
+            .get(parent_key)
+            .await
+            .map_err(ServiceError::message)?
+        else {
             return Err(ServiceError::message(format!(
                 "parent session '{parent_key}' not found"
             )));
@@ -247,7 +263,8 @@ impl LiveSessionService {
                 .metadata
                 .get(&ancestor)
                 .await
-                .and_then(|e| e.parent_session_key);
+                .map_err(ServiceError::message)?
+                .and_then(|entry| entry.parent_session_key);
         }
         Ok(())
     }
@@ -281,16 +298,44 @@ impl LiveSessionService {
         )))
     }
 
-    async fn ensure_entry_agent_id(
+    async fn resolved_agent_pair(
         &self,
-        key: &str,
-        inherit_from_key: Option<&str>,
-    ) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
-        let entry = self
-            .metadata
-            .get(key)
+        agent_id: &str,
+    ) -> Result<chelix_service_traits::ResolvedModelReasoning, ServiceError> {
+        let (model, reasoning_effort) = {
+            let agents = self.agents_config.read().await;
+            let agent = agents.get(agent_id).ok_or_else(|| {
+                ServiceError::message(format!("agent '{agent_id}' is not configured"))
+            })?;
+            (agent.model.clone(), agent.reasoning_effort.clone())
+        };
+        self.model_service
+            .resolve_model_reasoning(&model, Some(&reasoning_effort))
             .await
-            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))?;
+    }
+
+    async fn selected_agent_id(
+        &self,
+        inherit_from_key: Option<&str>,
+    ) -> Result<String, ServiceError> {
+        if let Some(parent_key) = inherit_from_key
+            && let Some(parent) = self
+                .metadata
+                .get(parent_key)
+                .await
+                .map_err(ServiceError::message)?
+        {
+            return self.resolve_agent_id_for_entry(&parent).await;
+        }
+        self.default_agent_id().await
+    }
+
+    async fn ensure_agent_backed_entry(
+        &self,
+        entry: chelix_sessions::metadata::SessionEntry,
+        agent_id: &str,
+        model_reasoning: &chelix_common::ResolvedModelReasoning,
+    ) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
         if entry
             .agent_id
             .as_deref()
@@ -299,22 +344,68 @@ impl LiveSessionService {
             self.resolve_agent_id_for_entry(&entry).await?;
             return Ok(entry);
         }
-
-        let fallback = if let Some(parent_key) = inherit_from_key {
-            if let Some(parent) = self.metadata.get(parent_key).await {
-                self.resolve_agent_id_for_entry(&parent).await?
-            } else {
-                self.default_agent_id().await?
-            }
-        } else {
-            self.default_agent_id().await?
-        };
-
-        let _ = self.metadata.set_agent_id(key, Some(&fallback)).await;
+        let persisted_model_reasoning = entry
+            .model_reasoning()
+            .cloned()
+            .unwrap_or_else(|| model_reasoning.clone());
         self.metadata
+            .assign_agent(&entry.key, agent_id, &persisted_model_reasoning)
+            .await
+            .map_err(ServiceError::message)
+    }
+
+    async fn ensure_session_entry(
+        &self,
+        key: &str,
+        inherit_from_key: Option<&str>,
+    ) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
+        if let Some(entry) = self
+            .metadata
             .get(key)
             .await
-            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))
+            .map_err(ServiceError::message)?
+        {
+            if entry
+                .agent_id
+                .as_deref()
+                .is_some_and(|id| !id.trim().is_empty())
+            {
+                self.resolve_agent_id_for_entry(&entry).await?;
+                return Ok(entry);
+            }
+            let agent_id = self.selected_agent_id(inherit_from_key).await?;
+            let model_reasoning = self.resolved_agent_pair(&agent_id).await?;
+            return self
+                .metadata
+                .assign_agent(key, &agent_id, &model_reasoning)
+                .await
+                .map_err(ServiceError::message);
+        }
+
+        let agent_id = self.selected_agent_id(inherit_from_key).await?;
+        let model_reasoning = self.resolved_agent_pair(&agent_id).await?;
+        let outcome = self
+            .metadata
+            .ensure_llm_session(key, None, &model_reasoning, Some(&agent_id))
+            .await
+            .map_err(ServiceError::message)?;
+        match outcome {
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry) => Ok(entry),
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+                self.ensure_agent_backed_entry(entry, &agent_id, &model_reasoning)
+                    .await
+            },
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(_) => {
+                let promoted = self
+                    .metadata
+                    .promote_external_to_llm(key, &model_reasoning, &agent_id)
+                    .await
+                    .map_err(ServiceError::message)?
+                    .into_entry();
+                self.ensure_agent_backed_entry(promoted, &agent_id, &model_reasoning)
+                    .await
+            },
+        }
     }
 }
 
@@ -369,13 +460,13 @@ impl SessionService for LiveSessionService {
     }
 
     async fn list(&self) -> ServiceResult {
-        let all = self.metadata.list().await;
+        let all = self.metadata.list().await.map_err(ServiceError::message)?;
 
         let mut entries: Vec<Value> = Vec::with_capacity(all.len());
         for mut e in all {
             let agent_id = self.resolve_agent_id_for_entry(&e).await?;
             // Check if this session is the active one for its channel binding.
-            let active_channel = is_current_channel_session(&self.metadata, &e).await;
+            let active_channel = is_current_channel_session(&self.metadata, &e).await?;
 
             // Backfill preview for sessions that have messages but no preview yet.
             if e.preview.is_none()
@@ -384,7 +475,10 @@ impl SessionService for LiveSessionService {
             {
                 let new_preview = extract_preview(&history);
                 if let Some(ref preview) = new_preview {
-                    self.metadata.set_preview(&e.key, Some(preview)).await;
+                    self.metadata
+                        .set_preview(&e.key, Some(preview))
+                        .await
+                        .map_err(ServiceError::message)?;
                     e.preview = new_preview;
                 }
             }
@@ -394,12 +488,18 @@ impl SessionService for LiveSessionService {
                 .as_deref()
                 .map(|p| truncate_preview(p, SESSION_PREVIEW_MAX_CHARS));
 
+            let model = e.model().map(str::to_string);
+            let reasoning_effort = e
+                .reasoning_effort()
+                .map(|effort| effort.as_str().to_string());
+            let external_agent_kind = e.external_agent_kind().map(|kind| kind.as_str());
+            let external_session_id = e.external_session_id().map(str::to_string);
             entries.push(serde_json::json!({
                 "id": e.id,
                 "key": e.key,
                 "label": e.label,
-                "model": e.model,
-                "reasoningEffort": e.reasoning_effort,
+                "model": model,
+                "reasoningEffort": reasoning_effort,
                 "createdAt": e.created_at,
                 "updatedAt": e.updated_at,
                 "messageCount": e.message_count,
@@ -415,9 +515,9 @@ impl SessionService for LiveSessionService {
                 "archived": e.archived,
                 "agent_id": agent_id,
                 "agentId": agent_id,
-                "external_agent_kind": e.external_agent_kind.map(|kind| kind.as_str()),
-                "externalAgentKind": e.external_agent_kind.map(|kind| kind.as_str()),
-                "externalSessionId": e.external_session_id,
+                "external_agent_kind": external_agent_kind,
+                "externalAgentKind": external_agent_kind,
+                "externalSessionId": external_session_id,
                 "version": e.version,
             }));
         }
@@ -454,11 +554,7 @@ impl SessionService for LiveSessionService {
             .and_then(|v| v.as_str())
             .filter(|value| !value.trim().is_empty());
 
-        self.metadata
-            .upsert(key, None)
-            .await
-            .map_err(ServiceError::message)?;
-        let entry = self.ensure_entry_agent_id(key, inherit_from_key).await?;
+        let entry = self.ensure_session_entry(key, inherit_from_key).await?;
         if !include_history {
             if entry.message_count == 0
                 && let Some(ref hooks) = self.hook_registry
@@ -473,13 +569,19 @@ impl SessionService for LiveSessionService {
                 }
             }
 
+            let model = entry.model().map(str::to_string);
+            let reasoning_effort = entry
+                .reasoning_effort()
+                .map(|effort| effort.as_str().to_string());
+            let external_agent_kind = entry.external_agent_kind().map(|kind| kind.as_str());
+            let external_session_id = entry.external_session_id().map(str::to_string);
             return Ok(serde_json::json!({
                 "entry": {
                     "id": entry.id,
                     "key": entry.key,
                     "label": entry.label,
-                    "model": entry.model,
-                    "reasoningEffort": entry.reasoning_effort,
+                    "model": model,
+                    "reasoningEffort": reasoning_effort,
                     "createdAt": entry.created_at,
                     "updatedAt": entry.updated_at,
                     "messageCount": entry.message_count,
@@ -491,9 +593,9 @@ impl SessionService for LiveSessionService {
                     "forkPoint": entry.fork_point,
                     "agent_id": entry.agent_id,
                     "agentId": entry.agent_id,
-                    "external_agent_kind": entry.external_agent_kind.map(|kind| kind.as_str()),
-                    "externalAgentKind": entry.external_agent_kind.map(|kind| kind.as_str()),
-                    "externalSessionId": entry.external_session_id,
+                    "external_agent_kind": external_agent_kind,
+                    "externalAgentKind": external_agent_kind,
+                    "externalSessionId": external_session_id,
                     "version": entry.version,
                 },
                 "history": [],
@@ -509,7 +611,10 @@ impl SessionService for LiveSessionService {
         if !raw_history.is_empty() {
             let new_preview = extract_preview(&raw_history);
             if new_preview.as_deref() != entry.preview.as_deref() {
-                self.metadata.set_preview(key, new_preview.as_deref()).await;
+                self.metadata
+                    .set_preview(key, new_preview.as_deref())
+                    .await
+                    .map_err(ServiceError::message)?;
             }
         }
 
@@ -530,13 +635,17 @@ impl SessionService for LiveSessionService {
         let history = filter_ui_history(raw_history).map_err(ServiceError::message)?;
         let (history, dropped_count) = trim_ui_history(history);
 
+        let model = entry.model().map(str::to_string);
+        let reasoning_effort = entry
+            .reasoning_effort()
+            .map(|effort| effort.as_str().to_string());
         Ok(serde_json::json!({
             "entry": {
                 "id": entry.id,
                 "key": entry.key,
                 "label": entry.label,
-                "model": entry.model,
-                "reasoningEffort": entry.reasoning_effort,
+                "model": model,
+                "reasoningEffort": reasoning_effort,
                 "createdAt": entry.created_at,
                 "updatedAt": entry.updated_at,
                 "messageCount": entry.message_count,
@@ -558,14 +667,20 @@ impl SessionService for LiveSessionService {
 
     async fn patch(&self, params: Value) -> ServiceResult {
         let p: PatchParams = parse_params(params)?;
-        let key = &p.key;
+        let key = p.key.clone();
+        let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
+        let _mutation_permit = mutation_reservation
+            .acquire()
+            .await
+            .map_err(ServiceError::message)?;
 
         let entry = self
             .metadata
-            .get(key)
+            .get(&key)
             .await
+            .map_err(ServiceError::message)?
             .ok_or_else(|| format!("session '{key}' not found"))?;
-        if p.archived == Some(true) && !is_archivable_entry(&self.metadata, &entry).await {
+        if p.archived == Some(true) && !is_archivable_entry(&self.metadata, &entry).await? {
             return Err(ServiceError::message(format!(
                 "session '{key}' cannot be archived"
             )));
@@ -586,7 +701,7 @@ impl SessionService for LiveSessionService {
             }
             let model = match p.model.as_ref() {
                 Some(model) => model.as_deref(),
-                None => entry.model.as_deref(),
+                None => entry.model(),
             }
             .ok_or_else(|| ServiceError::message("model is required"))?
             .to_string();
@@ -603,56 +718,39 @@ impl SessionService for LiveSessionService {
         if let Some(Some(parent_key)) = p.parent_session_key.as_ref()
             && !parent_key.is_empty()
         {
-            self.validate_parent_assignment(key, parent_key).await?;
+            self.validate_parent_assignment(&key, parent_key).await?;
         }
 
-        if p.label.is_some() {
-            let _ = self.metadata.upsert(key, p.label).await;
-        }
-        if let Some(model_reasoning) = resolved_model {
-            self.metadata
-                .set_model_reasoning(
-                    key,
-                    model_reasoning.model_id(),
-                    model_reasoning.reasoning_effort(),
-                )
-                .await
-                .map_err(ServiceError::message)?;
-        }
-        if let Some(archived) = p.archived {
-            self.metadata.set_archived(key, archived).await;
-        }
-        if let Some(project_id_opt) = p.project_id {
-            let project_id = project_id_opt.filter(|s| !s.is_empty());
-            self.metadata.set_project_id(key, project_id).await;
-        }
-        if let Some(worktree_branch_opt) = p.worktree_branch {
-            let worktree_branch = worktree_branch_opt.filter(|s| !s.is_empty());
-            self.metadata
-                .set_worktree_branch(key, worktree_branch)
-                .await;
-        }
-        if let Some(mcp_disabled) = p.mcp_disabled {
-            self.metadata.set_mcp_disabled(key, mcp_disabled).await;
-        }
-        if let Some(parent_opt) = p.parent_session_key {
-            let parent = parent_opt.filter(|s| !s.is_empty());
-            // Changing the parent invalidates any fork point recorded for the
-            // previous relationship.
-            self.metadata.set_parent(key, parent, None).await;
-        }
-
+        let metadata_patch = chelix_sessions::metadata::SessionMetadataPatch {
+            label: p.label,
+            model_reasoning: resolved_model,
+            archived: p.archived,
+            project_id: p
+                .project_id
+                .map(|value| value.filter(|project_id| !project_id.is_empty())),
+            worktree_branch: p
+                .worktree_branch
+                .map(|value| value.filter(|branch| !branch.is_empty())),
+            mcp_disabled: p.mcp_disabled,
+            parent_session_key: p
+                .parent_session_key
+                .map(|value| value.filter(|parent| !parent.is_empty())),
+        };
         let entry = self
             .metadata
-            .get(key)
+            .patch_session(&key, metadata_patch)
             .await
-            .ok_or_else(|| format!("session '{key}' not found after update"))?;
+            .map_err(ServiceError::message)?;
+        let model = entry.model().map(str::to_string);
+        let reasoning_effort = entry
+            .reasoning_effort()
+            .map(|effort| effort.as_str().to_string());
         Ok(serde_json::json!({
             "id": entry.id,
             "key": entry.key,
             "label": entry.label,
-            "model": entry.model,
-            "reasoningEffort": entry.reasoning_effort,
+            "model": model,
+            "reasoningEffort": reasoning_effort,
             "archived": entry.archived,
             "worktree_branch": entry.worktree_branch,
             "mcpDisabled": entry.mcp_disabled,
@@ -671,8 +769,14 @@ impl SessionService for LiveSessionService {
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
 
         self.store.clear(key).await.map_err(ServiceError::message)?;
-        self.metadata.touch(key, 0).await;
-        self.metadata.set_preview(key, None).await;
+        self.metadata
+            .touch(key, 0)
+            .await
+            .map_err(ServiceError::message)?;
+        self.metadata
+            .set_preview(key, None)
+            .await
+            .map_err(ServiceError::message)?;
 
         Ok(serde_json::json!({}))
     }

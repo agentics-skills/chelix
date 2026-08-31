@@ -151,7 +151,7 @@ impl LiveChannelService {
         account_id: &str,
         snap: ChannelHealthSnapshot,
         config: Option<Value>,
-    ) -> Value {
+    ) -> Result<Value, String> {
         let mut entry = serde_json::json!({
             "type": channel_type.as_str(),
             "name": format!("{} ({account_id})", channel_type.display_name()),
@@ -171,11 +171,13 @@ impl LiveChannelService {
         let bound = self
             .session_metadata
             .list_account_sessions(ct, account_id)
-            .await;
+            .await
+            .map_err(|error| error.to_string())?;
         let active_map = self
             .session_metadata
             .list_active_sessions(ct, account_id)
-            .await;
+            .await
+            .map_err(|error| error.to_string())?;
         let sessions: Vec<_> = bound
             .iter()
             .map(|s| {
@@ -191,7 +193,7 @@ impl LiveChannelService {
         if !sessions.is_empty() {
             entry["sessions"] = serde_json::json!(sessions);
         }
-        entry
+        Ok(entry)
     }
 }
 
@@ -230,7 +232,8 @@ impl ChannelService for LiveChannelService {
                     Some(Ok(snap)) => {
                         let entry = self
                             .channel_status_entry(channel_type, aid, snap, config_json)
-                            .await;
+                            .await
+                            .map_err(ServiceError::message)?;
                         channels.push(entry);
                     },
                     Some(Err(e)) => channels.push(serde_json::json!({

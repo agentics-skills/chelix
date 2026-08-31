@@ -4,6 +4,7 @@
 //! `<data_dir>/agents/<agentId>/sessions/<sessionKey>.jsonl`
 //! with file locking for concurrent access.
 
+pub mod backing;
 pub mod error;
 pub mod key;
 pub mod message;

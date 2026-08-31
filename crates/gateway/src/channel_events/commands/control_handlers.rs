@@ -143,6 +143,7 @@ pub(in crate::channel_events) async fn handle_agent(
     let requested_agent = session_metadata
         .get(session_key)
         .await
+        .map_err(ChannelError::unavailable)?
         .and_then(|entry| entry.agent_id)
         .filter(|value| !value.trim().is_empty());
     let current_agent =
@@ -189,24 +190,22 @@ pub(in crate::channel_events) async fn handle_agent(
             )));
         }
         let (chosen_id, chosen) = &agents[n - 1];
-        session_metadata
-            .set_agent_id(session_key, Some(chosen_id))
-            .await
-            .map_err(|e| ChannelError::external("setting session agent", e))?;
-
-        broadcast(
-            state,
-            "session",
-            serde_json::json!({
-                "kind": "patched",
-                "sessionKey": session_key,
-            }),
-            BroadcastOpts {
-                drop_if_slow: true,
-                ..Default::default()
-            },
+        let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+            state.services.model.as_ref(),
+            &chosen.model,
+            &chosen.reasoning_effort,
         )
-        .await;
+        .await
+        .map_err(ChannelError::unavailable)?;
+        session_metadata
+            .assign_llm_agent(session_key, chosen_id, &model_reasoning)
+            .await
+            .map_err(|error| ChannelError::external("setting session agent", error))?;
+        state
+            .services
+            .external_agent
+            .shutdown_session(session_key)
+            .await;
 
         let emoji = chosen.emoji.clone().unwrap_or_default();
         if emoji.is_empty() {
@@ -233,10 +232,11 @@ pub(in crate::channel_events) async fn handle_model(
         .as_array()
         .ok_or_else(|| ChannelError::invalid_input("bad model list"))?;
 
-    let current_model = {
-        let entry = session_metadata.get(session_key).await;
-        entry.and_then(|e| e.model.clone())
-    };
+    let current_model = session_metadata
+        .get(session_key)
+        .await
+        .map_err(ChannelError::unavailable)?
+        .and_then(|entry| entry.model().map(str::to_string));
 
     if args.is_empty() {
         // List unique providers (sorted, deduplicated).

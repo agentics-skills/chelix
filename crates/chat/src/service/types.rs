@@ -582,8 +582,8 @@ impl LiveChatService {
         let session_model = self
             .session_metadata
             .get(session_key)
-            .await
-            .and_then(|e| e.model.clone());
+            .await?
+            .and_then(|entry| entry.model().map(str::to_string));
         let history_model = history
             .iter()
             .rev()
@@ -652,57 +652,57 @@ impl LiveChatService {
         &self,
         session_key: &str,
         conn_id: Option<&str>,
-    ) -> Option<String> {
-        let project_id = if let Some(cid) = conn_id {
-            self.state.active_project_id(cid).await
+    ) -> error::Result<Option<String>> {
+        let project_id = if let Some(connection_id) = conn_id {
+            self.state.active_project_id(connection_id).await
         } else {
             None
         };
-        // Also check session metadata for project binding (async path).
         let project_id = match project_id {
-            Some(pid) => Some(pid),
+            Some(project_id) => Some(project_id),
             None => self
                 .session_metadata
                 .get(session_key)
-                .await
-                .and_then(|e| e.project_id),
+                .await?
+                .and_then(|entry| entry.project_id),
         };
-
-        let pid = project_id?;
-        let val = self
+        let Some(project_id) = project_id else {
+            return Ok(None);
+        };
+        let value = self
             .state
             .project_service()
-            .get(serde_json::json!({"id": pid}))
+            .get(serde_json::json!({"id": project_id}))
             .await
-            .ok()?;
-        let dir = val.get("directory").and_then(|v| v.as_str())?;
-        let files = match chelix_projects::context::load_context_files(Path::new(dir)) {
-            Ok(f) => f,
-            Err(e) => {
-                warn!("failed to load project context: {e}");
-                return None;
-            },
-        };
-        let project: chelix_projects::Project = serde_json::from_value(val.clone()).ok()?;
+            .map_err(|error| error::Error::message(error.to_string()))?;
+        let directory = value
+            .get("directory")
+            .and_then(Value::as_str)
+            .ok_or_else(|| error::Error::message("project response has no directory"))?
+            .to_string();
+        let context_files = chelix_projects::context::load_context_files(Path::new(&directory))
+            .map_err(|error| error::Error::message(error.to_string()))?;
+        let project: chelix_projects::Project = serde_json::from_value(value)
+            .map_err(|error| error::Error::message(error.to_string()))?;
         let worktree_dir = self
             .session_metadata
             .get(session_key)
-            .await
-            .and_then(|e| e.worktree_branch)
+            .await?
+            .and_then(|entry| entry.worktree_branch)
             .and_then(|_| {
-                let wt_path = Path::new(dir).join(".chelix-worktrees").join(session_key);
-                if wt_path.exists() {
-                    Some(wt_path)
-                } else {
-                    None
-                }
+                let path = Path::new(&directory)
+                    .join(".chelix-worktrees")
+                    .join(session_key);
+                path.exists().then_some(path)
             });
-        let ctx = chelix_projects::ProjectContext {
-            project,
-            context_files: files,
-            worktree_dir,
-        };
-        Some(ctx.to_prompt_section())
+        Ok(Some(
+            chelix_projects::ProjectContext {
+                project,
+                context_files,
+                worktree_dir,
+            }
+            .to_prompt_section(),
+        ))
     }
 
     /// Build the session's system prompt and native tool schemas exactly as a
@@ -722,7 +722,7 @@ impl LiveChatService {
         let native_tools = matches!(tool_mode, ToolMode::Native);
         let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
-        let session_entry = self.session_metadata.get(session_key).await;
+        let session_entry = self.session_metadata.get(session_key).await?;
         let persona = self
             .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref())
             .await?;
@@ -745,7 +745,7 @@ impl LiveChatService {
         );
 
         let conn_id = params.get("_conn_id").and_then(|v| v.as_str());
-        let project_context = self.resolve_project_context(session_key, conn_id).await;
+        let project_context = self.resolve_project_context(session_key, conn_id).await?;
 
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
         let mcp_disabled = session_entry

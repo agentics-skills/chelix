@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::super::{
-    default_channel_session_key, resolve_channel_agent_id, resolve_channel_session,
+    prepare_channel_session, report_channel_error, resolve_channel_session,
     start_channel_typing_loop,
 };
 
@@ -38,10 +38,41 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
     // delay channel feedback.
     let typing_done = start_channel_typing_loop(state, &reply_to);
 
-    let session_key = if let Some(ref sm) = state.services.session_metadata {
-        resolve_channel_session(&reply_to, sm).await
-    } else {
-        default_channel_session_key(&reply_to)
+    let Some(session_metadata) = state.services.session_metadata.as_ref() else {
+        if let Some(done_tx) = typing_done {
+            let _ = done_tx.send(());
+        }
+        report_channel_error(state, &reply_to, &"session metadata is not available").await;
+        return;
+    };
+    let session_key = match resolve_channel_session(&reply_to, session_metadata).await {
+        Ok(session_key) => session_key,
+        Err(error) => {
+            if let Some(done_tx) = typing_done {
+                let _ = done_tx.send(());
+            }
+            report_channel_error(state, &reply_to, &error).await;
+            return;
+        },
+    };
+    let prepared = match prepare_channel_session(
+        state,
+        session_metadata,
+        &session_key,
+        &reply_to,
+        meta.agent_id.as_deref(),
+        meta.model.as_deref(),
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            if let Some(done_tx) = typing_done {
+                let _ = done_tx.send(());
+            }
+            report_channel_error(state, &reply_to, &error).await;
+            return;
+        },
     };
 
     // Build multimodal content array (OpenAI format)
@@ -90,91 +121,6 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
     })
     .await;
 
-    // Persist channel binding (ensure session row exists first --
-    // set_channel_binding is an UPDATE so the row must already be present).
-    if let Ok(binding_json) = serde_json::to_string(&reply_to)
-        && let Some(ref session_meta) = state.services.session_metadata
-    {
-        let entry = session_meta.get(&session_key).await;
-        if entry.as_ref().is_none_or(|e| e.channel_binding.is_none()) {
-            let existing = session_meta
-                .list_channel_sessions(
-                    reply_to.channel_type.as_str(),
-                    &reply_to.account_id,
-                    &reply_to.chat_id,
-                )
-                .await;
-            let n = existing.len() + 1;
-            let _ = session_meta
-                .upsert(
-                    &session_key,
-                    Some(format!("{} {n}", reply_to.channel_type.display_name())),
-                )
-                .await;
-        }
-        session_meta
-            .set_channel_binding(&session_key, Some(binding_json))
-            .await;
-        if let Some(entry) = session_meta.get(&session_key).await
-            && entry
-                .agent_id
-                .as_deref()
-                .map(str::trim)
-                .is_none_or(|value| value.is_empty())
-        {
-            let default_agent =
-                match resolve_channel_agent_id(state, &session_key, meta.agent_id.as_deref()).await
-                {
-                    Ok(agent_id) => agent_id,
-                    Err(error) => {
-                        if let Some(done_tx) = typing_done {
-                            let _ = done_tx.send(());
-                        }
-                        error!(%error, "channel agent resolution failed");
-                        if let Some(outbound) = state.services.channel_outbound_arc() {
-                            let error_message = format!("⚠️ {error}");
-                            if let Err(send_error) = outbound
-                                .send_text(
-                                    &reply_to.account_id,
-                                    &reply_to.outbound_to(),
-                                    &error_message,
-                                    reply_to.message_id.as_deref(),
-                                )
-                                .await
-                            {
-                                warn!("failed to send error back to channel: {send_error}");
-                            }
-                        }
-                        return;
-                    },
-                };
-            if let Err(error) = session_meta
-                .set_agent_id(&session_key, Some(&default_agent))
-                .await
-            {
-                if let Some(done_tx) = typing_done {
-                    let _ = done_tx.send(());
-                }
-                error!(%error, "failed to set channel session agent");
-                if let Some(outbound) = state.services.channel_outbound_arc() {
-                    let error_message = format!("⚠️ {error}");
-                    if let Err(send_error) = outbound
-                        .send_text(
-                            &reply_to.account_id,
-                            &reply_to.outbound_to(),
-                            &error_message,
-                            reply_to.message_id.as_deref(),
-                        )
-                        .await
-                    {
-                        warn!("failed to send error back to channel: {send_error}");
-                    }
-                }
-                return;
-            }
-        }
-    }
-
     // Channel platforms do not expose bot read receipts. Use inbound
     // user activity as a heuristic and mark prior session history seen.
     state.services.session.mark_seen(&session_key).await;
@@ -194,24 +140,18 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
 
     // Persist a complete model/reasoning pair on first use. Once the shared
     // channel session is initialized, keep per-sender channel models runtime-only.
-    let session_model = if let Some(ref metadata) = state.services.session_metadata {
-        metadata
-            .get(&session_key)
-            .await
-            .and_then(|entry| entry.model)
-    } else {
-        None
-    };
     let model_reasoning: ChannelResult<Option<(String, String, bool)>> = async {
-        if session_model.is_none() {
-            let model = if let Some(model) = meta.model.as_ref() {
-                model.clone()
-            } else {
-                super::super::channel_agent_model(state, &session_key).await?
-            };
-            let patch =
-                super::super::patch_channel_session_model(state, &session_key, &model).await?;
-            Ok(Some((patch.model, patch.reasoning_effort, true)))
+        if prepared.created {
+            let model_reasoning = prepared.entry.model_reasoning().ok_or_else(|| {
+                chelix_channels::Error::unavailable(
+                    "new channel session has no model/reasoning pair",
+                )
+            })?;
+            Ok(Some((
+                model_reasoning.model_id().to_string(),
+                model_reasoning.reasoning_effort().as_str().to_string(),
+                true,
+            )))
         } else if let Some(model) = meta.model.as_deref() {
             let resolved =
                 super::super::resolve_channel_runtime_model(state, &session_key, model).await?;
@@ -232,21 +172,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
             if let Some(done_tx) = typing_done {
                 let _ = done_tx.send(());
             }
-            error!(%error, "channel attachment model resolution failed");
-            if let Some(outbound) = state.services.channel_outbound_arc() {
-                let error_message = format!("⚠️ {error}");
-                if let Err(send_error) = outbound
-                    .send_text(
-                        &reply_to.account_id,
-                        &reply_to.outbound_to(),
-                        &error_message,
-                        reply_to.message_id.as_deref(),
-                    )
-                    .await
-                {
-                    warn!("failed to send error back to channel: {send_error}");
-                }
-            }
+            report_channel_error(state, &reply_to, &error).await;
             return;
         },
     };

@@ -1041,8 +1041,8 @@ impl MemoryForgetTool {
         let session_model = if let Some(session_key) = session_key {
             self.session_metadata
                 .get(session_key)
-                .await
-                .and_then(|entry| entry.model)
+                .await?
+                .and_then(|entry| entry.model().map(str::to_string))
         } else {
             None
         };

@@ -1075,6 +1075,7 @@ pub trait ExternalAgentService: Send + Sync {
     async fn bind(&self, params: Value) -> ServiceResult;
     async fn unbind(&self, params: Value) -> ServiceResult;
     async fn status(&self, params: Value) -> ServiceResult;
+    async fn shutdown_session(&self, session_key: &str);
 }
 
 pub struct NoopExternalAgentService;
@@ -1096,6 +1097,8 @@ impl ExternalAgentService for NoopExternalAgentService {
     async fn status(&self, _params: Value) -> ServiceResult {
         Ok(serde_json::json!({ "bound": false }))
     }
+
+    async fn shutdown_session(&self, _session_key: &str) {}
 }
 
 #[async_trait]

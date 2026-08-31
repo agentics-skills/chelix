@@ -44,7 +44,7 @@ fn default_channel_session_key(target: &ChannelReplyTarget) -> String {
 async fn resolve_channel_session(
     target: &ChannelReplyTarget,
     metadata: &SqliteSessionMetadata,
-) -> String {
+) -> ChannelResult<String> {
     if let Some(key) = metadata
         .get_active_session(
             target.channel_type.as_str(),
@@ -53,10 +53,11 @@ async fn resolve_channel_session(
             target.thread_id.as_deref(),
         )
         .await
+        .map_err(ChannelError::unavailable)?
     {
-        return key;
+        return Ok(key);
     }
-    default_channel_session_key(target)
+    Ok(default_channel_session_key(target))
 }
 
 fn parse_numbered_selection(arg: &str, command_name: &str) -> ChannelResult<usize> {
@@ -188,6 +189,157 @@ fn config_string(value: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+struct PreparedChannelSession {
+    entry: SessionEntry,
+    created: bool,
+}
+
+async fn resolve_channel_model_reasoning_for_effort(
+    state: &GatewayState,
+    model_id: &str,
+    configured_effort: &ReasoningEffort,
+) -> ChannelResult<ResolvedModelReasoning> {
+    let models_value = state
+        .services
+        .model
+        .list()
+        .await
+        .map_err(ChannelError::unavailable)?;
+    let models = models_value
+        .as_array()
+        .ok_or_else(|| ChannelError::unavailable("models.list returned a non-array response"))?;
+    let model = models
+        .iter()
+        .find(|model| model.get("id").and_then(serde_json::Value::as_str) == Some(model_id))
+        .ok_or_else(|| ChannelError::invalid_input(format!("unknown model `{model_id}`")))?;
+    let effort = select_channel_reasoning_effort(model, Some(configured_effort.as_str()))?;
+    let effort = ReasoningEffort::from(effort);
+    state
+        .services
+        .model
+        .resolve_model_reasoning(model_id, Some(&effort))
+        .await
+        .map_err(ChannelError::unavailable)
+}
+
+async fn prepare_channel_session(
+    state: &Arc<GatewayState>,
+    metadata: &SqliteSessionMetadata,
+    session_key: &str,
+    reply_to: &ChannelReplyTarget,
+    requested_agent_id: Option<&str>,
+    initial_model_override: Option<&str>,
+) -> ChannelResult<PreparedChannelSession> {
+    let existing = metadata
+        .get(session_key)
+        .await
+        .map_err(ChannelError::unavailable)?;
+    let binding_json = serde_json::to_string(reply_to)
+        .map_err(|error| ChannelError::external("serialize channel binding", error))?;
+
+    let (mut entry, created) = if let Some(entry) = existing {
+        if entry
+            .agent_id
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|agent_id| !agent_id.is_empty())
+        {
+            (entry, false)
+        } else {
+            let agent_id = resolve_channel_agent_id(state, session_key, requested_agent_id).await?;
+            let (model, reasoning_effort) =
+                crate::session_reasoning::agent_defaults_for_agent(state, Some(&agent_id))
+                    .await
+                    .map_err(ChannelError::unavailable)?;
+            let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+                state.services.model.as_ref(),
+                &model,
+                &reasoning_effort,
+            )
+            .await
+            .map_err(ChannelError::unavailable)?;
+            (
+                metadata
+                    .assign_agent(session_key, &agent_id, &model_reasoning)
+                    .await
+                    .map_err(ChannelError::unavailable)?,
+                false,
+            )
+        }
+    } else {
+        let agent_id = resolve_channel_agent_id(state, session_key, requested_agent_id).await?;
+        let (agent_model, agent_reasoning_effort) =
+            crate::session_reasoning::agent_defaults_for_agent(state, Some(&agent_id))
+                .await
+                .map_err(ChannelError::unavailable)?;
+        let model = initial_model_override.unwrap_or(&agent_model);
+        let model_reasoning =
+            resolve_channel_model_reasoning_for_effort(state, model, &agent_reasoning_effort)
+                .await?;
+        let existing_sessions = metadata
+            .list_channel_sessions(
+                reply_to.channel_type.as_str(),
+                &reply_to.account_id,
+                &reply_to.chat_id,
+            )
+            .await
+            .map_err(ChannelError::unavailable)?;
+        let label = format!(
+            "{} {}",
+            reply_to.channel_type.display_name(),
+            existing_sessions.len() + 1
+        );
+        let outcome = metadata
+            .ensure_llm_session(session_key, Some(&label), &model_reasoning, Some(&agent_id))
+            .await
+            .map_err(ChannelError::unavailable)?;
+        let created = outcome.created();
+        let entry = match outcome {
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry)
+            | chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(entry) => entry,
+            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+                if entry
+                    .agent_id
+                    .as_deref()
+                    .is_some_and(|id| !id.trim().is_empty())
+                {
+                    entry
+                } else {
+                    let persisted_model_reasoning =
+                        entry.model_reasoning().cloned().ok_or_else(|| {
+                            ChannelError::unavailable(format!(
+                                "session '{session_key}' has no model/reasoning pair"
+                            ))
+                        })?;
+                    metadata
+                        .assign_agent(session_key, &agent_id, &persisted_model_reasoning)
+                        .await
+                        .map_err(ChannelError::unavailable)?
+                }
+            },
+        };
+        (entry, created)
+    };
+
+    if entry.channel_binding.as_deref() != Some(binding_json.as_str()) {
+        metadata
+            .set_channel_binding(session_key, Some(&binding_json))
+            .await
+            .map_err(ChannelError::unavailable)?;
+        entry = metadata
+            .get(session_key)
+            .await
+            .map_err(ChannelError::unavailable)?
+            .ok_or_else(|| {
+                ChannelError::unavailable(format!(
+                    "session '{session_key}' disappeared during channel preparation"
+                ))
+            })?;
+    }
+
+    Ok(PreparedChannelSession { entry, created })
+}
+
 fn select_channel_reasoning_effort(
     model: &serde_json::Value,
     configured_effort: Option<&str>,
@@ -219,23 +371,6 @@ fn select_channel_reasoning_effort(
         })
 }
 
-async fn channel_agent_model(state: &GatewayState, session_key: &str) -> ChannelResult<String> {
-    let metadata = state
-        .services
-        .session_metadata
-        .as_ref()
-        .ok_or_else(|| ChannelError::unavailable("session metadata is not available"))?;
-    let entry = metadata
-        .get(session_key)
-        .await
-        .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
-    let (model, _) =
-        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref())
-            .await
-            .map_err(ChannelError::unavailable)?;
-    Ok(model)
-}
-
 async fn channel_reasoning_effort_candidate(
     state: &GatewayState,
     session_key: &str,
@@ -249,14 +384,15 @@ async fn channel_reasoning_effort_candidate(
     let entry = metadata
         .get(session_key)
         .await
+        .map_err(ChannelError::unavailable)?
         .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
     let (_, agent_reasoning_effort) =
         crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref())
             .await
             .map_err(ChannelError::unavailable)?;
     let configured_effort = entry
-        .reasoning_effort
-        .filter(|effort| !effort.trim().is_empty())
+        .reasoning_effort()
+        .map(|effort| effort.as_str().to_string())
         .or_else(|| Some(agent_reasoning_effort.as_str().to_string()));
 
     let models_value = state
@@ -422,6 +558,28 @@ fn resolve_channel_session_defaults_from_config(
                     .and_then(|override_value| config_string(override_value.get("agent_id")))
             })
             .or_else(|| config_string(config.get("agent_id"))),
+    }
+}
+
+async fn report_channel_error(
+    state: &Arc<GatewayState>,
+    reply_to: &ChannelReplyTarget,
+    error: &impl std::fmt::Display,
+) {
+    error!(%error, "channel request failed");
+    if let Some(outbound) = state.services.channel_outbound_arc() {
+        let message = format!("⚠️ {error}");
+        if let Err(send_error) = outbound
+            .send_text(
+                &reply_to.account_id,
+                &reply_to.outbound_to(),
+                &message,
+                reply_to.message_id.as_deref(),
+            )
+            .await
+        {
+            warn!(%send_error, "failed to send error back to channel");
+        }
     }
 }
 

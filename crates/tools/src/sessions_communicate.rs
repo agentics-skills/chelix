@@ -199,7 +199,7 @@ impl AgentTool for SessionsListTool {
         let mut sessions: Vec<Value> = self
             .metadata
             .list()
-            .await
+            .await?
             .into_iter()
             .filter(|entry| {
                 // Apply session access policy.
@@ -224,7 +224,8 @@ impl AgentTool for SessionsListTool {
                     "id": entry.id,
                     "key": entry.key,
                     "label": entry.label,
-                    "model": entry.model,
+                    "model": entry.model(),
+                    "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
                     "messageCount": entry.message_count,
                     "createdAt": entry.created_at,
                     "updatedAt": entry.updated_at,
@@ -298,7 +299,7 @@ impl AgentTool for SessionsSearchTool {
         let entries: HashMap<String, chelix_sessions::metadata::SessionEntry> = self
             .metadata
             .list()
-            .await
+            .await?
             .into_iter()
             .map(|entry| (entry.key.clone(), entry))
             .collect();
@@ -323,7 +324,7 @@ impl AgentTool for SessionsSearchTool {
             results.push(serde_json::json!({
                 "key": hit.session_key,
                 "label": entry.and_then(|value| value.label.clone()),
-                "model": entry.and_then(|value| value.model.clone()),
+                "model": entry.and_then(|value| value.model().map(str::to_string)),
                 "projectId": entry.and_then(|value| value.project_id.clone()),
                 "agentId": entry.and_then(|value| value.agent_id.clone()),
                 "createdAt": entry.map(|value| value.created_at),
@@ -390,7 +391,7 @@ impl AgentTool for SessionsHistoryTool {
         let entry = self
             .metadata
             .get(key)
-            .await
+            .await?
             .ok_or_else(|| Error::message(format!("session not found: {key}")))?;
         let all_messages = self
             .store
@@ -479,7 +480,7 @@ impl AgentTool for SessionsSendTool {
         let entry = self
             .metadata
             .get(&key)
-            .await
+            .await?
             .ok_or_else(|| Error::message(format!("session not found: {key}")))?;
 
         let message = if let Some(ctx) = context {
@@ -527,16 +528,27 @@ mod tests {
         Ok(pool)
     }
 
+    async fn create_test_session(
+        metadata: &SqliteSessionMetadata,
+        key: &str,
+        label: &str,
+    ) -> TestResult<()> {
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )?;
+        metadata
+            .create_llm_session(key, Some(label), &model_reasoning, Some("main"))
+            .await?;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn sessions_list_filters_and_limits() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata.upsert("main", Some("Main".to_string())).await?;
-        metadata
-            .upsert("session:alpha", Some("Alpha".to_string()))
-            .await?;
-        metadata
-            .upsert("session:beta", Some("Beta".to_string()))
-            .await?;
+        create_test_session(&metadata, "main", "Main").await?;
+        create_test_session(&metadata, "session:alpha", "Alpha").await?;
+        create_test_session(&metadata, "session:beta", "Beta").await?;
 
         let tool = SessionsListTool::new(metadata);
         let result = tool
@@ -559,9 +571,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_history_reads_paginated_messages() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:history", Some("History".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:history", "History").await?;
 
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()));
@@ -635,12 +645,8 @@ mod tests {
     #[tokio::test]
     async fn sessions_search_finds_matches_and_excludes_current_by_default() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:current", Some("Current".to_string()))
-            .await?;
-        metadata
-            .upsert("session:other", Some("Other".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:current", "Current").await?;
+        create_test_session(&metadata, "session:other", "Other").await?;
 
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()));
@@ -683,9 +689,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_search_can_include_current_session() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:current", Some("Current".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:current", "Current").await?;
 
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()));
@@ -716,9 +720,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_send_calls_callback_and_wraps_context() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:target", Some("Target".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:target", "Target").await?;
 
         let called = Arc::new(AtomicBool::new(false));
         let called_ref = Arc::clone(&called);
@@ -757,9 +759,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_send_passes_model_override_to_callback() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:target", Some("Target".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:target", "Target").await?;
 
         let send_fn: SendToSessionFn = Arc::new(move |req| {
             Box::pin(async move {
@@ -788,9 +788,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_send_ignores_null_parameters() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:target", Some("Target".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:target", "Target").await?;
 
         let send_fn: SendToSessionFn = Arc::new(move |req| {
             Box::pin(async move {
@@ -843,15 +841,9 @@ mod tests {
     #[tokio::test]
     async fn test_list_filtered_by_key_prefix() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("agent:scout:1", Some("Scout 1".into()))
-            .await?;
-        metadata
-            .upsert("agent:scout:2", Some("Scout 2".into()))
-            .await?;
-        metadata
-            .upsert("agent:coder:1", Some("Coder 1".into()))
-            .await?;
+        create_test_session(&metadata, "agent:scout:1", "Scout 1").await?;
+        create_test_session(&metadata, "agent:scout:2", "Scout 2").await?;
+        create_test_session(&metadata, "agent:coder:1", "Coder 1").await?;
 
         let policy = SessionAccessPolicy {
             key_prefix: Some("agent:scout:".into()),
@@ -867,12 +859,8 @@ mod tests {
     #[tokio::test]
     async fn test_search_filtered_by_key_prefix() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("agent:scout:1", Some("Scout 1".into()))
-            .await?;
-        metadata
-            .upsert("agent:coder:1", Some("Coder 1".into()))
-            .await?;
+        create_test_session(&metadata, "agent:scout:1", "Scout 1").await?;
+        create_test_session(&metadata, "agent:coder:1", "Coder 1").await?;
 
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()));
@@ -904,9 +892,7 @@ mod tests {
     #[tokio::test]
     async fn test_send_denied_when_can_send_false() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:target", Some("Target".into()))
-            .await?;
+        create_test_session(&metadata, "session:target", "Target").await?;
 
         let send_fn: SendToSessionFn =
             Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({"ok": true})) }));
@@ -931,12 +917,8 @@ mod tests {
     #[tokio::test]
     async fn test_no_policy_allows_all() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("agent:scout:1", Some("Scout 1".into()))
-            .await?;
-        metadata
-            .upsert("agent:coder:1", Some("Coder 1".into()))
-            .await?;
+        create_test_session(&metadata, "agent:scout:1", "Scout 1").await?;
+        create_test_session(&metadata, "agent:coder:1", "Coder 1").await?;
 
         // No policy = all sessions visible.
         let tool = SessionsListTool::new(metadata);

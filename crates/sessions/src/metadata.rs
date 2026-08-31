@@ -1,66 +1,12 @@
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{cmp::Ordering, collections::HashSet};
 
 use {
-    chelix_common::ReasoningEffort,
+    chelix_common::{ReasoningEffort, ResolvedModelReasoning},
     serde::{Deserialize, Serialize},
 };
 
-use crate::Result;
-
-/// External agent transport kind for session binding.
-///
-/// Defined in `chelix-sessions` so runtime crates can share the persisted type
-/// without introducing a dependency from session storage to agent runtimes.
-/// Serialises to kebab-case strings matching the canonical agent identifiers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ExternalAgentKind {
-    ClaudeCode,
-    Opencode,
-    Codex,
-    PiAgent,
-    Acp,
-}
-
-impl ExternalAgentKind {
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "claude-code",
-            Self::Opencode => "opencode",
-            Self::Codex => "codex",
-            Self::PiAgent => "pi-agent",
-            Self::Acp => "acp",
-        }
-    }
-}
-
-impl std::fmt::Display for ExternalAgentKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl std::str::FromStr for ExternalAgentKind {
-    type Err = String;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "claude-code" => Ok(Self::ClaudeCode),
-            "opencode" => Ok(Self::Opencode),
-            "codex" => Ok(Self::Codex),
-            "pi-agent" => Ok(Self::PiAgent),
-            "acp" => Ok(Self::Acp),
-            other => Err(format!("unknown external agent kind: {other}")),
-        }
-    }
-}
+pub use crate::backing::{ExternalAgentKind, ExternalSessionIdentity, SessionBacking};
+use crate::{Error, Result};
 
 /// System-prompt persona selected for a session.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
@@ -72,62 +18,134 @@ pub enum PromptProfile {
     Subagent,
 }
 
-/// A single session entry in the metadata index.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A single valid session entry in the metadata index.
+#[derive(Debug, Clone)]
 pub struct SessionEntry {
     pub id: String,
     pub key: String,
     pub label: Option<String>,
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
+    pub backing: SessionBacking,
     pub created_at: u64,
     pub updated_at: u64,
     pub message_count: u32,
-    #[serde(default)]
     pub last_seen_message_count: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
-    #[serde(default)]
     pub archived: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_branch: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_binding: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_session_key: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_owner_key: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork_point: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_disabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
-    #[serde(default)]
     pub prompt_profile: PromptProfile,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub external_agent_kind: Option<ExternalAgentKind>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub external_session_id: Option<String>,
-    #[serde(default)]
     pub version: u64,
 }
 
-/// JSON file-backed index mapping session key → SessionEntry.
-pub struct SessionMetadata {
-    path: PathBuf,
-    entries: HashMap<String, SessionEntry>,
+impl SessionEntry {
+    #[must_use]
+    pub fn model_reasoning(&self) -> Option<&ResolvedModelReasoning> {
+        self.backing.model_reasoning()
+    }
+
+    #[must_use]
+    pub fn model(&self) -> Option<&str> {
+        self.backing.model_id()
+    }
+
+    #[must_use]
+    pub fn reasoning_effort(&self) -> Option<&ReasoningEffort> {
+        self.backing.reasoning_effort()
+    }
+
+    #[must_use]
+    pub fn external_agent_kind(&self) -> Option<ExternalAgentKind> {
+        self.backing.external_agent_kind()
+    }
+
+    #[must_use]
+    pub fn external_session_id(&self) -> Option<&str> {
+        self.backing.external_session_id()
+    }
 }
 
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+/// Result of atomically creating an LLM session when it is absent.
+#[derive(Debug, Clone)]
+pub enum EnsureLlmSessionOutcome {
+    Created(SessionEntry),
+    ExistingLlm(SessionEntry),
+    ExistingExternal(SessionEntry),
+}
+
+impl EnsureLlmSessionOutcome {
+    #[must_use]
+    pub const fn created(&self) -> bool {
+        matches!(self, Self::Created(_))
+    }
+
+    #[must_use]
+    pub const fn entry(&self) -> &SessionEntry {
+        match self {
+            Self::Created(entry) | Self::ExistingLlm(entry) | Self::ExistingExternal(entry) => {
+                entry
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn into_entry(self) -> SessionEntry {
+        match self {
+            Self::Created(entry) | Self::ExistingLlm(entry) | Self::ExistingExternal(entry) => {
+                entry
+            },
+        }
+    }
+}
+
+/// Result of atomically promoting an external-only session to LLM + external.
+#[derive(Debug, Clone)]
+pub enum PromoteExternalToLlmOutcome {
+    Promoted(SessionEntry),
+    ExistingLlm(SessionEntry),
+}
+
+impl PromoteExternalToLlmOutcome {
+    #[must_use]
+    pub fn into_entry(self) -> SessionEntry {
+        match self {
+            Self::Promoted(entry) | Self::ExistingLlm(entry) => entry,
+        }
+    }
+}
+
+/// Complete metadata changes applied by one atomic session patch.
+#[derive(Debug, Clone, Default)]
+pub struct SessionMetadataPatch {
+    pub label: Option<String>,
+    pub model_reasoning: Option<ResolvedModelReasoning>,
+    pub archived: Option<bool>,
+    pub project_id: Option<Option<String>>,
+    pub worktree_branch: Option<Option<String>>,
+    pub mcp_disabled: Option<Option<bool>>,
+    pub parent_session_key: Option<Option<String>>,
+}
+
+impl SessionMetadataPatch {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.label.is_none()
+            && self.model_reasoning.is_none()
+            && self.archived.is_none()
+            && self.project_id.is_none()
+            && self.worktree_branch.is_none()
+            && self.mcp_disabled.is_none()
+            && self.parent_session_key.is_none()
+    }
+}
+
+fn now_ms() -> i64 {
+    (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
 }
 
 fn compare_sidebar_order(lhs: &SessionEntry, rhs: &SessionEntry) -> Ordering {
@@ -141,221 +159,31 @@ fn compare_sidebar_order(lhs: &SessionEntry, rhs: &SessionEntry) -> Ordering {
         .then_with(|| lhs.key.cmp(&rhs.key))
 }
 
-impl SessionMetadata {
-    /// Load metadata from disk, or create an empty index.
-    pub fn load(path: PathBuf) -> Result<Self> {
-        let entries = if path.exists() {
-            let data = fs::read_to_string(&path)?;
-            serde_json::from_str(&data).unwrap_or_default()
-        } else {
-            HashMap::new()
-        };
-        Ok(Self { path, entries })
-    }
-
-    /// Persist metadata to disk.
-    pub fn save(&self) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let data = serde_json::to_string_pretty(&self.entries)?;
-        fs::write(&self.path, data)?;
-        Ok(())
-    }
-
-    /// Get an entry by key.
-    pub fn get(&self, key: &str) -> Option<&SessionEntry> {
-        self.entries.get(key)
-    }
-
-    /// Insert or update an entry. If key doesn't exist, creates a new entry.
-    pub fn upsert(&mut self, key: &str, label: Option<String>) -> &SessionEntry {
-        let now = now_ms();
-        self.entries
-            .entry(key.to_string())
-            .and_modify(|e| {
-                if let Some(ref l) = label
-                    && e.label.as_deref() != Some(l)
-                {
-                    e.label = label.clone();
-                    e.updated_at = now;
-                    e.version += 1;
-                }
-            })
-            .or_insert_with(|| SessionEntry {
-                id: uuid::Uuid::new_v4().to_string(),
-                key: key.to_string(),
-                label,
-                model: None,
-                reasoning_effort: None,
-                created_at: now,
-                updated_at: now,
-                message_count: 0,
-                last_seen_message_count: 0,
-                project_id: None,
-                archived: false,
-                worktree_branch: None,
-                channel_binding: None,
-                parent_session_key: None,
-                sandbox_owner_key: None,
-                fork_point: None,
-                mcp_disabled: None,
-                preview: None,
-                agent_id: None,
-                prompt_profile: PromptProfile::default(),
-                external_agent_kind: None,
-                external_session_id: None,
-                version: 0,
-            })
-    }
-
-    /// Update the model associated with a session.
-    pub fn set_model(&mut self, key: &str, model: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.model = model;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Update the reasoning effort associated with a session.
-    pub fn set_reasoning_effort(&mut self, key: &str, reasoning_effort: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.reasoning_effort = reasoning_effort;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Select the system-prompt profile for a session.
-    pub fn set_prompt_profile(&mut self, key: &str, prompt_profile: PromptProfile) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.prompt_profile = prompt_profile;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Assign the resolved sandbox owner key for a session.
-    pub fn set_sandbox_owner_key(&mut self, key: &str, owner_key: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.sandbox_owner_key = owner_key;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Update message count and updated_at timestamp.
-    pub fn touch(&mut self, key: &str, message_count: u32) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.message_count = message_count;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Set the project_id for a session.
-    pub fn set_project_id(&mut self, key: &str, project_id: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.project_id = project_id;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Set the archived flag for a session.
-    pub fn set_archived(&mut self, key: &str, archived: bool) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.archived = archived;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Set the worktree branch for a session.
-    pub fn set_worktree_branch(&mut self, key: &str, branch: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.worktree_branch = branch;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Set the mcp_disabled override for a session.
-    pub fn set_mcp_disabled(&mut self, key: &str, disabled: Option<bool>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.mcp_disabled = disabled;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Set the channel binding for a session.
-    pub fn set_channel_binding(&mut self, key: &str, binding: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.channel_binding = binding;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// Assign (or unassign) a session to an agent persona.
-    pub fn set_agent_id(&mut self, key: &str, agent_id: Option<String>) {
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.agent_id = agent_id;
-            entry.updated_at = now_ms();
-            entry.version += 1;
-        }
-    }
-
-    /// List all sessions belonging to a given agent.
-    pub fn list_by_agent_id(&self, agent_id: &str) -> Vec<SessionEntry> {
-        let mut entries: Vec<_> = self
-            .entries
-            .values()
-            .filter(|e| e.agent_id.as_deref() == Some(agent_id))
-            .cloned()
-            .collect();
-        entries.sort_by_key(|a| a.created_at);
-        entries
-    }
-
-    /// Delete all sessions belonging to a given agent. Returns the number of
-    /// sessions removed.
-    pub fn delete_by_agent_id(&mut self, agent_id: &str) -> u64 {
-        let keys: Vec<String> = self
-            .entries
-            .iter()
-            .filter(|(_, e)| e.agent_id.as_deref() == Some(agent_id))
-            .map(|(k, _)| k.clone())
-            .collect();
-        let count = keys.len() as u64;
-        for key in keys {
-            self.entries.remove(&key);
-        }
-        count
-    }
-
-    /// Remove an entry by key. Returns the removed entry if found.
-    pub fn remove(&mut self, key: &str) -> Option<SessionEntry> {
-        self.entries.remove(key)
-    }
-
-    /// List all entries for sidebar rendering.
-    /// `main` is pinned first, then sessions are sorted by recency.
-    pub fn list(&self) -> Vec<SessionEntry> {
-        let mut entries: Vec<_> = self.entries.values().cloned().collect();
-        entries.sort_by(compare_sidebar_order);
-        entries
-    }
-}
-
-// ── SQLite-backed session metadata ──────────────────────────────────
-
 /// SQLite-backed session metadata store.
 pub struct SqliteSessionMetadata {
     pool: sqlx::SqlitePool,
     event_bus: Option<crate::session_events::SessionEventBus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PersistedChannelBinding {
+    channel_type: String,
+    account_id: String,
+    chat_id: String,
+    #[serde(default)]
+    thread_id: Option<String>,
+}
+
+impl PersistedChannelBinding {
+    fn default_session_key(&self) -> String {
+        match self.thread_id.as_deref() {
+            Some(thread_id) => format!(
+                "{}:{}:{}:{}",
+                self.channel_type, self.account_id, self.chat_id, thread_id
+            ),
+            None => format!("{}:{}:{}", self.channel_type, self.account_id, self.chat_id),
+        }
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -385,40 +213,53 @@ struct SessionRow {
     version: i64,
 }
 
-impl From<SessionRow> for SessionEntry {
-    fn from(r: SessionRow) -> Self {
-        Self {
-            key: r.key,
-            id: r.id,
-            label: r.label,
-            model: r.model,
-            reasoning_effort: r.reasoning_effort,
-            created_at: r.created_at as u64,
-            updated_at: r.updated_at as u64,
-            message_count: r.message_count as u32,
-            last_seen_message_count: r.last_seen_message_count as u32,
-            project_id: r.project_id,
-            archived: r.archived != 0,
-            worktree_branch: r.worktree_branch,
-            channel_binding: r.channel_binding,
-            parent_session_key: r.parent_session_key,
-            sandbox_owner_key: r.sandbox_owner_key,
-            fork_point: r.fork_point.map(|v| v as u32),
-            mcp_disabled: r.mcp_disabled.map(|v| v != 0),
-            preview: r.preview,
-            agent_id: r.agent_id,
-            prompt_profile: r.prompt_profile,
-            external_agent_kind: r
-                .external_agent_kind
-                .as_deref()
-                .and_then(|kind| kind.parse().ok()),
-            external_session_id: r.external_session_id,
-            version: r.version as u64,
-        }
+impl TryFrom<SessionRow> for SessionEntry {
+    type Error = Error;
+
+    fn try_from(row: SessionRow) -> Result<Self> {
+        Ok(Self {
+            key: row.key,
+            id: row.id,
+            label: row.label,
+            backing: SessionBacking::try_from_persisted(
+                row.model,
+                row.reasoning_effort,
+                row.external_agent_kind,
+                row.external_session_id,
+            )?,
+            created_at: row.created_at as u64,
+            updated_at: row.updated_at as u64,
+            message_count: row.message_count as u32,
+            last_seen_message_count: row.last_seen_message_count as u32,
+            project_id: row.project_id,
+            archived: row.archived != 0,
+            worktree_branch: row.worktree_branch,
+            channel_binding: row.channel_binding,
+            parent_session_key: row.parent_session_key,
+            sandbox_owner_key: row.sandbox_owner_key,
+            fork_point: row.fork_point.map(|value| value as u32),
+            mcp_disabled: row.mcp_disabled.map(|value| value != 0),
+            preview: row.preview,
+            agent_id: row.agent_id,
+            prompt_profile: row.prompt_profile,
+            version: row.version as u64,
+        })
     }
 }
 
+fn decode_rows(rows: Vec<SessionRow>) -> Result<Vec<SessionEntry>> {
+    rows.into_iter().map(TryInto::try_into).collect()
+}
+
+fn require_existing_row(key: &str, rows_affected: u64) -> Result<()> {
+    if rows_affected == 1 {
+        return Ok(());
+    }
+    Err(Error::message(format!("session '{key}' not found")))
+}
+
 impl SqliteSessionMetadata {
+    #[must_use]
     pub fn new(pool: sqlx::SqlitePool) -> Self {
         Self {
             pool,
@@ -426,60 +267,70 @@ impl SqliteSessionMetadata {
         }
     }
 
-    /// Create with an event bus that auto-publishes on mutations.
+    #[must_use]
     pub fn with_event_bus(
         pool: sqlx::SqlitePool,
-        bus: crate::session_events::SessionEventBus,
+        event_bus: crate::session_events::SessionEventBus,
     ) -> Self {
         Self {
             pool,
-            event_bus: Some(bus),
+            event_bus: Some(event_bus),
         }
     }
 
-    /// Accessor for the event bus (subscribers call `.subscribe()` on it).
-    pub fn event_bus(&self) -> Option<&crate::session_events::SessionEventBus> {
+    #[must_use]
+    pub const fn event_bus(&self) -> Option<&crate::session_events::SessionEventBus> {
         self.event_bus.as_ref()
     }
 
-    /// Publish an event if a bus is configured.
     fn emit(&self, event: crate::session_events::SessionEvent) {
-        if let Some(bus) = &self.event_bus {
-            bus.publish(event);
+        if let Some(event_bus) = &self.event_bus {
+            event_bus.publish(event);
         }
     }
 
-    /// Initialize the sessions table schema.
-    ///
-    /// **Deprecated**: Schema is now managed by sqlx migrations in the gateway crate.
-    /// This method is retained for tests that use in-memory databases.
     #[doc(hidden)]
     pub async fn init(pool: &sqlx::SqlitePool) -> Result<()> {
         sqlx::query(
             r#"CREATE TABLE IF NOT EXISTS sessions (
-                key             TEXT    PRIMARY KEY,
-                id              TEXT    NOT NULL,
-                label           TEXT,
-                model           TEXT,
-                reasoning_effort TEXT,
-                created_at      INTEGER NOT NULL,
-                updated_at      INTEGER NOT NULL,
-                message_count   INTEGER NOT NULL DEFAULT 0,
+                key                     TEXT PRIMARY KEY,
+                id                      TEXT NOT NULL,
+                label                   TEXT,
+                model                   TEXT,
+                reasoning_effort        TEXT,
+                created_at              INTEGER NOT NULL,
+                updated_at              INTEGER NOT NULL,
+                message_count           INTEGER NOT NULL DEFAULT 0,
                 last_seen_message_count INTEGER NOT NULL DEFAULT 0,
-                project_id      TEXT    REFERENCES projects(id) ON DELETE SET NULL,
-                archived        INTEGER NOT NULL DEFAULT 0,
-                worktree_branch TEXT,
-                channel_binding     TEXT,
-                parent_session_key  TEXT,
-                sandbox_owner_key   TEXT,
-                fork_point          INTEGER,
-                mcp_disabled        INTEGER,
-                preview             TEXT,
-                agent_id            TEXT,
-                prompt_profile      TEXT NOT NULL DEFAULT 'chat',
-                external_agent_kind TEXT,
-                external_session_id TEXT,
-                version             INTEGER NOT NULL DEFAULT 0
+                project_id              TEXT REFERENCES projects(id) ON DELETE SET NULL,
+                archived                INTEGER NOT NULL DEFAULT 0,
+                worktree_branch         TEXT,
+                channel_binding         TEXT,
+                parent_session_key      TEXT,
+                sandbox_owner_key       TEXT,
+                fork_point              INTEGER,
+                mcp_disabled            INTEGER,
+                preview                 TEXT,
+                agent_id                TEXT,
+                prompt_profile          TEXT NOT NULL DEFAULT 'chat',
+                external_agent_kind     TEXT,
+                external_session_id     TEXT,
+                version                 INTEGER NOT NULL DEFAULT 0,
+                CHECK (
+                    (model IS NULL AND reasoning_effort IS NULL)
+                    OR (
+                        model IS NOT NULL
+                        AND model <> ''
+                        AND reasoning_effort IS NOT NULL
+                        AND reasoning_effort <> ''
+                    )
+                ),
+                CHECK (model IS NOT NULL OR external_agent_kind IS NOT NULL),
+                CHECK (
+                    external_agent_kind IS NULL
+                    OR external_agent_kind IN ('claude-code', 'opencode', 'codex', 'pi-agent', 'acp')
+                ),
+                CHECK (external_session_id IS NULL OR external_agent_kind IS NOT NULL)
             )"#,
         )
         .execute(pool)
@@ -487,16 +338,19 @@ impl SqliteSessionMetadata {
 
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at)")
             .execute(pool)
-            .await
-            .ok();
-
+            .await?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_key)",
+        )
+        .execute(pool)
+        .await?;
         sqlx::query(
             r#"CREATE TABLE IF NOT EXISTS channel_sessions (
-                channel_type TEXT    NOT NULL,
-                account_id   TEXT    NOT NULL,
-                chat_id      TEXT    NOT NULL,
-                thread_id    TEXT    NOT NULL DEFAULT '',
-                session_key  TEXT    NOT NULL,
+                channel_type TEXT NOT NULL,
+                account_id   TEXT NOT NULL,
+                chat_id      TEXT NOT NULL,
+                thread_id    TEXT NOT NULL DEFAULT '',
+                session_key  TEXT NOT NULL,
                 updated_at   INTEGER NOT NULL,
                 PRIMARY KEY (channel_type, account_id, chat_id, thread_id)
             )"#,
@@ -507,163 +361,790 @@ impl SqliteSessionMetadata {
         Ok(())
     }
 
-    pub async fn try_get(&self, key: &str) -> Result<Option<SessionEntry>> {
-        let row = sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
+    async fn fetch_entry_in_transaction(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        key: &str,
+    ) -> Result<Option<SessionEntry>> {
+        sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&mut **transaction)
+            .await?
+            .map(TryInto::try_into)
+            .transpose()
+    }
+
+    pub async fn get(&self, key: &str) -> Result<Option<SessionEntry>> {
+        sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
             .bind(key)
             .fetch_optional(&self.pool)
-            .await?;
-        Ok(row.map(Into::into))
+            .await?
+            .map(TryInto::try_into)
+            .transpose()
     }
 
-    pub async fn get(&self, key: &str) -> Option<SessionEntry> {
-        match self.try_get(key).await {
-            Ok(entry) => entry,
-            Err(error) => {
-                tracing::error!(%error, session_key = key, "sessions.get failed");
-                None
-            },
-        }
+    pub async fn try_get(&self, key: &str) -> Result<Option<SessionEntry>> {
+        self.get(key).await
     }
 
-    /// Insert or update an entry. Returns the entry.
-    pub async fn upsert(
+    pub async fn create_llm_session(
         &self,
         key: &str,
-        label: Option<String>,
-    ) -> std::result::Result<SessionEntry, sqlx::Error> {
-        let now = now_ms() as i64;
+        label: Option<&str>,
+        model_reasoning: &ResolvedModelReasoning,
+        agent_id: Option<&str>,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
         let id = uuid::Uuid::new_v4().to_string();
+        let mut transaction = self.pool.begin().await?;
         sqlx::query(
-            r#"INSERT INTO sessions (key, id, label, created_at, updated_at, version)
-               VALUES (?, ?, ?, ?, ?, 0)
-               ON CONFLICT(key) DO UPDATE SET
-                 label = COALESCE(excluded.label, sessions.label),
-                 version = sessions.version + 1"#,
+            r#"INSERT INTO sessions (
+                   key, id, label, model, reasoning_effort, created_at, updated_at, agent_id, version
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)"#,
         )
         .bind(key)
-        .bind(&id)
-        .bind(&label)
+        .bind(id)
+        .bind(label)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
         .bind(now)
         .bind(now)
-        .execute(&self.pool)
+        .bind(agent_id)
+        .execute(&mut *transaction)
         .await?;
-        let entry = self
-            .get(key)
-            .await
-            .ok_or_else(|| sqlx::Error::RowNotFound)?;
-        // version == 0 means freshly inserted; > 0 means conflict-updated.
-        if entry.version == 0 {
-            self.emit(crate::session_events::SessionEvent::Created {
-                session_key: key.to_string(),
-            });
-        } else {
-            self.emit(crate::session_events::SessionEvent::Patched {
-                session_key: key.to_string(),
-            });
-        }
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during create")))?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Created {
+            session_key: key.to_string(),
+        });
         Ok(entry)
     }
 
-    /// Persist one validated model/reasoning selection in a single update.
+    pub async fn ensure_llm_session(
+        &self,
+        key: &str,
+        label: Option<&str>,
+        model_reasoning: &ResolvedModelReasoning,
+        agent_id: Option<&str>,
+    ) -> Result<EnsureLlmSessionOutcome> {
+        let now = now_ms();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut transaction = self.pool.begin().await?;
+        let result = sqlx::query(
+            r#"INSERT INTO sessions (
+                   key, id, label, model, reasoning_effort, created_at, updated_at, agent_id, version
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+               ON CONFLICT(key) DO NOTHING"#,
+        )
+        .bind(key)
+        .bind(id)
+        .bind(label)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(now)
+        .bind(now)
+        .bind(agent_id)
+        .execute(&mut *transaction)
+        .await?;
+        let created = result.rows_affected() == 1;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during ensure")))?;
+        let outcome = if created {
+            EnsureLlmSessionOutcome::Created(entry)
+        } else if entry.model_reasoning().is_some() {
+            EnsureLlmSessionOutcome::ExistingLlm(entry)
+        } else {
+            EnsureLlmSessionOutcome::ExistingExternal(entry)
+        };
+        transaction.commit().await?;
+        if created {
+            self.emit(crate::session_events::SessionEvent::Created {
+                session_key: key.to_string(),
+            });
+        }
+        Ok(outcome)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_subagent_session(
+        &self,
+        key: &str,
+        label: &str,
+        parent_session_key: &str,
+        sandbox_owner_key: &str,
+        agent_id: &str,
+        model_reasoning: &ResolvedModelReasoning,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query(
+            r#"INSERT INTO sessions (
+                   key, id, label, model, reasoning_effort, created_at, updated_at,
+                   parent_session_key, sandbox_owner_key, agent_id, prompt_profile, version
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"#,
+        )
+        .bind(key)
+        .bind(id)
+        .bind(label)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(now)
+        .bind(now)
+        .bind(parent_session_key)
+        .bind(sandbox_owner_key)
+        .bind(agent_id)
+        .bind(PromptProfile::Subagent)
+        .execute(&mut *transaction)
+        .await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during create")))?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Created {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    pub async fn create_or_assign_agent(
+        &self,
+        key: &str,
+        agent_id: &str,
+        model_reasoning: &ResolvedModelReasoning,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut transaction = self.pool.begin().await?;
+        let existed = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .is_some();
+        sqlx::query(
+            r#"INSERT INTO sessions (
+                   key, id, model, reasoning_effort, created_at, updated_at, agent_id, version
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+               ON CONFLICT(key) DO UPDATE SET
+                   agent_id = excluded.agent_id,
+                   model = excluded.model,
+                   reasoning_effort = excluded.reasoning_effort,
+                   external_agent_kind = NULL,
+                   external_session_id = NULL,
+                   updated_at = excluded.updated_at,
+                   version = sessions.version + 1"#,
+        )
+        .bind(key)
+        .bind(id)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(now)
+        .bind(now)
+        .bind(agent_id)
+        .execute(&mut *transaction)
+        .await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during assign")))?;
+        transaction.commit().await?;
+        self.emit(if existed {
+            crate::session_events::SessionEvent::Patched {
+                session_key: key.to_string(),
+            }
+        } else {
+            crate::session_events::SessionEvent::Created {
+                session_key: key.to_string(),
+            }
+        });
+        Ok(entry)
+    }
+
+    pub async fn assign_agent(
+        &self,
+        key: &str,
+        agent_id: &str,
+        model_reasoning: &ResolvedModelReasoning,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET agent_id = ?, model = ?, reasoning_effort = ?, updated_at = ?, version = version + 1
+               WHERE key = ?"#,
+        )
+        .bind(agent_id)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(now)
+        .bind(key)
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during assign")))?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    pub async fn assign_llm_agent(
+        &self,
+        key: &str,
+        agent_id: &str,
+        model_reasoning: &ResolvedModelReasoning,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET agent_id = ?, model = ?, reasoning_effort = ?, external_agent_kind = NULL,
+                   external_session_id = NULL, updated_at = ?, version = version + 1
+               WHERE key = ?"#,
+        )
+        .bind(agent_id)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(now)
+        .bind(key)
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| {
+                Error::message(format!(
+                    "session '{key}' disappeared during LLM agent assignment"
+                ))
+            })?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    async fn validate_parent_patch_in_transaction(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        key: &str,
+        entry: &SessionEntry,
+        parent_session_key: Option<&str>,
+    ) -> Result<()> {
+        if entry.prompt_profile == PromptProfile::Subagent {
+            return Err(Error::message(format!(
+                "session '{key}' is a sub-agent session and cannot be reparented"
+            )));
+        }
+        let Some(parent_session_key) = parent_session_key else {
+            return Ok(());
+        };
+        if parent_session_key == key {
+            return Err(Error::message("a session cannot be its own parent"));
+        }
+        if Self::fetch_entry_in_transaction(transaction, parent_session_key)
+            .await?
+            .is_none()
+        {
+            return Err(Error::message(format!(
+                "parent session '{parent_session_key}' not found"
+            )));
+        }
+        let creates_cycle = sqlx::query_scalar::<_, i64>(
+            r#"WITH RECURSIVE ancestors(key) AS (
+                   SELECT ?
+                   UNION
+                   SELECT sessions.parent_session_key
+                   FROM sessions
+                   JOIN ancestors ON sessions.key = ancestors.key
+                   WHERE sessions.parent_session_key IS NOT NULL
+               )
+               SELECT EXISTS(SELECT 1 FROM ancestors WHERE key = ?)"#,
+        )
+        .bind(parent_session_key)
+        .bind(key)
+        .fetch_one(&mut **transaction)
+        .await?
+            != 0;
+        if creates_cycle {
+            return Err(Error::message("parent assignment would create a cycle"));
+        }
+        Ok(())
+    }
+
+    async fn validate_archive_patch_in_transaction(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        entry: &SessionEntry,
+    ) -> Result<()> {
+        if entry.key == "main" {
+            return Err(Error::message("session 'main' cannot be archived"));
+        }
+        let Some(binding_json) = entry.channel_binding.as_deref() else {
+            return Ok(());
+        };
+        let binding: PersistedChannelBinding = serde_json::from_str(binding_json)?;
+        let active_key = sqlx::query_scalar::<_, String>(
+            r#"SELECT session_key FROM channel_sessions
+               WHERE channel_type = ? AND account_id = ? AND chat_id = ? AND thread_id = ?"#,
+        )
+        .bind(&binding.channel_type)
+        .bind(&binding.account_id)
+        .bind(&binding.chat_id)
+        .bind(binding.thread_id.as_deref().unwrap_or(""))
+        .fetch_optional(&mut **transaction)
+        .await?
+        .unwrap_or_else(|| binding.default_session_key());
+        if active_key == entry.key {
+            return Err(Error::message(format!(
+                "session '{}' cannot be archived",
+                entry.key
+            )));
+        }
+        Ok(())
+    }
+
+    pub async fn patch_session(
+        &self,
+        key: &str,
+        patch: SessionMetadataPatch,
+    ) -> Result<SessionEntry> {
+        let mut transaction = self.pool.begin().await?;
+        let current = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+        if patch.is_empty() {
+            transaction.commit().await?;
+            return Ok(current);
+        }
+        if let Some(parent_session_key) = patch.parent_session_key.as_ref() {
+            Self::validate_parent_patch_in_transaction(
+                &mut transaction,
+                key,
+                &current,
+                parent_session_key.as_deref(),
+            )
+            .await?;
+        }
+        if patch.archived == Some(true) {
+            Self::validate_archive_patch_in_transaction(&mut transaction, &current).await?;
+        }
+
+        let now = now_ms();
+        let label_changed = patch.label.is_some();
+        let pair_changed = patch.model_reasoning.is_some();
+        let archived_changed = patch.archived.is_some();
+        let project_changed = patch.project_id.is_some();
+        let worktree_changed = patch.worktree_branch.is_some();
+        let mcp_changed = patch.mcp_disabled.is_some();
+        let parent_changed = patch.parent_session_key.is_some();
+        let model = patch
+            .model_reasoning
+            .as_ref()
+            .map(ResolvedModelReasoning::model_id);
+        let reasoning_effort = patch
+            .model_reasoning
+            .as_ref()
+            .map(ResolvedModelReasoning::reasoning_effort)
+            .map(ReasoningEffort::as_str);
+        let project_id = patch.project_id.as_ref().and_then(|value| value.as_deref());
+        let worktree_branch = patch
+            .worktree_branch
+            .as_ref()
+            .and_then(|value| value.as_deref());
+        let mcp_disabled = patch
+            .mcp_disabled
+            .as_ref()
+            .and_then(|value| value.map(i32::from));
+        let parent_session_key = patch
+            .parent_session_key
+            .as_ref()
+            .and_then(|value| value.as_deref());
+        let result = sqlx::query(
+            r#"UPDATE sessions SET
+                   label = CASE WHEN ? THEN ? ELSE label END,
+                   model = CASE WHEN ? THEN ? ELSE model END,
+                   reasoning_effort = CASE WHEN ? THEN ? ELSE reasoning_effort END,
+                   archived = CASE WHEN ? THEN ? ELSE archived END,
+                   project_id = CASE WHEN ? THEN ? ELSE project_id END,
+                   worktree_branch = CASE WHEN ? THEN ? ELSE worktree_branch END,
+                   mcp_disabled = CASE WHEN ? THEN ? ELSE mcp_disabled END,
+                   parent_session_key = CASE WHEN ? THEN ? ELSE parent_session_key END,
+                   fork_point = CASE WHEN ? THEN NULL ELSE fork_point END,
+                   updated_at = ?,
+                   version = version + 1
+               WHERE key = ?"#,
+        )
+        .bind(label_changed)
+        .bind(patch.label.as_deref())
+        .bind(pair_changed)
+        .bind(model)
+        .bind(pair_changed)
+        .bind(reasoning_effort)
+        .bind(archived_changed)
+        .bind(patch.archived.map(i32::from))
+        .bind(project_changed)
+        .bind(project_id)
+        .bind(worktree_changed)
+        .bind(worktree_branch)
+        .bind(mcp_changed)
+        .bind(mcp_disabled)
+        .bind(parent_changed)
+        .bind(parent_session_key)
+        .bind(parent_changed)
+        .bind(now)
+        .bind(key)
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during patch")))?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    pub async fn update_label(&self, key: &str, label: Option<&str>) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let result = sqlx::query(
+            "UPDATE sessions SET label = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+        )
+        .bind(label)
+        .bind(now)
+        .bind(key)
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| {
+                Error::message(format!("session '{key}' disappeared during label update"))
+            })?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
     pub async fn set_model_reasoning(
         &self,
         key: &str,
-        model: &str,
-        reasoning_effort: &ReasoningEffort,
+        model_reasoning: &ResolvedModelReasoning,
     ) -> Result<SessionEntry> {
-        let now = now_ms() as i64;
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
         let result = sqlx::query(
-            "UPDATE sessions SET model = ?, reasoning_effort = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+            r#"UPDATE sessions
+               SET model = ?, reasoning_effort = ?, updated_at = ?, version = version + 1
+               WHERE key = ?"#,
         )
-        .bind(model)
-        .bind(reasoning_effort.as_str())
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
         .bind(now)
         .bind(key)
-        .execute(&self.pool)
+        .execute(&mut *transaction)
         .await?;
-        if result.rows_affected() == 0 {
-            return Err(sqlx::Error::RowNotFound.into());
-        }
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| {
+                Error::message(format!("session '{key}' disappeared during pair update"))
+            })?;
+        transaction.commit().await?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
-        self.get(key)
-            .await
-            .ok_or_else(|| sqlx::Error::RowNotFound.into())
+        Ok(entry)
     }
 
-    pub async fn set_model(&self, key: &str, model: Option<String>) {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET model = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(&model)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await
-        .ok();
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-    }
-
-    pub async fn set_reasoning_effort(&self, key: &str, reasoning_effort: Option<String>) {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET reasoning_effort = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(&reasoning_effort)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await
-        .ok();
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-    }
-
-    pub async fn set_external_agent(
+    pub async fn promote_external_to_llm(
         &self,
         key: &str,
-        kind: Option<ExternalAgentKind>,
-        external_session_id: Option<String>,
-    ) {
-        let now = now_ms() as i64;
-        let kind = kind.map(|kind| kind.as_str().to_string());
-        sqlx::query(
-            "UPDATE sessions SET external_agent_kind = ?, external_session_id = ?, updated_at = ?, version = version + 1 WHERE key = ?",
+        model_reasoning: &ResolvedModelReasoning,
+        agent_id: &str,
+    ) -> Result<PromoteExternalToLlmOutcome> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+        if entry.model_reasoning().is_some() {
+            transaction.commit().await?;
+            return Ok(PromoteExternalToLlmOutcome::ExistingLlm(entry));
+        }
+
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET model = ?, reasoning_effort = ?, agent_id = ?, updated_at = ?,
+                   version = version + 1
+               WHERE key = ? AND model IS NULL AND reasoning_effort IS NULL"#,
         )
-        .bind(&kind)
-        .bind(&external_session_id)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(agent_id)
         .bind(now)
         .bind(key)
-        .execute(&self.pool)
-        .await
-        .ok();
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| {
+                Error::message(format!("session '{key}' disappeared during promotion"))
+            })?;
+        transaction.commit().await?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(PromoteExternalToLlmOutcome::Promoted(entry))
     }
 
-    pub async fn touch(&self, key: &str, message_count: u32) {
-        let now = now_ms() as i64;
+    pub async fn replace_external_with_llm(
+        &self,
+        key: &str,
+        expected_version: u64,
+        agent_id: &str,
+        model_reasoning: &ResolvedModelReasoning,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+        if entry.version != expected_version
+            || !matches!(entry.backing, SessionBacking::External { .. })
+        {
+            return Err(Error::message(format!(
+                "session '{key}' external-only transition conflict"
+            )));
+        }
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET agent_id = ?, model = ?, reasoning_effort = ?, external_agent_kind = NULL,
+                   external_session_id = NULL, updated_at = ?, version = version + 1
+               WHERE key = ? AND version = ? AND model IS NULL AND reasoning_effort IS NULL"#,
+        )
+        .bind(agent_id)
+        .bind(model_reasoning.model_id())
+        .bind(model_reasoning.reasoning_effort().as_str())
+        .bind(now)
+        .bind(key)
+        .bind(expected_version as i64)
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| {
+                Error::message(format!("session '{key}' disappeared during transition"))
+            })?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    pub async fn bind_external(
+        &self,
+        key: &str,
+        label: Option<&str>,
+        identity: &ExternalSessionIdentity,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let existed = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .is_some();
+        if existed {
+            sqlx::query(
+                r#"UPDATE sessions
+                   SET external_agent_kind = ?, external_session_id = ?, updated_at = ?, version = version + 1
+                   WHERE key = ?"#,
+            )
+            .bind(identity.kind().as_str())
+            .bind(identity.external_session_id())
+            .bind(now)
+            .bind(key)
+            .execute(&mut *transaction)
+            .await?;
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            sqlx::query(
+                r#"INSERT INTO sessions (
+                       key, id, label, created_at, updated_at, external_agent_kind,
+                       external_session_id, version
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)"#,
+            )
+            .bind(key)
+            .bind(id)
+            .bind(label)
+            .bind(now)
+            .bind(now)
+            .bind(identity.kind().as_str())
+            .bind(identity.external_session_id())
+            .execute(&mut *transaction)
+            .await?;
+        }
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during bind")))?;
+        transaction.commit().await?;
+        self.emit(if existed {
+            crate::session_events::SessionEvent::Patched {
+                session_key: key.to_string(),
+            }
+        } else {
+            crate::session_events::SessionEvent::Created {
+                session_key: key.to_string(),
+            }
+        });
+        Ok(entry)
+    }
+
+    pub async fn update_external_session_id(
+        &self,
+        key: &str,
+        external_session_id: Option<&str>,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+        if entry.external_agent_kind().is_none() {
+            return Err(Error::message(format!(
+                "session '{key}' has no external binding"
+            )));
+        }
         sqlx::query(
+            r#"UPDATE sessions
+               SET external_session_id = ?, updated_at = ?, version = version + 1
+               WHERE key = ?"#,
+        )
+        .bind(external_session_id)
+        .bind(now)
+        .bind(key)
+        .execute(&mut *transaction)
+        .await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during update")))?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    pub async fn unbind_llm_external(
+        &self,
+        key: &str,
+        expected_version: u64,
+    ) -> Result<SessionEntry> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+        if entry.version != expected_version
+            || !matches!(entry.backing, SessionBacking::LlmExternal { .. })
+        {
+            return Err(Error::message(format!(
+                "session '{key}' LLM external unbind conflict"
+            )));
+        }
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET external_agent_kind = NULL, external_session_id = NULL,
+                   updated_at = ?, version = version + 1
+               WHERE key = ? AND version = ? AND model IS NOT NULL
+                   AND reasoning_effort IS NOT NULL"#,
+        )
+        .bind(now)
+        .bind(key)
+        .bind(expected_version as i64)
+        .execute(&mut *transaction)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during unbind")))?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(entry)
+    }
+
+    pub async fn unbind_external(&self, key: &str) -> Result<Option<SessionEntry>> {
+        let now = now_ms();
+        let mut transaction = self.pool.begin().await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+        let result = match entry.backing {
+            SessionBacking::LlmExternal { .. } => {
+                sqlx::query(
+                    r#"UPDATE sessions
+                       SET external_agent_kind = NULL, external_session_id = NULL,
+                           updated_at = ?, version = version + 1
+                       WHERE key = ?"#,
+                )
+                .bind(now)
+                .bind(key)
+                .execute(&mut *transaction)
+                .await?;
+                Self::fetch_entry_in_transaction(&mut transaction, key).await?
+            },
+            SessionBacking::External { .. } => {
+                sqlx::query("DELETE FROM sessions WHERE key = ?")
+                    .bind(key)
+                    .execute(&mut *transaction)
+                    .await?;
+                None
+            },
+            SessionBacking::Llm { .. } => {
+                return Err(Error::message(format!(
+                    "session '{key}' has no external binding"
+                )));
+            },
+        };
+        transaction.commit().await?;
+        self.emit(if result.is_some() {
+            crate::session_events::SessionEvent::Patched {
+                session_key: key.to_string(),
+            }
+        } else {
+            crate::session_events::SessionEvent::Deleted {
+                session_key: key.to_string(),
+            }
+        });
+        Ok(result)
+    }
+
+    pub async fn touch(&self, key: &str, message_count: u32) -> Result<()> {
+        let now = now_ms();
+        let result = sqlx::query(
             "UPDATE sessions SET message_count = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
         .bind(message_count as i32)
         .bind(now)
         .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
+        .execute(&self.pool)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(())
     }
 
-    /// Set imported timestamps and message counters without replacing them with "now".
     pub async fn set_timestamps_and_counts(
         &self,
         key: &str,
@@ -671,9 +1152,12 @@ impl SqliteSessionMetadata {
         updated_at: u64,
         message_count: u32,
         last_seen_message_count: u32,
-    ) {
-        sqlx::query(
-            "UPDATE sessions SET created_at = ?, updated_at = ?, message_count = ?, last_seen_message_count = ?, version = version + 1 WHERE key = ?",
+    ) -> Result<()> {
+        let result = sqlx::query(
+            r#"UPDATE sessions
+               SET created_at = ?, updated_at = ?, message_count = ?,
+                   last_seen_message_count = ?, version = version + 1
+               WHERE key = ?"#,
         )
         .bind(created_at as i64)
         .bind(updated_at as i64)
@@ -681,128 +1165,122 @@ impl SqliteSessionMetadata {
         .bind(last_seen_message_count as i32)
         .bind(key)
         .execute(&self.pool)
-        .await
-        .ok();
+        .await?;
+        require_existing_row(key, result.rows_affected())
     }
 
-    /// Store a short preview of the first user message for sidebar display.
-    pub async fn set_preview(&self, key: &str, preview: Option<&str>) {
-        sqlx::query("UPDATE sessions SET preview = ?, version = version + 1 WHERE key = ?")
-            .bind(preview)
-            .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
+    pub async fn set_preview(&self, key: &str, preview: Option<&str>) -> Result<()> {
+        let result =
+            sqlx::query("UPDATE sessions SET preview = ?, version = version + 1 WHERE key = ?")
+                .bind(preview)
+                .bind(key)
+                .execute(&self.pool)
+                .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(())
     }
 
-    /// Mark a session as "seen" by setting `last_seen_message_count` to the
-    /// current `message_count`.
-    pub async fn mark_seen(&self, key: &str) {
-        sqlx::query(
+    pub async fn mark_seen(&self, key: &str) -> Result<()> {
+        let result = sqlx::query(
             "UPDATE sessions SET last_seen_message_count = message_count, version = version + 1 WHERE key = ?",
         )
         .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
+        .execute(&self.pool)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(())
     }
 
-    pub async fn set_project_id(&self, key: &str, project_id: Option<String>) {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET project_id = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(&project_id)
-        .bind(now)
-        .bind(key)
-            .execute(&self.pool)
+    pub async fn set_project_id(&self, key: &str, project_id: Option<&str>) -> Result<()> {
+        self.update_optional_text(key, "project_id", project_id)
             .await
-            .ok();
+    }
+
+    pub async fn set_worktree_branch(&self, key: &str, branch: Option<&str>) -> Result<()> {
+        self.update_optional_text(key, "worktree_branch", branch)
+            .await
+    }
+
+    pub async fn set_channel_binding(&self, key: &str, binding: Option<&str>) -> Result<()> {
+        self.update_optional_text(key, "channel_binding", binding)
+            .await
+    }
+
+    pub async fn set_sandbox_owner_key(&self, key: &str, owner_key: Option<&str>) -> Result<()> {
+        self.update_optional_text(key, "sandbox_owner_key", owner_key)
+            .await
+    }
+
+    async fn update_optional_text(
+        &self,
+        key: &str,
+        column: &'static str,
+        value: Option<&str>,
+    ) -> Result<()> {
+        let now = now_ms();
+        let statement = format!(
+            "UPDATE sessions SET {column} = ?, updated_at = ?, version = version + 1 WHERE key = ?"
+        );
+        let result = sqlx::query(&statement)
+            .bind(value)
+            .bind(now)
+            .bind(key)
+            .execute(&self.pool)
+            .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(())
     }
 
-    pub async fn set_archived(&self, key: &str, archived: bool) {
-        let now = now_ms() as i64;
-        let val = if archived {
-            1
-        } else {
-            0
-        };
-        sqlx::query(
+    pub async fn set_archived(&self, key: &str, archived: bool) -> Result<()> {
+        let now = now_ms();
+        let result = sqlx::query(
             "UPDATE sessions SET archived = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
-        .bind(val)
+        .bind(if archived {
+            1_i32
+        } else {
+            0_i32
+        })
         .bind(now)
         .bind(key)
         .execute(&self.pool)
-        .await
-        .ok();
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(())
     }
 
-    pub async fn set_worktree_branch(&self, key: &str, branch: Option<String>) {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET worktree_branch = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(&branch)
-        .bind(now)
-        .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-    }
-
-    pub async fn set_mcp_disabled(&self, key: &str, disabled: Option<bool>) {
-        let now = now_ms() as i64;
-        let val = disabled.map(|b| b as i32);
-        sqlx::query(
+    pub async fn set_mcp_disabled(&self, key: &str, disabled: Option<bool>) -> Result<()> {
+        let now = now_ms();
+        let result = sqlx::query(
             "UPDATE sessions SET mcp_disabled = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
-        .bind(val)
+        .bind(disabled.map(|value| if value { 1_i32 } else { 0_i32 }))
         .bind(now)
         .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
+        .execute(&self.pool)
+        .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
+        Ok(())
     }
 
-    pub async fn set_channel_binding(&self, key: &str, binding: Option<String>) {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET channel_binding = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(&binding)
-        .bind(now)
-        .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-    }
-
-    /// Select the system-prompt profile for a session.
     pub async fn set_prompt_profile(&self, key: &str, prompt_profile: PromptProfile) -> Result<()> {
-        let now = now_ms() as i64;
-        sqlx::query(
+        let now = now_ms();
+        let result = sqlx::query(
             "UPDATE sessions SET prompt_profile = ?, updated_at = ?, version = version + 1 WHERE key = ?",
         )
         .bind(prompt_profile)
@@ -810,246 +1288,184 @@ impl SqliteSessionMetadata {
         .bind(key)
         .execute(&self.pool)
         .await?;
+        require_existing_row(key, result.rows_affected())?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
         });
         Ok(())
     }
 
-    /// Assign the resolved sandbox owner key for a session.
-    pub async fn set_sandbox_owner_key(&self, key: &str, owner_key: Option<&str>) -> Result<()> {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET sandbox_owner_key = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(owner_key)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(())
-    }
-
-    /// Assign (or unassign) a session to an agent persona.
-    pub async fn set_agent_id(&self, key: &str, agent_id: Option<&str>) -> Result<()> {
-        let now = now_ms() as i64;
-        sqlx::query(
-            "UPDATE sessions SET agent_id = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(agent_id)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(())
-    }
-
-    /// Assign a session to an agent and apply any configured model defaults atomically.
-    pub async fn assign_agent_with_defaults(
+    pub async fn set_parent(
         &self,
         key: &str,
-        agent_id: &str,
-        model: Option<&str>,
-        reasoning_effort: Option<&str>,
-    ) -> std::result::Result<SessionEntry, sqlx::Error> {
-        let now = now_ms() as i64;
-        sqlx::query(
-            r#"UPDATE sessions
-               SET agent_id = ?,
-                   model = COALESCE(?, model),
-                   reasoning_effort = COALESCE(?, reasoning_effort),
-                   updated_at = ?,
-                   version = version + 1
-               WHERE key = ?"#,
-        )
-        .bind(agent_id)
-        .bind(model)
-        .bind(reasoning_effort)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await?;
-        let entry = sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions WHERE key = ?")
-            .bind(key)
-            .fetch_optional(&self.pool)
-            .await?
-            .map(Into::into)
-            .ok_or(sqlx::Error::RowNotFound)?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(entry)
-    }
-
-    /// Configure all persisted attributes of a newly created sub-agent session atomically.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn configure_subagent_session(
-        &self,
-        key: &str,
-        label: &str,
-        parent_session_key: &str,
-        sandbox_owner_key: &str,
-        agent_id: &str,
-        model: &str,
-        reasoning_effort: &ReasoningEffort,
-    ) -> Result<SessionEntry> {
-        let now = now_ms() as i64;
+        parent_key: Option<&str>,
+        fork_point: Option<u32>,
+    ) -> Result<()> {
+        let now = now_ms();
         let result = sqlx::query(
             r#"UPDATE sessions
-               SET label = ?,
-                   parent_session_key = ?,
-                   sandbox_owner_key = ?,
-                   agent_id = ?,
-                   model = ?,
-                   reasoning_effort = ?,
-                   prompt_profile = ?,
-                   updated_at = ?,
-                   version = version + 1
+               SET parent_session_key = ?, fork_point = ?, updated_at = ?, version = version + 1
                WHERE key = ?"#,
         )
-        .bind(label)
-        .bind(parent_session_key)
-        .bind(sandbox_owner_key)
-        .bind(agent_id)
-        .bind(model)
-        .bind(reasoning_effort.as_str())
-        .bind(PromptProfile::Subagent)
+        .bind(parent_key)
+        .bind(fork_point.map(|value| value as i32))
         .bind(now)
         .bind(key)
         .execute(&self.pool)
         .await?;
-        if result.rows_affected() != 1 {
-            return Err(crate::Error::message(format!(
-                "session '{key}' was not created before sub-agent configuration"
+        require_existing_row(key, result.rows_affected())?;
+        self.emit(crate::session_events::SessionEvent::Patched {
+            session_key: key.to_string(),
+        });
+        Ok(())
+    }
+
+    pub async fn list(&self) -> Result<Vec<SessionEntry>> {
+        let mut entries = decode_rows(
+            sqlx::query_as::<_, SessionRow>("SELECT * FROM sessions")
+                .fetch_all(&self.pool)
+                .await?,
+        )?;
+        entries.sort_by(compare_sidebar_order);
+        Ok(entries)
+    }
+
+    pub async fn list_by_agent_id(&self, agent_id: &str) -> Result<Vec<SessionEntry>> {
+        decode_rows(
+            sqlx::query_as::<_, SessionRow>(
+                "SELECT * FROM sessions WHERE agent_id = ? ORDER BY created_at ASC",
+            )
+            .bind(agent_id)
+            .fetch_all(&self.pool)
+            .await?,
+        )
+    }
+
+    pub async fn delete_by_agent_id(&self, agent_id: &str) -> Result<u64> {
+        Ok(sqlx::query("DELETE FROM sessions WHERE agent_id = ?")
+            .bind(agent_id)
+            .execute(&self.pool)
+            .await?
+            .rows_affected())
+    }
+
+    pub async fn list_children_result(&self, parent_key: &str) -> Result<Vec<SessionEntry>> {
+        self.list_children(parent_key).await
+    }
+
+    pub async fn list_children(&self, parent_key: &str) -> Result<Vec<SessionEntry>> {
+        decode_rows(
+            sqlx::query_as::<_, SessionRow>(
+                "SELECT * FROM sessions WHERE parent_session_key = ? ORDER BY created_at ASC",
+            )
+            .bind(parent_key)
+            .fetch_all(&self.pool)
+            .await?,
+        )
+    }
+
+    pub async fn remove_session_tree(
+        &self,
+        root_key: &str,
+        expected_keys: &[String],
+    ) -> Result<Vec<SessionEntry>> {
+        let expected: HashSet<&str> = expected_keys.iter().map(String::as_str).collect();
+        if expected.len() != expected_keys.len() || !expected.contains(root_key) {
+            return Err(Error::message("invalid expected session delete set"));
+        }
+
+        let mut transaction = self.pool.begin().await?;
+        let actual_entries = decode_rows(
+            sqlx::query_as::<_, SessionRow>(
+                r#"WITH RECURSIVE descendants(key) AS (
+                       SELECT key FROM sessions WHERE key = ?
+                       UNION
+                       SELECT sessions.key
+                       FROM sessions
+                       JOIN descendants ON sessions.parent_session_key = descendants.key
+                   )
+                   SELECT sessions.*
+                   FROM sessions
+                   JOIN descendants ON sessions.key = descendants.key"#,
+            )
+            .bind(root_key)
+            .fetch_all(&mut *transaction)
+            .await?,
+        )?;
+        let actual: HashSet<&str> = actual_entries
+            .iter()
+            .map(|entry| entry.key.as_str())
+            .collect();
+        if actual != expected {
+            return Err(Error::message(format!(
+                "session delete tree changed before commit: expected {expected:?}, found {actual:?}"
             )));
         }
-        let entry = self
-            .try_get(key)
-            .await?
-            .ok_or_else(|| crate::Error::message(format!("session '{key}' disappeared")))?;
-        self.emit(crate::session_events::SessionEvent::Patched {
+
+        let mut deleted_entries = Vec::with_capacity(expected_keys.len());
+        for key in expected_keys {
+            let entry = actual_entries
+                .iter()
+                .find(|entry| entry.key == *key)
+                .cloned()
+                .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
+            sqlx::query("DELETE FROM channel_sessions WHERE session_key = ?")
+                .bind(key)
+                .execute(&mut *transaction)
+                .await?;
+            let result = sqlx::query("DELETE FROM sessions WHERE key = ?")
+                .bind(key)
+                .execute(&mut *transaction)
+                .await?;
+            require_existing_row(key, result.rows_affected())?;
+            deleted_entries.push(entry);
+        }
+        transaction.commit().await?;
+        for entry in &deleted_entries {
+            self.emit(crate::session_events::SessionEvent::Deleted {
+                session_key: entry.key.clone(),
+            });
+        }
+        Ok(deleted_entries)
+    }
+
+    pub async fn remove(&self, key: &str) -> Result<Option<SessionEntry>> {
+        let mut transaction = self.pool.begin().await?;
+        let entry = Self::fetch_entry_in_transaction(&mut transaction, key).await?;
+        if entry.is_none() {
+            transaction.commit().await?;
+            return Ok(None);
+        }
+        sqlx::query("DELETE FROM sessions WHERE key = ?")
+            .bind(key)
+            .execute(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
+        self.emit(crate::session_events::SessionEvent::Deleted {
             session_key: key.to_string(),
         });
         Ok(entry)
     }
 
-    /// List all sessions belonging to a given agent.
-    pub async fn list_by_agent_id(&self, agent_id: &str) -> Result<Vec<SessionEntry>> {
-        let rows = sqlx::query_as::<_, SessionRow>(
-            "SELECT * FROM sessions WHERE agent_id = ? ORDER BY created_at ASC",
-        )
-        .bind(agent_id)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows.into_iter().map(Into::into).collect())
-    }
-
-    /// Delete all sessions belonging to a given agent (cascade).
-    pub async fn delete_by_agent_id(&self, agent_id: &str) -> Result<u64> {
-        let result = sqlx::query("DELETE FROM sessions WHERE agent_id = ?")
-            .bind(agent_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(result.rows_affected())
-    }
-
-    /// Set the parent session key and fork point for a branched session.
-    pub async fn set_parent(&self, key: &str, parent_key: Option<String>, fork_point: Option<u32>) {
-        let now = now_ms() as i64;
-        let fp = fork_point.map(|v| v as i32);
-        sqlx::query(
-            "UPDATE sessions SET parent_session_key = ?, fork_point = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(&parent_key)
-        .bind(fp)
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await
-        .ok();
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-    }
-
-    /// List all sessions that are children of the given parent key.
-    pub async fn list_children_result(&self, parent_key: &str) -> Result<Vec<SessionEntry>> {
-        let rows = sqlx::query_as::<_, SessionRow>(
-            "SELECT * FROM sessions WHERE parent_session_key = ? ORDER BY created_at ASC",
-        )
-        .bind(parent_key)
-        .fetch_all(&self.pool)
-        .await?;
-        Ok(rows.into_iter().map(Into::into).collect())
-    }
-
-    /// List all sessions that are children of the given parent key.
-    pub async fn list_children(&self, parent_key: &str) -> Vec<SessionEntry> {
-        match self.list_children_result(parent_key).await {
-            Ok(entries) => entries,
-            Err(error) => {
-                tracing::error!(%error, parent_session_key = parent_key, "sessions.list_children failed");
-                Vec::new()
-            },
-        }
-    }
-
-    pub async fn remove(&self, key: &str) -> Option<SessionEntry> {
-        let entry = self.get(key).await;
-        sqlx::query("DELETE FROM sessions WHERE key = ?")
-            .bind(key)
-            .execute(&self.pool)
-            .await
-            .ok();
-        if entry.is_some() {
-            self.emit(crate::session_events::SessionEvent::Deleted {
-                session_key: key.to_string(),
-            });
-        }
-        entry
-    }
-
-    pub async fn list(&self) -> Vec<SessionEntry> {
-        sqlx::query_as::<_, SessionRow>(
-            "SELECT * FROM sessions ORDER BY CASE WHEN key = 'main' THEN 0 ELSE 1 END ASC, updated_at DESC, created_at DESC, key ASC",
-        )
-            .fetch_all(&self.pool)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(Into::into)
-            .collect()
-    }
-
-    /// Get the active session key for a channel chat, if one has been explicitly set.
     pub async fn get_active_session(
         &self,
         channel_type: &str,
         account_id: &str,
         chat_id: &str,
         thread_id: Option<&str>,
-    ) -> Option<String> {
-        let tid = thread_id.unwrap_or("");
-        sqlx::query_scalar::<_, String>(
-            "SELECT session_key FROM channel_sessions WHERE channel_type = ? AND account_id = ? AND chat_id = ? AND thread_id = ?",
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar::<_, String>(
+            r#"SELECT session_key FROM channel_sessions
+               WHERE channel_type = ? AND account_id = ? AND chat_id = ? AND thread_id = ?"#,
         )
         .bind(channel_type)
         .bind(account_id)
         .bind(chat_id)
-        .bind(tid)
+        .bind(thread_id.unwrap_or(""))
         .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten()
+        .await?)
     }
 
-    /// Set (upsert) the active session key for a channel chat.
     pub async fn set_active_session(
         &self,
         channel_type: &str,
@@ -1057,99 +1473,82 @@ impl SqliteSessionMetadata {
         chat_id: &str,
         thread_id: Option<&str>,
         session_key: &str,
-    ) {
-        let now = now_ms() as i64;
-        let tid = thread_id.unwrap_or("");
+    ) -> Result<()> {
+        let now = now_ms();
         sqlx::query(
-            r#"INSERT INTO channel_sessions (channel_type, account_id, chat_id, thread_id, session_key, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            r#"INSERT INTO channel_sessions (
+                   channel_type, account_id, chat_id, thread_id, session_key, updated_at
+               ) VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(channel_type, account_id, chat_id, thread_id) DO UPDATE SET
-                 session_key = excluded.session_key,
-                 updated_at = excluded.updated_at"#,
+                   session_key = excluded.session_key,
+                   updated_at = excluded.updated_at"#,
         )
         .bind(channel_type)
         .bind(account_id)
         .bind(chat_id)
-        .bind(tid)
+        .bind(thread_id.unwrap_or(""))
         .bind(session_key)
         .bind(now)
         .execute(&self.pool)
-        .await
-        .ok();
+        .await?;
+        Ok(())
     }
 
-    /// Clear any explicit channel chat mappings that currently point at the
-    /// given session key.
-    pub async fn clear_active_session_mappings(&self, session_key: &str) {
+    pub async fn clear_active_session_mappings(&self, session_key: &str) -> Result<()> {
         sqlx::query("DELETE FROM channel_sessions WHERE session_key = ?")
             .bind(session_key)
             .execute(&self.pool)
-            .await
-            .ok();
+            .await?;
+        Ok(())
     }
 
-    /// List all sessions that have been bound to a given channel chat
-    /// (i.e. sessions whose `channel_binding` JSON contains the matching chat_id + account_id).
     pub async fn list_channel_sessions(
         &self,
         channel_type: &str,
         account_id: &str,
         chat_id: &str,
-    ) -> Vec<SessionEntry> {
-        // Build the expected channel_binding JSON substring for matching.
+    ) -> Result<Vec<SessionEntry>> {
         let binding_pattern = format!(
             r#"%"channel_type":"{channel_type}"%"account_id":"{account_id}"%"chat_id":"{chat_id}"%"#,
         );
-        sqlx::query_as::<_, SessionRow>(
-            "SELECT * FROM sessions WHERE channel_binding LIKE ? ORDER BY created_at ASC",
+        decode_rows(
+            sqlx::query_as::<_, SessionRow>(
+                "SELECT * FROM sessions WHERE channel_binding LIKE ? ORDER BY created_at ASC",
+            )
+            .bind(binding_pattern)
+            .fetch_all(&self.pool)
+            .await?,
         )
-        .bind(&binding_pattern)
-        .fetch_all(&self.pool)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(Into::into)
-        .collect()
     }
 
-    /// List all sessions bound to a given channel account (any chat).
     pub async fn list_account_sessions(
         &self,
         channel_type: &str,
         account_id: &str,
-    ) -> Vec<SessionEntry> {
+    ) -> Result<Vec<SessionEntry>> {
         let pattern = format!(r#"%"channel_type":"{channel_type}"%"account_id":"{account_id}"%"#,);
-        sqlx::query_as::<_, SessionRow>(
-            "SELECT * FROM sessions WHERE channel_binding LIKE ? ORDER BY created_at ASC",
+        decode_rows(
+            sqlx::query_as::<_, SessionRow>(
+                "SELECT * FROM sessions WHERE channel_binding LIKE ? ORDER BY created_at ASC",
+            )
+            .bind(pattern)
+            .fetch_all(&self.pool)
+            .await?,
         )
-        .bind(&pattern)
-        .fetch_all(&self.pool)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(Into::into)
-        .collect()
     }
 
-    /// Get all active session mappings for a given channel account.
     pub async fn list_active_sessions(
         &self,
         channel_type: &str,
         account_id: &str,
-    ) -> Vec<(String, String)> {
-        sqlx::query_as::<_, (String, String)>(
+    ) -> Result<Vec<(String, String)>> {
+        Ok(sqlx::query_as::<_, (String, String)>(
             "SELECT chat_id, session_key FROM channel_sessions WHERE channel_type = ? AND account_id = ?",
         )
         .bind(channel_type)
         .bind(account_id)
         .fetch_all(&self.pool)
-        .await
-        .unwrap_or_default()
-    }
-
-    /// No-op — SQLite auto-persists.
-    pub fn save(&self) -> Result<()> {
-        Ok(())
+        .await?)
     }
 }
 

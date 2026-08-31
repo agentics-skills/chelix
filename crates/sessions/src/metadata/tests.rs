@@ -1,84 +1,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use super::*;
+use {super::*, sqlx::Row};
 
-#[test]
-fn test_upsert_and_list() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    meta.upsert("session:abc", Some("My Chat".to_string()));
-
-    let list = meta.list();
-    assert_eq!(list.len(), 2);
-    let keys: Vec<&str> = list.iter().map(|e| e.key.as_str()).collect();
-    assert!(keys.contains(&"main"));
-    assert!(keys.contains(&"session:abc"));
-    let abc = list.iter().find(|e| e.key == "session:abc").unwrap();
-    assert_eq!(abc.label.as_deref(), Some("My Chat"));
-}
-
-#[test]
-fn test_list_pins_main_then_sorts_by_recency() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path).unwrap();
-
-    meta.upsert("main", None);
-    meta.upsert("session:older", None);
-    meta.upsert("session:newer", None);
-
-    if let Some(entry) = meta.entries.get_mut("main") {
-        entry.created_at = 1;
-        entry.updated_at = 1;
-    }
-    if let Some(entry) = meta.entries.get_mut("session:older") {
-        entry.created_at = 100;
-        entry.updated_at = 100;
-    }
-    if let Some(entry) = meta.entries.get_mut("session:newer") {
-        entry.created_at = 200;
-        entry.updated_at = 200;
-    }
-
-    let keys: Vec<String> = meta.list().into_iter().map(|entry| entry.key).collect();
-    assert_eq!(keys, vec!["main", "session:newer", "session:older"]);
-}
-
-#[test]
-fn test_save_and_reload() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-
-    {
-        let mut meta = SessionMetadata::load(path.clone()).unwrap();
-        meta.upsert("main", Some("Main".to_string()));
-        meta.save().unwrap();
-    }
-
-    let meta = SessionMetadata::load(path).unwrap();
-    let entry = meta.get("main").unwrap();
-    assert_eq!(entry.label.as_deref(), Some("Main"));
-}
-
-#[test]
-fn test_remove() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path).unwrap();
-
-    meta.upsert("main", None);
-    assert!(meta.get("main").is_some());
-    meta.remove("main");
-    assert!(meta.get("main").is_none());
+fn pair(model: &str, effort: &str) -> ResolvedModelReasoning {
+    ResolvedModelReasoning::try_new(model.to_string(), ReasoningEffort::from(effort)).unwrap()
 }
 
 async fn sqlite_pool() -> sqlx::SqlitePool {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    // sessions table references projects, so create a stub projects table.
-    sqlx::query("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY)")
+    sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
         .execute(&pool)
         .await
         .unwrap();
@@ -87,831 +17,586 @@ async fn sqlite_pool() -> sqlx::SqlitePool {
 }
 
 #[tokio::test]
-async fn test_sqlite_upsert_and_list() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
+async fn storage_accepts_exactly_three_backing_states() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    let llm_pair = pair("test::llm", "low");
 
-    meta.upsert("main", None).await.unwrap();
-    meta.upsert("session:abc", Some("My Chat".to_string()))
+    let llm = metadata
+        .create_llm_session("session:llm", None, &llm_pair, Some("main"))
         .await
         .unwrap();
+    assert!(matches!(llm.backing, SessionBacking::Llm { .. }));
 
-    let list = meta.list().await;
-    assert_eq!(list.len(), 2);
-    let abc = list.iter().find(|e| e.key == "session:abc").unwrap();
-    assert_eq!(abc.label.as_deref(), Some("My Chat"));
-}
-
-#[tokio::test]
-async fn test_sqlite_list_pins_main_then_sorts_by_recency() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    meta.upsert("session:older", None).await.unwrap();
-    meta.upsert("session:newer", None).await.unwrap();
-
-    meta.set_timestamps_and_counts("main", 1, 1, 0, 0).await;
-    meta.set_timestamps_and_counts("session:older", 100, 100, 0, 0)
-        .await;
-    meta.set_timestamps_and_counts("session:newer", 200, 200, 0, 0)
-        .await;
-
-    let keys: Vec<String> = meta
-        .list()
+    let external = metadata
+        .bind_external(
+            "session:external",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
+        )
         .await
-        .into_iter()
-        .map(|entry| entry.key)
-        .collect();
-    assert_eq!(keys, vec!["main", "session:newer", "session:older"]);
+        .unwrap();
+    assert!(matches!(external.backing, SessionBacking::External { .. }));
+
+    let llm_external = metadata
+        .bind_external(
+            "session:llm",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Acp, Some("external-1".to_string())),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        llm_external.backing,
+        SessionBacking::LlmExternal { .. }
+    ));
+    assert_eq!(llm_external.model(), Some("test::llm"));
+    assert_eq!(
+        llm_external.reasoning_effort().map(ReasoningEffort::as_str),
+        Some("low")
+    );
 }
 
 #[tokio::test]
-async fn test_sqlite_remove() {
+async fn concurrent_ensure_creates_one_valid_row_and_one_event() {
     let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
+    let event_bus = crate::session_events::SessionEventBus::new();
+    let mut events = event_bus.subscribe();
+    let metadata = SqliteSessionMetadata::with_event_bus(pool, event_bus);
+    let model_reasoning = pair("test::concurrent", "low");
 
-    meta.upsert("main", None).await.unwrap();
-    assert!(meta.get("main").await.is_some());
-    meta.remove("main").await;
-    assert!(meta.get("main").await.is_none());
-}
-
-#[tokio::test]
-async fn test_sqlite_touch() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    meta.touch("main", 5).await;
-    assert_eq!(meta.get("main").await.unwrap().message_count, 5);
-}
-
-#[tokio::test]
-async fn test_sqlite_set_external_agent() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    meta.set_external_agent(
-        "main",
-        Some(ExternalAgentKind::Codex),
-        Some("external-123".to_string()),
-    )
-    .await;
-
-    let entry = meta.get("main").await.unwrap();
-    assert_eq!(entry.external_agent_kind, Some(ExternalAgentKind::Codex));
-    assert_eq!(entry.external_session_id.as_deref(), Some("external-123"));
-
-    meta.set_external_agent("main", None, None).await;
-    let entry = meta.get("main").await.unwrap();
-    assert_eq!(entry.external_agent_kind, None);
-    assert_eq!(entry.external_session_id, None);
-}
-
-#[tokio::test]
-async fn test_sqlite_set_timestamps_and_counts() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    meta.set_timestamps_and_counts("main", 100, 200, 5, 3).await;
-
-    let entry = meta.get("main").await.unwrap();
-    assert_eq!(entry.created_at, 100);
-    assert_eq!(entry.updated_at, 200);
-    assert_eq!(entry.message_count, 5);
-    assert_eq!(entry.last_seen_message_count, 3);
-}
-
-#[tokio::test]
-async fn test_sqlite_mark_seen() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    // New session starts with last_seen_message_count = 0.
-    assert_eq!(meta.get("main").await.unwrap().last_seen_message_count, 0);
-
-    // Simulate receiving messages.
-    meta.touch("main", 5).await;
-    // touch does NOT change last_seen_message_count.
-    assert_eq!(meta.get("main").await.unwrap().last_seen_message_count, 0);
-
-    // Mark as seen.
-    meta.mark_seen("main").await;
-    let entry = meta.get("main").await.unwrap();
-    assert_eq!(entry.last_seen_message_count, 5);
-    assert_eq!(entry.message_count, 5);
-
-    // More messages arrive — last_seen stays at previous value.
-    meta.touch("main", 8).await;
-    let entry = meta.get("main").await.unwrap();
-    assert_eq!(entry.message_count, 8);
-    assert_eq!(entry.last_seen_message_count, 5);
-}
-
-#[tokio::test]
-async fn test_sqlite_mark_seen_emits_patched_event() {
-    let pool = sqlite_pool().await;
-    let bus = crate::session_events::SessionEventBus::new();
-    let meta = SqliteSessionMetadata::with_event_bus(pool, bus.clone());
-    let mut rx = bus.subscribe();
-
-    meta.upsert("main", None).await.unwrap();
-    let created = rx.recv().await.unwrap();
-    assert!(
-        matches!(
-            created,
-            crate::session_events::SessionEvent::Created { session_key } if session_key == "main"
+    let (first, second) = tokio::join!(
+        metadata.ensure_llm_session(
+            "session:concurrent",
+            Some("Concurrent"),
+            &model_reasoning,
+            Some("main"),
         ),
-        "expected created event after upsert"
-    );
-
-    meta.mark_seen("main").await;
-    let patched = rx.recv().await.unwrap();
-    assert!(
-        matches!(
-            patched,
-            crate::session_events::SessionEvent::Patched { session_key } if session_key == "main"
+        metadata.ensure_llm_session(
+            "session:concurrent",
+            Some("Concurrent"),
+            &model_reasoning,
+            Some("main"),
         ),
-        "expected patched event after mark_seen"
     );
-}
-
-#[test]
-fn test_touch() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path).unwrap();
-
-    meta.upsert("main", None);
-    meta.touch("main", 5);
-    assert_eq!(meta.get("main").unwrap().message_count, 5);
-}
-
-#[test]
-fn test_archived() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert!(!meta.get("main").unwrap().archived);
-
-    meta.set_archived("main", true);
-    assert!(meta.get("main").unwrap().archived);
-
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert!(reloaded.get("main").unwrap().archived);
-}
-
-#[test]
-fn test_worktree_branch() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert!(meta.get("main").unwrap().worktree_branch.is_none());
-
-    meta.set_worktree_branch("main", Some("chelix/abc".to_string()));
+    let first = first.unwrap();
+    let second = second.unwrap();
+    assert_ne!(first.created(), second.created());
+    assert!(first.entry().model_reasoning().is_some());
+    assert!(second.entry().model_reasoning().is_some());
     assert_eq!(
-        meta.get("main").unwrap().worktree_branch.as_deref(),
-        Some("chelix/abc")
-    );
-
-    meta.set_worktree_branch("main", None);
-    assert!(meta.get("main").unwrap().worktree_branch.is_none());
-
-    // Round-trip through save/load.
-    meta.set_worktree_branch("main", Some("chelix/xyz".to_string()));
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(
-        reloaded.get("main").unwrap().worktree_branch.as_deref(),
-        Some("chelix/xyz")
-    );
-}
-
-#[tokio::test]
-async fn test_sqlite_worktree_branch() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    assert!(meta.get("main").await.unwrap().worktree_branch.is_none());
-
-    meta.set_worktree_branch("main", Some("chelix/abc".to_string()))
-        .await;
-    assert_eq!(
-        meta.get("main").await.unwrap().worktree_branch.as_deref(),
-        Some("chelix/abc")
-    );
-
-    meta.set_worktree_branch("main", None).await;
-    assert!(meta.get("main").await.unwrap().worktree_branch.is_none());
-}
-
-#[tokio::test]
-async fn test_sqlite_archived() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    assert!(!meta.get("main").await.unwrap().archived);
-
-    meta.set_archived("main", true).await;
-    assert!(meta.get("main").await.unwrap().archived);
-
-    meta.set_archived("main", false).await;
-    assert!(!meta.get("main").await.unwrap().archived);
-}
-
-#[test]
-fn test_channel_binding() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("tg:bot1:123", None);
-    assert!(meta.get("tg:bot1:123").unwrap().channel_binding.is_none());
-
-    let binding = r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#;
-    meta.set_channel_binding("tg:bot1:123", Some(binding.to_string()));
-    assert_eq!(
-        meta.get("tg:bot1:123").unwrap().channel_binding.as_deref(),
-        Some(binding)
-    );
-
-    meta.set_channel_binding("tg:bot1:123", None);
-    assert!(meta.get("tg:bot1:123").unwrap().channel_binding.is_none());
-
-    // Round-trip through save/load.
-    meta.set_channel_binding("tg:bot1:123", Some(binding.to_string()));
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(
-        reloaded
-            .get("tg:bot1:123")
-            .unwrap()
-            .channel_binding
-            .as_deref(),
-        Some(binding)
-    );
-}
-
-#[tokio::test]
-async fn test_sqlite_active_session() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    // No active session initially.
-    assert!(
-        meta.get_active_session("telegram", "bot1", "123", None)
-            .await
-            .is_none()
-    );
-
-    // Set and get.
-    meta.set_active_session("telegram", "bot1", "123", None, "session:abc")
-        .await;
-    assert_eq!(
-        meta.get_active_session("telegram", "bot1", "123", None)
-            .await
-            .as_deref(),
-        Some("session:abc")
-    );
-
-    // Overwrite.
-    meta.set_active_session("telegram", "bot1", "123", None, "session:def")
-        .await;
-    assert_eq!(
-        meta.get_active_session("telegram", "bot1", "123", None)
-            .await
-            .as_deref(),
-        Some("session:def")
-    );
-
-    // Different chat_id is independent.
-    assert!(
-        meta.get_active_session("telegram", "bot1", "456", None)
-            .await
-            .is_none()
-    );
-
-    // Thread ID isolates sessions within the same chat.
-    meta.set_active_session("telegram", "bot1", "123", Some("42"), "session:topic")
-        .await;
-    assert_eq!(
-        meta.get_active_session("telegram", "bot1", "123", Some("42"))
-            .await
-            .as_deref(),
-        Some("session:topic")
-    );
-    // Original chat without thread_id still has its own session.
-    assert_eq!(
-        meta.get_active_session("telegram", "bot1", "123", None)
-            .await
-            .as_deref(),
-        Some("session:def")
-    );
-}
-
-#[tokio::test]
-async fn test_sqlite_list_channel_sessions() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    let binding = r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#.to_string();
-
-    // Create two sessions with the same channel binding.
-    meta.upsert("telegram:bot1:123", Some("Session 1".into()))
-        .await
-        .unwrap();
-    meta.set_channel_binding("telegram:bot1:123", Some(binding.clone()))
-        .await;
-
-    meta.upsert("session:new1", Some("Session 2".into()))
-        .await
-        .unwrap();
-    meta.set_channel_binding("session:new1", Some(binding.clone()))
-        .await;
-
-    let sessions = meta.list_channel_sessions("telegram", "bot1", "123").await;
-    assert_eq!(sessions.len(), 2);
-    let keys: Vec<&str> = sessions.iter().map(|s| s.key.as_str()).collect();
-    assert!(keys.contains(&"telegram:bot1:123"));
-    assert!(keys.contains(&"session:new1"));
-
-    // Different chat should return empty.
-    let other = meta.list_channel_sessions("telegram", "bot1", "999").await;
-    assert!(other.is_empty());
-}
-
-#[tokio::test]
-async fn test_sqlite_clear_active_session_mappings() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.set_active_session("telegram", "bot1", "123", None, "session:abc")
-        .await;
-    meta.set_active_session("telegram", "bot1", "456", None, "session:abc")
-        .await;
-    meta.set_active_session("telegram", "bot1", "789", None, "session:def")
-        .await;
-
-    meta.clear_active_session_mappings("session:abc").await;
-
-    assert!(
-        meta.get_active_session("telegram", "bot1", "123", None)
-            .await
-            .is_none()
-    );
-    assert!(
-        meta.get_active_session("telegram", "bot1", "456", None)
-            .await
-            .is_none()
-    );
-    assert_eq!(
-        meta.get_active_session("telegram", "bot1", "789", None)
-            .await
-            .as_deref(),
-        Some("session:def")
-    );
-}
-
-#[tokio::test]
-async fn test_sqlite_channel_binding() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("tg:bot1:123", None).await.unwrap();
-    assert!(
-        meta.get("tg:bot1:123")
+        metadata
+            .list()
             .await
             .unwrap()
-            .channel_binding
-            .is_none()
+            .into_iter()
+            .filter(|entry| entry.key == "session:concurrent")
+            .count(),
+        1
     );
-
-    let binding = r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#;
-    meta.set_channel_binding("tg:bot1:123", Some(binding.to_string()))
-        .await;
-    assert_eq!(
-        meta.get("tg:bot1:123")
-            .await
-            .unwrap()
-            .channel_binding
-            .as_deref(),
-        Some(binding)
-    );
-
-    meta.set_channel_binding("tg:bot1:123", None).await;
-    assert!(
-        meta.get("tg:bot1:123")
-            .await
-            .unwrap()
-            .channel_binding
-            .is_none()
-    );
-}
-
-#[test]
-fn test_mcp_disabled() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert!(meta.get("main").unwrap().mcp_disabled.is_none());
-
-    meta.set_mcp_disabled("main", Some(true));
-    assert_eq!(meta.get("main").unwrap().mcp_disabled, Some(true));
-
-    meta.set_mcp_disabled("main", Some(false));
-    assert_eq!(meta.get("main").unwrap().mcp_disabled, Some(false));
-
-    meta.set_mcp_disabled("main", None);
-    assert!(meta.get("main").unwrap().mcp_disabled.is_none());
-
-    // Round-trip through save/load.
-    meta.set_mcp_disabled("main", Some(true));
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(reloaded.get("main").unwrap().mcp_disabled, Some(true));
+    assert!(matches!(
+        events.recv().await.unwrap(),
+        crate::session_events::SessionEvent::Created { session_key }
+            if session_key == "session:concurrent"
+    ));
+    assert!(matches!(
+        events.try_recv(),
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+    ));
 }
 
 #[tokio::test]
-async fn test_sqlite_mcp_disabled() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    assert!(meta.get("main").await.unwrap().mcp_disabled.is_none());
-
-    meta.set_mcp_disabled("main", Some(true)).await;
-    assert_eq!(meta.get("main").await.unwrap().mcp_disabled, Some(true));
-
-    meta.set_mcp_disabled("main", Some(false)).await;
-    assert_eq!(meta.get("main").await.unwrap().mcp_disabled, Some(false));
-
-    meta.set_mcp_disabled("main", None).await;
-    assert!(meta.get("main").await.unwrap().mcp_disabled.is_none());
-}
-
-#[tokio::test]
-async fn test_version_starts_at_zero() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    let entry = meta.upsert("main", None).await.unwrap();
-    assert_eq!(entry.version, 0);
-}
-
-#[tokio::test]
-async fn test_version_increments_on_mutation() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    assert_eq!(meta.get("main").await.unwrap().version, 0);
-
-    meta.set_model("main", Some("gpt-4".to_string())).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 1);
-
-    meta.touch("main", 5).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 2);
-
-    // Insert a project row so the FK constraint is satisfied.
-    sqlx::query("INSERT INTO projects (id) VALUES ('proj1')")
-        .execute(&meta.pool)
-        .await
-        .unwrap();
-    meta.set_project_id("main", Some("proj1".to_string())).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 3);
-
-    meta.set_archived("main", true).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 4);
-
-    meta.set_worktree_branch("main", Some("branch".to_string()))
-        .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 5);
-
-    meta.set_mcp_disabled("main", Some(true)).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 6);
-
-    meta.set_channel_binding("main", Some("{}".to_string()))
-        .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 7);
-
-    meta.set_parent("main", Some("parent".to_string()), Some(0))
-        .await;
-    assert_eq!(meta.get("main").await.unwrap().version, 8);
-
-    meta.mark_seen("main").await;
-    assert_eq!(meta.get("main").await.unwrap().version, 9);
-
-    meta.set_preview("main", Some("hello")).await;
-    assert_eq!(meta.get("main").await.unwrap().version, 10);
-
-    meta.set_agent_id("main", Some("agent-1")).await.unwrap();
-    assert_eq!(meta.get("main").await.unwrap().version, 11);
-}
-
-#[tokio::test]
-async fn test_version_increments_on_upsert_update() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", Some("First".to_string()))
-        .await
-        .unwrap();
-    assert_eq!(meta.get("main").await.unwrap().version, 0);
-
-    // Upsert with existing key bumps version via ON CONFLICT.
-    meta.upsert("main", Some("Second".to_string()))
-        .await
-        .unwrap();
-    assert_eq!(meta.get("main").await.unwrap().version, 1);
-}
-
-#[tokio::test]
-async fn test_version_in_list() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    meta.touch("main", 3).await;
-
-    let list = meta.list().await;
-    assert_eq!(list.len(), 1);
-    assert_eq!(list[0].version, 1);
-}
-
-#[test]
-fn test_json_backend_version() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert_eq!(meta.get("main").unwrap().version, 0);
-
-    meta.set_model("main", Some("gpt-4".to_string()));
-    assert_eq!(meta.get("main").unwrap().version, 1);
-
-    meta.touch("main", 5);
-    assert_eq!(meta.get("main").unwrap().version, 2);
-
-    // Upsert with label change bumps version.
-    meta.upsert("main", Some("New Label".to_string()));
-    assert_eq!(meta.get("main").unwrap().version, 3);
-
-    // Upsert without change does not bump version.
-    meta.upsert("main", Some("New Label".to_string()));
-    assert_eq!(meta.get("main").unwrap().version, 3);
-
-    // Round-trip through save/load preserves version.
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(reloaded.get("main").unwrap().version, 3);
-}
-
-#[test]
-fn test_agent_id() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path.clone()).unwrap();
-
-    meta.upsert("main", None);
-    assert!(meta.get("main").unwrap().agent_id.is_none());
-
-    meta.set_agent_id("main", Some("agent-1".to_string()));
-    assert_eq!(
-        meta.get("main").unwrap().agent_id.as_deref(),
-        Some("agent-1")
-    );
-
-    meta.set_agent_id("main", None);
-    assert!(meta.get("main").unwrap().agent_id.is_none());
-
-    // Round-trip through save/load.
-    meta.set_agent_id("main", Some("agent-2".to_string()));
-    meta.save().unwrap();
-    let reloaded = SessionMetadata::load(path).unwrap();
-    assert_eq!(
-        reloaded.get("main").unwrap().agent_id.as_deref(),
-        Some("agent-2")
-    );
-}
-
-#[test]
-fn test_list_by_agent_id() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path).unwrap();
-
-    meta.upsert("s1", Some("Session 1".to_string()));
-    meta.upsert("s2", Some("Session 2".to_string()));
-    meta.upsert("s3", Some("Session 3".to_string()));
-
-    meta.set_agent_id("s1", Some("agent-a".to_string()));
-    meta.set_agent_id("s2", Some("agent-a".to_string()));
-    meta.set_agent_id("s3", Some("agent-b".to_string()));
-
-    let agent_a = meta.list_by_agent_id("agent-a");
-    assert_eq!(agent_a.len(), 2);
-    let keys: Vec<&str> = agent_a.iter().map(|e| e.key.as_str()).collect();
-    assert!(keys.contains(&"s1"));
-    assert!(keys.contains(&"s2"));
-
-    let agent_b = meta.list_by_agent_id("agent-b");
-    assert_eq!(agent_b.len(), 1);
-    assert_eq!(agent_b[0].key, "s3");
-
-    let none = meta.list_by_agent_id("agent-missing");
-    assert!(none.is_empty());
-}
-
-#[test]
-fn test_delete_by_agent_id() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    let mut meta = SessionMetadata::load(path).unwrap();
-
-    meta.upsert("s1", None);
-    meta.upsert("s2", None);
-    meta.upsert("s3", None);
-
-    meta.set_agent_id("s1", Some("agent-a".to_string()));
-    meta.set_agent_id("s2", Some("agent-a".to_string()));
-    meta.set_agent_id("s3", Some("agent-b".to_string()));
-
-    let deleted = meta.delete_by_agent_id("agent-a");
-    assert_eq!(deleted, 2);
-    assert!(meta.get("s1").is_none());
-    assert!(meta.get("s2").is_none());
-    assert!(meta.get("s3").is_some());
-
-    // Deleting a non-existent agent returns 0.
-    let deleted = meta.delete_by_agent_id("agent-missing");
-    assert_eq!(deleted, 0);
-}
-
-#[tokio::test]
-async fn test_sqlite_agent_id() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("main", None).await.unwrap();
-    assert!(meta.get("main").await.unwrap().agent_id.is_none());
-
-    meta.set_agent_id("main", Some("agent-1")).await.unwrap();
-    assert_eq!(
-        meta.get("main").await.unwrap().agent_id.as_deref(),
-        Some("agent-1")
-    );
-
-    meta.set_agent_id("main", None).await.unwrap();
-    assert!(meta.get("main").await.unwrap().agent_id.is_none());
-}
-
-#[tokio::test]
-async fn test_sqlite_list_by_agent_id() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("s1", Some("Session 1".to_string()))
-        .await
-        .unwrap();
-    meta.upsert("s2", Some("Session 2".to_string()))
-        .await
-        .unwrap();
-    meta.upsert("s3", Some("Session 3".to_string()))
-        .await
-        .unwrap();
-
-    meta.set_agent_id("s1", Some("agent-a")).await.unwrap();
-    meta.set_agent_id("s2", Some("agent-a")).await.unwrap();
-    meta.set_agent_id("s3", Some("agent-b")).await.unwrap();
-
-    let agent_a = meta.list_by_agent_id("agent-a").await.unwrap();
-    assert_eq!(agent_a.len(), 2);
-    let keys: Vec<&str> = agent_a.iter().map(|e| e.key.as_str()).collect();
-    assert!(keys.contains(&"s1"));
-    assert!(keys.contains(&"s2"));
-
-    let agent_b = meta.list_by_agent_id("agent-b").await.unwrap();
-    assert_eq!(agent_b.len(), 1);
-    assert_eq!(agent_b[0].key, "s3");
-
-    let none = meta.list_by_agent_id("agent-missing").await.unwrap();
-    assert!(none.is_empty());
-}
-
-#[tokio::test]
-async fn test_sqlite_delete_by_agent_id() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-
-    meta.upsert("s1", None).await.unwrap();
-    meta.upsert("s2", None).await.unwrap();
-    meta.upsert("s3", None).await.unwrap();
-
-    meta.set_agent_id("s1", Some("agent-a")).await.unwrap();
-    meta.set_agent_id("s2", Some("agent-a")).await.unwrap();
-    meta.set_agent_id("s3", Some("agent-b")).await.unwrap();
-
-    let deleted = meta.delete_by_agent_id("agent-a").await.unwrap();
-    assert_eq!(deleted, 2);
-    assert!(meta.get("s1").await.is_none());
-    assert!(meta.get("s2").await.is_none());
-    assert!(meta.get("s3").await.is_some());
-
-    // Deleting a non-existent agent returns 0.
-    let deleted = meta.delete_by_agent_id("agent-missing").await.unwrap();
-    assert_eq!(deleted, 0);
-}
-
-#[test]
-fn test_agent_id_serde_default() {
-    // Metadata without agent_id should deserialize with no assigned agent.
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("meta.json");
-    fs::write(
-        &path,
-        r#"{"main":{"id":"1","key":"main","label":null,"created_at":0,"updated_at":0,"message_count":0}}"#,
-    )
-    .unwrap();
-    let meta = SessionMetadata::load(path).unwrap();
-    assert!(meta.get("main").unwrap().agent_id.is_none());
-}
-
-#[tokio::test]
-async fn configure_subagent_session_sets_agreed_child_metadata() {
-    let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-    meta.upsert("root", None).await.unwrap();
-    meta.upsert("session:child", None).await.unwrap();
-
-    let entry = meta
-        .configure_subagent_session(
-            "session:child",
-            "reviewer: inspect",
-            "root",
-            "root",
-            "reviewer",
-            "model-id",
-            &ReasoningEffort::from("high"),
+async fn promote_external_to_llm_preserves_identity_and_sets_agent() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    metadata
+        .bind_external(
+            "session:external-promotion",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, Some("external-1".to_string())),
         )
         .await
         .unwrap();
 
-    assert_eq!(entry.parent_session_key.as_deref(), Some("root"));
-    assert_eq!(entry.sandbox_owner_key.as_deref(), Some("root"));
-    assert_eq!(entry.agent_id.as_deref(), Some("reviewer"));
-    assert_eq!(entry.model.as_deref(), Some("model-id"));
+    let outcome = metadata
+        .promote_external_to_llm(
+            "session:external-promotion",
+            &pair("test::promoted", "high"),
+            "main",
+        )
+        .await
+        .unwrap();
+    let entry = outcome.into_entry();
+    assert!(matches!(entry.backing, SessionBacking::LlmExternal { .. }));
+    assert_eq!(entry.model(), Some("test::promoted"));
+    assert_eq!(
+        entry.reasoning_effort().map(ReasoningEffort::as_str),
+        Some("high")
+    );
+    assert_eq!(entry.external_agent_kind(), Some(ExternalAgentKind::Codex));
+    assert_eq!(entry.external_session_id(), Some("external-1"));
+    assert_eq!(entry.agent_id.as_deref(), Some("main"));
+
+    let second = metadata
+        .promote_external_to_llm(
+            "session:external-promotion",
+            &pair("test::ignored", "low"),
+            "other",
+        )
+        .await
+        .unwrap()
+        .into_entry();
+    assert_eq!(second.model(), Some("test::promoted"));
+    assert_eq!(second.agent_id.as_deref(), Some("main"));
 }
 
 #[tokio::test]
-async fn nested_subagent_persists_root_sandbox_owner() {
+async fn strict_external_transitions_reject_stale_version_without_mutation() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    let external = metadata
+        .bind_external(
+            "session:strict-external",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
+        )
+        .await
+        .unwrap();
+    let updated = metadata
+        .update_external_session_id("session:strict-external", Some("external-2"))
+        .await
+        .unwrap();
+
+    let result = metadata
+        .replace_external_with_llm(
+            "session:strict-external",
+            external.version,
+            "main",
+            &pair("test::model", "low"),
+        )
+        .await;
+    assert!(result.is_err());
+    let unchanged = metadata
+        .get("session:strict-external")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.version, updated.version);
+    assert!(matches!(unchanged.backing, SessionBacking::External { .. }));
+    assert_eq!(unchanged.external_session_id(), Some("external-2"));
+}
+
+#[tokio::test]
+async fn explicit_llm_agent_assignment_clears_external_identity() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    metadata
+        .bind_external(
+            "session:explicit-agent",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Acp, Some("external-1".to_string())),
+        )
+        .await
+        .unwrap();
+
+    let entry = metadata
+        .create_or_assign_agent(
+            "session:explicit-agent",
+            "main",
+            &pair("test::selected", "high"),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(entry.backing, SessionBacking::Llm { .. }));
+    assert_eq!(entry.model(), Some("test::selected"));
+    assert_eq!(entry.agent_id.as_deref(), Some("main"));
+    assert_eq!(entry.external_agent_kind(), None);
+    assert_eq!(entry.external_session_id(), None);
+}
+
+#[tokio::test]
+async fn schema_rejects_invalid_backing_rows() {
     let pool = sqlite_pool().await;
-    let meta = SqliteSessionMetadata::new(pool);
-    meta.upsert("root", None).await.unwrap();
-    meta.upsert("session:first", None).await.unwrap();
-    meta.configure_subagent_session(
-        "session:first",
-        "first",
-        "root",
-        "root",
-        "worker",
-        "model-id",
-        &ReasoningEffort::from("high"),
+    let cases = [
+        ("partial model", Some("test::model"), None, None, None),
+        ("partial reasoning", None, Some("low"), None, None),
+        ("empty model", Some(""), Some("low"), None, None),
+        ("empty reasoning", Some("test::model"), Some(""), None, None),
+        ("no backing", None, None, None, None),
+        ("empty external kind", None, None, Some(""), None),
+        ("unknown external kind", None, None, Some("unknown"), None),
+        ("orphan external ID", None, None, None, Some("external-1")),
+    ];
+
+    for (name, model, reasoning, kind, external_id) in cases {
+        let result = sqlx::query(
+            r#"INSERT INTO sessions (
+                   key, id, model, reasoning_effort, created_at, updated_at,
+                   external_agent_kind, external_session_id
+               ) VALUES (?, ?, ?, ?, 1, 1, ?, ?)"#,
+        )
+        .bind(format!("session:{name}"))
+        .bind(format!("id:{name}"))
+        .bind(model)
+        .bind(reasoning)
+        .bind(kind)
+        .bind(external_id)
+        .execute(&pool)
+        .await;
+        assert!(result.is_err(), "{name} unexpectedly passed");
+    }
+}
+
+#[tokio::test]
+async fn unbind_updates_llm_external_and_deletes_external_only() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    let llm_pair = pair("test::model", "off");
+    metadata
+        .create_llm_session("session:llm", None, &llm_pair, Some("main"))
+        .await
+        .unwrap();
+    metadata
+        .bind_external(
+            "session:llm",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
+        )
+        .await
+        .unwrap();
+    metadata
+        .bind_external(
+            "session:external",
+            None,
+            &ExternalSessionIdentity::new(ExternalAgentKind::Acp, None),
+        )
+        .await
+        .unwrap();
+
+    let retained = metadata
+        .unbind_external("session:llm")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(retained.backing, SessionBacking::Llm { .. }));
+    assert!(
+        metadata
+            .unbind_external("session:external")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(metadata.get("session:external").await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn agent_reassignment_replaces_the_complete_pair_atomically() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    let original = pair("test::original", "low");
+    let replacement = pair("test::replacement", "high");
+    metadata
+        .create_llm_session("session:agent", None, &original, Some("first"))
+        .await
+        .unwrap();
+
+    let entry = metadata
+        .assign_agent("session:agent", "second", &replacement)
+        .await
+        .unwrap();
+    assert_eq!(entry.agent_id.as_deref(), Some("second"));
+    assert_eq!(entry.model(), Some("test::replacement"));
+    assert_eq!(
+        entry.reasoning_effort().map(ReasoningEffort::as_str),
+        Some("high")
+    );
+
+    let missing = metadata
+        .assign_agent("session:missing", "second", &original)
+        .await;
+    assert!(missing.is_err());
+    let unchanged = metadata.get("session:agent").await.unwrap().unwrap();
+    assert_eq!(unchanged.model(), Some("test::replacement"));
+}
+
+#[tokio::test]
+async fn atomic_patch_rolls_back_every_field_on_late_storage_error() {
+    let pool = sqlite_pool().await;
+    let metadata = SqliteSessionMetadata::new(pool.clone());
+    let original = pair("test::original", "low");
+    metadata
+        .create_llm_session("session:patch", Some("Original"), &original, Some("main"))
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"CREATE TRIGGER reject_missing_project
+           BEFORE UPDATE ON sessions
+           WHEN NEW.project_id = 'missing'
+           BEGIN
+               SELECT RAISE(ABORT, 'missing project');
+           END"#,
     )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let before = metadata.get("session:patch").await.unwrap().unwrap();
+
+    let result = metadata
+        .patch_session("session:patch", SessionMetadataPatch {
+            label: Some("Changed".to_string()),
+            model_reasoning: Some(pair("test::replacement", "high")),
+            archived: Some(true),
+            project_id: Some(Some("missing".to_string())),
+            worktree_branch: Some(Some("changed".to_string())),
+            mcp_disabled: Some(Some(true)),
+            parent_session_key: None,
+        })
+        .await;
+    assert!(result.is_err());
+
+    let after = metadata.get("session:patch").await.unwrap().unwrap();
+    assert_eq!(after.id, before.id);
+    assert_eq!(after.label, before.label);
+    assert_eq!(after.backing, before.backing);
+    assert_eq!(after.created_at, before.created_at);
+    assert_eq!(after.updated_at, before.updated_at);
+    assert_eq!(after.message_count, before.message_count);
+    assert_eq!(
+        after.last_seen_message_count,
+        before.last_seen_message_count
+    );
+    assert_eq!(after.project_id, before.project_id);
+    assert_eq!(after.archived, before.archived);
+    assert_eq!(after.worktree_branch, before.worktree_branch);
+    assert_eq!(after.channel_binding, before.channel_binding);
+    assert_eq!(after.parent_session_key, before.parent_session_key);
+    assert_eq!(after.sandbox_owner_key, before.sandbox_owner_key);
+    assert_eq!(after.fork_point, before.fork_point);
+    assert_eq!(after.mcp_disabled, before.mcp_disabled);
+    assert_eq!(after.preview, before.preview);
+    assert_eq!(after.agent_id, before.agent_id);
+    assert_eq!(after.prompt_profile, before.prompt_profile);
+    assert_eq!(after.version, before.version);
+}
+
+#[tokio::test]
+async fn empty_patch_is_a_no_op_without_event_or_version_bump() {
+    let pool = sqlite_pool().await;
+    let event_bus = crate::session_events::SessionEventBus::new();
+    let metadata = SqliteSessionMetadata::with_event_bus(pool, event_bus.clone());
+    metadata
+        .create_llm_session(
+            "session:no-op-patch",
+            None,
+            &pair("test::model", "low"),
+            Some("main"),
+        )
+        .await
+        .unwrap();
+    let mut events = event_bus.subscribe();
+    let before = metadata.get("session:no-op-patch").await.unwrap().unwrap();
+
+    let after = metadata
+        .patch_session("session:no-op-patch", SessionMetadataPatch::default())
+        .await
+        .unwrap();
+    assert_eq!(after.version, before.version);
+    assert_eq!(after.updated_at, before.updated_at);
+    assert!(matches!(
+        events.try_recv(),
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+    ));
+}
+
+#[tokio::test]
+async fn session_tree_delete_rolls_back_rows_and_mappings() {
+    let pool = sqlite_pool().await;
+    let metadata = SqliteSessionMetadata::new(pool.clone());
+    let model_reasoning = pair("test::delete", "off");
+    metadata
+        .create_llm_session("session:root", None, &model_reasoning, Some("main"))
+        .await
+        .unwrap();
+    metadata
+        .create_llm_session("session:child", None, &model_reasoning, Some("main"))
+        .await
+        .unwrap();
+    metadata
+        .set_parent("session:child", Some("session:root"), None)
+        .await
+        .unwrap();
+    metadata
+        .set_active_session("telegram", "account", "chat", None, "session:child")
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"CREATE TRIGGER reject_session_delete
+           BEFORE DELETE ON sessions
+           WHEN OLD.key = 'session:root'
+           BEGIN
+               SELECT RAISE(ABORT, 'delete rejected');
+           END"#,
+    )
+    .execute(&pool)
     .await
     .unwrap();
 
-    let first = meta.try_get("session:first").await.unwrap().unwrap();
-    let resolved_owner = first
-        .sandbox_owner_key
-        .clone()
-        .unwrap_or_else(|| first.key.clone());
-    meta.upsert("session:second", None).await.unwrap();
-    let second = meta
-        .configure_subagent_session(
-            "session:second",
-            "second",
-            "session:first",
-            &resolved_owner,
-            "worker",
-            "model-id",
-            &ReasoningEffort::from("high"),
-        )
+    let result = metadata
+        .remove_session_tree("session:root", &[
+            "session:child".to_string(),
+            "session:root".to_string(),
+        ])
+        .await;
+    assert!(result.is_err());
+    assert!(metadata.get("session:root").await.unwrap().is_some());
+    assert!(metadata.get("session:child").await.unwrap().is_some());
+    assert_eq!(
+        metadata
+            .get_active_session("telegram", "account", "chat", None)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("session:child")
+    );
+}
+
+#[tokio::test]
+async fn label_update_never_creates_a_session() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    let llm_pair = pair("test::model", "none");
+    metadata
+        .create_llm_session("session:label", None, &llm_pair, Some("main"))
         .await
         .unwrap();
 
-    assert_eq!(second.sandbox_owner_key.as_deref(), Some("root"));
+    let updated = metadata
+        .update_label("session:label", Some("Updated"))
+        .await
+        .unwrap();
+    assert_eq!(updated.label.as_deref(), Some("Updated"));
+    assert!(
+        metadata
+            .update_label("session:missing", Some("Unexpected"))
+            .await
+            .is_err()
+    );
+    assert!(metadata.get("session:missing").await.unwrap().is_none());
+}
+
+async fn legacy_sessions_pool() -> sqlx::SqlitePool {
+    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        r#"CREATE TABLE sessions (
+            key TEXT PRIMARY KEY,
+            id TEXT NOT NULL,
+            label TEXT,
+            model TEXT,
+            reasoning_effort TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            message_count INTEGER NOT NULL DEFAULT 0,
+            last_seen_message_count INTEGER NOT NULL DEFAULT 0,
+            project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+            archived INTEGER NOT NULL DEFAULT 0,
+            worktree_branch TEXT,
+            channel_binding TEXT,
+            parent_session_key TEXT,
+            sandbox_owner_key TEXT,
+            fork_point INTEGER,
+            mcp_disabled INTEGER,
+            preview TEXT,
+            agent_id TEXT,
+            prompt_profile TEXT NOT NULL DEFAULT 'chat',
+            external_agent_kind TEXT,
+            external_session_id TEXT,
+            version INTEGER NOT NULL DEFAULT 0
+        )"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool
+}
+
+#[tokio::test]
+async fn migration_copies_valid_rows_unchanged_and_rejects_invalid_rows() {
+    let valid_pool = legacy_sessions_pool().await;
+    sqlx::query(
+        r#"INSERT INTO sessions (
+               key, id, label, model, reasoning_effort, created_at, updated_at,
+               message_count, last_seen_message_count, archived, prompt_profile,
+               external_agent_kind, external_session_id, version
+           ) VALUES ('session:valid', 'id-valid', 'Valid', 'test::model', 'off',
+                     10, 20, 3, 2, 1, 'subagent', 'codex', 'external-1', 7)"#,
+    )
+    .execute(&valid_pool)
+    .await
+    .unwrap();
+    sqlx::raw_sql(include_str!(
+        "../../migrations/20260831023000_session_backing_constraints.sql"
+    ))
+    .execute(&valid_pool)
+    .await
+    .unwrap();
+    let copied = sqlx::query(
+        r#"SELECT key, id, label, model, reasoning_effort, created_at, updated_at,
+                  message_count, last_seen_message_count, archived, prompt_profile,
+                  external_agent_kind, external_session_id, version
+           FROM sessions WHERE key = 'session:valid'"#,
+    )
+    .fetch_one(&valid_pool)
+    .await
+    .unwrap();
+    assert_eq!(copied.get::<String, _>("key"), "session:valid");
+    assert_eq!(copied.get::<String, _>("id"), "id-valid");
+    assert_eq!(
+        copied.get::<Option<String>, _>("label").as_deref(),
+        Some("Valid")
+    );
+    assert_eq!(
+        copied.get::<Option<String>, _>("model").as_deref(),
+        Some("test::model")
+    );
+    assert_eq!(
+        copied
+            .get::<Option<String>, _>("reasoning_effort")
+            .as_deref(),
+        Some("off")
+    );
+    assert_eq!(copied.get::<i64, _>("created_at"), 10);
+    assert_eq!(copied.get::<i64, _>("updated_at"), 20);
+    assert_eq!(copied.get::<i64, _>("message_count"), 3);
+    assert_eq!(copied.get::<i64, _>("last_seen_message_count"), 2);
+    assert_eq!(copied.get::<i64, _>("archived"), 1);
+    assert_eq!(copied.get::<String, _>("prompt_profile"), "subagent");
+    assert_eq!(
+        copied
+            .get::<Option<String>, _>("external_agent_kind")
+            .as_deref(),
+        Some("codex")
+    );
+    assert_eq!(
+        copied
+            .get::<Option<String>, _>("external_session_id")
+            .as_deref(),
+        Some("external-1")
+    );
+    assert_eq!(copied.get::<i64, _>("version"), 7);
+
+    let invalid_pool = legacy_sessions_pool().await;
+    sqlx::query(
+        "INSERT INTO sessions (key, id, created_at, updated_at) VALUES ('invalid', 'id', 1, 1)",
+    )
+    .execute(&invalid_pool)
+    .await
+    .unwrap();
+    let migration = sqlx::raw_sql(include_str!(
+        "../../migrations/20260831023000_session_backing_constraints.sql"
+    ))
+    .execute(&invalid_pool)
+    .await;
+    assert!(migration.is_err());
+    let unchanged: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE key = 'invalid'")
+        .fetch_one(&invalid_pool)
+        .await
+        .unwrap();
+    assert_eq!(unchanged, 1);
 }

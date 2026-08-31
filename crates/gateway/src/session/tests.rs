@@ -715,6 +715,7 @@ mod tests {
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "main", None).await;
 
         store
             .append(
@@ -783,6 +784,7 @@ mod tests {
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "main", None).await;
 
         store
             .append(
@@ -962,6 +964,21 @@ mod tests {
         pool
     }
 
+    fn test_model_reasoning() -> chelix_common::ResolvedModelReasoning {
+        chelix_common::ResolvedModelReasoning::try_new(
+            "custom-patch::reasoning".to_string(),
+            chelix_common::ReasoningEffort::from("low"),
+        )
+        .unwrap()
+    }
+
+    async fn create_test_session(metadata: &SqliteSessionMetadata, key: &str, label: Option<&str>) {
+        metadata
+            .create_llm_session(key, label, &test_model_reasoning(), Some("main"))
+            .await
+            .unwrap();
+    }
+
     fn patch_model_service(disabled_models: &[&str]) -> Arc<dyn ModelService> {
         let config: chelix_config::ChelixConfig = toml::from_str(
             r#"
@@ -1018,7 +1035,7 @@ reasoning_supported_efforts = ["off"]
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let key = "telegram:bot-main:-100123";
-        metadata.upsert(key, None).await.unwrap();
+        create_test_session(&metadata, key, None).await;
         let binding_json = serde_json::to_string(&chelix_channels::ChannelReplyTarget {
             channel_type: chelix_channels::ChannelType::Telegram,
             account_id: "bot-main".to_string(),
@@ -1027,7 +1044,10 @@ reasoning_supported_efforts = ["off"]
             thread_id: None,
         })
         .unwrap();
-        metadata.set_channel_binding(key, Some(binding_json)).await;
+        metadata
+            .set_channel_binding(key, Some(&binding_json))
+            .await
+            .unwrap();
 
         let payloads = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut hook_registry = HookRegistry::new();
@@ -1065,7 +1085,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata.upsert("main", None).await.unwrap();
+        create_test_session(&metadata, "main", None).await;
 
         let payloads = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut hook_registry = HookRegistry::new();
@@ -1103,10 +1123,11 @@ reasoning_supported_efforts = ["off"]
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let key = "telegram:bot-main:-100123";
-        metadata.upsert(key, None).await.unwrap();
+        create_test_session(&metadata, key, None).await;
         metadata
-            .set_channel_binding(key, Some("{not-json".to_string()))
-            .await;
+            .set_channel_binding(key, Some("{not-json"))
+            .await
+            .unwrap();
 
         let payloads = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut hook_registry = HookRegistry::new();
@@ -1182,6 +1203,57 @@ reasoning_supported_efforts = ["off"]
     }
 
     #[tokio::test]
+    async fn clear_all_propagates_failed_delete_after_attempting_other_sessions() {
+        const FAILED_KEY: &str = "session:clear-all-failed";
+        const DELETED_KEY: &str = "session:clear-all-deleted";
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool.clone()));
+        create_test_session(&metadata, FAILED_KEY, Some("Failed")).await;
+        create_test_session(&metadata, DELETED_KEY, Some("Deleted")).await;
+        store
+            .append(
+                FAILED_KEY,
+                &serde_json::json!({ "role": "user", "content": "keep" }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                DELETED_KEY,
+                &serde_json::json!({ "role": "user", "content": "remove" }),
+            )
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"CREATE TRIGGER reject_clear_all_delete
+               BEFORE DELETE ON sessions
+               WHEN OLD.key = 'session:clear-all-failed'
+               BEGIN
+                   SELECT RAISE(ABORT, 'clear_all delete rejected');
+               END"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+
+        let error = service
+            .clear_all()
+            .await
+            .expect_err("clear_all must propagate a failed delete");
+        let message = error.to_string();
+        assert!(message.contains(FAILED_KEY));
+        assert!(message.contains("clear_all delete rejected"));
+        assert!(message.contains("deleted 1 sessions"));
+        assert!(metadata.get(FAILED_KEY).await.unwrap().is_some());
+        assert_eq!(store.read(FAILED_KEY).await.unwrap().len(), 1);
+        assert!(metadata.get(DELETED_KEY).await.unwrap().is_none());
+        assert!(store.read(DELETED_KEY).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn patch_model_reasoning_persists_validated_pair_atomically() {
         const KEY: &str = "session:model-patch";
         const REASONING_MODEL: &str = "custom-patch::reasoning";
@@ -1191,19 +1263,11 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata.upsert(KEY, None).await.unwrap();
-        metadata
-            .set_model_reasoning(
-                KEY,
-                REASONING_MODEL,
-                &chelix_common::ReasoningEffort::from("low"),
-            )
-            .await
-            .unwrap();
+        create_test_session(&metadata, KEY, None).await;
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
             .with_model_service(patch_model_service(&[]));
 
-        let before = metadata.get(KEY).await.unwrap();
+        let before = metadata.get(KEY).await.unwrap().unwrap();
         let response = service
             .patch(serde_json::json!({
                 "key": KEY,
@@ -1214,9 +1278,14 @@ reasoning_supported_efforts = ["off"]
             .unwrap();
         assert_eq!(response["model"], REASONING_MODEL);
         assert_eq!(response["reasoningEffort"], "high");
-        let reasoning_entry = metadata.get(KEY).await.unwrap();
-        assert_eq!(reasoning_entry.model.as_deref(), Some(REASONING_MODEL));
-        assert_eq!(reasoning_entry.reasoning_effort.as_deref(), Some("high"));
+        let reasoning_entry = metadata.get(KEY).await.unwrap().unwrap();
+        assert_eq!(reasoning_entry.model(), Some(REASONING_MODEL));
+        assert_eq!(
+            reasoning_entry
+                .reasoning_effort()
+                .map(chelix_common::ReasoningEffort::as_str),
+            Some("high")
+        );
         assert_eq!(reasoning_entry.version, before.version + 1);
 
         let response = service
@@ -1228,10 +1297,12 @@ reasoning_supported_efforts = ["off"]
             .unwrap();
         assert_eq!(response["model"], REASONING_MODEL);
         assert_eq!(response["reasoningEffort"], "low");
-        let reasoning_only_entry = metadata.get(KEY).await.unwrap();
-        assert_eq!(reasoning_only_entry.model.as_deref(), Some(REASONING_MODEL));
+        let reasoning_only_entry = metadata.get(KEY).await.unwrap().unwrap();
+        assert_eq!(reasoning_only_entry.model(), Some(REASONING_MODEL));
         assert_eq!(
-            reasoning_only_entry.reasoning_effort.as_deref(),
+            reasoning_only_entry
+                .reasoning_effort()
+                .map(chelix_common::ReasoningEffort::as_str),
             Some("low")
         );
         assert_eq!(reasoning_only_entry.version, reasoning_entry.version + 1);
@@ -1246,10 +1317,69 @@ reasoning_supported_efforts = ["off"]
             .unwrap();
         assert_eq!(response["model"], OFF_MODEL);
         assert_eq!(response["reasoningEffort"], "off");
-        let off_entry = metadata.get(KEY).await.unwrap();
-        assert_eq!(off_entry.model.as_deref(), Some(OFF_MODEL));
-        assert_eq!(off_entry.reasoning_effort.as_deref(), Some("off"));
+        let off_entry = metadata.get(KEY).await.unwrap().unwrap();
+        assert_eq!(off_entry.model(), Some(OFF_MODEL));
+        assert_eq!(
+            off_entry
+                .reasoning_effort()
+                .map(chelix_common::ReasoningEffort::as_str),
+            Some("off")
+        );
         assert_eq!(off_entry.version, reasoning_only_entry.version + 1);
+    }
+
+    #[tokio::test]
+    async fn patch_late_foreign_key_error_rolls_back_the_complete_entry() {
+        const KEY: &str = "session:atomic-patch";
+        const REASONING_MODEL: &str = "custom-patch::reasoning";
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, KEY, Some("Original")).await;
+        let service = LiveSessionService::new(store, Arc::clone(&metadata))
+            .with_model_service(patch_model_service(&[]));
+        let before = metadata.get(KEY).await.unwrap().unwrap();
+
+        let result = service
+            .patch(serde_json::json!({
+                "key": KEY,
+                "label": "Changed",
+                "model": REASONING_MODEL,
+                "reasoningEffort": "high",
+                "archived": true,
+                "projectId": "missing-project",
+                "worktreeBranch": "changed",
+                "mcpDisabled": true,
+            }))
+            .await;
+        assert!(result.is_err());
+
+        let after = metadata.get(KEY).await.unwrap().unwrap();
+        assert_eq!(after.id, before.id);
+        assert_eq!(after.key, before.key);
+        assert_eq!(after.label, before.label);
+        assert_eq!(after.backing, before.backing);
+        assert_eq!(after.created_at, before.created_at);
+        assert_eq!(after.updated_at, before.updated_at);
+        assert_eq!(after.message_count, before.message_count);
+        assert_eq!(
+            after.last_seen_message_count,
+            before.last_seen_message_count
+        );
+        assert_eq!(after.project_id, before.project_id);
+        assert_eq!(after.archived, before.archived);
+        assert_eq!(after.worktree_branch, before.worktree_branch);
+        assert_eq!(after.channel_binding, before.channel_binding);
+        assert_eq!(after.parent_session_key, before.parent_session_key);
+        assert_eq!(after.sandbox_owner_key, before.sandbox_owner_key);
+        assert_eq!(after.fork_point, before.fork_point);
+        assert_eq!(after.mcp_disabled, before.mcp_disabled);
+        assert_eq!(after.preview, before.preview);
+        assert_eq!(after.agent_id, before.agent_id);
+        assert_eq!(after.prompt_profile, before.prompt_profile);
+        assert_eq!(after.version, before.version);
     }
 
     #[tokio::test]
@@ -1262,15 +1392,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata.upsert(KEY, None).await.unwrap();
-        metadata
-            .set_model_reasoning(
-                KEY,
-                REASONING_MODEL,
-                &chelix_common::ReasoningEffort::from("low"),
-            )
-            .await
-            .unwrap();
+        create_test_session(&metadata, KEY, None).await;
         let service = LiveSessionService::new(store, Arc::clone(&metadata))
             .with_model_service(patch_model_service(&[OFF_MODEL]));
 
@@ -1346,18 +1468,14 @@ reasoning_supported_efforts = ["off"]
         ];
 
         for (name, params, expected_error) in cases {
-            let before = metadata.get(KEY).await.unwrap();
+            let before = metadata.get(KEY).await.unwrap().unwrap();
             let error = service.patch(params).await.unwrap_err();
             assert!(
                 error.to_string().contains(expected_error),
                 "unexpected {name} error: {error}",
             );
-            let after = metadata.get(KEY).await.unwrap();
-            assert_eq!(after.model, before.model, "{name} changed model");
-            assert_eq!(
-                after.reasoning_effort, before.reasoning_effort,
-                "{name} changed reasoning effort",
-            );
+            let after = metadata.get(KEY).await.unwrap().unwrap();
+            assert_eq!(after.backing, before.backing, "{name} changed backing");
             assert_eq!(after.version, before.version, "{name} changed version");
         }
     }
@@ -1368,10 +1486,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("session:archive-me", Some("Test".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "session:archive-me", Some("Test")).await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1380,7 +1495,14 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
         assert_eq!(result.get("archived").and_then(|v| v.as_bool()), Some(true));
-        assert!(metadata.get("session:archive-me").await.unwrap().archived);
+        assert!(
+            metadata
+                .get("session:archive-me")
+                .await
+                .unwrap()
+                .unwrap()
+                .archived
+        );
     }
 
     #[tokio::test]
@@ -1389,14 +1511,8 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("session:parent", Some("Parent".to_string()))
-            .await
-            .unwrap();
-        metadata
-            .upsert("session:child", Some("Child".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "session:parent", Some("Parent")).await;
+        create_test_session(&metadata, "session:child", Some("Child")).await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1415,6 +1531,7 @@ reasoning_supported_efforts = ["off"]
             metadata
                 .get("session:child")
                 .await
+                .unwrap()
                 .unwrap()
                 .parent_session_key
                 .as_deref(),
@@ -1440,6 +1557,7 @@ reasoning_supported_efforts = ["off"]
                 .get("session:child")
                 .await
                 .unwrap()
+                .unwrap()
                 .parent_session_key
                 .is_none()
         );
@@ -1451,10 +1569,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("session:loner", Some("Loner".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "session:loner", Some("Loner")).await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1474,10 +1589,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("session:orphan", Some("Orphan".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "session:orphan", Some("Orphan")).await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1498,15 +1610,17 @@ reasoning_supported_efforts = ["off"]
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         for key in ["session:a", "session:b", "session:c"] {
-            metadata.upsert(key, None).await.unwrap();
+            create_test_session(&metadata, key, None).await;
         }
         // Chain: c -> b -> a
         metadata
-            .set_parent("session:b", Some("session:a".to_string()), None)
-            .await;
+            .set_parent("session:b", Some("session:a"), None)
+            .await
+            .unwrap();
         metadata
-            .set_parent("session:c", Some("session:b".to_string()), None)
-            .await;
+            .set_parent("session:c", Some("session:b"), None)
+            .await
+            .unwrap();
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1524,6 +1638,7 @@ reasoning_supported_efforts = ["off"]
                 .get("session:a")
                 .await
                 .unwrap()
+                .unwrap()
                 .parent_session_key
                 .is_none()
         );
@@ -1535,16 +1650,13 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata.upsert("session:old-parent", None).await.unwrap();
-        metadata.upsert("session:new-parent", None).await.unwrap();
-        metadata.upsert("session:moved", None).await.unwrap();
+        create_test_session(&metadata, "session:old-parent", None).await;
+        create_test_session(&metadata, "session:new-parent", None).await;
+        create_test_session(&metadata, "session:moved", None).await;
         metadata
-            .set_parent(
-                "session:moved",
-                Some("session:old-parent".to_string()),
-                Some(7),
-            )
-            .await;
+            .set_parent("session:moved", Some("session:old-parent"), Some(7))
+            .await
+            .unwrap();
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1555,7 +1667,7 @@ reasoning_supported_efforts = ["off"]
         .await
         .unwrap();
 
-        let entry = metadata.get("session:moved").await.unwrap();
+        let entry = metadata.get("session:moved").await.unwrap().unwrap();
         assert_eq!(
             entry.parent_session_key.as_deref(),
             Some("session:new-parent")
@@ -1569,10 +1681,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("main", Some("Main".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "main", Some("Main")).await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1581,7 +1690,7 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap_err();
         assert!(error.to_string().contains("cannot be archived"));
-        assert!(!metadata.get("main").await.unwrap().archived);
+        assert!(!metadata.get("main").await.unwrap().unwrap().archived);
     }
 
     #[tokio::test]
@@ -1592,13 +1701,11 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let binding =
             r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#.to_string();
+        create_test_session(&metadata, "telegram:bot1:123", Some("Telegram current")).await;
         metadata
-            .upsert("telegram:bot1:123", Some("Telegram current".to_string()))
+            .set_channel_binding("telegram:bot1:123", Some(&binding))
             .await
             .unwrap();
-        metadata
-            .set_channel_binding("telegram:bot1:123", Some(binding))
-            .await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1607,7 +1714,14 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap_err();
         assert!(error.to_string().contains("cannot be archived"));
-        assert!(!metadata.get("telegram:bot1:123").await.unwrap().archived);
+        assert!(
+            !metadata
+                .get("telegram:bot1:123")
+                .await
+                .unwrap()
+                .unwrap()
+                .archived
+        );
     }
 
     #[tokio::test]
@@ -1618,19 +1732,20 @@ reasoning_supported_efforts = ["off"]
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let binding =
             r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#.to_string();
+        create_test_session(
+            &metadata,
+            "session:telegram-archive",
+            Some("Telegram archive"),
+        )
+        .await;
         metadata
-            .upsert(
-                "session:telegram-archive",
-                Some("Telegram archive".to_string()),
-            )
+            .set_channel_binding("session:telegram-archive", Some(&binding))
             .await
             .unwrap();
         metadata
-            .set_channel_binding("session:telegram-archive", Some(binding.clone()))
-            .await;
-        metadata
             .set_active_session("telegram", "bot1", "123", None, "telegram:bot1:123")
-            .await;
+            .await
+            .unwrap();
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1644,6 +1759,7 @@ reasoning_supported_efforts = ["off"]
                 .get("session:telegram-archive")
                 .await
                 .unwrap()
+                .unwrap()
                 .archived
         );
     }
@@ -1654,10 +1770,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("cron:archive-me", Some("Cron archive".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "cron:archive-me", Some("Cron archive")).await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1666,11 +1779,88 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
         assert_eq!(result.get("archived").and_then(|v| v.as_bool()), Some(true));
-        assert!(metadata.get("cron:archive-me").await.unwrap().archived);
+        assert!(
+            metadata
+                .get("cron:archive-me")
+                .await
+                .unwrap()
+                .unwrap()
+                .archived
+        );
     }
 
     #[path = "archive_search_tests.rs"]
     mod archive_search_tests;
+
+    #[tokio::test]
+    async fn delete_sql_failure_preserves_metadata_history_media_and_tool_results() {
+        const KEY: &str = "session:delete-rollback";
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool.clone()));
+        create_test_session(&metadata, KEY, Some("Rollback")).await;
+        metadata
+            .set_active_session("telegram", "bot", "chat", None, KEY)
+            .await
+            .unwrap();
+        store
+            .append(
+                KEY,
+                &serde_json::json!({ "role": "user", "content": "keep" }),
+            )
+            .await
+            .unwrap();
+        store
+            .save_media(KEY, "keep.bin", b"keep-media")
+            .await
+            .unwrap();
+        let tool_result =
+            chelix_sessions::tool_results::ToolResultStore::new(dir.path().to_path_buf())
+                .persist_text(KEY, "call-1", "keep-tool-result")
+                .await
+                .unwrap();
+        sqlx::query(
+            r#"CREATE TRIGGER reject_gateway_session_delete
+               BEFORE DELETE ON sessions
+               WHEN OLD.key = 'session:delete-rollback'
+               BEGIN
+                   SELECT RAISE(ABORT, 'delete rejected');
+               END"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        assert!(
+            service
+                .delete(serde_json::json!({ "key": KEY }))
+                .await
+                .is_err()
+        );
+
+        assert!(metadata.get(KEY).await.unwrap().is_some());
+        assert_eq!(
+            metadata
+                .get_active_session("telegram", "bot", "chat", None)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some(KEY)
+        );
+        assert_eq!(store.read(KEY).await.unwrap().len(), 1);
+        assert_eq!(
+            store.read_media(KEY, "keep.bin").await.unwrap(),
+            b"keep-media"
+        );
+        assert_eq!(
+            tokio::fs::read_to_string(tool_result.content_path)
+                .await
+                .unwrap(),
+            "keep-tool-result"
+        );
+    }
 
     #[tokio::test]
     async fn delete_cascades_child_sessions() {
@@ -1678,28 +1868,17 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "session:root", Some("Root")).await;
+        create_test_session(&metadata, "session:child", Some("Child")).await;
+        create_test_session(&metadata, "session:grandchild", Some("Grandchild")).await;
         metadata
-            .upsert("session:root", Some("Root".to_string()))
+            .set_parent("session:child", Some("session:root"), Some(1))
             .await
             .unwrap();
         metadata
-            .upsert("session:child", Some("Child".to_string()))
+            .set_parent("session:grandchild", Some("session:child"), Some(2))
             .await
             .unwrap();
-        metadata
-            .upsert("session:grandchild", Some("Grandchild".to_string()))
-            .await
-            .unwrap();
-        metadata
-            .set_parent("session:child", Some("session:root".to_string()), Some(1))
-            .await;
-        metadata
-            .set_parent(
-                "session:grandchild",
-                Some("session:child".to_string()),
-                Some(2),
-            )
-            .await;
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1707,9 +1886,9 @@ reasoning_supported_efforts = ["off"]
             .await
             .unwrap();
 
-        assert!(metadata.get("session:root").await.is_none());
-        assert!(metadata.get("session:child").await.is_none());
-        assert!(metadata.get("session:grandchild").await.is_none());
+        assert!(metadata.get("session:root").await.unwrap().is_none());
+        assert!(metadata.get("session:child").await.unwrap().is_none());
+        assert!(metadata.get("session:grandchild").await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -1718,23 +1897,20 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "session:root", Some("Root")).await;
+        create_test_session(&metadata, "session:child", Some("Child")).await;
         metadata
-            .upsert("session:root", Some("Root".to_string()))
+            .set_parent("session:child", Some("session:root"), Some(1))
             .await
             .unwrap();
-        metadata
-            .upsert("session:child", Some("Child".to_string()))
-            .await
-            .unwrap();
-        metadata
-            .set_parent("session:child", Some("session:root".to_string()), Some(1))
-            .await;
         metadata
             .set_active_session("telegram", "bot", "root-chat", None, "session:root")
-            .await;
+            .await
+            .unwrap();
         metadata
             .set_active_session("telegram", "bot", "child-chat", None, "session:child")
-            .await;
+            .await
+            .unwrap();
 
         let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -1746,12 +1922,14 @@ reasoning_supported_efforts = ["off"]
             metadata
                 .get_active_session("telegram", "bot", "root-chat", None)
                 .await
+                .unwrap()
                 .is_none()
         );
         assert!(
             metadata
                 .get_active_session("telegram", "bot", "child-chat", None)
                 .await
+                .unwrap()
                 .is_none()
         );
     }
@@ -1857,10 +2035,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().join("sessions")));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        metadata
-            .upsert("session:memory", Some("Memory".to_string()))
-            .await
-            .unwrap();
+        create_test_session(&metadata, "session:memory", Some("Memory")).await;
 
         let memory_dir = dir.path().join("memory");
         let nested_memory_dir = memory_dir.join("sessions");

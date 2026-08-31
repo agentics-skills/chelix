@@ -232,7 +232,7 @@ impl AgentTool for SessionsDeleteTool {
             return Err(Error::message("cannot delete the main session").into());
         }
 
-        if self.metadata.get(key).await.is_none() {
+        if self.metadata.get(key).await?.is_none() {
             return Err(Error::message(format!("session not found: {key}")).into());
         }
 
@@ -268,6 +268,21 @@ mod tests {
             .await?;
         SqliteSessionMetadata::init(&pool).await?;
         Ok(pool)
+    }
+
+    async fn create_test_session(
+        metadata: &SqliteSessionMetadata,
+        key: &str,
+        label: &str,
+    ) -> TestResult<()> {
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )?;
+        metadata
+            .create_llm_session(key, Some(label), &model_reasoning, Some("main"))
+            .await?;
+        Ok(())
     }
 
     #[tokio::test]
@@ -307,9 +322,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_create_links_parent_from_session_context() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:parent", Some("Parent".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:parent", "Parent").await?;
 
         let captured_parent = Arc::new(std::sync::Mutex::new(None::<Option<String>>));
         let captured_ref = Arc::clone(&captured_parent);
@@ -377,9 +390,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_create_uses_generated_key_even_when_other_sessions_exist() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:existing", Some("Existing".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:existing", "Existing").await?;
 
         let create_fn: CreateSessionFn = Arc::new(move |req| {
             Box::pin(async move {
@@ -532,9 +543,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_delete_deletes_existing_session() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata
-            .upsert("session:to-delete", Some("Delete me".to_string()))
-            .await?;
+        create_test_session(&metadata, "session:to-delete", "Delete me").await?;
 
         let called = Arc::new(AtomicBool::new(false));
         let called_ref = Arc::clone(&called);
@@ -584,7 +593,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_delete_rejects_main_session() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        metadata.upsert("main", Some("Main".to_string())).await?;
+        create_test_session(&metadata, "main", "Main").await?;
 
         let delete_fn: DeleteSessionFn =
             Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({ "ok": true })) }));

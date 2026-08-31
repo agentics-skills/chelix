@@ -14,8 +14,8 @@ use crate::{
 
 use super::super::{
     format_attachable_sessions_list, format_channel_sessions_list, is_attachable_session,
-    parse_numbered_selection, resolve_channel_agent_id, resolve_channel_session_defaults,
-    session_list_label,
+    parse_numbered_selection, resolve_channel_agent_id, resolve_channel_model_reasoning_for_effort,
+    resolve_channel_session_defaults, session_list_label,
 };
 
 // ── Session management command handlers ──────────────────────────
@@ -38,7 +38,10 @@ pub(in crate::channel_events) async fn handle_new(
     reply_to: &ChannelReplyTarget,
     sender_id: Option<&str>,
 ) -> ChannelResult<String> {
-    let old_entry = session_metadata.get(session_key).await;
+    let old_entry = session_metadata
+        .get(session_key)
+        .await
+        .map_err(ChannelError::unavailable)?;
     let channel_defaults = resolve_channel_session_defaults(state, reply_to, sender_id).await;
     let inherited_agent = old_entry
         .as_ref()
@@ -50,11 +53,14 @@ pub(in crate::channel_events) async fn handle_new(
         .as_deref()
         .or(channel_defaults.agent_id.as_deref());
     let target_agent = resolve_channel_agent_id(state, session_key, requested_agent).await?;
-    let (agent_model, _) =
+    let (agent_model, agent_reasoning_effort) =
         crate::session_reasoning::agent_defaults_for_agent(state, Some(&target_agent))
             .await
             .map_err(ChannelError::unavailable)?;
     let model_id = require_channel_model_id(channel_defaults.model.or(Some(agent_model)))?;
+    let model_reasoning =
+        resolve_channel_model_reasoning_for_effort(state, &model_id, &agent_reasoning_effort)
+            .await?;
 
     // Create a new session with a fresh UUID key.
     let new_key = format!("session:{}", uuid::Uuid::new_v4());
@@ -68,49 +74,24 @@ pub(in crate::channel_events) async fn handle_new(
             &reply_to.account_id,
             &reply_to.chat_id,
         )
-        .await;
+        .await
+        .map_err(ChannelError::unavailable)?;
     let n = existing.len() + 1;
+    let label = format!("{} {n}", reply_to.channel_type.display_name());
 
-    // Create the new session entry with channel binding.
     session_metadata
-        .upsert(
+        .create_llm_session(
             &new_key,
-            Some(format!("{} {n}", reply_to.channel_type.display_name())),
+            Some(&label),
+            &model_reasoning,
+            Some(&target_agent),
         )
         .await
-        .map_err(|e| ChannelError::external("create channel session", e))?;
+        .map_err(|error| ChannelError::external("create channel session", error))?;
     session_metadata
-        .set_channel_binding(&new_key, Some(binding_json.clone()))
-        .await;
-    session_metadata
-        .set_agent_id(&new_key, Some(&target_agent))
+        .set_channel_binding(&new_key, Some(&binding_json))
         .await
-        .map_err(|e| ChannelError::external("setting session agent", e))?;
-
-    // Validate and persist the complete pair before making the new session active.
-    let patch = match super::super::patch_channel_session_model(state, &new_key, &model_id).await {
-        Ok(patch) => patch,
-        Err(patch_error) => {
-            let cleanup = state
-                .services
-                .session
-                .delete(serde_json::json!({ "key": &new_key, "force": true }))
-                .await;
-            if let Err(cleanup_error) = cleanup {
-                tracing::error!(
-                    session = %new_key,
-                    error = %patch_error,
-                    cleanup_error = %cleanup_error,
-                    "channel /new model validation and rollback failed"
-                );
-                return Err(ChannelError::unavailable(format!(
-                    "model validation failed: {patch_error}; session rollback failed: {cleanup_error}"
-                )));
-            }
-            tracing::error!(session = %new_key, error = %patch_error, "channel /new model validation failed");
-            return Err(patch_error);
-        },
-    };
+        .map_err(|error| ChannelError::external("bind channel session", error))?;
 
     // Ensure the old session also has a channel binding (for listing).
     if old_entry
@@ -119,8 +100,9 @@ pub(in crate::channel_events) async fn handle_new(
         .is_none()
     {
         session_metadata
-            .set_channel_binding(session_key, Some(binding_json))
-            .await;
+            .set_channel_binding(session_key, Some(&binding_json))
+            .await
+            .map_err(|error| ChannelError::external("bind existing channel session", error))?;
     }
 
     // Update the forward mapping only after the new session is valid.
@@ -132,7 +114,8 @@ pub(in crate::channel_events) async fn handle_new(
             reply_to.thread_id.as_deref(),
             &new_key,
         )
-        .await;
+        .await
+        .map_err(|error| ChannelError::external("activate channel session", error))?;
 
     info!(
         old_session = %session_key,
@@ -165,7 +148,8 @@ pub(in crate::channel_events) async fn handle_new(
 
     Ok(format!(
         "New session started. Using *{}* (reasoning effort: {}). Use /model to change.",
-        patch.model, patch.reasoning_effort
+        model_reasoning.model_id(),
+        model_reasoning.reasoning_effort().as_str()
     ))
 }
 
@@ -181,7 +165,8 @@ pub(in crate::channel_events) async fn handle_title(
     } else if let Some(ref meta) = state.services.session_metadata {
         meta.get(session_key)
             .await
-            .and_then(|e| e.label)
+            .map_err(ChannelError::unavailable)?
+            .and_then(|entry| entry.label)
             .unwrap_or_else(|| "untitled".to_string())
     } else {
         "untitled".to_string()
@@ -344,7 +329,8 @@ pub(in crate::channel_events) async fn handle_sessions(
             &reply_to.account_id,
             &reply_to.chat_id,
         )
-        .await;
+        .await
+        .map_err(ChannelError::unavailable)?;
 
     if sessions.is_empty() {
         return Ok("No sessions found. Send a message to start one.".to_string());
@@ -372,7 +358,8 @@ pub(in crate::channel_events) async fn handle_sessions(
                 reply_to.thread_id.as_deref(),
                 &target_session.key,
             )
-            .await;
+            .await
+            .map_err(ChannelError::unavailable)?;
 
         let label = target_session
             .label
@@ -411,6 +398,7 @@ pub(in crate::channel_events) async fn handle_attach(
     let sessions: Vec<_> = session_metadata
         .list_account_sessions(reply_to.channel_type.as_str(), &reply_to.account_id)
         .await
+        .map_err(ChannelError::unavailable)?
         .into_iter()
         .filter(is_attachable_session)
         .collect();
@@ -437,10 +425,12 @@ pub(in crate::channel_events) async fn handle_attach(
 
     session_metadata
         .clear_active_session_mappings(&target_session.key)
-        .await;
+        .await
+        .map_err(ChannelError::unavailable)?;
     session_metadata
-        .set_channel_binding(&target_session.key, Some(binding_json))
-        .await;
+        .set_channel_binding(&target_session.key, Some(&binding_json))
+        .await
+        .map_err(ChannelError::unavailable)?;
     session_metadata
         .set_active_session(
             reply_to.channel_type.as_str(),
@@ -449,7 +439,8 @@ pub(in crate::channel_events) async fn handle_attach(
             reply_to.thread_id.as_deref(),
             &target_session.key,
         )
-        .await;
+        .await
+        .map_err(ChannelError::unavailable)?;
 
     let label = session_list_label(target_session);
     info!(

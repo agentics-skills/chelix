@@ -24,21 +24,3 @@ pub async fn agent_defaults_for_agent(
         .ok_or_else(|| ServiceError::message(format!("agent '{agent_id}' is not configured")))?;
     Ok((agent.model.clone(), agent.reasoning_effort.clone()))
 }
-
-pub(crate) async fn materialize_agent_session_defaults(
-    state: &GatewayState,
-    session_key: &str,
-    agent_id: &str,
-) -> ServiceResult<()> {
-    let metadata = state
-        .services
-        .session_metadata
-        .as_ref()
-        .ok_or_else(|| ServiceError::message("session metadata is not available"))?;
-    let (model, reasoning_effort) = agent_defaults_for_agent(state, Some(agent_id)).await?;
-    metadata
-        .set_model_reasoning(session_key, &model, &reasoning_effort)
-        .await
-        .map_err(ServiceError::message)?;
-    Ok(())
-}

@@ -393,7 +393,16 @@ pub async fn api_session_history_handler(
     let limit = clamp_history_limit(query.limit);
 
     let metadata_entry = if let Some(ref metadata) = state.gateway.services.session_metadata {
-        metadata.get(&session_key).await
+        match metadata.get(&session_key).await {
+            Ok(entry) => entry,
+            Err(error) => {
+                return api_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    SESSION_HISTORY_FAILED,
+                    error.to_string(),
+                );
+            },
+        }
     } else {
         None
     };

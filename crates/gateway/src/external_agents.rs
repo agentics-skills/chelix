@@ -15,8 +15,8 @@ use {
         types::ContextTurn,
     },
     chelix_service_traits::{
-        ChatService, ExternalAgentService, ServiceError, ServiceResult, SessionBusyReason,
-        SessionService,
+        ChatService, ExternalAgentService, ModelService, ServiceError, ServiceResult,
+        SessionBusyReason, SessionService,
     },
     chelix_sessions::{MessageContent, PersistedMessage},
     futures::StreamExt,
@@ -42,6 +42,8 @@ pub struct GatewayExternalAgentService {
     registry: ExternalAgentRegistry,
     config: ExternalAgentsConfig,
     session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
+    agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+    model_service: Arc<dyn ModelService>,
     live_sessions: Mutex<HashMap<LiveSessionKey, LiveSessionEntry>>,
 }
 
@@ -158,6 +160,8 @@ impl GatewayExternalAgentService {
         config: ExternalAgentsConfig,
         session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
         approval_manager: Arc<ApprovalManager>,
+        agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+        model_service: Arc<dyn ModelService>,
     ) -> Self {
         let mut registry = ExternalAgentRegistry::new();
         registry.register(Box::new(ClaudeCodeTransport::new()));
@@ -171,6 +175,8 @@ impl GatewayExternalAgentService {
             registry,
             config,
             session_metadata,
+            agents_config,
+            model_service,
             live_sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -180,11 +186,15 @@ impl GatewayExternalAgentService {
         config: ExternalAgentsConfig,
         session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
         registry: ExternalAgentRegistry,
+        agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+        model_service: Arc<dyn ModelService>,
     ) -> Self {
         Self {
             registry,
             config,
             session_metadata,
+            agents_config,
+            model_service,
             live_sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -213,8 +223,8 @@ impl GatewayExternalAgentService {
         spec.external_session_id = self
             .session_metadata
             .get(session_key)
-            .await
-            .and_then(|entry| entry.external_session_id);
+            .await?
+            .and_then(|entry| entry.external_session_id().map(str::to_string));
         let session = Arc::new(Mutex::new(self.registry.start_session(&spec).await?));
         live_sessions.insert(key, LiveSessionEntry {
             session: Arc::clone(&session),
@@ -262,6 +272,53 @@ impl GatewayExternalAgentService {
                 warn!(%error, session_key, "failed to shut down external agent session");
             }
         }
+    }
+
+    async fn resolved_llm_agent_for_entry(
+        &self,
+        entry: &chelix_sessions::metadata::SessionEntry,
+    ) -> Result<(String, chelix_common::ResolvedModelReasoning), ServiceError> {
+        let (agent_id, model, reasoning_effort) = {
+            let agents = self.agents_config.read().await;
+            let agent_id = match entry
+                .agent_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|agent_id| !agent_id.is_empty())
+            {
+                Some(agent_id) => {
+                    if agents.get(agent_id).is_none() {
+                        return Err(ServiceError::message(format!(
+                            "session '{}' references unknown agent '{agent_id}'",
+                            entry.key
+                        )));
+                    }
+                    agent_id.to_string()
+                },
+                None => {
+                    let default_agent_id = agents.default.trim();
+                    if default_agent_id.is_empty() || agents.get(default_agent_id).is_none() {
+                        return Err(ServiceError::message(
+                            "agents.default must reference an existing agent",
+                        ));
+                    }
+                    default_agent_id.to_string()
+                },
+            };
+            let agent = agents.get(&agent_id).ok_or_else(|| {
+                ServiceError::message(format!("agent '{agent_id}' is not configured"))
+            })?;
+            (
+                agent_id,
+                agent.model.clone(),
+                agent.reasoning_effort.clone(),
+            )
+        };
+        let model_reasoning = self
+            .model_service
+            .resolve_model_reasoning(&model, Some(&reasoning_effort))
+            .await?;
+        Ok((agent_id, model_reasoning))
     }
 
     fn spec_for_kind(&self, kind: AgentTransportKind) -> anyhow::Result<ExternalAgentSpec> {
@@ -374,7 +431,13 @@ impl SessionService for ExternalAgentSessionService {
     }
 
     async fn clear_all(&self) -> ServiceResult {
-        for entry in self.external_agents.session_metadata.list().await {
+        for entry in self
+            .external_agents
+            .session_metadata
+            .list()
+            .await
+            .map_err(ServiceError::message)?
+        {
             self.external_agents.shutdown_binding(&entry.key).await;
         }
         self.inner.clear_all().await
@@ -414,10 +477,14 @@ impl ExternalAgentService for GatewayExternalAgentService {
             return Err(format!("external agent kind is not registered: {kind}").into());
         }
         self.shutdown_binding(session_key).await;
-        let _ = self.session_metadata.upsert(session_key, None).await;
         self.session_metadata
-            .set_external_agent(session_key, Some(kind), None)
-            .await;
+            .bind_external(
+                session_key,
+                None,
+                &chelix_sessions::metadata::ExternalSessionIdentity::new(kind, None),
+            )
+            .await
+            .map_err(ServiceError::message)?;
         Ok(serde_json::json!({ "ok": true, "sessionKey": session_key, "kind": kind.as_str() }))
     }
 
@@ -427,10 +494,38 @@ impl ExternalAgentService for GatewayExternalAgentService {
             .or_else(|| params.get("session_key"))
             .and_then(|value| value.as_str())
             .ok_or_else(|| "missing sessionKey".to_string())?;
+        let entry = self
+            .session_metadata
+            .get(session_key)
+            .await
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| ServiceError::message(format!("session '{session_key}' not found")))?;
+        match &entry.backing {
+            chelix_sessions::metadata::SessionBacking::LlmExternal { .. } => {
+                self.session_metadata
+                    .unbind_llm_external(session_key, entry.version)
+                    .await
+                    .map_err(ServiceError::message)?;
+            },
+            chelix_sessions::metadata::SessionBacking::External { .. } => {
+                let (agent_id, model_reasoning) = self.resolved_llm_agent_for_entry(&entry).await?;
+                self.session_metadata
+                    .replace_external_with_llm(
+                        session_key,
+                        entry.version,
+                        &agent_id,
+                        &model_reasoning,
+                    )
+                    .await
+                    .map_err(ServiceError::message)?;
+            },
+            chelix_sessions::metadata::SessionBacking::Llm { .. } => {
+                return Err(ServiceError::message(format!(
+                    "session '{session_key}' has no external binding"
+                )));
+            },
+        }
         self.shutdown_binding(session_key).await;
-        self.session_metadata
-            .set_external_agent(session_key, None, None)
-            .await;
         Ok(serde_json::json!({ "ok": true, "sessionKey": session_key }))
     }
 
@@ -440,14 +535,22 @@ impl ExternalAgentService for GatewayExternalAgentService {
             .or_else(|| params.get("session_key"))
             .and_then(|value| value.as_str())
             .ok_or_else(|| "missing sessionKey".to_string())?;
-        let entry = self.session_metadata.get(session_key).await;
-        let kind = entry.as_ref().and_then(|entry| entry.external_agent_kind);
+        let entry = self
+            .session_metadata
+            .get(session_key)
+            .await
+            .map_err(ServiceError::message)?;
+        let kind = entry.as_ref().and_then(|entry| entry.external_agent_kind());
         Ok(serde_json::json!({
             "bound": kind.is_some(),
             "sessionKey": session_key,
             "kind": kind.map(|kind| kind.as_str()),
-            "externalSessionId": entry.and_then(|entry| entry.external_session_id),
+            "externalSessionId": entry.and_then(|entry| entry.external_session_id().map(str::to_string)),
         }))
+    }
+
+    async fn shutdown_session(&self, session_key: &str) {
+        self.shutdown_binding(session_key).await;
     }
 }
 
@@ -481,8 +584,11 @@ impl ExternalAgentChatService {
             return None;
         }
         let session_key = resolve_session_key(params, &self.state).await;
-        let entry = self.session_metadata.get(&session_key).await?;
-        let kind = entry.external_agent_kind?;
+        let entry = match self.session_metadata.get(&session_key).await {
+            Ok(entry) => entry?,
+            Err(error) => return Some(Err(ServiceError::message(error.to_string()))),
+        };
+        let kind = entry.external_agent_kind()?;
         Some(self.send_external(params.clone(), session_key, kind).await)
     }
 
@@ -545,7 +651,8 @@ impl ExternalAgentChatService {
         history.push(user_msg.to_value());
         self.session_metadata
             .touch(&session_key, history.len() as u32)
-            .await;
+            .await
+            .map_err(ServiceError::message)?;
 
         crate::broadcast::broadcast(
             &self.state,
@@ -573,8 +680,9 @@ impl ExternalAgentChatService {
         let external_session_id = session.external_session_id().map(str::to_string);
         if external_session_id.is_some() {
             self.session_metadata
-                .set_external_agent(&session_key, Some(kind), external_session_id.clone())
-                .await;
+                .update_external_session_id(&session_key, external_session_id.as_deref())
+                .await
+                .map_err(ServiceError::message)?;
         }
         let mut events = match session.send_prompt(&text, Some(&context)).await {
             Ok(events) => events,
@@ -707,8 +815,9 @@ impl ExternalAgentChatService {
         }
         if let Some(external_session_id) = session.external_session_id().map(str::to_string) {
             self.session_metadata
-                .set_external_agent(&session_key, Some(kind), Some(external_session_id))
-                .await;
+                .update_external_session_id(&session_key, Some(&external_session_id))
+                .await
+                .map_err(ServiceError::message)?;
         }
         drop(session);
         if external_error.is_none() && !completed {
@@ -799,7 +908,8 @@ impl ExternalAgentChatService {
                 .map_err(ServiceError::message)?;
             self.session_metadata
                 .touch(&session_key, message_count)
-                .await;
+                .await
+                .map_err(ServiceError::message)?;
             broadcast_external_agent_error(
                 &self.state,
                 &run_id,
@@ -831,7 +941,8 @@ impl ExternalAgentChatService {
             .ok_or_else(|| ServiceError::message("session message count overflow"))?;
         self.session_metadata
             .touch(&session_key, message_count)
-            .await;
+            .await
+            .map_err(ServiceError::message)?;
         crate::broadcast::broadcast(
             &self.state,
             "chat",
@@ -873,10 +984,35 @@ impl ChatService for ExternalAgentChatService {
     }
 
     async fn send_sync(&self, params: Value) -> ServiceResult {
-        if let Some(result) = self.maybe_send_external(&params).await {
-            return result;
+        let explicit_agent = params
+            .get("agent_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .is_some_and(|agent_id| !agent_id.is_empty());
+        if !explicit_agent {
+            if let Some(result) = self.maybe_send_external(&params).await {
+                return result;
+            }
+            return self.inner.send_sync(params).await;
         }
-        self.inner.send_sync(params).await
+
+        let session_key = resolve_session_key(&params, &self.state).await;
+        let result = self.inner.send_sync(params).await;
+        match self.session_metadata.get(&session_key).await {
+            Ok(None) => self.external_agents.shutdown_binding(&session_key).await,
+            Ok(Some(entry)) if entry.external_agent_kind().is_none() => {
+                self.external_agents.shutdown_binding(&session_key).await;
+            },
+            Ok(Some(_)) => {},
+            Err(error) => {
+                warn!(
+                    session = %session_key,
+                    %error,
+                    "failed to verify external binding after delegated send_sync"
+                );
+            },
+        }
+        result
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
@@ -1062,6 +1198,58 @@ mod tests {
         futures::{Stream, stream},
     };
 
+    struct ExactTestModelService;
+
+    #[async_trait]
+    impl ModelService for ExactTestModelService {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn resolve_model_reasoning(
+            &self,
+            model: &str,
+            reasoning_effort: Option<&chelix_common::ReasoningEffort>,
+        ) -> Result<chelix_common::ResolvedModelReasoning, ServiceError> {
+            let reasoning_effort = reasoning_effort.ok_or_else(|| {
+                ServiceError::message("reasoning effort is required for test model resolution")
+            })?;
+            chelix_common::ResolvedModelReasoning::try_new(
+                model.to_string(),
+                reasoning_effort.clone(),
+            )
+            .map_err(|error| ServiceError::message(error.to_string()))
+        }
+
+        async fn disable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn enable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    fn test_agents_config() -> Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>> {
+        let mut agents = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..chelix_config::AgentsConfig::default()
+        };
+        agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_common::ReasoningEffort::from("off"),
+            ),
+        );
+        Arc::new(tokio::sync::RwLock::new(agents))
+    }
+
     #[derive(Default)]
     struct FakeAgentState {
         starts: std::sync::atomic::AtomicUsize,
@@ -1182,6 +1370,21 @@ mod tests {
         pool
     }
 
+    fn test_pair() -> chelix_common::ResolvedModelReasoning {
+        chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )
+        .unwrap()
+    }
+
+    async fn create_test_session(metadata: &SqliteSessionMetadata, key: &str) {
+        metadata
+            .create_llm_session(key, None, &test_pair(), Some("main"))
+            .await
+            .unwrap();
+    }
+
     fn fake_external_agents(
         metadata: Arc<SqliteSessionMetadata>,
         state: Arc<FakeAgentState>,
@@ -1204,7 +1407,11 @@ mod tests {
         let mut registry = ExternalAgentRegistry::new();
         registry.register(Box::new(FakeTransport { state }));
         Arc::new(GatewayExternalAgentService::with_registry(
-            config, metadata, registry,
+            config,
+            metadata,
+            registry,
+            test_agents_config(),
+            Arc::new(ExactTestModelService),
         ))
     }
 
@@ -1222,6 +1429,8 @@ mod tests {
     #[derive(Default)]
     struct SyncTrackingChatService {
         calls: std::sync::Mutex<Vec<&'static str>>,
+        metadata: Option<Arc<SqliteSessionMetadata>>,
+        reject_agent_selection: bool,
     }
 
     #[async_trait]
@@ -1234,11 +1443,26 @@ mod tests {
             Ok(serde_json::json!({ "source": "send" }))
         }
 
-        async fn send_sync(&self, _params: Value) -> ServiceResult {
+        async fn send_sync(&self, params: Value) -> ServiceResult {
             self.calls
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
                 .push("send_sync");
+            if self.reject_agent_selection {
+                return Err(ServiceError::message("agent selection rejected"));
+            }
+            if params
+                .get("agent_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_some_and(|agent_id| !agent_id.is_empty())
+                && let Some(metadata) = self.metadata.as_ref()
+            {
+                metadata
+                    .create_or_assign_agent("main", "main", &test_pair())
+                    .await
+                    .map_err(ServiceError::message)?;
+            }
             Ok(serde_json::json!({ "source": "send_sync" }))
         }
 
@@ -1315,6 +1539,11 @@ mod tests {
             .expect("status");
         assert_eq!(status["bound"], true);
         assert_eq!(status["kind"], "codex");
+        let external_entry = metadata
+            .get("main")
+            .await
+            .expect("load external-only entry")
+            .expect("external-only entry exists");
 
         service
             .unbind(serde_json::json!({ "sessionKey": "main" }))
@@ -1326,6 +1555,28 @@ mod tests {
             .expect("status after unbind");
         assert_eq!(status["bound"], false);
         assert!(status["kind"].is_null());
+        let llm_entry = metadata
+            .get("main")
+            .await
+            .expect("load LLM entry")
+            .expect("LLM entry exists after unbind");
+        assert_eq!(llm_entry.id, external_entry.id);
+        assert_eq!(llm_entry.key, external_entry.key);
+        assert_eq!(llm_entry.version, external_entry.version + 1);
+        assert_eq!(llm_entry.agent_id.as_deref(), Some("main"));
+        assert_eq!(llm_entry.model(), Some("test::model"));
+        assert_eq!(
+            llm_entry
+                .reasoning_effort()
+                .map(chelix_common::ReasoningEffort::as_str),
+            Some("off")
+        );
+        assert!(matches!(
+            llm_entry.backing,
+            chelix_sessions::metadata::SessionBacking::Llm { .. }
+        ));
+        assert_eq!(llm_entry.external_agent_kind(), None);
+        assert_eq!(llm_entry.external_session_id(), None);
     }
 
     #[tokio::test]
@@ -1349,10 +1600,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        metadata.upsert("main", None).await.unwrap();
+        create_test_session(&metadata, "main").await;
         metadata
-            .set_external_agent("main", Some(AgentTransportKind::Codex), None)
-            .await;
+            .bind_external(
+                "main",
+                None,
+                &chelix_sessions::metadata::ExternalSessionIdentity::new(
+                    AgentTransportKind::Codex,
+                    None,
+                ),
+            )
+            .await
+            .unwrap();
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents_with_config(
             ExternalAgentsConfig::default(),
@@ -1417,7 +1676,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        metadata.upsert("main", None).await.unwrap();
+        create_test_session(&metadata, "main").await;
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         let inner = Arc::new(SyncTrackingChatService::default());
@@ -1436,6 +1695,129 @@ mod tests {
             .expect("send_sync delegates to inner chat");
 
         assert_eq!(result["source"], "send_sync");
+        assert_eq!(
+            *inner
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec!["send_sync"]
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_explicit_agent_keeps_external_metadata_and_live_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
+        external_agents
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .expect("bind external agent");
+        external_agents
+            .session_for_binding("main", AgentTransportKind::Codex)
+            .await
+            .expect("start live external session");
+        let before = metadata
+            .get("main")
+            .await
+            .expect("load external entry")
+            .expect("external entry exists");
+        let inner: Arc<dyn ChatService> = Arc::new(SyncTrackingChatService {
+            calls: std::sync::Mutex::new(Vec::new()),
+            metadata: Some(Arc::clone(&metadata)),
+            reject_agent_selection: true,
+        });
+        let chat = ExternalAgentChatService::new(
+            inner,
+            Arc::clone(&external_agents),
+            test_gateway_state(),
+            session_store,
+            Arc::clone(&metadata),
+        );
+
+        assert!(
+            chat.send_sync(serde_json::json!({
+                "_session_key": "main",
+                "text": "hello",
+                "agent_id": "main",
+            }))
+            .await
+            .is_err()
+        );
+        let after = metadata
+            .get("main")
+            .await
+            .expect("reload external entry")
+            .expect("external entry remains");
+        assert_eq!(after.backing, before.backing);
+        assert_eq!(after.version, before.version);
+        assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn bound_send_sync_routes_explicit_agent_internally_and_empty_agent_externally() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
+        external_agents
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .expect("bind external agent");
+        external_agents
+            .session_for_binding("main", AgentTransportKind::Codex)
+            .await
+            .expect("start live external session");
+        let inner = Arc::new(SyncTrackingChatService {
+            calls: std::sync::Mutex::new(Vec::new()),
+            metadata: Some(Arc::clone(&metadata)),
+            reject_agent_selection: false,
+        });
+        let inner_chat: Arc<dyn ChatService> = inner.clone();
+        let chat = ExternalAgentChatService::new(
+            inner_chat,
+            Arc::clone(&external_agents),
+            test_gateway_state(),
+            Arc::clone(&session_store),
+            Arc::clone(&metadata),
+        );
+
+        let result = chat
+            .send_sync(serde_json::json!({
+                "_session_key": "main",
+                "text": "hello",
+                "agent_id": "main",
+            }))
+            .await
+            .expect("explicit agent delegates internally");
+        assert_eq!(result["source"], "send_sync");
+        assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            metadata
+                .get("main")
+                .await
+                .expect("load switched session")
+                .expect("switched session exists")
+                .external_agent_kind(),
+            None
+        );
+
+        external_agents
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .expect("rebind external agent");
+        let external_result = chat
+            .send_sync(serde_json::json!({
+                "_session_key": "main",
+                "text": "external",
+                "agent_id": "",
+            }))
+            .await
+            .expect("empty agent remains externally routed");
+        assert_eq!(external_result["ok"], true);
         assert_eq!(
             *inner
                 .calls
@@ -1486,7 +1868,8 @@ mod tests {
             metadata
                 .get("main")
                 .await
-                .and_then(|entry| entry.external_session_id),
+                .unwrap()
+                .and_then(|entry| entry.external_session_id().map(str::to_string)),
             Some("fake-session-1".to_string())
         );
     }
