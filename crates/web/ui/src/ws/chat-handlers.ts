@@ -166,7 +166,11 @@ function handleChatSegmentStart(p: ChatPayload, isActive: boolean, isChatPage: b
 		// A new segment gets its own bubble. Keeping the previous element would
 		// append this segment's text to the one a retry just closed, showing the
 		// two attempts as a single run-on answer.
-		if (previous && previous.segmentId !== p.segmentId) detachLiveAssistantSegment();
+		if (previous && previous.segmentId !== p.segmentId) {
+			const session = sessionStore.getByKey(eventSession);
+			if (session) session.streamText.value = "";
+			if (isActive && isChatPage) detachLiveAssistantSegment();
+		}
 	}
 	if (!(isActive && isChatPage)) return;
 	setComposerStopButton(true, eventSession);

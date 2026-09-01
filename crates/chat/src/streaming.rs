@@ -17,10 +17,10 @@ use {
 use {
     chelix_agents::{
         ChatMessage, UserContent,
-        model::{StreamEvent, push_capped_provider_raw_event},
+        model::{StreamEvent, Usage, push_capped_provider_raw_event},
         prompt::{PromptRuntimeContext, build_system_prompt_minimal_runtime_details},
     },
-    chelix_common::{ProviderSegmentMaterializer, ProviderSegmentOutcome},
+    chelix_common::{ProviderSegmentId, ProviderSegmentMaterializer, ProviderSegmentOutcome},
     chelix_sessions::{PersistedMessage, store::SessionStore},
 };
 
@@ -48,16 +48,42 @@ const STREAM_RETRYABLE_SERVER_PATTERNS: &[&str] = &[
     "http 502",
     "http 503",
     "http 504",
+    "http 529",
+    "server_error",
     "internal server error",
+    "overloaded",
+    "bad gateway",
     "service unavailable",
     "gateway timeout",
     "temporarily unavailable",
-    "overloaded",
+    "the server had an error processing your request",
     "timeout",
     "connection reset",
 ];
+const STREAM_TERMINAL_ERROR_TYPES: &[&str] =
+    &["auth_error", "model_not_found", "unsupported_model"];
+const STREAM_TERMINAL_ERROR_PATTERNS: &[&str] = &[
+    "http 400",
+    "http 401",
+    "http 403",
+    "http 404",
+    "http 405",
+    "http 413",
+    "http 415",
+    "http 422",
+    "invalid_request_error",
+    "invalid_api_key",
+    "authentication_error",
+    "permission_denied",
+    "model_not_found",
+    "unsupported_model",
+    "context_length_exceeded",
+    "response incomplete:",
+];
 const STREAM_SERVER_RETRY_DELAY_MS: u64 = 2_000;
 const STREAM_SERVER_MAX_RETRIES: u8 = 1;
+const STREAM_UNKNOWN_RETRY_DELAY_MS: u64 = 10_000;
+const STREAM_UNKNOWN_MAX_RETRIES: u8 = 1;
 const STREAM_RATE_LIMIT_INITIAL_RETRY_MS: u64 = 2_000;
 const STREAM_RATE_LIMIT_MAX_RETRY_MS: u64 = 60_000;
 const STREAM_RATE_LIMIT_MAX_RETRIES: u8 = 10;
@@ -65,6 +91,16 @@ const STREAM_RATE_LIMIT_MAX_RETRIES: u8 = 10;
 fn is_retryable_stream_server_error(msg: &str) -> bool {
     let lower = msg.to_ascii_lowercase();
     STREAM_RETRYABLE_SERVER_PATTERNS
+        .iter()
+        .any(|pattern| lower.contains(pattern))
+}
+
+fn is_terminal_stream_error(raw_error: &str, error_type: Option<&str>) -> bool {
+    if error_type.is_some_and(|error_type| STREAM_TERMINAL_ERROR_TYPES.contains(&error_type)) {
+        return true;
+    }
+    let lower = raw_error.to_ascii_lowercase();
+    STREAM_TERMINAL_ERROR_PATTERNS
         .iter()
         .any(|pattern| lower.contains(pattern))
 }
@@ -85,8 +121,14 @@ fn next_stream_retry_delay_ms(
     server_retries_remaining: &mut u8,
     rate_limit_retries_remaining: &mut u8,
     rate_limit_backoff_ms: &mut Option<u64>,
+    unknown_retries_remaining: &mut u8,
 ) -> Option<u64> {
-    if error_obj.get("type").and_then(Value::as_str) == Some("rate_limit_exceeded") {
+    let error_type = error_obj.get("type").and_then(Value::as_str);
+    if error_type == Some("billing_exhausted") {
+        return None;
+    }
+
+    if error_type == Some("rate_limit_exceeded") {
         if *rate_limit_retries_remaining == 0 {
             return None;
         }
@@ -102,7 +144,7 @@ fn next_stream_retry_delay_ms(
         return Some(delay_ms.clamp(1, STREAM_RATE_LIMIT_MAX_RETRY_MS));
     }
 
-    if is_retryable_stream_server_error(raw_error) {
+    if error_type == Some("server_error") || is_retryable_stream_server_error(raw_error) {
         if *server_retries_remaining == 0 {
             return None;
         }
@@ -110,7 +152,78 @@ fn next_stream_retry_delay_ms(
         return Some(STREAM_SERVER_RETRY_DELAY_MS);
     }
 
-    None
+    if is_terminal_stream_error(raw_error, error_type) {
+        return None;
+    }
+
+    if *unknown_retries_remaining == 0 {
+        return None;
+    }
+    *unknown_retries_remaining -= 1;
+    Some(STREAM_UNKNOWN_RETRY_DELAY_MS)
+}
+
+fn failed_stream_attempt_message(
+    materializer: &ProviderSegmentMaterializer,
+) -> Option<ChatMessage> {
+    if materializer.segment.items.is_empty() {
+        return None;
+    }
+    Some(ChatMessage::Assistant {
+        content: materializer.segment.message_text(),
+        tool_calls: Vec::new(),
+        reasoning: materializer.segment.reasoning_content(),
+        provider_items: materializer.segment.items.clone(),
+        segment_id: materializer.segment.segment_id.clone(),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn close_stream_segment(
+    state: &Arc<dyn ChatRuntime>,
+    session_store: Option<&Arc<SessionStore>>,
+    materializer: &mut ProviderSegmentMaterializer,
+    segment_id: ProviderSegmentId,
+    outcome: ProviderSegmentOutcome,
+    usage: Option<Usage>,
+    run_id: &str,
+    session_key: &str,
+    client_seq: Option<u64>,
+) -> Result<(), String> {
+    materializer
+        .close(outcome)
+        .map_err(|error| format!("provider segment close rejected: {error}"))?;
+
+    let mut history_index = None;
+    if let Some(store) = session_store {
+        let persisted = PersistedMessage::ProviderSegmentClose {
+            segment_id: segment_id.clone(),
+            outcome,
+            created_at: Some(now_ms()),
+            seq: client_seq,
+            run_id: Some(run_id.to_string()),
+        };
+        history_index = Some(
+            store
+                .append_with_index(session_key, &persisted.to_value())
+                .await
+                .map_err(|error| format!("failed to persist provider segment close: {error}"))?,
+        );
+    }
+
+    let mut payload = serde_json::json!({
+        "runId": run_id,
+        "sessionKey": session_key,
+        "state": "provider_segment_close",
+        "segmentId": segment_id.0,
+        "outcome": outcome,
+        "usage": usage,
+    });
+    if let Some(idx) = history_index {
+        payload["historyIndex"] = serde_json::json!(idx);
+    }
+    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+    Ok(())
 }
 
 async fn persist_streaming_partial(
@@ -351,6 +464,8 @@ pub(crate) async fn run_streaming(
     let mut server_retries_remaining: u8 = STREAM_SERVER_MAX_RETRIES;
     let mut rate_limit_retries_remaining: u8 = STREAM_RATE_LIMIT_MAX_RETRIES;
     let mut rate_limit_backoff_ms: Option<u64> = None;
+    let mut unknown_retries_remaining: u8 = STREAM_UNKNOWN_MAX_RETRIES;
+    let mut raw_llm_responses: Vec<Value> = Vec::new();
     let mut channel_stream_dispatcher =
         ChannelStreamDispatcher::for_session(state, session_key).await;
 
@@ -362,7 +477,6 @@ pub(crate) async fn run_streaming(
         let mut accumulated = String::new();
         // Segment identity is owned by the provider and adopted on ingress.
         let mut materializer = ProviderSegmentMaterializer::pending();
-        let mut raw_llm_responses: Vec<Value> = Vec::new();
         // Set when the canonical provider pipeline refuses to continue. The run
         // must fail loudly instead of silently dropping provider output.
         let mut stream_failure: Option<String> = None;
@@ -392,6 +506,11 @@ pub(crate) async fn run_streaming(
             match event {
                 StreamEvent::SegmentStart { segment_id } => {
                     materializer = ProviderSegmentMaterializer::new(segment_id.clone());
+                    if let Some(ref map) = active_partial_assistant
+                        && let Some(draft) = map.write().await.get_mut(session_key)
+                    {
+                        draft.start_segment(segment_id.clone());
+                    }
                     broadcast(
                         state,
                         "chat",
@@ -454,44 +573,22 @@ pub(crate) async fn run_streaming(
                     outcome,
                     usage,
                 } => {
-                    if let Err(error) = materializer.close(outcome) {
-                        stream_failure = Some(format!("provider segment close rejected: {error}"));
+                    if let Err(error) = close_stream_segment(
+                        state,
+                        session_store,
+                        &mut materializer,
+                        segment_id,
+                        outcome,
+                        usage,
+                        run_id,
+                        session_key,
+                        client_seq,
+                    )
+                    .await
+                    {
+                        stream_failure = Some(error);
                         break;
                     }
-                    let mut history_index = None;
-                    if let Some(store) = session_store {
-                        let persisted = PersistedMessage::ProviderSegmentClose {
-                            segment_id: segment_id.clone(),
-                            outcome,
-                            created_at: Some(now_ms()),
-                            seq: client_seq,
-                            run_id: Some(run_id.to_string()),
-                        };
-                        match store
-                            .append_with_index(session_key, &persisted.to_value())
-                            .await
-                        {
-                            Ok(idx) => history_index = Some(idx),
-                            Err(error) => {
-                                stream_failure = Some(format!(
-                                    "failed to persist provider segment close: {error}"
-                                ));
-                                break;
-                            },
-                        }
-                    }
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": session_key,
-                        "state": "provider_segment_close",
-                        "segmentId": segment_id.0,
-                        "outcome": outcome,
-                        "usage": usage,
-                    });
-                    if let Some(idx) = history_index {
-                        payload["historyIndex"] = serde_json::json!(idx);
-                    }
-                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
                 },
                 StreamEvent::Delta(delta) => {
                     accumulated.push_str(&delta);
@@ -559,13 +656,6 @@ pub(crate) async fn run_streaming(
                         .filter(|reasoning| !reasoning.is_blank());
                     let has_provider_output =
                         !is_silent || reasoning.is_some() || !materializer.segment.items.is_empty();
-                    let streamed_target_keys =
-                        if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
-                            dispatcher.finish().await;
-                            dispatcher.completed_target_keys().await
-                        } else {
-                            HashSet::new()
-                        };
 
                     info!(
                         run_id,
@@ -584,6 +674,58 @@ pub(crate) async fn run_streaming(
                             "empty stream with zero tokens — treating as provider error"
                         );
                         let provider_error = "The provider returned an empty response (possible network error). Please try again.";
+                        let provider_error_obj =
+                            parse_chat_error(provider_error, Some(provider_name));
+                        if let Some(delay_ms) = next_stream_retry_delay_ms(
+                            provider_error,
+                            &provider_error_obj,
+                            &mut server_retries_remaining,
+                            &mut rate_limit_retries_remaining,
+                            &mut rate_limit_backoff_ms,
+                            &mut unknown_retries_remaining,
+                        ) {
+                            warn!(
+                                run_id,
+                                delay_ms,
+                                unknown_retries_remaining,
+                                "empty chat stream, retrying after delay"
+                            );
+                            broadcast(
+                                state,
+                                "chat",
+                                serde_json::json!({
+                                    "runId": run_id,
+                                    "sessionKey": session_key,
+                                    "state": "retrying",
+                                    "error": provider_error_obj,
+                                    "retryAfterMs": delay_ms,
+                                    "seq": client_seq,
+                                }),
+                                BroadcastOpts::default(),
+                            )
+                            .await;
+                            if cancellation_token
+                                .run_until_cancelled(tokio::time::sleep(Duration::from_millis(
+                                    delay_ms,
+                                )))
+                                .await
+                                .is_none()
+                            {
+                                return finish_streaming_cancellation(
+                                    state,
+                                    session_store,
+                                    active_partial_assistant.as_ref(),
+                                    terminal_runs,
+                                    &mut materializer,
+                                    channel_stream_dispatcher.as_mut(),
+                                    run_id,
+                                    session_key,
+                                    client_seq,
+                                )
+                                .await;
+                            }
+                            continue 'attempts;
+                        }
                         let (terminal_error, partial) = match persist_streaming_partial(
                             session_store,
                             active_partial_assistant.as_ref(),
@@ -599,6 +741,9 @@ pub(crate) async fn run_streaming(
                                 None,
                             ),
                         };
+                        if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
+                            dispatcher.finish().await;
+                        }
                         state.set_run_error(run_id, terminal_error.clone()).await;
                         let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                         deliver_channel_error(state, session_key, &error_obj).await;
@@ -616,6 +761,14 @@ pub(crate) async fn run_streaming(
                         broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                         return ChatRunOutcome::Failed;
                     }
+
+                    let streamed_target_keys =
+                        if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
+                            dispatcher.finish().await;
+                            dispatcher.completed_target_keys().await
+                        } else {
+                            HashSet::new()
+                        };
 
                     // Generate & persist TTS audio for voice-medium web UI replies.
                     let mut audio_warning: Option<String> = None;
@@ -770,29 +923,43 @@ pub(crate) async fn run_streaming(
                 },
                 StreamEvent::Error(msg) => {
                     let provider_error_obj = parse_chat_error(&msg, Some(provider_name));
-                    let reasoning = materializer.segment.reasoning_content();
-                    let has_no_streamed_content = accumulated.trim().is_empty()
-                        && reasoning
-                            .as_ref()
-                            .is_none_or(|reasoning| reasoning.is_blank())
-                        && materializer.segment.items.is_empty()
-                        && raw_llm_responses.is_empty();
-                    if has_no_streamed_content
-                        && let Some(delay_ms) = next_stream_retry_delay_ms(
-                            &msg,
-                            &provider_error_obj,
-                            &mut server_retries_remaining,
-                            &mut rate_limit_retries_remaining,
-                            &mut rate_limit_backoff_ms,
-                        )
-                    {
+                    if let Some(delay_ms) = next_stream_retry_delay_ms(
+                        &msg,
+                        &provider_error_obj,
+                        &mut server_retries_remaining,
+                        &mut rate_limit_retries_remaining,
+                        &mut rate_limit_backoff_ms,
+                        &mut unknown_retries_remaining,
+                    ) {
+                        if materializer.segment.outcome == ProviderSegmentOutcome::Active
+                            && let Some(segment_id) = materializer.segment.segment_id.clone()
+                            && let Err(error) = close_stream_segment(
+                                state,
+                                session_store,
+                                &mut materializer,
+                                segment_id,
+                                ProviderSegmentOutcome::TransportError,
+                                None,
+                                run_id,
+                                session_key,
+                                client_seq,
+                            )
+                            .await
+                        {
+                            stream_failure = Some(error);
+                            break;
+                        }
+                        if let Some(message) = failed_stream_attempt_message(&materializer) {
+                            messages.push(message);
+                        }
                         warn!(
                             run_id,
                             error = %msg,
                             delay_ms,
                             server_retries_remaining,
                             rate_limit_retries_remaining,
-                            "chat stream transient error, retrying after delay"
+                            unknown_retries_remaining,
+                            "chat stream error, retrying after delay"
                         );
                         if provider_error_obj.get("type").and_then(Value::as_str)
                             == Some("rate_limit_exceeded")
@@ -819,6 +986,9 @@ pub(crate) async fn run_streaming(
                             BroadcastOpts::default(),
                         )
                         .await;
+                        if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
+                            dispatcher.finish().await;
+                        }
                         if cancellation_token
                             .run_until_cancelled(tokio::time::sleep(Duration::from_millis(
                                 delay_ms,
@@ -839,6 +1009,8 @@ pub(crate) async fn run_streaming(
                             )
                             .await;
                         }
+                        channel_stream_dispatcher =
+                            ChannelStreamDispatcher::for_session(state, session_key).await;
                         continue 'attempts;
                     }
 

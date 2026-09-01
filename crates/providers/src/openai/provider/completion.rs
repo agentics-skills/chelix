@@ -247,12 +247,36 @@ impl OpenAiProvider {
                     }
                 },
                 "error" | "response.failed" => {
-                    let msg = evt["error"]["message"]
-                        .as_str()
-                        .or_else(|| evt["response"]["error"]["message"].as_str())
+                    let nested_error =
+                        evt.get("error")
+                            .filter(|error| error.is_object())
+                            .or_else(|| {
+                                evt.get("response")
+                                    .and_then(|response| response.get("error"))
+                                    .filter(|error| error.is_object())
+                            });
+                    let msg = nested_error
+                        .and_then(|error| error.get("message"))
+                        .and_then(serde_json::Value::as_str)
                         .or_else(|| evt["message"].as_str())
                         .unwrap_or("unknown error");
-                    anyhow::bail!("Responses API error: {msg}");
+                    let classified_error = nested_error
+                        .filter(|error| {
+                            ["code", "type"].into_iter().any(|field| {
+                                error
+                                    .get(field)
+                                    .and_then(serde_json::Value::as_str)
+                                    .is_some()
+                            })
+                        })
+                        .or_else(|| {
+                            evt.get("code")
+                                .and_then(serde_json::Value::as_str)
+                                .map(|_| &evt)
+                        });
+                    let error =
+                        classified_error.map_or_else(|| msg.to_string(), ToString::to_string);
+                    anyhow::bail!("Responses API error: {error}");
                 },
                 _ => {},
             }
