@@ -204,11 +204,6 @@ impl ChatService for LiveChatService {
             .map(serde_json::from_value::<ToolPolicy>)
             .transpose()
             .map_err(|e| format!("invalid '_tool_policy' parameter: {e}"))?;
-        let ephemeral = params
-            .get("_ephemeral")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
         let explicit_model = params.get("model").and_then(|v| v.as_str());
         let requested_reasoning_effort_override = requested_reasoning_effort(&params);
         let tool_choice = chelix_config::schema::tool_choice_from_request_params(&params)
@@ -332,42 +327,40 @@ impl ChatService for LiveChatService {
             .agent_runtime_limits(&session_agent_id)
             .map_err(ServiceError::message)?;
 
-        if !ephemeral {
-            if let (Some(agent_id), Some(agent_pair)) =
-                (requested_agent_id.as_deref(), requested_agent_pair.as_ref())
-            {
-                session_entry = Some(
-                    self.session_metadata
-                        .create_or_assign_agent(&session_key, agent_id, agent_pair)
-                        .await
-                        .map_err(ServiceError::message)?,
-                );
-            }
+        if let (Some(agent_id), Some(agent_pair)) =
+            (requested_agent_id.as_deref(), requested_agent_pair.as_ref())
+        {
             session_entry = Some(
-                persist_send_sync_session_backing(
-                    self.session_metadata.as_ref(),
-                    session_entry,
-                    &session_key,
-                    &model_reasoning,
-                    &session_agent_id,
-                )
-                .await?,
+                self.session_metadata
+                    .create_or_assign_agent(&session_key, agent_id, agent_pair)
+                    .await
+                    .map_err(ServiceError::message)?,
             );
-
-            self.session_store
-                .append(&session_key, &user_msg.to_value())
-                .await
-                .map_err(ServiceError::message)?;
-            let ui_message_count = self
-                .session_store
-                .ui_message_count(&session_key)
-                .await
-                .map_err(ServiceError::message)?;
-            self.session_metadata
-                .touch(&session_key, ui_message_count)
-                .await
-                .map_err(ServiceError::message)?;
         }
+        session_entry = Some(
+            persist_send_sync_session_backing(
+                self.session_metadata.as_ref(),
+                session_entry,
+                &session_key,
+                &model_reasoning,
+                &session_agent_id,
+            )
+            .await?,
+        );
+
+        self.session_store
+            .append(&session_key, &user_msg.to_value())
+            .await
+            .map_err(ServiceError::message)?;
+        let ui_message_count = self
+            .session_store
+            .ui_message_count(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
+        self.session_metadata
+            .touch(&session_key, ui_message_count)
+            .await
+            .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
@@ -392,7 +385,7 @@ impl ChatService for LiveChatService {
             .read(&session_key)
             .await
             .map_err(ServiceError::message)?;
-        if !ephemeral && !history.is_empty() {
+        if !history.is_empty() {
             history.pop();
         }
         let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
@@ -413,45 +406,41 @@ impl ChatService for LiveChatService {
         let model_id = provider.id().to_string();
         let user_message_index = history.len();
 
-        if !ephemeral {
-            self.active_runs
-                .write()
-                .await
-                .insert(run_id.clone(), cancellation_token.clone());
-            self.active_runs_by_session
-                .write()
-                .await
-                .insert(session_key.clone(), run_id.clone());
-            self.active_reply_medium
-                .write()
-                .await
-                .insert(session_key.clone(), desired_reply_medium);
-            self.active_partial_assistant.write().await.insert(
-                session_key.clone(),
-                ActiveAssistantDraft::new(
-                    &run_id,
-                    &model_id,
-                    &provider_name,
-                    resolved_reasoning_effort.clone(),
-                    None,
-                ),
-            );
-        }
+        self.active_runs
+            .write()
+            .await
+            .insert(run_id.clone(), cancellation_token.clone());
+        self.active_runs_by_session
+            .write()
+            .await
+            .insert(session_key.clone(), run_id.clone());
+        self.active_reply_medium
+            .write()
+            .await
+            .insert(session_key.clone(), desired_reply_medium);
+        self.active_partial_assistant.write().await.insert(
+            session_key.clone(),
+            ActiveAssistantDraft::new(
+                &run_id,
+                &model_id,
+                &provider_name,
+                resolved_reasoning_effort.clone(),
+                None,
+            ),
+        );
 
-        if !ephemeral {
-            broadcast(
-                &self.state,
-                "chat",
-                serde_json::json!({
-                    "state": "user_message",
-                    "text": text,
-                    "sessionKey": session_key,
-                    "messageIndex": user_message_index,
-                }),
-                BroadcastOpts::default(),
-            )
-            .await;
-        }
+        broadcast(
+            &self.state,
+            "chat",
+            serde_json::json!({
+                "state": "user_message",
+                "text": text,
+                "sessionKey": session_key,
+                "messageIndex": user_message_index,
+            }),
+            BroadcastOpts::default(),
+        )
+        .await;
 
         info!(
             run_id = %run_id,
@@ -500,9 +489,9 @@ impl ChatService for LiveChatService {
                 &[],
                 Some(&runtime_context),
                 None, // send_sync: no sender name
-                (!ephemeral).then_some(&self.session_store),
+                Some(&self.session_store),
                 None, // send_sync: no client seq
-                (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
+                Some(Arc::clone(&self.active_partial_assistant)),
                 &terminal_runs,
             )
             .await
@@ -529,11 +518,11 @@ impl ChatService for LiveChatService {
                 hook_registry,
                 None,
                 None, // send_sync: no conn_id
-                (!ephemeral).then_some(&self.session_store),
+                Some(&self.session_store),
                 false, // send_sync: MCP tools always enabled for API calls
                 None,  // send_sync: no client seq
-                (!ephemeral).then(|| Arc::clone(&self.active_tool_invocations)),
-                (!ephemeral).then(|| Arc::clone(&self.active_partial_assistant)),
+                Some(Arc::clone(&self.active_tool_invocations)),
+                Some(Arc::clone(&self.active_partial_assistant)),
                 &active_event_forwarders,
                 &terminal_runs,
                 None, // send_sync: no sender name
@@ -542,26 +531,24 @@ impl ChatService for LiveChatService {
             .await
         };
 
-        if !ephemeral {
-            self.active_runs.write().await.remove(&run_id);
-            let mut runs_by_session = self.active_runs_by_session.write().await;
-            if runs_by_session.get(&session_key) == Some(&run_id) {
-                runs_by_session.remove(&session_key);
-            }
-            drop(runs_by_session);
-            self.active_tool_invocations
-                .write()
-                .await
-                .remove(&session_key);
-            terminal_runs.write().await.remove(&run_id);
-            self.active_partial_assistant
-                .write()
-                .await
-                .remove(&session_key);
-            self.active_reply_medium.write().await.remove(&session_key);
+        self.active_runs.write().await.remove(&run_id);
+        let mut runs_by_session = self.active_runs_by_session.write().await;
+        if runs_by_session.get(&session_key) == Some(&run_id) {
+            runs_by_session.remove(&session_key);
         }
+        drop(runs_by_session);
+        self.active_tool_invocations
+            .write()
+            .await
+            .remove(&session_key);
+        terminal_runs.write().await.remove(&run_id);
+        self.active_partial_assistant
+            .write()
+            .await
+            .remove(&session_key);
+        self.active_reply_medium.write().await.remove(&session_key);
 
-        if !ephemeral && let Ok(count) = self.session_store.ui_message_count(&session_key).await {
+        if let Ok(count) = self.session_store.ui_message_count(&session_key).await {
             self.session_metadata
                 .touch(&session_key, count)
                 .await

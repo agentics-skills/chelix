@@ -46,23 +46,10 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 
 | Command                   | Description                                   |
 | ------------------------- | --------------------------------------------- |
-| `/btw <question>`         | Quick side question (no tools, not persisted) |
 | `/fast [on\|off\|status]` | Toggle fast/priority mode                     |
 | `/insights [days]`        | Show usage analytics (tokens, providers)      |
 | `/steer <text>`           | Inject guidance into the current agent run    |
 | `/queue <message>`        | Queue a message for the next agent turn       |
-
-### /btw
-
-Ask a quick side question without tools and without persisting the exchange to
-session history. Uses the session's current model and recent context (last 20
-messages) as read-only background.
-
-```
-/btw what's the default port for PostgreSQL?
-```
-
-The response appears inline and is discarded after display.
 
 ### /fast
 

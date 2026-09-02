@@ -183,16 +183,6 @@ pub fn all_commands() -> &'static [CommandDef] {
         },
         // Quick actions
         CommandDef {
-            name: "btw",
-            description: "Quick side question (no tools, not persisted)",
-            arg: Some(CommandArg {
-                name: "question",
-                description: "Your question",
-                choices: &[],
-                required: true,
-            }),
-        },
-        CommandDef {
             name: "fast",
             description: "Toggle fast/priority mode",
             arg: Some(CommandArg {
@@ -326,7 +316,6 @@ mod tests {
             "stop",
             "peek",
             "update",
-            "btw",
             "fast",
             "insights",
             "steer",

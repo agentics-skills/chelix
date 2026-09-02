@@ -112,7 +112,6 @@ pub(in crate::channel_events) async fn dispatch_command(
         "update" => control_handlers::handle_update(state, &reply_to, sender_id, args).await,
 
         // Quick actions
-        "btw" => quick_actions::handle_btw(state, &session_key, args).await,
         "fast" => quick_actions::handle_fast(state, session_metadata, &session_key, args).await,
         "insights" => quick_actions::handle_insights(state, args).await,
         "steer" => quick_actions::handle_steer(state, &session_key, args).await,
@@ -157,7 +156,6 @@ mod tests {
             "stop",
             "peek",
             "update",
-            "btw",
             "fast",
             "insights",
             "steer",
