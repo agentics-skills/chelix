@@ -6,7 +6,7 @@
 use async_graphql::{Context, Object, Result};
 
 use crate::{
-    error::{from_service, from_service_json},
+    error::{from_service, from_service_json, from_typed_service_json},
     scalars::Json,
     services,
     types::{
@@ -192,9 +192,9 @@ impl ChatQuery {
     /// Get the prompts queued for a session.
     async fn queued_prompts(&self, ctx: &Context<'_>, session_key: String) -> Result<Json> {
         let s = services!(ctx);
-        from_service_json(
+        from_typed_service_json(
             s.chat
-                .prompt_queue_list(serde_json::json!({ "sessionKey": session_key }))
+                .queued_prompts_status(chelix_sessions::SessionKey::new(session_key))
                 .await,
         )
     }

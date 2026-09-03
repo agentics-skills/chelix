@@ -6,7 +6,7 @@
 use async_graphql::{Context, Object, Result};
 
 use crate::{
-    error::{from_service, from_service_json},
+    error::{from_service, from_service_json, from_typed_service_json},
     scalars::Json,
     services,
     types::{
@@ -190,25 +190,10 @@ impl ChatMutation {
         )
     }
 
-    /// Cancel queued prompts of a session.
-    ///
-    /// Cancels a single prompt when `prompt_id` is given, otherwise the whole
-    /// session queue. Returns the remaining queue.
-    async fn cancel_queued_prompts(
-        &self,
-        ctx: &Context<'_>,
-        session_key: String,
-        prompt_id: Option<String>,
-    ) -> Result<Json> {
+    /// Remove one queued prompt by its auto-incremented ID.
+    async fn remove_queued_prompt(&self, ctx: &Context<'_>, id: i64) -> Result<Json> {
         let s = services!(ctx);
-        from_service_json(
-            s.chat
-                .prompt_queue_cancel(serde_json::json!({
-                    "sessionKey": session_key,
-                    "promptId": prompt_id,
-                }))
-                .await,
-        )
+        from_typed_service_json(s.chat.queued_prompts_remove(id).await)
     }
 
     /// Clear chat history for session.

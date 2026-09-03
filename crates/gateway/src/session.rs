@@ -22,7 +22,7 @@ use {
     chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
-        SessionPromptQueueStore, filter_ui_history, message::PersistedMessage,
+        QueuedPrompts, SessionKey, filter_ui_history, message::PersistedMessage,
         metadata::SqliteSessionMetadata, state_store::SessionStateStore, store::SessionStore,
     },
     chelix_tools::sandbox::SandboxRouter,

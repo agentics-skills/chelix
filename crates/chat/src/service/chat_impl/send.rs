@@ -1,6 +1,6 @@
 //! `ChatService` trait implementation for `LiveChatService`.
 
-use std::{sync::Arc, time::Duration};
+use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use {
     serde_json::Value,
@@ -8,7 +8,10 @@ use {
     tracing::{debug, info, warn},
 };
 
-use chelix_service_traits::{ServiceError, ServiceResult, SessionBusyReason};
+use {
+    chelix_service_traits::{ServiceError, ServiceResult, SessionBusyReason, SessionTurnPermit},
+    chelix_sessions::{QueuedPromptContent, SessionKey},
+};
 
 use crate::{
     channels::deliver_channel_error,
@@ -22,8 +25,9 @@ use crate::{
         filter_skills_for_agent, resolve_channel_runtime_context,
     },
     prompt_queue::{
-        QUEUED_PROMPTS_PERSISTED_KEY, build_replay_params, replay_persisted_prompts,
-        take_queued_prompts,
+        broadcast_queued_prompts_status, normalize_queued_prompt_content,
+        queued_channel_reply_target, queued_channel_value, queued_documents,
+        queued_message_content, queued_message_text, queued_reply_medium, queued_sender_name,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -37,54 +41,68 @@ use {
     chelix_agents::{ChatMessage, model::values_to_chat_messages},
 };
 
-/// Queued prompts that lead the replay run.
-struct QueuedLeadingPrompts {
-    /// Provider-ready messages appended to the run history.
+struct PreparedUserBatchPrefix {
     messages: Vec<ChatMessage>,
-    /// Records to persist ahead of the triggering user message.
     records: Vec<Value>,
-    /// Broadcast payloads announcing the persisted prompts.
     events: Vec<Value>,
 }
 
+struct SessionTurnOwner {
+    service: LiveChatService,
+    _permit: SessionTurnPermit,
+}
+
+impl SessionTurnOwner {
+    fn start_queued_batch(
+        self,
+        session_id: SessionKey,
+        mut prompts: Vec<QueuedPromptContent>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
+        Box::pin(async move {
+            let tail = prompts
+                .pop()
+                .ok_or_else(|| ServiceError::message("queued prompt batch must not be empty"))?;
+            let service = self.service.clone();
+            service
+                .start_turn_impl(
+                    Value::Object(serde_json::Map::new()),
+                    session_id,
+                    prompts,
+                    Some(tail),
+                    self,
+                )
+                .await?;
+            Ok(())
+        })
+    }
+}
+
 impl LiveChatService {
-    /// Build the user messages that lead the current run from queued prompts.
-    ///
-    /// Nothing is written here: every prompt is parsed first, so an invalid
-    /// prompt aborts the turn before history is touched. The caller persists
-    /// the returned records together with the triggering message in one
-    /// atomic append, which keeps stored history, the provider request, and
-    /// the UI in the same order and never leaves an orphaned prefix behind.
-    fn prepare_queued_prompts(
+    fn build_user_batch_prefix(
         &self,
-        session_key: &str,
-        prompts: Vec<Value>,
+        session_id: &SessionKey,
+        prompts: Vec<QueuedPromptContent>,
         run_id: &str,
         history_len: usize,
-    ) -> Result<QueuedLeadingPrompts, ServiceError> {
-        let mut leading = QueuedLeadingPrompts {
+    ) -> Result<PreparedUserBatchPrefix, ServiceError> {
+        let mut leading = PreparedUserBatchPrefix {
             messages: Vec::with_capacity(prompts.len()),
             records: Vec::with_capacity(prompts.len()),
             events: Vec::with_capacity(prompts.len()),
         };
 
-        for prompt_params in prompts {
-            let (text, message_content) = parse_message_params(&prompt_params)?;
-            let documents = user_documents_from_params(
-                &prompt_params,
-                session_key,
-                self.session_store.as_ref(),
-            )
-            .unwrap_or_default();
+        for prompt in prompts {
+            let message_content = queued_message_content(&prompt);
+            let documents = queued_documents(&prompt, session_id, self.session_store.as_ref());
             let user_content = to_user_content(&message_content, &documents);
-            let client_seq = prompt_params.get("_seq").and_then(Value::as_u64);
             let user_msg = PersistedMessage::User {
                 content: message_content,
                 created_at: Some(now_ms()),
-                audio: user_audio_path_from_params(&prompt_params, session_key),
+                audio: prompt.audio.clone(),
                 documents: user_documents_for_persistence(&documents),
-                channel: prompt_params.get("channel").cloned(),
-                seq: client_seq,
+                channel: queued_channel_value(&prompt)
+                    .map_err(|error| ServiceError::message(error.to_string()))?,
+                seq: prompt.client_sequence,
                 run_id: Some(run_id.to_string()),
             };
             let message_index = history_len + leading.records.len();
@@ -93,110 +111,95 @@ impl LiveChatService {
                 content: user_content,
                 name: None,
             });
-            // `replayed` tells the submitting client to render this message
-            // even though it carries a seq it has already used: the optimistic
-            // bubble was dropped when the prompt entered the queue, so echo
-            // suppression would otherwise hide the message on that client only.
             leading.events.push(serde_json::json!({
                 "state": "user_message",
-                "text": text,
-                "sessionKey": session_key,
-                "seq": client_seq,
+                "text": queued_message_text(&prompt),
+                "sessionKey": session_id,
                 "messageIndex": message_index,
-                "replayed": true,
             }));
         }
 
         Ok(leading)
     }
 
+    async fn web_channel_reply_target(
+        &self,
+        session_key: &str,
+        conn_id: Option<&str>,
+        params: &Value,
+    ) -> Result<Option<chelix_channels::ChannelReplyTarget>, ServiceError> {
+        if conn_id.is_none()
+            || params.get("_session_key").is_some()
+            || params.get("channel").is_some()
+        {
+            return Ok(None);
+        }
+        let Some(entry) = self
+            .session_metadata
+            .get(session_key)
+            .await
+            .map_err(ServiceError::message)?
+        else {
+            return Ok(None);
+        };
+        let Some(binding_json) = entry.channel_binding.as_deref() else {
+            return Ok(None);
+        };
+        let target = serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        let is_active = self
+            .session_metadata
+            .get_active_session(
+                target.channel_type.as_str(),
+                &target.account_id,
+                &target.chat_id,
+                target.thread_id.as_deref(),
+            )
+            .await
+            .map_err(ServiceError::message)?
+            .is_none_or(|key| key == session_key);
+        Ok(is_active.then_some(target))
+    }
+
     #[tracing::instrument(skip(self, params), fields(session_id))]
-    pub(super) async fn send_impl(&self, mut params: Value) -> ServiceResult {
-        // Prompts queued during the previous run are replayed as additional
-        // leading user messages of this run, so the whole batch is answered
-        // once instead of once per prompt.
-        let queued_prompt_params = take_queued_prompts(&mut params);
-
-        // Note: `text` and `message_content` are `mut` because a
-        // `MessageReceived` hook may return `ModifyPayload` to rewrite the
-        // inbound message before the turn begins (see GH #639).
-        let (mut text, mut message_content) = parse_message_params(&params)?;
-        let desired_reply_medium = infer_reply_medium(&params, &text);
-
+    pub(super) async fn send_impl(&self, params: Value) -> ServiceResult {
+        let (text, _) = parse_message_params(&params)?;
         let conn_id = params
             .get("_conn_id")
-            .and_then(|v| v.as_str())
+            .and_then(Value::as_str)
             .map(String::from);
-        let explicit_model = params.get("model").and_then(|v| v.as_str());
-        let requested_reasoning_effort_override = requested_reasoning_effort(&params);
-        let tool_choice = chelix_config::schema::tool_choice_from_request_params(&params)
-            .map_err(|error| format!("invalid 'tool_choice' parameter: {error}"))?;
-        // Use streaming-only mode if explicitly requested or if no tools are registered.
-        let explicit_stream_only = params
-            .get("stream_only")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let has_tools = self.has_tools_sync();
-        let stream_only = explicit_stream_only || !has_tools;
-        tracing::debug!(
-            explicit_stream_only,
-            has_tools,
-            stream_only,
-            "send() mode decision"
-        );
-
-        // Resolve session key from explicit overrides, public request params, or connection context.
+        let explicit_model = params.get("model").and_then(Value::as_str);
         let session_key = self.resolve_session_key_from_params(&params).await;
-        let queued_replay = params
-            .get("_queued_replay")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let client_seq = params.get("_seq").and_then(Value::as_u64);
 
-        // Track client-side sequence number for ordering diagnostics.
-        // Note: seq resets to 1 on page reload, so a drop from a high value
-        // back to 1 is normal (new browser session) — only flag issues within
-        // a continuous ascending sequence.
-        let client_seq = params.get("_seq").and_then(|v| v.as_u64());
         if let Some(seq) = client_seq {
-            if queued_replay {
+            let mut seq_map = self.last_client_seq.write().await;
+            let last = seq_map.entry(session_key.clone()).or_insert(0);
+            if *last == 0 {
+                debug!(session = %session_key, seq, "client seq initialized");
+            } else if seq == 1 && *last > 1 {
                 debug!(
                     session = %session_key,
-                    seq,
-                    "client seq replayed from queue; skipping ordering diagnostics"
+                    prev_seq = *last,
+                    "client seq reset (page reload)"
                 );
-            } else {
-                let mut seq_map = self.last_client_seq.write().await;
-                let last = seq_map.entry(session_key.clone()).or_insert(0);
-                if *last == 0 {
-                    // First observed sequence for this session in this process.
-                    // We cannot infer a gap yet because earlier messages may have
-                    // come from another tab/process before we started tracking.
-                    debug!(session = %session_key, seq, "client seq initialized");
-                } else if seq == 1 && *last > 1 {
-                    // Page reload — reset tracking.
-                    debug!(
-                        session = %session_key,
-                        prev_seq = *last,
-                        "client seq reset (page reload)"
-                    );
-                } else if seq <= *last {
-                    warn!(
-                        session = %session_key,
-                        seq,
-                        last_seq = *last,
-                        "client seq out of order (duplicate or reorder)"
-                    );
-                } else if seq > *last + 1 {
-                    warn!(
-                        session = %session_key,
-                        seq,
-                        last_seq = *last,
-                        gap = seq - *last - 1,
-                        "client seq gap detected (missing messages)"
-                    );
-                }
-                *last = seq;
+            } else if seq <= *last {
+                warn!(
+                    session = %session_key,
+                    seq,
+                    last_seq = *last,
+                    "client seq out of order (duplicate or reorder)"
+                );
+            } else if seq > *last + 1 {
+                warn!(
+                    session = %session_key,
+                    seq,
+                    last_seq = *last,
+                    gap = seq - *last - 1,
+                    "client seq gap detected (missing messages)"
+                );
             }
+            *last = seq;
         }
 
         info!(
@@ -205,29 +208,22 @@ impl LiveChatService {
             has_content = params.get("content").is_some(),
             model = ?explicit_model,
             client_seq = ?client_seq,
-            queued_replay,
             "chat.send: received"
         );
 
-        // Decide whether this turn can run before doing provider lookup, prompt
-        // construction, hook dispatch, or other I/O. If a run already owns the
-        // session, queue immediately instead of letting a follow-up request
-        // contend with the active run's locks.
         let permit = match self.session_mutations.try_acquire_turn(&session_key).await {
-            Ok(p) => {
+            Ok(permit) => {
                 info!(
                     session = %session_key,
                     client_seq = ?client_seq,
-                    queued_replay,
                     "chat.send: acquired session permit"
                 );
-                p
+                permit
             },
             Err(error) if error.reason() == SessionBusyReason::ReservedMutation => {
                 info!(
                     session = %session_key,
                     client_seq = ?client_seq,
-                    queued_replay,
                     "chat.send: rejected because session mutation is in progress"
                 );
                 return Err(ServiceError::message(
@@ -235,38 +231,112 @@ impl LiveChatService {
                 ));
             },
             Err(_) => {
-                // A replay carries prompts it already claimed from the queue.
-                // Pushing them back here would duplicate the batch, so refuse
-                // without persisting: the caller restores its own claim.
-                if queued_replay {
-                    info!(
-                        session = %session_key,
-                        "chat.send: replay refused because the session is active again"
-                    );
-                    return Ok(serde_json::json!({
-                        "ok": false,
-                        "queued": true,
-                        QUEUED_PROMPTS_PERSISTED_KEY: 0,
-                    }));
+                let session_id = SessionKey::new(session_key.clone());
+                let mut content = normalize_queued_prompt_content(
+                    &params,
+                    &session_id,
+                    self.session_store.as_ref(),
+                )
+                .map_err(|error| ServiceError::message(error.to_string()))?;
+                if content.channel_reply_target.is_none()
+                    && let Some(target) = self
+                        .web_channel_reply_target(&session_key, conn_id.as_deref(), &params)
+                        .await?
+                {
+                    content.channel_reply_target = Some(target);
                 }
-                let prompts = self
-                    .prompt_queue
-                    .push(&session_key, &params)
+                let status = self
+                    .queued_prompts
+                    .enqueue(session_id, content)
+                    .await
+                    .map_err(|error| ServiceError::message(error.to_string()))?;
+                broadcast_queued_prompts_status(&self.state, &status)
                     .await
                     .map_err(|error| ServiceError::message(error.to_string()))?;
                 info!(
                     session = %session_key,
-                    queued = prompts.len(),
+                    queued = status.prompts.len(),
                     client_seq = ?client_seq,
                     "chat.send: queued because session is active"
                 );
                 return Ok(serde_json::json!({
                     "ok": true,
                     "queued": true,
-                    "prompts": prompts,
+                    "status": status,
                 }));
             },
         };
+
+        let owner = SessionTurnOwner {
+            service: self.clone(),
+            _permit: permit,
+        };
+        self.start_turn_impl(
+            params,
+            SessionKey::new(session_key),
+            Vec::new(),
+            None,
+            owner,
+        )
+        .await
+    }
+
+    async fn start_turn_impl(
+        &self,
+        mut params: Value,
+        session_id: SessionKey,
+        queued_leading_prompts: Vec<QueuedPromptContent>,
+        queued_tail: Option<QueuedPromptContent>,
+        owner: SessionTurnOwner,
+    ) -> ServiceResult {
+        let queued_batch = queued_tail.is_some();
+        let session_key = session_id.as_str().to_string();
+        let (mut text, mut message_content) = if let Some(prompt) = queued_tail.as_ref() {
+            (queued_message_text(prompt), queued_message_content(prompt))
+        } else {
+            parse_message_params(&params)?
+        };
+        let desired_reply_medium = queued_tail
+            .as_ref()
+            .map_or_else(|| infer_reply_medium(&params, &text), queued_reply_medium);
+        let conn_id = if queued_batch {
+            None
+        } else {
+            params
+                .get("_conn_id")
+                .and_then(Value::as_str)
+                .map(String::from)
+        };
+        let explicit_model = (!queued_batch)
+            .then(|| params.get("model").and_then(Value::as_str))
+            .flatten();
+        let requested_reasoning_effort_override = (!queued_batch)
+            .then(|| requested_reasoning_effort(&params))
+            .flatten();
+        let tool_choice = if queued_batch {
+            None
+        } else {
+            chelix_config::schema::tool_choice_from_request_params(&params)
+                .map_err(|error| format!("invalid 'tool_choice' parameter: {error}"))?
+        };
+        let explicit_stream_only = !queued_batch
+            && params
+                .get("stream_only")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+        let has_tools = self.has_tools_sync();
+        let stream_only = explicit_stream_only || !has_tools;
+        let client_seq = queued_tail
+            .as_ref()
+            .and_then(|prompt| prompt.client_sequence)
+            .or_else(|| params.get("_seq").and_then(Value::as_u64));
+        tracing::debug!(
+            explicit_stream_only,
+            has_tools,
+            stream_only,
+            queued_batch,
+            "send() mode decision"
+        );
 
         // Resolve model: explicit param → session metadata → first registered.
         let mut session_entry = self
@@ -283,6 +353,11 @@ impl LiveChatService {
             None
         };
         let model_id = explicit_model.or(session_model.as_deref());
+        if queued_batch && model_id.is_none() {
+            return Err(ServiceError::message(format!(
+                "session '{session_key}' has no model"
+            )));
+        }
 
         let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
             let reg = self.providers.read().await;
@@ -342,65 +417,24 @@ impl LiveChatService {
         );
         let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
 
-        // If this is a web UI message on a channel-bound session, attach the
-        // channel reply target so the run-start path can route the final
-        // response back to the channel.
-        let is_web_message = conn_id.is_some()
-            && params.get("_session_key").is_none()
-            && params.get("channel").is_none();
-
-        if is_web_message
-            && let Some(entry) = session_entry.as_ref()
-            && let Some(ref binding_json) = entry.channel_binding
-            && let Ok(target) =
-                serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
+        if let Some(target) = self
+            .web_channel_reply_target(&session_key, conn_id.as_deref(), &params)
+            .await?
         {
-            // Only echo to channel if this is the active session for this chat.
-            let is_active = self
-                .session_metadata
-                .get_active_session(
-                    target.channel_type.as_str(),
-                    &target.account_id,
-                    &target.chat_id,
-                    target.thread_id.as_deref(),
-                )
-                .await
-                .map_err(ServiceError::message)?
-                .is_none_or(|key| key == session_key);
-
-            if is_active {
-                match serde_json::to_value(&target) {
-                    Ok(target_val) => {
-                        params["_channel_reply_target"] = target_val;
-                    },
-                    Err(e) => {
-                        warn!(
-                            session = %session_key,
-                            error = %e,
-                            "failed to serialize channel reply target"
-                        );
-                    },
-                }
-            }
+            params["_channel_reply_target"] = serde_json::to_value(target)
+                .map_err(|error| ServiceError::message(error.to_string()))?;
         }
 
-        let deferred_channel_target =
+        let deferred_channel_target = if let Some(prompt) = queued_tail.as_ref() {
+            queued_channel_reply_target(prompt)
+        } else {
             params
                 .get("_channel_reply_target")
                 .cloned()
-                .and_then(|value| {
-                    match serde_json::from_value::<chelix_channels::ChannelReplyTarget>(value) {
-                        Ok(target) => Some(target),
-                        Err(e) => {
-                            warn!(
-                                session = %session_key,
-                                error = %e,
-                                "ignoring invalid _channel_reply_target"
-                            );
-                            None
-                        },
-                    }
-                });
+                .map(serde_json::from_value::<chelix_channels::ChannelReplyTarget>)
+                .transpose()
+                .map_err(|error| ServiceError::message(error.to_string()))?
+        };
 
         // Dispatch the `MessageReceived` hook before the turn starts. The
         // hook can:
@@ -413,7 +447,8 @@ impl LiveChatService {
         //
         // Hook errors are treated as fail-open: a broken hook must not be
         // able to wedge every inbound message. See GH #639.
-        if let Some(ref hooks) = self.hook_registry {
+        // Drained content is already canonical batch input and must remain unchanged.
+        if !queued_batch && let Some(ref hooks) = self.hook_registry {
             info!(
                 session = %session_key,
                 client_seq = ?client_seq,
@@ -513,30 +548,35 @@ impl LiveChatService {
             );
         }
 
-        // Convert session-crate content to agents-crate content for the LLM.
-        // Must happen before `message_content` is moved into `user_msg`, and
-        // must happen AFTER the MessageReceived hook dispatch so a
-        // `ModifyPayload` rewrite is reflected in both `user_content` (what
-        // the LLM sees) and `user_msg` (what gets persisted).
-        let user_documents =
+        let user_documents = if let Some(prompt) = queued_tail.as_ref() {
+            queued_documents(prompt, &session_id, self.session_store.as_ref())
+        } else {
             user_documents_from_params(&params, &session_key, self.session_store.as_ref())
-                .unwrap_or_default();
+                .unwrap_or_default()
+        };
         let user_content = to_user_content(&message_content, &user_documents);
-
-        // Build the user message for later persistence (deferred until we
-        // know the message won't be queued — avoids double-persist when a
-        // queued message is replayed via send()).
-        let channel_meta = params.get("channel").cloned();
-        // Extract sender name from channel metadata for LLM identity.
-        let sender_name = channel_meta
-            .as_ref()
-            .and_then(|ch| {
-                ch["sender_name"]
-                    .as_str()
-                    .or_else(|| ch["username"].as_str())
-            })
-            .map(|s| s.to_string());
-        let user_audio = user_audio_path_from_params(&params, &session_key);
+        let channel_meta = if let Some(prompt) = queued_tail.as_ref() {
+            queued_channel_value(prompt)
+                .map_err(|error| ServiceError::message(error.to_string()))?
+        } else {
+            params.get("channel").cloned()
+        };
+        let sender_name = if let Some(prompt) = queued_tail.as_ref() {
+            queued_sender_name(prompt)
+        } else {
+            channel_meta
+                .as_ref()
+                .and_then(|channel| {
+                    channel["sender_name"]
+                        .as_str()
+                        .or_else(|| channel["username"].as_str())
+                })
+                .map(String::from)
+        };
+        let user_audio = queued_tail.as_ref().map_or_else(
+            || user_audio_path_from_params(&params, &session_key),
+            |prompt| prompt.audio.clone(),
+        );
         let user_msg = PersistedMessage::User {
             content: message_content,
             created_at: Some(now_ms()),
@@ -570,8 +610,15 @@ impl LiveChatService {
             client_seq = ?client_seq,
             "chat.send: persona loaded"
         );
-        let resolved_reasoning_effort = requested_reasoning_effort_override
-            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent));
+        let resolved_reasoning_effort = if queued_batch {
+            session_entry
+                .as_ref()
+                .and_then(|entry| entry.reasoning_effort())
+                .map(|effort| effort.as_str().to_string())
+        } else {
+            requested_reasoning_effort_override
+                .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent))
+        };
         let provider =
             apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
         let reasoning_effort = resolved_reasoning_effort.as_deref().ok_or_else(|| {
@@ -698,6 +745,14 @@ impl LiveChatService {
                 .as_ref()
                 .map(|timezone| timezone.name()),
         );
+        if let Some(prompt) = queued_tail.as_ref()
+            && let Some(sender_id) = prompt
+                .channel
+                .as_ref()
+                .and_then(|channel| channel.sender_id.clone())
+        {
+            runtime_context.host.channel_sender_id = Some(sender_id);
+        }
         info!(
             session = %session_key,
             agent_id = %session_agent_id,
@@ -736,70 +791,43 @@ impl LiveChatService {
         let session_key_clone = session_key.clone();
         let accept_language = params
             .get("_accept_language")
-            .and_then(|v| v.as_str())
+            .and_then(Value::as_str)
             .map(String::from);
-        // Prompts queued during the previous run lead this run: persist them
-        // first so stored history matches the provider request order.
         let mut chat_history = chat_history;
-        let queued_leading = self.prepare_queued_prompts(
-            &session_key,
-            queued_prompt_params,
+        let PreparedUserBatchPrefix {
+            messages,
+            records: leading_records,
+            events,
+        } = self.build_user_batch_prefix(
+            &session_id,
+            queued_leading_prompts,
             &run_id,
             history.len(),
         )?;
-        chat_history.extend(queued_leading.messages);
+        chat_history.extend(messages);
 
-        // Automatic compaction is evaluated exclusively inside the agent
-        // loop against the exact prompt about to be sent to the provider.
-        let user_message_index = history.len() + queued_leading.records.len();
-
-        // Persist the user message now that we know it won't be queued.
-        // (Queued prompts skip this; they are persisted when replayed.)
-        // Leading queue prompts and the triggering message form one atomic
-        // append: a rejected tail check leaves history exactly as it was.
-        let mut records = queued_leading.records;
+        let user_message_index = history.len() + leading_records.len();
+        let mut records = leading_records;
         records.push(user_msg.to_value());
         self.session_store
             .append_batch_at_index(&session_key, &records, history.len())
             .await
             .map_err(ServiceError::message)?;
 
-        // The batch is in history now. Every exit below this point reports it,
-        // so the caller that claimed the queue knows the prompts are safe. The
-        // triggering message is the last prompt of a claimed batch, so it
-        // counts too: a single-prompt replay carries no leading messages.
-        let persisted_queued_prompts = if queued_replay {
-            queued_leading.events.len() + 1
-        } else {
-            0
-        };
-
-        // Announce the replayed prompts only after they reached history.
-        for event in queued_leading.events {
+        for event in events {
             broadcast(&self.state, "chat", event, BroadcastOpts::default()).await;
         }
 
-        // Broadcast a user_message event so that other connected clients
-        // (e.g. the web UI when the message was sent via the GraphQL API)
-        // can display the message in real-time without a page reload.
-        // Include messageIndex now that the message has been persisted. Chat
-        // sends are serialized per session by the run permit, so concurrent
-        // accepted messages cannot receive the same persisted index. `seq`
-        // still lets the originating web client suppress the optimistic echo.
-        broadcast(
-            &self.state,
-            "chat",
-            serde_json::json!({
-                "state": "user_message",
-                "text": text,
-                "sessionKey": session_key,
-                "seq": client_seq,
-                "messageIndex": user_message_index,
-                "replayed": queued_replay,
-            }),
-            BroadcastOpts::default(),
-        )
-        .await;
+        let mut user_event = serde_json::json!({
+            "state": "user_message",
+            "text": text,
+            "sessionKey": session_key,
+            "messageIndex": user_message_index,
+        });
+        if !queued_batch {
+            user_event["seq"] = serde_json::json!(client_seq);
+        }
+        broadcast(&self.state, "chat", user_event, BroadcastOpts::default()).await;
 
         // Set preview from the first user message if not already set.
         if let Some(entry) = self
@@ -821,7 +849,7 @@ impl LiveChatService {
         let runtime_limits = match runtime_limits {
             Ok(limits) => limits,
             Err(error) => {
-                if let Some(target) = deferred_channel_target {
+                if let Some(target) = deferred_channel_target.clone() {
                     self.state.push_channel_reply(&session_key, target).await;
                 }
                 let error_detail = error.to_string();
@@ -845,7 +873,6 @@ impl LiveChatService {
                 return Ok(serde_json::json!({
                     "ok": true,
                     "runId": run_id,
-                    QUEUED_PROMPTS_PERSISTED_KEY: persisted_queued_prompts,
                 }));
             },
         };
@@ -856,12 +883,10 @@ impl LiveChatService {
             0
         };
 
-        let prompt_queue = Arc::clone(&self.prompt_queue);
-        let state_for_drain = Arc::clone(&self.state);
+        let queued_prompts = Arc::clone(&self.queued_prompts);
         let active_event_forwarders = Arc::clone(&self.active_event_forwarders);
         let terminal_runs = Arc::clone(&self.terminal_runs);
         let tools_config_source = self.tools_config_source.clone();
-        let deferred_channel_target = deferred_channel_target.clone();
         let cancellation_token = CancellationToken::new();
         self.active_runs
             .write()
@@ -873,11 +898,8 @@ impl LiveChatService {
             .insert(session_key.clone(), run_id.clone());
 
         let _run_task = tokio::spawn(async move {
-            let permit = permit; // hold permit until agent run completes
             let ctx_ref = project_context.as_deref();
             if let Some(target) = deferred_channel_target {
-                // Register the channel reply target only after we own the
-                // session permit, so queued messages keep per-message routing.
                 state.push_channel_reply(&session_key_clone, target).await;
             }
             active_reply_medium
@@ -1072,61 +1094,63 @@ impl LiveChatService {
                             Vec::new()
                         };
                     if !recent.is_empty() {
-                        let chat_msgs = match values_to_chat_messages(&recent) {
-                            Ok(messages) => messages,
+                        match values_to_chat_messages(&recent) {
+                            Ok(chat_msgs) => {
+                                let agent_id = session_agent_id_clone.clone();
+                                let mm = Arc::clone(mm);
+                                let prov = Arc::clone(&provider_for_extraction);
+                                let extraction_tools_config_source = tools_config_source.clone();
+                                tokio::spawn(async move {
+                                    let extraction_tools_config =
+                                        match extraction_tools_config_source.load() {
+                                            Ok(config) => config,
+                                            Err(error) => {
+                                                tracing::warn!(
+                                                    error = %error,
+                                                    "periodic memory extraction: failed to reload tools config"
+                                                );
+                                                return;
+                                            },
+                                        };
+                                    let writer: Arc<
+                                        dyn chelix_agents::memory_writer::MemoryWriter,
+                                    > = Arc::new(AgentScopedMemoryWriter::new(
+                                        mm, agent_id, write_mode,
+                                    ));
+                                    match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
+                                        prov,
+                                        &extraction_tools_config,
+                                        extraction_max_tools_threshold,
+                                        &chat_msgs,
+                                        writer,
+                                        chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,
+                                    )
+                                    .await
+                                    {
+                                        Ok(paths) if !paths.is_empty() => {
+                                            tracing::info!(
+                                                files = paths.len(),
+                                                turn = turn_number,
+                                                "periodic memory extraction: wrote files"
+                                            );
+                                        },
+                                        Ok(_) => {},
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                error = %e,
+                                                "periodic memory extraction failed"
+                                            );
+                                        },
+                                    }
+                                });
+                            },
                             Err(error) => {
                                 tracing::warn!(
                                     %error,
                                     "periodic memory extraction: failed to reconstruct recent history"
                                 );
-                                return;
                             },
-                        };
-                        let agent_id = session_agent_id_clone.clone();
-                        let mm = Arc::clone(mm);
-                        let prov = Arc::clone(&provider_for_extraction);
-                        let extraction_tools_config_source = tools_config_source.clone();
-                        tokio::spawn(async move {
-                            let extraction_tools_config = match extraction_tools_config_source
-                                .load()
-                            {
-                                Ok(config) => config,
-                                Err(error) => {
-                                    tracing::warn!(
-                                        error = %error,
-                                        "periodic memory extraction: failed to reload tools config"
-                                    );
-                                    return;
-                                },
-                            };
-                            let writer: Arc<dyn chelix_agents::memory_writer::MemoryWriter> =
-                                Arc::new(AgentScopedMemoryWriter::new(mm, agent_id, write_mode));
-                            match chelix_agents::silent_turn::run_silent_memory_turn_with_prompt(
-                                prov,
-                                &extraction_tools_config,
-                                extraction_max_tools_threshold,
-                                &chat_msgs,
-                                writer,
-                                chelix_agents::silent_turn::SilentTurnPrompt::PeriodicExtract,
-                            )
-                            .await
-                            {
-                                Ok(paths) if !paths.is_empty() => {
-                                    tracing::info!(
-                                        files = paths.len(),
-                                        turn = turn_number,
-                                        "periodic memory extraction: wrote files"
-                                    );
-                                },
-                                Ok(_) => {},
-                                Err(e) => {
-                                    tracing::warn!(
-                                        error = %e,
-                                        "periodic memory extraction failed"
-                                    );
-                                },
-                            }
-                        });
+                        }
                     }
                 }
             }
@@ -1138,7 +1162,6 @@ impl LiveChatService {
             if auto_title_enabled
                 && let Ok(count) = session_store.ui_message_count(&session_key_clone).await
                 && count >= 2
-                && !queued_replay
             {
                 state.trigger_auto_title(&session_key_clone).await;
             }
@@ -1166,58 +1189,76 @@ impl LiveChatService {
                 .remove(&session_key_clone);
             active_reply_medium.write().await.remove(&session_key_clone);
 
-            // Release the semaphore *before* draining so the replay can
-            // acquire it. Without this, the replayed `chat.send()` would fail
-            // `try_acquire_owned()` and re-queue the prompts forever.
-            drop(permit);
-
-            // This run reached its final gate: claim the whole prompt queue
-            // and replay it as one agent run. Claiming removes the prompts up
-            // front, so a prompt is either cancellable or already committed to
-            // the replay, never both.
-            let queued = match prompt_queue.claim_all(&session_key_clone).await {
-                Ok(queued) => queued,
+            let session_id = SessionKey::new(session_key_clone.clone());
+            let drain = match queued_prompts.drain(session_id.clone()).await {
+                Ok(drain) => drain,
                 Err(error) => {
                     warn!(
                         session = %session_key_clone,
                         %error,
-                        "failed to claim prompt queue"
+                        "queuedPrompts drain failed after the complete final gate"
                     );
+                    broadcast(
+                        &state,
+                        "chat",
+                        serde_json::json!({
+                            "runId": run_id_clone,
+                            "sessionKey": session_key_clone,
+                            "state": "error",
+                            "error": {
+                                "type": "queued_prompts",
+                                "detail": error.to_string(),
+                            },
+                        }),
+                        BroadcastOpts::default(),
+                    )
+                    .await;
                     return;
                 },
             };
-            let Some(replay_params) = build_replay_params(&session_key_clone, queued.clone())
-            else {
-                return;
-            };
-            info!(session = %session_key_clone, "replaying queued prompts as one run");
-            let chat = state_for_drain.chat_service().await;
-            // A claim is only consumed once the prompts are session history.
-            // `chat.send` also succeeds without persisting anything — a
-            // `MessageReceived` hook may reject the batch, and a session that
-            // became busy again defers the replay — so the result has to
-            // confirm the persist explicitly. Anything else returns the batch
-            // to the queue instead of dropping it.
-            let persisted = match chat.send(replay_params).await {
-                Ok(result) => replay_persisted_prompts(&result),
-                Err(error) => {
-                    warn!(
-                        session = %session_key_clone,
-                        %error,
-                        "failed to replay queued prompts"
-                    );
-                    false
-                },
-            };
-            if !persisted {
+            if let Err(error) = broadcast_queued_prompts_status(&state, &drain.status).await {
                 warn!(
                     session = %session_key_clone,
-                    count = queued.len(),
-                    "replay did not persist the claimed prompts; returning them to the queue"
+                    %error,
+                    "failed to broadcast queuedPrompts status after drain"
                 );
-                prompt_queue
-                    .restore_claimed(&session_key_clone, &queued)
-                    .await;
+                return;
+            }
+            if drain.prompts.is_empty() {
+                return;
+            }
+
+            let prompts = drain
+                .prompts
+                .into_iter()
+                .map(|prompt| prompt.content)
+                .collect::<Vec<_>>();
+            info!(
+                session = %session_key_clone,
+                count = prompts.len(),
+                "starting drained queuedPrompts batch as one full agent turn"
+            );
+            if let Err(error) = owner.start_queued_batch(session_id, prompts).await {
+                warn!(
+                    session = %session_key_clone,
+                    %error,
+                    "drained queuedPrompts batch was not accepted by the session"
+                );
+                broadcast(
+                    &state,
+                    "chat",
+                    serde_json::json!({
+                        "runId": run_id_clone,
+                        "sessionKey": session_key_clone,
+                        "state": "error",
+                        "error": {
+                            "type": "queued_prompts",
+                            "detail": error.to_string(),
+                        },
+                    }),
+                    BroadcastOpts::default(),
+                )
+                .await;
             }
         });
 
@@ -1230,7 +1271,6 @@ impl LiveChatService {
         Ok(serde_json::json!({
             "ok": true,
             "runId": run_id,
-            QUEUED_PROMPTS_PERSISTED_KEY: persisted_queued_prompts,
         }))
     }
 }

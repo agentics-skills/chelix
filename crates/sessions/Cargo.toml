@@ -4,7 +4,8 @@ name              = "chelix-sessions"
 version.workspace = true
 
 [dependencies]
-chelix-common = { workspace = true }
+chelix-channels = { workspace = true }
+chelix-common   = { workspace = true }
 fd-lock       = { workspace = true }
 lru           = { workspace = true }
 serde         = { workspace = true }

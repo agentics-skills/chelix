@@ -13,7 +13,7 @@ import {
 	uploadDocumentAttachment,
 } from "../../media-drop";
 import { appendUserMessageActions } from "../../message-actions";
-import { selectedModelSelection, setSessionModel } from "../../models";
+import { selectedModelSelection } from "../../models";
 import {
 	bumpSessionCount,
 	cacheOutgoingUserMessage,
@@ -27,8 +27,8 @@ import * as S from "../../state";
 import { sessionStore } from "../../stores/session-store";
 import type { RpcResponse } from "../../types/rpc";
 import type { SessionMeta, SessionModelSelection } from "../../types/session";
-import type { QueuedPrompt } from "../../types/ws-events";
-import { setQueuedPrompts } from "./prompt-queue";
+import type { QueuedPromptsStatus } from "../../types/ws-events";
+import { replaceQueuedPromptsDock } from "./prompt-queue";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
 
 // ── Types ────────────────────────────────────────────────────
@@ -48,11 +48,9 @@ interface PendingImageAttachment extends PendingAttachment {
 	dataUrl: string;
 }
 
-export interface ChatSendPayload {
-	runId?: string;
-	queued?: boolean;
-	prompts?: QueuedPrompt[];
-}
+export type ChatSendPayload =
+	| { runId?: string; queued?: false; status?: never }
+	| { runId?: string; queued: true; status: QueuedPromptsStatus };
 
 type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
 
@@ -150,27 +148,13 @@ export function resetComposerAfterSend(): void {
 	if (window.innerWidth < 768) S.chatInput?.blur();
 }
 
-export async function applySelectedModelToChatParams(
-	chatParams: ChatSendParams,
-): Promise<SessionModelSelection | null> {
-	const selection = selectedModelSelection();
-	if (!selection) {
-		chatAddMsg("error", "Select a model before sending a message");
-		return null;
-	}
-	chatParams.model = selection.model;
-	chatParams.reasoningEffort = selection.reasoningEffort;
-	const response = await setSessionModel(S.activeSessionKey, selection);
-	return response.ok ? selection : null;
-}
-
 export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
 	if (res.ok && res.payload?.runId) setSessionActiveRunId(S.activeSessionKey, res.payload.runId);
 	if (res.payload?.queued) {
 		// The prompt is now server state; the optimistic bubble is replaced by
 		// the queue tray, which every client renders from the same snapshot.
 		userEl?.remove();
-		setQueuedPrompts(S.activeSessionKey, res.payload.prompts ?? []);
+		replaceQueuedPromptsDock(res.payload.status);
 		return true;
 	}
 	if (!res.ok) {
@@ -335,10 +319,9 @@ function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLEl
  * conversation yet — it is rendered from the server queue snapshot — but the
  * active run keeps the session busy.
  *
- * `chatSeq` is deliberately kept: the queued prompt carries this seq on the
- * server and is persisted with it when the queue is replayed. Reusing the seq
- * for the next message would produce two user messages sharing one seq, which
- * breaks echo suppression and makes deletion truncate at the wrong message.
+ * `chatSeq` is deliberately kept because the accepted queued content retains
+ * this client sequence. Reusing it for the next message would persist two user
+ * messages with the same sequence.
  */
 function rollbackQueuedSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
 	restoreOptimisticSessionState(snapshot, userEl);
@@ -370,11 +353,13 @@ async function sendChatAsync(): Promise<void> {
 	try {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
 		const previousChatSeq = S.chatSeq;
-		const modelParams: ChatSendParams = { _seq: previousChatSeq + 1 };
-		const modelSelection = await applySelectedModelToChatParams(modelParams);
-		if (!modelSelection) return;
-		const msg = await buildChatMessage(text, modelParams._seq);
-		S.setChatSeq(modelParams._seq);
+		const modelSelection = selectedModelSelection();
+		if (!modelSelection) {
+			chatAddMsg("error", "Select a model before sending a message");
+			return;
+		}
+		const msg = await buildChatMessage(text, previousChatSeq + 1);
+		S.setChatSeq(msg.params._seq);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
 		const chatParams: ChatSendParams & SessionModelSelection = {

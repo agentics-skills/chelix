@@ -65,12 +65,37 @@ async fn chat_abort_requires_session_key() {
 }
 
 #[tokio::test]
-async fn chat_cancel_queued_prompts_requires_session_key() {
-    assert_requires_session_key(
-        r#"mutation { chat { cancelQueuedPrompts } }"#,
-        "cancelQueuedPrompts",
-    )
-    .await;
+async fn chat_remove_queued_prompt_uses_the_numeric_id() {
+    let mock = MockDispatch::new();
+    mock.set_response(
+        "chat.queued_prompts.remove",
+        json!({ "sessionKey": "session:one", "prompts": [] }),
+    );
+    let (schema, _) = build_test_schema(mock.clone());
+
+    let res = schema
+        .execute(Request::new(
+            r#"mutation { chat { removeQueuedPrompt(id: 42) } }"#,
+        ))
+        .await;
+
+    assert!(res.errors.is_empty(), "errors: {:?}", res.errors);
+    let (method, params) = mock.last_call().expect("should have called");
+    assert_eq!(method, "chat.queued_prompts.remove");
+    assert_eq!(params, json!({ "id": 42 }));
+}
+
+#[tokio::test]
+async fn chat_remove_queued_prompt_requires_id() {
+    let mock = MockDispatch::new();
+    let (schema, _) = build_test_schema(mock);
+    let res = schema
+        .execute(Request::new(r#"mutation { chat { removeQueuedPrompt } }"#))
+        .await;
+    assert!(
+        !res.errors.is_empty(),
+        "removeQueuedPrompt without id should fail"
+    );
 }
 
 #[tokio::test]

@@ -269,13 +269,60 @@ export interface CheckpointHistoryMessage {
 	[key: string]: unknown;
 }
 
+export type QueuedPromptContentBlock =
+	| { type: "text"; text: string }
+	| { type: "image_url"; image_url: { url: string } };
+
+export interface QueuedPromptDocument {
+	displayName: string;
+	storedFilename: string;
+	mimeType: string;
+	sizeBytes?: number;
+	mediaRef: string;
+}
+
+export type QueuedPromptMedium = "text" | "voice";
+export type QueuedPromptChannelType = "telegram" | "whatsapp" | "discord" | "slack" | "matrix" | "signal" | "telephony";
+export type QueuedPromptMessageKind = "text" | "voice" | "audio" | "photo" | "document" | "video" | "location" | "other";
+
+export interface QueuedPromptChannelMetadata {
+	channel_type: QueuedPromptChannelType;
+	sender_name: string | null;
+	username: string | null;
+	sender_id?: string;
+	message_kind?: QueuedPromptMessageKind;
+}
+
+export interface QueuedPromptChannelReplyTarget {
+	channel_type: QueuedPromptChannelType;
+	account_id: string;
+	chat_id: string;
+	message_id?: string;
+	thread_id?: string;
+}
+
+export interface QueuedPromptContent {
+	content: string | QueuedPromptContentBlock[];
+	documents?: QueuedPromptDocument[];
+	audio?: string;
+	clientSequence?: number;
+	inputMedium: QueuedPromptMedium;
+	replyMedium: QueuedPromptMedium;
+	channel?: QueuedPromptChannelMetadata;
+	channelReplyTarget?: QueuedPromptChannelReplyTarget;
+}
+
 /** A user prompt queued while an agent run owns the session. */
 export interface QueuedPrompt {
-	id: string;
+	id: number;
 	sessionKey: string;
-	position: number;
-	preview: string;
-	createdAt: number;
+	content: QueuedPromptContent;
+}
+
+/** Canonical full queue status for one session. */
+export interface QueuedPromptsStatus {
+	sessionKey: string;
+	prompts: QueuedPrompt[];
 }
 
 export interface ChatError {
@@ -345,12 +392,6 @@ export interface ChatPayload {
 	phase?: string;
 	mode?: string;
 	seq?: number;
-	/**
-	 * Set on `user_message` events replayed from the prompt queue. Their seq
-	 * was already used by the submitting client, whose optimistic bubble was
-	 * dropped when the prompt was queued, so the message must render anyway.
-	 */
-	replayed?: boolean;
 	retryAfterMs?: number;
 	partialMessage?: PartialMessage;
 	assistantMessage?: AssistantHistoryMessage;
@@ -363,8 +404,8 @@ export interface ChatPayload {
 	checkpoint?: CheckpointHistoryMessage;
 	contextBudget?: ContextBudgetMetadata;
 	canContinue?: boolean;
-	/** Full queue snapshot carried by `prompt_queue` events. */
-	prompts?: QueuedPrompt[];
+	/** Canonical queue status carried by `prompt_queue` events. */
+	status?: QueuedPromptsStatus;
 }
 
 export interface ApprovalPayload {

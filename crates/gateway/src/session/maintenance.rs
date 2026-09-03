@@ -231,8 +231,8 @@ impl LiveSessionService {
         {
             errors.push(format!("session '{key}' state cleanup: {error}"));
         }
-        if let Some(prompt_queue) = self.prompt_queue_store.as_ref()
-            && let Err(error) = prompt_queue.clear(key).await
+        if let Some(queued_prompts) = self.queued_prompts.as_ref()
+            && let Err(error) = queued_prompts.clear(SessionKey::new(key.clone())).await
         {
             errors.push(format!("session '{key}' prompt queue cleanup: {error}"));
         }

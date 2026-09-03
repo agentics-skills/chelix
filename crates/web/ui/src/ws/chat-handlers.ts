@@ -16,7 +16,7 @@ import { t } from "../i18n";
 import { appendMessageActions } from "../message-actions";
 import { maybeRefreshFullContext } from "../pages/ChatPage";
 import { renderCheckpointCard } from "../pages/chat/context-card";
-import { setQueuedPrompts } from "../pages/chat/prompt-queue";
+import { replaceQueuedPromptsDock } from "../pages/chat/prompt-queue";
 import { currentPrefix } from "../router";
 import {
 	appendingAddsBubble,
@@ -399,11 +399,9 @@ function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: bo
 // so we skip rendering when the broadcast's seq matches a seq this client
 // has already sent (seq <= S.chatSeq).
 function handleChatUserMessage(p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
-	// Suppress the echo for the originating client. Prompts replayed from the
-	// queue are exempt: the submitting client removed its optimistic bubble
-	// when the prompt was queued, so suppressing them here would hide the
-	// message on that client while every other client renders it.
-	if (!p.replayed && p.seq !== undefined && p.seq !== null && p.seq <= S.chatSeq) return;
+	// Suppress the echo for the originating client. Backend-accepted queued
+	// batch messages do not carry a transport sequence and therefore render.
+	if (p.seq !== undefined && p.seq !== null && p.seq <= S.chatSeq) return;
 	const msgSession = sessionStore.getByKey(eventSession);
 	const lastIdx = msgSession ? msgSession.lastHistoryIndex.value : -1;
 	if (p.messageIndex !== undefined && p.messageIndex !== null && p.messageIndex <= lastIdx) return;
@@ -980,8 +978,8 @@ function handleChatNotice(p: ChatPayload, isActive: boolean, isChatPage: boolean
 	}
 }
 
-function handleChatPromptQueue(p: ChatPayload, _isActive: boolean, _isChatPage: boolean, eventSession: string): void {
-	setQueuedPrompts(eventSession, p.prompts ?? []);
+function handleQueuedPromptsStatus(p: ChatPayload): void {
+	if (p.status) replaceQueuedPromptsDock(p.status);
 }
 
 function handleChatSessionCleared(_p: ChatPayload, isActive: boolean, isChatPage: boolean, eventSession: string): void {
@@ -1026,12 +1024,13 @@ export const chatHandlers: Record<string, ChatHandler> = {
 	error: handleChatError,
 	aborted: handleChatAborted,
 	notice: handleChatNotice,
-	prompt_queue: handleChatPromptQueue,
+	prompt_queue: handleQueuedPromptsStatus,
 	session_cleared: handleChatSessionCleared,
 };
 
 export function handleChatEvent(p: ChatPayload): void {
-	const eventSession = p.sessionKey || sessionStore.activeSessionKey.value;
+	const explicitEventSession = p.status?.sessionKey || p.sessionKey;
+	const eventSession = explicitEventSession || sessionStore.activeSessionKey.value;
 	const isActive = eventSession === sessionStore.activeSessionKey.value;
 	const isChatPage = currentPrefix === "/chats";
 
@@ -1062,7 +1061,7 @@ export function handleChatEvent(p: ChatPayload): void {
 		}
 	}
 
-	if (p.sessionKey && !sessionStore.getByKey(p.sessionKey)) {
+	if (explicitEventSession && !sessionStore.getByKey(explicitEventSession)) {
 		fetchSessions();
 	}
 

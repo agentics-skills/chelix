@@ -12,7 +12,7 @@ pub use crate::{
     bundle::Services,
     error::{ServiceError, ServiceResult},
     interfaces::*,
-    session_mutations::{SessionBusyReason, SessionMutationCoordinator},
+    session_mutations::{SessionBusyReason, SessionMutationCoordinator, SessionTurnPermit},
 };
 
 #[cfg(test)]

@@ -1808,6 +1808,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "chelix-service-traits",
+ "chelix-sessions",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -2241,6 +2242,7 @@ dependencies = [
  "bytes",
  "chelix-common",
  "chelix-protocol",
+ "chelix-sessions",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -2251,6 +2253,7 @@ dependencies = [
 name = "chelix-sessions"
 version = "0.1.0"
 dependencies = [
+ "chelix-channels",
  "chelix-common",
  "fd-lock",
  "lru",

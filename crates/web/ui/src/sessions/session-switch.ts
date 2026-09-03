@@ -2,7 +2,7 @@
 
 import { chatAddMsg, resetChatView, setComposerStopButton, updateTokenBar } from "../chat-ui";
 import { sendRpc } from "../helpers";
-import { renderQueuedPrompts, setQueuedPrompts } from "../pages/chat/prompt-queue";
+import { clearQueuedPromptsDock, replaceQueuedPromptsDock } from "../pages/chat/prompt-queue";
 import { updateSessionProjectSelect } from "../project-combo";
 import { sessionPath } from "../router";
 import * as S from "../state";
@@ -17,7 +17,7 @@ import { insertSessionInOrder, Session, sessionStore } from "../stores/session-s
 import { isToolLifecycleEvent, reduceToolInvocation } from "../tool-lifecycle";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage, SessionMeta } from "../types/session";
-import type { ActiveToolInvocation, QueuedPrompt } from "../types/ws-events";
+import type { ActiveToolInvocation, QueuedPromptsStatus } from "../types/ws-events";
 import { clearToolLifecycleStateForSession, renderToolLifecycleSnapshot } from "../ws/tool-helpers";
 
 import {
@@ -73,7 +73,7 @@ interface SwitchPayload {
 	replying?: boolean;
 	voicePending?: boolean;
 	activeToolInvocations?: ActiveToolInvocation[];
-	queuedPrompts?: QueuedPrompt[];
+	queuedPrompts: QueuedPromptsStatus;
 	hasMore?: boolean;
 	nextCursor?: number;
 	totalMessages?: number;
@@ -165,7 +165,7 @@ function resetSwitchViewState(): void {
 	if (S.chatMsgBox) {
 		resetChatView(S.chatMsgBox);
 	}
-	renderQueuedPrompts();
+	clearQueuedPromptsDock();
 	S.setStreamEl(null);
 	S.setStreamText("");
 	S.setLastToolOutput("");
@@ -341,7 +341,7 @@ function renderActiveSwitch(
 ): void {
 	restoreSessionState(entry, context.projectId);
 	applyReplyingStateFromSwitchPayload(context.key, switchPayload);
-	setQueuedPrompts(context.key, switchPayload.queuedPrompts ?? []);
+	replaceQueuedPromptsDock(switchPayload.queuedPrompts);
 	const totalCountHint = Number.isInteger(entry.messageCount)
 		? (entry.messageCount as number)
 		: Number(historyPayload.totalMessages) || countDisplayableMessages(application.resolvedHistory);

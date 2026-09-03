@@ -9,12 +9,13 @@ use {
     chelix_agents::{
         ContentPart, UserContent, multimodal::parse_data_uri, prompt::VOICE_REPLY_SUFFIX,
     },
+    chelix_channels::{ChannelDocumentFile, ChannelMessageKind},
     chelix_sessions::{ContentBlock, MessageContent, UserDocument, store::SessionStore},
 };
 
 use crate::types::{
-    InputChannelDocumentFile, InputChannelMeta, InputMediumParam, InputMessageKind, ReplyMedium,
-    is_safe_user_audio_filename, sanitize_user_document_display_name, truncate_at_char_boundary,
+    InputChannelMeta, ReplyMedium, is_safe_user_audio_filename,
+    sanitize_user_document_display_name, truncate_at_char_boundary,
 };
 
 /// Convert session-crate `MessageContent` to agents-crate `UserContent`.
@@ -230,15 +231,10 @@ pub(crate) fn apply_message_received_rewrite(
 }
 
 pub(crate) fn parse_input_medium(params: &Value) -> Option<ReplyMedium> {
-    match params
+    params
         .get("_input_medium")
         .cloned()
-        .and_then(|v| serde_json::from_value::<InputMediumParam>(v).ok())
-    {
-        Some(InputMediumParam::Voice) => Some(ReplyMedium::Voice),
-        Some(InputMediumParam::Text) => Some(ReplyMedium::Text),
-        _ => None,
-    }
+        .and_then(|value| serde_json::from_value(value).ok())
 }
 
 pub(crate) fn explicit_reply_medium_override(text: &str) -> Option<ReplyMedium> {
@@ -285,7 +281,7 @@ pub(crate) fn infer_reply_medium(params: &Value, text: &str) -> ReplyMedium {
         .get("channel")
         .cloned()
         .and_then(|v| serde_json::from_value::<InputChannelMeta>(v).ok())
-        && channel.message_kind == Some(InputMessageKind::Voice)
+        && channel.message_kind == Some(ChannelMessageKind::Voice)
     {
         return ReplyMedium::Voice;
     }
@@ -334,8 +330,7 @@ pub(crate) fn user_documents_from_params(
     let mut parsed = Vec::new();
 
     for document in documents {
-        let Ok(document) = serde_json::from_value::<InputChannelDocumentFile>(document.clone())
-        else {
+        let Ok(document) = serde_json::from_value::<ChannelDocumentFile>(document.clone()) else {
             continue;
         };
         let stored_filename = document.stored_filename.trim();

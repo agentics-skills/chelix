@@ -7,8 +7,11 @@ use {
 
 use {
     chelix_agents::model::Usage,
+    chelix_channels::ChannelMessageKind,
     chelix_config::{AgentMemoryWriteMode, MemoryStyle, PromptMemoryMode},
 };
+
+pub(crate) use chelix_common::MessageMedium as ReplyMedium;
 
 /// Placeholder to match the old `BroadcastOpts` pattern. All fields are ignored;
 /// the trait's `broadcast` always uses default behaviour.
@@ -18,45 +21,10 @@ pub struct BroadcastOpts {
     pub state_version: Option<()>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub(crate) enum ReplyMedium {
-    Text,
-    Voice,
-}
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct InputChannelMeta {
     #[serde(default)]
-    pub message_kind: Option<InputMessageKind>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct InputChannelDocumentFile {
-    pub display_name: String,
-    pub stored_filename: String,
-    pub mime_type: String,
-    #[serde(default)]
-    pub size_bytes: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum InputMessageKind {
-    Text,
-    Voice,
-    Audio,
-    Photo,
-    Document,
-    Video,
-    Other,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum InputMediumParam {
-    Text,
-    Voice,
+    pub message_kind: Option<ChannelMessageKind>,
 }
 
 #[derive(Debug, Clone)]

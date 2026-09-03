@@ -6,14 +6,10 @@
 // typed use `unknown` as a placeholder -- callers can narrow with
 // `as` casts until we refine the type here.
 
-import type {
-	ChatContextPayload,
-	ChatFullContextPayload,
-	ChatPromptMemoryRefreshPayload,
-	ChatPromptQueuePayload,
-} from "./chat";
+import type { ChatContextPayload, ChatFullContextPayload, ChatPromptMemoryRefreshPayload } from "./chat";
 import type { ModelInfo, ProviderInfo } from "./model";
 import type { SessionMeta, SessionPatchPayload, SetSessionAgentPayload } from "./session";
+import type { QueuedPromptsStatus } from "./ws-events";
 
 /** Maps every RPC method to its response payload type. */
 export interface RpcMethodMap {
@@ -43,8 +39,8 @@ export interface RpcMethodMap {
 	"chat.context": ChatContextPayload;
 	"chat.full_context": ChatFullContextPayload;
 	"chat.prompt_memory.refresh": ChatPromptMemoryRefreshPayload;
-	"chat.prompt_queue.cancel": ChatPromptQueuePayload;
-	"chat.prompt_queue.list": ChatPromptQueuePayload;
+	"chat.queued_prompts.remove": QueuedPromptsStatus;
+	"chat.queued_prompts.status": QueuedPromptsStatus;
 	"chat.send": unknown;
 	"chat.send_sync": unknown;
 

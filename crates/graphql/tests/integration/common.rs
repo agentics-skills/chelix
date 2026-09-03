@@ -280,12 +280,25 @@ impl chelix_service_traits::ChatService for MockChat {
         self.0.call("chat.abort", p)
     }
 
-    async fn prompt_queue_list(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.prompt_queue.list", p)
+    async fn queued_prompts_status(
+        &self,
+        session_id: chelix_sessions::SessionKey,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        let value = self.0.call(
+            "chat.queued_prompts.status",
+            json!({ "sessionKey": session_id }),
+        )?;
+        serde_json::from_value(value).map_err(|error| error.to_string().into())
     }
 
-    async fn prompt_queue_cancel(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.prompt_queue.cancel", p)
+    async fn queued_prompts_remove(
+        &self,
+        id: i64,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        let value = self
+            .0
+            .call("chat.queued_prompts.remove", json!({ "id": id }))?;
+        serde_json::from_value(value).map_err(|error| error.to_string().into())
     }
 
     async fn history(&self, p: Value) -> ServiceResult {

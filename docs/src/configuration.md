@@ -252,9 +252,9 @@ body.
 
 ## Chat Prompt Queue
 
-Prompts submitted while an agent run is active are queued on the server and
-replayed as a single run after that run finishes. See
-[Prompt Queue](prompt-queue.md).
+Prompts submitted while an agent turn is active are stored by the internal
+`queuedPrompts` service. After the complete final gate, the ordered batch enters
+the existing session as one full turn. See [queuedPrompts](prompt-queue.md).
 
 ```toml
 [chat]

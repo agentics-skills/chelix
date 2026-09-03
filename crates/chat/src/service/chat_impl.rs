@@ -614,41 +614,29 @@ impl ChatService for LiveChatService {
         }))
     }
 
-    async fn prompt_queue_list(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
-        let prompts = self
-            .prompt_queue
-            .list(&session_key)
+    async fn queued_prompts_status(
+        &self,
+        session_id: chelix_sessions::SessionKey,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, ServiceError> {
+        self.queued_prompts
+            .status(session_id)
             .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
-        Ok(serde_json::json!({
-            "sessionKey": session_key,
-            "prompts": prompts,
-        }))
+            .map_err(|error| ServiceError::message(error.to_string()))
     }
 
-    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
-        let prompt_id = params
-            .get("promptId")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-
-        let prompts = match prompt_id {
-            Some(prompt_id) => self.prompt_queue.cancel_one(&session_key, prompt_id).await,
-            None => self
-                .prompt_queue
-                .cancel_all(&session_key)
-                .await
-                .map(|_| Vec::new()),
-        }
-        .map_err(|error| ServiceError::message(error.to_string()))?;
-
-        Ok(serde_json::json!({
-            "sessionKey": session_key,
-            "prompts": prompts,
-        }))
+    async fn queued_prompts_remove(
+        &self,
+        id: i64,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, ServiceError> {
+        let status = self
+            .queued_prompts
+            .remove(id)
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        crate::prompt_queue::broadcast_queued_prompts_status(&self.state, &status)
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        Ok(status)
     }
 
     async fn history(&self, params: Value) -> ServiceResult {
@@ -673,12 +661,6 @@ impl ChatService for LiveChatService {
             .clear(&session_key)
             .await
             .map_err(ServiceError::message)?;
-
-        // Prompts queued for the cleared conversation must not resurface.
-        self.prompt_queue
-            .cancel_all(&session_key)
-            .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
 
         // Reset client sequence tracking for this session. A cleared chat starts
         // a fresh sequence from the web UI.
@@ -1498,7 +1480,7 @@ mod tests {
             ProjectService, TtsService,
         },
         chelix_sessions::{
-            SessionPromptQueueStore,
+            QueuedPrompts,
             metadata::{
                 ExternalAgentKind, ExternalSessionIdentity, SessionBacking, SessionEntry,
                 SqliteSessionMetadata,
@@ -1823,7 +1805,7 @@ mod tests {
             runtime,
             Arc::clone(&session_store),
             Arc::clone(&metadata),
-            Arc::new(SessionPromptQueueStore::new(pool)),
+            Arc::new(QueuedPrompts::new(pool)),
             config.clone(),
             agents_config,
             chelix_config::ToolsConfigSource::snapshot(config.tools),

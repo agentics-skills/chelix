@@ -2,6 +2,28 @@ use super::*;
 
 use chelix_common::ActiveToolInvocation;
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QueuedPromptsStatusParams {
+    session_key: chelix_sessions::SessionKey,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QueuedPromptsRemoveParams {
+    id: i64,
+}
+
+fn queued_prompts_response(
+    status: chelix_sessions::QueuedPromptsStatus,
+) -> Result<serde_json::Value, ErrorShape> {
+    serde_json::to_value(status).map_err(|error| {
+        ErrorShape::from(ServiceError::message(format!(
+            "failed to serialize queued prompts status: {error}"
+        )))
+    })
+}
+
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     replying: bool,
@@ -689,30 +711,38 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "chat.prompt_queue.list",
+        "chat.queued_prompts.status",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                ctx.state
+                let params: QueuedPromptsStatusParams = serde_json::from_value(ctx.params)
+                    .map_err(|error| {
+                        ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string())
+                    })?;
+                let status = ctx
+                    .state
                     .chat()
-                    .prompt_queue_list(params)
+                    .queued_prompts_status(params.session_key)
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from)?;
+                queued_prompts_response(status)
             })
         }),
     );
     reg.register(
-        "chat.prompt_queue.cancel",
+        "chat.queued_prompts.remove",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                ctx.state
+                let params: QueuedPromptsRemoveParams = serde_json::from_value(ctx.params)
+                    .map_err(|error| {
+                        ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string())
+                    })?;
+                let status = ctx
+                    .state
                     .chat()
-                    .prompt_queue_cancel(params)
+                    .queued_prompts_remove(params.id)
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from)?;
+                queued_prompts_response(status)
             })
         }),
     );
@@ -1137,12 +1167,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     Vec::new()
                 };
                 let voice_pending = replying && chat.active_voice_pending(key).await;
-                // Queued prompts are session state, not connection state, so a
-                // reload or a second client renders the same pending prompts.
                 let queued_prompts = chat
-                    .prompt_queue_list(serde_json::json!({ "sessionKey": key }))
+                    .queued_prompts_status(chelix_sessions::SessionKey::new(key))
                     .await
                     .map_err(ErrorShape::from)?;
+                let queued_prompts = queued_prompts_response(queued_prompts)?;
                 if let Some(obj) = result.as_object_mut() {
                     insert_session_activity_snapshot(
                         obj,
@@ -1150,9 +1179,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         tool_invocations,
                         voice_pending,
                     );
-                    if let Some(prompts) = queued_prompts.get("prompts") {
-                        obj.insert("queuedPrompts".to_string(), prompts.clone());
-                    }
+                    obj.insert("queuedPrompts".to_string(), queued_prompts);
                 }
 
                 Ok(result)
@@ -1412,7 +1439,10 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ActiveToolInvocation, insert_session_activity_snapshot};
+    use super::{
+        ActiveToolInvocation, QueuedPromptsRemoveParams, QueuedPromptsStatusParams,
+        insert_session_activity_snapshot,
+    };
 
     fn active_tool_invocation() -> ActiveToolInvocation {
         ActiveToolInvocation {
@@ -1465,5 +1495,45 @@ mod tests {
         assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(false));
         assert!(obj.get("activeToolInvocations").is_none());
         assert!(obj.get("voicePending").is_none());
+    }
+
+    #[test]
+    fn queued_prompts_status_params_accept_the_canonical_payload() {
+        let params: QueuedPromptsStatusParams =
+            serde_json::from_value(serde_json::json!({ "sessionKey": "session:one" }))
+                .unwrap_or_else(|error| panic!("canonical status params must parse: {error}"));
+
+        assert_eq!(params.session_key.as_str(), "session:one");
+    }
+
+    #[test]
+    fn queued_prompts_status_params_reject_an_additional_field() {
+        assert!(
+            serde_json::from_value::<QueuedPromptsStatusParams>(serde_json::json!({
+                "sessionKey": "session:one",
+                "additional": true,
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn queued_prompts_remove_params_accept_the_canonical_payload() {
+        let params: QueuedPromptsRemoveParams =
+            serde_json::from_value(serde_json::json!({ "id": 42 }))
+                .unwrap_or_else(|error| panic!("canonical remove params must parse: {error}"));
+
+        assert_eq!(params.id, 42);
+    }
+
+    #[test]
+    fn queued_prompts_remove_params_reject_an_additional_field() {
+        assert!(
+            serde_json::from_value::<QueuedPromptsRemoveParams>(serde_json::json!({
+                "id": 42,
+                "additional": true,
+            }))
+            .is_err()
+        );
     }
 }

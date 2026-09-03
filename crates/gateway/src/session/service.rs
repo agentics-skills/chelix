@@ -56,7 +56,7 @@ pub struct LiveSessionService {
     pub(super) project_store: Option<Arc<dyn ProjectStore>>,
     pub(super) hook_registry: Option<Arc<HookRegistry>>,
     pub(super) state_store: Option<Arc<SessionStateStore>>,
-    pub(super) prompt_queue_store: Option<Arc<SessionPromptQueueStore>>,
+    pub(super) queued_prompts: Option<Arc<QueuedPrompts>>,
     pub(super) browser_service: Option<Arc<dyn crate::services::BrowserService>>,
     pub(super) memory_manager: Option<DynMemoryRuntime>,
     pub(super) session_mutations: Arc<chelix_service_traits::SessionMutationCoordinator>,
@@ -82,7 +82,7 @@ impl LiveSessionService {
             project_store: None,
             hook_registry: None,
             state_store: None,
-            prompt_queue_store: None,
+            queued_prompts: None,
             browser_service: None,
             memory_manager: None,
             session_mutations: Arc::new(
@@ -186,10 +186,10 @@ impl LiveSessionService {
         self
     }
 
-    /// Wire the prompt queue so deleting a session also drops its queue.
+    /// Wire queued prompts so deleting a session also clears its pending input.
     #[must_use]
-    pub fn with_prompt_queue_store(mut self, store: Arc<SessionPromptQueueStore>) -> Self {
-        self.prompt_queue_store = Some(store);
+    pub fn with_queued_prompts(mut self, queued_prompts: Arc<QueuedPrompts>) -> Self {
+        self.queued_prompts = Some(queued_prompts);
         self
     }
 

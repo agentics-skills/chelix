@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {
     chelix_channels::{Error as ChannelError, Result as ChannelResult},
-    chelix_sessions::metadata::SqliteSessionMetadata,
+    chelix_sessions::{QueuedPromptsStatus, metadata::SqliteSessionMetadata},
 };
 
 use crate::{
@@ -325,8 +325,7 @@ pub(in crate::channel_events) async fn handle_queue(
         ));
     }
 
-    // Use the chat service's send method — when a run is active it queues the
-    // prompt, and the whole queue is replayed as one run after the final gate.
+    // Use ordinary chat.send as the canonical content-normalization boundary.
     let chat = state.chat();
     let params = serde_json::json!({
         "text": args,
@@ -339,10 +338,11 @@ pub(in crate::channel_events) async fn handle_queue(
             if !queued {
                 return Ok("No active run \u{2014} message sent immediately.".to_string());
             }
-            let pending = res
-                .get("prompts")
-                .and_then(|value| value.as_array())
-                .map_or(1, Vec::len);
+            let status = res.get("status").cloned().ok_or_else(|| {
+                ChannelError::unavailable("queued chat response is missing status")
+            })?;
+            let status: QueuedPromptsStatus = serde_json::from_value(status)?;
+            let pending = status.prompts.len();
             Ok(format!(
                 "Queued for the next turn ({pending} pending): {args}"
             ))

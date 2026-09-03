@@ -626,14 +626,6 @@ mod tests {
             Ok(self.abort_response.clone())
         }
 
-        async fn prompt_queue_list(&self, _params: Value) -> ServiceResult {
-            Err("prompt_queue_list is not used by this test service".into())
-        }
-
-        async fn prompt_queue_cancel(&self, _params: Value) -> ServiceResult {
-            Err("prompt_queue_cancel is not used by this test service".into())
-        }
-
         async fn history(&self, _params: Value) -> ServiceResult {
             Err("history is not used by this test service".into())
         }

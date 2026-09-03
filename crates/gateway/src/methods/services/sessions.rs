@@ -231,11 +231,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .session_mutations
                     .reserve_mutation(&key)
                     .await;
-                ctx.state
-                    .chat()
-                    .prompt_queue_cancel(serde_json::json!({ "sessionKey": key }))
-                    .await
-                    .map_err(ErrorShape::from)?;
                 let _ = ctx
                     .state
                     .chat()

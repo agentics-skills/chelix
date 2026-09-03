@@ -1021,12 +1021,18 @@ impl ChatService for ExternalAgentChatService {
         self.inner.abort(params).await
     }
 
-    async fn prompt_queue_list(&self, params: Value) -> ServiceResult {
-        self.inner.prompt_queue_list(params).await
+    async fn queued_prompts_status(
+        &self,
+        session_id: chelix_sessions::SessionKey,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, ServiceError> {
+        self.inner.queued_prompts_status(session_id).await
     }
 
-    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult {
-        self.inner.prompt_queue_cancel(params).await
+    async fn queued_prompts_remove(
+        &self,
+        id: i64,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, ServiceError> {
+        self.inner.queued_prompts_remove(id).await
     }
 
     async fn history(&self, params: Value) -> ServiceResult {
@@ -1468,14 +1474,6 @@ mod tests {
 
         async fn abort(&self, _params: Value) -> ServiceResult {
             Ok(serde_json::json!({}))
-        }
-
-        async fn prompt_queue_list(&self, _params: Value) -> ServiceResult {
-            Ok(serde_json::json!({ "prompts": [] }))
-        }
-
-        async fn prompt_queue_cancel(&self, _params: Value) -> ServiceResult {
-            Ok(serde_json::json!({ "prompts": [] }))
         }
 
         async fn history(&self, _params: Value) -> ServiceResult {

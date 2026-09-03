@@ -4,7 +4,10 @@ use {async_trait::async_trait, serde_json::Value, tracing::warn};
 
 pub use chelix_common::{ReasoningEffort, ResolvedModelReasoning};
 
-use crate::{ServiceError, ServiceResult};
+use {
+    crate::{ServiceError, ServiceResult},
+    chelix_sessions::{QueuedPromptsStatus, SessionKey},
+};
 
 #[async_trait]
 pub trait AgentService: Send + Sync {
@@ -343,12 +346,18 @@ pub trait ChatService: Send + Sync {
 
     async fn abort(&self, params: Value) -> ServiceResult;
 
-    /// List the prompts queued for a session.
-    async fn prompt_queue_list(&self, params: Value) -> ServiceResult;
+    /// Read the canonical queued-prompts status for one session.
+    async fn queued_prompts_status(
+        &self,
+        _session_id: SessionKey,
+    ) -> Result<QueuedPromptsStatus, ServiceError> {
+        Err("chat not configured".into())
+    }
 
-    /// Remove queued prompts of a session. Removes one prompt when `promptId`
-    /// is present, otherwise the whole session queue.
-    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult;
+    /// Remove one queued prompt by its auto-incremented ID.
+    async fn queued_prompts_remove(&self, _id: i64) -> Result<QueuedPromptsStatus, ServiceError> {
+        Err("chat not configured".into())
+    }
 
     async fn history(&self, params: Value) -> ServiceResult;
     async fn inject(&self, params: Value) -> ServiceResult;
@@ -396,17 +405,6 @@ impl ChatService for NoopChatService {
 
     async fn abort(&self, _p: Value) -> ServiceResult {
         Ok(serde_json::json!({}))
-    }
-
-    /// A service without chat cannot queue prompts, so its queue is empty.
-    /// Reporting that plainly keeps session reads (such as `sessions.switch`,
-    /// which renders the queue) working instead of failing them as a whole.
-    async fn prompt_queue_list(&self, _p: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "prompts": [] }))
-    }
-
-    async fn prompt_queue_cancel(&self, _p: Value) -> ServiceResult {
-        Err("chat not configured".into())
     }
 
     async fn history(&self, _p: Value) -> ServiceResult {

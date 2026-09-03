@@ -56,12 +56,18 @@ impl ChatService for GraphqlChatServiceProxy {
         self.state.chat().abort(params).await
     }
 
-    async fn prompt_queue_list(&self, params: Value) -> ServiceResult {
-        self.state.chat().prompt_queue_list(params).await
+    async fn queued_prompts_status(
+        &self,
+        session_id: chelix_sessions::SessionKey,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        self.state.chat().queued_prompts_status(session_id).await
     }
 
-    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult {
-        self.state.chat().prompt_queue_cancel(params).await
+    async fn queued_prompts_remove(
+        &self,
+        id: i64,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        self.state.chat().queued_prompts_remove(id).await
     }
 
     async fn history(&self, params: Value) -> ServiceResult {

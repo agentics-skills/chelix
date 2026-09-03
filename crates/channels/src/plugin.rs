@@ -536,7 +536,7 @@ pub struct ChannelMessageMeta {
 }
 
 /// Inbound channel message media kind.
-#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelMessageKind {
     Text,
@@ -559,7 +559,7 @@ pub struct ChannelAttachment {
 }
 
 /// Metadata for a saved inbound channel document.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChannelDocumentFile {
     /// User-facing original filename when available.
     pub display_name: String,
@@ -584,7 +584,8 @@ pub struct SavedChannelFile {
 }
 
 /// Where to send the LLM response back.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChannelReplyTarget {
     pub channel_type: ChannelType,
     pub account_id: String,

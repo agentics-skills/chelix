@@ -5,6 +5,7 @@ pub mod error;
 pub mod hooks;
 pub mod http_client;
 pub mod item_positions;
+pub mod message_medium;
 pub mod model;
 pub mod provider_output;
 pub mod reasoning_policy;
@@ -17,6 +18,7 @@ pub use {
     context_budget::ContextBudgetMetadata,
     error::{ChelixError, Error, FromMessage, Result},
     item_positions::ItemPositionAllocator,
+    message_medium::MessageMedium,
     model::{
         ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
         ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningSummary,
