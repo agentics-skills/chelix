@@ -5,12 +5,18 @@
 
 use async_graphql::{Context, Object, Result};
 
+use {
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
+    chelix_sessions::SessionKey,
+};
+
 use crate::{
     error::{from_service, from_service_json, from_typed_service_json},
     scalars::Json,
     services,
     types::{
-        BoolResult, McpOAuthStartResult, SessionShareResult, TranscriptionResult, TtsConvertResult,
+        BoolResult, McpOAuthStartResult, ModelOverrideInput, SessionShareResult,
+        TranscriptionResult, TtsConvertResult,
     },
 };
 
@@ -170,14 +176,13 @@ impl ChatMutation {
         ctx: &Context<'_>,
         message: String,
         session_key: String,
-        model: Option<String>,
+        model_override: Option<ModelOverrideInput>,
     ) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(
-            s.chat
-                .send(serde_json::json!({ "message": message, "sessionKey": session_key, "model": model }))
-                .await,
-        )
+        let mut request = ChatSendRequest::text(message);
+        request.model_override = model_override.map(Into::into);
+        let context = ChatExecutionContext::internal(SessionKey::new(session_key));
+        from_service(s.chat.send(request, context).await)
     }
 
     /// Abort active chat response.

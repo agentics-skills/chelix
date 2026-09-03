@@ -9,7 +9,12 @@ use {
 };
 
 use {
-    chelix_service_traits::{ServiceError, ServiceResult, SessionBusyReason, SessionTurnPermit},
+    chelix_common::ModelOverride,
+    chelix_providers::ResolvedModel,
+    chelix_service_traits::{
+        ChatChannelMetadata, ChatExecutionContext, ChatRequestOrigin, ChatSendRequest,
+        ServiceError, ServiceResult, SessionBusyReason, SessionTurnPermit,
+    },
     chelix_sessions::{QueuedPromptContent, SessionKey},
 };
 
@@ -17,12 +22,12 @@ use crate::{
     channels::deliver_channel_error,
     chat_error::parse_chat_error,
     message::{
-        apply_message_received_rewrite, infer_reply_medium, parse_message_params, to_user_content,
-        user_audio_path_from_params, user_documents_for_persistence, user_documents_from_params,
+        apply_message_received_rewrite, chat_message_parts, to_user_content,
+        user_documents_for_persistence,
     },
     prompt::{
-        apply_request_runtime_context, build_prompt_runtime_context, discover_skills_if_enabled,
-        filter_skills_for_agent, resolve_channel_runtime_context,
+        apply_chat_execution_context, build_prompt_runtime_context, discover_skills_if_enabled,
+        filter_skills_for_agent, resolve_channel_runtime_context, validate_prompt_agent_id,
     },
     prompt_queue::{
         broadcast_queued_prompts_status, normalize_queued_prompt_content,
@@ -52,6 +57,11 @@ struct SessionTurnOwner {
     _permit: SessionTurnPermit,
 }
 
+pub(super) struct ResolvedChatTurn {
+    pub(super) model: ResolvedModel,
+    pub(super) stream_only: bool,
+}
+
 impl SessionTurnOwner {
     fn start_queued_batch(
         self,
@@ -63,13 +73,11 @@ impl SessionTurnOwner {
                 .pop()
                 .ok_or_else(|| ServiceError::message("queued prompt batch must not be empty"))?;
             let service = self.service.clone();
+            let resolved = service.resolve_chat_turn(&session_id, None).await?;
+            let context = queued_execution_context(session_id.clone(), &tail);
             service
                 .start_turn_impl(
-                    Value::Object(serde_json::Map::new()),
-                    session_id,
-                    prompts,
-                    Some(tail),
-                    self,
+                    session_id, prompts, tail, context, None, true, resolved, self,
                 )
                 .await?;
             Ok(())
@@ -77,7 +85,115 @@ impl SessionTurnOwner {
     }
 }
 
+fn queued_execution_context(
+    session_id: SessionKey,
+    prompt: &QueuedPromptContent,
+) -> ChatExecutionContext {
+    let mut context = ChatExecutionContext::internal(session_id);
+    context.channel = prompt.channel.as_ref().map(|metadata| ChatChannelMetadata {
+        channel_type: metadata.channel_type,
+        sender_name: metadata.sender_name.clone(),
+        username: metadata.username.clone(),
+        sender_id: metadata.sender_id.clone(),
+        message_kind: metadata.message_kind,
+    });
+    context.channel_reply_target = prompt.channel_reply_target.clone();
+    context
+}
+
 impl LiveChatService {
+    pub(super) async fn resolve_chat_turn(
+        &self,
+        session_id: &SessionKey,
+        request_override: Option<&ModelOverride>,
+    ) -> Result<ResolvedChatTurn, ServiceError> {
+        let selected = if let Some(request_override) = request_override {
+            (
+                request_override.model.clone(),
+                request_override.reasoning_effort.clone(),
+            )
+        } else {
+            let entry = self
+                .session_metadata
+                .get(session_id.as_str())
+                .await
+                .map_err(ServiceError::message)?
+                .ok_or_else(|| {
+                    ServiceError::message(format!(
+                        "session '{}' has no model/reasoning pair",
+                        session_id.as_str()
+                    ))
+                })?;
+            let pair = entry.model_reasoning().ok_or_else(|| {
+                ServiceError::message(format!(
+                    "session '{}' has no model/reasoning pair",
+                    session_id.as_str()
+                ))
+            })?;
+            (pair.model_id().to_string(), pair.reasoning_effort().clone())
+        };
+        let model = {
+            let registry = self.providers.read().await;
+            registry
+                .resolve_model_reasoning(Some(&selected.0), Some(&selected.1))
+                .map_err(|error| ServiceError::message(error.to_string()))?
+        };
+        validate_tool_mode_compatibility(
+            model.provider().tool_mode(),
+            model.provider().supports_tools(),
+            model.provider().id(),
+        )
+        .map_err(ServiceError::message)?;
+        Ok(ResolvedChatTurn {
+            model,
+            stream_only: !self.has_tools_sync(),
+        })
+    }
+
+    async fn persist_queued_turn_settings(
+        &self,
+        session_key: &str,
+        model_reasoning: &chelix_common::ResolvedModelReasoning,
+        persist_request_override: bool,
+        requested_agent_id: Option<&str>,
+    ) -> Result<(), ServiceError> {
+        if !persist_request_override && requested_agent_id.is_none() {
+            return Ok(());
+        }
+        let entry = self
+            .session_metadata
+            .get(session_key)
+            .await
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| ServiceError::message(format!("session '{session_key}' not found")))?;
+        if let Some(agent_id) = requested_agent_id
+            && entry
+                .agent_id
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            if entry.model_reasoning().is_none() {
+                self.session_metadata
+                    .promote_external_to_llm(session_key, model_reasoning, agent_id)
+                    .await
+                    .map_err(ServiceError::message)?;
+            } else {
+                self.session_metadata
+                    .assign_agent(session_key, agent_id, model_reasoning)
+                    .await
+                    .map_err(ServiceError::message)?;
+            }
+            return Ok(());
+        }
+        if persist_request_override {
+            self.session_metadata
+                .set_model_reasoning(session_key, model_reasoning)
+                .await
+                .map_err(ServiceError::message)?;
+        }
+        Ok(())
+    }
+
     fn build_user_batch_prefix(
         &self,
         session_id: &SessionKey,
@@ -124,16 +240,13 @@ impl LiveChatService {
 
     async fn web_channel_reply_target(
         &self,
-        session_key: &str,
-        conn_id: Option<&str>,
-        params: &Value,
+        context: &ChatExecutionContext,
     ) -> Result<Option<chelix_channels::ChannelReplyTarget>, ServiceError> {
-        if conn_id.is_none()
-            || params.get("_session_key").is_some()
-            || params.get("channel").is_some()
+        if !matches!(&context.origin, ChatRequestOrigin::Client { .. }) || context.channel.is_some()
         {
             return Ok(None);
         }
+        let session_key = context.session_id.as_str();
         let Some(entry) = self
             .session_metadata
             .get(session_key)
@@ -161,16 +274,37 @@ impl LiveChatService {
         Ok(is_active.then_some(target))
     }
 
-    #[tracing::instrument(skip(self, params), fields(session_id))]
-    pub(super) async fn send_impl(&self, params: Value) -> ServiceResult {
-        let (text, _) = parse_message_params(&params)?;
-        let conn_id = params
-            .get("_conn_id")
-            .and_then(Value::as_str)
-            .map(String::from);
-        let explicit_model = params.get("model").and_then(Value::as_str);
-        let session_key = self.resolve_session_key_from_params(&params).await;
-        let client_seq = params.get("_seq").and_then(Value::as_u64);
+    #[tracing::instrument(skip(self, request, context), fields(session_id = %context.session_id))]
+    pub(super) async fn send_impl(
+        &self,
+        request: ChatSendRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_id = context.session_id.clone();
+        let session_key = session_id.as_str().to_string();
+        if session_key.is_empty() {
+            return Err(ServiceError::message("session ID must not be empty"));
+        }
+        if let Some(agent_id) = context.agent_id.as_deref() {
+            let runtime_config = self
+                .load_runtime_config_for_agent_run()
+                .await
+                .map_err(ServiceError::message)?;
+            validate_prompt_agent_id(&runtime_config, agent_id).map_err(ServiceError::message)?;
+        }
+        let (text, _) = chat_message_parts(&request.message).map_err(ServiceError::message)?;
+        let mut content =
+            normalize_queued_prompt_content(&request, &context, self.session_store.as_ref())
+                .map_err(|error| ServiceError::message(error.to_string()))?;
+        let resolved = self
+            .resolve_chat_turn(&session_id, request.model_override.as_ref())
+            .await?;
+        if content.channel_reply_target.is_none()
+            && let Some(target) = self.web_channel_reply_target(&context).await?
+        {
+            content.channel_reply_target = Some(target);
+        }
+        let client_seq = request.client_sequence;
 
         if let Some(seq) = client_seq {
             let mut seq_map = self.last_client_seq.write().await;
@@ -205,8 +339,11 @@ impl LiveChatService {
         info!(
             session = %session_key,
             text_len = text.len(),
-            has_content = params.get("content").is_some(),
-            model = ?explicit_model,
+            has_content = matches!(
+                &request.message,
+                chelix_service_traits::ChatSendMessage::Content(_)
+            ),
+            model = resolved.model.model_reasoning().model_id(),
             client_seq = ?client_seq,
             "chat.send: received"
         );
@@ -231,20 +368,13 @@ impl LiveChatService {
                 ));
             },
             Err(_) => {
-                let session_id = SessionKey::new(session_key.clone());
-                let mut content = normalize_queued_prompt_content(
-                    &params,
-                    &session_id,
-                    self.session_store.as_ref(),
+                self.persist_queued_turn_settings(
+                    &session_key,
+                    resolved.model.model_reasoning(),
+                    request.model_override.is_some(),
+                    context.agent_id.as_deref(),
                 )
-                .map_err(|error| ServiceError::message(error.to_string()))?;
-                if content.channel_reply_target.is_none()
-                    && let Some(target) = self
-                        .web_channel_reply_target(&session_key, conn_id.as_deref(), &params)
-                        .await?
-                {
-                    content.channel_reply_target = Some(target);
-                }
+                .await?;
                 let status = self
                     .queued_prompts
                     .enqueue(session_id, content)
@@ -272,118 +402,45 @@ impl LiveChatService {
             _permit: permit,
         };
         self.start_turn_impl(
-            params,
-            SessionKey::new(session_key),
+            session_id,
             Vec::new(),
-            None,
+            content,
+            context,
+            request.tool_choice,
+            false,
+            resolved,
             owner,
         )
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn start_turn_impl(
         &self,
-        mut params: Value,
         session_id: SessionKey,
         queued_leading_prompts: Vec<QueuedPromptContent>,
-        queued_tail: Option<QueuedPromptContent>,
+        prompt: QueuedPromptContent,
+        context: ChatExecutionContext,
+        tool_choice: Option<chelix_config::schema::ToolChoice>,
+        queued_batch: bool,
+        resolved: ResolvedChatTurn,
         owner: SessionTurnOwner,
     ) -> ServiceResult {
-        let queued_batch = queued_tail.is_some();
         let session_key = session_id.as_str().to_string();
-        let (mut text, mut message_content) = if let Some(prompt) = queued_tail.as_ref() {
-            (queued_message_text(prompt), queued_message_content(prompt))
-        } else {
-            parse_message_params(&params)?
-        };
-        let desired_reply_medium = queued_tail
-            .as_ref()
-            .map_or_else(|| infer_reply_medium(&params, &text), queued_reply_medium);
-        let conn_id = if queued_batch {
-            None
-        } else {
-            params
-                .get("_conn_id")
-                .and_then(Value::as_str)
-                .map(String::from)
-        };
-        let explicit_model = (!queued_batch)
-            .then(|| params.get("model").and_then(Value::as_str))
-            .flatten();
-        let requested_reasoning_effort_override = (!queued_batch)
-            .then(|| requested_reasoning_effort(&params))
-            .flatten();
-        let tool_choice = if queued_batch {
-            None
-        } else {
-            chelix_config::schema::tool_choice_from_request_params(&params)
-                .map_err(|error| format!("invalid 'tool_choice' parameter: {error}"))?
-        };
-        let explicit_stream_only = !queued_batch
-            && params
-                .get("stream_only")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-        let has_tools = self.has_tools_sync();
-        let stream_only = explicit_stream_only || !has_tools;
-        let client_seq = queued_tail
-            .as_ref()
-            .and_then(|prompt| prompt.client_sequence)
-            .or_else(|| params.get("_seq").and_then(Value::as_u64));
-        tracing::debug!(
-            explicit_stream_only,
-            has_tools,
-            stream_only,
-            queued_batch,
-            "send() mode decision"
-        );
+        let mut text = queued_message_text(&prompt);
+        let mut message_content = queued_message_content(&prompt);
+        let desired_reply_medium = queued_reply_medium(&prompt);
+        let conn_id = context.connection_id().map(str::to_string);
+        let client_seq = prompt.client_sequence;
+        let stream_only = resolved.stream_only;
+        let provider = Arc::clone(resolved.model.provider());
+        tracing::debug!(stream_only, queued_batch, "send() mode decision");
 
-        // Resolve model: explicit param → session metadata → first registered.
         let mut session_entry = self
             .session_metadata
             .get(&session_key)
             .await
             .map_err(ServiceError::message)?;
-        let session_model = if explicit_model.is_none() {
-            session_entry
-                .as_ref()
-                .and_then(|entry| entry.model())
-                .map(str::to_string)
-        } else {
-            None
-        };
-        let model_id = explicit_model.or(session_model.as_deref());
-        if queued_batch && model_id.is_none() {
-            return Err(ServiceError::message(format!(
-                "session '{session_key}' has no model"
-            )));
-        }
-
-        let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
-            let reg = self.providers.read().await;
-            if let Some(id) = model_id {
-                reg.get(id).ok_or_else(|| {
-                    let available: Vec<_> =
-                        reg.list_models().iter().map(|m| m.id.clone()).collect();
-                    format!("model '{}' not found. available: {:?}", id, available)
-                })?
-            } else if !stream_only {
-                reg.first_with_tools().ok_or_else(|| {
-                    "no LLM provider can run tools with its configured tool_mode".to_string()
-                })?
-            } else {
-                reg.first()
-                    .ok_or_else(|| "no LLM providers configured".to_string())?
-            }
-        };
-        if !stream_only {
-            validate_tool_mode_compatibility(
-                provider.tool_mode(),
-                provider.supports_tools(),
-                provider.id(),
-            )
-            .map_err(ServiceError::message)?;
-        }
         info!(
             session = %session_key,
             provider = provider.name(),
@@ -416,25 +473,7 @@ impl LiveChatService {
             "chat.send: history loaded"
         );
         let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
-
-        if let Some(target) = self
-            .web_channel_reply_target(&session_key, conn_id.as_deref(), &params)
-            .await?
-        {
-            params["_channel_reply_target"] = serde_json::to_value(target)
-                .map_err(|error| ServiceError::message(error.to_string()))?;
-        }
-
-        let deferred_channel_target = if let Some(prompt) = queued_tail.as_ref() {
-            queued_channel_reply_target(prompt)
-        } else {
-            params
-                .get("_channel_reply_target")
-                .cloned()
-                .map(serde_json::from_value::<chelix_channels::ChannelReplyTarget>)
-                .transpose()
-                .map_err(|error| ServiceError::message(error.to_string()))?
-        };
+        let deferred_channel_target = queued_channel_reply_target(&prompt);
 
         // Dispatch the `MessageReceived` hook before the turn starts. The
         // hook can:
@@ -454,10 +493,10 @@ impl LiveChatService {
                 client_seq = ?client_seq,
                 "chat.send: dispatching MessageReceived hook"
             );
-            let channel = params
-                .get("channel")
-                .and_then(|v| v.as_str())
-                .map(String::from);
+            let channel = context
+                .channel
+                .as_ref()
+                .map(|channel| channel.channel_type.as_str().to_string());
             let channel_binding = Some(resolve_channel_runtime_context(
                 &session_key,
                 session_entry.as_ref(),
@@ -479,11 +518,7 @@ impl LiveChatService {
                                 "MessageReceived hook rewrote inbound content"
                             );
                             text = new_text.to_string();
-                            apply_message_received_rewrite(
-                                &mut message_content,
-                                &mut params,
-                                new_text,
-                            );
+                            apply_message_received_rewrite(&mut message_content, new_text);
                         },
                         None => {
                             warn!(
@@ -548,35 +583,12 @@ impl LiveChatService {
             );
         }
 
-        let user_documents = if let Some(prompt) = queued_tail.as_ref() {
-            queued_documents(prompt, &session_id, self.session_store.as_ref())
-        } else {
-            user_documents_from_params(&params, &session_key, self.session_store.as_ref())
-                .unwrap_or_default()
-        };
+        let user_documents = queued_documents(&prompt, &session_id, self.session_store.as_ref());
         let user_content = to_user_content(&message_content, &user_documents);
-        let channel_meta = if let Some(prompt) = queued_tail.as_ref() {
-            queued_channel_value(prompt)
-                .map_err(|error| ServiceError::message(error.to_string()))?
-        } else {
-            params.get("channel").cloned()
-        };
-        let sender_name = if let Some(prompt) = queued_tail.as_ref() {
-            queued_sender_name(prompt)
-        } else {
-            channel_meta
-                .as_ref()
-                .and_then(|channel| {
-                    channel["sender_name"]
-                        .as_str()
-                        .or_else(|| channel["username"].as_str())
-                })
-                .map(String::from)
-        };
-        let user_audio = queued_tail.as_ref().map_or_else(
-            || user_audio_path_from_params(&params, &session_key),
-            |prompt| prompt.audio.clone(),
-        );
+        let channel_meta = queued_channel_value(&prompt)
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        let sender_name = queued_sender_name(&prompt);
+        let user_audio = prompt.audio.clone();
         let user_msg = PersistedMessage::User {
             content: message_content,
             created_at: Some(now_ms()),
@@ -589,7 +601,11 @@ impl LiveChatService {
 
         // Load one live agent-registry snapshot for the whole run.
         let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .load_prompt_persona_for_agent_run(
+                &session_key,
+                session_entry.as_ref(),
+                context.agent_id.as_deref(),
+            )
             .await
             .map_err(ServiceError::message)?;
         let session_agent_id = persona.agent_id.clone();
@@ -610,25 +626,9 @@ impl LiveChatService {
             client_seq = ?client_seq,
             "chat.send: persona loaded"
         );
-        let resolved_reasoning_effort = if queued_batch {
-            session_entry
-                .as_ref()
-                .and_then(|entry| entry.reasoning_effort())
-                .map(|effort| effort.as_str().to_string())
-        } else {
-            requested_reasoning_effort_override
-                .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent))
-        };
-        let provider =
-            apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
-        let reasoning_effort = resolved_reasoning_effort.as_deref().ok_or_else(|| {
-            ServiceError::message(format!("session '{session_key}' has no reasoning effort"))
-        })?;
-        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
-            provider.id().to_string(),
-            ReasoningEffort::from(reasoning_effort),
-        )
-        .map_err(|error| ServiceError::message(error.to_string()))?;
+        let model_reasoning = resolved.model.model_reasoning().clone();
+        let resolved_reasoning_effort =
+            Some(model_reasoning.reasoning_effort().as_str().to_string());
         session_entry = Some(match session_entry {
             Some(entry) if entry.model_reasoning().is_none() => self
                 .session_metadata
@@ -636,6 +636,18 @@ impl LiveChatService {
                 .await
                 .map_err(ServiceError::message)?
                 .into_entry(),
+            Some(entry)
+                if context.agent_id.is_some()
+                    && entry
+                        .agent_id
+                        .as_deref()
+                        .is_none_or(|value| value.trim().is_empty()) =>
+            {
+                self.session_metadata
+                    .assign_agent(&session_key, &session_agent_id, &model_reasoning)
+                    .await
+                    .map_err(ServiceError::message)?
+            },
             Some(entry)
                 if entry.model() != Some(model_reasoning.model_id())
                     || entry.reasoning_effort() != Some(model_reasoning.reasoning_effort()) =>
@@ -736,23 +748,15 @@ impl LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        apply_request_runtime_context(
+        apply_chat_execution_context(
             &mut runtime_context.host,
-            &params,
+            &context,
             persona
                 .user
                 .timezone
                 .as_ref()
                 .map(|timezone| timezone.name()),
         );
-        if let Some(prompt) = queued_tail.as_ref()
-            && let Some(sender_id) = prompt
-                .channel
-                .as_ref()
-                .and_then(|channel| channel.sender_id.clone())
-        {
-            runtime_context.host.channel_sender_id = Some(sender_id);
-        }
         info!(
             session = %session_key,
             agent_id = %session_agent_id,
@@ -769,7 +773,14 @@ impl LiveChatService {
         let active_partial_assistant = Arc::clone(&self.active_partial_assistant);
         let active_reply_medium = Arc::clone(&self.active_reply_medium);
         let run_id_clone = run_id.clone();
-        let tool_registry = Arc::clone(&self.tool_registry);
+        let tool_registry = if let Some(policy) = context.tool_policy.as_ref() {
+            let registry_guard = self.tool_registry.read().await;
+            Arc::new(RwLock::new(
+                registry_guard.clone_allowed_by(|name| policy.is_allowed(name)),
+            ))
+        } else {
+            Arc::clone(&self.tool_registry)
+        };
         let hook_registry = self.hook_registry.clone();
 
         info!(
@@ -789,10 +800,7 @@ impl LiveChatService {
         let session_metadata = Arc::clone(&self.session_metadata);
         let session_agent_id_clone = session_agent_id.clone();
         let session_key_clone = session_key.clone();
-        let accept_language = params
-            .get("_accept_language")
-            .and_then(Value::as_str)
-            .map(String::from);
+        let accept_language = context.accept_language.clone();
         let mut chat_history = chat_history;
         let PreparedUserBatchPrefix {
             messages,

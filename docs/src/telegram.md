@@ -75,8 +75,8 @@ offered = ["telegram"]
 | `mention_mode`              | no       | `"mention"`       | When the bot responds in groups: `"always"`, `"mention"` (only when @mentioned), or `"none"`  |
 | `allowlist`                 | no       | `[]`              | User IDs or usernames allowed to DM the bot (when `dm_policy = "allowlist"`)                  |
 | `group_allowlist`           | no       | `[]`              | Group/chat IDs allowed to interact with the bot                                               |
-| `model`                     | no       | —                 | Override the default model for this channel                                                   |
-| `model_provider`            | no       | —                 | Provider for the overridden model                                                             |
+| `model_override`            | no       | —                 | Complete canonical model/reasoning override for this channel                                  |
+| `model_provider`            | no       | —                 | Informational provider label; model selection uses `model_override.model`                      |
 | `agent_id`                  | no       | —                 | Default agent ID for this bot's sessions                                                      |
 | `reply_to_message`          | no       | `false`           | Send bot responses as Telegram replies to the user's message                                  |
 | `otp_self_approval`         | no       | `true`            | Enable OTP self-approval for non-allowlisted DM users                                         |
@@ -108,7 +108,7 @@ mention_mode = "mention"
 allowlist = ["123456789", "alice_username"]
 group_allowlist = ["-1001234567890"]
 reply_to_message = true
-model = "openrouter::anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 agent_id = "research"
 otp_self_approval = true
@@ -118,27 +118,35 @@ edit_throttle_ms = 2000
 
 ### Per-User and Per-Channel Model and Agent Overrides
 
-You can override the model or agent for specific users or group chats:
+You can override the model/reasoning pair or agent for specific users or group chats:
 
 ```toml
 [channels.telegram.my-bot]
 token = "..."
-model = "openrouter::anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 
 [channels.telegram.my-bot.channel_overrides."-1001234567890"]
-model = "openai::gpt-4o"
+model_override = { model = "openai::gpt-4o", reasoning_effort = "off" }
 model_provider = "openai"
 agent_id = "triage"
 
 [channels.telegram.my-bot.user_overrides."123456789"]
-model = "openrouter::anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 agent_id = "research"
 ```
 
 User overrides take priority over channel overrides, which take priority over
 the account default, for both model selection and agent selection.
+
+These overrides initialize a newly created channel session; they are not
+re-applied to every message. A direct conversation has its own session. A group
+chat shares one session across participants, so the first message that creates
+it uses the effective user, group-chat, then account pair above, or the
+validated agent pair when no channel override is configured. The persisted pair
+then stays unchanged for later senders until it is changed explicitly with
+`/model`.
 
 ## Access Control
 

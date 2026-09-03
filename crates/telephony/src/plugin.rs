@@ -107,7 +107,9 @@ impl TelephonyPlugin {
             username: Some(caller.to_string()),
             sender_id: Some(caller.to_string()),
             message_kind: Some(chelix_channels::ChannelMessageKind::Voice),
-            model: config.and_then(|c| c.model.clone()),
+            model_override: config
+                .and_then(|config| config.model_override.as_ref())
+                .map(Into::into),
             agent_id: config.and_then(|c| c.agent_id.clone()),
             audio_filename: None,
             documents: None,
@@ -478,7 +480,10 @@ mod tests {
             account_id.to_string(),
             TelephonyAccountConfig {
                 from_number: "+15550000002".to_string(),
-                model: Some("openai/gpt-5.2".to_string()),
+                model_override: Some(chelix_common::ConfigModelOverride {
+                    model: "openai::gpt-5.2".to_string(),
+                    reasoning_effort: "low".into(),
+                }),
                 agent_id: Some("phone-agent".to_string()),
                 ..TelephonyAccountConfig::default()
             },
@@ -502,7 +507,13 @@ mod tests {
             captured.meta.message_kind,
             Some(chelix_channels::ChannelMessageKind::Voice)
         ));
-        assert_eq!(captured.meta.model.as_deref(), Some("openai/gpt-5.2"));
+        assert_eq!(
+            captured.meta.model_override,
+            Some(chelix_common::ModelOverride {
+                model: "openai::gpt-5.2".to_string(),
+                reasoning_effort: "low".into(),
+            })
+        );
         assert_eq!(captured.meta.agent_id.as_deref(), Some("phone-agent"));
     }
 }

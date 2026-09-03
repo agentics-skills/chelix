@@ -29,10 +29,9 @@ pub use {
         ButtonRow, ButtonStyle, ChannelAttachment, ChannelCapabilities, ChannelDescriptor,
         ChannelDocumentFile, ChannelEvent, ChannelEventSink, ChannelHealthSnapshot,
         ChannelMessageKind, ChannelMessageMeta, ChannelOtpProvider, ChannelOutbound, ChannelPlugin,
-        ChannelReplyTarget, ChannelStatus, ChannelStreamOutbound, ChannelThreadContext,
-        ChannelType, InboundMode, InteractiveButton, InteractiveMessage, SavedChannelFile,
-        StreamEvent, StreamReceiver, StreamSender, ThreadMessage, resolve_session_channel_binding,
-        web_session_channel_binding,
+        ChannelReplyTarget, ChannelStatus, ChannelStreamOutbound, ChannelType, InboundMode,
+        InteractiveButton, InteractiveMessage, SavedChannelFile, StreamEvent, StreamReceiver,
+        StreamSender, resolve_session_channel_binding, web_session_channel_binding,
     },
     registry::{ChannelRegistry, RegistryOutboundRouter},
 };

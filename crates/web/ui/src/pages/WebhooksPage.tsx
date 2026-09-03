@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import * as gon from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import { models as modelsSig } from "../stores/model-store";
+import type { ModelOverride } from "../types/gon";
 import { ComboSelect, ConfirmDialog, copyToClipboard, Modal, ModelSelect, requestConfirm } from "../ui";
 
 // ── Types ───────────────────────────────────────────────────
@@ -19,7 +20,7 @@ interface Webhook {
 	enabled: boolean;
 	sourceProfile?: string;
 	agentId?: string;
-	model?: string;
+	modelOverride?: ModelOverride;
 	authMode?: string;
 	sessionMode?: string;
 	systemPromptSuffix?: string;
@@ -49,6 +50,7 @@ interface ComboOption {
 interface WebhookFormValues {
 	agentId: string;
 	model: string;
+	reasoningEffort: string;
 	sourceProfile: string;
 	authMode: string;
 	sessionMode: string;
@@ -64,11 +66,29 @@ interface WebhookDraft extends WebhookFormValues {
 function webhookFormValues(webhook: Webhook | null): WebhookFormValues {
 	return {
 		agentId: webhook?.agentId || "",
-		model: webhook?.model || "",
+		model: webhook?.modelOverride?.model || "",
+		reasoningEffort: webhook?.modelOverride?.reasoningEffort || "",
 		sourceProfile: webhook?.sourceProfile || "generic",
 		authMode: webhook?.authMode || "static_header",
 		sessionMode: webhook?.sessionMode || "per_delivery",
 	};
+}
+
+function modelOverrideSelectionError(modelId: string, reasoningEffort: string): string | null {
+	if (!modelId && !reasoningEffort) return null;
+	if (!modelId) return "Select a model or clear the reasoning effort.";
+	if (!reasoningEffort) return "Select a reasoning effort for the selected model.";
+	const model = modelsSig.value.find((candidate) => candidate.id === modelId);
+	if (!model) return "The selected model is no longer available.";
+	if (!model.reasoning_supported_efforts.includes(reasoningEffort)) {
+		return "The selected reasoning effort is not supported by this model.";
+	}
+	return null;
+}
+
+function reasoningEffortOptions(modelId: string): Array<{ value: string; label: string }> {
+	const model = modelsSig.value.find((candidate) => candidate.id === modelId);
+	return (model?.reasoning_supported_efforts || []).map((effort) => ({ value: effort, label: effort }));
 }
 
 function webhookAuthConfig(authMode: string, secret: string): Record<string, string> | undefined {
@@ -83,11 +103,18 @@ function webhookSaveParams(draft: WebhookDraft, isEdit: boolean): Record<string,
 		name: draft.name,
 		description: draft.description,
 		agentId: draft.agentId || null,
-		model: draft.model || null,
 		systemPromptSuffix: draft.systemPromptSuffix,
 		authMode: draft.authMode,
 		sessionMode: draft.sessionMode,
 	};
+	if (draft.model && draft.reasoningEffort) {
+		params.modelOverride = {
+			model: draft.model,
+			reasoningEffort: draft.reasoningEffort,
+		};
+	} else if (isEdit) {
+		params.modelOverride = null;
+	}
 	if (!isEdit) params.sourceProfile = draft.sourceProfile;
 	const authConfig = webhookAuthConfig(draft.authMode, draft.authSecret);
 	if (authConfig) params.authConfig = authConfig;
@@ -401,6 +428,7 @@ function WebhookModal(): VNode | null {
 
 	const selectedAgent = useSignal(initialValues.agentId);
 	const selectedModel = useSignal(initialValues.model);
+	const selectedReasoningEffort = useSignal(initialValues.reasoningEffort);
 	const sourceProfile = useSignal(initialValues.sourceProfile);
 	const authMode = useSignal(initialValues.authMode);
 	const sessionMode = useSignal(initialValues.sessionMode);
@@ -415,6 +443,7 @@ function WebhookModal(): VNode | null {
 		const values = webhookFormValues(editingWebhook.value);
 		selectedAgent.value = values.agentId;
 		selectedModel.value = values.model;
+		selectedReasoningEffort.value = values.reasoningEffort;
 		sourceProfile.value = values.sourceProfile;
 		authMode.value = values.authMode;
 		sessionMode.value = values.sessionMode;
@@ -427,6 +456,11 @@ function WebhookModal(): VNode | null {
 			error.value = "Name is required";
 			return;
 		}
+		const modelError = modelOverrideSelectionError(selectedModel.value, selectedReasoningEffort.value);
+		if (modelError) {
+			error.value = modelError;
+			return;
+		}
 		saving.value = true;
 		error.value = "";
 		const params = webhookSaveParams(
@@ -435,6 +469,7 @@ function WebhookModal(): VNode | null {
 				description: descRef.current?.value?.trim() || null,
 				agentId: selectedAgent.value,
 				model: selectedModel.value,
+				reasoningEffort: selectedReasoningEffort.value,
 				systemPromptSuffix: promptSuffixRef.current?.value?.trim() || null,
 				authMode: authMode.value,
 				sessionMode: sessionMode.value,
@@ -478,6 +513,7 @@ function WebhookModal(): VNode | null {
 		{ value: "named_session", label: "Named session (accumulative)" },
 	];
 
+	const effortOptions = reasoningEffortOptions(selectedModel.value);
 	const wh = editingWebhook.value;
 
 	return (
@@ -586,14 +622,27 @@ function WebhookModal(): VNode | null {
 					models={modelsSig.value}
 					value={selectedModel.value}
 					onChange={(v: string) => {
+						if (v !== selectedModel.value) selectedReasoningEffort.value = "";
 						selectedModel.value = v;
+						error.value = "";
 					}}
-					placeholder={
-						modelsSig.value.length > 0
-							? `(default: ${modelsSig.value[0].id})`
-							: "(server default)"
-					}
+					placeholder="(use agent model)"
 				/>
+				{selectedModel.value && (
+					<>
+						<span className="text-xs text-[var(--muted)]">Reasoning Effort</span>
+						<ComboSelect
+							ariaLabel="Reasoning Effort"
+							options={effortOptions}
+							value={selectedReasoningEffort.value}
+							onChange={(value: string) => {
+								selectedReasoningEffort.value = value;
+								error.value = "";
+							}}
+							placeholder="Select reasoning effort"
+						/>
+					</>
+				)}
 
 				<label className="text-xs text-[var(--muted)]" htmlFor="webhookSessionMode">
 					Session Mode

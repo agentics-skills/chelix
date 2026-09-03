@@ -1,5 +1,47 @@
 // ── Chat RPC payload types ───────────────────────────────────
 
+import type { SessionModelSelection } from "./session";
+import type { QueuedPromptsStatus } from "./ws-events";
+
+export interface ChatSendDocument {
+	displayName: string;
+	storedFilename: string;
+	mimeType: string;
+	sizeBytes?: number;
+}
+
+export type ChatContentPart =
+	| { type: "text"; text: string }
+	| { type: "image_url"; image_url: { url: string } };
+
+export type ChatToolChoice =
+	| { type: "auto" }
+	| { type: "any" }
+	| { type: "none" }
+	| { type: "tool"; name: string };
+
+type ChatSendMessage = { text: string; content?: never } | { text?: never; content: ChatContentPart[] };
+
+export type ChatSendRequest = ChatSendMessage & {
+	modelOverride?: SessionModelSelection;
+	toolChoice?: ChatToolChoice;
+	documents?: ChatSendDocument[];
+	audioFilename?: string;
+	inputMedium?: "text" | "voice";
+	clientSequence?: number;
+};
+
+export interface ChatSendSyncRequest {
+	text: string;
+	modelOverride?: SessionModelSelection;
+	toolChoice?: ChatToolChoice;
+	inputMedium?: "text" | "voice";
+}
+
+export type ChatSendPayload =
+	| { runId?: string; queued?: false; status?: never }
+	| { runId?: string; queued: true; status: QueuedPromptsStatus };
+
 export interface ChatContextFile {
 	path: string;
 	size?: number;

@@ -4,7 +4,9 @@ use std::{
 };
 
 use {
-    chelix_service_traits::{ServiceResult, Services},
+    chelix_service_traits::{
+        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ServiceResult, Services,
+    },
     serde_json::{Value, json},
     tokio::sync::broadcast,
 };
@@ -272,8 +274,30 @@ impl chelix_service_traits::CronService for MockCron {
 
 #[async_trait::async_trait]
 impl chelix_service_traits::ChatService for MockChat {
-    async fn send(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.send", p)
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult {
+        let request = serde_json::to_value(request)?;
+        self.0.call(
+            "chat.send",
+            json!({
+                "request": request,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
+    }
+
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let request = serde_json::to_value(request)?;
+        self.0.call(
+            "chat.send_sync",
+            json!({
+                "request": request,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
     async fn abort(&self, p: Value) -> ServiceResult {

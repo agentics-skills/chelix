@@ -607,7 +607,7 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | ----------------- | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
 | `enabled`         | bool                               | `true`  | Whether the heartbeat is enabled.                                                           |
 | `every`           | string                             | `"30m"` | Interval between heartbeats (e.g. `"30m"`, `"1h"`).                                         |
-| `model`           | optional string                    | —       | Provider/model override for heartbeat turns.                                                |
+| `model_override`  | optional table                     | —       | Complete canonical model/reasoning override for heartbeat turns.                            |
 | `prompt`          | optional string                    | —       | Custom prompt override. Empty uses the built-in default.                                    |
 | `ack_max_chars`   | integer                            | `300`   | Max characters for an acknowledgment reply before truncation.                               |
 | `active_hours`    | map (see `heartbeat.active_hours`) | —       | Active hours window — heartbeats only run during this window.                               |
@@ -615,6 +615,17 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `channel`         | optional string                    | —       | Channel account identifier for heartbeat delivery.                                          |
 | `to`              | optional string                    | —       | Destination chat/recipient id for heartbeat delivery.                                       |
 | `wake_cooldown`   | string                             | `"5m"`  | Minimum duration between command-triggered heartbeat wakes. Use `"0"` to disable the guard. |
+
+### `heartbeat.model_override`
+
+**Struct:** `ConfigModelOverride`
+
+| Key                | Type   | Default  | Description                                                        |
+| ------------------ | ------ | -------- | ------------------------------------------------------------------ |
+| `model`            | string | required | Exact canonical model ID returned by `models.list`.                |
+| `reasoning_effort` | string | required | Non-empty effort listed in the selected model's supported efforts. |
+
+Both keys are required whenever `[heartbeat.model_override]` is present.
 
 ### `heartbeat.active_hours`
 

@@ -11,7 +11,7 @@ use {
         ChannelAttachment, ChannelEvent, ChannelEventSink, ChannelMessageMeta, ChannelReplyTarget,
         Error as ChannelError, Result as ChannelResult, SavedChannelFile,
     },
-    chelix_common::{ReasoningEffort, ResolvedModelReasoning},
+    chelix_common::{ConfigModelOverride, ModelOverride},
     chelix_sessions::metadata::{SessionEntry, SqliteSessionMetadata},
     chelix_tools::approval::PendingApprovalView,
 };
@@ -177,7 +177,7 @@ struct ApprovalListResponse {
 
 #[derive(Debug, Default)]
 struct ChannelSessionDefaults {
-    model: Option<String>,
+    model_override: Option<ModelOverride>,
     agent_id: Option<String>,
 }
 
@@ -189,37 +189,22 @@ fn config_string(value: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn config_model_override(
+    value: Option<&serde_json::Value>,
+) -> ChannelResult<Option<ModelOverride>> {
+    value
+        .cloned()
+        .map(serde_json::from_value::<ConfigModelOverride>)
+        .transpose()
+        .map(|model_override| model_override.map(Into::into))
+        .map_err(|error| {
+            ChannelError::invalid_input(format!("invalid channel model override: {error}"))
+        })
+}
+
 struct PreparedChannelSession {
     entry: SessionEntry,
     created: bool,
-}
-
-async fn resolve_channel_model_reasoning_for_effort(
-    state: &GatewayState,
-    model_id: &str,
-    configured_effort: &ReasoningEffort,
-) -> ChannelResult<ResolvedModelReasoning> {
-    let models_value = state
-        .services
-        .model
-        .list()
-        .await
-        .map_err(ChannelError::unavailable)?;
-    let models = models_value
-        .as_array()
-        .ok_or_else(|| ChannelError::unavailable("models.list returned a non-array response"))?;
-    let model = models
-        .iter()
-        .find(|model| model.get("id").and_then(serde_json::Value::as_str) == Some(model_id))
-        .ok_or_else(|| ChannelError::invalid_input(format!("unknown model `{model_id}`")))?;
-    let effort = select_channel_reasoning_effort(model, Some(configured_effort.as_str()))?;
-    let effort = ReasoningEffort::from(effort);
-    state
-        .services
-        .model
-        .resolve_model_reasoning(model_id, Some(&effort))
-        .await
-        .map_err(ChannelError::unavailable)
 }
 
 async fn prepare_channel_session(
@@ -228,7 +213,7 @@ async fn prepare_channel_session(
     session_key: &str,
     reply_to: &ChannelReplyTarget,
     requested_agent_id: Option<&str>,
-    initial_model_override: Option<&str>,
+    initial_model_override: Option<&ModelOverride>,
 ) -> ChannelResult<PreparedChannelSession> {
     let existing = metadata
         .get(session_key)
@@ -268,14 +253,27 @@ async fn prepare_channel_session(
         }
     } else {
         let agent_id = resolve_channel_agent_id(state, session_key, requested_agent_id).await?;
-        let (agent_model, agent_reasoning_effort) =
-            crate::session_reasoning::agent_defaults_for_agent(state, Some(&agent_id))
-                .await
-                .map_err(ChannelError::unavailable)?;
-        let model = initial_model_override.unwrap_or(&agent_model);
-        let model_reasoning =
-            resolve_channel_model_reasoning_for_effort(state, model, &agent_reasoning_effort)
-                .await?;
+        let model_reasoning = if let Some(model_override) = initial_model_override {
+            crate::model_reasoning::resolve_model_reasoning(
+                state.services.model.as_ref(),
+                &model_override.model,
+                &model_override.reasoning_effort,
+            )
+            .await
+            .map_err(ChannelError::unavailable)?
+        } else {
+            let (agent_model, agent_reasoning_effort) =
+                crate::session_reasoning::agent_defaults_for_agent(state, Some(&agent_id))
+                    .await
+                    .map_err(ChannelError::unavailable)?;
+            crate::model_reasoning::resolve_model_reasoning(
+                state.services.model.as_ref(),
+                &agent_model,
+                &agent_reasoning_effort,
+            )
+            .await
+            .map_err(ChannelError::unavailable)?
+        };
         let existing_sessions = metadata
             .list_channel_sessions(
                 reply_to.channel_type.as_str(),
@@ -340,80 +338,6 @@ async fn prepare_channel_session(
     Ok(PreparedChannelSession { entry, created })
 }
 
-fn select_channel_reasoning_effort(
-    model: &serde_json::Value,
-    configured_effort: Option<&str>,
-) -> ChannelResult<String> {
-    let supported_efforts = model
-        .get("reasoning_supported_efforts")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| {
-            ChannelError::unavailable("model metadata missing reasoning_supported_efforts")
-        })?;
-
-    if let Some(configured_effort) = configured_effort.filter(|effort| !effort.trim().is_empty())
-        && supported_efforts
-            .iter()
-            .any(|supported| supported.as_str() == Some(configured_effort))
-    {
-        return Ok(configured_effort.to_string());
-    }
-
-    supported_efforts
-        .first()
-        .and_then(serde_json::Value::as_str)
-        .filter(|effort| !effort.trim().is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            ChannelError::unavailable(
-                "model metadata has no configured reasoning_supported_efforts",
-            )
-        })
-}
-
-async fn channel_reasoning_effort_candidate(
-    state: &GatewayState,
-    session_key: &str,
-    model_id: &str,
-) -> ChannelResult<Option<String>> {
-    let metadata = state
-        .services
-        .session_metadata
-        .as_ref()
-        .ok_or_else(|| ChannelError::unavailable("session metadata is not available"))?;
-    let entry = metadata
-        .get(session_key)
-        .await
-        .map_err(ChannelError::unavailable)?
-        .ok_or_else(|| ChannelError::unavailable(format!("session '{session_key}' not found")))?;
-    let (_, agent_reasoning_effort) =
-        crate::session_reasoning::agent_defaults_for_agent(state, entry.agent_id.as_deref())
-            .await
-            .map_err(ChannelError::unavailable)?;
-    let configured_effort = entry
-        .reasoning_effort()
-        .map(|effort| effort.as_str().to_string())
-        .or_else(|| Some(agent_reasoning_effort.as_str().to_string()));
-
-    let models_value = state
-        .services
-        .model
-        .list()
-        .await
-        .map_err(ChannelError::unavailable)?;
-    let models = models_value
-        .as_array()
-        .ok_or_else(|| ChannelError::unavailable("models.list returned a non-array response"))?;
-    let Some(model) = models
-        .iter()
-        .find(|model| model.get("id").and_then(serde_json::Value::as_str) == Some(model_id))
-    else {
-        return Ok(configured_effort);
-    };
-
-    select_channel_reasoning_effort(model, configured_effort.as_deref()).map(Some)
-}
-
 struct PatchedChannelModelReasoning {
     model: String,
     reasoning_effort: String,
@@ -423,28 +347,23 @@ struct PatchedChannelModelReasoning {
 async fn patch_channel_session_model(
     state: &GatewayState,
     session_key: &str,
-    model_id: &str,
+    model_override: &ModelOverride,
 ) -> ChannelResult<PatchedChannelModelReasoning> {
-    let reasoning_effort = channel_reasoning_effort_candidate(state, session_key, model_id).await?;
-    let Some(reasoning_effort) = reasoning_effort else {
-        state
-            .services
-            .model
-            .resolve_model_reasoning(model_id, None)
-            .await
-            .map_err(ChannelError::unavailable)?;
-        return Err(ChannelError::unavailable(
-            "model resolver returned an incomplete model/reasoning pair",
-        ));
-    };
+    let resolved = crate::model_reasoning::resolve_model_reasoning(
+        state.services.model.as_ref(),
+        &model_override.model,
+        &model_override.reasoning_effort,
+    )
+    .await
+    .map_err(ChannelError::unavailable)?;
 
     let patch = state
         .services
         .session
         .patch(serde_json::json!({
             "key": session_key,
-            "model": model_id,
-            "reasoningEffort": reasoning_effort,
+            "model": resolved.model_id(),
+            "reasoningEffort": resolved.reasoning_effort(),
         }))
         .await
         .map_err(ChannelError::unavailable)?;
@@ -470,22 +389,6 @@ async fn patch_channel_session_model(
     })
 }
 
-async fn resolve_channel_runtime_model(
-    state: &GatewayState,
-    session_key: &str,
-    model_id: &str,
-) -> ChannelResult<ResolvedModelReasoning> {
-    let reasoning_effort = channel_reasoning_effort_candidate(state, session_key, model_id).await?;
-    let reasoning_effort = reasoning_effort.map(ReasoningEffort::from);
-
-    state
-        .services
-        .model
-        .resolve_model_reasoning(model_id, reasoning_effort.as_ref())
-        .await
-        .map_err(ChannelError::unavailable)
-}
-
 fn override_map<'a>(
     config: &'a serde_json::Value,
     key: &str,
@@ -502,10 +405,13 @@ async fn resolve_channel_session_defaults(
     state: &Arc<GatewayState>,
     reply_to: &ChannelReplyTarget,
     sender_id: Option<&str>,
-) -> ChannelSessionDefaults {
-    let Ok(status) = state.services.channel.status().await else {
-        return ChannelSessionDefaults::default();
-    };
+) -> ChannelResult<ChannelSessionDefaults> {
+    let status = state
+        .services
+        .channel
+        .status()
+        .await
+        .map_err(ChannelError::unavailable)?;
     let Some(channel) = status
         .get("channels")
         .and_then(serde_json::Value::as_array)
@@ -520,10 +426,10 @@ async fn resolve_channel_session_defaults(
             })
         })
     else {
-        return ChannelSessionDefaults::default();
+        return Ok(ChannelSessionDefaults::default());
     };
     let Some(config) = channel.get("config") else {
-        return ChannelSessionDefaults::default();
+        return Ok(ChannelSessionDefaults::default());
     };
 
     resolve_channel_session_defaults_from_config(config, &reply_to.chat_id, sender_id)
@@ -533,7 +439,7 @@ fn resolve_channel_session_defaults_from_config(
     config: &serde_json::Value,
     chat_id: &str,
     sender_id: Option<&str>,
-) -> ChannelSessionDefaults {
+) -> ChannelResult<ChannelSessionDefaults> {
     let user_override = override_map(
         config,
         "user_overrides",
@@ -543,14 +449,20 @@ fn resolve_channel_session_defaults_from_config(
     );
     let channel_override = override_map(config, "channel_overrides", chat_id);
 
-    ChannelSessionDefaults {
-        model: user_override
-            .and_then(|override_value| config_string(override_value.get("model")))
-            .or_else(|| {
-                channel_override
-                    .and_then(|override_value| config_string(override_value.get("model")))
-            })
-            .or_else(|| config_string(config.get("model"))),
+    let model_override = if let Some(value) =
+        user_override.and_then(|override_value| override_value.get("model_override"))
+    {
+        config_model_override(Some(value))?
+    } else if let Some(value) =
+        channel_override.and_then(|override_value| override_value.get("model_override"))
+    {
+        config_model_override(Some(value))?
+    } else {
+        config_model_override(config.get("model_override"))?
+    };
+
+    Ok(ChannelSessionDefaults {
+        model_override,
         agent_id: user_override
             .and_then(|override_value| config_string(override_value.get("agent_id")))
             .or_else(|| {
@@ -558,7 +470,7 @@ fn resolve_channel_session_defaults_from_config(
                     .and_then(|override_value| config_string(override_value.get("agent_id")))
             })
             .or_else(|| config_string(config.get("agent_id"))),
-    }
+    })
 }
 
 async fn report_channel_error(

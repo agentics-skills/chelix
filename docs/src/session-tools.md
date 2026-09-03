@@ -170,7 +170,7 @@ child response directly. `mode = "background"` returns a child session key for
 `status`, `result`, or `cancel`; `list` returns every direct child of the calling
 session. See [Sub-Agent Delegation](sub-agent.md) for the action schemas.
 
-Use `tool_choice` as a top-level request parameter for `chat.send` and
+Use `toolChoice` as a top-level request parameter for `chat.send` and
 `chat.send_sync`, or in a `cron` `agentTurn` payload, to control provider-level
 tool selection:
 
@@ -180,14 +180,14 @@ tool selection:
 - `tool` + `name` — model must call the named tool.
 
 OpenAI Responses, OpenAI Chat Completions, and OpenAI-compatible providers
-support `tool_choice`.
+support `toolChoice`.
 
 Example direct chat request:
 
 ```json
 {
   "text": "Generate the report in a file.",
-  "tool_choice": { "type": "any" }
+  "toolChoice": { "type": "any" }
 }
 ```
 
@@ -197,7 +197,7 @@ Example scheduled agent turn:
 {
   "kind": "agentTurn",
   "message": "Generate the report in a file.",
-  "tool_choice": { "type": "any" }
+  "toolChoice": { "type": "any" }
 }
 ```
 

@@ -464,6 +464,7 @@ mod tests {
                 method: method.to_string(),
                 params,
                 client_conn_id: "conn-1".into(),
+                transport: crate::methods::MethodTransport::StatefulConnection,
                 client_role: "operator".into(),
                 client_scopes: vec!["operator.write".into(), "operator.read".into()],
                 state: GatewayState::new(
@@ -496,6 +497,7 @@ mod tests {
             method: method.to_string(),
             params,
             client_conn_id: "conn-1".into(),
+            transport: crate::methods::MethodTransport::StatefulConnection,
             client_role: "operator".into(),
             client_scopes: vec!["operator.write".into(), "operator.read".into()],
             state: GatewayState::new(

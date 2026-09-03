@@ -17,15 +17,20 @@ import {
 	parseChannelConfigPatch,
 } from "../../../channel-utils";
 import { sendRpc } from "../../../helpers";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetChecked, targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
-import { Modal, ModelSelect } from "../../../ui";
+import { Modal } from "../../../ui";
 import { type ChannelConfig, channelLabel, channelType, editingChannel, loadChannels } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, AllowlistInput } from "../ChannelFields";
+import {
+	AdvancedConfigPatchField,
+	AllowlistInput,
+	ChannelModelFields,
+	resolveChannelModelSelection,
+} from "../ChannelFields";
 
 interface EditChannelDraft {
 	model: string;
+	reasoningEffort: string;
 	agent: string;
 	allowlist: string[];
 	roomAllowlist: string[];
@@ -52,7 +57,8 @@ function firstConfigArray(values: unknown[]): string[] {
 function channelEditDraft(config: ChannelConfig): EditChannelDraft {
 	const usesPassword = Boolean(config.password);
 	return {
-		model: configString(config.model),
+		model: configString(config.model_override?.model),
+		reasoningEffort: configString(config.model_override?.reasoning_effort),
 		agent: configString(config.agent_id),
 		allowlist: firstConfigArray([config.allowlist, config.user_allowlist, config.allowed_pubkeys]),
 		roomAllowlist: firstConfigArray([config.room_allowlist, config.group_allowlist]),
@@ -75,13 +81,6 @@ function formFieldValue(form: HTMLElement, field: string, fallback: string): str
 	return (
 		(form.querySelector(`[data-field=${field}]`) as HTMLInputElement | HTMLSelectElement | null)?.value || fallback
 	);
-}
-
-function applySelectedModel(config: ChannelConfig, modelId: string): void {
-	if (!modelId) return;
-	config.model = modelId;
-	const provider = modelsSig.value.find((model) => model.id === modelId)?.provider;
-	if (provider) config.model_provider = provider;
 }
 
 function applyMatrixCredentials(
@@ -171,7 +170,6 @@ function buildChannelUpdateConfig(
 		config.category_allowlist = draft.categoryAllowlist;
 	}
 	applyChannelCredentials(config, channelKind, current, draft, form);
-	applySelectedModel(config, draft.model);
 	return config;
 }
 
@@ -577,6 +575,7 @@ export function EditChannelModal(): VNode | null {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const editModel = useSignal("");
+	const editReasoningEffort = useSignal("");
 	const editAgent = useSignal("");
 	const agentsList = useSignal<Array<{ id: string; name: string; emoji?: string }>>([]);
 	const allowlistItems = useSignal<string[]>([]);
@@ -596,6 +595,7 @@ export function EditChannelModal(): VNode | null {
 	useEffect(() => {
 		const draft = channelEditDraft(ch?.config || {});
 		editModel.value = draft.model;
+		editReasoningEffort.value = draft.reasoningEffort;
 		editAgent.value = draft.agent;
 		allowlistItems.value = draft.allowlist;
 		roomAllowlistItems.value = draft.roomAllowlist;
@@ -634,6 +634,7 @@ export function EditChannelModal(): VNode | null {
 	function currentDraft(): EditChannelDraft {
 		return {
 			model: editModel.value,
+			reasoningEffort: editReasoningEffort.value,
 			agent: editAgent.value,
 			allowlist: allowlistItems.value,
 			roomAllowlist: roomAllowlistItems.value,
@@ -658,11 +659,17 @@ export function EditChannelModal(): VNode | null {
 			error.value = advancedPatch.error;
 			return;
 		}
+		const draft = currentDraft();
+		const modelSelection = resolveChannelModelSelection(draft.model, draft.reasoningEffort);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
+			return;
+		}
 		error.value = "";
 		if (!ch) return;
 		saving.value = true;
-		const updateConfig = buildChannelUpdateConfig(form, chType, cfg, currentDraft());
-		Object.assign(updateConfig, advancedPatch.value);
+		const updateConfig = buildChannelUpdateConfig(form, chType, cfg, draft);
+		Object.assign(updateConfig, modelSelection.config, advancedPatch.value);
 		sendRpc("channels.update", {
 			type: channelType(ch.type),
 			account_id: ch.account_id,
@@ -680,11 +687,6 @@ export function EditChannelModal(): VNode | null {
 			}
 		});
 	}
-
-	const defaultPlaceholder =
-		modelsSig.value.length > 0
-			? `(default: ${modelsSig.value[0].id})`
-			: "(server default)";
 
 	return (
 		<Modal
@@ -731,16 +733,7 @@ export function EditChannelModal(): VNode | null {
 					matrixOtpSelfApproval={editMatrixOtpSelfApproval}
 					matrixOtpCooldown={editMatrixOtpCooldown}
 				/>
-				<span className="text-xs text-[var(--muted)]">Default Model</span>
-				<ModelSelect
-					ariaLabel="Default Model"
-					models={modelsSig.value}
-					value={editModel.value}
-					onChange={(v: string) => {
-						editModel.value = v;
-					}}
-					placeholder={defaultPlaceholder}
-				/>
+				<ChannelModelFields model={editModel} reasoningEffort={editReasoningEffort} />
 				<label>
 					<span className="text-xs text-[var(--muted)]">Agent</span>
 					<select

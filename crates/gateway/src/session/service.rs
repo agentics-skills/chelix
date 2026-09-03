@@ -207,17 +207,7 @@ impl LiveSessionService {
     }
 
     pub(super) async fn default_agent_id(&self) -> Result<String, ServiceError> {
-        let guard = self.agents_config.read().await;
-        if guard.default.trim().is_empty() {
-            return Err(ServiceError::message("agents.default is not configured"));
-        }
-        if !guard.entries.contains_key(&guard.default) {
-            return Err(ServiceError::message(format!(
-                "default agent '{}' not found",
-                guard.default
-            )));
-        }
-        Ok(guard.default.clone())
+        initialization::default_agent_id(self.agents_config.as_ref()).await
     }
 
     /// Validate that assigning `parent_key` as the parent of `key` is legal:
@@ -302,16 +292,12 @@ impl LiveSessionService {
         &self,
         agent_id: &str,
     ) -> Result<chelix_service_traits::ResolvedModelReasoning, ServiceError> {
-        let (model, reasoning_effort) = {
-            let agents = self.agents_config.read().await;
-            let agent = agents.get(agent_id).ok_or_else(|| {
-                ServiceError::message(format!("agent '{agent_id}' is not configured"))
-            })?;
-            (agent.model.clone(), agent.reasoning_effort.clone())
-        };
-        self.model_service
-            .resolve_model_reasoning(&model, Some(&reasoning_effort))
-            .await
+        initialization::resolved_agent_pair(
+            self.agents_config.as_ref(),
+            self.model_service.as_ref(),
+            agent_id,
+        )
+        .await
     }
 
     async fn selected_agent_id(

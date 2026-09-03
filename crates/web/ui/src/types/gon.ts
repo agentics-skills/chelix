@@ -92,6 +92,20 @@ export interface GonAgentsData {
 	};
 }
 
+// ── Model override boundaries ───────────────────────────────
+
+/** Complete model/reasoning pair on camelCase JSON transport boundaries. */
+export interface ModelOverride {
+	model: string;
+	reasoningEffort: string;
+}
+
+/** Complete model/reasoning pair in snake_case configuration objects. */
+export interface ConfigModelOverride {
+	model: string;
+	reasoning_effort: string;
+}
+
 // ── Heartbeat ───────────────────────────────────────────────
 
 /** Active hours window for heartbeat scheduling. */
@@ -109,7 +123,7 @@ export interface ActiveHoursConfig {
 export interface HeartbeatConfig {
 	enabled: boolean;
 	every: string;
-	model?: string;
+	model_override?: ConfigModelOverride;
 	prompt?: string;
 	ack_max_chars: number;
 	active_hours: ActiveHoursConfig;
@@ -136,7 +150,7 @@ export type CronPayload =
 	| {
 			kind: "agentTurn";
 			message: string;
-			model?: string;
+			modelOverride?: ModelOverride;
 			timeoutSecs?: number;
 			deliver: boolean;
 			channel?: string;

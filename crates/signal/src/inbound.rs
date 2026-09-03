@@ -165,7 +165,7 @@ pub async fn handle_event(
         username: sender_uuid,
         sender_id: Some(sender.clone()),
         message_kind: Some(ChannelMessageKind::Text),
-        model: cfg.model.clone(),
+        model_override: cfg.model_override.as_ref().map(Into::into),
         agent_id: cfg.agent_id.clone(),
         audio_filename: None,
         documents: None,

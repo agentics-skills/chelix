@@ -47,7 +47,7 @@ pub struct ExecuteRequest {
     pub delivery_id: i64,
     pub session_key: String,
     pub agent_id: Option<String>,
-    pub model: Option<String>,
+    pub model_override: Option<crate::types::ModelOverride>,
     pub tool_policy: Option<crate::types::ToolPolicy>,
     pub message: String,
 }
@@ -268,7 +268,7 @@ impl WebhookWorker {
             delivery_id,
             session_key: session_key.clone(),
             agent_id: webhook.agent_id.clone(),
-            model: webhook.model.clone(),
+            model_override: webhook.model_override.clone(),
             tool_policy: webhook.tool_policy.clone(),
             message,
         })
@@ -352,7 +352,7 @@ mod tests {
             enabled: true,
             public_id: "wh_public".into(),
             agent_id: Some("code-reviewer".into()),
-            model: None,
+            model_override: None,
             system_prompt_suffix: None,
             tool_policy: None,
             auth_mode: AuthMode::StaticHeader,

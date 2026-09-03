@@ -13,6 +13,7 @@ use {
         tool_registry::ToolSource,
     },
     chelix_config::{AgentMemoryWriteMode, LoadedWorkspaceMarkdown, MemoryStyle, PromptMemoryMode},
+    chelix_service_traits::ChatExecutionContext,
     chelix_sessions::{
         metadata::{PromptProfile, SessionEntry},
         state_store::SessionStateStore,
@@ -80,19 +81,13 @@ pub(crate) fn prompt_memory_status(
     }
 }
 
-pub(crate) fn resolve_prompt_agent_id(
+pub(crate) fn validate_prompt_agent_id(
     config: &chelix_config::ChelixConfig,
-    session_entry: Option<&SessionEntry>,
+    agent_id: &str,
 ) -> crate::error::Result<String> {
-    let agent_id = session_entry
-        .and_then(|entry| entry.agent_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| config.agents.default.trim());
+    let agent_id = agent_id.trim();
     if agent_id.is_empty() {
-        return Err(crate::error::Error::message(
-            "agents.default must reference an existing agent",
-        ));
+        return Err(crate::error::Error::message("agent_id must not be empty"));
     }
     if config.agents.get(agent_id).is_none() {
         return Err(crate::error::Error::message(format!(
@@ -100,6 +95,35 @@ pub(crate) fn resolve_prompt_agent_id(
         )));
     }
     Ok(agent_id.to_string())
+}
+
+pub(crate) fn resolve_prompt_agent_id_for_execution(
+    config: &chelix_config::ChelixConfig,
+    session_entry: Option<&SessionEntry>,
+    requested_agent_id: Option<&str>,
+) -> crate::error::Result<String> {
+    let requested_agent_id = requested_agent_id
+        .map(|agent_id| validate_prompt_agent_id(config, agent_id))
+        .transpose()?;
+    let agent_id = session_entry
+        .and_then(|entry| entry.agent_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or(requested_agent_id.as_deref())
+        .unwrap_or_else(|| config.agents.default.trim());
+    if agent_id.is_empty() {
+        return Err(crate::error::Error::message(
+            "agents.default must reference an existing agent",
+        ));
+    }
+    validate_prompt_agent_id(config, agent_id)
+}
+
+pub(crate) fn resolve_prompt_agent_id(
+    config: &chelix_config::ChelixConfig,
+    session_entry: Option<&SessionEntry>,
+) -> crate::error::Result<String> {
+    resolve_prompt_agent_id_for_execution(config, session_entry, None)
 }
 
 /// Load user profile, the selected persona prompt, and workspace text for one agent.
@@ -241,9 +265,11 @@ pub(crate) async fn load_prompt_persona_for_session(
     config: &chelix_config::ChelixConfig,
     session_key: &str,
     session_entry: Option<&SessionEntry>,
+    requested_agent_id: Option<&str>,
     state_store: Option<&SessionStateStore>,
 ) -> crate::error::Result<PromptPersona> {
-    let agent_id = resolve_prompt_agent_id(config, session_entry)?;
+    let agent_id =
+        resolve_prompt_agent_id_for_execution(config, session_entry, requested_agent_id)?;
     let prompt_profile = session_entry
         .map(|entry| entry.prompt_profile)
         .unwrap_or_default();
@@ -530,6 +556,27 @@ pub(crate) fn apply_request_runtime_context(
         host.timezone = Some(timezone);
     }
 
+    refresh_runtime_prompt_time(host);
+}
+
+pub(crate) fn apply_chat_execution_context(
+    host: &mut PromptHostRuntimeContext,
+    context: &ChatExecutionContext,
+    default_timezone: Option<&str>,
+) {
+    host.accept_language.clone_from(&context.accept_language);
+    host.remote_ip.clone_from(&context.remote_ip);
+    if host.channel_sender_id.is_none() {
+        host.channel_sender_id = context
+            .channel
+            .as_ref()
+            .and_then(|channel| channel.sender_id.clone());
+    }
+    if let Some(timezone) = normalized_iana_timezone(context.timezone.as_deref())
+        .or_else(|| normalized_iana_timezone(default_timezone))
+    {
+        host.timezone = Some(timezone);
+    }
     refresh_runtime_prompt_time(host);
 }
 

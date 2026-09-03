@@ -5,25 +5,27 @@ use {
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy, MentionMode},
     },
-    chelix_common::secret_serde,
+    chelix_common::{ConfigModelOverride, secret_serde},
     secrecy::Secret,
     serde::{Deserialize, Serialize, ser::SerializeStruct},
 };
 
-/// Per-channel model/provider override.
+/// Per-channel model/reasoning and provider metadata override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChannelOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 }
 
-/// Per-user model/provider override.
+/// Per-user model/reasoning and provider metadata override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 }
@@ -54,7 +56,7 @@ pub enum StreamMode {
 
 /// Configuration for a single Slack bot account.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SlackAccountConfig {
     /// Bot user OAuth token (`xoxb-...`).
     #[serde(serialize_with = "secret_serde::serialize_secret")]
@@ -94,9 +96,9 @@ pub struct SlackAccountConfig {
     #[serde(default)]
     pub channel_allowlist: Vec<String>,
 
-    /// Default model for this account.
+    /// Default canonical model/reasoning override for this account.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
 
     /// Provider for the model.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,7 +141,7 @@ impl std::fmt::Debug for SlackAccountConfig {
             .field("mention_mode", &self.mention_mode)
             .field("allowlist", &self.allowlist)
             .field("channel_allowlist", &self.channel_allowlist)
-            .field("model", &self.model)
+            .field("model_override", &self.model_override)
             .field("model_provider", &self.model_provider)
             .field("agent_id", &self.agent_id)
             .field("stream_mode", &self.stream_mode)
@@ -163,7 +165,7 @@ impl Default for SlackAccountConfig {
             mention_mode: MentionMode::Mention,
             allowlist: Vec::new(),
             channel_allowlist: Vec::new(),
-            model: None,
+            model_override: None,
             model_provider: None,
             agent_id: None,
             stream_mode: StreamMode::EditInPlace,
@@ -192,8 +194,8 @@ impl ChannelConfigView for SlackAccountConfig {
         self.group_policy.clone()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    fn model_override(&self) -> Option<&ConfigModelOverride> {
+        self.model_override.as_ref()
     }
 
     fn model_provider(&self) -> Option<&str> {
@@ -204,10 +206,10 @@ impl ChannelConfigView for SlackAccountConfig {
         self.agent_id.as_deref()
     }
 
-    fn channel_model(&self, channel_id: &str) -> Option<&str> {
+    fn channel_model_override(&self, channel_id: &str) -> Option<&ConfigModelOverride> {
         self.channel_overrides
             .get(channel_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn channel_model_provider(&self, channel_id: &str) -> Option<&str> {
@@ -216,10 +218,10 @@ impl ChannelConfigView for SlackAccountConfig {
             .and_then(|o| o.model_provider.as_deref())
     }
 
-    fn user_model(&self, user_id: &str) -> Option<&str> {
+    fn user_model_override(&self, user_id: &str) -> Option<&ConfigModelOverride> {
         self.user_overrides
             .get(user_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn user_model_provider(&self, user_id: &str) -> Option<&str> {
@@ -237,7 +239,7 @@ impl Serialize for RedactedConfig<'_> {
         let c = self.0;
         let mut count = 11; // always-present fields
         count += c.signing_secret.is_some() as usize;
-        count += c.model.is_some() as usize;
+        count += c.model_override.is_some() as usize;
         count += c.model_provider.is_some() as usize;
         count += c.agent_id.is_some() as usize;
         count += !c.channel_overrides.is_empty() as usize;
@@ -254,8 +256,8 @@ impl Serialize for RedactedConfig<'_> {
         s.serialize_field("mention_mode", &c.mention_mode)?;
         s.serialize_field("allowlist", &c.allowlist)?;
         s.serialize_field("channel_allowlist", &c.channel_allowlist)?;
-        if c.model.is_some() {
-            s.serialize_field("model", &c.model)?;
+        if c.model_override.is_some() {
+            s.serialize_field("model_override", &c.model_override)?;
         }
         if c.model_provider.is_some() {
             s.serialize_field("model_provider", &c.model_provider)?;
@@ -283,6 +285,13 @@ mod tests {
 
     use super::*;
 
+    fn model_override(model: &str, reasoning_effort: &str) -> ConfigModelOverride {
+        ConfigModelOverride {
+            model: model.to_string(),
+            reasoning_effort: reasoning_effort.into(),
+        }
+    }
+
     #[test]
     fn default_config_round_trips() {
         let cfg = SlackAccountConfig::default();
@@ -297,7 +306,7 @@ mod tests {
         assert!(cfg.group_allowlist().is_empty());
         assert_eq!(cfg.dm_policy(), DmPolicy::Allowlist);
         assert_eq!(cfg.group_policy(), GroupPolicy::Open);
-        assert!(cfg.model().is_none());
+        assert!(cfg.model_override().is_none());
         assert!(cfg.model_provider().is_none());
     }
 
@@ -311,7 +320,10 @@ mod tests {
             "mention_mode": "always",
             "allowlist": ["U123", "U456"],
             "channel_allowlist": ["C789"],
-            "model": "anthropic/claude-sonnet-4",
+            "model_override": {
+                "model": "anthropic::claude-sonnet-4",
+                "reasoning_effort": "high"
+            },
             "model_provider": "openrouter",
             "stream_mode": "edit_in_place",
             "edit_throttle_ms": 300,
@@ -325,7 +337,10 @@ mod tests {
         assert_eq!(cfg.mention_mode, MentionMode::Always);
         assert_eq!(cfg.allowlist, vec!["U123", "U456"]);
         assert_eq!(cfg.channel_allowlist, vec!["C789"]);
-        assert_eq!(cfg.model.as_deref(), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(
+            cfg.model_override.as_ref(),
+            Some(&model_override("anthropic::claude-sonnet-4", "high"))
+        );
         assert_eq!(cfg.stream_mode, StreamMode::EditInPlace);
         assert_eq!(cfg.edit_throttle_ms, 300);
         assert!(!cfg.thread_replies);
@@ -414,7 +429,7 @@ mod tests {
             bot_token: Secret::new("xoxb-secret".into()),
             app_token: Secret::new("xapp-secret".into()),
             signing_secret: Some(Secret::new("sign-secret".into())),
-            model: Some("gpt-4o".into()),
+            model_override: Some(model_override("openai::gpt-4o", "low")),
             ..Default::default()
         };
         let redacted = serde_json::to_value(RedactedConfig(&cfg)).unwrap();
@@ -422,7 +437,7 @@ mod tests {
         assert_eq!(redacted["app_token"], "[REDACTED]");
         assert_eq!(redacted["signing_secret"], "[REDACTED]");
         // Non-secret fields preserved
-        assert_eq!(redacted["model"], "gpt-4o");
+        assert_eq!(redacted["model_override"]["model"], "openai::gpt-4o");
         assert!(redacted["thread_replies"].is_boolean());
 
         // Storage path still exposes secrets
@@ -451,27 +466,33 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_user_overrides_channel() {
+    fn resolve_model_override_user_overrides_channel() {
         let mut cfg = SlackAccountConfig {
-            model: Some("default-model".into()),
+            model_override: Some(model_override("default-model", "low")),
             ..Default::default()
         };
         cfg.channel_overrides
             .insert("C123".into(), ChannelOverride {
-                model: Some("channel-model".into()),
+                model_override: Some(model_override("channel-model", "medium")),
                 ..Default::default()
             });
         cfg.user_overrides.insert("U456".into(), UserOverride {
-            model: Some("user-model".into()),
+            model_override: Some(model_override("user-model", "high")),
             ..Default::default()
         });
 
-        // User override wins
-        assert_eq!(cfg.resolve_model("C123", "U456"), Some("user-model"));
-        // Channel override wins when no user override
-        assert_eq!(cfg.resolve_model("C123", "U999"), Some("channel-model"));
-        // Account default when no overrides
-        assert_eq!(cfg.resolve_model("C999", "U999"), Some("default-model"));
+        assert_eq!(
+            cfg.resolve_model_override("C123", "U456"),
+            Some(&model_override("user-model", "high"))
+        );
+        assert_eq!(
+            cfg.resolve_model_override("C123", "U999"),
+            Some(&model_override("channel-model", "medium"))
+        );
+        assert_eq!(
+            cfg.resolve_model_override("C999", "U999"),
+            Some(&model_override("default-model", "low"))
+        );
     }
 
     #[test]
@@ -480,22 +501,41 @@ mod tests {
             "bot_token": "xoxb-test",
             "app_token": "xapp-test",
             "channel_overrides": {
-                "C123": { "model": "gpt-4" }
+                "C123": {
+                    "model_override": { "model": "openai::gpt-4", "reasoning_effort": "low" }
+                }
             },
             "user_overrides": {
-                "U456": { "model": "anthropic/claude-sonnet-4", "model_provider": "openrouter" }
+                "U456": {
+                    "model_override": {
+                        "model": "anthropic::claude-sonnet-4",
+                        "reasoning_effort": "high"
+                    },
+                    "model_provider": "openrouter"
+                }
             }
         });
         let cfg: SlackAccountConfig = serde_json::from_value(json).unwrap();
-        assert_eq!(cfg.channel_model("C123"), Some("gpt-4"));
+        assert_eq!(
+            cfg.channel_model_override("C123"),
+            Some(&model_override("openai::gpt-4", "low"))
+        );
         assert!(cfg.channel_model_provider("C123").is_none());
-        assert_eq!(cfg.user_model("U456"), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(
+            cfg.user_model_override("U456"),
+            Some(&model_override("anthropic::claude-sonnet-4", "high"))
+        );
         assert_eq!(cfg.user_model_provider("U456"), Some("openrouter"));
 
-        // Round-trip preserves overrides
         let value = serde_json::to_value(&cfg).unwrap();
         let cfg2: SlackAccountConfig = serde_json::from_value(value).unwrap();
-        assert_eq!(cfg2.channel_model("C123"), Some("gpt-4"));
-        assert_eq!(cfg2.user_model("U456"), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(
+            cfg2.channel_model_override("C123"),
+            Some(&model_override("openai::gpt-4", "low"))
+        );
+        assert_eq!(
+            cfg2.user_model_override("U456"),
+            Some(&model_override("anthropic::claude-sonnet-4", "high"))
+        );
     }
 }

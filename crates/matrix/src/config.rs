@@ -5,25 +5,27 @@ use {
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy, MentionMode},
     },
-    chelix_common::secret_serde,
+    chelix_common::{ConfigModelOverride, secret_serde},
     secrecy::Secret,
     serde::{Deserialize, Serialize, ser::SerializeStruct},
 };
 
-/// Per-room model/provider override.
+/// Per-room model/reasoning and provider metadata override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChannelOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 }
 
-/// Per-user model/provider override.
+/// Per-user model/reasoning and provider metadata override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 }
@@ -77,7 +79,7 @@ pub enum MatrixOwnershipMode {
 
 /// Configuration for a single Matrix account.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MatrixAccountConfig {
     /// Homeserver URL (e.g. "https://matrix.ponderosa.co").
     pub homeserver: String,
@@ -131,11 +133,11 @@ pub struct MatrixAccountConfig {
     /// Auto-join rooms on invite.
     pub auto_join: AutoJoinPolicy,
 
-    /// Default model ID for this account.
+    /// Default canonical model/reasoning override for this account.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
 
-    /// Provider name associated with `model`.
+    /// Provider name associated with `model_override`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 
@@ -192,7 +194,7 @@ impl Default for MatrixAccountConfig {
             room_allowlist: Vec::new(),
             user_allowlist: Vec::new(),
             auto_join: AutoJoinPolicy::Always,
-            model: None,
+            model_override: None,
             model_provider: None,
             agent_id: None,
             stream_mode: StreamMode::EditInPlace,
@@ -225,7 +227,7 @@ impl std::fmt::Debug for MatrixAccountConfig {
             .field("room_allowlist", &self.room_allowlist)
             .field("user_allowlist", &self.user_allowlist)
             .field("auto_join", &self.auto_join)
-            .field("model", &self.model)
+            .field("model_override", &self.model_override)
             .field("model_provider", &self.model_provider)
             .field("agent_id", &self.agent_id)
             .field("stream_mode", &self.stream_mode)
@@ -253,7 +255,7 @@ impl Serialize for RedactedConfig<'_> {
         count += c.user_id.is_some() as usize;
         count += c.device_id.is_some() as usize;
         count += c.device_display_name.is_some() as usize;
-        count += c.model.is_some() as usize;
+        count += c.model_override.is_some() as usize;
         count += c.model_provider.is_some() as usize;
         count += c.agent_id.is_some() as usize;
         count += !c.channel_overrides.is_empty() as usize;
@@ -285,8 +287,8 @@ impl Serialize for RedactedConfig<'_> {
         s.serialize_field("room_allowlist", &c.room_allowlist)?;
         s.serialize_field("user_allowlist", &c.user_allowlist)?;
         s.serialize_field("auto_join", &c.auto_join)?;
-        if c.model.is_some() {
-            s.serialize_field("model", &c.model)?;
+        if c.model_override.is_some() {
+            s.serialize_field("model_override", &c.model_override)?;
         }
         if c.model_provider.is_some() {
             s.serialize_field("model_provider", &c.model_provider)?;
@@ -330,8 +332,8 @@ impl ChannelConfigView for MatrixAccountConfig {
         self.room_policy.clone()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    fn model_override(&self) -> Option<&ConfigModelOverride> {
+        self.model_override.as_ref()
     }
 
     fn model_provider(&self) -> Option<&str> {
@@ -342,10 +344,10 @@ impl ChannelConfigView for MatrixAccountConfig {
         self.agent_id.as_deref()
     }
 
-    fn channel_model(&self, channel_id: &str) -> Option<&str> {
+    fn channel_model_override(&self, channel_id: &str) -> Option<&ConfigModelOverride> {
         self.channel_overrides
             .get(channel_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn channel_model_provider(&self, channel_id: &str) -> Option<&str> {
@@ -354,10 +356,10 @@ impl ChannelConfigView for MatrixAccountConfig {
             .and_then(|o| o.model_provider.as_deref())
     }
 
-    fn user_model(&self, user_id: &str) -> Option<&str> {
+    fn user_model_override(&self, user_id: &str) -> Option<&ConfigModelOverride> {
         self.user_overrides
             .get(user_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn user_model_provider(&self, user_id: &str) -> Option<&str> {
@@ -370,6 +372,13 @@ impl ChannelConfigView for MatrixAccountConfig {
 #[cfg(test)]
 mod tests {
     use {super::*, secrecy::ExposeSecret, std::collections::HashMap};
+
+    fn model_override(model: &str, reasoning_effort: &str) -> ConfigModelOverride {
+        ConfigModelOverride {
+            model: model.to_string(),
+            reasoning_effort: reasoning_effort.into(),
+        }
+    }
 
     #[test]
     fn config_round_trip() {
@@ -388,10 +397,17 @@ mod tests {
             "edit_throttle_ms": 750,
             "stream_min_initial_chars": 45,
             "channel_overrides": {
-                "!room:example.com": { "model": "gpt-4.1" }
+                "!room:example.com": {
+                    "model_override": { "model": "openai::gpt-4.1", "reasoning_effort": "low" }
+                }
             },
             "user_overrides": {
-                "@alice:example.com": { "model": "anthropic/claude-sonnet-4" }
+                "@alice:example.com": {
+                    "model_override": {
+                        "model": "anthropic::claude-sonnet-4",
+                        "reasoning_effort": "high"
+                    }
+                }
             },
             "reply_to_message": true,
             "ack_reaction": "\u{1f440}",
@@ -415,10 +431,13 @@ mod tests {
         assert_eq!(cfg.stream_mode, StreamMode::Off);
         assert_eq!(cfg.edit_throttle_ms, 750);
         assert_eq!(cfg.stream_min_initial_chars, 45);
-        assert_eq!(cfg.channel_model("!room:example.com"), Some("gpt-4.1"));
         assert_eq!(
-            cfg.user_model("@alice:example.com"),
-            Some("anthropic/claude-sonnet-4")
+            cfg.channel_model_override("!room:example.com"),
+            Some(&model_override("openai::gpt-4.1", "low"))
+        );
+        assert_eq!(
+            cfg.user_model_override("@alice:example.com"),
+            Some(&model_override("anthropic::claude-sonnet-4", "high"))
         );
 
         let value =
@@ -476,33 +495,33 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_prefers_user_then_room_then_default() {
+    fn resolve_model_override_prefers_user_then_room_then_default() {
         let mut cfg = MatrixAccountConfig {
-            model: Some("default-model".into()),
+            model_override: Some(model_override("default-model", "low")),
             ..Default::default()
         };
         cfg.channel_overrides
             .insert("!room:example.com".into(), ChannelOverride {
-                model: Some("room-model".into()),
+                model_override: Some(model_override("room-model", "medium")),
                 model_provider: Some("openai".into()),
             });
         cfg.user_overrides
             .insert("@alice:example.com".into(), UserOverride {
-                model: Some("user-model".into()),
+                model_override: Some(model_override("user-model", "high")),
                 model_provider: Some("openrouter".into()),
             });
 
         assert_eq!(
-            cfg.resolve_model("!room:example.com", "@alice:example.com"),
-            Some("user-model")
+            cfg.resolve_model_override("!room:example.com", "@alice:example.com"),
+            Some(&model_override("user-model", "high"))
         );
         assert_eq!(
-            cfg.resolve_model("!room:example.com", "@bob:example.com"),
-            Some("room-model")
+            cfg.resolve_model_override("!room:example.com", "@bob:example.com"),
+            Some(&model_override("room-model", "medium"))
         );
         assert_eq!(
-            cfg.resolve_model("!other:example.com", "@bob:example.com"),
-            Some("default-model")
+            cfg.resolve_model_override("!other:example.com", "@bob:example.com"),
+            Some(&model_override("default-model", "low"))
         );
     }
 
@@ -513,11 +532,11 @@ mod tests {
             ..Default::default()
         };
         cfg.channel_overrides = HashMap::from([("!room:example.com".into(), ChannelOverride {
-            model: Some("room-model".into()),
+            model_override: Some(model_override("room-model", "low")),
             model_provider: None,
         })]);
         cfg.user_overrides = HashMap::from([("@alice:example.com".into(), UserOverride {
-            model: Some("user-model".into()),
+            model_override: Some(model_override("user-model", "high")),
             model_provider: None,
         })]);
 
@@ -525,11 +544,11 @@ mod tests {
             .unwrap_or_else(|error| panic!("serialize failed: {error}"));
 
         assert_eq!(
-            value["channel_overrides"]["!room:example.com"]["model"],
+            value["channel_overrides"]["!room:example.com"]["model_override"]["model"],
             "room-model"
         );
         assert_eq!(
-            value["user_overrides"]["@alice:example.com"]["model"],
+            value["user_overrides"]["@alice:example.com"]["model_override"]["model"],
             "user-model"
         );
         assert_eq!(value["stream_mode"], "edit_in_place");

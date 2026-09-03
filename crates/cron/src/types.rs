@@ -1,6 +1,9 @@
 //! Core data types for the cron scheduling system.
 
-use serde::{Deserialize, Serialize};
+use {
+    chelix_common::ModelOverride,
+    serde::{Deserialize, Serialize},
+};
 
 /// Whether to wake the heartbeat after a cron job completes.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -33,30 +36,42 @@ pub enum CronSchedule {
     },
 }
 
+/// Closed payload for one scheduled agent turn.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CronAgentTurn {
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_override: Option<ModelOverride>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<chelix_config::schema::ToolChoice>,
+    #[serde(default)]
+    pub deliver: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+}
+
+/// Closed payload for one scheduled system event.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CronSystemEvent {
+    pub text: String,
+}
+
 /// What happens when a job fires.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum CronPayload {
     /// Inject a system event into the main session.
-    SystemEvent { text: String },
+    SystemEvent(CronSystemEvent),
     /// Run an isolated agent turn.
-    AgentTurn {
-        message: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        model: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        agent_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timeout_secs: Option<u64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        tool_choice: Option<chelix_config::schema::ToolChoice>,
-        #[serde(default)]
-        deliver: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        channel: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        to: Option<String>,
-    },
+    AgentTurn(CronAgentTurn),
 }
 
 /// Where the job executes.
@@ -274,9 +289,9 @@ mod tests {
 
     #[test]
     fn test_payload_system_event() {
-        let p = CronPayload::SystemEvent {
+        let p = CronPayload::SystemEvent(CronSystemEvent {
             text: "hello".into(),
-        };
+        });
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("systemEvent"));
         let back: CronPayload = serde_json::from_str(&json).unwrap();
@@ -285,9 +300,9 @@ mod tests {
 
     #[test]
     fn test_payload_agent_turn() {
-        let p = CronPayload::AgentTurn {
+        let p = CronPayload::AgentTurn(CronAgentTurn {
             message: "check emails".into(),
-            model: None,
+            model_override: None,
             agent_id: None,
             timeout_secs: Some(120),
             tool_choice: Some(chelix_config::schema::ToolChoice::Tool {
@@ -296,11 +311,22 @@ mod tests {
             deliver: true,
             channel: Some("slack".into()),
             to: None,
-        };
+        });
         let json = serde_json::to_string(&p).unwrap();
-        assert!(json.contains("tool_choice"));
+        assert!(json.contains("toolChoice"));
         let back: CronPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
+    }
+
+    #[test]
+    fn test_payload_rejects_an_additional_field() {
+        let payload = serde_json::json!({
+            "kind": "systemEvent",
+            "text": "hello",
+            "unexpected": true
+        });
+
+        assert!(serde_json::from_value::<CronPayload>(payload).is_err());
     }
 
     #[test]
@@ -314,9 +340,9 @@ mod tests {
                 expr: "*/5 * * * *".into(),
                 tz: None,
             },
-            payload: CronPayload::SystemEvent {
+            payload: CronPayload::SystemEvent(CronSystemEvent {
                 text: "ping".into(),
-            },
+            }),
             session_target: SessionTarget::Main,
             state: CronJobState::default(),
             auto_prune_container: None,
@@ -436,16 +462,16 @@ mod tests {
                 every_ms: 60_000,
                 anchor_ms: None,
             },
-            payload: CronPayload::AgentTurn {
+            payload: CronPayload::AgentTurn(CronAgentTurn {
                 message: "go".into(),
-                model: None,
+                model_override: None,
                 agent_id: None,
                 timeout_secs: None,
                 tool_choice: None,
                 deliver: false,
                 channel: None,
                 to: None,
-            },
+            }),
             session_target: SessionTarget::Isolated,
             state: CronJobState::default(),
             auto_prune_container: Some(true),

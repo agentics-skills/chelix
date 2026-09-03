@@ -14,7 +14,7 @@ use chelix_channels::{
     message_log::MessageLog,
     plugin::{
         ChannelEventSink, ChannelHealthSnapshot, ChannelOutbound, ChannelPlugin, ChannelStatus,
-        ChannelStreamOutbound, ChannelThreadContext,
+        ChannelStreamOutbound,
     },
 };
 
@@ -269,10 +269,6 @@ impl ChannelPlugin for DiscordPlugin {
             accounts: Arc::clone(&self.accounts),
         })
     }
-
-    fn thread_context(&self) -> Option<&dyn ChannelThreadContext> {
-        Some(&self.outbound)
-    }
 }
 
 #[async_trait]
@@ -320,9 +316,7 @@ mod tests {
         assert_eq!(desc.display_name, "Discord");
         assert_eq!(desc.capabilities.inbound_mode, InboundMode::GatewayLoop);
 
-        // Threads: Discord implements ChannelThreadContext
         assert!(desc.capabilities.supports_threads);
-        assert!(plugin.thread_context().is_some());
 
         // OTP: Discord does NOT implement ChannelOtpProvider
         assert!(!desc.capabilities.supports_otp);

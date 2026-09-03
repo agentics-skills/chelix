@@ -244,9 +244,8 @@ async fn heartbeat_update_creates_cron_job_when_prompt_configured() {
             "enabled": true,
             "every": "30m",
             "prompt": "Test heartbeat prompt",
-            "model": null,
-            "ackMaxChars": 500,
-            "activeHours": {
+            "ack_max_chars": 500,
+            "active_hours": {
                 "start": "00:00",
                 "end": "23:59"
             },
@@ -332,9 +331,8 @@ async fn heartbeat_update_does_not_create_job_without_prompt() {
             "enabled": true,
             "every": "30m",
             "prompt": null,
-            "model": null,
-            "ackMaxChars": 500,
-            "activeHours": {
+            "ack_max_chars": 500,
+            "active_hours": {
                 "start": "00:00",
                 "end": "23:59"
             },
@@ -379,16 +377,16 @@ async fn heartbeat_update_updates_existing_job() {
             every_ms: 1800000,
             anchor_ms: None,
         },
-        payload: chelix_cron::types::CronPayload::AgentTurn {
+        payload: chelix_cron::types::CronPayload::AgentTurn(chelix_cron::types::CronAgentTurn {
             message: "Old prompt".into(),
-            model: None,
+            model_override: None,
             agent_id: None,
             timeout_secs: None,
             tool_choice: None,
             deliver: false,
             channel: None,
             to: None,
-        },
+        }),
         session_target: chelix_cron::types::SessionTarget::Named("heartbeat".into()),
         delete_after_run: false,
         enabled: true,
@@ -404,8 +402,8 @@ async fn heartbeat_update_updates_existing_job() {
     assert!(initial_job.enabled);
     // Check that the job has the old prompt
     match &initial_job.payload {
-        chelix_cron::types::CronPayload::AgentTurn { message, .. } => {
-            assert_eq!(message, "Old prompt");
+        chelix_cron::types::CronPayload::AgentTurn(turn) => {
+            assert_eq!(turn.message, "Old prompt");
         },
         _ => panic!("Expected AgentTurn payload"),
     }
@@ -449,9 +447,8 @@ async fn heartbeat_update_updates_existing_job() {
             "enabled": false,
             "every": "60m",
             "prompt": "Updated prompt",
-            "model": null,
-            "ackMaxChars": 500,
-            "activeHours": {
+            "ack_max_chars": 500,
+            "active_hours": {
                 "start": "09:00",
                 "end": "17:00"
             },
@@ -485,8 +482,8 @@ async fn heartbeat_update_updates_existing_job() {
     assert!(!updated_job.enabled);
     // Check that the job has the updated prompt
     match &updated_job.payload {
-        chelix_cron::types::CronPayload::AgentTurn { message, .. } => {
-            assert_eq!(message, "Updated prompt");
+        chelix_cron::types::CronPayload::AgentTurn(turn) => {
+            assert_eq!(turn.message, "Updated prompt");
         },
         _ => panic!("Expected AgentTurn payload"),
     }
@@ -536,9 +533,8 @@ async fn heartbeat_update_disabled_with_prompt_does_not_create_job() {
             "enabled": false,
             "every": "30m",
             "prompt": "Test heartbeat prompt",
-            "model": null,
-            "ackMaxChars": 500,
-            "activeHours": {
+            "ack_max_chars": 500,
+            "active_hours": {
                 "start": "00:00",
                 "end": "23:59"
             },

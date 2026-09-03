@@ -4,17 +4,17 @@ import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 
 import { addChannel, parseChannelConfigPatch, validateChannelFields } from "../../../channel-utils";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
 import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddTelegram } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, SharedChannelFields } from "../ChannelFields";
+import { AdvancedConfigPatchField, resolveChannelModelSelection, SharedChannelFields } from "../ChannelFields";
 
 export function AddTelegramModal(): VNode {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const addModel = useSignal("");
+	const addReasoningEffort = useSignal("");
 	const allowlistItems = useSignal<string[]>([]);
 	const accountDraft = useSignal("");
 	const advancedConfigPatch = useSignal("");
@@ -34,6 +34,11 @@ export function AddTelegramModal(): VNode {
 			error.value = advancedPatch.error;
 			return;
 		}
+		const modelSelection = resolveChannelModelSelection(addModel.value, addReasoningEffort.value);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
+			return;
+		}
 		error.value = "";
 		saving.value = true;
 		const addConfig: ChannelConfig = {
@@ -41,12 +46,8 @@ export function AddTelegramModal(): VNode {
 			dm_policy: (form.querySelector("[data-field=dmPolicy]") as HTMLSelectElement).value,
 			mention_mode: (form.querySelector("[data-field=mentionMode]") as HTMLSelectElement).value,
 			allowlist: allowlistItems.value,
+			...modelSelection.config,
 		};
-		if (addModel.value) {
-			addConfig.model = addModel.value;
-			const found = modelsSig.value.find((x) => x.id === addModel.value);
-			if (found?.provider) addConfig.model_provider = found.provider;
-		}
 		Object.assign(addConfig, advancedPatch.value);
 		addChannel(ChannelType.Telegram, accountId, addConfig).then((res: unknown) => {
 			saving.value = false;
@@ -54,6 +55,7 @@ export function AddTelegramModal(): VNode {
 			if (r?.ok) {
 				showAddTelegram.value = false;
 				addModel.value = "";
+				addReasoningEffort.value = "";
 				allowlistItems.value = [];
 				accountDraft.value = "";
 				advancedConfigPatch.value = "";
@@ -135,7 +137,11 @@ export function AddTelegramModal(): VNode {
 						</a>
 					</div>
 				)}
-				<SharedChannelFields addModel={addModel} allowlistItems={allowlistItems} />
+				<SharedChannelFields
+					addModel={addModel}
+					addReasoningEffort={addReasoningEffort}
+					allowlistItems={allowlistItems}
+				/>
 				<AdvancedConfigPatchField
 					value={advancedConfigPatch.value}
 					onInput={(value) => {

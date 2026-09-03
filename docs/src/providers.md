@@ -104,6 +104,45 @@ canonical registry-key match. A raw model ID is never converted automatically.
 A raw ID with one or multiple suffix matches is rejected as noncanonical or
 ambiguous. Runtime model overrides must use an ID directly from `models.list`.
 
+### `chat.send` and `chat.send_sync` Selection
+
+Both RPC methods accept an optional complete `modelOverride` object:
+
+```json
+{
+  "modelOverride": {
+    "model": "openai::gpt-5.2",
+    "reasoningEffort": "medium"
+  }
+}
+```
+
+If `modelOverride` is present, both fields are required. The effort must be
+non-empty and must occur in the selected model's ordered
+`reasoning_supported_efforts`. A missing field, empty effort, unknown model, or
+unsupported effort is rejected before persistence or an LLM call. The selected
+provider's tool mode is then checked for compatibility with the request.
+
+If `modelOverride` is omitted, the methods use the complete persisted session
+model/reasoning pair. They do not select a model from history, a persona, or the
+first registered provider. A request override is persisted only as one atomic
+model/reasoning pair.
+
+The public payload is closed. `chat.send` accepts exactly one of `text` or
+`content`, plus optional `modelOverride`, `toolChoice`, `documents`,
+`audioFilename`, `inputMedium`, and `clientSequence`. `chat.send_sync` accepts
+`text` plus optional `modelOverride`, `toolChoice`, and `inputMedium`. Unknown
+fields are rejected. Session, connection, channel, tool-policy, and agent
+execution context are not public JSON fields.
+
+WebSocket clients must complete `sessions.switch` successfully before calling
+`chat.send` or `chat.send_sync` on that connection. The RPC methods use the
+active session bound to the connection; they do not accept a public session key
+or fall back to a default session when that context is absent.
+
+Queued prompts store prompt content only. When a queued batch runs, it resolves
+the persisted session pair at that time through the same model/reasoning path.
+
 ### Load Refusal
 
 Service load behavior:
@@ -292,7 +331,10 @@ Each provider supports these options:
 ## Switching Models
 
 - **Per session**: Use the model selector in the chat UI.
-- **Per message**: Use `/model <name>` in chat.
+- **In channel sessions**: `/model` lists models; `/model providers` lists
+  providers; `/model provider:<name>` filters the list; `/model efforts:<N>`
+  lists efforts for model `N`; and `/model <N> <reasoning-effort>` atomically
+  changes the persisted model/reasoning pair.
 - **Provider selection**: Use ordered
 	`[providers.<name>.models."<raw-model-id>"]` tables.
 - **Cross-provider ordering**: Use `[chat].priority_models` in `chelix.toml`.

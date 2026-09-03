@@ -6,10 +6,9 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { addChannel, parseChannelConfigPatch } from "../../../channel-utils";
 import { sendRpc } from "../../../helpers";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
-import { Modal, ModelSelect, showToast } from "../../../ui";
+import { Modal, showToast } from "../../../ui";
 import {
 	type Channel,
 	type ChannelConfig,
@@ -21,7 +20,12 @@ import {
 	waQrData,
 	waQrSvg,
 } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, AllowlistInput } from "../ChannelFields";
+import {
+	AdvancedConfigPatchField,
+	AllowlistInput,
+	ChannelModelFields,
+	resolveChannelModelSelection,
+} from "../ChannelFields";
 
 // ── QR code display (WhatsApp pairing) ───────────────────────
 
@@ -96,6 +100,7 @@ export function AddWhatsAppModal(): VNode {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const addModel = useSignal("");
+	const addReasoningEffort = useSignal("");
 	const pairingStarted = useSignal(false);
 	const allowlistItems = useSignal<string[]>([]);
 	const accountDraft = useSignal("");
@@ -152,6 +157,11 @@ export function AddWhatsAppModal(): VNode {
 			error.value = advancedPatch.error;
 			return;
 		}
+		const modelSelection = resolveChannelModelSelection(addModel.value, addReasoningEffort.value);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
+			return;
+		}
 		error.value = "";
 		saving.value = true;
 		waQrData.value = null;
@@ -162,12 +172,8 @@ export function AddWhatsAppModal(): VNode {
 		const addConfig: ChannelConfig = {
 			dm_policy: (form.querySelector("[data-field=dmPolicy]") as HTMLSelectElement)?.value || "open",
 			allowlist: allowlistItems.value,
+			...modelSelection.config,
 		};
-		if (addModel.value) {
-			addConfig.model = addModel.value;
-			const found = modelsSig.value.find((x) => x.id === addModel.value);
-			if (found?.provider) addConfig.model_provider = found.provider;
-		}
 		Object.assign(addConfig, advancedPatch.value);
 		addChannel(ChannelType.WhatsApp, accountId, addConfig).then((res: unknown) => {
 			saving.value = false;
@@ -197,16 +203,13 @@ export function AddWhatsAppModal(): VNode {
 		waQrSvg.value = null;
 		waPairingError.value = null;
 		waPairingAccountId.value = null;
+		addModel.value = "";
+		addReasoningEffort.value = "";
 		allowlistItems.value = [];
 		accountDraft.value = "";
 		advancedConfigPatch.value = "";
 		loadChannels();
 	}
-
-	const defaultPlaceholder =
-		modelsSig.value.length > 0
-			? `(default: ${modelsSig.value[0].id})`
-			: "(server default)";
 
 	return (
 		<Modal show={showAddWhatsApp.value} onClose={onClose} title="Connect WhatsApp">
@@ -261,16 +264,7 @@ export function AddWhatsAppModal(): VNode {
 								<option value="disabled">Disabled</option>
 							</select>
 						</label>
-						<span className="text-xs text-[var(--muted)]">Default Model</span>
-						<ModelSelect
-							ariaLabel="Default Model"
-							models={modelsSig.value}
-							value={addModel.value}
-							onChange={(v: string) => {
-								addModel.value = v;
-							}}
-							placeholder={defaultPlaceholder}
-						/>
+						<ChannelModelFields model={addModel} reasoningEffort={addReasoningEffort} />
 						<span className="text-xs text-[var(--muted)]">DM Allowlist</span>
 						<AllowlistInput
 							ariaLabel="DM Allowlist"

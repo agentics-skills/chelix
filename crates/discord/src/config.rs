@@ -5,27 +5,29 @@ use {
         config_view::ChannelConfigView,
         gating::{self, DmPolicy, GroupPolicy, MentionMode},
     },
-    chelix_common::secret_serde,
+    chelix_common::{ConfigModelOverride, secret_serde},
     secrecy::Secret,
     serde::{Deserialize, Serialize, ser::SerializeStruct},
 };
 
-/// Per-channel model/provider override.
+/// Per-channel model/reasoning and provider metadata override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChannelOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
 }
 
-/// Per-user model/provider override.
+/// Per-user model/reasoning and provider metadata override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,6 +40,7 @@ pub struct UserOverride {
 /// category matches `category_id`, the fields here override the account
 /// defaults. The first matching override wins.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PatternOverride {
     /// Glob pattern matched against the Discord channel name (case-insensitive).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,9 +51,9 @@ pub struct PatternOverride {
     /// Override mention mode for matched channels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mention_mode: Option<MentionMode>,
-    /// Override model for matched channels.
+    /// Override model/reasoning pair for matched channels.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,7 +85,7 @@ pub enum OnlineStatus {
 
 /// Configuration for a single Discord bot account.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct DiscordAccountConfig {
     /// Discord bot token.
     #[serde(serialize_with = "secret_serde::serialize_secret")]
@@ -103,11 +106,11 @@ pub struct DiscordAccountConfig {
     /// Guild allowlist (Discord guild/server IDs).
     pub guild_allowlist: Vec<String>,
 
-    /// Default model ID for this channel account.
+    /// Default canonical model/reasoning override for this channel account.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
 
-    /// Provider name associated with `model`.
+    /// Provider name associated with `model_override`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 
@@ -181,7 +184,7 @@ impl std::fmt::Debug for DiscordAccountConfig {
             .field("mention_mode", &self.mention_mode)
             .field("allowlist", &self.allowlist)
             .field("guild_allowlist", &self.guild_allowlist)
-            .field("model", &self.model)
+            .field("model_override", &self.model_override)
             .field("model_provider", &self.model_provider)
             .field("agent_id", &self.agent_id)
             .field("reply_to_message", &self.reply_to_message)
@@ -225,23 +228,23 @@ impl DiscordAccountConfig {
         })
     }
 
-    /// Resolve effective model with pattern override support.
+    /// Resolve effective model/reasoning override with pattern support.
     ///
     /// Priority: user > channel ID > pattern > account default.
-    pub fn resolve_model_with_pattern(
+    pub fn resolve_model_override_with_pattern(
         &self,
         channel_id: &str,
         user_id: &str,
         channel_name: Option<&str>,
         category_id: Option<&str>,
-    ) -> Option<&str> {
-        self.user_model(user_id)
-            .or_else(|| self.channel_model(channel_id))
+    ) -> Option<&ConfigModelOverride> {
+        self.user_model_override(user_id)
+            .or_else(|| self.channel_model_override(channel_id))
             .or_else(|| {
                 self.find_pattern_override(channel_name, category_id)
-                    .and_then(|po| po.model.as_deref())
+                    .and_then(|override_config| override_config.model_override.as_ref())
             })
-            .or_else(|| self.model())
+            .or_else(|| self.model_override())
     }
 
     /// Resolve effective agent ID with pattern override support.
@@ -279,8 +282,8 @@ impl ChannelConfigView for DiscordAccountConfig {
         self.group_policy.clone()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    fn model_override(&self) -> Option<&ConfigModelOverride> {
+        self.model_override.as_ref()
     }
 
     fn model_provider(&self) -> Option<&str> {
@@ -291,10 +294,10 @@ impl ChannelConfigView for DiscordAccountConfig {
         self.agent_id.as_deref()
     }
 
-    fn channel_model(&self, channel_id: &str) -> Option<&str> {
+    fn channel_model_override(&self, channel_id: &str) -> Option<&ConfigModelOverride> {
         self.channel_overrides
             .get(channel_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn channel_model_provider(&self, channel_id: &str) -> Option<&str> {
@@ -309,10 +312,10 @@ impl ChannelConfigView for DiscordAccountConfig {
             .and_then(|o| o.agent_id.as_deref())
     }
 
-    fn user_model(&self, user_id: &str) -> Option<&str> {
+    fn user_model_override(&self, user_id: &str) -> Option<&ConfigModelOverride> {
         self.user_overrides
             .get(user_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn user_model_provider(&self, user_id: &str) -> Option<&str> {
@@ -337,7 +340,7 @@ impl Default for DiscordAccountConfig {
             mention_mode: MentionMode::Mention,
             allowlist: Vec::new(),
             guild_allowlist: Vec::new(),
-            model: None,
+            model_override: None,
             model_provider: None,
             agent_id: None,
             reply_to_message: false,
@@ -363,7 +366,7 @@ impl Serialize for RedactedConfig<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let c = self.0;
         let mut count = 9; // always-present fields
-        count += c.model.is_some() as usize;
+        count += c.model_override.is_some() as usize;
         count += c.model_provider.is_some() as usize;
         count += c.agent_id.is_some() as usize;
         count += c.ack_reaction.is_some() as usize;
@@ -382,8 +385,8 @@ impl Serialize for RedactedConfig<'_> {
         s.serialize_field("mention_mode", &c.mention_mode)?;
         s.serialize_field("allowlist", &c.allowlist)?;
         s.serialize_field("guild_allowlist", &c.guild_allowlist)?;
-        if c.model.is_some() {
-            s.serialize_field("model", &c.model)?;
+        if c.model_override.is_some() {
+            s.serialize_field("model_override", &c.model_override)?;
         }
         if c.model_provider.is_some() {
             s.serialize_field("model_provider", &c.model_provider)?;
@@ -429,6 +432,13 @@ impl Serialize for RedactedConfig<'_> {
 mod tests {
     use super::*;
 
+    fn model_override(model: &str, reasoning_effort: &str) -> ConfigModelOverride {
+        ConfigModelOverride {
+            model: model.to_string(),
+            reasoning_effort: reasoning_effort.into(),
+        }
+    }
+
     #[test]
     fn config_round_trip() {
         let json = serde_json::json!({
@@ -438,7 +448,7 @@ mod tests {
             "mention_mode": "always",
             "allowlist": ["12345", "67890"],
             "guild_allowlist": ["111222333"],
-            "model": "gpt-4o",
+            "model_override": { "model": "openai::gpt-4o", "reasoning_effort": "low" },
             "model_provider": "openai",
         });
         let cfg: DiscordAccountConfig =
@@ -448,7 +458,10 @@ mod tests {
         assert_eq!(cfg.mention_mode, MentionMode::Always);
         assert_eq!(cfg.allowlist, vec!["12345", "67890"]);
         assert_eq!(cfg.guild_allowlist, vec!["111222333"]);
-        assert_eq!(cfg.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(
+            cfg.model_override.as_ref(),
+            Some(&model_override("openai::gpt-4o", "low"))
+        );
 
         // Round-trip through serde
         let value = serde_json::to_value(&cfg).unwrap_or_else(|e| panic!("serialize failed: {e}"));
@@ -464,7 +477,7 @@ mod tests {
         assert_eq!(cfg.mention_mode, MentionMode::Mention);
         assert!(cfg.allowlist.is_empty());
         assert!(cfg.guild_allowlist.is_empty());
-        assert!(cfg.model.is_none());
+        assert!(cfg.model_override.is_none());
         assert!(cfg.agent_id.is_none());
         assert!(!cfg.reply_to_message);
         assert!(cfg.ack_reaction.is_none());
@@ -560,7 +573,7 @@ mod tests {
             "mention_mode": "always",
             "allowlist": ["12345"],
             "guild_allowlist": ["111222333"],
-            "model": "gpt-4o",
+            "model_override": { "model": "openai::gpt-4o", "reasoning_effort": "low" },
             "model_provider": "openai",
             "reply_to_message": true,
             "ack_reaction": "\u{1f440}",
@@ -697,30 +710,36 @@ mod tests {
     }
 
     #[test]
-    fn resolve_model_user_overrides_channel() {
+    fn resolve_model_override_user_overrides_channel() {
         let mut cfg = DiscordAccountConfig {
-            model: Some("default-model".into()),
+            model_override: Some(model_override("default-model", "low")),
             agent_id: Some("default-agent".into()),
             ..Default::default()
         };
         cfg.channel_overrides
             .insert("C123".into(), ChannelOverride {
-                model: Some("channel-model".into()),
+                model_override: Some(model_override("channel-model", "medium")),
                 agent_id: Some("channel-agent".into()),
                 ..Default::default()
             });
         cfg.user_overrides.insert("U456".into(), UserOverride {
-            model: Some("user-model".into()),
+            model_override: Some(model_override("user-model", "high")),
             agent_id: Some("user-agent".into()),
             ..Default::default()
         });
 
-        // User override wins
-        assert_eq!(cfg.resolve_model("C123", "U456"), Some("user-model"));
-        // Channel override wins when no user override
-        assert_eq!(cfg.resolve_model("C123", "U999"), Some("channel-model"));
-        // Account default when no overrides
-        assert_eq!(cfg.resolve_model("C999", "U999"), Some("default-model"));
+        assert_eq!(
+            cfg.resolve_model_override("C123", "U456"),
+            Some(&model_override("user-model", "high"))
+        );
+        assert_eq!(
+            cfg.resolve_model_override("C123", "U999"),
+            Some(&model_override("channel-model", "medium"))
+        );
+        assert_eq!(
+            cfg.resolve_model_override("C999", "U999"),
+            Some(&model_override("default-model", "low"))
+        );
         assert_eq!(cfg.resolve_agent_id("C123", "U456"), Some("user-agent"));
         assert_eq!(cfg.resolve_agent_id("C123", "U999"), Some("channel-agent"));
         assert_eq!(cfg.resolve_agent_id("C999", "U999"), Some("default-agent"));
@@ -731,27 +750,48 @@ mod tests {
         let json = serde_json::json!({
             "token": "Bot test",
             "channel_overrides": {
-                "C123": { "model": "gpt-4", "agent_id": "channel-agent" }
+                "C123": {
+                    "model_override": { "model": "openai::gpt-4", "reasoning_effort": "low" },
+                    "agent_id": "channel-agent"
+                }
             },
             "user_overrides": {
-                "U456": { "model": "anthropic/claude-sonnet-4", "model_provider": "openrouter", "agent_id": "user-agent" }
+                "U456": {
+                    "model_override": {
+                        "model": "anthropic::claude-sonnet-4",
+                        "reasoning_effort": "high"
+                    },
+                    "model_provider": "openrouter",
+                    "agent_id": "user-agent"
+                }
             }
         });
         let cfg: DiscordAccountConfig =
             serde_json::from_value(json).unwrap_or_else(|e| panic!("parse failed: {e}"));
-        assert_eq!(cfg.channel_model("C123"), Some("gpt-4"));
+        assert_eq!(
+            cfg.channel_model_override("C123"),
+            Some(&model_override("openai::gpt-4", "low"))
+        );
         assert!(cfg.channel_model_provider("C123").is_none());
         assert_eq!(cfg.channel_agent_id("C123"), Some("channel-agent"));
-        assert_eq!(cfg.user_model("U456"), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(
+            cfg.user_model_override("U456"),
+            Some(&model_override("anthropic::claude-sonnet-4", "high"))
+        );
         assert_eq!(cfg.user_model_provider("U456"), Some("openrouter"));
         assert_eq!(cfg.user_agent_id("U456"), Some("user-agent"));
 
-        // Round-trip preserves overrides
         let value = serde_json::to_value(&cfg).unwrap_or_else(|e| panic!("serialize failed: {e}"));
         let cfg2: DiscordAccountConfig =
             serde_json::from_value(value).unwrap_or_else(|e| panic!("re-parse failed: {e}"));
-        assert_eq!(cfg2.channel_model("C123"), Some("gpt-4"));
-        assert_eq!(cfg2.user_model("U456"), Some("anthropic/claude-sonnet-4"));
+        assert_eq!(
+            cfg2.channel_model_override("C123"),
+            Some(&model_override("openai::gpt-4", "low"))
+        );
+        assert_eq!(
+            cfg2.user_model_override("U456"),
+            Some(&model_override("anthropic::claude-sonnet-4", "high"))
+        );
         assert_eq!(cfg2.channel_agent_id("C123"), Some("channel-agent"));
         assert_eq!(cfg2.user_agent_id("U456"), Some("user-agent"));
     }
@@ -760,7 +800,7 @@ mod tests {
     fn redacted_hides_token() {
         let cfg = DiscordAccountConfig {
             token: Secret::new("super-secret-bot-token".into()),
-            model: Some("gpt-4o".into()),
+            model_override: Some(model_override("openai::gpt-4o", "low")),
             agent_id: Some("research".into()),
             ..Default::default()
         };
@@ -768,7 +808,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("redacted serialize failed: {e}"));
         assert_eq!(redacted["token"], "[REDACTED]");
         // Non-secret fields preserved
-        assert_eq!(redacted["model"], "gpt-4o");
+        assert_eq!(redacted["model_override"]["model"], "openai::gpt-4o");
         assert_eq!(redacted["agent_id"], "research");
         assert_eq!(
             redacted["dm_policy"],
@@ -848,12 +888,18 @@ mod tests {
                 {
                     "channel_name": "ticket-*",
                     "mention_mode": "always",
-                    "model": "anthropic/claude-sonnet-4",
+                    "model_override": {
+                        "model": "anthropic::claude-sonnet-4",
+                        "reasoning_effort": "high"
+                    },
                     "agent_id": "support"
                 },
                 {
                     "category_id": "999888777",
-                    "model": "gpt-4o"
+                    "model_override": {
+                        "model": "openai::gpt-4o",
+                        "reasoning_effort": "low"
+                    }
                 }
             ]
         });
@@ -916,56 +962,59 @@ mod tests {
         let cfg = DiscordAccountConfig {
             pattern_overrides: vec![PatternOverride {
                 category_id: Some("CAT123".into()),
-                model: Some("gpt-4o".into()),
+                model_override: Some(model_override("openai::gpt-4o", "low")),
                 ..Default::default()
             }],
             ..Default::default()
         };
 
         let po = cfg.find_pattern_override(None, Some("CAT123"));
-        assert_eq!(po.and_then(|p| p.model.as_deref()), Some("gpt-4o"));
+        assert_eq!(
+            po.and_then(|pattern| pattern.model_override.as_ref()),
+            Some(&model_override("openai::gpt-4o", "low"))
+        );
 
         // Case-insensitive category match
         let po = cfg.find_pattern_override(None, Some("cat123"));
-        assert_eq!(po.and_then(|p| p.model.as_deref()), Some("gpt-4o"));
+        assert_eq!(
+            po.and_then(|pattern| pattern.model_override.as_ref()),
+            Some(&model_override("openai::gpt-4o", "low"))
+        );
 
         assert!(cfg.find_pattern_override(None, Some("OTHER")).is_none());
     }
 
     #[test]
-    fn resolve_model_with_pattern_override() {
+    fn resolve_model_override_with_pattern() {
         let cfg = DiscordAccountConfig {
-            model: Some("default-model".into()),
+            model_override: Some(model_override("default-model", "low")),
             pattern_overrides: vec![PatternOverride {
                 channel_name: Some("ticket-*".into()),
-                model: Some("ticket-model".into()),
+                model_override: Some(model_override("ticket-model", "medium")),
                 ..Default::default()
             }],
             channel_overrides: {
-                let mut m = HashMap::new();
-                m.insert("C999".into(), ChannelOverride {
-                    model: Some("exact-model".into()),
+                let mut overrides = HashMap::new();
+                overrides.insert("C999".into(), ChannelOverride {
+                    model_override: Some(model_override("exact-model", "high")),
                     ..Default::default()
                 });
-                m
+                overrides
             },
             ..Default::default()
         };
 
-        // Pattern override
         assert_eq!(
-            cfg.resolve_model_with_pattern("C123", "U1", Some("ticket-42"), None),
-            Some("ticket-model")
+            cfg.resolve_model_override_with_pattern("C123", "U1", Some("ticket-42"), None),
+            Some(&model_override("ticket-model", "medium"))
         );
-        // Exact channel override wins over pattern
         assert_eq!(
-            cfg.resolve_model_with_pattern("C999", "U1", Some("ticket-42"), None),
-            Some("exact-model")
+            cfg.resolve_model_override_with_pattern("C999", "U1", Some("ticket-42"), None),
+            Some(&model_override("exact-model", "high"))
         );
-        // No match falls to default
         assert_eq!(
-            cfg.resolve_model_with_pattern("C123", "U1", Some("general"), None),
-            Some("default-model")
+            cfg.resolve_model_override_with_pattern("C123", "U1", Some("general"), None),
+            Some(&model_override("default-model", "low"))
         );
     }
 

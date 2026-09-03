@@ -14,7 +14,7 @@ import { hasVisibleReasoning, isReasoningContent } from "../types/ws-events";
 interface ChatParams {
 	content?: unknown[];
 	text?: string;
-	_seq?: number | null;
+	clientSequence?: number | null;
 }
 
 export interface HistoryPaginationState {
@@ -221,7 +221,7 @@ export function cacheOutgoingUserMessage(key: string, chatParams: ChatParams): v
 			? chatParams.content
 			: chatParams.text || "") as string,
 		created_at: Date.now(),
-		seq: chatParams._seq || null,
+		seq: chatParams.clientSequence || null,
 	};
 	if (historyIndex !== null) next.historyIndex = historyIndex;
 	upsertSessionHistoryMessage(key, next, historyIndex ?? undefined);

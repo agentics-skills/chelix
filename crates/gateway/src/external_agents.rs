@@ -15,10 +15,11 @@ use {
         types::ContextTurn,
     },
     chelix_service_traits::{
-        ChatService, ExternalAgentService, ModelService, ServiceError, ServiceResult,
-        SessionBusyReason, SessionService,
+        ChatExecutionContext, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest, ChatService,
+        ExternalAgentService, ModelService, ServiceError, ServiceResult, SessionBusyReason,
+        SessionService,
     },
-    chelix_sessions::{MessageContent, PersistedMessage},
+    chelix_sessions::{MessageContent, PersistedMessage, QueuedPromptChannelMetadata},
     futures::StreamExt,
     serde_json::Value,
     tokio::sync::Mutex,
@@ -579,22 +580,25 @@ impl ExternalAgentChatService {
         }
     }
 
-    async fn maybe_send_external(&self, params: &Value) -> Option<ServiceResult> {
+    async fn external_kind_for_session(
+        &self,
+        session_key: &str,
+    ) -> Option<Result<AgentTransportKind, ServiceError>> {
         if !self.external_agents.config.enabled {
             return None;
         }
-        let session_key = resolve_session_key(params, &self.state).await;
-        let entry = match self.session_metadata.get(&session_key).await {
+        let entry = match self.session_metadata.get(session_key).await {
             Ok(entry) => entry?,
             Err(error) => return Some(Err(ServiceError::message(error.to_string()))),
         };
-        let kind = entry.external_agent_kind()?;
-        Some(self.send_external(params.clone(), session_key, kind).await)
+        entry.external_agent_kind().map(Ok)
     }
 
     async fn send_external(
         &self,
-        params: Value,
+        text: String,
+        seq: Option<u64>,
+        channel: Option<Value>,
         session_key: String,
         kind: AgentTransportKind,
     ) -> ServiceResult {
@@ -617,13 +621,6 @@ impl ExternalAgentChatService {
                 ));
             },
         };
-        let text = params
-            .get("text")
-            .or_else(|| params.get("message"))
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| "external agents currently require text input".to_string())?
-            .to_string();
-        let seq = params.get("_seq").and_then(|value| value.as_u64());
         let run_id = uuid::Uuid::new_v4().to_string();
         let created_at = now_ms();
         let mut history = self
@@ -636,7 +633,7 @@ impl ExternalAgentChatService {
             created_at: Some(created_at),
             audio: None,
             documents: None,
-            channel: params.get("channel").cloned(),
+            channel,
             seq,
             run_id: Some(run_id.clone()),
         };
@@ -976,43 +973,41 @@ impl ExternalAgentChatService {
 
 #[async_trait]
 impl ChatService for ExternalAgentChatService {
-    async fn send(&self, params: Value) -> ServiceResult {
-        if let Some(result) = self.maybe_send_external(&params).await {
-            return result;
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult {
+        let session_key = context.session_id.to_string();
+        if let Some(kind) = self.external_kind_for_session(&session_key).await {
+            let kind = kind?;
+            let text = match &request.message {
+                ChatSendMessage::Text(text) => text.clone(),
+                ChatSendMessage::Content(_) => {
+                    return Err(ServiceError::message(
+                        "external agents currently require text input",
+                    ));
+                },
+            };
+            let channel = external_channel_value(&context)?;
+            return self
+                .send_external(text, request.client_sequence, channel, session_key, kind)
+                .await;
         }
-        self.inner.send(params).await
+        self.inner.send(request, context).await
     }
 
-    async fn send_sync(&self, params: Value) -> ServiceResult {
-        let explicit_agent = params
-            .get("agent_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .is_some_and(|agent_id| !agent_id.is_empty());
-        if !explicit_agent {
-            if let Some(result) = self.maybe_send_external(&params).await {
-                return result;
-            }
-            return self.inner.send_sync(params).await;
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_key = context.session_id.to_string();
+        if context.agent_id.is_none()
+            && let Some(kind) = self.external_kind_for_session(&session_key).await
+        {
+            let channel = external_channel_value(&context)?;
+            return self
+                .send_external(request.text.clone(), None, channel, session_key, kind?)
+                .await;
         }
-
-        let session_key = resolve_session_key(&params, &self.state).await;
-        let result = self.inner.send_sync(params).await;
-        match self.session_metadata.get(&session_key).await {
-            Ok(None) => self.external_agents.shutdown_binding(&session_key).await,
-            Ok(Some(entry)) if entry.external_agent_kind().is_none() => {
-                self.external_agents.shutdown_binding(&session_key).await;
-            },
-            Ok(Some(_)) => {},
-            Err(error) => {
-                warn!(
-                    session = %session_key,
-                    %error,
-                    "failed to verify external binding after delegated send_sync"
-                );
-            },
-        }
-        result
+        self.inner.send_sync(request, context).await
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
@@ -1091,6 +1086,23 @@ impl ChatService for ExternalAgentChatService {
     async fn peek(&self, params: Value) -> ServiceResult {
         self.inner.peek(params).await
     }
+}
+
+fn external_channel_value(context: &ChatExecutionContext) -> Result<Option<Value>, ServiceError> {
+    context
+        .channel
+        .as_ref()
+        .map(|metadata| {
+            serde_json::to_value(QueuedPromptChannelMetadata {
+                channel_type: metadata.channel_type,
+                sender_name: metadata.sender_name.clone(),
+                username: metadata.username.clone(),
+                sender_id: metadata.sender_id.clone(),
+                message_kind: metadata.message_kind,
+            })
+            .map_err(|error| ServiceError::message(error.to_string()))
+        })
+        .transpose()
 }
 
 async fn resolve_session_key(params: &Value, state: &GatewayState) -> String {
@@ -1435,13 +1447,15 @@ mod tests {
     #[derive(Default)]
     struct SyncTrackingChatService {
         calls: std::sync::Mutex<Vec<&'static str>>,
-        metadata: Option<Arc<SqliteSessionMetadata>>,
-        reject_agent_selection: bool,
     }
 
     #[async_trait]
     impl ChatService for SyncTrackingChatService {
-        async fn send(&self, _params: Value) -> ServiceResult {
+        async fn send(
+            &self,
+            _request: ChatSendRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             self.calls
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
@@ -1449,26 +1463,15 @@ mod tests {
             Ok(serde_json::json!({ "source": "send" }))
         }
 
-        async fn send_sync(&self, params: Value) -> ServiceResult {
+        async fn send_sync(
+            &self,
+            _request: ChatSendSyncRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             self.calls
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
                 .push("send_sync");
-            if self.reject_agent_selection {
-                return Err(ServiceError::message("agent selection rejected"));
-            }
-            if params
-                .get("agent_id")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .is_some_and(|agent_id| !agent_id.is_empty())
-                && let Some(metadata) = self.metadata.as_ref()
-            {
-                metadata
-                    .create_or_assign_agent("main", "main", &test_pair())
-                    .await
-                    .map_err(ServiceError::message)?;
-            }
             Ok(serde_json::json!({ "source": "send_sync" }))
         }
 
@@ -1503,6 +1506,10 @@ mod tests {
         async fn full_context(&self, _params: Value) -> ServiceResult {
             Ok(serde_json::json!({}))
         }
+    }
+
+    fn test_chat_context() -> ChatExecutionContext {
+        ChatExecutionContext::internal(chelix_sessions::SessionKey::new("main"))
     }
 
     async fn test_chat_service(
@@ -1624,7 +1631,7 @@ mod tests {
         .await;
 
         let error = chat
-            .send(serde_json::json!({ "sessionKey": "main", "text": "hello" }))
+            .send(ChatSendRequest::text("hello"), test_chat_context())
             .await
             .expect_err("disabled external agents should fall back to inner chat");
 
@@ -1688,7 +1695,7 @@ mod tests {
         );
 
         let result = chat
-            .send_sync(serde_json::json!({ "sessionKey": "main", "text": "hello" }))
+            .send_sync(ChatSendSyncRequest::text("hello"), test_chat_context())
             .await
             .expect("send_sync delegates to inner chat");
 
@@ -1703,7 +1710,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejected_explicit_agent_keeps_external_metadata_and_live_runtime() {
+    async fn bound_chat_send_sync_without_explicit_agent_uses_external_binding() {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
@@ -1713,109 +1720,68 @@ mod tests {
             .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
             .await
             .expect("bind external agent");
-        external_agents
-            .session_for_binding("main", AgentTransportKind::Codex)
-            .await
-            .expect("start live external session");
-        let before = metadata
-            .get("main")
-            .await
-            .expect("load external entry")
-            .expect("external entry exists");
-        let inner: Arc<dyn ChatService> = Arc::new(SyncTrackingChatService {
-            calls: std::sync::Mutex::new(Vec::new()),
-            metadata: Some(Arc::clone(&metadata)),
-            reject_agent_selection: true,
-        });
-        let chat = ExternalAgentChatService::new(
-            inner,
-            Arc::clone(&external_agents),
-            test_gateway_state(),
-            session_store,
-            Arc::clone(&metadata),
-        );
-
-        assert!(
-            chat.send_sync(serde_json::json!({
-                "_session_key": "main",
-                "text": "hello",
-                "agent_id": "main",
-            }))
-            .await
-            .is_err()
-        );
-        let after = metadata
-            .get("main")
-            .await
-            .expect("reload external entry")
-            .expect("external entry remains");
-        assert_eq!(after.backing, before.backing);
-        assert_eq!(after.version, before.version);
-        assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 0);
-    }
-
-    #[tokio::test]
-    async fn bound_send_sync_routes_explicit_agent_internally_and_empty_agent_externally() {
-        let dir = tempfile::tempdir().unwrap();
-        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
-        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        let agent_state = Arc::new(FakeAgentState::default());
-        let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
-        external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
-            .await
-            .expect("bind external agent");
-        external_agents
-            .session_for_binding("main", AgentTransportKind::Codex)
-            .await
-            .expect("start live external session");
-        let inner = Arc::new(SyncTrackingChatService {
-            calls: std::sync::Mutex::new(Vec::new()),
-            metadata: Some(Arc::clone(&metadata)),
-            reject_agent_selection: false,
-        });
+        let inner = Arc::new(SyncTrackingChatService::default());
         let inner_chat: Arc<dyn ChatService> = inner.clone();
         let chat = ExternalAgentChatService::new(
             inner_chat,
-            Arc::clone(&external_agents),
+            external_agents,
             test_gateway_state(),
-            Arc::clone(&session_store),
-            Arc::clone(&metadata),
+            session_store,
+            metadata,
         );
 
         let result = chat
-            .send_sync(serde_json::json!({
-                "_session_key": "main",
-                "text": "hello",
-                "agent_id": "main",
-            }))
+            .send_sync(ChatSendSyncRequest::text("hello"), test_chat_context())
             .await
-            .expect("explicit agent delegates internally");
-        assert_eq!(result["source"], "send_sync");
-        assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            metadata
-                .get("main")
-                .await
-                .expect("load switched session")
-                .expect("switched session exists")
-                .external_agent_kind(),
-            None
-        );
+            .expect("bound send_sync uses external agent");
 
+        assert_eq!(result["ok"], true);
+        assert!(
+            inner
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty()
+        );
+        assert_eq!(agent_state.starts.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            *agent_state
+                .prompts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec!["hello".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn bound_chat_send_sync_with_explicit_agent_delegates_to_inner() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
             .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
             .await
-            .expect("rebind external agent");
-        let external_result = chat
-            .send_sync(serde_json::json!({
-                "_session_key": "main",
-                "text": "external",
-                "agent_id": "",
-            }))
+            .expect("bind external agent");
+        let inner = Arc::new(SyncTrackingChatService::default());
+        let inner_chat: Arc<dyn ChatService> = inner.clone();
+        let chat = ExternalAgentChatService::new(
+            inner_chat,
+            external_agents,
+            test_gateway_state(),
+            session_store,
+            metadata,
+        );
+        let mut context = test_chat_context();
+        context.agent_id = Some("main".into());
+
+        let result = chat
+            .send_sync(ChatSendSyncRequest::text("hello"), context)
             .await
-            .expect("empty agent remains externally routed");
-        assert_eq!(external_result["ok"], true);
+            .expect("explicit agent delegates to inner chat");
+
+        assert_eq!(result["source"], "send_sync");
         assert_eq!(
             *inner
                 .calls
@@ -1823,6 +1789,37 @@ mod tests {
                 .unwrap_or_else(|error| error.into_inner()),
             vec!["send_sync"]
         );
+        assert_eq!(agent_state.starts.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn bound_chat_send_sync_preserves_explicit_agent_inner_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
+        external_agents
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .expect("bind external agent");
+        let chat = ExternalAgentChatService::new(
+            Arc::new(NoopChatService),
+            external_agents,
+            test_gateway_state(),
+            session_store,
+            metadata,
+        );
+        let mut context = test_chat_context();
+        context.agent_id = Some("main".into());
+
+        let error = chat
+            .send_sync(ChatSendSyncRequest::text("hello"), context)
+            .await
+            .expect_err("inner error must be returned unchanged");
+
+        assert_eq!(error.to_string(), "chat not configured");
+        assert_eq!(agent_state.starts.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
@@ -1843,10 +1840,10 @@ mod tests {
         )
         .await;
 
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "one" }))
+        chat.send(ChatSendRequest::text("one"), test_chat_context())
             .await
             .expect("first send");
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "two" }))
+        chat.send(ChatSendRequest::text("two"), test_chat_context())
             .await
             .expect("second send");
 
@@ -1922,17 +1919,17 @@ mod tests {
         )
         .await;
 
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "one" }))
+        chat.send(ChatSendRequest::text("one"), test_chat_context())
             .await
             .expect("first send");
         let error = chat
-            .send(serde_json::json!({ "sessionKey": "main", "text": "fail" }))
+            .send(ChatSendRequest::text("fail"), test_chat_context())
             .await
             .expect_err("failing send should error");
         assert_eq!(error.to_string(), "fake send failure");
         assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 1);
 
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "two" }))
+        chat.send(ChatSendRequest::text("two"), test_chat_context())
             .await
             .expect("send after eviction");
         assert_eq!(agent_state.starts.load(Ordering::SeqCst), 2);
@@ -1957,13 +1954,13 @@ mod tests {
         .await;
 
         let error = chat
-            .send(serde_json::json!({ "sessionKey": "main", "text": "event-error" }))
+            .send(ChatSendRequest::text("event-error"), test_chat_context())
             .await
             .expect_err("error event should fail chat send");
         assert_eq!(error.to_string(), "fake event failure");
         assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 1);
 
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "two" }))
+        chat.send(ChatSendRequest::text("two"), test_chat_context())
             .await
             .expect("send after event-error eviction");
         assert_eq!(agent_state.starts.load(Ordering::SeqCst), 2);
@@ -1988,7 +1985,7 @@ mod tests {
         .await;
 
         let error = chat
-            .send(serde_json::json!({ "sessionKey": "main", "text": "partial-error" }))
+            .send(ChatSendRequest::text("partial-error"), test_chat_context())
             .await
             .expect_err("partial stream error should fail chat send");
 
@@ -2018,7 +2015,7 @@ mod tests {
         )
         .await;
 
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "usage" }))
+        chat.send(ChatSendRequest::text("usage"), test_chat_context())
             .await
             .expect("send with usage");
 
@@ -2045,7 +2042,7 @@ mod tests {
         )
         .await;
 
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "thinking-first" }))
+        chat.send(ChatSendRequest::text("thinking-first"), test_chat_context())
             .await
             .expect("send thinking-first");
 
@@ -2084,7 +2081,7 @@ mod tests {
             Arc::clone(&session_store),
         )
         .await;
-        chat.send(serde_json::json!({ "sessionKey": "main", "text": "one" }))
+        chat.send(ChatSendRequest::text("one"), test_chat_context())
             .await
             .expect("send starts live session");
 

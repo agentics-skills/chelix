@@ -438,9 +438,9 @@ async fn handle_message(
         username: Some(username),
         sender_id: Some(peer_id.clone()),
         message_kind: Some(message_kind),
-        model: effective_config
-            .resolve_model(&chat_id, &peer_id)
-            .map(String::from),
+        model_override: effective_config
+            .resolve_model_override(&chat_id, &peer_id)
+            .map(Into::into),
         agent_id: effective_config
             .resolve_agent_id(&chat_id, &peer_id)
             .map(String::from),

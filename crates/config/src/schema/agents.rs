@@ -67,22 +67,12 @@ pub enum AgentsConfigStateError {
 
 /// Per-request tool choice requested by the agent harness.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ToolChoice {
     Auto,
     Any,
     None,
     Tool { name: String },
-}
-
-pub fn tool_choice_from_request_params(
-    request_params: &serde_json::Value,
-) -> serde_json::Result<Option<ToolChoice>> {
-    request_params
-        .get("tool_choice")
-        .cloned()
-        .map(serde_json::from_value::<ToolChoice>)
-        .transpose()
 }
 
 impl AgentsConfig {
@@ -452,46 +442,5 @@ mod tests {
                 ..
             })
         ));
-    }
-
-    #[test]
-    fn tool_choice_parses_from_request_params() {
-        let params = serde_json::json!({
-            "tool_choice": { "type": "tool", "name": "overwrite_file" }
-        });
-
-        assert!(matches!(
-            tool_choice_from_request_params(&params),
-            Ok(Some(ToolChoice::Tool { name })) if name == "overwrite_file"
-        ));
-    }
-
-    #[test]
-    fn tool_choice_parses_any_variant() {
-        let params = serde_json::json!({
-            "tool_choice": { "type": "any" }
-        });
-
-        assert!(matches!(
-            tool_choice_from_request_params(&params),
-            Ok(Some(ToolChoice::Any))
-        ));
-    }
-
-    #[test]
-    fn absent_tool_choice_returns_none() {
-        assert!(matches!(
-            tool_choice_from_request_params(&serde_json::json!({})),
-            Ok(None)
-        ));
-    }
-
-    #[test]
-    fn invalid_tool_choice_returns_error() {
-        let params = serde_json::json!({
-            "tool_choice": { "type": "tool" }
-        });
-
-        assert!(tool_choice_from_request_params(&params).is_err());
     }
 }

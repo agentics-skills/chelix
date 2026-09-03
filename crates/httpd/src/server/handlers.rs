@@ -1,4 +1,8 @@
-use super::*;
+use {
+    super::*,
+    chelix_protocol::{ErrorShape, ResponseFrame, error_codes},
+    chelix_sessions::SessionKey,
+};
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -12,13 +16,26 @@ pub(super) async fn health_handler(State(state): State<AppState>) -> impl IntoRe
     }))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct RpcHttpRequest {
     method: String,
     #[serde(default)]
     params: serde_json::Value,
     #[serde(default)]
     id: Option<String>,
+    #[serde(default)]
+    session_key: Option<SessionKey>,
+}
+
+fn validate_rpc_http_session_key(session_key: Option<&SessionKey>) -> Result<(), ErrorShape> {
+    if session_key.is_some_and(|key| key.as_str().is_empty()) {
+        return Err(ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "sessionKey must not be empty",
+        ));
+    }
+    Ok(())
 }
 
 pub(super) async fn rpc_handler(
@@ -26,6 +43,17 @@ pub(super) async fn rpc_handler(
     identity: Option<axum::Extension<auth::AuthIdentity>>,
     Json(request): Json<RpcHttpRequest>,
 ) -> impl IntoResponse {
+    let RpcHttpRequest {
+        method,
+        params,
+        id,
+        session_key,
+    } = request;
+    let request_id = id.unwrap_or_else(|| "http-rpc".to_string());
+    if let Err(error) = validate_rpc_http_session_key(session_key.as_ref()) {
+        return Json(ResponseFrame::err(&request_id, error));
+    }
+
     let scopes = identity
         .as_ref()
         .and_then(|axum::Extension(auth)| match auth.method {
@@ -41,14 +69,16 @@ pub(super) async fn rpc_handler(
             ]
         });
 
-    let request_id = request.id.unwrap_or_else(|| "http-rpc".to_string());
     let response = state
         .methods
         .dispatch(chelix_gateway::methods::MethodContext {
             request_id,
-            method: request.method,
-            params: request.params,
+            method,
+            params,
             client_conn_id: "http-rpc".to_string(),
+            transport: chelix_gateway::methods::MethodTransport::StatelessHttp {
+                session_id: session_key,
+            },
             client_role: chelix_protocol::roles::OPERATOR.to_string(),
             client_scopes: scopes,
             state: Arc::clone(&state.gateway),
@@ -369,6 +399,48 @@ pub fn is_same_origin(origin: &str, host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rpc_http_request_accepts_canonical_session_context() {
+        let request: RpcHttpRequest = serde_json::from_value(serde_json::json!({
+            "method": "chat.send",
+            "params": { "text": "hello" },
+            "id": "request-1",
+            "sessionKey": "session:http",
+        }))
+        .expect("canonical HTTP RPC envelope must parse");
+
+        assert_eq!(request.method, "chat.send");
+        assert_eq!(
+            request.session_key.as_ref().map(SessionKey::as_str),
+            Some("session:http")
+        );
+        assert!(validate_rpc_http_session_key(request.session_key.as_ref()).is_ok());
+    }
+
+    #[test]
+    fn rpc_http_request_rejects_present_empty_session_key() {
+        let request: RpcHttpRequest = serde_json::from_value(serde_json::json!({
+            "method": "chat.send",
+            "sessionKey": "",
+        }))
+        .expect("syntactically valid envelope must parse before semantic validation");
+
+        let error = validate_rpc_http_session_key(request.session_key.as_ref())
+            .expect_err("present empty session key must be rejected");
+        assert_eq!(error.code, error_codes::INVALID_REQUEST);
+    }
+
+    #[test]
+    fn rpc_http_request_rejects_an_additional_field() {
+        assert!(
+            serde_json::from_value::<RpcHttpRequest>(serde_json::json!({
+                "method": "chat.send",
+                "additional": true,
+            }))
+            .is_err()
+        );
+    }
 
     #[test]
     fn same_origin_exact_match() {

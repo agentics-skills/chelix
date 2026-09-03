@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use {
     chelix_channels::{Error as ChannelError, Result as ChannelResult},
-    chelix_sessions::{QueuedPromptsStatus, metadata::SqliteSessionMetadata},
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
+    chelix_sessions::{QueuedPromptsStatus, SessionKey, metadata::SqliteSessionMetadata},
 };
 
 use crate::{
@@ -326,13 +327,10 @@ pub(in crate::channel_events) async fn handle_queue(
     }
 
     // Use ordinary chat.send as the canonical content-normalization boundary.
-    let chat = state.chat();
-    let params = serde_json::json!({
-        "text": args,
-        "_session_key": session_key,
-    });
+    let request = ChatSendRequest::text(args);
+    let context = ChatExecutionContext::internal(SessionKey::new(session_key));
 
-    match chat.send(params).await {
+    match state.chat().send(request, context).await {
         Ok(res) => {
             let queued = res.get("queued").and_then(|v| v.as_bool()).unwrap_or(false);
             if !queued {

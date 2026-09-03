@@ -148,10 +148,10 @@ pub fn all_commands() -> &'static [CommandDef] {
         },
         CommandDef {
             name: "model",
-            description: "Switch provider/model",
+            description: "List models or switch model/reasoning",
             arg: Some(CommandArg {
-                name: "model",
-                description: "Model name or provider:model",
+                name: "selection",
+                description: "Model number and reasoning effort",
                 choices: &[],
                 required: false,
             }),

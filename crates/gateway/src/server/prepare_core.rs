@@ -23,8 +23,10 @@ use {
     },
     chelix_projects::ProjectStore,
     chelix_providers::ProviderRegistry,
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest},
     chelix_sessions::{
-        metadata::SqliteSessionMetadata, session_events::SessionEventBus, store::SessionStore,
+        SessionKey, metadata::SqliteSessionMetadata, session_events::SessionEventBus,
+        store::SessionStore,
     },
     secrecy::{ExposeSecret, Secret},
     std::{path::PathBuf, sync::Arc},
@@ -567,9 +569,22 @@ pub async fn prepare_gateway_core(
         let st = Arc::clone(&sys_state);
         tokio::spawn(async move {
             if let Some(state) = st.get() {
+                let session_id = SessionKey::new("main");
+                if let Err(error) = crate::session::ensure_internal_chat_session(
+                    &state.services,
+                    &session_id,
+                    None,
+                    None,
+                )
+                .await
+                {
+                    tracing::error!(%error, "cron system event session initialization failed");
+                    return;
+                }
                 let chat = state.chat();
-                let params = serde_json::json!({ "text": text });
-                if let Err(e) = chat.send(params).await {
+                let request = ChatSendRequest::text(text);
+                let context = ChatExecutionContext::internal(session_id);
+                if let Err(e) = chat.send(request, context).await {
                     tracing::error!("cron system event failed: {e}");
                 }
             }
@@ -624,6 +639,15 @@ pub async fn prepare_gateway_core(
                 },
                 _ => format!("cron:{}", uuid::Uuid::new_v4()),
             };
+            let session_id = SessionKey::new(session_key.clone());
+            crate::session::ensure_internal_chat_session(
+                &state.services,
+                &session_id,
+                req.agent_id.as_deref(),
+                req.model_override.as_ref(),
+            )
+            .await
+            .map_err(|error| chelix_cron::Error::message(error.to_string()))?;
 
             if matches!(
                 req.session_target,
@@ -659,19 +683,16 @@ pub async fn prepare_gateway_core(
                 prompt_text
             };
 
-            let mut params = serde_json::json!({
-                "text": prompt_text,
-                "_session_key": session_key,
-            });
-            if let Some(ref model) = req.model {
-                params["model"] = serde_json::Value::String(model.clone());
-            }
-            if let Some(tool_choice) = req.tool_choice.clone() {
-                params["tool_choice"] = serde_json::to_value(tool_choice)
-                    .map_err(|e| chelix_cron::Error::message(e.to_string()))?;
-            }
+            let request = ChatSendSyncRequest {
+                text: prompt_text,
+                model_override: req.model_override.clone(),
+                tool_choice: req.tool_choice.clone(),
+                input_medium: None,
+            };
+            let mut context = ChatExecutionContext::internal(session_id);
+            context.agent_id = req.agent_id.clone();
             let result = chat
-                .send_sync(params)
+                .send_sync(request, context)
                 .await
                 .map_err(|e| chelix_cron::Error::message(e.to_string()));
 

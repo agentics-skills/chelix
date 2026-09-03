@@ -13,8 +13,10 @@ use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
 
 use {
     chelix_providers::ProviderRegistry,
+    chelix_service_traits::{ChatExecutionContext, ChatSendSyncRequest},
     chelix_sessions::{
-        metadata::SqliteSessionMetadata, session_events::SessionEventBus, store::SessionStore,
+        SessionKey, metadata::SqliteSessionMetadata, session_events::SessionEventBus,
+        store::SessionStore,
     },
 };
 
@@ -387,23 +389,27 @@ pub(super) async fn complete_startup(
             Arc::new(move |req: chelix_webhooks::worker::ExecuteRequest| {
                 let chat_state = Arc::clone(&worker_state_ref);
                 Box::pin(async move {
+                    let session_id = SessionKey::new(req.session_key.clone());
+                    crate::session::ensure_internal_chat_session(
+                        &chat_state.services,
+                        &session_id,
+                        req.agent_id.as_deref(),
+                        req.model_override.as_ref(),
+                    )
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
                     let chat = chat_state.chat();
-                    let mut params = serde_json::json!({
-                        "text": req.message,
-                        "_session_key": req.session_key,
-                    });
-                    if let Some(ref model) = req.model {
-                        params["model"] = serde_json::Value::String(model.clone());
-                    }
-                    if let Some(ref agent_id) = req.agent_id {
-                        params["agent_id"] = serde_json::Value::String(agent_id.clone());
-                    }
-                    if let Some(ref tool_policy) = req.tool_policy {
-                        params["_tool_policy"] = serde_json::to_value(tool_policy)
-                            .map_err(|error| anyhow::anyhow!(error))?;
-                    }
+                    let request = ChatSendSyncRequest {
+                        text: req.message.clone(),
+                        model_override: req.model_override.clone(),
+                        tool_choice: None,
+                        input_medium: None,
+                    };
+                    let mut context = ChatExecutionContext::internal(session_id);
+                    context.agent_id = req.agent_id.clone();
+                    context.tool_policy = req.tool_policy.clone();
                     let result = chat
-                        .send_sync(params)
+                        .send_sync(request, context)
                         .await
                         .map_err(|e| anyhow::anyhow!("{e}"))?;
                     let input_tokens = result.get("inputTokens").and_then(|v| v.as_i64());

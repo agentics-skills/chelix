@@ -12,7 +12,7 @@ use {
 use {
     super::plugin::{
         ChannelDescriptor, ChannelOutbound, ChannelPlugin, ChannelStreamOutbound, ChannelType,
-        InteractiveMessage, StreamReceiver, ThreadMessage,
+        InteractiveMessage, StreamReceiver,
     },
     crate::{Error, Result, config_view::ChannelConfigView, plugin::ChannelHealthSnapshot},
 };
@@ -227,34 +227,6 @@ impl ChannelRegistry {
         let plugin = self.plugins.get(&channel_type)?;
         let p = plugin.read().await;
         p.account_config_json(account_id)
-    }
-
-    /// Fetch thread messages for context injection.
-    ///
-    /// Resolves the plugin for the given account and calls its thread context
-    /// provider. Returns an empty vec if the plugin does not support threads.
-    pub async fn fetch_thread_messages(
-        &self,
-        account_id: &str,
-        channel_id: &str,
-        thread_id: &str,
-        limit: usize,
-    ) -> Result<Vec<ThreadMessage>> {
-        let channel_type = self
-            .resolve_channel_type(account_id)
-            .ok_or_else(|| Error::unknown_account(account_id))?;
-        let plugin = self
-            .plugins
-            .get(&channel_type)
-            .ok_or_else(|| Error::invalid_input(format!("unknown channel type: {channel_type}")))?;
-        let p = plugin.read().await;
-        match p.thread_context() {
-            Some(ctx) => {
-                ctx.fetch_thread_messages(account_id, channel_id, thread_id, limit)
-                    .await
-            },
-            None => Ok(Vec::new()),
-        }
     }
 
     /// Update account config via the registry.
@@ -552,7 +524,7 @@ mod tests {
             GroupPolicy::default()
         }
 
-        fn model(&self) -> Option<&str> {
+        fn model_override(&self) -> Option<&chelix_common::ConfigModelOverride> {
             None
         }
 

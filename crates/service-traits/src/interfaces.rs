@@ -5,7 +5,9 @@ use {async_trait::async_trait, serde_json::Value, tracing::warn};
 pub use chelix_common::{ReasoningEffort, ResolvedModelReasoning};
 
 use {
-    crate::{ServiceError, ServiceResult},
+    crate::{
+        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ServiceError, ServiceResult,
+    },
     chelix_sessions::{QueuedPromptsStatus, SessionKey},
 };
 
@@ -338,11 +340,13 @@ impl WebhooksService for NoopWebhooksService {
 
 #[async_trait]
 pub trait ChatService: Send + Sync {
-    async fn send(&self, params: Value) -> ServiceResult;
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult;
 
-    async fn send_sync(&self, params: Value) -> ServiceResult {
-        self.send(params).await
-    }
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
 
     async fn abort(&self, params: Value) -> ServiceResult;
 
@@ -399,7 +403,19 @@ pub struct NoopChatService;
 
 #[async_trait]
 impl ChatService for NoopChatService {
-    async fn send(&self, _p: Value) -> ServiceResult {
+    async fn send(
+        &self,
+        _request: ChatSendRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn send_sync(
+        &self,
+        _request: ChatSendSyncRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 

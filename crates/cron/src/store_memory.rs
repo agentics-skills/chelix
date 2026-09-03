@@ -117,7 +117,7 @@ mod tests {
             enabled: true,
             delete_after_run: false,
             schedule: CronSchedule::At { at_ms: 1000 },
-            payload: CronPayload::SystemEvent { text: "hi".into() },
+            payload: CronPayload::SystemEvent(CronSystemEvent { text: "hi".into() }),
             session_target: SessionTarget::Main,
             state: CronJobState::default(),
             auto_prune_container: None,

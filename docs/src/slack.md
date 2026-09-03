@@ -97,8 +97,8 @@ offered = ["slack"]
 | `mention_mode`      | no        | `"mention"`       | When the bot responds in channels: `"always"`, `"mention"`, or `"none"`          |
 | `allowlist`         | no        | `[]`              | Slack user IDs allowed to DM the bot (when `dm_policy = "allowlist"`)            |
 | `channel_allowlist` | no        | `[]`              | Slack channel IDs allowed to interact with the bot                               |
-| `model`             | no        | —                 | Override the default model for this channel                                      |
-| `model_provider`    | no        | —                 | Provider for the overridden model                                                |
+| `model_override`    | no        | —                 | Complete canonical model/reasoning override for this channel                     |
+| `model_provider`    | no        | —                 | Informational provider label; model selection uses `model_override.model`        |
 | `stream_mode`       | no        | `"edit_in_place"` | Streaming mode: `"edit_in_place"`, `"native"`, or `"off"`                        |
 | `edit_throttle_ms`  | no        | `500`             | Minimum milliseconds between streaming edit updates                              |
 | `thread_replies`    | no        | `true`            | Reply in threads                                                                 |
@@ -125,21 +125,30 @@ group_policy = "open"
 mention_mode = "mention"
 allowlist = ["U0123456789", "U9876543210"]
 channel_allowlist = ["C0123456789"]
-model = "openrouter::anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 stream_mode = "edit_in_place"
 edit_throttle_ms = 500
 thread_replies = true
 
-# Per-channel override: use a different model in a specific Slack channel
+# Per-channel override: use a different model/reasoning pair in a Slack channel
 [channels.slack.my-bot.channel_overrides.C0123456789]
-model = "openai::gpt-4o"
+model_override = { model = "openai::gpt-4o", reasoning_effort = "off" }
 
-# Per-user override: use a specific model/provider for a Slack user
+# Per-user override: use a specific model/reasoning pair for a Slack user
 [channels.slack.my-bot.user_overrides.U0123456789]
-model = "openrouter::anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 ```
+
+User overrides take priority over channel overrides, which take priority over
+the account default. These overrides initialize a newly created channel
+session; they are not re-applied to every message. A direct conversation has
+its own session. A Slack channel shares one session across participants, so the
+first message that creates it uses the effective user, channel, then account
+pair, or the validated agent pair when no channel override is configured. The
+persisted pair then stays unchanged for later senders until it is changed
+explicitly with `/model`.
 
 ### Events API Mode
 

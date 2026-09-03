@@ -4,6 +4,8 @@ use serde_json::Value;
 
 use {
     chelix_channels::{ChannelMessageKind, ChannelReplyTarget},
+    chelix_common::MessageMedium,
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
     chelix_sessions::{
         ContentBlock, MessageContent, QueuedPromptChannelMetadata, QueuedPromptContent,
         QueuedPromptContentBlock, QueuedPromptDocument, QueuedPromptImageUrl,
@@ -15,8 +17,7 @@ use {
 use crate::{
     error::{Error, Result},
     message::{
-        infer_reply_medium, parse_message_params, user_audio_path_from_params,
-        user_documents_from_params,
+        chat_message_parts, chat_user_audio_path, chat_user_documents, infer_chat_reply_medium,
     },
     runtime::ChatRuntime,
     types::{BroadcastOpts, ReplyMedium, broadcast},
@@ -26,44 +27,61 @@ const QUEUE_EVENT_STATE: &str = "prompt_queue";
 
 /// Normalize one ordinary `chat.send` request into closed prompt content.
 pub(crate) fn normalize_queued_prompt_content(
-    params: &Value,
-    session_id: &SessionKey,
+    request: &ChatSendRequest,
+    context: &ChatExecutionContext,
     session_store: &SessionStore,
 ) -> Result<QueuedPromptContent> {
-    let (_, content) = parse_message_params(params).map_err(Error::message)?;
-    let channel = params
-        .get("channel")
-        .map(parse_channel_metadata)
-        .transpose()?;
-    let input_medium = parse_input_medium(params, channel.as_ref())?;
-    let reply_medium = infer_reply_medium(params, &message_text(&content));
-    let documents = user_documents_from_params(params, session_id.as_str(), session_store)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|document| QueuedPromptDocument {
-            display_name: document.display_name,
-            stored_filename: document.stored_filename,
-            mime_type: document.mime_type,
-            size_bytes: document.size_bytes,
-            media_ref: document.media_ref,
-        })
-        .collect();
-    let channel_reply_target = params
-        .get("_channel_reply_target")
-        .map(|value| {
-            serde_json::from_value::<ChannelReplyTarget>(value.clone()).map_err(Error::from)
-        })
-        .transpose()?;
+    let (text, content) = chat_message_parts(&request.message).map_err(Error::message)?;
+    let channel = context
+        .channel
+        .as_ref()
+        .map(|metadata| QueuedPromptChannelMetadata {
+            channel_type: metadata.channel_type,
+            sender_name: metadata.sender_name.clone(),
+            username: metadata.username.clone(),
+            sender_id: metadata.sender_id.clone(),
+            message_kind: metadata.message_kind,
+        });
+    let input_medium = request.input_medium.unwrap_or_else(|| {
+        if channel.as_ref().is_some_and(|metadata| {
+            matches!(metadata.message_kind, Some(ChannelMessageKind::Voice))
+        }) {
+            MessageMedium::Voice
+        } else {
+            MessageMedium::Text
+        }
+    });
+    let reply_medium = infer_chat_reply_medium(request, context.channel.as_ref(), &text);
+    let documents = chat_user_documents(
+        &request.documents,
+        context.session_id.as_str(),
+        session_store,
+    )
+    .map_err(Error::message)?
+    .into_iter()
+    .map(|document| QueuedPromptDocument {
+        display_name: document.display_name,
+        stored_filename: document.stored_filename,
+        mime_type: document.mime_type,
+        size_bytes: document.size_bytes,
+        media_ref: document.media_ref,
+    })
+    .collect();
+    let audio = chat_user_audio_path(
+        request.audio_filename.as_deref(),
+        context.session_id.as_str(),
+    )
+    .map_err(Error::message)?;
 
     Ok(QueuedPromptContent {
         content: queue_message_content(content),
         documents,
-        audio: user_audio_path_from_params(params, session_id.as_str()),
-        client_sequence: params.get("_seq").and_then(Value::as_u64),
+        audio,
+        client_sequence: request.client_sequence,
         input_medium,
         reply_medium,
         channel,
-        channel_reply_target,
+        channel_reply_target: context.channel_reply_target.clone(),
     })
 }
 
@@ -186,66 +204,5 @@ fn queue_message_content(content: MessageContent) -> QueuedPromptMessageContent 
                 })
                 .collect(),
         ),
-    }
-}
-
-fn parse_channel_metadata(value: &Value) -> Result<QueuedPromptChannelMetadata> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| Error::message("'channel' must be an object"))?;
-    let channel_type = object
-        .get("channel_type")
-        .ok_or_else(|| Error::message("channel metadata is missing 'channel_type'"))?;
-    let channel_type = serde_json::from_value(channel_type.clone())?;
-    let message_kind = object
-        .get("message_kind")
-        .filter(|value| !value.is_null())
-        .map(|value| serde_json::from_value(value.clone()))
-        .transpose()?;
-
-    Ok(QueuedPromptChannelMetadata {
-        channel_type,
-        sender_name: optional_string(object, "sender_name")?,
-        username: optional_string(object, "username")?,
-        sender_id: optional_string(object, "sender_id")?,
-        message_kind,
-    })
-}
-
-fn optional_string(object: &serde_json::Map<String, Value>, field: &str) -> Result<Option<String>> {
-    match object.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(Error::message(format!(
-            "channel metadata field '{field}' must be a string or null"
-        ))),
-    }
-}
-
-fn parse_input_medium(
-    params: &Value,
-    channel: Option<&QueuedPromptChannelMetadata>,
-) -> Result<ReplyMedium> {
-    if let Some(value) = params.get("_input_medium") {
-        return Ok(serde_json::from_value(value.clone())?);
-    }
-    if channel
-        .is_some_and(|metadata| matches!(metadata.message_kind, Some(ChannelMessageKind::Voice)))
-    {
-        return Ok(ReplyMedium::Voice);
-    }
-    Ok(ReplyMedium::Text)
-}
-
-fn message_text(content: &MessageContent) -> String {
-    match content {
-        MessageContent::Text(text) => text.clone(),
-        MessageContent::Multimodal(blocks) => blocks
-            .iter()
-            .find_map(|block| match block {
-                ContentBlock::Text { text } => Some(text.clone()),
-                ContentBlock::ImageUrl { .. } => None,
-            })
-            .unwrap_or_else(|| "[Image]".to_string()),
     }
 }

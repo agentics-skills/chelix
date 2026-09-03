@@ -1,8 +1,9 @@
 use serde_json::json;
 
 use crate::{
-    BrowserService, ChatService, NoopBrowserService, ServiceResult, SessionBusyReason,
-    SessionMutationCoordinator, interfaces::model_service_not_configured_error,
+    BrowserService, ChatExecutionContext, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest,
+    ChatService, NoopBrowserService, ServiceResult, SessionBusyReason, SessionMutationCoordinator,
+    interfaces::model_service_not_configured_error,
 };
 
 struct SlowShutdownBrowserService;
@@ -11,7 +12,19 @@ struct DefaultRefreshChatService;
 
 #[async_trait::async_trait]
 impl ChatService for DefaultRefreshChatService {
-    async fn send(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn send(
+        &self,
+        _request: ChatSendRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
+        Ok(json!({}))
+    }
+
+    async fn send_sync(
+        &self,
+        _request: ChatSendSyncRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
@@ -104,6 +117,95 @@ async fn chat_service_default_refresh_prompt_memory_returns_not_configured() {
         Err(error) => error,
     };
     assert_eq!(error.to_string(), "chat not configured");
+}
+
+#[test]
+fn chat_send_request_accepts_the_closed_public_payload() {
+    let request: ChatSendRequest = match serde_json::from_value(json!({
+        "text": "Hello",
+        "modelOverride": {
+            "model": "test::model",
+            "reasoningEffort": "low"
+        },
+        "clientSequence": 7
+    })) {
+        Ok(request) => request,
+        Err(error) => panic!("valid chat.send payload should deserialize: {error}"),
+    };
+
+    assert_eq!(request.message, ChatSendMessage::Text("Hello".into()));
+    let Some(model_override) = request.model_override else {
+        panic!("valid override should be present");
+    };
+    assert_eq!(model_override.model, "test::model");
+    assert_eq!(model_override.reasoning_effort.as_str(), "low");
+    assert_eq!(request.client_sequence, Some(7));
+}
+
+#[test]
+fn chat_send_request_rejects_invalid_message_or_override_shapes() {
+    let cases = [
+        json!({}),
+        json!({ "text": "Hello", "content": [{ "type": "text", "text": "Hello" }] }),
+        json!({ "text": "Hello", "modelOverride": { "model": "test::model" } }),
+    ];
+
+    for value in cases {
+        assert!(serde_json::from_value::<ChatSendRequest>(value).is_err());
+    }
+}
+
+#[test]
+fn chat_send_request_rejects_an_additional_field() {
+    let result = serde_json::from_value::<ChatSendRequest>(json!({
+        "text": "Hello",
+        "unexpected": true
+    }));
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn chat_send_sync_request_accepts_the_closed_public_payload() {
+    let request: ChatSendSyncRequest = match serde_json::from_value(json!({
+        "text": "Hello",
+        "modelOverride": {
+            "model": "test::model",
+            "reasoningEffort": "low"
+        }
+    })) {
+        Ok(request) => request,
+        Err(error) => panic!("valid chat.send_sync payload should deserialize: {error}"),
+    };
+
+    assert_eq!(request.text, "Hello");
+    let Some(model_override) = request.model_override else {
+        panic!("valid override should be present");
+    };
+    assert_eq!(model_override.model, "test::model");
+    assert_eq!(model_override.reasoning_effort.as_str(), "low");
+}
+
+#[test]
+fn chat_send_sync_request_rejects_invalid_public_shapes() {
+    let cases = [
+        json!({}),
+        json!({ "text": "Hello", "modelOverride": { "model": "test::model" } }),
+    ];
+
+    for value in cases {
+        assert!(serde_json::from_value::<ChatSendSyncRequest>(value).is_err());
+    }
+}
+
+#[test]
+fn chat_send_sync_request_rejects_an_additional_field() {
+    let result = serde_json::from_value::<ChatSendSyncRequest>(json!({
+        "text": "Hello",
+        "unexpected": true
+    }));
+
+    assert!(result.is_err());
 }
 
 #[tokio::test]

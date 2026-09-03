@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
+    chelix_common::ModelOverride,
     chelix_config::schema::ReasoningEffort,
-    chelix_service_traits::ResolvedModelReasoning,
-    chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+    chelix_service_traits::{
+        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ResolvedModelReasoning,
+    },
+    chelix_sessions::{SessionKey, metadata::SqliteSessionMetadata, store::SessionStore},
     serde_json::Value,
 };
 
@@ -194,23 +197,27 @@ fn build_send_to_session(
         move |req: chelix_tools::sessions_communicate::SendToSessionRequest| {
             let state = Arc::clone(&state);
             Box::pin(async move {
-                let mut params = serde_json::json!({
-                    "text": req.message,
-                    "_session_key": req.key,
-                });
-                if let Some(model_override) = req.model_override {
+                let model_override = if let Some(model_override) = req.model_override {
                     let model_reasoning = model_from_override(&state, &model_override).await?;
-                    params["model"] = serde_json::json!(model_reasoning.model_id());
-                    params["reasoningEffort"] =
-                        serde_json::json!(model_reasoning.reasoning_effort().as_str());
-                }
+                    Some(ModelOverride {
+                        model: model_reasoning.model_id().to_string(),
+                        reasoning_effort: model_reasoning.reasoning_effort().clone(),
+                    })
+                } else {
+                    None
+                };
+                let context = ChatExecutionContext::internal(SessionKey::new(req.key));
                 let chat = state.chat();
                 if req.wait_for_reply {
-                    chat.send_sync(params)
+                    let mut request = ChatSendSyncRequest::text(req.message);
+                    request.model_override = model_override;
+                    chat.send_sync(request, context)
                         .await
                         .map_err(|error| chelix_tools::Error::message(error.to_string()))
                 } else {
-                    chat.send(params)
+                    let mut request = ChatSendRequest::text(req.message);
+                    request.model_override = model_override;
+                    chat.send(request, context)
                         .await
                         .map_err(|error| chelix_tools::Error::message(error.to_string()))
                 }
@@ -238,7 +245,7 @@ async fn validate_agent_id(state: &GatewayState, agent_id: &str) -> chelix_tools
 async fn resolve_model_and_reasoning_effort(
     state: &GatewayState,
     agent_id: &str,
-    model_override: Option<&chelix_tools::session_model_override::ModelOverride>,
+    model_override: Option<&ModelOverride>,
 ) -> chelix_tools::Result<ResolvedModelReasoning> {
     let (model, effort) = if let Some(model_override) = model_override {
         (
@@ -255,7 +262,7 @@ async fn resolve_model_and_reasoning_effort(
 #[tracing::instrument(skip(state, model_override))]
 async fn model_from_override(
     state: &GatewayState,
-    model_override: &chelix_tools::session_model_override::ModelOverride,
+    model_override: &ModelOverride,
 ) -> chelix_tools::Result<ResolvedModelReasoning> {
     validate_model_and_reasoning_effort(
         state,
@@ -342,9 +349,7 @@ mod tests {
     use {
         async_trait::async_trait,
         chelix_service_traits::{ModelService, ServiceError, ServiceResult},
-        chelix_tools::{
-            session_model_override::ModelOverride, sessions_manage::CreateSessionRequest,
-        },
+        chelix_tools::sessions_manage::CreateSessionRequest,
     };
 
     struct ExactModelService;

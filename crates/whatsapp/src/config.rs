@@ -3,15 +3,17 @@ use {
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy, MentionMode},
     },
+    chelix_common::ConfigModelOverride,
     serde::{Deserialize, Serialize},
     std::{collections::HashMap, path::PathBuf},
 };
 
-/// Per-chat model/provider/agent override.
+/// Per-chat model/reasoning, provider metadata, and agent override.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChatOverride {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -24,7 +26,7 @@ pub struct ChatOverride {
 /// bot token is needed. The Signal Protocol session state is persisted in a
 /// per-account store.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct WhatsAppAccountConfig {
     /// Path to the store for this account's Signal Protocol sessions.
     /// Defaults to `<data_dir>/whatsapp/<account_id>/`.
@@ -42,11 +44,11 @@ pub struct WhatsAppAccountConfig {
     /// Whether this account has been paired (QR code scanned).
     pub paired: bool,
 
-    /// Default model ID for this account's sessions.
+    /// Default canonical model/reasoning override for this account's sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
 
-    /// Provider name associated with `model`.
+    /// Provider name associated with `model_override`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
 
@@ -115,8 +117,8 @@ impl ChannelConfigView for WhatsAppAccountConfig {
         self.group_policy.clone()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    fn model_override(&self) -> Option<&ConfigModelOverride> {
+        self.model_override.as_ref()
     }
 
     fn model_provider(&self) -> Option<&str> {
@@ -127,10 +129,10 @@ impl ChannelConfigView for WhatsAppAccountConfig {
         self.agent_id.as_deref()
     }
 
-    fn channel_model(&self, channel_id: &str) -> Option<&str> {
+    fn channel_model_override(&self, channel_id: &str) -> Option<&ConfigModelOverride> {
         self.channel_overrides
             .get(channel_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn channel_model_provider(&self, channel_id: &str) -> Option<&str> {
@@ -145,10 +147,10 @@ impl ChannelConfigView for WhatsAppAccountConfig {
             .and_then(|o| o.agent_id.as_deref())
     }
 
-    fn user_model(&self, user_id: &str) -> Option<&str> {
+    fn user_model_override(&self, user_id: &str) -> Option<&ConfigModelOverride> {
         self.user_overrides
             .get(user_id)
-            .and_then(|o| o.model.as_deref())
+            .and_then(|override_config| override_config.model_override.as_ref())
     }
 
     fn user_model_provider(&self, user_id: &str) -> Option<&str> {
@@ -171,7 +173,7 @@ impl Default for WhatsAppAccountConfig {
             display_name: None,
             phone_number: None,
             paired: false,
-            model: None,
+            model_override: None,
             model_provider: None,
             agent_id: None,
             dm_policy: DmPolicy::default(),
@@ -192,13 +194,20 @@ impl Default for WhatsAppAccountConfig {
 mod tests {
     use super::*;
 
+    fn model_override(model: &str, reasoning_effort: &str) -> ConfigModelOverride {
+        ConfigModelOverride {
+            model: model.to_string(),
+            reasoning_effort: reasoning_effort.into(),
+        }
+    }
+
     #[test]
     fn default_config() {
         let cfg = WhatsAppAccountConfig::default();
         assert!(!cfg.paired);
         assert!(cfg.store_path.is_none());
         assert!(cfg.display_name.is_none());
-        assert!(cfg.model.is_none());
+        assert!(cfg.model_override.is_none());
         assert!(cfg.agent_id.is_none());
         assert_eq!(cfg.dm_policy, DmPolicy::Allowlist);
         assert_eq!(cfg.group_policy, GroupPolicy::Open);
@@ -268,34 +277,34 @@ mod tests {
     #[test]
     fn resolve_overrides_prefers_user_then_group_then_default() {
         let mut cfg = WhatsAppAccountConfig {
-            model: Some("default-model".into()),
+            model_override: Some(model_override("default-model", "low")),
             agent_id: Some("default-agent".into()),
             ..Default::default()
         };
         cfg.channel_overrides
             .insert("120363456789@g.us".into(), ChatOverride {
-                model: Some("group-model".into()),
+                model_override: Some(model_override("group-model", "medium")),
                 agent_id: Some("group-agent".into()),
                 ..Default::default()
             });
         cfg.user_overrides
             .insert("15551234567@s.whatsapp.net".into(), ChatOverride {
-                model: Some("user-model".into()),
+                model_override: Some(model_override("user-model", "high")),
                 agent_id: Some("user-agent".into()),
                 ..Default::default()
             });
 
         assert_eq!(
-            cfg.resolve_model("120363456789@g.us", "15551234567@s.whatsapp.net"),
-            Some("user-model")
+            cfg.resolve_model_override("120363456789@g.us", "15551234567@s.whatsapp.net"),
+            Some(&model_override("user-model", "high"))
         );
         assert_eq!(
             cfg.resolve_agent_id("120363456789@g.us", "15551234567@s.whatsapp.net"),
             Some("user-agent")
         );
         assert_eq!(
-            cfg.resolve_model("120363456789@g.us", "missing@s.whatsapp.net"),
-            Some("group-model")
+            cfg.resolve_model_override("120363456789@g.us", "missing@s.whatsapp.net"),
+            Some(&model_override("group-model", "medium"))
         );
         assert_eq!(
             cfg.resolve_agent_id("120363456789@g.us", "missing@s.whatsapp.net"),

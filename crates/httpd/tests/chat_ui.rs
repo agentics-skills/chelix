@@ -19,6 +19,8 @@ use {
         state::GatewayState,
     },
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
+    chelix_sessions::SessionKey,
 };
 
 use chelix_providers::ProviderRegistry;
@@ -389,7 +391,12 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     // not the noop. If no providers are configured it errors; otherwise it may
     // succeed and return a runId.
     let chat = state2.chat();
-    let result = chat.send(serde_json::json!({ "text": "hello" })).await;
+    let result = chat
+        .send(
+            ChatSendRequest::text("hello"),
+            ChatExecutionContext::internal(SessionKey::new("main")),
+        )
+        .await;
     match result {
         Err(e) => assert!(
             !e.to_string().contains("chat not configured"),

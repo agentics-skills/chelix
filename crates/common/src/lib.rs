@@ -7,11 +7,13 @@ pub mod http_client;
 pub mod item_positions;
 pub mod message_medium;
 pub mod model;
+pub mod model_override;
 pub mod provider_output;
 pub mod reasoning_policy;
 pub mod secret_serde;
 pub mod ssrf;
 pub mod tool_lifecycle;
+pub mod tool_policy;
 pub mod types;
 
 pub use {
@@ -24,6 +26,7 @@ pub use {
         ReasoningContent, ReasoningEffort, ReasoningInclude, ReasoningSummary,
         ResolvedModelReasoning, ResolvedModelReasoningError, ResponsesReasoningItem,
     },
+    model_override::{ConfigModelOverride, ModelOverride},
     provider_output::{
         MaterializerError, ProviderItemId, ProviderItemPosition, ProviderItemUpdate,
         ProviderItemUpdatePayload, ProviderOutputItem, ProviderOutputPayload, ProviderSegment,
@@ -32,4 +35,5 @@ pub use {
     },
     reasoning_policy::{ReasoningPolicyDecision, ReasoningRequestState, resolve_reasoning_policy},
     tool_lifecycle::ActiveToolInvocation,
+    tool_policy::ToolPolicy,
 };

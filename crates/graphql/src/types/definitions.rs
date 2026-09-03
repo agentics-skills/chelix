@@ -7,11 +7,37 @@
 //!
 //! For dynamic/untyped fields, the `Json` scalar is used.
 
-use {async_graphql::SimpleObject, serde::Deserialize};
+use {
+    async_graphql::{InputObject, SimpleObject},
+    serde::Deserialize,
+};
 
 use crate::scalars::Json;
 
 // ── Common result type ──────────────────────────────────────────────────────
+
+/// Complete model/reasoning override accepted by GraphQL chat mutations.
+#[derive(Debug, InputObject)]
+pub struct ModelOverrideInput {
+    pub model: String,
+    pub reasoning_effort: String,
+}
+
+impl From<ModelOverrideInput> for chelix_common::ModelOverride {
+    fn from(value: ModelOverrideInput) -> Self {
+        Self {
+            model: value.model,
+            reasoning_effort: value.reasoning_effort.into(),
+        }
+    }
+}
+
+/// Complete model/reasoning override returned by GraphQL status queries.
+#[derive(Debug, SimpleObject, Deserialize)]
+pub struct ModelOverrideInfo {
+    pub model: String,
+    pub reasoning_effort: String,
+}
 
 /// Generic boolean result for mutations that return `{ "ok": true }`.
 #[derive(Debug, SimpleObject, Deserialize)]
@@ -253,7 +279,7 @@ pub struct HeartbeatConfig {
     #[serde(default)]
     pub every: Option<String>,
     #[serde(default)]
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverrideInfo>,
     #[serde(default)]
     pub prompt: Option<String>,
     #[serde(default)]

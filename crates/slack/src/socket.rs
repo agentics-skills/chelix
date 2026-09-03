@@ -566,7 +566,9 @@ pub(crate) async fn handle_inbound(
             username,
             sender_id: Some(user_id.to_string()),
             message_kind: Some(ChannelMessageKind::Text),
-            model: config.resolve_model(channel_id, user_id).map(String::from),
+            model_override: config
+                .resolve_model_override(channel_id, user_id)
+                .map(Into::into),
             agent_id: config
                 .resolve_agent_id(channel_id, user_id)
                 .map(String::from),

@@ -219,69 +219,72 @@ fn format_pending_approvals_renders_numbered_commands() {
 }
 
 #[test]
-fn channel_reasoning_effort_selection_matches_ui_pair_contract() {
-    let reasoning_model = serde_json::json!({
-        "reasoning_supported_efforts": ["low", "high"],
-    });
-    for (configured, expected) in [
-        (Some("high"), "high"),
-        (None, "low"),
-        (Some("unsupported"), "low"),
-    ] {
-        assert_eq!(
-            select_channel_reasoning_effort(&reasoning_model, configured).unwrap(),
-            expected
-        );
-    }
-
-    let off_model = serde_json::json!({
-        "reasoning_supported_efforts": ["off"],
-    });
-    assert_eq!(
-        select_channel_reasoning_effort(&off_model, Some("high")).unwrap(),
-        "off"
-    );
-}
-
-#[test]
 fn channel_session_defaults_use_sender_override_for_group_commands() {
     let config = serde_json::json!({
-        "model": "default-model",
+        "model_override": {
+            "model": "default-model",
+            "reasoning_effort": "low"
+        },
         "agent_id": "default-agent",
         "channel_overrides": {
             "group-1": {
-                "model": "channel-model",
+                "model_override": {
+                    "model": "channel-model",
+                    "reasoning_effort": "medium"
+                },
                 "agent_id": "channel-agent"
             }
         },
         "user_overrides": {
             "user-42": {
-                "model": "user-model",
+                "model_override": {
+                    "model": "user-model",
+                    "reasoning_effort": "high"
+                },
                 "agent_id": "user-agent"
             }
         }
     });
 
     let defaults =
-        resolve_channel_session_defaults_from_config(&config, "group-1", Some("user-42"));
-    assert_eq!(defaults.model.as_deref(), Some("user-model"));
+        resolve_channel_session_defaults_from_config(&config, "group-1", Some("user-42")).unwrap();
+    assert_eq!(
+        defaults.model_override,
+        Some(ModelOverride {
+            model: "user-model".to_string(),
+            reasoning_effort: "high".into(),
+        })
+    );
     assert_eq!(defaults.agent_id.as_deref(), Some("user-agent"));
 }
 
 #[test]
 fn channel_session_defaults_use_chat_id_for_dm_commands() {
     let config = serde_json::json!({
-        "model": "default-model",
+        "model_override": {
+            "model": "default-model",
+            "reasoning_effort": "low"
+        },
         "agent_id": "default-agent",
         "user_overrides": {
             "dm-1": {
-                "model": "dm-model",
+                "model_override": {
+                    "model": "dm-model",
+                    "reasoning_effort": "off"
+                },
                 "agent_id": "dm-agent"
             }
         }
     });
 
-    let defaults = resolve_channel_session_defaults_from_config(&config, "dm-1", Some("dm-1"));
-    assert_eq!(defaults.model.as_deref(), Some("dm-model"));
+    let defaults =
+        resolve_channel_session_defaults_from_config(&config, "dm-1", Some("dm-1")).unwrap();
+    assert_eq!(
+        defaults.model_override,
+        Some(ModelOverride {
+            model: "dm-model".to_string(),
+            reasoning_effort: "off".into(),
+        })
+    );
     assert_eq!(defaults.agent_id.as_deref(), Some("dm-agent"));
 }

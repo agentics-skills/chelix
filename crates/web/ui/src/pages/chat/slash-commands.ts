@@ -4,6 +4,7 @@ import { chatAddMsg } from "../../chat-ui";
 import { renderMarkdown, sendRpc } from "../../helpers";
 import { clearActiveSession, fetchSessions, switchSession } from "../../sessions";
 import * as S from "../../state";
+import type { ChatSendSyncRequest } from "../../types/chat";
 import { renderContextCard } from "./context-card";
 
 // ── Types ────────────────────────────────────────────────────
@@ -303,7 +304,8 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 	fast: (args) => {
 		const arg = args.trim().toLowerCase();
 		chatAddMsg("system", `Fast mode: ${arg || "toggle"}\u2026`);
-		sendRpc("chat.send_sync", { text: `/fast ${arg}`.trim() }).then((res) => {
+		const request: ChatSendSyncRequest = { text: `/fast ${arg}`.trim() };
+		sendRpc("chat.send_sync", request).then((res) => {
 			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
 			if (res.ok && res.payload) {
 				const text = typeof res.payload === "string" ? res.payload : (res.payload as UnknownRecord).text;

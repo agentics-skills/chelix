@@ -3,8 +3,11 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use {
     chelix_agents::tool_registry::ToolRegistry,
     chelix_common::ReasoningEffort,
-    chelix_service_traits::ChatService,
+    chelix_service_traits::{
+        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ChatService,
+    },
     chelix_sessions::{
+        SessionKey,
         message::PersistedMessage,
         metadata::{SessionEntry, SqliteSessionMetadata},
         store::SessionStore,
@@ -178,10 +181,15 @@ impl SubAgentRuntime {
         );
 
         let chat = self.state.chat();
-        let send_params = first_message_params(&session_key, task);
         match mode {
             SubAgentMode::Blocking => {
-                let response = match chat.send_sync(send_params).await {
+                let response = match chat
+                    .send_sync(
+                        ChatSendSyncRequest::text(task),
+                        ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
+                    )
+                    .await
+                {
                     Ok(response) => response,
                     Err(error) => {
                         record_run_metric(mode, "failed", started.elapsed());
@@ -207,7 +215,13 @@ impl SubAgentRuntime {
                 Ok(output)
             },
             SubAgentMode::Background => {
-                let response = match chat.send(send_params).await {
+                let response = match chat
+                    .send(
+                        ChatSendRequest::text(task),
+                        ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
+                    )
+                    .await
+                {
                     Ok(response) => response,
                     Err(error) => {
                         record_run_metric(mode, "failed", started.elapsed());
@@ -344,13 +358,6 @@ fn discoverable_agent_from_config(
         id: agent_id.to_string(),
         model: agent.model.clone(),
         reasoning_effort: agent.reasoning_effort.clone(),
-    })
-}
-
-fn first_message_params(session_key: &str, task: &str) -> Value {
-    serde_json::json!({
-        "text": task,
-        "_session_key": session_key,
     })
 }
 
@@ -595,7 +602,9 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        chelix_service_traits::ServiceResult,
+        chelix_service_traits::{
+            ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ServiceResult,
+        },
         std::sync::atomic::{AtomicUsize, Ordering},
     };
 
@@ -617,8 +626,20 @@ mod tests {
 
     #[async_trait]
     impl ChatService for LifecycleChatService {
-        async fn send(&self, _params: Value) -> ServiceResult {
+        async fn send(
+            &self,
+            _request: ChatSendRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("send is not used by this test service".into())
+        }
+
+        async fn send_sync(
+            &self,
+            _request: ChatSendSyncRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("send_sync is not used by this test service".into())
         }
 
         async fn abort(&self, _params: Value) -> ServiceResult {
@@ -722,18 +743,6 @@ mod tests {
         let error = discoverable_agent_from_config("reviewer", &configured, Some("  ".to_string()))
             .unwrap_err();
         assert!(error.to_string().contains("no non-empty SUBAGENT.md"));
-    }
-
-    #[test]
-    fn first_message_contains_only_task_and_child_session_key() {
-        let params = first_message_params("session:child", "Review this change");
-        assert_eq!(
-            params,
-            serde_json::json!({
-                "text": "Review this change",
-                "_session_key": "session:child",
-            })
-        );
     }
 
     #[tokio::test]

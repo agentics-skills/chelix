@@ -444,12 +444,14 @@ impl LiveChatService {
         &self,
         session_key: &str,
         session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
+        requested_agent_id: Option<&str>,
     ) -> error::Result<PromptPersona> {
         let config = self.load_runtime_config_for_agent_run().await?;
         load_prompt_persona_for_session(
             &config,
             session_key,
             session_entry,
+            requested_agent_id,
             self.session_state_store.as_deref(),
         )
         .await
@@ -723,7 +725,7 @@ impl LiveChatService {
 
         let session_entry = self.session_metadata.get(session_key).await?;
         let persona = self
-            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref())
+            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref(), None)
             .await?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,

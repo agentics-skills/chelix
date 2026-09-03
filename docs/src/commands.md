@@ -36,11 +36,16 @@ Available in web UI, all channels, and via the `sessions.fork` RPC. See
 | Command                       | Description                               |
 | ----------------------------- | ----------------------------------------- |
 | `/agent [N]`                  | Switch session agent                      |
-| `/model [N]`                  | Switch provider/model                     |
+| `/model [selector]`           | List or switch model/reasoning pair        |
 | `/sandbox [on\|off\|image N]` | Toggle sandbox and choose image           |
 | `/stop`                       | Abort the current running agent           |
 | `/peek`                       | Show current thinking/tool status         |
 | `/update [version]`           | Update chelix (owner-only)                |
+
+`/model` lists models, `/model providers` lists providers,
+`/model provider:<name>` filters by provider, and `/model efforts:<N>` lists
+supported efforts for model `N`. Switch the persisted pair with
+`/model <N> <reasoning-effort>`.
 
 ## Quick Actions
 

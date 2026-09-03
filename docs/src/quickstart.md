@@ -131,10 +131,14 @@ Add knowledge by placing Markdown files in `~/.chelix/memory/`.
 | Command         | Description                            |
 | --------------- | -------------------------------------- |
 | `/new`          | Start a new session                    |
-| `/model <name>` | Switch models                          |
+| `/model`        | List models and choose a model/effort pair |
 | `/agent`        | List or switch chat agents             |
 | `/clear`        | Clear chat history                     |
 | `/help`         | Show available commands                |
+
+Use `/model efforts:<N>` to list supported efforts for model `N`, then switch
+with `/model <N> <reasoning-effort>`. `/model providers` lists providers and
+`/model provider:<name>` filters the model list.
 
 ## File Locations
 

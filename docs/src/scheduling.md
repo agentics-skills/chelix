@@ -19,6 +19,17 @@ Heartbeat replies can also be delivered to a configured channel destination via
 `[heartbeat] deliver`, `channel`, and `to` in `chelix.toml`, or from the web UI
 under **Settings -> Heartbeat**.
 
+A heartbeat model override is configured as one complete pair:
+
+```toml
+[heartbeat.model_override]
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+```
+
+The model must be the exact canonical ID returned by `models.list`, and the
+reasoning effort must be a non-empty value supported by that model.
+
 ## Event-Driven Heartbeat Wake
 
 Normally the heartbeat fires on its regular schedule. The **wake** system lets
@@ -107,6 +118,24 @@ The agent manages jobs through the built-in `cron` tool. Available actions:
 - **`update`** — Patch an existing job (name, schedule, enabled, wakeMode, etc.)
 - **`remove`** — Delete a job
 - **`runs`** — View recent execution history for a job
+
+An `agentTurn` can optionally override model selection with one complete
+`modelOverride` pair:
+
+```json
+{
+  "kind": "agentTurn",
+  "message": "Check deploy status",
+  "modelOverride": {
+    "model": "openai::gpt-5.2",
+    "reasoningEffort": "medium"
+  }
+}
+```
+
+Omit `modelOverride` to use the persisted session pair. If it is present, both
+fields are required; the model must exactly match `models.list`, and the effort
+must be non-empty and supported by that model.
 
 ### One-Shot Jobs
 

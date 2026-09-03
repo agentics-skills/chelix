@@ -16,7 +16,7 @@ use chelix_channels::{
     otp::{OtpChallengeInfo, OtpState},
     plugin::{
         ChannelEventSink, ChannelHealthSnapshot, ChannelOtpProvider, ChannelOutbound,
-        ChannelPlugin, ChannelStatus, ChannelStreamOutbound, ChannelThreadContext,
+        ChannelPlugin, ChannelStatus, ChannelStreamOutbound,
     },
 };
 
@@ -478,10 +478,6 @@ impl ChannelPlugin for MatrixPlugin {
         })
     }
 
-    fn thread_context(&self) -> Option<&dyn ChannelThreadContext> {
-        Some(&self.outbound)
-    }
-
     fn as_otp_provider(&self) -> Option<&dyn ChannelOtpProvider> {
         Some(self)
     }
@@ -754,7 +750,6 @@ mod tests {
         assert!(desc.capabilities.supports_voice_ingest);
         assert!(!desc.capabilities.supports_pairing);
 
-        assert!(plugin.thread_context().is_some());
         assert!(plugin.as_otp_provider().is_some());
     }
 
@@ -889,7 +884,7 @@ mod tests {
                 "homeserver": "https://matrix.example.com",
                 "access_token": "test_token",
                 "user_id": "@chelix:example.com",
-                "allowlist": ["alice"],
+                "user_allowlist": ["alice"],
                 "otp_cooldown_secs": 1,
             }),
         ) {

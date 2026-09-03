@@ -420,6 +420,10 @@ port = {port}                           # Port number (auto-generated for this i
 # deliver = false                   # Deliver heartbeat replies to a channel
 # wake_cooldown = "5m"              # Min duration between command-triggered heartbeat wakes (0 to disable)
 
+# [heartbeat.model_override]
+# model = "openai::gpt-5.2"
+# reasoning_effort = "medium"
+
 # [heartbeat.active_hours]
 # start = "08:00"
 # end = "24:00"

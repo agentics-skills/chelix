@@ -18,9 +18,12 @@ use {
     serde_json::Value,
 };
 
-use chelix_gateway::{
-    services::{ChatService, ServiceResult},
-    state::GatewayState,
+use {
+    chelix_gateway::{
+        services::{ChatService, ServiceResult},
+        state::GatewayState,
+    },
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest},
 };
 
 use crate::server::AppState;
@@ -44,12 +47,16 @@ pub struct GraphqlChatServiceProxy {
 
 #[async_trait]
 impl ChatService for GraphqlChatServiceProxy {
-    async fn send(&self, params: Value) -> ServiceResult {
-        self.state.chat().send(params).await
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult {
+        self.state.chat().send(request, context).await
     }
 
-    async fn send_sync(&self, params: Value) -> ServiceResult {
-        self.state.chat().send_sync(params).await
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().send_sync(request, context).await
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {

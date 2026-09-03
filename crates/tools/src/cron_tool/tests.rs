@@ -150,23 +150,49 @@ async fn test_add_infers_schedule_kind_from_expr_without_kind() {
 }
 
 #[tokio::test]
-async fn test_add_infers_payload_kind_for_main_session() {
+async fn test_add_accepts_canonical_agent_turn_execution_fields() {
     let tool = make_tool();
     let add_result = tool
         .execute(json!({
             "action": "add",
             "job": {
-                "name": "morning reminder",
+                "name": "configured turn",
                 "schedule": { "kind": "every", "every_ms": 60000 },
-                "payload": { "text": "Tell me today's weather." },
-                "sessionTarget": "main"
+                "payload": {
+                    "kind": "agentTurn",
+                    "message": "run diagnostics",
+                    "modelOverride": {
+                        "model": "test::model",
+                        "reasoningEffort": "low"
+                    },
+                    "agentId": "main",
+                    "timeoutSecs": "30s",
+                    "toolChoice": {
+                        "type": "tool",
+                        "name": "overwrite_file"
+                    }
+                },
+                "sessionTarget": "isolated"
             }
         }))
         .await
         .unwrap();
 
-    assert_eq!(add_result["payload"]["kind"], "systemEvent");
-    assert_eq!(add_result["payload"]["text"], "Tell me today's weather.");
+    assert_eq!(
+        add_result["payload"]["modelOverride"]["model"],
+        "test::model"
+    );
+    assert_eq!(
+        add_result["payload"]["modelOverride"]["reasoningEffort"],
+        "low"
+    );
+    assert_eq!(add_result["payload"]["agentId"], "main");
+    assert_eq!(add_result["payload"]["timeoutSecs"], 30);
+    assert_eq!(add_result["payload"]["toolChoice"]["type"], "tool");
+    assert_eq!(
+        add_result["payload"]["toolChoice"]["name"],
+        "overwrite_file"
+    );
 }
 
 #[tokio::test]
@@ -200,7 +226,7 @@ async fn test_update_accepts_schedule_string_patch() {
 }
 
 #[tokio::test]
-async fn test_add_accepts_alias_fields_and_duration_strings() {
+async fn test_add_accepts_schedule_alias_fields_and_payload_duration() {
     let tool = make_tool();
     let add_result = tool
         .execute(json!({
@@ -209,7 +235,7 @@ async fn test_add_accepts_alias_fields_and_duration_strings() {
                 "name": "alias fields",
                 "session_target": "isolated",
                 "schedule": { "kind": "interval", "everyMs": "5m" },
-                "payload": { "kind": "agent_turn", "text": "do work", "timeoutSecs": "30s" }
+                "payload": { "kind": "agentTurn", "message": "do work", "timeoutSecs": "30s" }
             }
         }))
         .await
@@ -220,7 +246,7 @@ async fn test_add_accepts_alias_fields_and_duration_strings() {
     assert_eq!(add_result["schedule"]["every_ms"], 300000);
     assert_eq!(add_result["payload"]["kind"], "agentTurn");
     assert_eq!(add_result["payload"]["message"], "do work");
-    assert_eq!(add_result["payload"]["timeout_secs"], 30);
+    assert_eq!(add_result["payload"]["timeoutSecs"], 30);
 }
 
 #[tokio::test]
@@ -348,16 +374,19 @@ async fn test_update_accepts_delivery_fields_in_patch() {
 }
 
 #[test]
-fn test_parameters_schema_has_no_one_of() {
-    fn contains_one_of(value: &Value) -> bool {
+fn test_parameters_schema_uses_closed_canonical_payload_vocabulary() {
+    fn contains_composite_keyword(value: &Value) -> bool {
         match value {
             Value::Object(obj) => {
-                if obj.contains_key("oneOf") {
+                if ["oneOf", "anyOf", "allOf"]
+                    .iter()
+                    .any(|key| obj.contains_key(*key))
+                {
                     return true;
                 }
-                obj.values().any(contains_one_of)
+                obj.values().any(contains_composite_keyword)
             },
-            Value::Array(items) => items.iter().any(contains_one_of),
+            Value::Array(items) => items.iter().any(contains_composite_keyword),
             _ => false,
         }
     }
@@ -365,32 +394,65 @@ fn test_parameters_schema_has_no_one_of() {
     let tool = make_tool();
     let schema = tool.parameters_schema();
     assert!(
-        !contains_one_of(&schema),
-        "cron tool schema must avoid oneOf for OpenAI Responses API compatibility"
+        !contains_composite_keyword(&schema),
+        "cron tool schema must avoid composite keywords for OpenAI Responses API compatibility"
     );
     let job_properties = &schema["properties"]["job"]["properties"];
     assert!(job_properties.get("sandbox").is_none());
     assert!(job_properties.get("execution").is_none());
+
+    let payload = &job_properties["payload"];
+    assert_eq!(payload["type"], "object");
+    assert_eq!(payload["additionalProperties"], false);
+    let payload_properties = &payload["properties"];
+    for field in [
+        "kind",
+        "text",
+        "message",
+        "modelOverride",
+        "agentId",
+        "timeoutSecs",
+        "toolChoice",
+        "deliver",
+        "channel",
+        "to",
+    ] {
+        assert!(payload_properties.get(field).is_some(), "missing {field}");
+    }
+    assert_eq!(
+        payload_properties["modelOverride"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        payload_properties["toolChoice"]["additionalProperties"],
+        false
+    );
 }
 
 #[tokio::test]
-async fn test_add_accepts_payload_string_shorthand() {
+async fn test_add_rejects_partial_model_override() {
     let tool = make_tool();
-    let add_result = tool
+    let result = tool
         .execute(json!({
             "action": "add",
             "job": {
-                "name": "string payload",
+                "name": "partial override",
                 "schedule": { "kind": "every", "every_ms": 60000 },
-                "payload": "Summarize headlines",
+                "payload": {
+                    "kind": "agentTurn",
+                    "message": "run diagnostics",
+                    "modelOverride": { "model": "test::model" }
+                },
                 "sessionTarget": "isolated"
             }
         }))
-        .await
-        .unwrap();
+        .await;
 
-    assert_eq!(add_result["payload"]["kind"], "agentTurn");
-    assert_eq!(add_result["payload"]["message"], "Summarize headlines");
+    let error = result.unwrap_err().to_string();
+    assert!(
+        error.contains("missing field `reasoningEffort`"),
+        "unexpected error: {error}"
+    );
 }
 
 #[tokio::test]
@@ -533,7 +595,7 @@ async fn test_add_accepts_flat_params_without_job_wrapper() {
 }
 
 #[tokio::test]
-async fn test_add_accepts_stringified_nested_fields() {
+async fn test_add_accepts_stringified_schedule() {
     let tool = make_tool();
     let result = tool
         .execute(json!({
@@ -541,7 +603,7 @@ async fn test_add_accepts_stringified_nested_fields() {
             "job": {
                 "name": "stringified nested",
                 "schedule": r#"{"kind":"cron","expr":"0 9 * * 1"}"#,
-                "payload": r#"{"kind":"agentTurn","message":"hello"}"#,
+                "payload": { "kind": "agentTurn", "message": "hello" },
                 "sessionTarget": "isolated"
             }
         }))

@@ -1,14 +1,10 @@
 //! Shared model override parsing for session tools.
 
-use {chelix_config::schema::ReasoningEffort, serde_json::Value};
+use {chelix_common::ReasoningEffort, serde_json::Value};
+
+pub use chelix_common::ModelOverride;
 
 use crate::{Error, Result, params::str_param};
-
-#[derive(Debug, Clone)]
-pub struct ModelOverride {
-    pub model: String,
-    pub reasoning_effort: ReasoningEffort,
-}
 
 pub fn model_override_schema() -> Value {
     serde_json::json!({

@@ -1,13 +1,9 @@
 //! Shared types and small utility helpers used across `chelix_chat` modules.
 
-use {
-    serde::{Deserialize, Serialize},
-    serde_json::Value,
-};
+use {serde::Serialize, serde_json::Value};
 
 use {
     chelix_agents::model::Usage,
-    chelix_channels::ChannelMessageKind,
     chelix_config::{AgentMemoryWriteMode, MemoryStyle, PromptMemoryMode},
 };
 
@@ -19,12 +15,6 @@ pub(crate) use chelix_common::MessageMedium as ReplyMedium;
 pub struct BroadcastOpts {
     pub drop_if_slow: bool,
     pub state_version: Option<()>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct InputChannelMeta {
-    #[serde(default)]
-    pub message_kind: Option<ChannelMessageKind>,
 }
 
 #[derive(Debug, Clone)]

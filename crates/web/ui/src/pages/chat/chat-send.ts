@@ -9,7 +9,6 @@ import {
 	getPendingAttachments,
 	hasPendingAttachments,
 	type PendingAttachment,
-	type UploadedDocumentFile,
 	uploadDocumentAttachment,
 } from "../../media-drop";
 import { appendUserMessageActions } from "../../message-actions";
@@ -25,32 +24,19 @@ import {
 } from "../../sessions";
 import * as S from "../../state";
 import { sessionStore } from "../../stores/session-store";
+import type { ChatContentPart, ChatSendPayload, ChatSendRequest } from "../../types/chat";
 import type { RpcResponse } from "../../types/rpc";
-import type { SessionMeta, SessionModelSelection } from "../../types/session";
-import type { QueuedPromptsStatus } from "../../types/ws-events";
+import type { SessionMeta } from "../../types/session";
 import { replaceQueuedPromptsDock } from "./prompt-queue";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
 
 // ── Types ────────────────────────────────────────────────────
 
-export interface ChatSendParams {
-	text?: string;
-	content?: ChatContentPart[];
-	_document_files?: UploadedDocumentFile[];
-	_seq: number;
-	model?: string;
-	reasoningEffort?: string;
-}
-
-export type ChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+type ChatSendParams = ChatSendRequest & { clientSequence: number };
 
 interface PendingImageAttachment extends PendingAttachment {
 	dataUrl: string;
 }
-
-export type ChatSendPayload =
-	| { runId?: string; queued?: false; status?: never }
-	| { runId?: string; queued: true; status: QueuedPromptsStatus };
 
 type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
 
@@ -179,8 +165,16 @@ export async function buildChatMessage(
 		const content: ChatContentPart[] = [];
 		if (text) content.push({ type: "text", text });
 		for (const img of images) if (img.dataUrl) content.push({ type: "image_url", image_url: { url: img.dataUrl } });
-		const params: ChatSendParams = content.length > 0 ? { content, _seq: seq } : { text, _seq: seq };
-		if (uploadedDocuments.length > 0) params._document_files = uploadedDocuments;
+		const params: ChatSendParams =
+			content.length > 0 ? { content, clientSequence: seq } : { text, clientSequence: seq };
+		if (uploadedDocuments.length > 0) {
+			params.documents = uploadedDocuments.map((document) => ({
+				displayName: document.display_name,
+				storedFilename: document.stored_filename,
+				mimeType: document.mime_type,
+				sizeBytes: document.size_bytes,
+			}));
+		}
 		const el = chatAddMsgWithAttachments("user", text ? renderMarkdown(text) : "", images, uploadedDocuments);
 		appendUserMessageActions({
 			messageEl: el,
@@ -214,7 +208,7 @@ export async function buildChatMessage(
 		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
 	});
 	return {
-		params: { text, _seq: seq },
+		params: { text, clientSequence: seq },
 		el,
 		enableDeleteAction: () =>
 			appendUserMessageActions({
@@ -359,12 +353,12 @@ async function sendChatAsync(): Promise<void> {
 			return;
 		}
 		const msg = await buildChatMessage(text, previousChatSeq + 1);
-		S.setChatSeq(msg.params._seq);
+		S.setChatSeq(msg.params.clientSequence);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
-		const chatParams: ChatSendParams & SessionModelSelection = {
+		const chatParams: ChatSendParams = {
 			...msg.params,
-			...modelSelection,
+			modelOverride: modelSelection,
 		};
 		const userEl = msg.el;
 		if (userEl) highlightCodeBlocks(userEl);

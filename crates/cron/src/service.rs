@@ -107,7 +107,7 @@ impl RateLimiter {
 #[derive(Debug, Clone)]
 pub struct AgentTurnRequest {
     pub message: String,
-    pub model: Option<String>,
+    pub model_override: Option<chelix_common::ModelOverride>,
     pub agent_id: Option<String>,
     pub timeout_secs: Option<u64>,
     pub tool_choice: Option<chelix_config::schema::ToolChoice>,
@@ -592,8 +592,8 @@ impl CronService {
         // running_at_ms was already set in process_due_jobs() before spawning.
 
         let result = match &job.payload {
-            CronPayload::SystemEvent { text } => {
-                (self.on_system_event)(text.clone());
+            CronPayload::SystemEvent(payload) => {
+                (self.on_system_event)(payload.text.clone());
                 Ok(AgentTurnResult {
                     output: "system event injected".to_string(),
                     input_tokens: None,
@@ -601,25 +601,16 @@ impl CronService {
                     session_key: None,
                 })
             },
-            CronPayload::AgentTurn {
-                message,
-                model,
-                agent_id,
-                timeout_secs,
-                tool_choice,
-                deliver,
-                channel,
-                to,
-            } => {
+            CronPayload::AgentTurn(payload) => {
                 let req = AgentTurnRequest {
-                    message: message.clone(),
-                    model: model.clone(),
-                    agent_id: agent_id.clone(),
-                    timeout_secs: *timeout_secs,
-                    tool_choice: tool_choice.clone(),
-                    deliver: *deliver,
-                    channel: channel.clone(),
-                    to: to.clone(),
+                    message: payload.message.clone(),
+                    model_override: payload.model_override.clone(),
+                    agent_id: payload.agent_id.clone(),
+                    timeout_secs: payload.timeout_secs,
+                    tool_choice: payload.tool_choice.clone(),
+                    deliver: payload.deliver,
+                    channel: payload.channel.clone(),
+                    to: payload.to.clone(),
                     session_target: job.session_target.clone(),
                     auto_prune_container: job.auto_prune_container,
                 };
@@ -769,26 +760,22 @@ impl CronService {
 /// Validate session_target + payload compatibility.
 fn validate_job_spec(job: &CronJob) -> Result<()> {
     match (&job.session_target, &job.payload) {
-        (SessionTarget::Main, CronPayload::AgentTurn { .. }) => {
+        (SessionTarget::Main, CronPayload::AgentTurn(_)) => {
             return Err(Error::message(
                 "sessionTarget=main requires payload kind=systemEvent",
             ));
         },
-        (SessionTarget::Isolated | SessionTarget::Named(_), CronPayload::SystemEvent { .. }) => {
+        (SessionTarget::Isolated | SessionTarget::Named(_), CronPayload::SystemEvent(_)) => {
             return Err(Error::message(
                 "sessionTarget=isolated/named requires payload kind=agentTurn",
             ));
         },
         _ => {},
     }
-    if let CronPayload::AgentTurn {
-        deliver: true,
-        channel,
-        to,
-        ..
-    } = &job.payload
+    if let CronPayload::AgentTurn(payload) = &job.payload
+        && payload.deliver
     {
-        match (channel.as_deref(), to.as_deref()) {
+        match (payload.channel.as_deref(), payload.to.as_deref()) {
             (None | Some(""), _) => {
                 return Err(Error::message(
                     "deliver=true requires a non-empty 'channel' (account_id)",

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use {
     chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
+    chelix_common::{ModelOverride, ReasoningEffort},
     chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
@@ -232,11 +233,14 @@ pub(in crate::channel_events) async fn handle_model(
         .as_array()
         .ok_or_else(|| ChannelError::invalid_input("bad model list"))?;
 
-    let current_model = session_metadata
+    let current_model_reasoning = session_metadata
         .get(session_key)
         .await
         .map_err(ChannelError::unavailable)?
-        .and_then(|entry| entry.model().map(str::to_string));
+        .and_then(|entry| entry.model_reasoning().cloned());
+    let current_model = current_model_reasoning
+        .as_ref()
+        .map(|model_reasoning| model_reasoning.model_id().to_string());
 
     if args.is_empty() {
         // List unique providers (sorted, deduplicated).
@@ -280,11 +284,10 @@ pub(in crate::channel_events) async fn handle_model(
             current_model.as_deref(),
             Some(provider),
         ))
-    } else {
-        // Switch mode -- arg is a 1-based global index.
-        let n: usize = args
+    } else if let Some(index) = args.strip_prefix("efforts:") {
+        let n: usize = index
             .parse()
-            .map_err(|_| ChannelError::invalid_input("usage: /model [number]"))?;
+            .map_err(|_| ChannelError::invalid_input("usage: /model efforts:<number>"))?;
         if n == 0 || n > models.len() {
             return Err(ChannelError::invalid_input(format!(
                 "invalid model number. Use 1\u{2013}{}.",
@@ -294,9 +297,76 @@ pub(in crate::channel_events) async fn handle_model(
         let chosen = &models[n - 1];
         let model_id = chosen
             .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ChannelError::invalid_input("model has no id"))?;
-        let patch = super::super::patch_channel_session_model(state, session_key, model_id).await?;
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ChannelError::unavailable("model metadata has no id"))?;
+        let supported_efforts = chosen
+            .get("reasoning_supported_efforts")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                ChannelError::unavailable("model metadata missing reasoning_supported_efforts")
+            })?;
+        if supported_efforts.is_empty() {
+            return Err(ChannelError::unavailable(
+                "model metadata has no reasoning_supported_efforts",
+            ));
+        }
+
+        let current_effort = current_model_reasoning
+            .as_ref()
+            .and_then(|model_reasoning| {
+                (model_reasoning.model_id() == model_id)
+                    .then(|| model_reasoning.reasoning_effort().as_str())
+            });
+        let mut lines = vec![format!("efforts:{n}"), format!("Model: {model_id}")];
+        for (index, effort) in supported_efforts.iter().enumerate() {
+            let effort = effort
+                .as_str()
+                .filter(|effort| !effort.trim().is_empty())
+                .ok_or_else(|| {
+                    ChannelError::unavailable("model metadata contains an invalid reasoning effort")
+                })?;
+            let marker = if current_effort == Some(effort) {
+                " *"
+            } else {
+                ""
+            };
+            lines.push(format!("{}. {effort}{marker}", index + 1));
+        }
+        Ok(lines.join("\n"))
+    } else {
+        let mut selection = args.split_whitespace();
+        let index = selection.next().ok_or_else(|| {
+            ChannelError::invalid_input("usage: /model <number> <reasoning-effort>")
+        })?;
+        let effort = selection.next().ok_or_else(|| {
+            ChannelError::invalid_input("usage: /model <number> <reasoning-effort>")
+        })?;
+        if selection.next().is_some() {
+            return Err(ChannelError::invalid_input(
+                "usage: /model <number> <reasoning-effort>",
+            ));
+        }
+
+        let n: usize = index.parse().map_err(|_| {
+            ChannelError::invalid_input("usage: /model <number> <reasoning-effort>")
+        })?;
+        if n == 0 || n > models.len() {
+            return Err(ChannelError::invalid_input(format!(
+                "invalid model number. Use 1\u{2013}{}.",
+                models.len()
+            )));
+        }
+        let chosen = &models[n - 1];
+        let model_id = chosen
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ChannelError::unavailable("model metadata has no id"))?;
+        let model_override = ModelOverride {
+            model: model_id.to_string(),
+            reasoning_effort: ReasoningEffort::from(effort),
+        };
+        let patch =
+            super::super::patch_channel_session_model(state, session_key, &model_override).await?;
 
         broadcast(
             state,

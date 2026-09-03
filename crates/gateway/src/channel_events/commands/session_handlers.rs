@@ -14,22 +14,11 @@ use crate::{
 
 use super::super::{
     format_attachable_sessions_list, format_channel_sessions_list, is_attachable_session,
-    parse_numbered_selection, resolve_channel_agent_id, resolve_channel_model_reasoning_for_effort,
-    resolve_channel_session_defaults, session_list_label,
+    parse_numbered_selection, resolve_channel_agent_id, resolve_channel_session_defaults,
+    session_list_label,
 };
 
 // ── Session management command handlers ──────────────────────────
-
-fn require_channel_model_id(model_id: Option<String>) -> ChannelResult<String> {
-    let model_id = model_id
-        .ok_or_else(|| ChannelError::invalid_input("channel session model is not configured"))?;
-    if model_id.trim().is_empty() {
-        return Err(ChannelError::invalid_input(
-            "channel session model is not configured",
-        ));
-    }
-    Ok(model_id)
-}
 
 pub(in crate::channel_events) async fn handle_new(
     state: &Arc<GatewayState>,
@@ -42,7 +31,7 @@ pub(in crate::channel_events) async fn handle_new(
         .get(session_key)
         .await
         .map_err(ChannelError::unavailable)?;
-    let channel_defaults = resolve_channel_session_defaults(state, reply_to, sender_id).await;
+    let channel_defaults = resolve_channel_session_defaults(state, reply_to, sender_id).await?;
     let inherited_agent = old_entry
         .as_ref()
         .and_then(|entry| entry.agent_id.as_deref())
@@ -53,14 +42,27 @@ pub(in crate::channel_events) async fn handle_new(
         .as_deref()
         .or(channel_defaults.agent_id.as_deref());
     let target_agent = resolve_channel_agent_id(state, session_key, requested_agent).await?;
-    let (agent_model, agent_reasoning_effort) =
-        crate::session_reasoning::agent_defaults_for_agent(state, Some(&target_agent))
-            .await
-            .map_err(ChannelError::unavailable)?;
-    let model_id = require_channel_model_id(channel_defaults.model.or(Some(agent_model)))?;
-    let model_reasoning =
-        resolve_channel_model_reasoning_for_effort(state, &model_id, &agent_reasoning_effort)
-            .await?;
+    let model_reasoning = if let Some(model_override) = channel_defaults.model_override {
+        crate::model_reasoning::resolve_model_reasoning(
+            state.services.model.as_ref(),
+            &model_override.model,
+            &model_override.reasoning_effort,
+        )
+        .await
+        .map_err(ChannelError::unavailable)?
+    } else {
+        let (agent_model, agent_reasoning_effort) =
+            crate::session_reasoning::agent_defaults_for_agent(state, Some(&target_agent))
+                .await
+                .map_err(ChannelError::unavailable)?;
+        crate::model_reasoning::resolve_model_reasoning(
+            state.services.model.as_ref(),
+            &agent_model,
+            &agent_reasoning_effort,
+        )
+        .await
+        .map_err(ChannelError::unavailable)?
+    };
 
     // Create a new session with a fresh UUID key.
     let new_key = format!("session:{}", uuid::Uuid::new_v4());
@@ -463,21 +465,4 @@ pub(in crate::channel_events) async fn handle_attach(
     .await;
 
     Ok(format!("Attached here: {label}"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::require_channel_model_id;
-
-    #[test]
-    fn channel_new_requires_an_explicit_model_id() {
-        assert_eq!(
-            require_channel_model_id(Some("provider::model".to_string()))
-                .ok()
-                .as_deref(),
-            Some("provider::model")
-        );
-        assert!(require_channel_model_id(None).is_err());
-        assert!(require_channel_model_id(Some("   ".to_string())).is_err());
-    }
 }

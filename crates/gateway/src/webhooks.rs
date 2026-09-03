@@ -553,7 +553,7 @@ mod tests {
                 name: "hook".into(),
                 description: None,
                 agent_id: None,
-                model: None,
+                model_override: None,
                 system_prompt_suffix: None,
                 tool_policy: Some(chelix_webhooks::types::ToolPolicy {
                     allow: vec!["read_file".into()],
@@ -613,7 +613,7 @@ mod tests {
                 name: "hook".into(),
                 description: None,
                 agent_id: None,
-                model: None,
+                model_override: None,
                 system_prompt_suffix: None,
                 tool_policy: None,
                 auth_mode: AuthMode::Bearer,

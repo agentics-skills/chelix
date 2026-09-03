@@ -62,6 +62,11 @@ interface ChannelExtra {
 	qr_svg?: string;
 }
 
+export interface ChannelModelOverride {
+	model: string;
+	reasoning_effort: string;
+}
+
 /** Channel config fields (union of all channel types). */
 export interface ChannelConfig {
 	// Common
@@ -69,7 +74,7 @@ export interface ChannelConfig {
 	dm_policy?: string;
 	mention_mode?: string;
 	allowlist?: string[];
-	model?: string;
+	model_override?: ChannelModelOverride;
 	model_provider?: string;
 	// Slack
 	bot_token?: string;

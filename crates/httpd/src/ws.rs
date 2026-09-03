@@ -442,6 +442,7 @@ pub async fn handle_connection(
                     method: req.method.clone(),
                     params: req.params.unwrap_or(serde_json::Value::Null),
                     client_conn_id: conn_id.clone(),
+                    transport: chelix_gateway::methods::MethodTransport::StatefulConnection,
                     client_role: role.clone(),
                     client_scopes: scopes.clone(),
                     state: Arc::clone(&state),

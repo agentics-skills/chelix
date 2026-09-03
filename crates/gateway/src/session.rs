@@ -889,6 +889,7 @@ async fn to_shared_message(
     }))
 }
 
+mod initialization;
 mod maintenance;
 mod service;
 mod share;
@@ -898,4 +899,5 @@ mod tests;
 pub(crate) mod title;
 mod voice;
 
+pub(crate) use initialization::ensure_internal_chat_session;
 pub use service::LiveSessionService;

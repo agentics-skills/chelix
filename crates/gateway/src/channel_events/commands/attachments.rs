@@ -2,8 +2,13 @@ use std::sync::Arc;
 
 use tracing::{debug, error, warn};
 
-use chelix_channels::{
-    ChannelAttachment, ChannelMessageMeta, ChannelReplyTarget, Result as ChannelResult,
+use {
+    chelix_channels::{ChannelAttachment, ChannelMessageMeta, ChannelReplyTarget},
+    chelix_service_traits::{
+        ChatChannelMetadata, ChatExecutionContext, ChatSendDocument, ChatSendMessage,
+        ChatSendRequest,
+    },
+    chelix_sessions::{QueuedPromptContentBlock, QueuedPromptImageUrl, SessionKey},
 };
 
 use crate::{
@@ -24,7 +29,6 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
     meta: ChannelMessageMeta,
 ) {
     if attachments.is_empty() {
-        // No attachments, use the regular dispatch
         super::super::dispatch::dispatch_to_chat(state, text, reply_to, meta).await;
         return;
     }
@@ -34,7 +38,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
         return;
     };
 
-    // Start typing immediately so image preprocessing/session setup doesn't
+    // Start typing immediately so image preprocessing and session setup do not
     // delay channel feedback.
     let typing_done = start_channel_typing_loop(state, &reply_to);
 
@@ -61,7 +65,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
         &session_key,
         &reply_to,
         meta.agent_id.as_deref(),
-        meta.model.as_deref(),
+        meta.model_override.as_ref(),
     )
     .await
     {
@@ -75,28 +79,20 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
         },
     };
 
-    // Build multimodal content array (OpenAI format)
-    let mut content_parts: Vec<serde_json::Value> = Vec::new();
-
-    // Add text part if not empty
+    let mut content = Vec::with_capacity(attachments.len() + usize::from(!text.is_empty()));
     if !text.is_empty() {
-        content_parts.push(serde_json::json!({
-            "type": "text",
-            "text": text,
-        }));
+        content.push(QueuedPromptContentBlock::Text {
+            text: text.to_string(),
+        });
     }
-
-    // Add image parts
     for attachment in &attachments {
         let base64_data =
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &attachment.data);
-        let data_uri = format!("data:{};base64,{}", attachment.media_type, base64_data);
-        content_parts.push(serde_json::json!({
-            "type": "image_url",
-            "image_url": {
-                "url": data_uri,
+        content.push(QueuedPromptContentBlock::ImageUrl {
+            image_url: QueuedPromptImageUrl {
+                url: format!("data:{};base64,{}", attachment.media_type, base64_data),
             },
-        }));
+        });
     }
 
     debug!(
@@ -106,8 +102,8 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
         "dispatching multimodal message to chat"
     );
 
-    // Broadcast a "chat" event so the web UI shows the user message.
-    // See the text-only dispatch above for why messageIndex is omitted.
+    // Broadcast before chat.send persists the message. Without a message index,
+    // concurrent channel messages cannot be incorrectly deduplicated by the client.
     let payload = serde_json::json!({
         "state": "channel_user",
         "text": if text.is_empty() { "[Image]" } else { text },
@@ -125,86 +121,58 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
     // user activity as a heuristic and mark prior session history seen.
     state.services.session.mark_seen(&session_key).await;
 
-    let chat = state.chat();
-    let mut params = serde_json::json!({
-        "content": content_parts,
-        "channel": &meta,
-        "_session_key": &session_key,
-        // Defer reply-target registration until chat.send() actually
-        // starts executing this message (after semaphore acquire).
-        "_channel_reply_target": &reply_to,
-    });
-    if let Some(ref documents) = meta.documents {
-        params["_document_files"] = serde_json::json!(documents);
-    }
+    let request = ChatSendRequest {
+        message: ChatSendMessage::Content(content),
+        model_override: None,
+        tool_choice: None,
+        documents: meta
+            .documents
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|document| ChatSendDocument {
+                display_name: document.display_name.clone(),
+                stored_filename: document.stored_filename.clone(),
+                mime_type: document.mime_type.clone(),
+                size_bytes: document.size_bytes,
+            })
+            .collect(),
+        audio_filename: meta.audio_filename.clone(),
+        input_medium: None,
+        client_sequence: None,
+    };
 
-    // Persist a complete model/reasoning pair on first use. Once the shared
-    // channel session is initialized, keep per-sender channel models runtime-only.
-    let model_reasoning: ChannelResult<Option<(String, String, bool)>> = async {
-        if prepared.created {
-            let model_reasoning = prepared.entry.model_reasoning().ok_or_else(|| {
-                chelix_channels::Error::unavailable(
-                    "new channel session has no model/reasoning pair",
-                )
-            })?;
-            Ok(Some((
-                model_reasoning.model_id().to_string(),
-                model_reasoning.reasoning_effort().as_str().to_string(),
-                true,
-            )))
-        } else if let Some(model) = meta.model.as_deref() {
-            let resolved =
-                super::super::resolve_channel_runtime_model(state, &session_key, model).await?;
-            Ok(Some((
-                resolved.model_id().to_string(),
-                resolved.reasoning_effort().as_str().to_string(),
-                false,
-            )))
-        } else {
-            Ok(None)
-        }
-    }
-    .await;
-
-    let model_reasoning = match model_reasoning {
-        Ok(model_reasoning) => model_reasoning,
-        Err(error) => {
+    if prepared.created {
+        let Some(model_reasoning) = prepared.entry.model_reasoning() else {
             if let Some(done_tx) = typing_done {
                 let _ = done_tx.send(());
             }
-            report_channel_error(state, &reply_to, &error).await;
+            report_channel_error(
+                state,
+                &reply_to,
+                &"new channel session has no model/reasoning pair",
+            )
+            .await;
             return;
-        },
-    };
-    if let Some((model, reasoning_effort, persisted)) = model_reasoning {
-        params["model"] = serde_json::json!(&model);
-        params["reasoningEffort"] = serde_json::json!(reasoning_effort);
-        if persisted {
-            let message = format!("Using {model}. Use /model to change.");
-            state.push_channel_status_log(&session_key, message).await;
-        }
+        };
+        let message = format!(
+            "Using {}. Use /model to change.",
+            model_reasoning.model_id()
+        );
+        state.push_channel_status_log(&session_key, message).await;
     }
 
-    let send_result = chat.send(params).await;
+    let mut context = ChatExecutionContext::internal(SessionKey::new(session_key));
+    context.channel = Some(ChatChannelMetadata::from(meta));
+    context.channel_reply_target = Some(reply_to.clone());
+
+    let send_result = state.chat().send(request, context).await;
     if let Some(done_tx) = typing_done {
         let _ = done_tx.send(());
     }
 
-    if let Err(e) = send_result {
-        error!("channel dispatch_to_chat_with_attachments failed: {e}");
-        if let Some(outbound) = state.services.channel_outbound_arc() {
-            let error_msg = format!("\u{26a0}\u{fe0f} {e}");
-            if let Err(send_err) = outbound
-                .send_text(
-                    &reply_to.account_id,
-                    &reply_to.outbound_to(),
-                    &error_msg,
-                    reply_to.message_id.as_deref(),
-                )
-                .await
-            {
-                warn!("failed to send error back to channel: {send_err}");
-            }
-        }
+    if let Err(error) = send_result {
+        error!(%error, "channel dispatch_to_chat_with_attachments failed");
+        report_channel_error(state, &reply_to, &error).await;
     }
 }

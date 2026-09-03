@@ -1,5 +1,6 @@
 use {
     super::*,
+    chelix_common::ConfigModelOverride,
     secrecy::Secret,
     serde::{Deserialize, Serialize},
 };
@@ -128,14 +129,14 @@ impl ServerConfig {
 
 /// Heartbeat configuration — periodic health-check agent turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HeartbeatConfig {
     /// Whether the heartbeat is enabled. Defaults to true.
     pub enabled: bool,
     /// Interval between heartbeats (e.g. "30m", "1h"). Defaults to "30m".
     pub every: String,
-    /// Provider/model override for heartbeat turns (e.g. "openai/gpt-5.2").
-    pub model: Option<String>,
+    /// Complete canonical model/reasoning override for heartbeat turns.
+    pub model_override: Option<ConfigModelOverride>,
     /// Agent ID override for heartbeat turns.
     pub agent_id: Option<String>,
     /// Custom prompt override. If empty, the built-in default is used.
@@ -162,7 +163,7 @@ impl Default for HeartbeatConfig {
         Self {
             enabled: true,
             every: "30m".into(),
-            model: None,
+            model_override: None,
             agent_id: None,
             prompt: None,
             ack_max_chars: 300,

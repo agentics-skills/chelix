@@ -474,7 +474,10 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             Struct(HashMap::from([
                 ("enabled", Leaf),
                 ("every", Leaf),
-                ("model", Leaf),
+                (
+                    "model_override",
+                    Struct(HashMap::from([("model", Leaf), ("reasoning_effort", Leaf)])),
+                ),
                 ("agent_id", Leaf),
                 ("prompt", Leaf),
                 ("ack_max_chars", Leaf),

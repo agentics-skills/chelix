@@ -738,9 +738,9 @@ pub async fn handle_message_direct(
             username: username.clone(),
             sender_id: Some(peer_id.clone()),
             message_kind: message_kind(&msg),
-            model: config
-                .resolve_model(&msg.chat.id.0.to_string(), &peer_id)
-                .map(String::from),
+            model_override: config
+                .resolve_model_override(&msg.chat.id.0.to_string(), &peer_id)
+                .map(Into::into),
             agent_id: config
                 .resolve_agent_id(&msg.chat.id.0.to_string(), &peer_id)
                 .map(String::from),
@@ -847,7 +847,27 @@ pub async fn handle_callback_query(
     } else if let Some(n_str) = data.strip_prefix("agent_switch:") {
         Some(format!("agent {n_str}"))
     } else if let Some(n_str) = data.strip_prefix("model_switch:") {
-        Some(format!("model {n_str}"))
+        Some(format!("model efforts:{n_str}"))
+    } else if let Some(selection) = data.strip_prefix("model_effort:") {
+        let Some((model_index, effort)) = selection.split_once(':') else {
+            if let Some(ref bot) = bot {
+                let _ = bot
+                    .answer_callback_query(query.id.clone())
+                    .text("Error: invalid model effort selection")
+                    .await;
+            }
+            return Ok(());
+        };
+        if model_index.is_empty() || effort.is_empty() {
+            if let Some(ref bot) = bot {
+                let _ = bot
+                    .answer_callback_query(query.id.clone())
+                    .text("Error: invalid model effort selection")
+                    .await;
+            }
+            return Ok(());
+        }
+        Some(format!("model {model_index} {effort}"))
     } else if data.starts_with("model_provider:") {
         // Handled separately below — no simple cmd_text.
         None
@@ -931,12 +951,35 @@ pub async fn handle_callback_query(
     };
 
     if let Some(ref sink) = event_sink {
-        let response = match sink
+        let response = sink
             .dispatch_command(&cmd_text, reply_target, Some(&sender_id))
-            .await
-        {
-            Ok(msg) => msg,
-            Err(e) => format!("Error: {e}"),
+            .await;
+
+        if data.starts_with("model_switch:") {
+            if let Some(ref bot) = bot {
+                let _ = bot.answer_callback_query(query.id.clone()).await;
+            }
+            match response {
+                Ok(text) => {
+                    if let Some(ref bot) = bot {
+                        send_model_keyboard(bot, &outbound_to, &text).await;
+                    }
+                },
+                Err(error) => {
+                    if let Err(send_error) = outbound
+                        .send_text(account_id, &outbound_to, &format!("Error: {error}"), None)
+                        .await
+                    {
+                        warn!(account_id, "failed to send callback response: {send_error}");
+                    }
+                },
+            }
+            return Ok(());
+        }
+
+        let response = match response {
+            Ok(message) => message,
+            Err(error) => format!("Error: {error}"),
         };
 
         // Answer callback query with the response text (shows as toast).
@@ -948,11 +991,11 @@ pub async fn handle_callback_query(
         }
 
         // Also send as a regular message for visibility.
-        if let Err(e) = outbound
+        if let Err(error) = outbound
             .send_text(account_id, &outbound_to, &response, None)
             .await
         {
-            warn!(account_id, "failed to send callback response: {e}");
+            warn!(account_id, "failed to send callback response: {error}");
         }
     } else if let Some(ref bot) = bot {
         let _ = bot.answer_callback_query(query.id.clone()).await;

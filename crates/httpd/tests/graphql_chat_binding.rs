@@ -16,6 +16,9 @@ use {
         state::GatewayState,
     },
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_service_traits::{
+        ChatExecutionContext, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest,
+    },
     serde_json::{Value, json},
 };
 
@@ -39,11 +42,29 @@ impl RecordingChatService {
 
 #[async_trait]
 impl ChatService for RecordingChatService {
-    async fn send(&self, params: Value) -> ServiceResult {
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult {
         self.record("send");
-        if params["message"] != "Hello" || params["sessionKey"] != "sess1" {
-            return Err(format!("unexpected send params: {params}").into());
+        let Some(model_override) = request.model_override.as_ref() else {
+            return Err(format!("missing model override: {request:?}").into());
+        };
+        if !matches!(&request.message, ChatSendMessage::Text(text) if text == "Hello")
+            || context.session_id.as_str() != "sess1"
+            || model_override.model != "test::model"
+            || model_override.reasoning_effort.as_str() != "low"
+        {
+            return Err(
+                format!("unexpected send request: {request:?}, context: {context:?}").into(),
+            );
         }
+        Ok(json!({ "ok": true }))
+    }
+
+    async fn send_sync(
+        &self,
+        _request: ChatSendSyncRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.record("send_sync");
         Ok(json!({ "ok": true }))
     }
 
@@ -136,7 +157,7 @@ async fn graphql_chat_uses_late_bound_override_after_schema_build() {
     let send_response: Value = client
         .post(format!("http://{addr}/graphql"))
         .json(&json!({
-            "query": r#"mutation { chat { send(message: "Hello", sessionKey: "sess1") { ok } } }"#,
+            "query": r#"mutation { chat { send(message: "Hello", sessionKey: "sess1", modelOverride: { model: "test::model", reasoningEffort: "low" }) { ok } } }"#,
         }))
         .send()
         .await

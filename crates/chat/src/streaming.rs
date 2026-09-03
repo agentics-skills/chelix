@@ -380,6 +380,8 @@ pub(crate) async fn run_streaming(
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
 ) -> ChatRunOutcome {
+    #[cfg(not(feature = "metrics"))]
+    let _ = model_id;
     let run_started = Instant::now();
 
     // ── Memory prefetch (same logic as run_with_tools) ───────────

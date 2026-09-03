@@ -20,7 +20,7 @@ use {
 use {
     chelix_agents::{
         ChatMessage, UserContent,
-        model::{ReasoningEffort, values_to_chat_messages},
+        model::values_to_chat_messages,
         prompt::{
             build_system_prompt_minimal_runtime_details,
             build_system_prompt_with_session_runtime_details,
@@ -29,20 +29,16 @@ use {
     chelix_config::ToolMode,
     chelix_service_traits::{ChatService, ServiceError, ServiceResult},
     chelix_sessions::{MessageContent, PersistedMessage, filter_ui_history},
-    chelix_tools::policy::{PolicyContext, ToolPolicy},
+    chelix_tools::policy::PolicyContext,
 };
 
 use crate::{
     channels::notify_channels_of_compaction,
     compaction,
-    message::{
-        infer_reply_medium, user_audio_path_from_params, user_documents_for_persistence,
-        user_documents_from_params,
-    },
     prompt::{
-        apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
-        clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
-        load_prompt_persona_for_agent, load_prompt_persona_for_session, prepare_run_registry,
+        apply_chat_execution_context, apply_request_runtime_context, build_policy_context,
+        build_prompt_runtime_context, clear_prompt_memory_snapshot, discover_skills_if_enabled,
+        filter_skills_for_agent, load_prompt_persona_for_session, prepare_run_registry,
         prompt_build_limits_from_config, resolve_prompt_agent_id,
     },
     run_with_tools::run_with_tools,
@@ -51,52 +47,6 @@ use crate::{
 };
 
 use super::*;
-
-pub(super) fn resolved_turn_reasoning_effort(
-    session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
-    agent: &chelix_config::AgentConfig,
-) -> Option<String> {
-    session_entry
-        .and_then(|entry| entry.reasoning_effort())
-        .map(|effort| effort.as_str().to_string())
-        .or_else(|| Some(agent.reasoning_effort.as_str().to_owned()))
-}
-
-pub(super) fn requested_reasoning_effort(params: &Value) -> Option<String> {
-    params
-        .get("reasoningEffort")
-        .or_else(|| params.get("reasoning_effort"))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
-pub(super) fn apply_reasoning_effort_to_provider(
-    provider: Arc<dyn chelix_agents::model::LlmProvider>,
-    reasoning_effort: Option<&str>,
-) -> Result<Arc<dyn chelix_agents::model::LlmProvider>, String> {
-    let Some(reasoning_effort) = reasoning_effort else {
-        return Ok(provider);
-    };
-    Arc::clone(&provider)
-        .with_reasoning_effort(ReasoningEffort::from(reasoning_effort))
-        .ok_or_else(|| {
-            format!(
-                "model '{}' does not support reasoning_effort '{reasoning_effort}'",
-                provider.id(),
-            )
-        })
-}
-
-fn send_sync_model_id<'a>(
-    explicit_model: Option<&'a str>,
-    requested_agent_pair: Option<&'a chelix_common::ResolvedModelReasoning>,
-    session_entry: Option<&'a chelix_sessions::metadata::SessionEntry>,
-) -> Option<&'a str> {
-    explicit_model
-        .or_else(|| requested_agent_pair.map(chelix_common::ResolvedModelReasoning::model_id))
-        .or_else(|| session_entry.and_then(|entry| entry.model()))
-}
 
 async fn ensure_send_sync_session_agent(
     metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
@@ -133,6 +83,13 @@ async fn persist_send_sync_session_backing(
             .await
             .map(chelix_sessions::metadata::PromoteExternalToLlmOutcome::into_entry)
             .map_err(ServiceError::message),
+        Some(entry) if entry.model_reasoning() != Some(model_reasoning) => {
+            let entry = metadata
+                .set_model_reasoning(session_key, model_reasoning)
+                .await
+                .map_err(ServiceError::message)?;
+            ensure_send_sync_session_agent(metadata, entry, agent_id).await
+        },
         Some(entry) => ensure_send_sync_session_agent(metadata, entry, agent_id).await,
         None => match metadata
             .ensure_llm_session(session_key, None, model_reasoning, Some(agent_id))
@@ -181,56 +138,44 @@ where
 
 #[async_trait]
 impl ChatService for LiveChatService {
-    async fn send(&self, params: Value) -> ServiceResult {
-        self.send_impl(params).await
+    async fn send(
+        &self,
+        request: chelix_service_traits::ChatSendRequest,
+        context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        self.send_impl(request, context).await
     }
 
-    async fn send_sync(&self, params: Value) -> ServiceResult {
-        let text = params
-            .get("text")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'text' parameter".to_string())?
-            .to_string();
-        let desired_reply_medium = infer_reply_medium(&params, &text);
-        let requested_agent_id = params
-            .get("agent_id")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
-        let request_tool_policy = params
-            .get("_tool_policy")
-            .cloned()
-            .map(serde_json::from_value::<ToolPolicy>)
-            .transpose()
-            .map_err(|e| format!("invalid '_tool_policy' parameter: {e}"))?;
-        let explicit_model = params.get("model").and_then(|v| v.as_str());
-        let requested_reasoning_effort_override = requested_reasoning_effort(&params);
-        let tool_choice = chelix_config::schema::tool_choice_from_request_params(&params)
-            .map_err(|error| format!("invalid 'tool_choice' parameter: {error}"))?;
-        let stream_only = !self.has_tools_sync();
-
-        // Resolve session key from explicit override.
-        let session_key = match params.get("_session_key").and_then(|v| v.as_str()) {
-            Some(sk) => sk.to_string(),
-            None => "main".to_string(),
-        };
-
-        let user_audio = user_audio_path_from_params(&params, &session_key);
-        let user_documents =
-            user_documents_from_params(&params, &session_key, self.session_store.as_ref());
-        // Persist the user message.
-        let user_msg = PersistedMessage::User {
-            content: MessageContent::Text(text.clone()),
-            created_at: Some(now_ms()),
-            audio: user_audio,
-            documents: user_documents
-                .as_deref()
-                .and_then(user_documents_for_persistence),
-            channel: None,
-            seq: None,
-            run_id: None,
-        };
+    async fn send_sync(
+        &self,
+        request: chelix_service_traits::ChatSendSyncRequest,
+        context: chelix_service_traits::ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_key = context.session_id.as_str().to_string();
+        if session_key.is_empty() {
+            return Err(ServiceError::message("session ID must not be empty"));
+        }
+        let text = request.text;
+        let desired_reply_medium = crate::message::explicit_reply_medium_override(&text)
+            .or(request.input_medium)
+            .or_else(|| {
+                context.channel.as_ref().and_then(|channel| {
+                    matches!(
+                        channel.message_kind,
+                        Some(chelix_channels::ChannelMessageKind::Voice)
+                    )
+                    .then_some(ReplyMedium::Voice)
+                })
+            })
+            .unwrap_or(ReplyMedium::Text);
+        let resolved = self
+            .resolve_chat_turn(&context.session_id, request.model_override.as_ref())
+            .await?;
+        let stream_only = resolved.stream_only;
+        let provider = Arc::clone(resolved.model.provider());
+        let model_reasoning = resolved.model.model_reasoning().clone();
+        let resolved_reasoning_effort =
+            Some(model_reasoning.reasoning_effort().as_str().to_string());
         let mut session_entry = self
             .session_metadata
             .get(&session_key)
@@ -240,103 +185,20 @@ impl ChatService for LiveChatService {
             .load_runtime_config_for_agent_run()
             .await
             .map_err(ServiceError::message)?;
-        let requested_agent_pair = if let Some(agent_id) = requested_agent_id.as_deref() {
-            let agent = runtime_config.agents.get(agent_id).ok_or_else(|| {
-                ServiceError::message(format!("agent '{agent_id}' is not configured"))
-            })?;
-            let registry = self.providers.read().await;
-            Some(
-                registry
-                    .resolve_model_reasoning(Some(&agent.model), Some(&agent.reasoning_effort))
-                    .map_err(|error| ServiceError::message(error.to_string()))?
-                    .model_reasoning()
-                    .clone(),
-            )
-        } else {
-            None
-        };
-        let model_id = send_sync_model_id(
-            explicit_model,
-            requested_agent_pair.as_ref(),
+        let persona = load_prompt_persona_for_session(
+            &runtime_config,
+            &session_key,
             session_entry.as_ref(),
+            context.agent_id.as_deref(),
+            self.session_state_store.as_deref(),
         )
-            .ok_or_else(|| {
-                format!(
-                    "session '{session_key}' has no model; pass 'model' explicitly or set the session model"
-                )
-            })?;
-        let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
-            let registry = self.providers.read().await;
-            registry
-                .get(model_id)
-                .ok_or_else(|| format!("model '{model_id}' not found"))?
-        };
-        if !stream_only {
-            validate_tool_mode_compatibility(
-                provider.tool_mode(),
-                provider.supports_tools(),
-                provider.id(),
-            )
-            .map_err(ServiceError::message)?;
-        }
-        let prompt_profile = session_entry
-            .as_ref()
-            .map(|entry| entry.prompt_profile)
-            .unwrap_or_default();
-        let persona = if let Some(agent_id) = requested_agent_id.as_deref() {
-            load_prompt_persona_for_agent(
-                &runtime_config,
-                &session_key,
-                agent_id,
-                prompt_profile,
-                self.session_state_store.as_deref(),
-            )
-            .await
-        } else {
-            load_prompt_persona_for_session(
-                &runtime_config,
-                &session_key,
-                session_entry.as_ref(),
-                self.session_state_store.as_deref(),
-            )
-            .await
-        }
+        .await
         .map_err(ServiceError::message)?;
         let session_agent_id = persona.agent_id.clone();
-        let resolved_reasoning_effort = requested_reasoning_effort_override
-            .or_else(|| {
-                requested_agent_pair
-                    .as_ref()
-                    .map(chelix_common::ResolvedModelReasoning::reasoning_effort)
-                    .map(ReasoningEffort::as_str)
-                    .map(str::to_string)
-            })
-            .or_else(|| resolved_turn_reasoning_effort(session_entry.as_ref(), &persona.agent));
-        let provider =
-            apply_reasoning_effort_to_provider(provider, resolved_reasoning_effort.as_deref())?;
-        let reasoning_effort = resolved_reasoning_effort.as_deref().ok_or_else(|| {
-            ServiceError::message(format!("session '{session_key}' has no reasoning effort"))
-        })?;
-        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
-            provider.id().to_string(),
-            ReasoningEffort::from(reasoning_effort),
-        )
-        .map_err(|error| ServiceError::message(error.to_string()))?;
         let runtime_limits = persona
             .config
             .agent_runtime_limits(&session_agent_id)
             .map_err(ServiceError::message)?;
-
-        if let (Some(agent_id), Some(agent_pair)) =
-            (requested_agent_id.as_deref(), requested_agent_pair.as_ref())
-        {
-            session_entry = Some(
-                self.session_metadata
-                    .create_or_assign_agent(&session_key, agent_id, agent_pair)
-                    .await
-                    .map_err(ServiceError::message)?,
-            );
-        }
         session_entry = Some(
             persist_send_sync_session_backing(
                 self.session_metadata.as_ref(),
@@ -347,6 +209,15 @@ impl ChatService for LiveChatService {
             )
             .await?,
         );
+        let user_msg = PersistedMessage::User {
+            content: MessageContent::Text(text.clone()),
+            created_at: Some(now_ms()),
+            audio: None,
+            documents: None,
+            channel: None,
+            seq: None,
+            run_id: None,
+        };
 
         self.session_store
             .append(&session_key, &user_msg.to_value())
@@ -369,9 +240,9 @@ impl ChatService for LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        apply_request_runtime_context(
+        apply_chat_execution_context(
             &mut runtime_context.host,
-            &params,
+            &context,
             persona
                 .user
                 .timezone
@@ -393,7 +264,7 @@ impl ChatService for LiveChatService {
         let run_id = uuid::Uuid::new_v4().to_string();
         let cancellation_token = CancellationToken::new();
         let state = Arc::clone(&self.state);
-        let tool_registry = if let Some(policy) = request_tool_policy.as_ref() {
+        let tool_registry = if let Some(policy) = context.tool_policy.as_ref() {
             let registry_guard = self.tool_registry.read().await;
             Arc::new(RwLock::new(
                 registry_guard.clone_allowed_by(|name| policy.is_allowed(name)),
@@ -402,6 +273,19 @@ impl ChatService for LiveChatService {
             Arc::clone(&self.tool_registry)
         };
         let hook_registry = self.hook_registry.clone();
+        let accept_language = context.accept_language.clone();
+        let conn_id = context.connection_id().map(str::to_string);
+        let sender_name = context.channel.as_ref().and_then(|channel| {
+            channel
+                .sender_name
+                .clone()
+                .or_else(|| channel.username.clone())
+        });
+        let mcp_disabled = session_entry
+            .as_ref()
+            .and_then(|entry| entry.mcp_disabled)
+            .unwrap_or(false);
+        let tool_choice = request.tool_choice;
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
         let user_message_index = history.len();
@@ -488,7 +372,7 @@ impl ChatService for LiveChatService {
                 None,
                 &[],
                 Some(&runtime_context),
-                None, // send_sync: no sender name
+                sender_name,
                 Some(&self.session_store),
                 None, // send_sync: no client seq
                 Some(Arc::clone(&self.active_partial_assistant)),
@@ -516,16 +400,16 @@ impl ChatService for LiveChatService {
                 Some(&runtime_context),
                 &[],
                 hook_registry,
-                None,
-                None, // send_sync: no conn_id
+                accept_language,
+                conn_id,
                 Some(&self.session_store),
-                false, // send_sync: MCP tools always enabled for API calls
-                None,  // send_sync: no client seq
+                mcp_disabled,
+                None, // send_sync: no client seq
                 Some(Arc::clone(&self.active_tool_invocations)),
                 Some(Arc::clone(&self.active_partial_assistant)),
                 &active_event_forwarders,
                 &terminal_runs,
-                None, // send_sync: no sender name
+                sender_name,
                 tool_choice,
             )
             .await
@@ -788,7 +672,7 @@ impl ChatService for LiveChatService {
             .await
             .map_err(ServiceError::message)?;
         let prompt_persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
         let messages = self
@@ -1060,7 +944,7 @@ impl ChatService for LiveChatService {
             .await
             .map_err(ServiceError::message)?;
         let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
@@ -1212,7 +1096,7 @@ impl ChatService for LiveChatService {
             .await
             .map_err(ServiceError::message)?;
         let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref())
+            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
@@ -1373,6 +1257,7 @@ impl ChatService for LiveChatService {
             &runtime_config,
             &session_key,
             session_entry.as_ref(),
+            None,
             self.session_state_store.as_deref(),
         )
         .await
@@ -1472,18 +1357,18 @@ mod tests {
 
     use {
         chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent},
-        chelix_common::{ModelMetadata, ModelModality},
+        chelix_common::{ModelMetadata, ModelModality, ModelOverride},
         chelix_config::ToolMode,
         chelix_providers::{ModelInfo, ProviderRegistry},
         chelix_service_traits::{
-            ChatService, McpService, NoopMcpService, NoopProjectService, NoopTtsService,
-            ProjectService, TtsService,
+            ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ChatService, McpService,
+            NoopMcpService, NoopProjectService, NoopTtsService, ProjectService, ServiceError,
+            TtsService,
         },
         chelix_sessions::{
-            QueuedPrompts,
+            QueuedPrompts, SessionKey,
             metadata::{
-                ExternalAgentKind, ExternalSessionIdentity, SessionBacking, SessionEntry,
-                SqliteSessionMetadata,
+                ExternalAgentKind, ExternalSessionIdentity, SessionBacking, SqliteSessionMetadata,
             },
             store::SessionStore,
         },
@@ -1495,7 +1380,7 @@ mod tests {
 
     use super::{
         ChatRunOutcome, LiveChatService, persist_send_sync_session_backing,
-        resolve_send_sync_outcome, send_sync_model_id, tool_mode_enables_tools,
+        resolve_send_sync_outcome, tool_mode_enables_tools,
     };
 
     struct ValidationTestRuntime {
@@ -1651,6 +1536,17 @@ mod tests {
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
             Box::pin(tokio_stream::empty())
         }
+
+        fn tool_mode(&self) -> ToolMode {
+            ToolMode::Off
+        }
+
+        fn with_reasoning_effort(
+            self: Arc<Self>,
+            _effort: chelix_common::ReasoningEffort,
+        ) -> Option<Arc<dyn LlmProvider>> {
+            Some(self)
+        }
     }
 
     fn validation_model_metadata() -> ModelMetadata {
@@ -1669,69 +1565,11 @@ mod tests {
         }
     }
 
-    fn session_entry_with_model(model: Option<&str>) -> SessionEntry {
-        let backing = match model {
-            Some(model) => SessionBacking::llm(
-                chelix_common::ResolvedModelReasoning::try_new(
-                    model.to_string(),
-                    chelix_common::ReasoningEffort::from("off"),
-                )
-                .unwrap_or_else(|error| panic!("valid test pair: {error}")),
-            ),
-            None => SessionBacking::external(ExternalSessionIdentity::new(
-                ExternalAgentKind::Codex,
-                None,
-            )),
-        };
-        SessionEntry {
-            key: "session:test".to_string(),
-            id: "test".to_string(),
-            label: None,
-            backing,
-            created_at: 0,
-            updated_at: 0,
-            message_count: 0,
-            project_id: None,
-            archived: false,
-            worktree_branch: None,
-            channel_binding: None,
-            parent_session_key: None,
-            sandbox_owner_key: None,
-            fork_point: None,
-            mcp_disabled: None,
-            preview: None,
-            last_seen_message_count: 0,
-            version: 0,
-            agent_id: None,
-            prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-        }
-    }
-
     #[test]
     fn tool_mode_enables_tools_except_when_off() {
         assert!(tool_mode_enables_tools(ToolMode::Native));
         assert!(tool_mode_enables_tools(ToolMode::Text));
         assert!(!tool_mode_enables_tools(ToolMode::Off));
-    }
-
-    #[test]
-    fn send_sync_prefers_explicit_model_over_session_model() {
-        let entry = session_entry_with_model(Some("preset-model"));
-
-        assert_eq!(
-            send_sync_model_id(Some("override-model"), None, Some(&entry)),
-            Some("override-model")
-        );
-    }
-
-    #[test]
-    fn send_sync_uses_session_model_without_override() {
-        let entry = session_entry_with_model(Some("preset-model"));
-
-        assert_eq!(
-            send_sync_model_id(None, None, Some(&entry)),
-            Some("preset-model")
-        );
     }
 
     async fn validation_test_service() -> (
@@ -1749,9 +1587,9 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap_or_else(|error| panic!("projects table setup: {error}"));
-        SqliteSessionMetadata::init(&pool)
+        chelix_sessions::run_migrations(&pool)
             .await
-            .unwrap_or_else(|error| panic!("session metadata setup: {error}"));
+            .unwrap_or_else(|error| panic!("session migrations: {error}"));
         let metadata = Arc::new(SqliteSessionMetadata::new(pool.clone()));
         let session_store = Arc::new(SessionStore::new(directory.path().to_path_buf()));
         let original_pair = chelix_common::ResolvedModelReasoning::try_new(
@@ -1790,14 +1628,16 @@ mod tests {
         };
         let agents_config = Arc::new(RwLock::new(agents));
         let mut registry = ProviderRegistry::empty();
-        registry.register(
-            ModelInfo {
-                id: "model".to_string(),
-                provider: "test".to_string(),
-                metadata: validation_model_metadata(),
-            },
-            Arc::new(ValidationProvider),
-        );
+        for model_id in ["model", "other"] {
+            registry.register(
+                ModelInfo {
+                    id: model_id.to_string(),
+                    provider: "test".to_string(),
+                    metadata: validation_model_metadata(),
+                },
+                Arc::new(ValidationProvider),
+            );
+        }
         let runtime: Arc<dyn crate::runtime::ChatRuntime> =
             Arc::new(ValidationTestRuntime::default());
         let service = LiveChatService::new(
@@ -1814,32 +1654,132 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejected_send_sync_agent_selection_preserves_entry_and_history() {
-        let (_directory, service, metadata, session_store) = validation_test_service().await;
+    async fn chat_turn_resolution_uses_complete_request_or_persisted_session_pair() {
+        let (_directory, service, _metadata, _session_store) = validation_test_service().await;
+        let explicit = ModelOverride {
+            model: "test::other".to_string(),
+            reasoning_effort: chelix_common::ReasoningEffort::from("off"),
+        };
+
+        let request_resolved = service
+            .resolve_chat_turn(&SessionKey::new("main"), Some(&explicit))
+            .await
+            .unwrap_or_else(|error| panic!("request pair should resolve: {error}"));
+        assert_eq!(
+            request_resolved.model.model_reasoning().model_id(),
+            "test::other"
+        );
+        assert_eq!(
+            request_resolved
+                .model
+                .model_reasoning()
+                .reasoning_effort()
+                .as_str(),
+            "off"
+        );
+        assert!(request_resolved.stream_only);
+
+        let session_resolved = service
+            .resolve_chat_turn(&SessionKey::new("main"), None)
+            .await
+            .unwrap_or_else(|error| panic!("persisted pair should resolve: {error}"));
+        assert_eq!(
+            session_resolved.model.model_reasoning().model_id(),
+            "test::model"
+        );
+        assert_eq!(
+            session_resolved
+                .model
+                .model_reasoning()
+                .reasoning_effort()
+                .as_str(),
+            "off"
+        );
+        assert!(session_resolved.stream_only);
+    }
+
+    #[tokio::test]
+    async fn chat_turn_resolution_rejects_invalid_complete_pairs_or_missing_session_pair() {
+        let (_directory, service, metadata, _session_store) = validation_test_service().await;
+        metadata
+            .bind_external(
+                "external",
+                None,
+                &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("external session setup: {error}"));
         let cases = [
             (
-                "unknown explicit model",
-                serde_json::json!({
-                    "_session_key": "main",
-                    "text": "hello",
-                    "agent_id": "other",
-                    "model": "test::missing",
-                    "reasoningEffort": "off",
+                "empty model",
+                SessionKey::new("main"),
+                Some(ModelOverride {
+                    model: String::new(),
+                    reasoning_effort: chelix_common::ReasoningEffort::from("off"),
+                }),
+            ),
+            (
+                "empty effort",
+                SessionKey::new("main"),
+                Some(ModelOverride {
+                    model: "test::model".to_string(),
+                    reasoning_effort: chelix_common::ReasoningEffort::from(""),
+                }),
+            ),
+            (
+                "unknown model",
+                SessionKey::new("main"),
+                Some(ModelOverride {
+                    model: "test::missing".to_string(),
+                    reasoning_effort: chelix_common::ReasoningEffort::from("off"),
+                }),
+            ),
+            (
+                "noncanonical model",
+                SessionKey::new("main"),
+                Some(ModelOverride {
+                    model: "model".to_string(),
+                    reasoning_effort: chelix_common::ReasoningEffort::from("off"),
                 }),
             ),
             (
                 "unsupported effort",
-                serde_json::json!({
-                    "_session_key": "main",
-                    "text": "hello",
-                    "agent_id": "other",
-                    "model": "test::model",
-                    "reasoningEffort": "high",
+                SessionKey::new("main"),
+                Some(ModelOverride {
+                    model: "test::model".to_string(),
+                    reasoning_effort: chelix_common::ReasoningEffort::from("high"),
                 }),
             ),
+            ("missing persisted pair", SessionKey::new("external"), None),
         ];
 
-        for (name, params) in cases {
+        for (name, session_id, model_override) in cases {
+            let result = service
+                .resolve_chat_turn(&session_id, model_override.as_ref())
+                .await;
+            assert!(result.is_err(), "{name} unexpectedly resolved");
+        }
+    }
+
+    #[tokio::test]
+    async fn rejected_send_preserves_entry_and_history() {
+        let (_directory, service, metadata, session_store) = validation_test_service().await;
+        let cases = [
+            ("empty effort", ModelOverride {
+                model: "test::model".to_string(),
+                reasoning_effort: chelix_common::ReasoningEffort::from(""),
+            }),
+            ("unknown explicit model", ModelOverride {
+                model: "test::missing".to_string(),
+                reasoning_effort: chelix_common::ReasoningEffort::from("off"),
+            }),
+            ("unsupported effort", ModelOverride {
+                model: "test::model".to_string(),
+                reasoning_effort: chelix_common::ReasoningEffort::from("high"),
+            }),
+        ];
+
+        for (name, model_override) in cases {
             let before = metadata
                 .get("main")
                 .await
@@ -1850,7 +1790,14 @@ mod tests {
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history before: {error}"));
 
-            let result = service.send_sync(params).await;
+            let mut request = ChatSendRequest::text("hello");
+            request.model_override = Some(model_override);
+            let result = service
+                .send(
+                    request,
+                    ChatExecutionContext::internal(SessionKey::new("main")),
+                )
+                .await;
             assert!(result.is_err(), "{name} unexpectedly succeeded");
 
             let after = metadata
@@ -1871,6 +1818,145 @@ mod tests {
             );
             assert_eq!(history_after, history_before, "{name}: history changed");
         }
+    }
+
+    #[tokio::test]
+    async fn rejected_send_sync_agent_selection_preserves_entry_and_history() {
+        let (_directory, service, metadata, session_store) = validation_test_service().await;
+        let cases = [
+            ("empty effort", ModelOverride {
+                model: "test::model".to_string(),
+                reasoning_effort: chelix_common::ReasoningEffort::from(""),
+            }),
+            ("unknown explicit model", ModelOverride {
+                model: "test::missing".to_string(),
+                reasoning_effort: chelix_common::ReasoningEffort::from("off"),
+            }),
+            ("unsupported effort", ModelOverride {
+                model: "test::model".to_string(),
+                reasoning_effort: chelix_common::ReasoningEffort::from("high"),
+            }),
+        ];
+
+        for (name, model_override) in cases {
+            let before = metadata
+                .get("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: load entry before: {error}"))
+                .unwrap_or_else(|| panic!("{name}: entry exists before"));
+            let history_before = session_store
+                .read("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: read history before: {error}"));
+
+            let request = ChatSendSyncRequest {
+                text: "hello".to_string(),
+                model_override: Some(model_override),
+                tool_choice: None,
+                input_medium: None,
+            };
+            let mut context = ChatExecutionContext::internal(SessionKey::new("main"));
+            context.agent_id = Some("other".to_string());
+            let result = service.send_sync(request, context).await;
+            assert!(result.is_err(), "{name} unexpectedly succeeded");
+
+            let after = metadata
+                .get("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: load entry after: {error}"))
+                .unwrap_or_else(|| panic!("{name}: entry exists after"));
+            let history_after = session_store
+                .read("main")
+                .await
+                .unwrap_or_else(|error| panic!("{name}: read history after: {error}"));
+            assert_eq!(after.agent_id, before.agent_id, "{name}: agent changed");
+            assert_eq!(after.backing, before.backing, "{name}: backing changed");
+            assert_eq!(after.version, before.version, "{name}: version changed");
+            assert_eq!(
+                after.updated_at, before.updated_at,
+                "{name}: timestamp changed"
+            );
+            assert_eq!(history_after, history_before, "{name}: history changed");
+        }
+    }
+
+    #[tokio::test]
+    async fn busy_send_persists_turn_settings_before_prompt_only_enqueue() {
+        let (_directory, service, metadata, _session_store) = validation_test_service().await;
+        let persisted_pair = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )
+        .unwrap_or_else(|error| panic!("persisted test pair: {error}"));
+        metadata
+            .create_llm_session("agentless", None, &persisted_pair, None)
+            .await
+            .unwrap_or_else(|error| panic!("agentless session setup: {error}"));
+
+        let agentless_permit = service
+            .session_mutations
+            .try_acquire_turn("agentless")
+            .await
+            .unwrap_or_else(|error| panic!("agentless active turn setup: {error}"));
+        let mut agent_context = ChatExecutionContext::internal(SessionKey::new("agentless"));
+        agent_context.agent_id = Some("other".to_string());
+        let agentless_result = service
+            .send(ChatSendRequest::text("queued for agent"), agent_context)
+            .await
+            .unwrap_or_else(|error| panic!("agentless queued send: {error}"));
+        assert_eq!(agentless_result["queued"], true);
+        let agentless_entry = metadata
+            .get("agentless")
+            .await
+            .unwrap_or_else(|error| panic!("agentless entry load: {error}"))
+            .unwrap_or_else(|| panic!("agentless entry should exist"));
+        assert_eq!(agentless_entry.agent_id.as_deref(), Some("other"));
+        assert_eq!(agentless_entry.model_reasoning(), Some(&persisted_pair));
+        let agentless_status = service
+            .queued_prompts
+            .status(SessionKey::new("agentless"))
+            .await
+            .unwrap_or_else(|error| panic!("agentless queue status: {error}"));
+        assert_eq!(agentless_status.prompts.len(), 1);
+        drop(agentless_permit);
+
+        let existing_permit = service
+            .session_mutations
+            .try_acquire_turn("main")
+            .await
+            .unwrap_or_else(|error| panic!("existing active turn setup: {error}"));
+        let mut override_request = ChatSendRequest::text("queued with override");
+        override_request.model_override = Some(ModelOverride {
+            model: "test::other".to_string(),
+            reasoning_effort: chelix_common::ReasoningEffort::from("off"),
+        });
+        let mut existing_context = ChatExecutionContext::internal(SessionKey::new("main"));
+        existing_context.agent_id = Some("other".to_string());
+        let override_result = service
+            .send(override_request, existing_context)
+            .await
+            .unwrap_or_else(|error| panic!("override queued send: {error}"));
+        assert_eq!(override_result["queued"], true);
+        let existing_entry = metadata
+            .get("main")
+            .await
+            .unwrap_or_else(|error| panic!("existing entry load: {error}"))
+            .unwrap_or_else(|| panic!("existing entry should exist"));
+        assert_eq!(existing_entry.agent_id.as_deref(), Some("main"));
+        assert_eq!(existing_entry.model(), Some("test::other"));
+        assert_eq!(
+            existing_entry
+                .reasoning_effort()
+                .map(chelix_common::ReasoningEffort::as_str),
+            Some("off")
+        );
+        let existing_status = service
+            .queued_prompts
+            .status(SessionKey::new("main"))
+            .await
+            .unwrap_or_else(|error| panic!("existing queue status: {error}"));
+        assert_eq!(existing_status.prompts.len(), 1);
+        drop(existing_permit);
     }
 
     #[tokio::test]
@@ -1924,6 +2010,19 @@ mod tests {
         assert_eq!(entry.external_agent_kind(), Some(ExternalAgentKind::Codex));
         assert_eq!(entry.external_session_id(), Some("external-1"));
         assert_eq!(entry.agent_id.as_deref(), Some("main"));
+    }
+
+    #[tokio::test]
+    async fn send_sync_failure_returns_the_provider_error() {
+        let result = resolve_send_sync_outcome(ChatRunOutcome::Failed, || async {
+            Err(ServiceError::message("provider request failed"))
+        })
+        .await;
+
+        match result {
+            Err(error) => assert_eq!(error.to_string(), "provider request failed"),
+            Ok(value) => panic!("provider failure unexpectedly succeeded: {value}"),
+        }
     }
 
     #[tokio::test]
