@@ -5,7 +5,8 @@ use std::{
 
 use {
     chelix_service_traits::{
-        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ServiceResult, Services,
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceResult, Services,
     },
     serde_json::{Value, json},
     tokio::sync::broadcast,
@@ -337,20 +338,60 @@ impl chelix_service_traits::ChatService for MockChat {
         self.0.call("chat.clear", p)
     }
 
-    async fn compact(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.compact", p)
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.compact",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
-    async fn context(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.context", p)
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.context",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
-    async fn raw_prompt(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.raw_prompt", p)
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.raw_prompt",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
-    async fn full_context(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.full_context", p)
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.full_context",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 }
 

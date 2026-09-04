@@ -17,7 +17,8 @@ use {
     },
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
     chelix_service_traits::{
-        ChatExecutionContext, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest,
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest,
     },
     serde_json::{Value, json},
 };
@@ -91,19 +92,35 @@ impl ChatService for RecordingChatService {
         Ok(json!({ "ok": true }))
     }
 
-    async fn compact(&self, _params: Value) -> ServiceResult {
+    async fn compact(
+        &self,
+        _request: ChatCompactRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({ "ok": true }))
     }
 
-    async fn context(&self, _params: Value) -> ServiceResult {
+    async fn context(
+        &self,
+        _request: ChatContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn raw_prompt(&self, _params: Value) -> ServiceResult {
+    async fn raw_prompt(
+        &self,
+        _request: ChatRawPromptRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({ "text": "prompt" }))
     }
 
-    async fn full_context(&self, _params: Value) -> ServiceResult {
+    async fn full_context(
+        &self,
+        _request: ChatFullContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!([]))
     }
 

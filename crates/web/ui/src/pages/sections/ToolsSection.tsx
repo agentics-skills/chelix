@@ -2,17 +2,128 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { sendRpc } from "../../helpers";
-import type { ChatContextPayload } from "../../types/chat";
 
 interface ToolEntry {
-	name?: string;
-	description?: string;
+	name: string;
+	description?: string | null;
 }
 
 interface ToolGroup {
 	label: string;
 	tools: ToolEntry[];
+}
+
+interface ResolvedToolsSession {
+	model: string;
+	provider: string;
+	label?: string | null;
+}
+
+interface ResolvedToolsSandbox {
+	enabled: boolean;
+	backend: string;
+}
+
+interface ResolvedToolsContextPayload {
+	session: ResolvedToolsSession;
+	tools: ToolEntry[];
+	sandbox: ResolvedToolsSandbox;
+	supportsTools: boolean;
+}
+
+const TOOLS_RPC_TIMEOUT_MS = 30_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isToolEntry(value: unknown): value is ToolEntry {
+	if (!isRecord(value) || typeof value.name !== "string" || !value.name) return false;
+	return value.description === undefined || value.description === null || typeof value.description === "string";
+}
+
+function parseToolsContextPayload(payload: unknown): ResolvedToolsContextPayload {
+	if (!isRecord(payload)) throw new Error("Invalid tools overview response.");
+	const session = payload.session;
+	const sandbox = payload.sandbox;
+	const tools = payload.tools;
+	if (
+		!isRecord(session) ||
+		typeof session.model !== "string" ||
+		!session.model ||
+		typeof session.provider !== "string" ||
+		!session.provider ||
+		(session.label !== undefined && session.label !== null && typeof session.label !== "string") ||
+		!isRecord(sandbox) ||
+		typeof sandbox.enabled !== "boolean" ||
+		typeof sandbox.backend !== "string" ||
+		!sandbox.backend ||
+		!Array.isArray(tools) ||
+		!tools.every(isToolEntry) ||
+		typeof payload.supportsTools !== "boolean"
+	) {
+		throw new Error("Invalid tools overview response.");
+	}
+	return {
+		session: {
+			model: session.model,
+			provider: session.provider,
+			label: session.label,
+		},
+		tools,
+		sandbox: {
+			enabled: sandbox.enabled,
+			backend: sandbox.backend,
+		},
+		supportsTools: payload.supportsTools,
+	};
+}
+
+function parseToolsRpcResponse(response: unknown): ResolvedToolsContextPayload {
+	if (!isRecord(response) || typeof response.ok !== "boolean") {
+		throw new Error("Invalid tools overview response.");
+	}
+	if (!response.ok) {
+		const error = response.error;
+		if (!isRecord(error) || typeof error.message !== "string" || !error.message) {
+			throw new Error("Invalid tools overview response.");
+		}
+		throw new Error(error.message);
+	}
+	return parseToolsContextPayload(response.payload);
+}
+
+async function requestToolsContext(sessionKey: string): Promise<ResolvedToolsContextPayload> {
+	const controller = new AbortController();
+	const timeout = window.setTimeout(() => controller.abort(), TOOLS_RPC_TIMEOUT_MS);
+	try {
+		const response = await fetch("/api/rpc", {
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				method: "chat.context",
+				params: {},
+				sessionKey,
+			}),
+			signal: controller.signal,
+		});
+		if (!response.ok) {
+			throw new Error(`Failed to load tools overview (HTTP ${response.status}).`);
+		}
+		const rpcResponse: unknown = await response.json();
+		return parseToolsRpcResponse(rpcResponse);
+	} catch (error: unknown) {
+		if (controller.signal.aborted) {
+			throw new Error("Tools overview request timed out. Try again.");
+		}
+		if (error instanceof Error) throw error;
+		throw new Error("Failed to load tools overview.");
+	} finally {
+		window.clearTimeout(timeout);
+	}
 }
 
 export function toolsOverviewCategory(name: string | undefined): string {
@@ -32,22 +143,22 @@ export function toolsOverviewCategory(name: string | undefined): string {
 
 export function groupToolsForOverview(tools: ToolEntry[]): ToolGroup[] {
 	const grouped = new Map<string, ToolEntry[]>();
-	(tools || []).forEach((tool) => {
-		const category = toolsOverviewCategory(tool?.name);
+	for (const tool of tools) {
+		const category = toolsOverviewCategory(tool.name);
 		if (!grouped.has(category)) grouped.set(category, []);
 		grouped.get(category)?.push(tool);
-	});
+	}
 	const order = ["Execution", "Sessions", "Memory", "Web & Browser", "Skills", "MCP", "Core"];
-	return order
-		.filter((label) => grouped.has(label))
-		.map((label) => ({
+	const groups: ToolGroup[] = [];
+	for (const label of order) {
+		const entries = grouped.get(label);
+		if (!entries) continue;
+		groups.push({
 			label,
-			tools:
-				grouped
-					.get(label)
-					?.slice()
-					.sort((left, right) => String(left?.name || "").localeCompare(String(right?.name || ""))) ?? [],
-		}));
+			tools: entries.slice().sort((left, right) => left.name.localeCompare(right.name)),
+		});
+	}
+	return groups;
 }
 
 interface ToolCallingSummaryProps {
@@ -76,30 +187,26 @@ function ToolCallingSummary({ supportsTools, toolCount }: ToolCallingSummaryProp
 	);
 }
 
-function ActiveModelSummary({ session }: { session: NonNullable<ChatContextPayload["session"]> }): VNode {
-	const providerText = session.provider ? `Provider: ${session.provider}` : "Provider selected automatically.";
+function ActiveModelSummary({ session }: { session: ResolvedToolsSession }): VNode {
 	const sessionText = session.label ? ` Session: ${session.label}.` : "";
 	return (
 		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
 			<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Active Model</div>
-			<div className="mt-2 text-sm font-medium text-[var(--text)] break-words">
-				{session.model || "Default model selection"}
-			</div>
+			<div className="mt-2 text-sm font-medium text-[var(--text)] break-words">{session.model}</div>
 			<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
-				{providerText}
-				{sessionText}
+				Provider: {session.provider}.{sessionText}
 			</div>
 		</div>
 	);
 }
 
-function ExecutionRuntimeSummary({ sandbox }: { sandbox: NonNullable<ChatContextPayload["sandbox"]> }): VNode {
+function ExecutionRuntimeSummary({ sandbox }: { sandbox: ResolvedToolsSandbox }): VNode {
 	return (
 		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
 			<div className="text-xs uppercase tracking-wide text-[var(--muted)]">Execution Runtime</div>
 			<div className="mt-2 text-sm font-medium text-[var(--text)]">{sandbox.enabled ? "Sandbox" : "Host"}</div>
 			<div className="text-xs text-[var(--muted)] mt-2 leading-relaxed">
-				{sandbox.enabled ? `Sandbox backend: ${sandbox.backend || "configured"}. ` : ""}
+				{sandbox.enabled ? `Sandbox backend: ${sandbox.backend}. ` : ""}
 				The <code className="text-[var(--text)]">execute_command</code> tool runs through the managed tools service.
 			</div>
 		</div>
@@ -122,7 +229,7 @@ function ToolOverviewCard({ tool }: { tool: ToolEntry }): VNode {
 		<div className="rounded border border-[var(--border)] bg-[var(--surface2)] p-3">
 			<div className="flex items-center justify-between gap-2 flex-wrap">
 				<div className="text-xs font-medium text-[var(--text)] break-words">{tool.name}</div>
-				{tool.name?.startsWith("mcp__") ? <span className="provider-item-badge configured">MCP</span> : null}
+				{tool.name.startsWith("mcp__") ? <span className="provider-item-badge configured">MCP</span> : null}
 			</div>
 			<div className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
 				{tool.description || "No description provided."}
@@ -168,18 +275,22 @@ function RegisteredTools({ groups, toolCount }: { groups: ToolGroup[]; toolCount
 
 export function ToolsSection(): VNode {
 	const [loadingTools, setLoadingTools] = useState(true);
-	const [toolData, setToolData] = useState<ChatContextPayload | null>(null);
+	const [toolData, setToolData] = useState<ResolvedToolsContextPayload | null>(null);
 	const [toolsErr, setToolsErr] = useState<string | null>(null);
 
 	function loadToolsOverview(): void {
 		setLoadingTools(true);
+		setToolData(null);
 		setToolsErr(null);
-		sendRpc("chat.context", {})
-			.then((response) => {
-				if (!response?.ok) {
-					throw new Error(response?.error?.message || "Failed to load tools overview.");
-				}
-				setToolData(response.payload || {});
+		const sessionKey = localStorage.getItem("chelix-session");
+		if (!sessionKey) {
+			setLoadingTools(false);
+			setToolsErr("Open a chat session before viewing its tools.");
+			return;
+		}
+		requestToolsContext(sessionKey)
+			.then((payload) => {
+				setToolData(payload);
 				setLoadingTools(false);
 			})
 			.catch((error: Error) => {
@@ -192,12 +303,7 @@ export function ToolsSection(): VNode {
 		loadToolsOverview();
 	}, []);
 
-	const data: ChatContextPayload = toolData || {};
-	const session = data.session || {};
-	const sandbox = data.sandbox || {};
-	const tools: ToolEntry[] = Array.isArray(data.tools) ? data.tools : [];
-	const toolGroups = groupToolsForOverview(tools);
-	const supportsTools = data.supportsTools !== false;
+	const toolGroups = toolData ? groupToolsForOverview(toolData.tools) : [];
 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
@@ -221,14 +327,18 @@ export function ToolsSection(): VNode {
 
 			{toolsErr ? <div className="text-xs text-[var(--error)] max-w-[1100px]">{toolsErr}</div> : null}
 
-			<div className="grid gap-4 md:grid-cols-2 max-w-[1100px]">
-				<ToolCallingSummary supportsTools={supportsTools} toolCount={tools.length} />
-				<ActiveModelSummary session={session} />
-				<ExecutionRuntimeSummary sandbox={sandbox} />
-			</div>
+			{toolData ? (
+				<>
+					<div className="grid gap-4 md:grid-cols-2 max-w-[1100px]">
+						<ToolCallingSummary supportsTools={toolData.supportsTools} toolCount={toolData.tools.length} />
+						<ActiveModelSummary session={toolData.session} />
+						<ExecutionRuntimeSummary sandbox={toolData.sandbox} />
+					</div>
 
-			<ToolCallingWarning supportsTools={supportsTools} />
-			<RegisteredTools groups={toolGroups} toolCount={tools.length} />
+					<ToolCallingWarning supportsTools={toolData.supportsTools} />
+					<RegisteredTools groups={toolGroups} toolCount={toolData.tools.length} />
+				</>
+			) : null}
 		</div>
 	);
 }

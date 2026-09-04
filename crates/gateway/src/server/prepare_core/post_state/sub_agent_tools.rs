@@ -603,7 +603,8 @@ mod tests {
         super::*,
         async_trait::async_trait,
         chelix_service_traits::{
-            ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ServiceResult,
+            ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+            ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceResult,
         },
         std::sync::atomic::{AtomicUsize, Ordering},
     };
@@ -659,19 +660,35 @@ mod tests {
             Err("clear is not used by this test service".into())
         }
 
-        async fn compact(&self, _params: Value) -> ServiceResult {
+        async fn compact(
+            &self,
+            _request: ChatCompactRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("compact is not used by this test service".into())
         }
 
-        async fn context(&self, _params: Value) -> ServiceResult {
+        async fn context(
+            &self,
+            _request: ChatContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("context is not used by this test service".into())
         }
 
-        async fn raw_prompt(&self, _params: Value) -> ServiceResult {
+        async fn raw_prompt(
+            &self,
+            _request: ChatRawPromptRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("raw_prompt is not used by this test service".into())
         }
 
-        async fn full_context(&self, _params: Value) -> ServiceResult {
+        async fn full_context(
+            &self,
+            _request: ChatFullContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("full_context is not used by this test service".into())
         }
 

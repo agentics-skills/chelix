@@ -1,9 +1,10 @@
 use serde_json::json;
 
 use crate::{
-    BrowserService, ChatExecutionContext, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest,
-    ChatService, NoopBrowserService, ServiceResult, SessionBusyReason, SessionMutationCoordinator,
-    interfaces::model_service_not_configured_error,
+    BrowserService, ChatCompactRequest, ChatContextRequest, ChatExecutionContext,
+    ChatFullContextRequest, ChatRawPromptRequest, ChatSendMessage, ChatSendRequest,
+    ChatSendSyncRequest, ChatService, NoopBrowserService, ServiceResult, SessionBusyReason,
+    SessionMutationCoordinator, interfaces::model_service_not_configured_error,
 };
 
 struct SlowShutdownBrowserService;
@@ -44,19 +45,35 @@ impl ChatService for DefaultRefreshChatService {
         Ok(json!({}))
     }
 
-    async fn compact(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn compact(
+        &self,
+        _request: ChatCompactRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn context(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn context(
+        &self,
+        _request: ChatContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn raw_prompt(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn raw_prompt(
+        &self,
+        _request: ChatRawPromptRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn full_context(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn full_context(
+        &self,
+        _request: ChatFullContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 }
@@ -206,6 +223,22 @@ fn chat_send_sync_request_rejects_an_additional_field() {
     }));
 
     assert!(result.is_err());
+}
+
+#[test]
+fn chat_auxiliary_requests_accept_only_an_empty_object() {
+    assert!(serde_json::from_value::<ChatCompactRequest>(json!({})).is_ok());
+    assert!(serde_json::from_value::<ChatContextRequest>(json!({})).is_ok());
+    assert!(serde_json::from_value::<ChatRawPromptRequest>(json!({})).is_ok());
+    assert!(serde_json::from_value::<ChatFullContextRequest>(json!({})).is_ok());
+
+    let invalid_values = [json!(null), json!({ "unexpected": true })];
+    for value in invalid_values {
+        assert!(serde_json::from_value::<ChatCompactRequest>(value.clone()).is_err());
+        assert!(serde_json::from_value::<ChatContextRequest>(value.clone()).is_err());
+        assert!(serde_json::from_value::<ChatRawPromptRequest>(value.clone()).is_err());
+        assert!(serde_json::from_value::<ChatFullContextRequest>(value).is_err());
+    }
 }
 
 #[tokio::test]

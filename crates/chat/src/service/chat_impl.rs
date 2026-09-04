@@ -10,11 +10,8 @@ use std::{
 };
 
 use {
-    async_trait::async_trait,
-    serde_json::Value,
-    tokio::sync::RwLock,
-    tokio_util::sync::CancellationToken,
-    tracing::{info, warn},
+    async_trait::async_trait, serde_json::Value, tokio::sync::RwLock,
+    tokio_util::sync::CancellationToken, tracing::info,
 };
 
 use {
@@ -27,7 +24,10 @@ use {
         },
     },
     chelix_config::ToolMode,
-    chelix_service_traits::{ChatService, ServiceError, ServiceResult},
+    chelix_service_traits::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatService, ServiceError, ServiceResult,
+    },
     chelix_sessions::{MessageContent, PersistedMessage, filter_ui_history},
     chelix_tools::policy::PolicyContext,
 };
@@ -36,10 +36,10 @@ use crate::{
     channels::notify_channels_of_compaction,
     compaction,
     prompt::{
-        apply_chat_execution_context, apply_request_runtime_context, build_policy_context,
-        build_prompt_runtime_context, clear_prompt_memory_snapshot, discover_skills_if_enabled,
-        filter_skills_for_agent, load_prompt_persona_for_session, prepare_run_registry,
-        prompt_build_limits_from_config, resolve_prompt_agent_id,
+        apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
+        clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
+        load_prompt_persona_for_session, prepare_run_registry, prompt_build_limits_from_config,
+        resolve_prompt_agent_id,
     },
     run_with_tools::run_with_tools,
     streaming::run_streaming,
@@ -141,7 +141,7 @@ impl ChatService for LiveChatService {
     async fn send(
         &self,
         request: chelix_service_traits::ChatSendRequest,
-        context: chelix_service_traits::ChatExecutionContext,
+        context: ChatExecutionContext,
     ) -> ServiceResult {
         self.send_impl(request, context).await
     }
@@ -149,7 +149,7 @@ impl ChatService for LiveChatService {
     async fn send_sync(
         &self,
         request: chelix_service_traits::ChatSendSyncRequest,
-        context: chelix_service_traits::ChatExecutionContext,
+        context: ChatExecutionContext,
     ) -> ServiceResult {
         let session_key = context.session_id.as_str().to_string();
         if session_key.is_empty() {
@@ -580,12 +580,19 @@ impl ChatService for LiveChatService {
         Ok(serde_json::json!({ "ok": true }))
     }
 
-    async fn compact(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
+    async fn compact(
+        &self,
+        _request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_id = context.session_id.clone();
+        let session_key = session_id.as_str();
+        let resolved = self.resolve_chat_turn(&session_id, None).await?;
+        let provider = Arc::clone(resolved.model.provider());
 
         let history = self
             .session_store
-            .read(&session_key)
+            .read(session_key)
             .await
             .map_err(ServiceError::message)?;
 
@@ -593,24 +600,17 @@ impl ChatService for LiveChatService {
             return Err("nothing to compact".into());
         }
 
-        // Summarize with the session's own model and append a checkpoint.
-        // The stored history is never mutated.
-        let provider = self
-            .resolve_provider(&session_key, &history)
-            .await
-            .map_err(ServiceError::message)?;
-
         // Rebuild the session system prompt and tool schemas exactly as a
         // regular turn would, so the summarization request shares the
         // provider prompt-cache prefix with the previous turn.
         let (system_prompt, tools) = self
-            .session_prompt_context(&session_key, &history, &provider, &params)
+            .session_prompt_context(session_key, &history, &provider, &context)
             .await
             .map_err(ServiceError::message)?;
 
         let outcome = compaction::summarize_session(
             &self.session_store,
-            &session_key,
+            session_key,
             &*provider,
             &system_prompt,
             &tools,
@@ -620,11 +620,11 @@ impl ChatService for LiveChatService {
 
         let message_count = self
             .session_store
-            .ui_message_count(&session_key)
+            .ui_message_count(session_key)
             .await
-            .unwrap_or(0);
+            .map_err(ServiceError::message)?;
         self.session_metadata
-            .touch(&session_key, message_count)
+            .touch(session_key, message_count)
             .await
             .map_err(ServiceError::message)?;
 
@@ -651,37 +651,41 @@ impl ChatService for LiveChatService {
 
         // Notify any channel (Telegram, Discord, Matrix, WhatsApp, etc.)
         // that has pending reply targets on this session.
-        notify_channels_of_compaction(&self.state, &session_key, &outcome).await;
+        notify_channels_of_compaction(&self.state, session_key, &outcome).await;
 
         info!(session = %session_key, "chat.compact: done");
         Ok(outcome.message)
     }
 
-    async fn context(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
+    async fn context(
+        &self,
+        _request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_id = context.session_id.clone();
+        let session_key = session_id.as_str();
+        let resolved = self.resolve_chat_turn(&session_id, None).await?;
+        let model_id = resolved.model.model_reasoning().model_id().to_string();
+        let provider = Arc::clone(resolved.model.provider());
 
         // Session info
         let message_count = self
             .session_store
-            .ui_message_count(&session_key)
+            .ui_message_count(session_key)
             .await
-            .unwrap_or(0);
+            .map_err(ServiceError::message)?;
         let session_entry = self
             .session_metadata
-            .get(&session_key)
+            .get(session_key)
             .await
             .map_err(ServiceError::message)?;
         let prompt_persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref(), None)
+            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
         let messages = self
             .session_store
-            .read(&session_key)
-            .await
-            .unwrap_or_default();
-        let provider = self
-            .resolve_provider(&session_key, &messages)
+            .read(session_key)
             .await
             .map_err(ServiceError::message)?;
         let provider_name = provider.name().to_string();
@@ -689,19 +693,15 @@ impl ChatService for LiveChatService {
         let session_info = serde_json::json!({
             "key": session_key,
             "messageCount": message_count,
-            "model": session_entry.as_ref().and_then(|entry| entry.model()),
+            "model": model_id,
             "provider": provider_name,
             "label": session_entry.as_ref().and_then(|e| e.label.as_deref()),
             "projectId": session_entry.as_ref().and_then(|e| e.project_id.as_deref()),
         });
 
         // Project info & context files
-        let conn_id = params
-            .get("_conn_id")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        let project_id = if let Some(cid) = conn_id.as_deref() {
-            self.state.active_project_id(cid).await
+        let project_id = if let Some(connection_id) = context.connection_id() {
+            self.state.active_project_id(connection_id).await
         } else {
             None
         };
@@ -767,7 +767,7 @@ impl ChatService for LiveChatService {
                 .state
                 .memory_manager()
                 .map(|manager| (manager, Arc::clone(&provider)));
-            match prepare_run_registry(
+            let effective_registry = prepare_run_registry(
                 &registry_guard,
                 &prompt_persona.config,
                 &[],
@@ -777,25 +777,19 @@ impl ChatService for LiveChatService {
                 &list_agent_id,
                 memory_setup,
                 &messages,
-            ) {
-                Ok(effective_registry) => {
-                    let catalog = effective_registry
-                        .list_catalog()
-                        .into_iter()
-                        .map(|entry| {
-                            serde_json::json!({
-                                "name": entry.name,
-                                "description": entry.description,
-                            })
-                        })
-                        .collect();
-                    (catalog, effective_registry.list_schemas().len())
-                },
-                Err(error) => {
-                    warn!(session = %session_key, error = %error, "context: failed to prepare tool registry");
-                    (vec![], 0)
-                },
-            }
+            )
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+            let catalog = effective_registry
+                .list_catalog()
+                .into_iter()
+                .map(|entry| {
+                    serde_json::json!({
+                        "name": entry.name,
+                        "description": entry.description,
+                    })
+                })
+                .collect();
+            (catalog, effective_registry.list_schemas().len())
         } else {
             (vec![], 0)
         };
@@ -811,24 +805,13 @@ impl ChatService for LiveChatService {
             + usage.current_request_cache_read_tokens
             + usage.current_request_cache_write_tokens;
 
-        // Context window from the session's provider
-        let context_window = {
-            let reg = self.providers.read().await;
-            let session_model = session_entry.as_ref().and_then(|entry| entry.model());
-            let provider = if let Some(id) = session_model {
-                reg.get(id)
-                    .ok_or_else(|| format!("model '{id}' is not registered"))?
-            } else {
-                reg.first()
-                    .ok_or_else(|| "no model is registered for this session".to_string())?
-            };
-            provider.context_window().ok_or_else(|| {
-                format!(
-                    "model '{}' has no resolved context_length metadata",
-                    provider.id()
-                )
-            })?
-        };
+        // Context window from the same resolved provider used for this request.
+        let context_window = provider.context_window().ok_or_else(|| {
+            ServiceError::message(format!(
+                "model '{}' has no resolved context_length metadata",
+                provider.id()
+            ))
+        })?;
 
         // Sandbox info
         let router = self.state.sandbox_router();
@@ -839,7 +822,7 @@ impl ChatService for LiveChatService {
             let owner_key = session_entry
                 .as_ref()
                 .and_then(|entry| entry.sandbox_owner_key.as_deref())
-                .unwrap_or(&session_key);
+                .unwrap_or(session_key);
             let id = router.sandbox_id_for(owner_key);
             format!(
                 "{}-{}",
@@ -915,22 +898,18 @@ impl ChatService for LiveChatService {
         }))
     }
 
-    async fn raw_prompt(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
-
-        let conn_id = params
-            .get("_conn_id")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
-        // Resolve provider.
+    async fn raw_prompt(
+        &self,
+        _request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_id = context.session_id.clone();
+        let session_key = session_id.as_str();
+        let resolved = self.resolve_chat_turn(&session_id, None).await?;
+        let provider = Arc::clone(resolved.model.provider());
         let history = self
             .session_store
-            .read(&session_key)
-            .await
-            .unwrap_or_default();
-        let provider = self
-            .resolve_provider(&session_key, &history)
+            .read(session_key)
             .await
             .map_err(ServiceError::message)?;
         let tool_mode = provider.tool_mode();
@@ -940,24 +919,24 @@ impl ChatService for LiveChatService {
         // Build runtime context.
         let session_entry = self
             .session_metadata
-            .get(&session_key)
+            .get(session_key)
             .await
             .map_err(ServiceError::message)?;
         let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref(), None)
+            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
             &provider,
-            &session_key,
+            session_key,
             session_entry.as_ref(),
         )
         .await;
-        apply_request_runtime_context(
+        apply_chat_execution_context(
             &mut runtime_context.host,
-            &params,
+            &context,
             persona
                 .user
                 .timezone
@@ -967,7 +946,7 @@ impl ChatService for LiveChatService {
 
         // Resolve project context.
         let project_context = self
-            .resolve_project_context(&session_key, conn_id.as_deref())
+            .resolve_project_context(session_key, context.connection_id())
             .await
             .map_err(ServiceError::message)?;
 
@@ -987,8 +966,7 @@ impl ChatService for LiveChatService {
 
         // Build filtered tool registry with the same preparation as the live
         // run (filter → memory tools → lazy wrap) so the debug prompt matches.
-        let policy_ctx =
-            build_policy_context(&raw_prompt_agent_id, Some(&runtime_context), Some(&params));
+        let policy_ctx = build_policy_context(&raw_prompt_agent_id, Some(&runtime_context));
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
             let memory_setup = self
@@ -1067,22 +1045,18 @@ impl ChatService for LiveChatService {
 
     /// Return the **full messages array** that would be sent to the LLM on the
     /// next call — system prompt + conversation history — in OpenAI format.
-    async fn full_context(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
-
-        let conn_id = params
-            .get("_conn_id")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-
-        // Resolve provider.
+    async fn full_context(
+        &self,
+        _request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let session_id = context.session_id.clone();
+        let session_key = session_id.as_str();
+        let resolved = self.resolve_chat_turn(&session_id, None).await?;
+        let provider = Arc::clone(resolved.model.provider());
         let history = self
             .session_store
-            .read(&session_key)
-            .await
-            .unwrap_or_default();
-        let provider = self
-            .resolve_provider(&session_key, &history)
+            .read(session_key)
             .await
             .map_err(ServiceError::message)?;
         let tool_mode = provider.tool_mode();
@@ -1092,24 +1066,24 @@ impl ChatService for LiveChatService {
         // Build runtime context.
         let session_entry = self
             .session_metadata
-            .get(&session_key)
+            .get(session_key)
             .await
             .map_err(ServiceError::message)?;
         let persona = self
-            .load_prompt_persona_for_agent_run(&session_key, session_entry.as_ref(), None)
+            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
             &persona.config,
             &provider,
-            &session_key,
+            session_key,
             session_entry.as_ref(),
         )
         .await;
-        apply_request_runtime_context(
+        apply_chat_execution_context(
             &mut runtime_context.host,
-            &params,
+            &context,
             persona
                 .user
                 .timezone
@@ -1119,7 +1093,7 @@ impl ChatService for LiveChatService {
 
         // Resolve project context.
         let project_context = self
-            .resolve_project_context(&session_key, conn_id.as_deref())
+            .resolve_project_context(session_key, context.connection_id())
             .await
             .map_err(ServiceError::message)?;
 
@@ -1137,8 +1111,7 @@ impl ChatService for LiveChatService {
 
         // Apply per-agent skill policy.
         let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
-        let policy_ctx =
-            build_policy_context(&full_ctx_agent_id, Some(&runtime_context), Some(&params));
+        let policy_ctx = build_policy_context(&full_ctx_agent_id, Some(&runtime_context));
         // Same preparation as the live run so the full-context prompt reflects
         // the lazy state of the current history.
         let filtered_registry = {
@@ -1350,23 +1323,26 @@ mod tests {
         collections::{HashMap, HashSet},
         pin::Pin,
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicBool, Ordering},
         },
     };
 
     use {
-        chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent},
+        chelix_agents::model::{
+            ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, Usage,
+        },
         chelix_common::{ModelMetadata, ModelModality, ModelOverride},
         chelix_config::ToolMode,
         chelix_providers::{ModelInfo, ProviderRegistry},
         chelix_service_traits::{
-            ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ChatService, McpService,
+            ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+            ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ChatService, McpService,
             NoopMcpService, NoopProjectService, NoopTtsService, ProjectService, ServiceError,
             TtsService,
         },
         chelix_sessions::{
-            QueuedPrompts, SessionKey,
+            PersistedMessage, QueuedPrompts, SessionKey,
             metadata::{
                 ExternalAgentKind, ExternalSessionIdentity, SessionBacking, SqliteSessionMetadata,
             },
@@ -1510,7 +1486,10 @@ mod tests {
         }
     }
 
-    struct ValidationProvider;
+    struct ValidationProvider {
+        selected_effort: Option<chelix_common::ReasoningEffort>,
+        resolved_efforts: Arc<Mutex<Vec<String>>>,
+    }
 
     #[async_trait::async_trait]
     impl LlmProvider for ValidationProvider {
@@ -1527,7 +1506,20 @@ mod tests {
             _messages: &[ChatMessage],
             _tools: &[Value],
         ) -> anyhow::Result<CompletionResponse> {
-            panic!("provider must not run for rejected validation cases")
+            Ok(CompletionResponse {
+                text: Some("summary".to_string()),
+                tool_calls: Vec::new(),
+                usage: Usage::default(),
+            })
+        }
+
+        async fn complete_with_options(
+            &self,
+            messages: &[ChatMessage],
+            tools: &[Value],
+            _options: &CompletionOptions,
+        ) -> anyhow::Result<CompletionResponse> {
+            self.complete(messages, tools).await
         }
 
         fn stream(
@@ -1541,11 +1533,22 @@ mod tests {
             ToolMode::Off
         }
 
+        fn reasoning_effort(&self) -> Option<chelix_common::ReasoningEffort> {
+            self.selected_effort.clone()
+        }
+
         fn with_reasoning_effort(
             self: Arc<Self>,
-            _effort: chelix_common::ReasoningEffort,
+            effort: chelix_common::ReasoningEffort,
         ) -> Option<Arc<dyn LlmProvider>> {
-            Some(self)
+            self.resolved_efforts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(effort.as_str().to_string());
+            Some(Arc::new(Self {
+                selected_effort: Some(effort),
+                resolved_efforts: Arc::clone(&self.resolved_efforts),
+            }))
         }
     }
 
@@ -1577,6 +1580,7 @@ mod tests {
         LiveChatService,
         Arc<SqliteSessionMetadata>,
         Arc<SessionStore>,
+        Arc<Mutex<Vec<String>>>,
     ) {
         let directory = tempfile::tempdir()
             .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
@@ -1627,6 +1631,7 @@ mod tests {
             ..chelix_config::ChelixConfig::default()
         };
         let agents_config = Arc::new(RwLock::new(agents));
+        let resolved_efforts = Arc::new(Mutex::new(Vec::new()));
         let mut registry = ProviderRegistry::empty();
         for model_id in ["model", "other"] {
             registry.register(
@@ -1635,7 +1640,10 @@ mod tests {
                     provider: "test".to_string(),
                     metadata: validation_model_metadata(),
                 },
-                Arc::new(ValidationProvider),
+                Arc::new(ValidationProvider {
+                    selected_effort: None,
+                    resolved_efforts: Arc::clone(&resolved_efforts),
+                }),
             );
         }
         let runtime: Arc<dyn crate::runtime::ChatRuntime> =
@@ -1650,12 +1658,19 @@ mod tests {
             agents_config,
             chelix_config::ToolsConfigSource::snapshot(config.tools),
         );
-        (directory, service, metadata, session_store)
+        (
+            directory,
+            service,
+            metadata,
+            session_store,
+            resolved_efforts,
+        )
     }
 
     #[tokio::test]
     async fn chat_turn_resolution_uses_complete_request_or_persisted_session_pair() {
-        let (_directory, service, _metadata, _session_store) = validation_test_service().await;
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
         let explicit = ModelOverride {
             model: "test::other".to_string(),
             reasoning_effort: chelix_common::ReasoningEffort::from("off"),
@@ -1699,8 +1714,136 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn chat_auxiliary_surfaces_use_the_persisted_pair_and_one_resolved_provider() {
+        let (_directory, service, _metadata, session_store, resolved_efforts) =
+            validation_test_service().await;
+        session_store
+            .append("main", &PersistedMessage::user("hello").to_value())
+            .await
+            .unwrap_or_else(|error| panic!("seed auxiliary history: {error}"));
+
+        let context_payload = service
+            .context(
+                ChatContextRequest::default(),
+                ChatExecutionContext::internal(SessionKey::new("main")),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("chat.context should succeed: {error}"));
+        assert_eq!(context_payload["session"]["model"], "test::model");
+        assert_eq!(context_payload["session"]["provider"], "test");
+        assert_eq!(context_payload["supportsTools"], false);
+        assert_eq!(context_payload["tokenUsage"]["contextWindow"], 8_192);
+
+        let raw_prompt = service
+            .raw_prompt(
+                ChatRawPromptRequest::default(),
+                ChatExecutionContext::internal(SessionKey::new("main")),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("chat.raw_prompt should succeed: {error}"));
+        assert_eq!(raw_prompt["tools_enabled"], false);
+        assert_eq!(raw_prompt["tool_mode"], "Off");
+
+        let full_context = service
+            .full_context(
+                ChatFullContextRequest::default(),
+                ChatExecutionContext::internal(SessionKey::new("main")),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("chat.full_context should succeed: {error}"));
+        assert!(full_context["messages"].is_array());
+
+        service
+            .compact(
+                ChatCompactRequest::default(),
+                ChatExecutionContext::internal(SessionKey::new("main")),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("chat.compact should succeed: {error}"));
+
+        let efforts = resolved_efforts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert_eq!(efforts, vec!["off", "off", "off", "off"]);
+    }
+
+    #[tokio::test]
+    async fn chat_auxiliary_surfaces_reject_invalid_persisted_pairs() {
+        let (_directory, service, metadata, _session_store, resolved_efforts) =
+            validation_test_service().await;
+        metadata
+            .bind_external(
+                "external",
+                None,
+                &ExternalSessionIdentity::new(ExternalAgentKind::Codex, None),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("external session setup: {error}"));
+        for (session_key, model, effort) in [
+            ("unknown", "test::missing", "off"),
+            ("unsupported", "test::model", "high"),
+        ] {
+            let pair = chelix_common::ResolvedModelReasoning::try_new(
+                model.to_string(),
+                chelix_common::ReasoningEffort::from(effort),
+            )
+            .unwrap_or_else(|error| {
+                panic!("invalid registry pair must remain storage-valid: {error}")
+            });
+            metadata
+                .create_llm_session(session_key, None, &pair, Some("main"))
+                .await
+                .unwrap_or_else(|error| panic!("invalid registry session setup: {error}"));
+        }
+
+        for session_key in ["external", "unknown", "unsupported"] {
+            let results = [
+                service
+                    .compact(
+                        ChatCompactRequest::default(),
+                        ChatExecutionContext::internal(SessionKey::new(session_key)),
+                    )
+                    .await,
+                service
+                    .context(
+                        ChatContextRequest::default(),
+                        ChatExecutionContext::internal(SessionKey::new(session_key)),
+                    )
+                    .await,
+                service
+                    .raw_prompt(
+                        ChatRawPromptRequest::default(),
+                        ChatExecutionContext::internal(SessionKey::new(session_key)),
+                    )
+                    .await,
+                service
+                    .full_context(
+                        ChatFullContextRequest::default(),
+                        ChatExecutionContext::internal(SessionKey::new(session_key)),
+                    )
+                    .await,
+            ];
+            for result in results {
+                assert!(
+                    result.is_err(),
+                    "auxiliary surface unexpectedly accepted session {session_key}"
+                );
+            }
+        }
+        assert!(
+            resolved_efforts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty(),
+            "invalid pairs must fail before applying reasoning to a provider"
+        );
+    }
+
+    #[tokio::test]
     async fn chat_turn_resolution_rejects_invalid_complete_pairs_or_missing_session_pair() {
-        let (_directory, service, metadata, _session_store) = validation_test_service().await;
+        let (_directory, service, metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
         metadata
             .bind_external(
                 "external",
@@ -1763,7 +1906,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_send_preserves_entry_and_history() {
-        let (_directory, service, metadata, session_store) = validation_test_service().await;
+        let (_directory, service, metadata, session_store, _resolved_efforts) =
+            validation_test_service().await;
         let cases = [
             ("empty effort", ModelOverride {
                 model: "test::model".to_string(),
@@ -1822,7 +1966,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_send_sync_agent_selection_preserves_entry_and_history() {
-        let (_directory, service, metadata, session_store) = validation_test_service().await;
+        let (_directory, service, metadata, session_store, _resolved_efforts) =
+            validation_test_service().await;
         let cases = [
             ("empty effort", ModelOverride {
                 model: "test::model".to_string(),
@@ -1882,7 +2027,8 @@ mod tests {
 
     #[tokio::test]
     async fn busy_send_persists_turn_settings_before_prompt_only_enqueue() {
-        let (_directory, service, metadata, _session_store) = validation_test_service().await;
+        let (_directory, service, metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
         let persisted_pair = chelix_common::ResolvedModelReasoning::try_new(
             "test::model".to_string(),
             chelix_common::ReasoningEffort::from("off"),

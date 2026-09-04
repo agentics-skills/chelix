@@ -4,7 +4,8 @@ use tracing::info;
 
 use {
     chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
-    chelix_sessions::metadata::SqliteSessionMetadata,
+    chelix_service_traits::{ChatCompactRequest, ChatContextRequest, ChatExecutionContext},
+    chelix_sessions::{SessionKey, metadata::SqliteSessionMetadata},
 };
 
 use crate::{
@@ -242,10 +243,12 @@ pub(in crate::channel_events) async fn handle_compact(
     session_key: &str,
 ) -> ChannelResult<String> {
     let chat = state.chat();
-    let params = serde_json::json!({ "_session_key": session_key });
-    chat.compact(params)
-        .await
-        .map_err(ChannelError::unavailable)?;
+    chat.compact(
+        ChatCompactRequest::default(),
+        ChatExecutionContext::internal(SessionKey::new(session_key)),
+    )
+    .await
+    .map_err(ChannelError::unavailable)?;
     Ok("Session compacted.".to_string())
 }
 
@@ -254,9 +257,11 @@ pub(in crate::channel_events) async fn handle_context(
     session_key: &str,
 ) -> ChannelResult<String> {
     let chat = state.chat();
-    let params = serde_json::json!({ "_session_key": session_key });
     let res = chat
-        .context(params)
+        .context(
+            ChatContextRequest::default(),
+            ChatExecutionContext::internal(SessionKey::new(session_key)),
+        )
         .await
         .map_err(ChannelError::unavailable)?;
 

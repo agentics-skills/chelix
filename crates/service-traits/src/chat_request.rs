@@ -163,6 +163,26 @@ impl ChatSendSyncRequest {
     }
 }
 
+/// Closed public request accepted by `chat.compact`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatCompactRequest {}
+
+/// Closed public request accepted by `chat.context`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatContextRequest {}
+
+/// Closed public request accepted by `chat.raw_prompt`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatRawPromptRequest {}
+
+/// Closed public request accepted by `chat.full_context`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatFullContextRequest {}
+
 /// Channel metadata retained with a user message and runtime context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatChannelMetadata {

@@ -12,7 +12,8 @@ mod session_mutations;
 pub use crate::{
     bundle::Services,
     chat_request::{
-        ChatChannelMetadata, ChatExecutionContext, ChatRequestOrigin, ChatSendDocument,
+        ChatChannelMetadata, ChatCompactRequest, ChatContextRequest, ChatExecutionContext,
+        ChatFullContextRequest, ChatRawPromptRequest, ChatRequestOrigin, ChatSendDocument,
         ChatSendMessage, ChatSendRequest, ChatSendSyncRequest,
     },
     error::{ServiceError, ServiceResult},

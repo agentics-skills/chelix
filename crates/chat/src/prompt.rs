@@ -526,39 +526,6 @@ pub(crate) async fn build_prompt_runtime_context(
     }
 }
 
-pub(crate) fn apply_request_runtime_context(
-    host: &mut PromptHostRuntimeContext,
-    params: &Value,
-    default_timezone: Option<&str>,
-) {
-    host.accept_language = params
-        .get("_accept_language")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    host.remote_ip = params
-        .get("_remote_ip")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    // Extract sender_id from channel metadata (set by channel handlers).
-    if host.channel_sender_id.is_none() {
-        host.channel_sender_id = params
-            .get("channel")
-            .and_then(|ch| ch.get("sender_id"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-    }
-
-    if let Some(timezone) =
-        normalized_iana_timezone(params.get("_timezone").and_then(|v| v.as_str()))
-            .or_else(|| normalized_iana_timezone(default_timezone))
-    {
-        host.timezone = Some(timezone);
-    }
-
-    refresh_runtime_prompt_time(host);
-}
-
 pub(crate) fn apply_chat_execution_context(
     host: &mut PromptHostRuntimeContext,
     context: &ChatExecutionContext,
@@ -678,29 +645,19 @@ pub(crate) fn prepare_run_registry(
     Ok(registry)
 }
 
-/// Build a `PolicyContext` from runtime context and request parameters.
+/// Build a `PolicyContext` from typed runtime context.
 pub(crate) fn build_policy_context(
     agent_id: &str,
     runtime_context: Option<&PromptRuntimeContext>,
-    params: Option<&Value>,
 ) -> PolicyContext {
     let host = runtime_context.map(|rc| &rc.host);
-    // sender_id: prefer params["channel"]["sender_id"] (fresh from channel
-    // dispatch), fall back to host.channel_sender_id (set by
-    // apply_request_runtime_context earlier in the call chain).
-    let sender_id = params
-        .and_then(|p| p.get("channel"))
-        .and_then(|ch| ch.get("sender_id"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or_else(|| host.and_then(|h| h.channel_sender_id.clone()));
     PolicyContext {
         agent_id: agent_id.to_string(),
         provider: host.and_then(|h| h.provider.clone()),
         channel: host.and_then(|h| h.channel_type.clone()),
         channel_account_id: host.and_then(|h| h.channel_account_id.clone()),
         group_id: host.and_then(|h| h.channel_chat_type.clone()),
-        sender_id,
+        sender_id: host.and_then(|h| h.channel_sender_id.clone()),
     }
 }
 

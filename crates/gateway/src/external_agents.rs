@@ -15,7 +15,8 @@ use {
         types::ContextTurn,
     },
     chelix_service_traits::{
-        ChatExecutionContext, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest, ChatService,
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest, ChatService,
         ExternalAgentService, ModelService, ServiceError, ServiceResult, SessionBusyReason,
         SessionService,
     },
@@ -1044,20 +1045,36 @@ impl ChatService for ExternalAgentChatService {
         self.inner.clear(params).await
     }
 
-    async fn compact(&self, params: Value) -> ServiceResult {
-        self.inner.compact(params).await
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.inner.compact(request, context).await
     }
 
-    async fn context(&self, params: Value) -> ServiceResult {
-        self.inner.context(params).await
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.inner.context(request, context).await
     }
 
-    async fn raw_prompt(&self, params: Value) -> ServiceResult {
-        self.inner.raw_prompt(params).await
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.inner.raw_prompt(request, context).await
     }
 
-    async fn full_context(&self, params: Value) -> ServiceResult {
-        self.inner.full_context(params).await
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.inner.full_context(request, context).await
     }
 
     async fn refresh_prompt_memory(&self, params: Value) -> ServiceResult {
@@ -1491,19 +1508,35 @@ mod tests {
             Ok(serde_json::json!({ "ok": true }))
         }
 
-        async fn compact(&self, _params: Value) -> ServiceResult {
+        async fn compact(
+            &self,
+            _request: ChatCompactRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Ok(serde_json::json!({ "ok": true }))
         }
 
-        async fn context(&self, _params: Value) -> ServiceResult {
+        async fn context(
+            &self,
+            _request: ChatContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Ok(serde_json::json!({}))
         }
 
-        async fn raw_prompt(&self, _params: Value) -> ServiceResult {
+        async fn raw_prompt(
+            &self,
+            _request: ChatRawPromptRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Ok(serde_json::json!({}))
         }
 
-        async fn full_context(&self, _params: Value) -> ServiceResult {
+        async fn full_context(
+            &self,
+            _request: ChatFullContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Ok(serde_json::json!({}))
         }
     }

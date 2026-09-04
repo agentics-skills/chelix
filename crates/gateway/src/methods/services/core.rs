@@ -1,6 +1,12 @@
 use super::*;
 
-use chelix_common::ActiveToolInvocation;
+use {
+    chelix_common::ActiveToolInvocation,
+    chelix_service_traits::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest,
+    },
+};
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -22,6 +28,29 @@ fn queued_prompts_response(
             "failed to serialize queued prompts status: {error}"
         )))
     })
+}
+
+async fn chat_execution_context(ctx: &MethodContext) -> Result<ChatExecutionContext, ErrorShape> {
+    let session_id = ctx.resolved_session_id().await.ok_or_else(|| {
+        ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "no session context for request",
+        )
+    })?;
+    let (accept_language, remote_ip, timezone) = {
+        let registry = ctx.state.client_registry.read().await;
+        let client = registry.clients.get(&ctx.client_conn_id);
+        (
+            client.and_then(|client| client.accept_language.clone()),
+            client.and_then(|client| client.remote_ip.clone()),
+            client.and_then(|client| client.timezone.clone()),
+        )
+    };
+    let mut context = ChatExecutionContext::client(session_id, ctx.client_conn_id.clone());
+    context.accept_language = accept_language;
+    context.remote_ip = remote_ip;
+    context.timezone = timezone;
+    Ok(context)
 }
 
 fn insert_session_activity_snapshot(
@@ -591,28 +620,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         format!("invalid chat.send request: {error}"),
                     )
                 })?;
-                let session_key = ctx.resolved_session_id().await.ok_or_else(|| {
-                    ErrorShape::new(
-                        error_codes::INVALID_REQUEST,
-                        "no session context for request",
-                    )
-                })?;
-                let (accept_language, remote_ip, timezone) = {
-                    let registry = ctx.state.client_registry.read().await;
-                    let client = registry.clients.get(&ctx.client_conn_id);
-                    (
-                        client.and_then(|client| client.accept_language.clone()),
-                        client.and_then(|client| client.remote_ip.clone()),
-                        client.and_then(|client| client.timezone.clone()),
-                    )
-                };
-                let mut execution_context = chelix_service_traits::ChatExecutionContext::client(
-                    session_key,
-                    ctx.client_conn_id.clone(),
-                );
-                execution_context.accept_language = accept_language;
-                execution_context.remote_ip = remote_ip;
-                execution_context.timezone = timezone;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
                     .send(request, execution_context)
@@ -634,28 +642,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         format!("invalid chat.send_sync request: {error}"),
                     )
                 })?;
-                let session_key = ctx.resolved_session_id().await.ok_or_else(|| {
-                    ErrorShape::new(
-                        error_codes::INVALID_REQUEST,
-                        "no session context for request",
-                    )
-                })?;
-                let (accept_language, remote_ip, timezone) = {
-                    let registry = ctx.state.client_registry.read().await;
-                    let client = registry.clients.get(&ctx.client_conn_id);
-                    (
-                        client.and_then(|client| client.accept_language.clone()),
-                        client.and_then(|client| client.remote_ip.clone()),
-                        client.and_then(|client| client.timezone.clone()),
-                    )
-                };
-                let mut execution_context = chelix_service_traits::ChatExecutionContext::client(
-                    session_key,
-                    ctx.client_conn_id.clone(),
-                );
-                execution_context.accept_language = accept_language;
-                execution_context.remote_ip = remote_ip;
-                execution_context.timezone = timezone;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
                     .send_sync(request, execution_context)
@@ -830,7 +817,15 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.compact",
         Box::new(|ctx| {
             Box::pin(async move {
-                let session_key = active_session_key_for_ctx(&ctx).await;
+                let request = serde_json::from_value::<ChatCompactRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.compact request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
+                let session_key = Some(execution_context.session_id.as_str().to_string());
                 let progress = crate::operation_progress::OperationProgressEmitter::new(
                     ctx.state.clone(),
                     ctx.client_conn_id.clone(),
@@ -848,15 +843,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         false,
                     )
                     .await;
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
                 let result = progress
                     .run_with_heartbeat(
                         "compacting",
                         "Compacting the context window…",
                         Some(1),
                         Some(2),
-                        ctx.state.chat().compact(params),
+                        ctx.state.chat().compact(request, execution_context),
                     )
                     .await
                     .map_err(ErrorShape::from);
@@ -893,11 +886,17 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.context",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
+                let request = serde_json::from_value::<ChatContextRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.context request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .context(params)
+                    .context(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -908,26 +907,17 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.raw_prompt",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                // Forward client Accept-Language, public remote IP, and timezone.
-                {
-                    let registry = ctx.state.client_registry.read().await;
-                    if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
-                        if let Some(ref lang) = client.accept_language {
-                            params["_accept_language"] = serde_json::json!(lang);
-                        }
-                        if let Some(ref ip) = client.remote_ip {
-                            params["_remote_ip"] = serde_json::json!(ip);
-                        }
-                        if let Some(ref tz) = client.timezone {
-                            params["_timezone"] = serde_json::json!(tz);
-                        }
-                    }
-                }
+                let request = serde_json::from_value::<ChatRawPromptRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.raw_prompt request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .raw_prompt(params)
+                    .raw_prompt(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -938,26 +928,17 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.full_context",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                // Forward client Accept-Language, public remote IP, and timezone.
-                {
-                    let registry = ctx.state.client_registry.read().await;
-                    if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
-                        if let Some(ref lang) = client.accept_language {
-                            params["_accept_language"] = serde_json::json!(lang);
-                        }
-                        if let Some(ref ip) = client.remote_ip {
-                            params["_remote_ip"] = serde_json::json!(ip);
-                        }
-                        if let Some(ref tz) = client.timezone {
-                            params["_timezone"] = serde_json::json!(tz);
-                        }
-                    }
-                }
+                let request = serde_json::from_value::<ChatFullContextRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.full_context request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .full_context(params)
+                    .full_context(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -1582,6 +1563,59 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn chat_auxiliary_rpc_parsers_reject_invalid_payloads_before_session_lookup() {
+        let state = GatewayState::new(
+            ResolvedAuth {
+                mode: AuthMode::Token,
+                token: None,
+                password: None,
+            },
+            GatewayServices::noop(),
+        );
+        let registry = MethodRegistry::new();
+
+        for method in [
+            "chat.compact",
+            "chat.context",
+            "chat.raw_prompt",
+            "chat.full_context",
+        ] {
+            for params in [
+                serde_json::Value::Null,
+                serde_json::json!({ "unexpected": true }),
+            ] {
+                let response = registry
+                    .dispatch(MethodContext {
+                        request_id: format!("{method}-invalid"),
+                        method: method.to_string(),
+                        params,
+                        client_conn_id: "unbound-client".into(),
+                        transport: MethodTransport::StatefulConnection,
+                        client_role: "operator".into(),
+                        client_scopes: vec![
+                            chelix_protocol::scopes::READ.into(),
+                            chelix_protocol::scopes::WRITE.into(),
+                        ],
+                        state: Arc::clone(&state),
+                        channel: None,
+                    })
+                    .await;
+                let error = response
+                    .error
+                    .unwrap_or_else(|| panic!("{method} invalid payload should fail"));
+                assert_eq!(error.code, chelix_protocol::error_codes::INVALID_REQUEST);
+                assert!(
+                    error
+                        .message
+                        .starts_with(&format!("invalid {method} request:")),
+                    "{method} read session state before rejecting its payload: {}",
+                    error.message
+                );
+            }
+        }
     }
 
     #[test]

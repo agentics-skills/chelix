@@ -698,7 +698,7 @@ pub(crate) async fn run_with_tools(
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
-    let policy_ctx = build_policy_context(agent_id, runtime_context, None);
+    let policy_ctx = build_policy_context(agent_id, runtime_context);
     // Shared registry preparation: filter → agent-scoped memory tools → lazy
     // wrap, identical to the debug/UI prompt surfaces so they never diverge.
     let filtered_registry = {

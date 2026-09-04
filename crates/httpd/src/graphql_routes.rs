@@ -23,7 +23,10 @@ use {
         services::{ChatService, ServiceResult},
         state::GatewayState,
     },
-    chelix_service_traits::{ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest},
+    chelix_service_traits::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest,
+    },
 };
 
 use crate::server::AppState;
@@ -89,20 +92,36 @@ impl ChatService for GraphqlChatServiceProxy {
         self.state.chat().clear(params).await
     }
 
-    async fn compact(&self, params: Value) -> ServiceResult {
-        self.state.chat().compact(params).await
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().compact(request, context).await
     }
 
-    async fn context(&self, params: Value) -> ServiceResult {
-        self.state.chat().context(params).await
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().context(request, context).await
     }
 
-    async fn raw_prompt(&self, params: Value) -> ServiceResult {
-        self.state.chat().raw_prompt(params).await
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().raw_prompt(request, context).await
     }
 
-    async fn full_context(&self, params: Value) -> ServiceResult {
-        self.state.chat().full_context(params).await
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().full_context(request, context).await
     }
 
     async fn active(&self, params: Value) -> ServiceResult {

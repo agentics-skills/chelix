@@ -6,7 +6,7 @@
 use async_graphql::{Context, Object, Result};
 
 use {
-    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
+    chelix_service_traits::{ChatCompactRequest, ChatExecutionContext, ChatSendRequest},
     chelix_sessions::SessionKey,
 };
 
@@ -216,7 +216,10 @@ impl ChatMutation {
         let s = services!(ctx);
         from_service(
             s.chat
-                .compact(serde_json::json!({ "sessionKey": session_key }))
+                .compact(
+                    ChatCompactRequest::default(),
+                    ChatExecutionContext::internal(SessionKey::new(session_key)),
+                )
                 .await,
         )
     }

@@ -6,7 +6,8 @@ pub use chelix_common::{ReasoningEffort, ResolvedModelReasoning};
 
 use {
     crate::{
-        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ServiceError, ServiceResult,
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceError, ServiceResult,
     },
     chelix_sessions::{QueuedPromptsStatus, SessionKey},
 };
@@ -366,10 +367,26 @@ pub trait ChatService: Send + Sync {
     async fn history(&self, params: Value) -> ServiceResult;
     async fn inject(&self, params: Value) -> ServiceResult;
     async fn clear(&self, params: Value) -> ServiceResult;
-    async fn compact(&self, params: Value) -> ServiceResult;
-    async fn context(&self, params: Value) -> ServiceResult;
-    async fn raw_prompt(&self, params: Value) -> ServiceResult;
-    async fn full_context(&self, params: Value) -> ServiceResult;
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
 
     async fn refresh_prompt_memory(&self, _params: Value) -> ServiceResult {
         Err("chat not configured".into())
@@ -435,19 +452,35 @@ impl ChatService for NoopChatService {
         Ok(serde_json::json!({ "ok": true }))
     }
 
-    async fn compact(&self, _p: Value) -> ServiceResult {
+    async fn compact(
+        &self,
+        _request: ChatCompactRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 
-    async fn context(&self, _p: Value) -> ServiceResult {
+    async fn context(
+        &self,
+        _request: ChatContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(serde_json::json!({ "session": {}, "project": null, "tools": [], "providers": [] }))
     }
 
-    async fn raw_prompt(&self, _p: Value) -> ServiceResult {
+    async fn raw_prompt(
+        &self,
+        _request: ChatRawPromptRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 
-    async fn full_context(&self, _p: Value) -> ServiceResult {
+    async fn full_context(
+        &self,
+        _request: ChatFullContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 

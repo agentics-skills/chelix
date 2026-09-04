@@ -15,7 +15,7 @@ use {
         ProviderSegmentMaterializer,
     },
     chelix_providers::ProviderRegistry,
-    chelix_service_traits::SessionMutationCoordinator,
+    chelix_service_traits::{ChatExecutionContext, SessionMutationCoordinator},
     chelix_sessions::{
         PersistedMessage, QueuedPrompts,
         message::{PersistedFunction, PersistedToolCall},
@@ -36,7 +36,7 @@ use {
 use crate::{
     error,
     prompt::{
-        apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
+        apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
         discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
         prepare_run_registry, prompt_build_limits_from_config,
     },
@@ -573,41 +573,6 @@ impl LiveChatService {
         }
     }
 
-    /// Resolve a provider from session metadata or history, or select one for tools.
-    pub(in crate::service) async fn resolve_provider(
-        &self,
-        session_key: &str,
-        history: &[Value],
-    ) -> error::Result<Arc<dyn chelix_agents::model::LlmProvider>> {
-        let reg = self.providers.read().await;
-        let session_model = self
-            .session_metadata
-            .get(session_key)
-            .await?
-            .and_then(|entry| entry.model().map(str::to_string));
-        let history_model = history
-            .iter()
-            .rev()
-            .find_map(|m| m.get("model").and_then(|v| v.as_str()).map(String::from));
-
-        let provider = if let Some(model_id) = session_model.or(history_model) {
-            reg.get(&model_id).ok_or_else(|| {
-                error::Error::message(format!("model '{model_id}' is not registered"))
-            })?
-        } else {
-            reg.first_with_tools().ok_or_else(|| {
-                error::Error::message("no LLM provider can run tools with its configured tool_mode")
-            })?
-        };
-        validate_tool_mode_compatibility(
-            provider.tool_mode(),
-            provider.supports_tools(),
-            provider.id(),
-        )
-        .map_err(error::Error::message)?;
-        Ok(provider)
-    }
-
     /// Resolve the active session key for a connection.
     pub(in crate::service) async fn session_key_for(&self, conn_id: Option<&str>) -> String {
         if let Some(cid) = conn_id
@@ -717,7 +682,7 @@ impl LiveChatService {
         session_key: &str,
         history: &[Value],
         provider: &Arc<dyn chelix_agents::model::LlmProvider>,
-        params: &Value,
+        context: &ChatExecutionContext,
     ) -> error::Result<(String, Vec<Value>)> {
         let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
@@ -735,9 +700,9 @@ impl LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        apply_request_runtime_context(
+        apply_chat_execution_context(
             &mut runtime_context.host,
-            params,
+            context,
             persona
                 .user
                 .timezone
@@ -745,8 +710,9 @@ impl LiveChatService {
                 .map(|timezone| timezone.name()),
         );
 
-        let conn_id = params.get("_conn_id").and_then(|v| v.as_str());
-        let project_context = self.resolve_project_context(session_key, conn_id).await?;
+        let project_context = self
+            .resolve_project_context(session_key, context.connection_id())
+            .await?;
 
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
         let mcp_disabled = session_entry
@@ -756,7 +722,7 @@ impl LiveChatService {
         let agent_id = persona.agent_id.clone();
         let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
 
-        let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context), Some(params));
+        let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context));
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
             let memory_setup = self
