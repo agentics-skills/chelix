@@ -35,6 +35,7 @@ use {
 
 use crate::{
     error,
+    memory_tools::MemoryForgetProviderResolver,
     prompt::{
         apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
         discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
@@ -725,10 +726,15 @@ impl LiveChatService {
         let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context));
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
-            let memory_setup = self
-                .state
-                .memory_manager()
-                .map(|manager| (manager, Arc::clone(provider)));
+            let memory_setup = self.state.memory_manager().map(|manager| {
+                (
+                    manager,
+                    MemoryForgetProviderResolver::new(
+                        Arc::clone(&self.providers),
+                        Arc::clone(&self.session_metadata),
+                    ),
+                )
+            });
             prepare_run_registry(
                 &registry_guard,
                 &persona.config,

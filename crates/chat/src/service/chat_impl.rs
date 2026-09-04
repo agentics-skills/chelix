@@ -35,6 +35,7 @@ use {
 use crate::{
     channels::notify_channels_of_compaction,
     compaction,
+    memory_tools::MemoryForgetProviderResolver,
     prompt::{
         apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
         clear_prompt_memory_snapshot, discover_skills_if_enabled, filter_skills_for_agent,
@@ -387,6 +388,10 @@ impl ChatService for LiveChatService {
                 &state,
                 &run_id,
                 provider,
+                MemoryForgetProviderResolver::new(
+                    Arc::clone(&self.providers),
+                    Arc::clone(&self.session_metadata),
+                ),
                 &tool_registry,
                 &user_content,
                 &provider_name,
@@ -763,10 +768,15 @@ impl ChatService for LiveChatService {
                 agent_id: list_agent_id.clone(),
                 ..Default::default()
             };
-            let memory_setup = self
-                .state
-                .memory_manager()
-                .map(|manager| (manager, Arc::clone(&provider)));
+            let memory_setup = self.state.memory_manager().map(|manager| {
+                (
+                    manager,
+                    MemoryForgetProviderResolver::new(
+                        Arc::clone(&self.providers),
+                        Arc::clone(&self.session_metadata),
+                    ),
+                )
+            });
             let effective_registry = prepare_run_registry(
                 &registry_guard,
                 &prompt_persona.config,
@@ -969,10 +979,15 @@ impl ChatService for LiveChatService {
         let policy_ctx = build_policy_context(&raw_prompt_agent_id, Some(&runtime_context));
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
-            let memory_setup = self
-                .state
-                .memory_manager()
-                .map(|manager| (manager, Arc::clone(&provider)));
+            let memory_setup = self.state.memory_manager().map(|manager| {
+                (
+                    manager,
+                    MemoryForgetProviderResolver::new(
+                        Arc::clone(&self.providers),
+                        Arc::clone(&self.session_metadata),
+                    ),
+                )
+            });
             prepare_run_registry(
                 &registry_guard,
                 &persona.config,
@@ -1116,10 +1131,15 @@ impl ChatService for LiveChatService {
         // the lazy state of the current history.
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
-            let memory_setup = self
-                .state
-                .memory_manager()
-                .map(|manager| (manager, Arc::clone(&provider)));
+            let memory_setup = self.state.memory_manager().map(|manager| {
+                (
+                    manager,
+                    MemoryForgetProviderResolver::new(
+                        Arc::clone(&self.providers),
+                        Arc::clone(&self.session_metadata),
+                    ),
+                )
+            });
             prepare_run_registry(
                 &registry_guard,
                 &persona.config,

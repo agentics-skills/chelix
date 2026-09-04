@@ -74,6 +74,19 @@ pub trait AgentTool: Send + Sync {
         Ok(raw_result.clone())
     }
     async fn execute(&self, params: serde_json::Value) -> Result<serde_json::Value>;
+    /// Execute with trusted runner context separated from public tool arguments.
+    ///
+    /// The default dispatches the runner-enriched internal execution payload.
+    /// Tools that consume typed context override this method and read their
+    /// public arguments from `params`.
+    async fn execute_with_context(
+        &self,
+        params: serde_json::Value,
+        context: &crate::tool_context::ToolExecutionContext,
+    ) -> Result<serde_json::Value> {
+        self.execute(context.execution_arguments().cloned().unwrap_or(params))
+            .await
+    }
 }
 
 /// Where a tool originates from.

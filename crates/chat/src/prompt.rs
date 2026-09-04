@@ -608,7 +608,7 @@ pub(crate) fn prepare_run_registry(
     agent_id: &str,
     memory: Option<(
         &chelix_memory::runtime::DynMemoryRuntime,
-        Arc<dyn chelix_agents::model::LlmProvider>,
+        crate::memory_tools::MemoryForgetProviderResolver,
     )>,
     history_raw: &[Value],
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
@@ -618,11 +618,11 @@ pub(crate) fn prepare_run_registry(
         base.clone_without(&[])
     };
 
-    if tools_enabled && let Some((manager, provider)) = memory {
+    if tools_enabled && let Some((manager, provider_resolver)) = memory {
         crate::memory_tools::install_agent_scoped_memory_tools(
             &mut registry,
             manager,
-            provider,
+            provider_resolver,
             agent_id,
             config.memory.style,
             config.memory.agent_write_mode,

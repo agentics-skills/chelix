@@ -42,7 +42,7 @@ use crate::{
 use {super::*, crate::service::persist_active_assistant_draft};
 
 use {
-    crate::memory_tools::AgentScopedMemoryWriter,
+    crate::memory_tools::{AgentScopedMemoryWriter, MemoryForgetProviderResolver},
     chelix_agents::{ChatMessage, model::values_to_chat_messages},
 };
 
@@ -892,6 +892,10 @@ impl LiveChatService {
         };
 
         let queued_prompts = Arc::clone(&self.queued_prompts);
+        let memory_forget_provider_resolver = MemoryForgetProviderResolver::new(
+            Arc::clone(&self.providers),
+            Arc::clone(&self.session_metadata),
+        );
         let active_event_forwarders = Arc::clone(&self.active_event_forwarders);
         let terminal_runs = Arc::clone(&self.terminal_runs);
         let tools_config_source = self.tools_config_source.clone();
@@ -979,6 +983,7 @@ impl LiveChatService {
                         &state,
                         &run_id_clone,
                         provider,
+                        memory_forget_provider_resolver,
                         &tool_registry,
                         &user_content,
                         &provider_name,

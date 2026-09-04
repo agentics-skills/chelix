@@ -46,6 +46,7 @@ use crate::{
     },
     chat_error::{parse_agent_run_error, parse_chat_error},
     compaction,
+    memory_tools::MemoryForgetProviderResolver,
     message::apply_voice_reply_suffix,
     prompt::{
         build_policy_context, build_tool_context, prepare_run_registry,
@@ -658,6 +659,7 @@ pub(crate) async fn run_with_tools(
     state: &Arc<dyn ChatRuntime>,
     run_id: &str,
     provider: Arc<dyn chelix_agents::model::LlmProvider>,
+    memory_forget_provider_resolver: MemoryForgetProviderResolver,
     tool_registry: &Arc<RwLock<ToolRegistry>>,
     user_content: &UserContent,
     provider_name: &str,
@@ -705,7 +707,7 @@ pub(crate) async fn run_with_tools(
         let registry_guard = tool_registry.read().await;
         let memory_setup = state
             .memory_manager()
-            .map(|manager| (manager, Arc::clone(&provider)));
+            .map(|manager| (manager, memory_forget_provider_resolver.clone()));
         prepare_run_registry(
             &registry_guard,
             &persona.config,

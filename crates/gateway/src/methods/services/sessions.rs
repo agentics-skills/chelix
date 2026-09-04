@@ -132,7 +132,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
                 // Run session-end memory summary before clearing, if enabled.
                 if !key.is_empty() {
-                    progress
+                    let summary_result = progress
                         .run_with_heartbeat(
                             "summarizing",
                             "Creating memory summary and embeddings before reset…",
@@ -143,6 +143,19 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             ),
                         )
                         .await;
+                    if let Err(error) = summary_result {
+                        let message = error.to_string();
+                        progress
+                            .emit(
+                                "failed",
+                                &format!("Session reset failed: {message}"),
+                                None,
+                                None,
+                                true,
+                            )
+                            .await;
+                        return Err(ErrorShape::from(ServiceError::message(message)));
+                    }
 
                     // Export the session before the reset destroys its history.
                     let hooks = ctx.state.inner.read().await.hook_registry.clone();

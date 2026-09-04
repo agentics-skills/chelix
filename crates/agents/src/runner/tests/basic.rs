@@ -586,6 +586,8 @@ impl LlmProvider for ToolCallContextStreamingProvider {
 
 struct CaptureToolCallContext {
     arguments: Arc<std::sync::Mutex<Option<serde_json::Value>>>,
+    public_arguments: Arc<std::sync::Mutex<Option<serde_json::Value>>>,
+    session_key: Arc<std::sync::Mutex<Option<chelix_sessions::SessionKey>>>,
 }
 
 #[async_trait]
@@ -610,6 +612,22 @@ impl crate::tool_registry::AgentTool for CaptureToolCallContext {
         *self.arguments.lock().unwrap() = Some(params);
         Ok(serde_json::json!({ "captured": true }))
     }
+
+    async fn execute_with_context(
+        &self,
+        params: serde_json::Value,
+        context: &crate::tool_context::ToolExecutionContext,
+    ) -> Result<serde_json::Value> {
+        *self.public_arguments.lock().unwrap() = Some(params);
+        *self.session_key.lock().unwrap() = context.session_key().cloned();
+        self.execute(
+            context
+                .execution_arguments()
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        )
+        .await
+    }
 }
 
 #[tokio::test]
@@ -618,15 +636,19 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
         stream_calls: std::sync::atomic::AtomicUsize::new(0),
     });
     let captured = Arc::new(std::sync::Mutex::new(None));
+    let captured_public = Arc::new(std::sync::Mutex::new(None));
+    let captured_session = Arc::new(std::sync::Mutex::new(None));
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(CaptureToolCallContext {
         arguments: Arc::clone(&captured),
+        public_arguments: Arc::clone(&captured_public),
+        session_key: Arc::clone(&captured_session),
     }));
     let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
     let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
     let mut hooks = HookRegistry::new();
     hooks.register(Arc::new(RewriteToolArgsHook {
-        replacement: serde_json::json!({}),
+        replacement: serde_json::json!({ "_foo": "model-supplied" }),
     }));
 
     let result = run_agent_loop_streaming_with_tool_lifecycle(
@@ -657,6 +679,19 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     assert_eq!(arguments["_session_key"], "session-runtime-context");
     assert_eq!(arguments["_run_id"], "run-runtime-context");
     assert_eq!(arguments["_tool_call_id"], "call_runtime_context");
+    assert_eq!(arguments["_foo"], "model-supplied");
+    assert_eq!(
+        captured_public.lock().unwrap().as_ref(),
+        Some(&serde_json::json!({ "_foo": "model-supplied" }))
+    );
+    assert_eq!(
+        captured_session
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(chelix_sessions::SessionKey::as_str),
+        Some("session-runtime-context")
+    );
     let lifecycle_events = lifecycle_events.lock().unwrap();
     let invocation_events = lifecycle_events
         .iter()
@@ -682,6 +717,24 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
     };
     assert_eq!(invocation_events[2].lifecycle.sequence, 2);
     assert!(input_ready.get("_tool_call_id").is_none());
+    let terminal_arguments = invocation_events
+        .iter()
+        .filter_map(|event| match &event.lifecycle.update {
+            chelix_common::tool_lifecycle::ToolLifecycleUpdate::ResultReady {
+                arguments, ..
+            }
+            | chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed { arguments, .. } => {
+                Some(arguments)
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(terminal_arguments.len(), 2);
+    assert!(
+        terminal_arguments
+            .iter()
+            .all(|arguments| *arguments == &serde_json::json!({}))
+    );
 }
 
 struct InfiniteToolArgumentsProvider;
@@ -1016,6 +1069,8 @@ async fn test_waiting_for_execution_receipt_blocks_tool_dispatch() {
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(CaptureToolCallContext {
         arguments: Arc::clone(&captured),
+        public_arguments: Arc::new(std::sync::Mutex::new(None)),
+        session_key: Arc::new(std::sync::Mutex::new(None)),
     }));
     let waiting_seen = Arc::new(tokio::sync::Notify::new());
     let release_waiting = Arc::new(tokio::sync::Notify::new());
