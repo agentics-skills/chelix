@@ -414,9 +414,7 @@ mod tests {
         // Pairing: WhatsApp supports pairing
         assert!(desc.capabilities.supports_pairing);
 
-        // Threads: WhatsApp does NOT implement ChannelThreadContext
         assert!(!desc.capabilities.supports_threads);
-        assert!(plugin.thread_context().is_none());
     }
 
     #[test]

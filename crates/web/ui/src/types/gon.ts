@@ -77,7 +77,8 @@ export interface GonAgentEntry {
 	max_tools_threshold: number;
 	emoji?: string | null;
 	description?: string | null;
-	model?: string | null;
+	model: string;
+	reasoning_effort: string;
 	soul?: string | null;
 	subagent_prompt?: string | null;
 	[key: string]: unknown;
@@ -89,6 +90,20 @@ export interface GonAgentsData {
 	defaults: {
 		max_tools_threshold: number;
 	};
+}
+
+// ── Model override boundaries ───────────────────────────────
+
+/** Complete model/reasoning pair on camelCase JSON transport boundaries. */
+export interface ModelOverride {
+	model: string;
+	reasoningEffort: string;
+}
+
+/** Complete model/reasoning pair in snake_case configuration objects. */
+export interface ConfigModelOverride {
+	model: string;
+	reasoning_effort: string;
 }
 
 // ── Heartbeat ───────────────────────────────────────────────
@@ -108,7 +123,7 @@ export interface ActiveHoursConfig {
 export interface HeartbeatConfig {
 	enabled: boolean;
 	every: string;
-	model?: string;
+	model_override?: ConfigModelOverride;
 	prompt?: string;
 	ack_max_chars: number;
 	active_hours: ActiveHoursConfig;
@@ -135,7 +150,7 @@ export type CronPayload =
 	| {
 			kind: "agentTurn";
 			message: string;
-			model?: string;
+			modelOverride?: ModelOverride;
 			timeoutSecs?: number;
 			deliver: boolean;
 			channel?: string;
@@ -215,7 +230,7 @@ export interface UpdateAvailability {
  * Mirrors the Rust `GonData` struct in `crates/web/src/templates.rs`.
  */
 export interface GonData {
-	identity: ResolvedIdentity;
+	identity: ResolvedIdentity | null;
 	version: string;
 	port: number;
 	counts: NavCounts;

@@ -9,6 +9,9 @@ import { isChatAtBottom, scrollChatToBottom } from "./chat-ui";
 import * as gon from "./gon";
 import { sendRpc } from "./helpers";
 import { renderPersistedAudio } from "./message-voice";
+import { selectedModelSelection } from "./models";
+import * as S from "./state";
+import type { ChatSendRequest } from "./types/chat";
 import { copyToClipboard, showToast } from "./ui";
 
 // ── Icon helper ──────────────────────────────────────────────
@@ -346,7 +349,17 @@ function buildRetryPopover(sessionKey: string): HTMLElement {
 // ── Retry action ─────────────────────────────────────────────
 
 function retrySend(sessionKey: string, text: string): void {
-	sendRpc("chat.send", { text, _session_key: sessionKey }).then((res) => {
+	if (sessionKey !== S.activeSessionKey) {
+		showToast("The message session is no longer active", "error");
+		return;
+	}
+	const modelOverride = selectedModelSelection();
+	if (!modelOverride) {
+		showToast("Select a model before retrying", "error");
+		return;
+	}
+	const request: ChatSendRequest = { text, modelOverride };
+	sendRpc("chat.send", request).then((res) => {
 		if (!res.ok) {
 			showToast(res.error?.message || "Retry failed", "error");
 		}

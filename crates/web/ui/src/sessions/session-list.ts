@@ -161,7 +161,7 @@ function mergeSessionListPage(
 }
 
 function applySessionList(sessions: SessionMeta[]): void {
-	sessionStore.setAll(sessions);
+	sessionStore.setListed(sessions);
 	S.setSessions(sessions);
 	renderSessionList();
 }

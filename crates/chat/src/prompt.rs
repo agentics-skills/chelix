@@ -13,6 +13,7 @@ use {
         tool_registry::ToolSource,
     },
     chelix_config::{AgentMemoryWriteMode, LoadedWorkspaceMarkdown, MemoryStyle, PromptMemoryMode},
+    chelix_service_traits::ChatExecutionContext,
     chelix_sessions::{
         metadata::{PromptProfile, SessionEntry},
         state_store::SessionStateStore,
@@ -80,19 +81,13 @@ pub(crate) fn prompt_memory_status(
     }
 }
 
-pub(crate) fn resolve_prompt_agent_id(
+pub(crate) fn validate_prompt_agent_id(
     config: &chelix_config::ChelixConfig,
-    session_entry: Option<&SessionEntry>,
+    agent_id: &str,
 ) -> crate::error::Result<String> {
-    let agent_id = session_entry
-        .and_then(|entry| entry.agent_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| config.agents.default.trim());
+    let agent_id = agent_id.trim();
     if agent_id.is_empty() {
-        return Err(crate::error::Error::message(
-            "agents.default must reference an existing agent",
-        ));
+        return Err(crate::error::Error::message("agent_id must not be empty"));
     }
     if config.agents.get(agent_id).is_none() {
         return Err(crate::error::Error::message(format!(
@@ -100,6 +95,35 @@ pub(crate) fn resolve_prompt_agent_id(
         )));
     }
     Ok(agent_id.to_string())
+}
+
+pub(crate) fn resolve_prompt_agent_id_for_execution(
+    config: &chelix_config::ChelixConfig,
+    session_entry: Option<&SessionEntry>,
+    requested_agent_id: Option<&str>,
+) -> crate::error::Result<String> {
+    let requested_agent_id = requested_agent_id
+        .map(|agent_id| validate_prompt_agent_id(config, agent_id))
+        .transpose()?;
+    let agent_id = session_entry
+        .and_then(|entry| entry.agent_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or(requested_agent_id.as_deref())
+        .unwrap_or_else(|| config.agents.default.trim());
+    if agent_id.is_empty() {
+        return Err(crate::error::Error::message(
+            "agents.default must reference an existing agent",
+        ));
+    }
+    validate_prompt_agent_id(config, agent_id)
+}
+
+pub(crate) fn resolve_prompt_agent_id(
+    config: &chelix_config::ChelixConfig,
+    session_entry: Option<&SessionEntry>,
+) -> crate::error::Result<String> {
+    resolve_prompt_agent_id_for_execution(config, session_entry, None)
 }
 
 /// Load user profile, the selected persona prompt, and workspace text for one agent.
@@ -215,22 +239,19 @@ pub(crate) async fn load_prompt_memory_for_session(
     }
 }
 
-pub(crate) async fn load_prompt_persona_for_session(
+pub(crate) async fn load_prompt_persona_for_agent(
     config: &chelix_config::ChelixConfig,
     session_key: &str,
-    session_entry: Option<&SessionEntry>,
+    agent_id: &str,
+    prompt_profile: PromptProfile,
     state_store: Option<&SessionStateStore>,
 ) -> crate::error::Result<PromptPersona> {
-    let agent_id = resolve_prompt_agent_id(config, session_entry)?;
-    let prompt_profile = session_entry
-        .map(|entry| entry.prompt_profile)
-        .unwrap_or_default();
-    let mut persona = load_prompt_persona_base_for_agent(config, &agent_id, prompt_profile)?;
+    let mut persona = load_prompt_persona_base_for_agent(config, agent_id, prompt_profile)?;
     let style = persona.config.memory.style;
     let mode = persona.config.chat.prompt_memory_mode;
     let write_mode = persona.config.memory.agent_write_mode;
     let (memory, snapshot_active) = if memory_style_allows_prompt(style) {
-        load_prompt_memory_for_session(session_key, &agent_id, mode, state_store).await
+        load_prompt_memory_for_session(session_key, agent_id, mode, state_store).await
     } else {
         (None, false)
     };
@@ -238,6 +259,21 @@ pub(crate) async fn load_prompt_persona_for_session(
     persona.memory_status =
         prompt_memory_status(style, mode, write_mode, snapshot_active, memory.as_ref());
     Ok(persona)
+}
+
+pub(crate) async fn load_prompt_persona_for_session(
+    config: &chelix_config::ChelixConfig,
+    session_key: &str,
+    session_entry: Option<&SessionEntry>,
+    requested_agent_id: Option<&str>,
+    state_store: Option<&SessionStateStore>,
+) -> crate::error::Result<PromptPersona> {
+    let agent_id =
+        resolve_prompt_agent_id_for_execution(config, session_entry, requested_agent_id)?;
+    let prompt_profile = session_entry
+        .map(|entry| entry.prompt_profile)
+        .unwrap_or_default();
+    load_prompt_persona_for_agent(config, session_key, &agent_id, prompt_profile, state_store).await
 }
 
 pub(crate) fn prompt_build_limits_from_config(
@@ -490,36 +526,24 @@ pub(crate) async fn build_prompt_runtime_context(
     }
 }
 
-pub(crate) fn apply_request_runtime_context(
+pub(crate) fn apply_chat_execution_context(
     host: &mut PromptHostRuntimeContext,
-    params: &Value,
+    context: &ChatExecutionContext,
     default_timezone: Option<&str>,
 ) {
-    host.accept_language = params
-        .get("_accept_language")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    host.remote_ip = params
-        .get("_remote_ip")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    // Extract sender_id from channel metadata (set by channel handlers).
+    host.accept_language.clone_from(&context.accept_language);
+    host.remote_ip.clone_from(&context.remote_ip);
     if host.channel_sender_id.is_none() {
-        host.channel_sender_id = params
-            .get("channel")
-            .and_then(|ch| ch.get("sender_id"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        host.channel_sender_id = context
+            .channel
+            .as_ref()
+            .and_then(|channel| channel.sender_id.clone());
     }
-
-    if let Some(timezone) =
-        normalized_iana_timezone(params.get("_timezone").and_then(|v| v.as_str()))
-            .or_else(|| normalized_iana_timezone(default_timezone))
+    if let Some(timezone) = normalized_iana_timezone(context.timezone.as_deref())
+        .or_else(|| normalized_iana_timezone(default_timezone))
     {
         host.timezone = Some(timezone);
     }
-
     refresh_runtime_prompt_time(host);
 }
 
@@ -584,7 +608,7 @@ pub(crate) fn prepare_run_registry(
     agent_id: &str,
     memory: Option<(
         &chelix_memory::runtime::DynMemoryRuntime,
-        Arc<dyn chelix_agents::model::LlmProvider>,
+        crate::memory_tools::MemoryForgetProviderResolver,
     )>,
     history_raw: &[Value],
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
@@ -594,11 +618,11 @@ pub(crate) fn prepare_run_registry(
         base.clone_without(&[])
     };
 
-    if tools_enabled && let Some((manager, provider)) = memory {
+    if tools_enabled && let Some((manager, provider_resolver)) = memory {
         crate::memory_tools::install_agent_scoped_memory_tools(
             &mut registry,
             manager,
-            provider,
+            provider_resolver,
             agent_id,
             config.memory.style,
             config.memory.agent_write_mode,
@@ -621,29 +645,19 @@ pub(crate) fn prepare_run_registry(
     Ok(registry)
 }
 
-/// Build a `PolicyContext` from runtime context and request parameters.
+/// Build a `PolicyContext` from typed runtime context.
 pub(crate) fn build_policy_context(
     agent_id: &str,
     runtime_context: Option<&PromptRuntimeContext>,
-    params: Option<&Value>,
 ) -> PolicyContext {
     let host = runtime_context.map(|rc| &rc.host);
-    // sender_id: prefer params["channel"]["sender_id"] (fresh from channel
-    // dispatch), fall back to host.channel_sender_id (set by
-    // apply_request_runtime_context earlier in the call chain).
-    let sender_id = params
-        .and_then(|p| p.get("channel"))
-        .and_then(|ch| ch.get("sender_id"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or_else(|| host.and_then(|h| h.channel_sender_id.clone()));
     PolicyContext {
         agent_id: agent_id.to_string(),
         provider: host.and_then(|h| h.provider.clone()),
         channel: host.and_then(|h| h.channel_type.clone()),
         channel_account_id: host.and_then(|h| h.channel_account_id.clone()),
         group_id: host.and_then(|h| h.channel_chat_type.clone()),
-        sender_id,
+        sender_id: host.and_then(|h| h.channel_sender_id.clone()),
     }
 }
 
@@ -674,13 +688,14 @@ mod tests {
         std::fs::write(workspace.join("SUBAGENT.md"), "Delegated reviewer")
             .unwrap_or_else(|error| panic!("SUBAGENT.md setup failed: {error}"));
         let mut config = chelix_config::ChelixConfig::default();
-        config
-            .agents
-            .entries
-            .insert("reviewer".to_string(), chelix_config::AgentConfig {
-                name: "Reviewer".to_string(),
-                ..Default::default()
-            });
+        config.agents.entries.insert(
+            "reviewer".to_string(),
+            chelix_config::AgentConfig::new(
+                "Reviewer",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
 
         let subagent =
             load_prompt_persona_base_for_agent(&config, "reviewer", PromptProfile::Subagent)
@@ -742,7 +757,11 @@ mod tests {
             .entries
             .insert("locked".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec![]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Locked",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let filtered = apply_runtime_tool_filters(
@@ -772,7 +791,11 @@ mod tests {
             .entries
             .insert("github-only".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec!["github".into()]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "GitHub only",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let filtered = apply_runtime_tool_filters(
@@ -810,7 +833,11 @@ mod tests {
                         "unknown_tool".into(),
                     ],
                 },
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Preloaded",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
         let history = [serde_json::json!({
             "role": "assistant",

@@ -4,7 +4,10 @@ use chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as Chann
 
 use crate::state::GatewayState;
 
-use super::{super::resolve_channel_session, control_handlers, quick_actions, session_handlers};
+use super::{
+    super::{prepare_channel_session, resolve_channel_session, resolve_channel_session_defaults},
+    control_handlers, quick_actions, session_handlers,
+};
 
 pub(in crate::channel_events) async fn dispatch_interaction(
     state: &Arc<tokio::sync::OnceCell<Arc<GatewayState>>>,
@@ -18,7 +21,17 @@ pub(in crate::channel_events) async fn dispatch_interaction(
     } else if let Some(n) = callback_data.strip_prefix("agent_switch:") {
         format!("agent {n}")
     } else if let Some(n) = callback_data.strip_prefix("model_switch:") {
-        format!("model {n}")
+        format!("model efforts:{n}")
+    } else if let Some(selection) = callback_data.strip_prefix("model_effort:") {
+        let (model_index, effort) = selection.split_once(':').ok_or_else(|| {
+            ChannelError::invalid_input(format!("invalid model effort callback: {callback_data}"))
+        })?;
+        if model_index.is_empty() || effort.is_empty() {
+            return Err(ChannelError::invalid_input(format!(
+                "invalid model effort callback: {callback_data}"
+            )));
+        }
+        format!("model {model_index} {effort}")
     } else if let Some(provider) = callback_data.strip_prefix("model_provider:") {
         format!("model provider:{provider}")
     } else {
@@ -44,7 +57,7 @@ pub(in crate::channel_events) async fn dispatch_command(
         .session_metadata
         .as_ref()
         .ok_or_else(|| ChannelError::unavailable("session metadata not available"))?;
-    let session_key = resolve_channel_session(&reply_to, session_metadata).await;
+    let session_key = resolve_channel_session(&reply_to, session_metadata).await?;
 
     // Strip leading slash — some channels (e.g. Slack) include it in the
     // command field, others (Telegram, Discord) strip it before calling.
@@ -112,11 +125,22 @@ pub(in crate::channel_events) async fn dispatch_command(
         "update" => control_handlers::handle_update(state, &reply_to, sender_id, args).await,
 
         // Quick actions
-        "btw" => quick_actions::handle_btw(state, &session_key, args).await,
         "fast" => quick_actions::handle_fast(state, session_metadata, &session_key, args).await,
         "insights" => quick_actions::handle_insights(state, args).await,
         "steer" => quick_actions::handle_steer(state, &session_key, args).await,
-        "queue" => quick_actions::handle_queue(state, &session_key, args).await,
+        "queue" => {
+            let defaults = resolve_channel_session_defaults(state, &reply_to, sender_id).await?;
+            prepare_channel_session(
+                state,
+                session_metadata,
+                &session_key,
+                &reply_to,
+                defaults.agent_id.as_deref(),
+                defaults.model_override.as_ref(),
+            )
+            .await?;
+            quick_actions::handle_queue(state, &session_key, args).await
+        },
         _ => Err(ChannelError::invalid_input(format!(
             "unknown command: /{cmd}"
         ))),
@@ -157,7 +181,6 @@ mod tests {
             "stop",
             "peek",
             "update",
-            "btw",
             "fast",
             "insights",
             "steer",

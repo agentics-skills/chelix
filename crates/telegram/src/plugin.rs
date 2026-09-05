@@ -532,8 +532,6 @@ mod tests {
         assert!(desc.capabilities.supports_otp);
         assert!(plugin.as_otp_provider().is_some());
 
-        // Threads: Telegram does NOT implement ChannelThreadContext
         assert!(!desc.capabilities.supports_threads);
-        assert!(plugin.thread_context().is_none());
     }
 }

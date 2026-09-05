@@ -1,16 +1,6 @@
-use {
-    serde::{Deserialize, Serialize},
-    tracing::debug,
-};
+use tracing::debug;
 
-/// Glob-based allow/deny policy for tool access.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ToolPolicy {
-    #[serde(default)]
-    pub allow: Vec<String>,
-    #[serde(default)]
-    pub deny: Vec<String>,
-}
+pub use chelix_common::ToolPolicy;
 
 /// Context for resolving which policy layers apply.
 #[derive(Debug, Clone, Default)]
@@ -39,58 +29,6 @@ pub fn profile_tools(profile: &str) -> ToolPolicy {
             deny: Vec::new(),
         },
         _ => ToolPolicy::default(),
-    }
-}
-
-/// Check if a tool name matches a glob pattern (supports `*` wildcard).
-fn pattern_matches(pattern: &str, name: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        return name.starts_with(prefix);
-    }
-    pattern == name
-}
-
-impl ToolPolicy {
-    /// Returns true if the given tool name is allowed by this policy.
-    /// Deny always wins over allow.
-    pub fn is_allowed(&self, tool_name: &str) -> bool {
-        // Check deny first — deny wins.
-        for pattern in &self.deny {
-            if pattern_matches(pattern, tool_name) {
-                return false;
-            }
-        }
-        // If allow is empty, everything not denied is allowed.
-        if self.allow.is_empty() {
-            return true;
-        }
-        // Otherwise, must match an allow pattern.
-        for pattern in &self.allow {
-            if pattern_matches(pattern, tool_name) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Merge another policy on top of this one (the `other` has higher precedence).
-    /// Non-empty lists from `other` replace those from `self`.
-    pub fn merge_with(&self, other: &ToolPolicy) -> ToolPolicy {
-        ToolPolicy {
-            allow: if other.allow.is_empty() {
-                self.allow.clone()
-            } else {
-                other.allow.clone()
-            },
-            deny: {
-                let mut combined = self.deny.clone();
-                combined.extend(other.deny.iter().cloned());
-                combined
-            },
-        }
     }
 }
 
@@ -360,7 +298,11 @@ mod tests {
                     deny: Vec::new(),
                     preload: Vec::new(),
                 },
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Researcher",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -525,7 +467,11 @@ mod tests {
             .entries
             .insert("restricted".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Deny(vec!["home-assistant".into()]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Restricted",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -561,7 +507,11 @@ mod tests {
             .entries
             .insert("allow-only".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec!["github".into()]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Allow only",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -584,7 +534,11 @@ mod tests {
             .entries
             .insert("open".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::All,
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Open",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {
@@ -609,7 +563,11 @@ mod tests {
             .entries
             .insert("locked".into(), chelix_config::schema::AgentConfig {
                 mcp: chelix_config::schema::AgentMcpPolicy::Allow(vec![]),
-                ..Default::default()
+                ..chelix_config::AgentConfig::new(
+                    "Locked",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                )
             });
 
         let ctx = PolicyContext {

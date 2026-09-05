@@ -47,6 +47,8 @@ default = "rex"
 
 [agents.rex]
 name = "Rex"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#;
     let mut diagnostics = Vec::new();

@@ -83,8 +83,8 @@ offered = ["telegram", "discord"]
 | `mention_mode`      | no       | `"mention"`   | When the bot responds in guilds: `"always"`, `"mention"` (only when @mentioned), or `"none"` |
 | `allowlist`         | no       | `[]`          | Discord usernames allowed to DM the bot (when `dm_policy = "allowlist"`)                     |
 | `guild_allowlist`   | no       | `[]`          | Guild (server) IDs allowed to interact with the bot                                          |
-| `model`             | no       | —             | Override the default model for this channel                                                  |
-| `model_provider`    | no       | —             | Provider for the overridden model                                                            |
+| `model_override`    | no       | —             | Complete canonical model/reasoning override for this channel                                 |
+| `model_provider`    | no       | —             | Informational provider label; model selection uses `model_override.model`                    |
 | `agent_id`          | no       | —             | Default agent ID for this Discord bot                                                        |
 | `reply_to_message`  | no       | `false`       | Send bot responses as Discord replies to the user's message                                  |
 | `ack_reaction`      | no       | —             | Emoji reaction added while processing (e.g. `"👀"`); omit to disable                         |
@@ -109,7 +109,7 @@ allowlist = ["alice", "bob"]
 guild_allowlist = ["123456789012345678"]
 reply_to_message = true
 ack_reaction = "👀"
-model = "gpt-4o"
+model_override = { model = "openai::gpt-4o", reasoning_effort = "off" }
 model_provider = "openai"
 agent_id = "research"
 activity = "with AI"
@@ -117,6 +117,15 @@ activity_type = "custom"
 status = "online"
 otp_self_approval = true
 ```
+
+Configured user overrides take priority over channel-ID overrides, matching
+channel-pattern overrides, and the account default, in that order. These
+overrides initialize a newly created channel session; they are not re-applied
+to every message. A direct conversation has its own session. A guild channel
+shares one session across participants, so the first message that creates it
+uses that effective pair, or the validated agent pair when no channel override
+is configured. The persisted pair then stays unchanged for later senders until
+it is changed explicitly with `/model`.
 
 ## Access Control
 

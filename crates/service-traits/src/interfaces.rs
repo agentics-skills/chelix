@@ -2,7 +2,15 @@ use std::path::PathBuf;
 
 use {async_trait::async_trait, serde_json::Value, tracing::warn};
 
-use crate::{ServiceError, ServiceResult};
+pub use chelix_common::{ReasoningEffort, ResolvedModelReasoning};
+
+use {
+    crate::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceError, ServiceResult,
+    },
+    chelix_sessions::{QueuedPromptsStatus, SessionKey},
+};
 
 #[async_trait]
 pub trait AgentService: Send + Sync {
@@ -333,28 +341,52 @@ impl WebhooksService for NoopWebhooksService {
 
 #[async_trait]
 pub trait ChatService: Send + Sync {
-    async fn send(&self, params: Value) -> ServiceResult;
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult;
 
-    async fn send_sync(&self, params: Value) -> ServiceResult {
-        self.send(params).await
-    }
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
 
     async fn abort(&self, params: Value) -> ServiceResult;
 
-    /// List the prompts queued for a session.
-    async fn prompt_queue_list(&self, params: Value) -> ServiceResult;
+    /// Read the canonical queued-prompts status for one session.
+    async fn queued_prompts_status(
+        &self,
+        _session_id: SessionKey,
+    ) -> Result<QueuedPromptsStatus, ServiceError> {
+        Err("chat not configured".into())
+    }
 
-    /// Remove queued prompts of a session. Removes one prompt when `promptId`
-    /// is present, otherwise the whole session queue.
-    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult;
+    /// Remove one queued prompt by its auto-incremented ID.
+    async fn queued_prompts_remove(&self, _id: i64) -> Result<QueuedPromptsStatus, ServiceError> {
+        Err("chat not configured".into())
+    }
 
     async fn history(&self, params: Value) -> ServiceResult;
     async fn inject(&self, params: Value) -> ServiceResult;
     async fn clear(&self, params: Value) -> ServiceResult;
-    async fn compact(&self, params: Value) -> ServiceResult;
-    async fn context(&self, params: Value) -> ServiceResult;
-    async fn raw_prompt(&self, params: Value) -> ServiceResult;
-    async fn full_context(&self, params: Value) -> ServiceResult;
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult;
 
     async fn refresh_prompt_memory(&self, _params: Value) -> ServiceResult {
         Err("chat not configured".into())
@@ -388,23 +420,24 @@ pub struct NoopChatService;
 
 #[async_trait]
 impl ChatService for NoopChatService {
-    async fn send(&self, _p: Value) -> ServiceResult {
+    async fn send(
+        &self,
+        _request: ChatSendRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
+    async fn send_sync(
+        &self,
+        _request: ChatSendSyncRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 
     async fn abort(&self, _p: Value) -> ServiceResult {
         Ok(serde_json::json!({}))
-    }
-
-    /// A service without chat cannot queue prompts, so its queue is empty.
-    /// Reporting that plainly keeps session reads (such as `sessions.switch`,
-    /// which renders the queue) working instead of failing them as a whole.
-    async fn prompt_queue_list(&self, _p: Value) -> ServiceResult {
-        Ok(serde_json::json!({ "prompts": [] }))
-    }
-
-    async fn prompt_queue_cancel(&self, _p: Value) -> ServiceResult {
-        Err("chat not configured".into())
     }
 
     async fn history(&self, _p: Value) -> ServiceResult {
@@ -419,19 +452,35 @@ impl ChatService for NoopChatService {
         Ok(serde_json::json!({ "ok": true }))
     }
 
-    async fn compact(&self, _p: Value) -> ServiceResult {
+    async fn compact(
+        &self,
+        _request: ChatCompactRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 
-    async fn context(&self, _p: Value) -> ServiceResult {
+    async fn context(
+        &self,
+        _request: ChatContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(serde_json::json!({ "session": {}, "project": null, "tools": [], "providers": [] }))
     }
 
-    async fn raw_prompt(&self, _p: Value) -> ServiceResult {
+    async fn raw_prompt(
+        &self,
+        _request: ChatRawPromptRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 
-    async fn full_context(&self, _p: Value) -> ServiceResult {
+    async fn full_context(
+        &self,
+        _request: ChatFullContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Err("chat not configured".into())
     }
 
@@ -860,11 +909,13 @@ impl UpdateService for NoopUpdateService {
 pub trait ModelService: Send + Sync {
     async fn list(&self) -> ServiceResult;
     async fn list_all(&self) -> ServiceResult;
+    async fn resolve_model_reasoning(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&ReasoningEffort>,
+    ) -> Result<ResolvedModelReasoning, ServiceError>;
     async fn disable(&self, params: Value) -> ServiceResult;
     async fn enable(&self, params: Value) -> ServiceResult;
-    async fn detect_supported(&self, params: Value) -> ServiceResult;
-    async fn cancel_detect(&self) -> ServiceResult;
-    async fn test(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopModelService;
@@ -887,26 +938,22 @@ impl ModelService for NoopModelService {
         Ok(serde_json::json!([]))
     }
 
+    async fn resolve_model_reasoning(
+        &self,
+        _model: &str,
+        _reasoning_effort: Option<&ReasoningEffort>,
+    ) -> Result<ResolvedModelReasoning, ServiceError> {
+        Err(model_service_not_configured_error(
+            "models.resolve_model_reasoning",
+        ))
+    }
+
     async fn disable(&self, _params: Value) -> ServiceResult {
         Err(model_service_not_configured_error("models.disable"))
     }
 
     async fn enable(&self, _params: Value) -> ServiceResult {
         Err(model_service_not_configured_error("models.enable"))
-    }
-
-    async fn detect_supported(&self, _params: Value) -> ServiceResult {
-        Err(model_service_not_configured_error(
-            "models.detect_supported",
-        ))
-    }
-
-    async fn cancel_detect(&self) -> ServiceResult {
-        Ok(serde_json::json!({ "ok": true, "cancelled": false }))
-    }
-
-    async fn test(&self, _params: Value) -> ServiceResult {
-        Err(model_service_not_configured_error("models.test"))
     }
 }
 
@@ -1001,9 +1048,7 @@ pub trait ProviderSetupService: Send + Sync {
     async fn available(&self) -> ServiceResult;
     async fn save_key(&self, params: Value) -> ServiceResult;
     async fn remove_key(&self, params: Value) -> ServiceResult;
-    async fn validate_key(&self, params: Value) -> ServiceResult;
-    async fn save_models(&self, params: Value) -> ServiceResult;
-    async fn add_custom(&self, params: Value) -> ServiceResult;
+    async fn set_model_preferences(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopProviderSetupService;
@@ -1022,15 +1067,7 @@ impl ProviderSetupService for NoopProviderSetupService {
         Err("provider setup not configured".into())
     }
 
-    async fn validate_key(&self, _p: Value) -> ServiceResult {
-        Err("provider setup not configured".into())
-    }
-
-    async fn save_models(&self, _p: Value) -> ServiceResult {
-        Err("provider setup not configured".into())
-    }
-
-    async fn add_custom(&self, _p: Value) -> ServiceResult {
+    async fn set_model_preferences(&self, _p: Value) -> ServiceResult {
         Err("provider setup not configured".into())
     }
 }
@@ -1085,6 +1122,7 @@ pub trait ExternalAgentService: Send + Sync {
     async fn bind(&self, params: Value) -> ServiceResult;
     async fn unbind(&self, params: Value) -> ServiceResult;
     async fn status(&self, params: Value) -> ServiceResult;
+    async fn shutdown_session(&self, session_key: &str);
 }
 
 pub struct NoopExternalAgentService;
@@ -1106,6 +1144,8 @@ impl ExternalAgentService for NoopExternalAgentService {
     async fn status(&self, _params: Value) -> ServiceResult {
         Ok(serde_json::json!({ "bound": false }))
     }
+
+    async fn shutdown_session(&self, _session_key: &str) {}
 }
 
 #[async_trait]

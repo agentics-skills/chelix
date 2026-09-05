@@ -5,63 +5,36 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::{collections::HashSet, time::Duration};
+#[path = "support/reasoning.rs"]
+mod reasoning;
+
+use std::sync::Arc;
 
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
     futures::StreamExt,
-    secrecy::{ExposeSecret, Secret},
+    secrecy::Secret,
 };
 
 const BASE_URL: &str = "https://api.z.ai/api/paas/v4";
 const TEST_MODEL: &str = "glm-4.5-flash";
 
-const KNOWN_MODELS: &[&str] = &[
-    "glm-5",
-    "glm-4.7",
-    "glm-4.7-flash",
-    "glm-4.7-flashx",
-    "glm-4.6",
-    "glm-4.6v",
-    "glm-4.6v-flash",
-    "glm-4.5",
-    "glm-4.5-air",
-    "glm-4.5-airx",
-    "glm-4.5-flash",
-    "glm-4.5v",
-    "glm-4-32b-0414-128k",
-];
-
 fn api_key() -> Secret<String> {
     Secret::new(std::env::var("Z_API_KEY").expect("Z_API_KEY must be set for integration tests"))
 }
 
-fn make_provider(model: &str) -> OpenAiProvider {
-    OpenAiProvider::new_with_name(
-        api_key(),
-        model.to_string(),
-        BASE_URL.to_string(),
-        "zai".to_string(),
+fn make_provider(model: &str) -> Arc<dyn LlmProvider> {
+    reasoning::configure(
+        OpenAiProvider::new_with_name(
+            api_key(),
+            model.to_string(),
+            BASE_URL.to_string(),
+            "zai".to_string(),
+        ),
+        vec!["off".into()],
+        "off".into(),
     )
-}
-
-async fn probe_with_retries(model: &str) -> Result<(), String> {
-    let mut last_error = String::new();
-
-    for attempt in 1..=3 {
-        match make_provider(model).probe().await {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                last_error = error.to_string();
-                if attempt < 3 {
-                    tokio::time::sleep(Duration::from_secs(attempt)).await;
-                }
-            },
-        }
-    }
-
-    Err(last_error)
 }
 
 fn weather_tool() -> serde_json::Value {
@@ -219,16 +192,7 @@ async fn multi_turn_tool_use() {
     assert!(r2.text.is_some(), "should have text after tool result");
 }
 
-// ── Probe & streaming ────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn probe_succeeds() {
-    make_provider(TEST_MODEL)
-        .probe()
-        .await
-        .expect("probe should succeed");
-}
+// ── Streaming ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 #[ignore]
@@ -249,72 +213,4 @@ async fn stream_emits_delta_and_done() {
         }
     }
     assert!(saw_delta && saw_done);
-}
-
-// ── Model catalog ────────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn catalog_models_are_live() {
-    let mut alive = Vec::new();
-    let mut dead = Vec::new();
-    for &m in KNOWN_MODELS {
-        match probe_with_retries(m).await {
-            Ok(()) => alive.push(m),
-            Err(e) => dead.push((m, e)),
-        }
-    }
-    eprintln!("\n=== Z.AI Model Catalog Health ===");
-    for m in &alive {
-        eprintln!("  OK {m}");
-    }
-    for (m, e) in &dead {
-        eprintln!("  DEAD {m}: {e}");
-    }
-    eprintln!("================================\n");
-    assert!(alive.contains(&TEST_MODEL), "{TEST_MODEL} should be live");
-}
-
-#[tokio::test]
-#[ignore]
-async fn detect_new_models_via_api() {
-    let key = api_key();
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{BASE_URL}/models"))
-        .header("Authorization", format!("Bearer {}", key.expose_secret()))
-        .send()
-        .await
-        .expect("HTTP request should succeed");
-    if !resp.status().is_success() {
-        eprintln!("Z.AI /models returned {}", resp.status());
-        return;
-    }
-    let body: serde_json::Value = resp.json().await.expect("valid JSON");
-    let models = body.get("data").and_then(|d| d.as_array()).expect("data");
-    let known: HashSet<&str> = KNOWN_MODELS.iter().copied().collect();
-    let api_ids: Vec<&str> = models
-        .iter()
-        .filter_map(|m| m.get("id").and_then(|id| id.as_str()))
-        .collect();
-    eprintln!("\n=== Z.AI /models API ({} models) ===", api_ids.len());
-    for &k in KNOWN_MODELS {
-        let marker = if api_ids.contains(&k) {
-            "OK"
-        } else {
-            "MISSING"
-        };
-        eprintln!("  {marker} {k}");
-    }
-    let new: Vec<&&str> = api_ids
-        .iter()
-        .filter(|id| id.starts_with("glm-") && !known.contains(**id))
-        .collect();
-    if !new.is_empty() {
-        eprintln!("New GLM models ({}):", new.len());
-        for id in &new {
-            eprintln!("  NEW -> {id}");
-        }
-    }
-    eprintln!("===================================\n");
 }

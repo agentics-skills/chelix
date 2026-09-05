@@ -116,19 +116,11 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
             Box::pin(async move {
                 let params = parse_save_agent_params(ctx.params.clone())?;
                 validate_agent_id(&params.id)?;
-                validate_agent_config(&params.agent)?;
+                validate_agent_config(&ctx, &params.id, &params.agent).await?;
                 let id = params.id.clone();
                 let agent = params.agent.clone();
-                persist_agents_config(&ctx, move |config| {
-                    if config.agents.entries.contains_key(&id) {
-                        return Err(chelix_config::Error::message(format!(
-                            "agent '{id}' already exists"
-                        )));
-                    }
-                    config.agents.entries.insert(id, agent);
-                    Ok(())
-                })
-                .await?;
+                persist_agents_config(&ctx, move |config| insert_agent_config(config, id, agent))
+                    .await?;
                 save_agent_prompts(
                     &params.id,
                     params.soul.as_deref(),
@@ -151,7 +143,7 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
             Box::pin(async move {
                 let params = parse_save_agent_params(ctx.params.clone())?;
                 validate_agent_id(&params.id)?;
-                validate_agent_config(&params.agent)?;
+                validate_agent_config(&ctx, &params.id, &params.agent).await?;
                 let id = params.id.clone();
                 let agent = params.agent.clone();
                 persist_agents_config(&ctx, move |config| {
@@ -202,6 +194,7 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                 .await?;
 
                 let default_id = default_agent_id_for_ctx(&ctx).await?;
+                let default_pair = resolved_agent_pair(&ctx, &default_id).await?;
                 let mut reassigned_sessions = 0_u64;
                 if let Some(metadata) = &ctx.state.services.session_metadata {
                     let sessions = metadata.list_by_agent_id(&id).await.map_err(|error| {
@@ -209,7 +202,7 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                     })?;
                     for session in sessions {
                         metadata
-                            .set_agent_id(&session.key, Some(&default_id))
+                            .assign_agent(&session.key, &default_id, &default_pair)
                             .await
                             .map_err(|error| {
                                 ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
@@ -286,27 +279,23 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                     .ok_or_else(|| {
                         ErrorShape::new(error_codes::UNAVAILABLE, "session metadata not available")
                     })?;
-                metadata.upsert(session_key, None).await.map_err(|error| {
-                    ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
-                })?;
-                let (agent_model, agent_reasoning) =
-                    agent_defaults_for_agent(&ctx.state, Some(&agent_id)).await;
+                let model_reasoning = resolved_agent_pair(&ctx, &agent_id).await?;
                 let entry = metadata
-                    .assign_agent_with_defaults(
-                        session_key,
-                        &agent_id,
-                        agent_model.as_deref(),
-                        agent_reasoning.as_deref(),
-                    )
+                    .create_or_assign_agent(session_key, &agent_id, &model_reasoning)
                     .await
                     .map_err(|error| {
                         ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
                     })?;
+                ctx.state
+                    .services
+                    .external_agent
+                    .shutdown_session(session_key)
+                    .await;
                 Ok(serde_json::json!({
                     "ok": true,
                     "agent_id": agent_id,
-                    "model": entry.model,
-                    "reasoningEffort": entry.reasoning_effort,
+                    "model": entry.model(),
+                    "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
                     "version": entry.version,
                 }))
             })
@@ -455,7 +444,7 @@ fn validate_agent_id(id: &str) -> Result<(), ErrorShape> {
 }
 
 #[cfg(feature = "agent")]
-fn validate_agent_config(agent: &chelix_config::AgentConfig) -> Result<(), ErrorShape> {
+fn validate_agent_shape(agent: &chelix_config::AgentConfig) -> Result<(), ErrorShape> {
     if agent.name.trim().is_empty() {
         return Err(ErrorShape::new(
             error_codes::INVALID_REQUEST,
@@ -467,6 +456,63 @@ fn validate_agent_config(agent: &chelix_config::AgentConfig) -> Result<(), Error
             error_codes::INVALID_REQUEST,
             "max_tools_threshold must be at least 1",
         ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "agent")]
+async fn resolved_agent_pair(
+    ctx: &MethodContext,
+    agent_id: &str,
+) -> Result<chelix_service_traits::ResolvedModelReasoning, ErrorShape> {
+    let (model, reasoning_effort) = agent_defaults_for_agent(&ctx.state, Some(agent_id))
+        .await
+        .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))?;
+    crate::model_reasoning::resolve_model_reasoning(
+        ctx.state.services.model.as_ref(),
+        &model,
+        &reasoning_effort,
+    )
+    .await
+    .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))
+}
+
+#[cfg(feature = "agent")]
+async fn validate_agent_config(
+    ctx: &MethodContext,
+    agent_id: &str,
+    agent: &chelix_config::AgentConfig,
+) -> Result<(), ErrorShape> {
+    validate_agent_shape(agent)?;
+    crate::model_reasoning::validate_agent_config(
+        ctx.state.services.model.as_ref(),
+        agent_id,
+        agent,
+    )
+    .await
+    .map(|_| ())
+    .map_err(|error| ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string()))
+}
+
+#[cfg(feature = "agent")]
+fn insert_agent_config(
+    config: &mut chelix_config::ChelixConfig,
+    id: String,
+    agent: chelix_config::AgentConfig,
+) -> chelix_config::Result<()> {
+    let setup = match config.agents.resolve_state() {
+        Ok(chelix_config::AgentsConfigState::Setup) => true,
+        Ok(chelix_config::AgentsConfigState::Configured { .. }) => false,
+        Err(error) => return Err(chelix_config::Error::message(error.to_string())),
+    };
+    if config.agents.entries.contains_key(&id) {
+        return Err(chelix_config::Error::message(format!(
+            "agent '{id}' already exists"
+        )));
+    }
+    config.agents.entries.insert(id.clone(), agent);
+    if setup {
+        config.agents.default = id;
     }
     Ok(())
 }
@@ -551,7 +597,34 @@ mod tests {
 
     #[test]
     fn rejects_empty_agent_name() {
-        let agent = chelix_config::AgentConfig::default();
-        assert!(validate_agent_config(&agent).is_err());
+        let agent = chelix_config::AgentConfig::new(
+            "",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        );
+        assert!(validate_agent_shape(&agent).is_err());
+    }
+
+    #[test]
+    fn first_agent_insert_sets_default_in_same_config_mutation() -> chelix_config::Result<()> {
+        let mut config = chelix_config::ChelixConfig::default();
+        let agent = chelix_config::AgentConfig::new(
+            "Main",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        );
+
+        insert_agent_config(&mut config, "main".to_string(), agent)?;
+
+        assert_eq!(config.agents.default, "main");
+        assert!(config.agents.entries.contains_key("main"));
+        assert!(matches!(
+            config.agents.resolve_state(),
+            Ok(chelix_config::AgentsConfigState::Configured {
+                default_id: "main",
+                ..
+            })
+        ));
+        Ok(())
     }
 }

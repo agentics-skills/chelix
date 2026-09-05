@@ -134,7 +134,10 @@ impl LiveSessionService {
             .ui_message_count(key)
             .await
             .map_err(ServiceError::message)?;
-        self.metadata.touch(key, ui_message_count).await;
+        self.metadata
+            .touch(key, ui_message_count)
+            .await
+            .map_err(ServiceError::message)?;
 
         Ok(serde_json::json!({
             "sessionKey": key,

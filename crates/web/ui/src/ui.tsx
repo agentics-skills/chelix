@@ -470,7 +470,6 @@ export function GlobalDialogs(): VNode {
 
 interface ModelSelectModel {
 	id: string;
-	displayName?: string;
 	provider?: string;
 }
 
@@ -491,16 +490,12 @@ export function ModelSelect({ models, value, onChange, placeholder, ariaLabel }:
 	const listRef = useRef<HTMLDivElement>(null);
 
 	const selected = models.find((m) => m.id === value);
-	const label = selected ? selected.displayName || selected.id : placeholder || "(none)";
+	const label = selected ? selected.id : placeholder || "(none)";
 
 	const filtered = models.filter((m) => {
 		if (!query) return true;
 		const q = query.toLowerCase();
-		return (
-			(m.displayName || "").toLowerCase().includes(q) ||
-			m.id.toLowerCase().includes(q) ||
-			(m.provider || "").toLowerCase().includes(q)
-		);
+		return m.id.toLowerCase().includes(q) || (m.provider || "").toLowerCase().includes(q);
 	});
 
 	useEffect(() => {
@@ -575,7 +570,7 @@ export function ModelSelect({ models, value, onChange, placeholder, ariaLabel }:
 								class={`model-dropdown-item ${m.id === value ? "selected" : ""} ${i === kbIndex ? "kb-active" : ""}`}
 								onClick={() => pick(m)}
 							>
-								<span class="model-item-label">{m.displayName || m.id}</span>
+								<span class="model-item-label">{m.id}</span>
 								{m.provider && <span class="model-item-provider">{m.provider}</span>}
 							</button>
 						))}

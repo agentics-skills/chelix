@@ -66,6 +66,18 @@ When disabled:
 
 ## Text-to-Speech (TTS)
 
+### Testing Voices
+
+In Settings > Voice, enter text in **Test text**, then click **Test** on a
+TTS provider or voice persona. The TTS and Voice Personas tabs share this text.
+The persona editor and the onboarding Text-to-Speech section each have their
+own **Test text** field.
+
+Test text starts empty. Enter text containing at least one non-whitespace
+character before testing. The entered text is sent unchanged to `tts.convert`.
+Synthesis and playback errors are displayed in the UI. Testing an existing
+persona in the editor saves its settings first; a failed save stops the test.
+
 ### Supported Providers
 
 Chelix supports multiple TTS providers across cloud and local backends.

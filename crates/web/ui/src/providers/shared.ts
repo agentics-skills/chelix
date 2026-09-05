@@ -1,16 +1,8 @@
 // ── Provider modal shared utilities and state ────────────────
 
 import { ensureProviderModal } from "../modals";
-import {
-	clampValidationProgressPercent,
-	createValidationRequestId,
-	subscribeValidationProgress,
-	VALIDATION_HINT_TEXT,
-} from "../provider-validation-progress";
 import * as S from "../state";
-import type { ProviderInfo, ProviderModalElements, ValidationProgressState } from "./types";
-
-// ── Module state ────────────────────────────────────────────
+import type { ProviderModalElements } from "./types";
 
 let _els: ProviderModalElements | null = null;
 
@@ -24,30 +16,23 @@ export function els(): ProviderModalElements {
 			close: S.requireElement("providerModalClose"),
 		};
 		_els.close.addEventListener("click", closeProviderModal);
-		_els.modal.addEventListener("click", (e: MouseEvent) => {
-			if (e.target === _els?.modal) closeProviderModal();
+		_els.modal.addEventListener("click", (event: MouseEvent) => {
+			if (event.target === _els?.modal) closeProviderModal();
 		});
 	}
 	return _els;
 }
 
-// ── Constants ───────────────────────────────────────────────
-
 export const OPENAI_COMPATIBLE_PROVIDERS: string[] = ["openai", "openrouter"];
 
-// Lazy import to avoid circular dependency at module level.
-// openProviderModal needs showApiKeyForm/showCustomProviderForm,
-// and those modules need openProviderModal for "Back" buttons.
+// Dynamic import breaks the dependency cycle with auth-flow.ts.
 export function openProviderModal(): void {
-	// Dynamic import breaks the cycle.
-	import("./open-modal").then((mod) => mod.openProviderModalImpl());
+	import("./open-modal").then((module) => module.openProviderModalImpl());
 }
 
 export function closeProviderModal(): void {
 	els().modal.classList.add("hidden");
 }
-
-// ── Shared utilities ────────────────────────────────────────
 
 export function setFormError(errorPanel: HTMLElement | null, message: string | null): void {
 	if (!errorPanel) return;
@@ -58,94 +43,4 @@ export function setFormError(errorPanel: HTMLElement | null, message: string | n
 	}
 	errorPanel.textContent = `Error: ${message}`;
 	errorPanel.style.display = "";
-}
-
-export function normalizeEndpointForCompare(rawUrl: string | null | undefined): string | null {
-	if (!rawUrl) return null;
-	const trimmed = rawUrl.trim();
-	if (!trimmed) return null;
-	try {
-		const parsed = new URL(trimmed);
-		const pathname = parsed.pathname.replace(/\/+$/, "");
-		return `${parsed.protocol.toLowerCase()}//${parsed.host.toLowerCase()}${pathname}`;
-	} catch {
-		return trimmed.replace(/\/+$/, "").toLowerCase();
-	}
-}
-
-export function shouldUseCustomProviderForOpenAi(
-	provider: ProviderInfo | null | undefined,
-	endpointVal: string | null | undefined,
-): boolean {
-	if (provider?.name !== "openai") return false;
-	const normalizedEndpoint = normalizeEndpointForCompare(endpointVal);
-	if (!normalizedEndpoint) return false;
-	const normalizedDefault = normalizeEndpointForCompare(provider.defaultBaseUrl || "https://api.openai.com/v1");
-	return normalizedDefault !== null && normalizedEndpoint !== normalizedDefault;
-}
-
-// ── Validation progress helpers ─────────────────────────────
-
-export function createValidationProgress(form: HTMLElement, marginClass?: string): ValidationProgressState {
-	const wrapper = document.createElement("div");
-	wrapper.className = `flex flex-col gap-2 ${marginClass || "mt-2"}`;
-
-	const progress = document.createElement("div");
-	progress.className = "download-progress";
-
-	const progressBar = document.createElement("div");
-	progressBar.className = "download-progress-bar";
-	progressBar.style.width = "0%";
-	progress.appendChild(progressBar);
-	wrapper.appendChild(progress);
-
-	const progressText = document.createElement("div");
-	progressText.className = "text-xs text-[var(--muted)]";
-	progressText.textContent = VALIDATION_HINT_TEXT;
-	wrapper.appendChild(progressText);
-
-	form.appendChild(wrapper);
-
-	return {
-		progress,
-		progressBar,
-		progressText,
-		value: 0,
-	};
-}
-
-export function setValidationProgress(state: ValidationProgressState | null, value: number, message?: string): void {
-	if (!state) return;
-	const next = clampValidationProgressPercent(value);
-	state.value = Math.max(state.value, next);
-	state.progress.classList.remove("indeterminate");
-	state.progressBar.style.width = `${state.value.toFixed(1)}%`;
-	if (message) {
-		state.progressText.textContent = message;
-	}
-}
-
-export function resetValidationProgress(state: ValidationProgressState | null): void {
-	if (!state) return;
-	state.value = 0;
-	state.progress.classList.remove("indeterminate");
-	state.progressBar.style.width = "0%";
-	state.progressText.textContent = VALIDATION_HINT_TEXT;
-}
-
-export function completeValidationProgress(state: ValidationProgressState | null, text?: string): void {
-	if (!state) return;
-	setValidationProgress(state, 100, text || "Validation complete.");
-}
-
-export { createValidationRequestId };
-
-export function bindValidationProgressEvents(
-	state: ValidationProgressState | null,
-	requestId: string | undefined,
-): () => void {
-	if (!(state && requestId)) return () => undefined;
-	return subscribeValidationProgress(requestId, (update) => {
-		setValidationProgress(state, update.value, update.message);
-	});
 }

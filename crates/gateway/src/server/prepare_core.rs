@@ -22,15 +22,15 @@ use {
         state::GatewayState,
     },
     chelix_projects::ProjectStore,
-    chelix_providers::{ProviderRegistry, discover_models},
+    chelix_providers::ProviderRegistry,
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest},
     chelix_sessions::{
-        metadata::{SessionMetadata, SqliteSessionMetadata},
-        session_events::SessionEventBus,
+        SessionKey, metadata::SqliteSessionMetadata, session_events::SessionEventBus,
         store::SessionStore,
     },
     secrecy::{ExposeSecret, Secret},
     std::{path::PathBuf, sync::Arc},
-    tracing::{debug, error, info, warn},
+    tracing::{debug, info, warn},
 };
 mod log_persistence;
 mod post_state;
@@ -110,9 +110,9 @@ pub async fn prepare_gateway_core(
     // first run after upgrade.  This is idempotent — once keys are in the
     // store the TOML entries are cleared and subsequent runs are a no-op.
     #[cfg(feature = "voice")]
-    crate::voice::migrate_voice_keys_to_key_store(&config);
+    crate::voice::migrate_voice_keys_to_key_store(&config)?;
     #[cfg(feature = "telephony")]
-    crate::methods::phone::merge_phone_keys(&mut config);
+    crate::methods::phone::merge_phone_keys(&mut config)?;
 
     // Merge any previously saved API keys into the provider config so they
     // survive gateway restarts without requiring env vars.
@@ -146,9 +146,10 @@ pub async fn prepare_gateway_core(
         }
     }
 
-    let registry = Arc::new(tokio::sync::RwLock::new(
-        ProviderRegistry::discover(&effective_providers, &config_env_overrides).await,
-    ));
+    let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_config(
+        &effective_providers,
+        &config_env_overrides,
+    )?));
     let (provider_summary, providers_available_at_startup) = {
         let reg = registry.read().await;
         log_startup_model_inventory(&reg);
@@ -159,60 +160,29 @@ pub async fn prepare_gateway_core(
         let provider_keys_path = chelix_config::config_dir()
             .unwrap_or_else(|| PathBuf::from(".chelix"))
             .join("provider_keys.json");
-        warn!(
-            provider_summary = %provider_summary,
-            config_path = %config_path.display(),
-            provider_keys_path = %provider_keys_path.display(),
-            "no LLM providers resolved from configuration and model discovery; model/chat services remain active and will pick up providers after credentials are saved"
-        );
+        match config.agents.resolve_state() {
+            Ok(chelix_config::AgentsConfigState::Setup) => warn!(
+                provider_summary = %provider_summary,
+                config_path = %config_path.display(),
+                provider_keys_path = %provider_keys_path.display(),
+                "no LLM providers resolved during setup; model/chat services remain active for provider configuration"
+            ),
+            Ok(chelix_config::AgentsConfigState::Configured { .. }) => warn!(
+                provider_summary = %provider_summary,
+                config_path = %config_path.display(),
+                provider_keys_path = %provider_keys_path.display(),
+                "no LLM providers resolved; configured agent registry validation will fail"
+            ),
+            Err(error) => warn!(
+                provider_summary = %provider_summary,
+                config_path = %config_path.display(),
+                provider_keys_path = %provider_keys_path.display(),
+                %error,
+                "agent registry is structurally invalid; configured agent registry validation will fail"
+            ),
+        }
     }
     startup_mem_probe.checkpoint("providers.registry.initialized");
-
-    // Refresh dynamic provider model discovery daily.
-    const DYNAMIC_PROVIDER_MODEL_REFRESH_INTERVAL: std::time::Duration =
-        std::time::Duration::from_secs(24 * 60 * 60);
-    {
-        let registry_for_refresh = Arc::clone(&registry);
-        let provider_config_for_refresh = base_provider_config.clone();
-        let env_overrides_for_refresh = config_env_overrides.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(DYNAMIC_PROVIDER_MODEL_REFRESH_INTERVAL);
-            interval.tick().await;
-            loop {
-                interval.tick().await;
-                let key_store = crate::provider_setup::KeyStore::new();
-                let effective = match crate::provider_setup::config_with_saved_keys(
-                    &provider_config_for_refresh,
-                    &key_store,
-                ) {
-                    Ok(config) => config,
-                    Err(error) => {
-                        error!(
-                            error = %error,
-                            "daily provider model discovery skipped because config loading failed"
-                        );
-                        continue;
-                    },
-                };
-                let discovery = discover_models(&effective, &env_overrides_for_refresh, None).await;
-                let (new_models, model_count, provider_summary) = {
-                    let mut reg = registry_for_refresh.write().await;
-                    let new_models = reg.refresh_from_discovery(
-                        &effective,
-                        &env_overrides_for_refresh,
-                        &discovery,
-                    );
-                    (new_models, reg.list_models().len(), reg.provider_summary())
-                };
-                info!(
-                    models = model_count,
-                    new_models,
-                    provider_summary = %provider_summary,
-                    "daily provider model discovery refresh complete"
-                );
-            }
-        });
-    }
 
     // Create shared approval manager from config.
     let approval_manager = Arc::new(approval_manager_from_config(&config));
@@ -249,8 +219,9 @@ pub async fn prepare_gateway_core(
         services.stt = Arc::new(LiveSttService::new(SttServiceConfig::default()));
     }
 
+    let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
     let model_store = Arc::new(tokio::sync::RwLock::new(
-        crate::chat::DisabledModelsStore::load(),
+        crate::chat::DisabledModelsStore::load()?,
     ));
 
     let live_model_service = Arc::new(
@@ -259,9 +230,11 @@ pub async fn prepare_gateway_core(
             Arc::clone(&model_store),
             config.chat.priority_models.clone(),
         )
-        .with_show_legacy_models(config.providers.show_legacy_models)
-        .with_discovery_config(effective_providers.clone(), config_env_overrides.clone()),
+        .with_agents_config(Arc::clone(&agents_config)),
     );
+    crate::model_reasoning::validate_agents_config(live_model_service.as_ref(), &config.agents)
+        .await
+        .map_err(|error| anyhow::anyhow!("agent configuration validation failed: {error}"))?;
     services = services
         .with_model(Arc::clone(&live_model_service) as Arc<dyn crate::services::ModelService>);
 
@@ -272,6 +245,7 @@ pub async fn prepare_gateway_core(
         crate::provider_setup::ProviderConfigPersistence::Filesystem,
     )
     .with_env_overrides(config_env_overrides.clone())
+    .with_agents_config(Arc::clone(&agents_config))
     .with_error_parser(crate::chat_error::parse_chat_error);
     provider_setup.set_priority_models(live_model_service.priority_models_handle());
     let provider_setup_service = Arc::new(provider_setup);
@@ -493,7 +467,6 @@ pub async fn prepare_gateway_core(
         .manager()
         .set_env_overrides(runtime_env_overrides.clone())
         .await;
-    *live_model_service.env_overrides_handle().write().await = runtime_env_overrides.clone();
     live_mcp
         .set_credential_store(Arc::clone(&credential_store))
         .await;
@@ -542,31 +515,7 @@ pub async fn prepare_gateway_core(
         std::fs::rename(&projects_toml_path, &bak).ok();
     }
 
-    // Migrate from metadata.json if it exists.
     let sessions_dir = data_dir.join("sessions");
-    let metadata_json_path = sessions_dir.join("metadata.json");
-    if metadata_json_path.exists() {
-        info!("migrating metadata.json to SQLite");
-        if let Ok(old_meta) = SessionMetadata::load(metadata_json_path.clone()) {
-            let sqlite_meta = SqliteSessionMetadata::new(db_pool.clone());
-            for entry in old_meta.list() {
-                if let Err(e) = sqlite_meta.upsert(&entry.key, entry.label.clone()).await {
-                    tracing::warn!("failed to migrate session {}: {e}", entry.key);
-                }
-                if entry.model.is_some() {
-                    sqlite_meta.set_model(&entry.key, entry.model.clone()).await;
-                }
-                sqlite_meta.touch(&entry.key, entry.message_count).await;
-                if entry.project_id.is_some() {
-                    sqlite_meta
-                        .set_project_id(&entry.key, entry.project_id.clone())
-                        .await;
-                }
-            }
-        }
-        let bak = metadata_json_path.with_extension("json.bak");
-        std::fs::rename(&metadata_json_path, &bak).ok();
-    }
 
     // Wire stores.
     let project_store: Arc<dyn ProjectStore> =
@@ -581,11 +530,7 @@ pub async fn prepare_gateway_core(
     let session_state_store = Arc::new(chelix_sessions::state_store::SessionStateStore::new(
         db_pool.clone(),
     ));
-    let prompt_queue_store = Arc::new(chelix_sessions::SessionPromptQueueStore::new(
-        db_pool.clone(),
-    ));
-
-    let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
+    let queued_prompts = Arc::new(chelix_sessions::QueuedPrompts::new(db_pool.clone()));
 
     let voice_persona_store = Arc::new(crate::voice_persona::VoicePersonaStore::new(
         db_pool.clone(),
@@ -624,9 +569,22 @@ pub async fn prepare_gateway_core(
         let st = Arc::clone(&sys_state);
         tokio::spawn(async move {
             if let Some(state) = st.get() {
+                let session_id = SessionKey::new("main");
+                if let Err(error) = crate::session::ensure_internal_chat_session(
+                    &state.services,
+                    &session_id,
+                    None,
+                    None,
+                )
+                .await
+                {
+                    tracing::error!(%error, "cron system event session initialization failed");
+                    return;
+                }
                 let chat = state.chat();
-                let params = serde_json::json!({ "text": text });
-                if let Err(e) = chat.send(params).await {
+                let request = ChatSendRequest::text(text);
+                let context = ChatExecutionContext::internal(session_id);
+                if let Err(e) = chat.send(request, context).await {
                     tracing::error!("cron system event failed: {e}");
                 }
             }
@@ -681,6 +639,15 @@ pub async fn prepare_gateway_core(
                 },
                 _ => format!("cron:{}", uuid::Uuid::new_v4()),
             };
+            let session_id = SessionKey::new(session_key.clone());
+            crate::session::ensure_internal_chat_session(
+                &state.services,
+                &session_id,
+                req.agent_id.as_deref(),
+                req.model_override.as_ref(),
+            )
+            .await
+            .map_err(|error| chelix_cron::Error::message(error.to_string()))?;
 
             if matches!(
                 req.session_target,
@@ -716,19 +683,16 @@ pub async fn prepare_gateway_core(
                 prompt_text
             };
 
-            let mut params = serde_json::json!({
-                "text": prompt_text,
-                "_session_key": session_key,
-            });
-            if let Some(ref model) = req.model {
-                params["model"] = serde_json::Value::String(model.clone());
-            }
-            if let Some(tool_choice) = req.tool_choice.clone() {
-                params["tool_choice"] = serde_json::to_value(tool_choice)
-                    .map_err(|e| chelix_cron::Error::message(e.to_string()))?;
-            }
+            let request = ChatSendSyncRequest {
+                text: prompt_text,
+                model_override: req.model_override.clone(),
+                tool_choice: req.tool_choice.clone(),
+                input_medium: None,
+            };
+            let mut context = ChatExecutionContext::internal(session_id);
+            context.agent_id = req.agent_id.clone();
             let result = chat
-                .send_sync(params)
+                .send_sync(request, context)
                 .await
                 .map_err(|e| chelix_cron::Error::message(e.to_string()));
 
@@ -931,8 +895,12 @@ pub async fn prepare_gateway_core(
                     if let Err(e) = prune_sandbox.cleanup_session(key).await {
                         tracing::debug!(key, error = %e, "cron prune: sandbox cleanup failed");
                     }
-                    prune_session_metadata.remove(key).await;
-                    cleaned += 1;
+                    match prune_session_metadata.remove(key).await {
+                        Ok(_) => cleaned += 1,
+                        Err(error) => {
+                            tracing::error!(key, %error, "cron prune: metadata removal failed");
+                        },
+                    }
                 }
 
                 match prune_store.prune_runs_before(before_ms).await {
@@ -1073,14 +1041,16 @@ pub async fn prepare_gateway_core(
             Arc::clone(&session_metadata),
             Arc::clone(&sandbox_router),
             Arc::clone(&agents_config),
+            Arc::clone(&services.model),
         )
         .with_tts_service(Arc::clone(&services.tts))
         .with_share_store(Arc::clone(&session_share_store))
         .with_voice_persona_store(Arc::clone(&voice_persona_store))
         .with_project_store(Arc::clone(&project_store))
         .with_state_store(Arc::clone(&session_state_store))
-        .with_prompt_queue_store(Arc::clone(&prompt_queue_store))
-        .with_browser_service(Arc::clone(&services.browser));
+        .with_queued_prompts(Arc::clone(&queued_prompts))
+        .with_browser_service(Arc::clone(&services.browser))
+        .with_session_mutations(Arc::clone(&session_mutations));
         if let Some(ref manager) = memory_manager {
             session_svc = session_svc.with_memory_manager(Arc::clone(manager));
         }
@@ -1108,9 +1078,7 @@ pub async fn prepare_gateway_core(
         registry,
         provider_summary,
         mcp_configured_count,
-        model_store,
         live_model_service,
-        provider_setup_service,
         live_mcp,
         memory_manager,
         credential_store,
@@ -1119,7 +1087,7 @@ pub async fn prepare_gateway_core(
         session_metadata,
         session_share_store,
         session_state_store,
-        prompt_queue_store,
+        queued_prompts,
         sandbox_router,
         tools_service,
         cron_service,

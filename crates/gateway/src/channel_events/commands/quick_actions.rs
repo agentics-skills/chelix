@@ -2,86 +2,14 @@ use std::sync::Arc;
 
 use {
     chelix_channels::{Error as ChannelError, Result as ChannelResult},
-    chelix_sessions::metadata::SqliteSessionMetadata,
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
+    chelix_sessions::{QueuedPromptsStatus, SessionKey, metadata::SqliteSessionMetadata},
 };
 
 use crate::{
     broadcast::{BroadcastOpts, broadcast},
     state::GatewayState,
 };
-
-// ── /btw — ephemeral side question ──────────────────────────────────────────
-
-pub(in crate::channel_events) async fn handle_btw(
-    state: &Arc<GatewayState>,
-    session_key: &str,
-    args: &str,
-) -> ChannelResult<String> {
-    if args.is_empty() {
-        return Err(ChannelError::invalid_input(
-            "usage: /btw <question>\nAsk a quick side question without tools or persisting to history.",
-        ));
-    }
-
-    // Resolve a provider. Clone the registry Arc out of the inner lock
-    // first, then drop `inner` before acquiring the registry read lock
-    // to avoid nested lock contention.
-    let registry = {
-        let inner = state.inner.read().await;
-        inner.llm_providers.clone()
-    };
-    let Some(registry) = registry else {
-        return Err(ChannelError::unavailable("no LLM providers available"));
-    };
-    // Resolve session model via async DB lookup *before* acquiring the
-    // registry read lock to avoid holding the lock across an await point.
-    let session_model = if let Some(ref meta) = state.services.session_metadata {
-        meta.get(session_key).await.and_then(|e| e.model.clone())
-    } else {
-        None
-    };
-    let provider: Arc<dyn chelix_agents::model::LlmProvider> = {
-        let reg = registry.read().await;
-        let resolved = session_model
-            .as_deref()
-            .and_then(|id| reg.get(id))
-            .or_else(|| reg.first());
-        match resolved {
-            Some(p) => p,
-            None => return Err(ChannelError::unavailable("no LLM provider configured")),
-        }
-    };
-
-    // Read recent session history for context (last ~20 messages).
-    let context_msgs = if let Some(ref store) = state.services.session_store {
-        let history = store.read(session_key).await.unwrap_or_default();
-        let chat_msgs =
-            chelix_agents::model::values_to_chat_messages(&history).map_err(|error| {
-                ChannelError::unavailable(format!("failed to reconstruct session history: {error}"))
-            })?;
-        let tail_start = chat_msgs.len().saturating_sub(20);
-        chat_msgs[tail_start..].to_vec()
-    } else {
-        Vec::new()
-    };
-
-    // Build a minimal prompt and call the LLM with no tools.
-    let system_prompt = "You are a helpful assistant. Answer the user's side question \
-                         concisely. You have no tools available — answer from context only.";
-    let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
-    messages.extend(context_msgs);
-    messages.push(chelix_agents::ChatMessage::user(args));
-
-    match provider.complete(&messages, &[]).await {
-        Ok(response) => {
-            let text = response.text.as_deref().unwrap_or("(no response)");
-            Ok(text.to_string())
-        },
-        Err(e) => Err(ChannelError::unavailable(format!(
-            "btw LLM call failed: {e}"
-        ))),
-    }
-}
 
 // ── /fast — toggle fast/priority mode ───────────────────────────────────────
 
@@ -398,24 +326,21 @@ pub(in crate::channel_events) async fn handle_queue(
         ));
     }
 
-    // Use the chat service's send method — when a run is active it queues the
-    // prompt, and the whole queue is replayed as one run after the final gate.
-    let chat = state.chat();
-    let params = serde_json::json!({
-        "text": args,
-        "_session_key": session_key,
-    });
+    // Use ordinary chat.send as the canonical content-normalization boundary.
+    let request = ChatSendRequest::text(args);
+    let context = ChatExecutionContext::internal(SessionKey::new(session_key));
 
-    match chat.send(params).await {
+    match state.chat().send(request, context).await {
         Ok(res) => {
             let queued = res.get("queued").and_then(|v| v.as_bool()).unwrap_or(false);
             if !queued {
                 return Ok("No active run \u{2014} message sent immediately.".to_string());
             }
-            let pending = res
-                .get("prompts")
-                .and_then(|value| value.as_array())
-                .map_or(1, Vec::len);
+            let status = res.get("status").cloned().ok_or_else(|| {
+                ChannelError::unavailable("queued chat response is missing status")
+            })?;
+            let status: QueuedPromptsStatus = serde_json::from_value(status)?;
+            let pending = status.prompts.len();
             Ok(format!(
                 "Queued for the next turn ({pending} pending): {args}"
             ))

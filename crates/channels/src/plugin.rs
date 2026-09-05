@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use {
     async_trait::async_trait,
-    chelix_common::{hooks::ChannelBinding, types::ReplyPayload},
+    chelix_common::{ModelOverride, hooks::ChannelBinding, types::ReplyPayload},
     tokio::sync::mpsc,
 };
 
@@ -521,9 +521,9 @@ pub struct ChannelMessageMeta {
     /// Original inbound message media kind (voice, audio, photo, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_kind: Option<ChannelMessageKind>,
-    /// Default model configured for this channel account.
+    /// Model/reasoning override configured for this channel account or sender.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverride>,
     /// Default agent configured for this channel account or chat override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
@@ -536,7 +536,7 @@ pub struct ChannelMessageMeta {
 }
 
 /// Inbound channel message media kind.
-#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelMessageKind {
     Text,
@@ -559,7 +559,7 @@ pub struct ChannelAttachment {
 }
 
 /// Metadata for a saved inbound channel document.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChannelDocumentFile {
     /// User-facing original filename when available.
     pub display_name: String,
@@ -584,7 +584,8 @@ pub struct SavedChannelFile {
 }
 
 /// Where to send the LLM response back.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChannelReplyTarget {
     pub channel_type: ChannelType,
     pub account_id: String,
@@ -697,30 +698,6 @@ pub struct InteractiveMessage {
     pub replace_message_id: Option<String>,
 }
 
-// ── Thread context ──────────────────────────────────────────────────────────
-
-/// A single message from a thread conversation.
-#[derive(Debug, Clone)]
-pub struct ThreadMessage {
-    pub sender_id: String,
-    pub is_bot: bool,
-    pub text: String,
-    pub timestamp: String,
-}
-
-/// Fetch prior thread messages for context injection.
-#[async_trait]
-pub trait ChannelThreadContext: Send + Sync {
-    /// Fetch up to `limit` messages from the given thread.
-    async fn fetch_thread_messages(
-        &self,
-        account_id: &str,
-        channel_id: &str,
-        thread_id: &str,
-        limit: usize,
-    ) -> Result<Vec<ThreadMessage>>;
-}
-
 /// Core channel plugin trait. Each messaging platform implements this.
 #[async_trait]
 pub trait ChannelPlugin: Send + Sync {
@@ -781,11 +758,6 @@ pub trait ChannelPlugin: Send + Sync {
 
     /// Downcast to OTP provider if this channel supports OTP self-approval.
     fn as_otp_provider(&self) -> Option<&dyn ChannelOtpProvider> {
-        None
-    }
-
-    /// Thread context provider for fetching prior thread messages.
-    fn thread_context(&self) -> Option<&dyn ChannelThreadContext> {
         None
     }
 

@@ -4,12 +4,10 @@ import { signal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { onEvent } from "../events";
 import { sendRpc } from "../helpers";
 import { t } from "../i18n";
 import { fetchModels } from "../models";
 import { updateNavCount } from "../nav-counts";
-import { testModel } from "../provider-validation";
 import { openModelSelectorForProvider } from "../providers/auth-flow";
 import { openProviderModal } from "../providers/shared";
 import { connected } from "../signals";
@@ -25,104 +23,16 @@ interface ProviderGroup {
 	models: ModelInfo[];
 }
 
-interface DetectProgressData {
-	total: number;
-	checked: number;
-	supported: number;
-	unsupported: number;
-	errors: number;
-}
-
-interface DetectSummaryData {
-	total?: number;
-	checked?: number;
-	supported?: number;
-	unsupported?: number;
-	errors?: number;
-}
-
-interface TestResult {
-	provider: string;
-	ok: boolean;
-	error?: string;
-}
-
 // ── Signals ─────────────────────────────────────────────────
 
 const configuredModels = signal<ModelInfo[]>([]);
 const providerMetaSig = signal<Map<string, ProviderInfo>>(new Map());
 const loading = signal(false);
-const detectingModels = signal(false);
-const detectSummary = signal<DetectSummaryData | null>(null);
-const detectError = signal("");
-const detectProgress = signal<DetectProgressData | null>(null);
 const deletingProvider = signal("");
-const testingProvider = signal("");
-const testResult = signal<TestResult | null>(null);
 const providerActionError = signal("");
-
-function progressFromPayload(payload: Partial<DetectProgressData> | null | undefined): DetectProgressData {
-	return {
-		total: payload?.total || 0,
-		checked: payload?.checked || 0,
-		supported: payload?.supported || 0,
-		unsupported: payload?.unsupported || 0,
-		errors: payload?.errors || 0,
-	};
-}
-
-interface ModelsUpdatedEvent {
-	phase?: string;
-	total?: number;
-	checked?: number;
-	supported?: number;
-	unsupported?: number;
-	errors?: number;
-	summary?: DetectSummaryData & DetectProgressData;
-	error?: string;
-}
-
-function handleModelsUpdatedEvent(payload: unknown): void {
-	const data = payload as ModelsUpdatedEvent | null;
-	if (!data?.phase) return;
-	if (data.phase === "start") {
-		detectingModels.value = true;
-		detectError.value = "";
-		detectSummary.value = null;
-		detectProgress.value = progressFromPayload(data);
-		return;
-	}
-	if (data.phase === "progress") {
-		detectingModels.value = true;
-		detectProgress.value = progressFromPayload(data);
-		return;
-	}
-	if (data.phase === "complete") {
-		detectingModels.value = false;
-		if (data.summary) {
-			detectSummary.value = data.summary;
-			detectProgress.value = progressFromPayload(data.summary);
-		}
-		return;
-	}
-	if (data.phase === "cancelled") {
-		detectingModels.value = false;
-		detectError.value = t("providers:detectionCancelled");
-		if (data.summary) {
-			detectSummary.value = data.summary;
-			detectProgress.value = progressFromPayload(data.summary);
-		}
-		return;
-	}
-	if (data.phase === "error") {
-		detectingModels.value = false;
-		detectError.value = data.error || t("providers:modelDetectionFailed");
-	}
-}
 
 function fetchProviders(): Promise<void> {
 	loading.value = true;
-	testResult.value = null;
 	return Promise.all([sendRpc<ModelInfo[]>("models.list_all", {}), sendRpc<ProviderInfo[]>("providers.available", {})])
 		.then(([modelsRes, providersRes]) => {
 			loading.value = false;
@@ -141,54 +51,6 @@ function fetchProviders(): Promise<void> {
 		.catch(() => {
 			loading.value = false;
 		});
-}
-
-async function runDetectAllModels(): Promise<void> {
-	if (!connected.value || detectingModels.value) return;
-	detectingModels.value = true;
-	detectSummary.value = null;
-	detectError.value = "";
-	detectProgress.value = null;
-
-	try {
-		// Phase 1: show current full list first before probing.
-		await Promise.all([fetchModels(), fetchProviders()]);
-		await new Promise<void>((resolve) => {
-			requestAnimationFrame(() => resolve());
-		});
-
-		const res = await sendRpc("models.detect_supported", {});
-		if (!res?.ok) {
-			detectError.value = res?.error?.message || t("providers:failedToDetectModels");
-			detectingModels.value = false;
-			return;
-		}
-		interface DetectSupportedPayload extends DetectSummaryData {
-			skipped?: boolean;
-		}
-
-		const resPayload = res.payload as DetectSupportedPayload | undefined;
-		if (resPayload?.skipped) {
-			detectingModels.value = false;
-			return;
-		}
-		detectSummary.value = resPayload || null;
-		detectProgress.value = progressFromPayload(resPayload);
-		await Promise.all([fetchModels(), fetchProviders()]);
-		const p = detectProgress.value;
-		if (!p || p.total === 0 || p.checked >= p.total) {
-			detectingModels.value = false;
-		}
-	} catch {
-		detectingModels.value = false;
-	}
-}
-
-async function cancelDetection(): Promise<void> {
-	const res = await sendRpc("models.cancel_detect", {});
-	if (!res?.ok) {
-		detectError.value = res?.error?.message || t("providers:modelDetectionFailed");
-	}
 }
 
 function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInfo>): ProviderGroup[] {
@@ -238,15 +100,8 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 	const fields: Array<[string, string]> = [
 		["id", model.id],
 		["provider", model.provider],
-		["display_name", model.display_name],
-		["created_at", recordValue(model.created_at)],
-		["recommended", recordValue(model.recommended)],
 		["preferred", recordValue(model.preferred)],
 		["disabled", recordValue(model.disabled)],
-		["unsupported", recordValue(model.unsupported)],
-		["unsupported_reason", recordValue(model.unsupported_reason)],
-		["unsupported_provider", recordValue(model.unsupported_provider)],
-		["unsupported_updated_at", recordValue(model.unsupported_updated_at)],
 		["context_length", recordValue(model.context_length)],
 		["max_input_tokens", recordValue(model.max_input_tokens)],
 		["max_output_tokens", recordValue(model.max_output_tokens)],
@@ -255,9 +110,12 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 		["tool_calling", recordValue(model.tool_calling)],
 		["streaming", recordValue(model.streaming)],
 		["zeroDataRetentionEnabled", recordValue(model.zeroDataRetentionEnabled)],
-		["reasoning.supported_efforts", JSON.stringify(model.reasoning.supported_efforts)],
-		["reasoning.summary", recordValue(model.reasoning.summary)],
-		["reasoning.include", JSON.stringify(model.reasoning.include)],
+		["reasoning_supported_efforts", JSON.stringify(model.reasoning_supported_efforts)],
+		["reasoning_summary", recordValue(model.reasoning_summary)],
+		[
+			"reasoning_include",
+			model.reasoning_include === undefined ? "null" : JSON.stringify(model.reasoning_include),
+		],
 	];
 
 	return (
@@ -277,33 +135,14 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 
 interface ProviderActionsProps {
 	hasModels: boolean;
-	isTesting: boolean;
 	isDeleting: boolean;
-	onTest: () => void;
 	onSelectModels: () => void;
 	onDelete: () => void;
 }
 
-function ProviderActions({
-	hasModels,
-	isTesting,
-	isDeleting,
-	onTest,
-	onSelectModels,
-	onDelete,
-}: ProviderActionsProps): VNode {
+function ProviderActions({ hasModels, isDeleting, onSelectModels, onDelete }: ProviderActionsProps): VNode {
 	return (
 		<div className="flex gap-2 shrink-0">
-			{hasModels ? (
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary provider-btn-sm"
-					disabled={isTesting}
-					onClick={onTest}
-				>
-					{isTesting ? t("providers:testing") : t("providers:test")}
-				</button>
-			) : null}
 			{hasModels ? (
 				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onSelectModels}>
 					{t("providers:preferredModels.button")}
@@ -321,24 +160,10 @@ function ProviderActions({
 	);
 }
 
-function ProviderTestStatus({ result }: { result: TestResult | null }): VNode | null {
-	if (!result) return null;
-	const className = result.ok ? "text-[var(--success,#22c55e)]" : "text-[var(--danger,#ef4444)]";
-	return <div className={`mt-1 text-xs ${className}`}>{result.ok ? t("providers:testSuccess") : result.error}</div>;
-}
-
 function ProviderModelBadges({ model }: { model: ModelInfo }): VNode {
 	return (
 		<>
 			{model.preferred ? <span className="recommended-badge">{t("providers:preferred")}</span> : null}
-			{model.unsupported ? (
-				<span
-					className="provider-item-badge warning"
-					title={model.unsupported_reason || t("providers:modelNotSupported")}
-				>
-					{t("providers:unsupported")}
-				</span>
-			) : null}
 			{model.tool_calling ? null : <span className="provider-item-badge warning">{t("providers:chatOnly")}</span>}
 			{model.disabled ? <span className="provider-item-badge muted">{t("providers:disabled")}</span> : null}
 		</>
@@ -355,12 +180,9 @@ function ProviderModelRow({ model, onToggle }: ProviderModelRowProps): VNode {
 		<div className="flex items-start justify-between gap-3 py-1">
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2 min-w-0">
-					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.display_name}</div>
+					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.id}</div>
 					<ProviderModelBadges model={model} />
 				</div>
-				{model.unsupported && model.unsupported_reason ? (
-					<div className="mt-0.5 text-xs font-medium text-[var(--danger,#ef4444)]">{model.unsupported_reason}</div>
-				) : null}
 				<ModelRecord model={model} />
 			</div>
 			<button
@@ -427,7 +249,6 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 			sendRpc("providers.remove_key", { provider: group.provider })
 				.then((res) => {
 					if (res?.ok) {
-						if (testResult.value?.provider === group.provider) testResult.value = null;
 						configuredModels.value = configuredModels.value.filter((entry) => entry.provider !== group.provider);
 						fetchModels();
 						fetchProviders();
@@ -464,38 +285,7 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 		openModelSelectorForProvider(group.provider, group.providerDisplayName);
 	}
 
-	function onTestProvider(): void {
-		if (testingProvider.value || group.models.length === 0) return;
-		const firstModel = group.models[0];
-		requestConfirm(t("providers:testProviderConfirm", { name: group.providerDisplayName })).then((yes) => {
-			if (!yes) return;
-			testingProvider.value = group.provider;
-			testResult.value = null;
-			providerActionError.value = "";
-			testModel(firstModel.id)
-				.then((res) => {
-					if (res.ok) {
-						testResult.value = { provider: group.provider, ok: true };
-					} else {
-						testResult.value = { provider: group.provider, ok: false, error: res.error };
-					}
-				})
-				.catch(() => {
-					testResult.value = {
-						provider: group.provider,
-						ok: false,
-						error: t("providers:testFailed"),
-					};
-				})
-				.finally(() => {
-					testingProvider.value = "";
-				});
-		});
-	}
-
-	const isTesting = testingProvider.value === group.provider;
 	const isDeleting = deletingProvider.value === group.provider;
-	const providerTestResult = testResult.value?.provider === group.provider ? testResult.value : null;
 
 	return (
 		<div id={`provider-${group.provider}`} className="max-w-form py-1">
@@ -505,14 +295,11 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 				</div>
 				<ProviderActions
 					hasModels={group.models.length > 0}
-					isTesting={isTesting}
 					isDeleting={isDeleting}
-					onTest={onTestProvider}
 					onSelectModels={onSelectModels}
 					onDelete={onDeleteProvider}
 				/>
 			</div>
-			<ProviderTestStatus result={providerTestResult} />
 			<div className="mt-2 border-b border-[var(--border)]" />
 			<ProviderModelList
 				models={visibleModels}
@@ -529,17 +316,9 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 function ProvidersPageComponent(): VNode {
 	useEffect(() => {
 		if (connected.value) fetchProviders();
-		const offModelsUpdated = onEvent("models.updated", handleModelsUpdatedEvent);
-
-		return () => {
-			offModelsUpdated();
-		};
 	}, [connected.value]);
 
 	S.setRefreshProvidersPage(fetchProviders);
-
-	const progressValue = detectProgress.value || { total: 0, checked: 0, supported: 0, unsupported: 0, errors: 0 };
-	const progressPercent = progressValue.total > 0 ? Math.round((progressValue.checked / progressValue.total) * 100) : 0;
 
 	return (
 		<>
@@ -559,58 +338,12 @@ function ProvidersPageComponent(): VNode {
 					>
 						{t("providers:addLlm")}
 					</button>
-					<button
-						type="button"
-						id="providersDetectModelsBtn"
-						data-testid="providers-detect-models"
-						className="provider-btn provider-btn-secondary"
-						disabled={!connected.value || detectingModels.value}
-						onClick={runDetectAllModels}
-					>
-						{detectingModels.value ? t("providers:detectingModels") : t("providers:detectAllModels")}
-					</button>
 				</div>
 				<p className="text-xs text-[var(--muted)] leading-relaxed max-w-form" style={{ margin: 0 }}>
 					{t("providers:description")}
 				</p>
-				{detectError.value || providerActionError.value ? (
-					<div className="text-xs text-[var(--danger,#ef4444)] max-w-form">
-						{detectError.value || providerActionError.value}
-					</div>
-				) : null}
-				{detectingModels.value ? (
-					<div className="max-w-form">
-						<div className="flex items-center gap-2">
-							<div className="flex-1 h-2 overflow-hidden rounded-sm border border-[var(--border)] bg-[var(--surface2)]">
-								<div
-									className="h-full bg-[var(--accent)] transition-all duration-150"
-									style={{ width: `${progressPercent}%` }}
-								/>
-							</div>
-							<button
-								type="button"
-								className="provider-btn provider-btn-danger provider-btn-sm"
-								onClick={cancelDetection}
-							>
-								{t("providers:stopDetection")}
-							</button>
-						</div>
-						<div className="mt-1 text-xs text-[var(--muted)]">
-							{t("providers:probingModels", {
-								checked: progressValue.checked,
-								total: progressValue.total,
-								pct: progressPercent,
-							})}
-						</div>
-					</div>
-				) : detectSummary.value ? (
-					<div className="text-xs text-[var(--muted)] max-w-form">
-						{t("providers:detectSummary", {
-							supported: detectSummary.value.supported || 0,
-							unsupported: detectSummary.value.unsupported || 0,
-							total: detectSummary.value.total || 0,
-						})}
-					</div>
+				{providerActionError.value ? (
+					<div className="text-xs text-[var(--danger,#ef4444)] max-w-form">{providerActionError.value}</div>
 				) : null}
 
 				{(() => {

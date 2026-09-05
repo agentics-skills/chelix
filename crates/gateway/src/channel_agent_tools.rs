@@ -7,6 +7,7 @@ use {
         plugin::ChannelType,
         store::{ChannelStore, StoredChannel},
     },
+    chelix_common::{ConfigModelOverride, ModelOverride},
     serde::{Deserialize, Serialize},
     serde_json::{Map, Value, json},
     std::sync::Arc,
@@ -87,13 +88,23 @@ impl AgentTool for SendMessageTool {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateChannelSettingsParams {
+    account_id: String,
+    #[serde(rename = "type")]
+    channel_type: Option<ChannelType>,
+    settings: ChannelSettingsPatch,
+}
+
 #[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 struct ChannelSettingsPatch {
     dm_policy: Option<DmPolicy>,
     group_policy: Option<GroupPolicy>,
     mention_mode: Option<MentionMode>,
-    model: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    model_override: Option<Option<ModelOverride>>,
     model_provider: Option<Option<String>>,
     agent_id: Option<Option<String>>,
     otp_self_approval: Option<bool>,
@@ -110,10 +121,11 @@ struct ChannelSettingsPatch {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ModelOverridePatch {
     target_id: String,
-    #[serde(default)]
-    model: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    model_override: Option<Option<ModelOverride>>,
     #[serde(default)]
     model_provider: Option<Option<String>>,
     #[serde(default)]
@@ -138,6 +150,48 @@ impl ChannelSettingsStreamMode {
             Self::Off => "off",
         }
     }
+}
+
+fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
+fn model_override_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["model", "reasoningEffort"],
+        "properties": {
+            "model": { "type": "string", "minLength": 1 },
+            "reasoningEffort": { "type": "string", "minLength": 1 }
+        }
+    })
+}
+
+fn nullable_model_override_schema() -> Value {
+    json!({
+        "anyOf": [model_override_schema(), { "type": "null" }]
+    })
+}
+
+fn targeted_model_override_schema(description: &str) -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": description,
+        "required": ["target_id"],
+        "properties": {
+            "target_id": { "type": "string", "minLength": 1 },
+            "model_override": nullable_model_override_schema(),
+            "model_provider": { "type": ["string", "null"] },
+            "agent_id": { "type": ["string", "null"] },
+            "clear": { "type": "boolean", "default": false }
+        }
+    })
 }
 
 /// Agent tool that safely updates persisted channel settings.
@@ -174,19 +228,30 @@ impl AgentTool for UpdateChannelSettingsTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
+            "additionalProperties": false,
             "required": ["account_id", "settings"],
             "properties": {
                 "account_id": {
                     "type": "string",
+                    "minLength": 1,
                     "description": "Configured channel account identifier to update."
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "discord", "slack", "whatsapp"],
+                    "enum": [
+                        "telegram",
+                        "whatsapp",
+                        "discord",
+                        "slack",
+                        "matrix",
+                        "signal",
+                        "telephony"
+                    ],
                     "description": "Optional explicit channel type hint if account ids might overlap."
                 },
                 "settings": {
                     "type": "object",
+                    "additionalProperties": false,
                     "description": "Safe channel settings patch. Only include fields you want to change.",
                     "properties": {
                         "dm_policy": {
@@ -202,13 +267,13 @@ impl AgentTool for UpdateChannelSettingsTool {
                             "enum": ["mention", "always", "none"],
                             "description": "Supported by Telegram, Discord, Slack, and WhatsApp."
                         },
-                        "model": {
-                            "type": ["string", "null"],
-                            "description": "Set the default model id for this account, or null to clear it."
+                        "model_override": {
+                            "description": "Set the complete canonical model/reasoning override for this account, or null to clear it.",
+                            "anyOf": [model_override_schema(), { "type": "null" }]
                         },
                         "model_provider": {
                             "type": ["string", "null"],
-                            "description": "Set the provider name paired with `model`, or null to clear it."
+                            "description": "Set informational provider metadata for `model_override`, or null to clear it."
                         },
                         "agent_id": {
                             "type": ["string", "null"],
@@ -256,30 +321,12 @@ impl AgentTool for UpdateChannelSettingsTool {
                             "enum": ["edit_in_place", "native", "off"],
                             "description": "Supported by Telegram (`edit_in_place`, `off`) and Slack (`edit_in_place`, `native`, `off`)."
                         },
-                        "channel_override": {
-                            "type": "object",
-                            "description": "Set or clear model, provider, or agent overrides for a specific Telegram/Discord/Slack/WhatsApp channel or chat id.",
-                            "required": ["target_id"],
-                            "properties": {
-                                "target_id": { "type": "string" },
-                                "model": { "type": ["string", "null"] },
-                                "model_provider": { "type": ["string", "null"] },
-                                "agent_id": { "type": ["string", "null"] },
-                                "clear": { "type": "boolean", "default": false }
-                            }
-                        },
-                        "user_override": {
-                            "type": "object",
-                            "description": "Set or clear model, provider, or agent overrides for a specific Telegram/Discord/Slack/WhatsApp user id.",
-                            "required": ["target_id"],
-                            "properties": {
-                                "target_id": { "type": "string" },
-                                "model": { "type": ["string", "null"] },
-                                "model_provider": { "type": ["string", "null"] },
-                                "agent_id": { "type": ["string", "null"] },
-                                "clear": { "type": "boolean", "default": false }
-                            }
-                        }
+                        "channel_override": targeted_model_override_schema(
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Discord/Slack/WhatsApp channel or chat id."
+                        ),
+                        "user_override": targeted_model_override_schema(
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Discord/Slack/WhatsApp user id."
+                        )
                     }
                 }
             }
@@ -292,24 +339,16 @@ impl AgentTool for UpdateChannelSettingsTool {
             return Err(anyhow!("channel store is not available"));
         };
 
-        let account_id = params
-            .get("account_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("missing 'account_id'"))?;
-        let explicit_type = params
-            .get("type")
-            .and_then(Value::as_str)
-            .map(str::parse::<ChannelType>)
-            .transpose()
-            .map_err(|e| anyhow!(e.to_string()))?;
-        let settings = params
-            .get("settings")
-            .cloned()
-            .ok_or_else(|| anyhow!("missing 'settings'"))?;
-        let patch: ChannelSettingsPatch =
-            serde_json::from_value(settings).map_err(|e| anyhow!("invalid 'settings': {e}"))?;
+        let params: UpdateChannelSettingsParams = serde_json::from_value(params)
+            .map_err(|error| anyhow!("invalid update_channel_settings request: {error}"))?;
+        if params.account_id.trim().is_empty() {
+            return Err(anyhow!("'account_id' cannot be empty"));
+        }
 
-        let stored = load_stored_channel(store.as_ref(), account_id, explicit_type).await?;
+        let stored =
+            load_stored_channel(store.as_ref(), &params.account_id, params.channel_type).await?;
+        let account_id = params.account_id;
+        let patch = params.settings;
         let channel_type = stored
             .channel_type
             .parse::<ChannelType>()
@@ -406,9 +445,20 @@ fn apply_channel_settings_patch(
         config.insert("mention_mode".into(), json!(mention_mode));
         changes.push("mention_mode".to_string());
     }
-    if let Some(model) = &patch.model {
-        set_optional_string(config, "model", model);
-        changes.push("model".to_string());
+    if let Some(model_override) = &patch.model_override {
+        match model_override {
+            Some(model_override) => {
+                validate_model_override(model_override, "model_override")?;
+                config.insert(
+                    "model_override".into(),
+                    json!(ConfigModelOverride::from(model_override)),
+                );
+            },
+            None => {
+                config.remove("model_override");
+            },
+        }
+        changes.push("model_override".to_string());
     }
     if let Some(model_provider) = &patch.model_provider {
         set_optional_string(config, "model_provider", model_provider);
@@ -597,6 +647,16 @@ fn set_optional_string(config: &mut Map<String, Value>, key: &str, value: &Optio
     }
 }
 
+fn validate_model_override(model_override: &ModelOverride, field: &str) -> Result<()> {
+    if model_override.model.trim().is_empty() {
+        return Err(anyhow!("'{field}.model' cannot be empty"));
+    }
+    if model_override.reasoning_effort.as_str().trim().is_empty() {
+        return Err(anyhow!("'{field}.reasoningEffort' cannot be empty"));
+    }
+    Ok(())
+}
+
 fn update_string_array(
     config: &mut Map<String, Value>,
     key: &str,
@@ -663,9 +723,10 @@ fn apply_model_override_patch(
         return Ok(());
     }
 
-    if patch.model.is_none() && patch.model_provider.is_none() && patch.agent_id.is_none() {
+    if patch.model_override.is_none() && patch.model_provider.is_none() && patch.agent_id.is_none()
+    {
         return Err(anyhow!(
-            "'{key}' for '{}' must set 'model', 'model_provider', or 'agent_id', or use clear=true",
+            "'{key}' for '{}' must set 'model_override', 'model_provider', or 'agent_id', or use clear=true",
             patch.target_id
         ));
     }
@@ -678,8 +739,22 @@ fn apply_model_override_patch(
         None => Map::new(),
     };
 
-    if let Some(model) = &patch.model {
-        set_optional_string(&mut override_value, "model", model);
+    if let Some(model_override) = &patch.model_override {
+        match model_override {
+            Some(model_override) => {
+                validate_model_override(
+                    model_override,
+                    &format!("{key}.{}.model_override", patch.target_id),
+                )?;
+                override_value.insert(
+                    "model_override".into(),
+                    json!(ConfigModelOverride::from(model_override)),
+                );
+            },
+            None => {
+                override_value.remove("model_override");
+            },
+        }
     }
     if let Some(model_provider) = &patch.model_provider {
         set_optional_string(&mut override_value, "model_provider", model_provider);
@@ -707,6 +782,53 @@ mod tests {
         std::collections::HashMap,
         tokio::sync::Mutex,
     };
+
+    #[test]
+    fn model_override_patches_distinguish_omitted_clear_and_complete_pair() {
+        let omitted = serde_json::from_value::<ChannelSettingsPatch>(json!({})).unwrap();
+        assert_eq!(omitted.model_override, None);
+        let cleared = serde_json::from_value::<ChannelSettingsPatch>(json!({
+            "model_override": null
+        }))
+        .unwrap();
+        assert_eq!(cleared.model_override, Some(None));
+        let complete = serde_json::from_value::<ChannelSettingsPatch>(json!({
+            "model_override": {
+                "model": "test::model",
+                "reasoningEffort": "off"
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            complete.model_override,
+            Some(Some(ModelOverride {
+                model: "test::model".into(),
+                reasoning_effort: "off".into(),
+            }))
+        );
+
+        let target_cleared = serde_json::from_value::<ModelOverridePatch>(json!({
+            "target_id": "target",
+            "model_override": null
+        }))
+        .unwrap();
+        assert_eq!(target_cleared.model_override, Some(None));
+        let target_complete = serde_json::from_value::<ModelOverridePatch>(json!({
+            "target_id": "target",
+            "model_override": {
+                "model": "test::other",
+                "reasoningEffort": "high"
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            target_complete.model_override,
+            Some(Some(ModelOverride {
+                model: "test::other".into(),
+                reasoning_effort: "high".into(),
+            }))
+        );
+    }
 
     struct RecordingChannelService {
         sent: Mutex<Option<Value>>,
@@ -931,7 +1053,10 @@ mod tests {
                 "mention_mode": "mention",
                 "allowlist": ["alice"],
                 "group_allowlist": ["chat-1"],
-                "model": "old-model",
+                "model_override": {
+                    "model": "openrouter::old-model",
+                    "reasoning_effort": "low"
+                },
                 "model_provider": "openrouter",
                 "reply_to_message": false
             }),
@@ -946,7 +1071,10 @@ mod tests {
                 "account_id": "bot-alpha",
                 "type": "telegram",
                 "settings": {
-                    "model": "new-model",
+                    "model_override": {
+                        "model": "openrouter::new-model",
+                        "reasoningEffort": "high"
+                    },
                     "allowlist_add": ["bob"],
                     "allowlist_remove": ["alice"],
                     "reply_to_message": true
@@ -956,6 +1084,17 @@ mod tests {
             .expect("update_channel_settings execute");
 
         assert_eq!(out.get("ok").and_then(Value::as_bool), Some(true));
+        let schema_types = tool.parameters_schema()["properties"]["type"]["enum"]
+            .as_array()
+            .expect("channel type enum")
+            .clone();
+        for channel_type in ChannelType::ALL {
+            assert!(
+                schema_types
+                    .iter()
+                    .any(|value| value == channel_type.as_str())
+            );
+        }
         let updated = service
             .updated
             .lock()
@@ -965,9 +1104,93 @@ mod tests {
         assert_eq!(updated["account_id"], "bot-alpha");
         assert_eq!(updated["type"], "telegram");
         assert_eq!(updated["config"]["token"], "secret-token");
-        assert_eq!(updated["config"]["model"], "new-model");
+        assert_eq!(
+            updated["config"]["model_override"],
+            json!({
+                "model": "openrouter::new-model",
+                "reasoning_effort": "high"
+            })
+        );
         assert_eq!(updated["config"]["reply_to_message"], true);
         assert_eq!(updated["config"]["allowlist"], json!(["bob"]));
+    }
+
+    #[tokio::test]
+    async fn update_channel_settings_rejects_invalid_model_override_values() {
+        let cases = [
+            (
+                "missing reasoning effort",
+                json!({ "model": "openai::gpt-5.2" }),
+            ),
+            (
+                "empty model",
+                json!({ "model": "", "reasoningEffort": "low" }),
+            ),
+            (
+                "empty reasoning effort",
+                json!({ "model": "openai::gpt-5.2", "reasoningEffort": "" }),
+            ),
+        ];
+
+        for (case, model_override) in cases {
+            let service = Arc::new(RecordingChannelService::new());
+            let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
+                "bot-alpha",
+                "telegram",
+                json!({
+                    "token": "secret-token",
+                    "allowlist": [],
+                    "group_allowlist": []
+                }),
+            )]));
+            let tool = UpdateChannelSettingsTool::new(
+                service.clone() as Arc<dyn ChannelService>,
+                Some(store as Arc<dyn ChannelStore>),
+            );
+
+            tool.execute(json!({
+                "account_id": "bot-alpha",
+                "settings": { "model_override": model_override }
+            }))
+            .await
+            .expect_err(case);
+
+            assert!(
+                service.updated.lock().await.is_none(),
+                "{case} must fail before channel config mutation"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn update_channel_settings_rejects_arbitrary_additional_field() {
+        let service = Arc::new(RecordingChannelService::new());
+        let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
+            "bot-alpha",
+            "telegram",
+            json!({
+                "token": "secret-token",
+                "allowlist": [],
+                "group_allowlist": []
+            }),
+        )]));
+        let tool = UpdateChannelSettingsTool::new(
+            service.clone() as Arc<dyn ChannelService>,
+            Some(store as Arc<dyn ChannelStore>),
+        );
+
+        let error = tool
+            .execute(json!({
+                "account_id": "bot-alpha",
+                "settings": {
+                    "unexpected_setting": true
+                }
+            }))
+            .await
+            .expect_err("additional settings field must be rejected");
+
+        assert!(error.to_string().contains("unexpected_setting"));
+        assert!(service.updated.lock().await.is_none());
     }
 
     #[tokio::test]
@@ -1009,7 +1232,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_channel_settings_merges_partial_model_override() {
+    async fn update_channel_settings_replaces_complete_model_override() {
         let service = Arc::new(RecordingChannelService::new());
         let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
             "discord-main",
@@ -1020,7 +1243,10 @@ mod tests {
                 "guild_allowlist": [],
                 "channel_overrides": {
                     "chan-1": {
-                        "model": "old-model",
+                        "model_override": {
+                            "model": "openrouter::old-model",
+                            "reasoning_effort": "low"
+                        },
                         "model_provider": "openrouter"
                     }
                 }
@@ -1036,7 +1262,10 @@ mod tests {
             "settings": {
                 "channel_override": {
                     "target_id": "chan-1",
-                    "model": "new-model"
+                    "model_override": {
+                        "model": "openrouter::new-model",
+                        "reasoningEffort": "medium"
+                    }
                 }
             }
         }))
@@ -1050,8 +1279,11 @@ mod tests {
             .clone()
             .expect("captured update payload");
         assert_eq!(
-            updated["config"]["channel_overrides"]["chan-1"]["model"],
-            "new-model"
+            updated["config"]["channel_overrides"]["chan-1"]["model_override"],
+            json!({
+                "model": "openrouter::new-model",
+                "reasoning_effort": "medium"
+            })
         );
         assert_eq!(
             updated["config"]["channel_overrides"]["chan-1"]["model_provider"],
@@ -1071,7 +1303,10 @@ mod tests {
                 "group_allowlist": [],
                 "channel_overrides": {
                     "chat-1": {
-                        "model": "old-model",
+                        "model_override": {
+                            "model": "openai::gpt-5.2",
+                            "reasoning_effort": "low"
+                        },
                         "agent_id": "old-agent"
                     }
                 }
@@ -1101,8 +1336,11 @@ mod tests {
             .clone()
             .expect("captured update payload");
         assert_eq!(
-            updated["config"]["channel_overrides"]["chat-1"]["model"],
-            "old-model"
+            updated["config"]["channel_overrides"]["chat-1"]["model_override"],
+            json!({
+                "model": "openai::gpt-5.2",
+                "reasoning_effort": "low"
+            })
         );
         assert_eq!(
             updated["config"]["channel_overrides"]["chat-1"]["agent_id"],

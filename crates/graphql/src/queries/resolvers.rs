@@ -5,8 +5,15 @@
 
 use async_graphql::{Context, Object, Result};
 
+use {
+    chelix_service_traits::{
+        ChatContextRequest, ChatExecutionContext, ChatFullContextRequest, ChatRawPromptRequest,
+    },
+    chelix_sessions::SessionKey,
+};
+
 use crate::{
-    error::{from_service, from_service_json},
+    error::{from_service, from_service_json, from_typed_service_json},
     scalars::Json,
     services,
     types::{
@@ -192,9 +199,9 @@ impl ChatQuery {
     /// Get the prompts queued for a session.
     async fn queued_prompts(&self, ctx: &Context<'_>, session_key: String) -> Result<Json> {
         let s = services!(ctx);
-        from_service_json(
+        from_typed_service_json(
             s.chat
-                .prompt_queue_list(serde_json::json!({ "sessionKey": session_key }))
+                .queued_prompts_status(SessionKey::new(session_key))
                 .await,
         )
     }
@@ -205,7 +212,10 @@ impl ChatQuery {
         // Dynamic context shape (system prompt, tools, etc.).
         from_service_json(
             s.chat
-                .context(serde_json::json!({ "sessionKey": session_key }))
+                .context(
+                    ChatContextRequest::default(),
+                    ChatExecutionContext::internal(SessionKey::new(session_key)),
+                )
                 .await,
         )
     }
@@ -215,7 +225,10 @@ impl ChatQuery {
         let s = services!(ctx);
         from_service(
             s.chat
-                .raw_prompt(serde_json::json!({ "sessionKey": session_key }))
+                .raw_prompt(
+                    ChatRawPromptRequest::default(),
+                    ChatExecutionContext::internal(SessionKey::new(session_key)),
+                )
                 .await,
         )
     }
@@ -226,7 +239,10 @@ impl ChatQuery {
         // OpenAI messages format — deeply nested, dynamic.
         from_service_json(
             s.chat
-                .full_context(serde_json::json!({ "sessionKey": session_key }))
+                .full_context(
+                    ChatFullContextRequest::default(),
+                    ChatExecutionContext::internal(SessionKey::new(session_key)),
+                )
                 .await,
         )
     }
@@ -439,11 +455,6 @@ impl TtsQuery {
     async fn providers(&self, ctx: &Context<'_>) -> Result<Vec<ProviderInfo>> {
         let s = services!(ctx);
         from_service(s.tts.providers().await)
-    }
-
-    /// Generate a TTS test phrase.
-    async fn generate_phrase(&self, _ctx: &Context<'_>) -> Result<String> {
-        Ok("Hello, how can I help you today?".to_string())
     }
 }
 

@@ -1,5 +1,49 @@
 use super::*;
 
+async fn session_event_entry(
+    metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
+    session_key: &str,
+) -> Option<chelix_sessions::metadata::SessionEntry> {
+    match metadata.get(session_key).await {
+        Ok(entry) => entry,
+        Err(error) => {
+            tracing::error!(session = %session_key, %error, "failed to load session event entry");
+            None
+        },
+    }
+}
+
+async fn is_active_channel_session(
+    metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
+    entry: &chelix_sessions::metadata::SessionEntry,
+) -> bool {
+    let Some(binding_json) = entry.channel_binding.as_deref() else {
+        return false;
+    };
+    let target = match serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json) {
+        Ok(target) => target,
+        Err(error) => {
+            tracing::error!(session = %entry.key, %error, "invalid persisted channel binding");
+            return false;
+        },
+    };
+    match metadata
+        .get_active_session(
+            target.channel_type.as_str(),
+            &target.account_id,
+            &target.chat_id,
+            target.thread_id.as_deref(),
+        )
+        .await
+    {
+        Ok(active_key) => active_key.is_some_and(|key| key == entry.key),
+        Err(error) => {
+            tracing::error!(session = %entry.key, %error, "failed to load active channel session");
+            false
+        },
+    }
+}
+
 pub(super) struct FinalizeGatewayArgs<'a> {
     pub bind: &'a str,
     pub port: u16,
@@ -21,35 +65,8 @@ pub(super) struct FinalizeGatewayArgs<'a> {
 }
 #[cfg(feature = "mdns")]
 pub(super) fn instance_slug(config: &chelix_config::ChelixConfig) -> crate::error::Result<String> {
-    let base = chelix_config::ResolvedIdentity::from_config(config)
-        .map_err(|error| crate::Error::Config(error.to_string()))?
-        .name
-        .to_lowercase();
-    let mut out = String::new();
-    let mut last_dash = false;
-    for ch in base.chars() {
-        let mapped = if ch.is_ascii_alphanumeric() {
-            ch
-        } else {
-            '-'
-        };
-        if mapped == '-' {
-            if !last_dash {
-                out.push(mapped);
-            }
-            last_dash = true;
-        } else {
-            out.push(mapped);
-            last_dash = false;
-        }
-    }
-    let out = out.trim_matches('-').to_string();
-    if out.is_empty() {
-        return Err(crate::Error::Config(
-            "default agent name cannot produce an mDNS slug".to_string(),
-        ));
-    }
-    Ok(out)
+    chelix_config::resolve_instance_slug(config)
+        .map_err(|error| crate::Error::Config(error.to_string()))
 }
 
 pub(super) async fn finalize_prepared_gateway(
@@ -215,31 +232,9 @@ pub(super) async fn finalize_prepared_gateway(
                         });
                         if kind != "deleted"
                             && let Some(ref metadata) = ws_state.services.session_metadata
-                            && let Some(entry) = metadata.get(session_key).await
+                            && let Some(entry) = session_event_entry(metadata, session_key).await
                         {
-                            let active_channel = if let Some(ref binding_json) =
-                                entry.channel_binding
-                            {
-                                if let Ok(target) = serde_json::from_str::<
-                                    chelix_channels::ChannelReplyTarget,
-                                >(binding_json)
-                                {
-                                    metadata
-                                        .get_active_session(
-                                            target.channel_type.as_str(),
-                                            &target.account_id,
-                                            &target.chat_id,
-                                            target.thread_id.as_deref(),
-                                        )
-                                        .await
-                                        .map(|key| key == entry.key)
-                                        .unwrap_or(false)
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            };
+                            let active_channel = is_active_channel_session(metadata, &entry).await;
                             let preview = entry.preview.as_deref().map(|text| {
                                 let truncated = text.chars().take(200).collect::<String>();
                                 if text.chars().count() > 200 {
@@ -253,7 +248,8 @@ pub(super) async fn finalize_prepared_gateway(
                                 "id": entry.id,
                                 "key": entry.key,
                                 "label": entry.label,
-                                "model": entry.model,
+                                "model": entry.model(),
+                                "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
                                 "createdAt": entry.created_at,
                                 "updatedAt": entry.updated_at,
                                 "messageCount": entry.message_count,
@@ -684,16 +680,16 @@ pub(super) async fn finalize_prepared_gateway(
                         every_ms: interval_ms,
                         anchor_ms: None,
                     }),
-                    payload: Some(CronPayload::AgentTurn {
+                    payload: Some(CronPayload::AgentTurn(chelix_cron::types::CronAgentTurn {
                         message: prompt,
-                        model: hb.model.clone(),
+                        model_override: hb.model_override.as_ref().map(Into::into),
                         agent_id: hb.agent_id.clone(),
                         timeout_secs: None,
                         tool_choice: None,
                         deliver: hb.deliver,
                         channel: hb.channel.clone(),
                         to: hb.to.clone(),
-                    }),
+                    })),
                     enabled: Some(true),
                     auto_prune_container: Some(None),
                     ..Default::default()
@@ -711,16 +707,16 @@ pub(super) async fn finalize_prepared_gateway(
                         every_ms: interval_ms,
                         anchor_ms: None,
                     },
-                    payload: CronPayload::AgentTurn {
+                    payload: CronPayload::AgentTurn(chelix_cron::types::CronAgentTurn {
                         message: prompt,
-                        model: hb.model.clone(),
+                        model_override: hb.model_override.as_ref().map(Into::into),
                         agent_id: hb.agent_id.clone(),
                         timeout_secs: None,
                         tool_choice: None,
                         deliver: hb.deliver,
                         channel: hb.channel.clone(),
                         to: hb.to.clone(),
-                    },
+                    }),
                     session_target: SessionTarget::Named("heartbeat".into()),
                     delete_after_run: false,
                     enabled: true,

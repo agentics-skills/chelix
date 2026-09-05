@@ -15,10 +15,10 @@ const PHONE_CHANNEL_TYPE: &str = "telephony";
 ///
 /// Phone credentials follow the same storage model as voice credentials: the
 /// TOML file stores non-secret settings, and `KeyStore` stores secrets.
-pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) {
+pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) -> anyhow::Result<()> {
     let store = crate::provider_setup::KeyStore::new();
 
-    if let Some(stored) = store.load_config(&phone_key_store_name("twilio")) {
+    if let Some(stored) = store.load_config(&phone_key_store_name("twilio"))? {
         if let Some(account_sid) = stored.api_key {
             cfg.phone.twilio.account_sid = Some(Secret::new(account_sid));
         }
@@ -27,7 +27,7 @@ pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) {
         }
     }
 
-    if let Some(stored) = store.load_config(&phone_key_store_name("telnyx")) {
+    if let Some(stored) = store.load_config(&phone_key_store_name("telnyx"))? {
         if let Some(api_key) = stored.api_key {
             cfg.phone.telnyx.api_key = Some(Secret::new(api_key));
         }
@@ -36,7 +36,7 @@ pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) {
         }
     }
 
-    if let Some(stored) = store.load_config(&phone_key_store_name("plivo")) {
+    if let Some(stored) = store.load_config(&phone_key_store_name("plivo"))? {
         if let Some(auth_id) = stored.api_key {
             cfg.phone.plivo.auth_id = Some(auth_id);
         }
@@ -44,6 +44,8 @@ pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) {
             cfg.phone.plivo.auth_token = Some(Secret::new(auth_token));
         }
     }
+
+    Ok(())
 }
 
 /// Build the internal telephony channel account from `[phone]`.
@@ -128,9 +130,9 @@ pub(crate) fn phone_channel_account(config: &ChelixConfig) -> Option<(String, se
 }
 
 /// Detect all available phone providers with their status.
-pub(super) fn detect_phone_providers(config: &ChelixConfig) -> serde_json::Value {
+pub(super) fn detect_phone_providers(config: &ChelixConfig) -> anyhow::Result<serde_json::Value> {
     let mut effective_config = config.clone();
-    merge_phone_keys(&mut effective_config);
+    merge_phone_keys(&mut effective_config)?;
     let mut providers = Vec::new();
 
     // Twilio
@@ -228,7 +230,7 @@ pub(super) fn detect_phone_providers(config: &ChelixConfig) -> serde_json::Value
         },
     }));
 
-    serde_json::json!({ "providers": providers })
+    Ok(serde_json::json!({ "providers": providers }))
 }
 
 /// Apply phone provider settings to the config.
@@ -318,7 +320,7 @@ pub(super) async fn reload_running_phone_account(
     state: &crate::state::GatewayState,
 ) -> anyhow::Result<()> {
     let mut config = chelix_config::discover_and_load()?;
-    merge_phone_keys(&mut config);
+    merge_phone_keys(&mut config)?;
 
     match phone_channel_account(&config) {
         Some((account_id, account_config)) => {
@@ -401,7 +403,8 @@ mod tests {
     #[test]
     fn detect_phone_providers_returns_all() {
         let config = ChelixConfig::default();
-        let result = detect_phone_providers(&config);
+        let result = detect_phone_providers(&config)
+            .unwrap_or_else(|error| panic!("phone providers should be detected: {error}"));
         let providers = result["providers"]
             .as_array()
             .unwrap_or_else(|| panic!("array"));
@@ -417,7 +420,8 @@ mod tests {
         config.phone.enabled = true;
         config.phone.provider = "twilio".to_string();
         config.phone.twilio.account_sid = Some(Secret::new("AC_test_sid".to_string()));
-        let result = detect_phone_providers(&config);
+        let result = detect_phone_providers(&config)
+            .unwrap_or_else(|error| panic!("phone providers should be detected: {error}"));
         let providers = result["providers"]
             .as_array()
             .unwrap_or_else(|| panic!("array"));
@@ -432,7 +436,8 @@ mod tests {
         config.phone.enabled = true;
         config.phone.provider = "telnyx".to_string();
         config.phone.telnyx.api_key = Some(Secret::new("KEY_test".to_string()));
-        let result = detect_phone_providers(&config);
+        let result = detect_phone_providers(&config)
+            .unwrap_or_else(|error| panic!("phone providers should be detected: {error}"));
         let providers = result["providers"]
             .as_array()
             .unwrap_or_else(|| panic!("array"));
@@ -569,7 +574,6 @@ mod tests {
                 &phone_key_store_name("twilio"),
                 Some("AC_old".to_string()),
                 Some("old_token".to_string()),
-                None,
             )
             .unwrap_or_else(|error| panic!("phone credentials should be stored: {error}"));
         chelix_config::update_config(|cfg| {
@@ -599,7 +603,6 @@ mod tests {
                 &phone_key_store_name("twilio"),
                 Some("AC_new".to_string()),
                 Some("new_token".to_string()),
-                None,
             )
             .unwrap_or_else(|error| panic!("phone credentials should be updated: {error}"));
         chelix_config::update_config(|cfg| {

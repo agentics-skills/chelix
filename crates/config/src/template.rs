@@ -109,59 +109,52 @@ port = {port}                           # Port number (auto-generated for this i
 #   enabled   - Whether to use this provider (default: true)
 #   api_key   - API key (or use env var like OPENAI_API_KEY)
 #   base_url  - Override API endpoint
-#   models.<model_id> - Ordered allowlist entry with per-model metadata (optional)
-#   fetch_models - Discover models from provider API when available (default: true)
+#   models.<model_id> - Ordered complete model metadata record when present
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
 #   alias     - Custom name for metrics labels (useful for multiple instances)
 #   tool_mode - Tool calling mode: "native", "text", or "off" (default: "native")
 #   policy    - Per-provider tool policy override (allow/deny lists)
-#   probe_timeout_secs - Timeout for completion-based model probes (default: 30s).
 #
-# Declare selected models only as [providers.<name>.models."<raw-model-id>"]
-# tables. Tables are evaluated in declaration order. Configuration metadata wins
-# field by field; /models discovery fills missing fields; optional defaults apply
-# last. Models are excluded unless context_length, max_input_tokens,
-# max_output_tokens, and reasoning.supported_efforts resolve. With no model
-# tables, every discovered model with complete metadata is accepted.
+# Declare every model only as [providers.<name>.models."<raw-model-id>"]
+# with a complete metadata record. Tables are evaluated in declaration order.
+# A provider may declare no models regardless of status. Every present model must
+# contain all mandatory valid fields; metadata is never discovered or defaulted.
+# reasoning_supported_efforts must be non-empty and contain no empty strings.
+# ["off"] is the only non-reasoning API path; ["low"] is valid without "off".
 
 # [providers]
 # offered = ["openai", "openrouter", "zai"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
-# show_legacy_models = true         # Show models older than 1 year in the chat model selector (they always appear in Settings)
 # All available providers (canonical list in schema/providers.rs):
 #   "openai", "deepinfra",
 #   "openrouter", "zai", "zai-code", "alibaba-coding"
 
+# Provider snippets are examples; model tables can be added independently.
 # ── OpenAI ────────────────────────────────────────────────────
 # [providers.openai]
-# enabled = true
+# enabled = false
 # api_key = "sk-..."                          # Or set OPENAI_API_KEY env var
-# fetch_models = true
 # stream_transport = "sse"                     # "sse" | "websocket" | "auto"
 # base_url = "https://api.openai.com/v1"     # API endpoint (change for Azure, etc.)
 # alias = "openai"
-# [providers.openai.models."gpt-5.3"]
-# [providers.openai.models."gpt-5.2"]
 
 # ── DeepInfra ─────────────────────────────────────────────────
 # [providers.deepinfra]
-# enabled = true
+# enabled = false
 # api_key = "..."                             # Or set DEEPINFRA_API_KEY env var
 # base_url = "https://api.deepinfra.com/v1/openai"
 # alias = "deepinfra"
-# [providers.deepinfra.models."meta-llama/Llama-4-Maverick-17B-128E-Instruct"]
 
 # ── OpenRouter (multi-provider gateway) ───────────────────────
 # [providers.openrouter]
-# enabled = true
+# enabled = false
 # api_key = "..."                             # Or set OPENROUTER_API_KEY env var
 # base_url = "https://openrouter.ai/api/v1"
-# [providers.openrouter.models."anthropic/claude-3.5-sonnet"]
 
 # ══════════════════════════════════════════════════════════════════════════════
-# COMPLETE MODEL METADATA EXAMPLE
+# MODEL METADATA EXAMPLE
 # ══════════════════════════════════════════════════════════════════════════════
-# The same table format carries complete metadata when config supplies it.
+# Every configured model uses this complete table format.
 #
 # [providers.custom-ai-example]
 # enabled = true
@@ -177,11 +170,9 @@ port = {port}                           # Port number (auto-generated for this i
 # tool_calling = true
 # streaming = true
 # zeroDataRetentionEnabled = true
-#
-# [providers.custom-ai-example.models."Combos/cx/gpt-sol".reasoning]
-# supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
-# summary = "detailed"
-# include = ["reasoning.encrypted_content"]
+# reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
+# reasoning_summary = "detailed"
+# reasoning_include = ["encrypted_content"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHAT SETTINGS
@@ -198,12 +189,13 @@ port = {port}                           # Port number (auto-generated for this i
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
 # ══════════════════════════════════════════════════════════════════════════════
-# Route side tasks to cheaper/faster models while keeping the main session on a
-# more capable model.
+# Session title generation requires a complete model/reasoning pair.
+# Choose an exact model ID from models.list and an effort from that model's
+# reasoning_supported_efforts. The values below are examples.
 #
-# [auxiliary]
-# title_generation = "openrouter/openai/gpt-5-mini"  # Model for session titles
-# vision = "openrouter/openai/gpt-5-mini"            # Model for vision/image tasks
+# [auxiliary.title_generation]
+# model = "openai::gpt-5.2"
+# reasoning_effort = "low"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AGENTS
@@ -225,8 +217,9 @@ port = {port}                           # Port number (auto-generated for this i
 # name = "Chelix"
 # emoji = "🤖"
 # description = "General-purpose assistant"
+# model = "openai::gpt-5.2"
+# reasoning_effort = "medium"
 # max_tools_threshold = {max_tools_threshold}
-# model = "openai/gpt-5.2"
 #
 # [agents.main.tools]
 # allow = []
@@ -428,6 +421,10 @@ port = {port}                           # Port number (auto-generated for this i
 # deliver = false                   # Deliver heartbeat replies to a channel
 # wake_cooldown = "5m"              # Min duration between command-triggered heartbeat wakes (0 to disable)
 
+# [heartbeat.model_override]
+# model = "openai::gpt-5.2"
+# reasoning_effort = "medium"
+
 # [heartbeat.active_hours]
 # start = "08:00"
 # end = "24:00"
@@ -568,52 +565,17 @@ port = {port}                           # Port number (auto-generated for this i
 
 /// Generate the user config written on first run.
 ///
-/// Starter agents are materialized in the user-owned layer so subsequent
-/// edits and deletions are never restored from managed defaults.
+/// No starter agent is emitted before the user has selected a registered
+/// canonical model and one of that model's supported reasoning efforts.
 pub fn first_run_config_template(port: u16) -> String {
     let base = default_config_template(port);
-    let max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD;
     format!(
         r#"{base}
 # ══════════════════════════════════════════════════════════════════════════════
-# STARTER AGENTS
+# AGENT SETUP
 # ══════════════════════════════════════════════════════════════════════════════
-
-[agents]
-default = "main"
-
-[agents.main]
-name = "chelix"
-description = "Default agent"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.research]
-name = "Researcher"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.coder]
-name = "Coder"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.reviewer]
-name = "Reviewer"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.qa]
-name = "QA"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.ux]
-name = "UX Designer"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.docs]
-name = "Docs Writer"
-max_tools_threshold = {max_tools_threshold}
-
-[agents.coordinator]
-name = "Coordinator"
-max_tools_threshold = {max_tools_threshold}
+# No incomplete starter agents are created. Configure a provider, then create
+# the first agent with an explicit model and reasoning_effort in onboarding.
 "#
     )
 }
@@ -623,13 +585,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_run_agents_use_default_max_tools_threshold() -> Result<(), toml::de::Error> {
+    fn first_run_config_uses_exact_empty_agent_setup_state() -> Result<(), toml::de::Error> {
         let config: crate::ChelixConfig = toml::from_str(&first_run_config_template(18_789))?;
 
-        assert_eq!(config.agents.entries.len(), 8);
-        assert!(config.agents.entries.values().all(|agent| {
-            agent.max_tools_threshold == crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD
-        }));
+        assert!(matches!(
+            config.agents.resolve_state(),
+            Ok(crate::schema::AgentsConfigState::Setup)
+        ));
         Ok(())
     }
 }

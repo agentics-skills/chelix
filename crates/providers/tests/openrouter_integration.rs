@@ -8,16 +8,20 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+#[path = "support/reasoning.rs"]
+mod reasoning;
+
+use std::sync::Arc;
+
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
     futures::StreamExt,
-    secrecy::{ExposeSecret, Secret},
+    secrecy::Secret,
 };
 
 const BASE_URL: &str = "https://openrouter.ai/api/v1";
-/// Use a cheap model for testing. OpenRouter has no static catalog — models
-/// are discovered via API.
+/// Use a cheap model for testing.
 const TEST_MODEL: &str = "openai/gpt-4o-mini";
 
 fn api_key() -> Secret<String> {
@@ -27,12 +31,16 @@ fn api_key() -> Secret<String> {
     )
 }
 
-fn make_provider(model: &str) -> OpenAiProvider {
-    OpenAiProvider::new_with_name(
-        api_key(),
-        model.to_string(),
-        BASE_URL.to_string(),
-        "openrouter".to_string(),
+fn make_provider(model: &str) -> Arc<dyn LlmProvider> {
+    reasoning::configure(
+        OpenAiProvider::new_with_name(
+            api_key(),
+            model.to_string(),
+            BASE_URL.to_string(),
+            "openrouter".to_string(),
+        ),
+        vec!["off".into()],
+        "off".into(),
     )
 }
 
@@ -191,16 +199,7 @@ async fn multi_turn_tool_use() {
     assert!(r2.text.is_some(), "should have text after tool result");
 }
 
-// ── Probe & streaming ────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn probe_succeeds() {
-    make_provider(TEST_MODEL)
-        .probe()
-        .await
-        .expect("probe should succeed");
-}
+// ── Streaming ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 #[ignore]
@@ -221,38 +220,4 @@ async fn stream_emits_delta_and_done() {
         }
     }
     assert!(saw_delta && saw_done);
-}
-
-// ── Model catalog ────────────────────────────────────────────────────────────
-
-/// OpenRouter has no static catalog — all models come from discovery.
-/// This test validates the /models endpoint works and reports available models.
-#[tokio::test]
-#[ignore]
-async fn detect_models_via_api() {
-    let key = api_key();
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{BASE_URL}/models"))
-        .header("Authorization", format!("Bearer {}", key.expose_secret()))
-        .send()
-        .await
-        .expect("HTTP request should succeed");
-    assert!(
-        resp.status().is_success(),
-        "OpenRouter /models should return 200, got {}",
-        resp.status()
-    );
-    let body: serde_json::Value = resp.json().await.expect("valid JSON");
-    let models = body.get("data").and_then(|d| d.as_array()).expect("data");
-    eprintln!(
-        "\n=== OpenRouter /models API: {} models available ===\n",
-        models.len()
-    );
-    // Just verify we got a reasonable number of models
-    assert!(
-        models.len() > 10,
-        "OpenRouter should have many models, got {}",
-        models.len()
-    );
 }

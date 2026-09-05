@@ -26,11 +26,10 @@ use {
                 reaction::ReactionEventContent,
                 relation::{Annotation, InReplyTo, Thread},
                 room::message::{
-                    LocationMessageEventContent, MessageType, Relation, RelationWithoutReplacement,
+                    LocationMessageEventContent, MessageType, RelationWithoutReplacement,
                     RoomMessageEventContent, TextMessageEventContent,
                 },
             },
-            serde::Raw,
         },
     },
     tracing::{debug, warn},
@@ -40,8 +39,7 @@ use {
     chelix_channels::{
         Error as ChannelError, Result as ChannelResult,
         plugin::{
-            ChannelOutbound, ChannelStreamOutbound, ChannelThreadContext, InteractiveMessage,
-            StreamEvent, StreamReceiver, ThreadMessage,
+            ChannelOutbound, ChannelStreamOutbound, InteractiveMessage, StreamEvent, StreamReceiver,
         },
     },
     chelix_common::types::{MediaAttachment, ReplyPayload},
@@ -709,151 +707,12 @@ impl ChannelStreamOutbound for MatrixOutbound {
     }
 }
 
-#[async_trait]
-impl ChannelThreadContext for MatrixOutbound {
-    async fn fetch_thread_messages(
-        &self,
-        account_id: &str,
-        channel_id: &str,
-        thread_id: &str,
-        limit: usize,
-    ) -> ChannelResult<Vec<ThreadMessage>> {
-        if limit == 0 {
-            return Ok(Vec::new());
-        }
-
-        let room = self.get_room(account_id, channel_id)?;
-        let bot_user_id = self.get_bot_user_id(account_id)?;
-        let target_event_id = Self::parse_event_id(thread_id, "thread_id")?;
-        let target_event = room
-            .load_or_fetch_event(&target_event_id, None)
-            .await
-            .map_err(|e| ChannelError::external("matrix fetch_thread_messages target", e))?;
-
-        let thread_root_id = extract_thread_root_event_id(target_event.raw())
-            .unwrap_or_else(|| target_event_id.clone());
-        let mut initial_relation_messages = None;
-
-        if thread_root_id == target_event_id {
-            let relation_limit = limit.saturating_sub(1).max(1);
-            let relation_limit = usize_to_uint(relation_limit);
-            let relation_batch = room
-                .relations(thread_root_id.clone(), RelationsOptions {
-                    dir: Direction::Forward,
-                    limit: relation_limit,
-                    include_relations: IncludeRelations::RelationsOfType(
-                        ruma::events::relation::RelationType::Thread,
-                    ),
-                    ..Default::default()
-                })
-                .await
-                .map_err(|e| ChannelError::external("matrix fetch_thread_messages relations", e))?;
-
-            if relation_batch.chunk.is_empty() {
-                return Ok(Vec::new());
-            }
-
-            initial_relation_messages = Some(relation_batch.chunk);
-        }
-
-        let root_event = if thread_root_id == target_event_id {
-            target_event
-        } else {
-            room.load_or_fetch_event(&thread_root_id, None)
-                .await
-                .map_err(|e| ChannelError::external("matrix fetch_thread_messages root", e))?
-        };
-
-        let mut messages = vec![timeline_event_to_thread_message(&root_event, &bot_user_id)];
-        let relation_events = if let Some(relation_events) = initial_relation_messages {
-            relation_events
-        } else if limit > 1 {
-            room.relations(thread_root_id.clone(), RelationsOptions {
-                dir: Direction::Forward,
-                limit: usize_to_uint(limit.saturating_sub(1)),
-                include_relations: IncludeRelations::RelationsOfType(
-                    ruma::events::relation::RelationType::Thread,
-                ),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| ChannelError::external("matrix fetch_thread_messages relations", e))?
-            .chunk
-        } else {
-            Vec::new()
-        };
-
-        messages.extend(
-            relation_events
-                .iter()
-                .map(|event| timeline_event_to_thread_message(event, &bot_user_id)),
-        );
-        messages.truncate(limit);
-
-        Ok(messages)
-    }
-}
-
 /// Create an m.replace edit event content.
 fn make_edit_content(original_event_id: &OwnedEventId, new_body: &str) -> RoomMessageEventContent {
     use matrix_sdk::ruma::events::room::message::ReplacementMetadata;
     let new_content = RoomMessageEventContent::text_markdown(new_body);
     let metadata = ReplacementMetadata::new(original_event_id.clone(), None);
     new_content.make_replacement(metadata)
-}
-
-fn extract_thread_root_event_id(raw_event: &Raw<AnySyncTimelineEvent>) -> Option<OwnedEventId> {
-    let event = raw_event.deserialize().ok()?;
-    let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(event)) = event
-    else {
-        return None;
-    };
-    let event = event.as_original()?;
-
-    match &event.content.relates_to {
-        Some(Relation::Thread(thread)) => Some(thread.event_id.clone()),
-        _ => None,
-    }
-}
-
-fn timeline_event_to_thread_message(event: &TimelineEvent, bot_user_id: &str) -> ThreadMessage {
-    let raw = event.raw();
-    let (sender_id, text) = raw
-        .deserialize()
-        .ok()
-        .and_then(deserialize_message_details)
-        .unwrap_or_else(|| (String::new(), String::new()));
-
-    ThreadMessage {
-        is_bot: sender_id == bot_user_id,
-        sender_id,
-        text,
-        timestamp: event
-            .timestamp()
-            .map(|timestamp| timestamp.get().to_string())
-            .unwrap_or_default(),
-    }
-}
-
-fn deserialize_message_details(event: AnySyncTimelineEvent) -> Option<(String, String)> {
-    let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(event)) = event
-    else {
-        return None;
-    };
-    let event = event.as_original()?;
-    let text = match &event.content.msgtype {
-        MessageType::Text(text) => text.body.clone(),
-        MessageType::Notice(notice) => notice.body.clone(),
-        MessageType::Emote(emote) => emote.body.clone(),
-        MessageType::Image(image) => image.body.clone(),
-        MessageType::Audio(audio) => audio.body.clone(),
-        MessageType::Video(video) => video.body.clone(),
-        MessageType::File(file) => file.body.clone(),
-        MessageType::Location(location) => location.body.clone(),
-        _ => String::new(),
-    };
-
-    Some((event.sender.to_string(), text))
 }
 
 fn matching_reaction_event_id(
@@ -1088,10 +947,8 @@ fn extension_for_mime(mime_type: &str) -> &str {
 mod tests {
     use {
         super::{
-            MatrixOutbound, deserialize_message_details, extension_for_mime,
-            extract_thread_root_event_id, html_to_plain, interactive_poll_plain_text,
+            MatrixOutbound, extension_for_mime, html_to_plain, interactive_poll_plain_text,
             location_body, location_geo_uri, matching_reaction_event_id, poll_relation_from_value,
-            timeline_event_to_thread_message,
         },
         chelix_common::types::{MediaAttachment, ReplyPayload},
         matrix_sdk::{
@@ -1125,78 +982,6 @@ mod tests {
         let plain = html_to_plain("<code>if a < b && c > d</code>");
 
         assert_eq!(plain, "if a < b && c > d");
-    }
-
-    #[test]
-    fn extract_thread_root_event_id_reads_thread_relation() {
-        let event = timeline_event_from_json(json!({
-            "type": "m.room.message",
-            "event_id": "$reply",
-            "room_id": "!room:example.org",
-            "sender": "@alice:example.org",
-            "origin_server_ts": 1,
-            "content": {
-                "msgtype": "m.text",
-                "body": "reply",
-                "m.relates_to": {
-                    "rel_type": "m.thread",
-                    "event_id": "$root",
-                    "m.in_reply_to": {
-                        "event_id": "$other"
-                    },
-                    "is_falling_back": false
-                }
-            }
-        }));
-
-        assert_eq!(
-            extract_thread_root_event_id(event.raw()),
-            Some(owned_event_id!("$root"))
-        );
-    }
-
-    #[test]
-    fn extract_thread_root_event_id_ignores_plain_replies() {
-        let event = timeline_event_from_json(json!({
-            "type": "m.room.message",
-            "event_id": "$reply",
-            "room_id": "!room:example.org",
-            "sender": "@alice:example.org",
-            "origin_server_ts": 1,
-            "content": {
-                "msgtype": "m.text",
-                "body": "reply",
-                "m.relates_to": {
-                    "m.in_reply_to": {
-                        "event_id": "$parent"
-                    }
-                }
-            }
-        }));
-
-        assert_eq!(extract_thread_root_event_id(event.raw()), None);
-    }
-
-    #[test]
-    fn timeline_event_to_thread_message_uses_sender_and_text() {
-        let event = timeline_event_from_json(json!({
-            "type": "m.room.message",
-            "event_id": "$reply",
-            "room_id": "!room:example.org",
-            "sender": "@bot:example.org",
-            "origin_server_ts": 1234,
-            "content": {
-                "msgtype": "m.notice",
-                "body": "hello"
-            }
-        }));
-
-        let message = timeline_event_to_thread_message(&event, "@bot:example.org");
-
-        assert_eq!(message.sender_id, "@bot:example.org");
-        assert!(message.is_bot);
-        assert_eq!(message.text, "hello");
-        assert!(!message.timestamp.is_empty());
     }
 
     #[test]
@@ -1335,30 +1120,6 @@ mod tests {
             panic!("expected reply relation");
         };
         assert_eq!(in_reply_to.event_id, owned_event_id!("$reply"));
-    }
-
-    #[test]
-    fn deserialize_message_details_ignores_non_message_events() {
-        let raw = Raw::<AnySyncTimelineEvent>::from_json_string(
-            json!({
-                "type": "m.room.member",
-                "event_id": "$state",
-                "room_id": "!room:example.org",
-                "sender": "@alice:example.org",
-                "state_key": "@alice:example.org",
-                "origin_server_ts": 1,
-                "content": {
-                    "membership": "join"
-                }
-            })
-            .to_string(),
-        )
-        .unwrap_or_else(|error| panic!("state event raw: {error}"));
-        let event = raw
-            .deserialize()
-            .unwrap_or_else(|error| panic!("state event deserialize: {error}"));
-
-        assert_eq!(deserialize_message_details(event), None);
     }
 
     #[test]

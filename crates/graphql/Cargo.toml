@@ -7,7 +7,9 @@ version.workspace    = true
 [dependencies]
 async-graphql         = { workspace = true }
 async-stream          = { workspace = true }
+chelix-common         = { workspace = true }
 chelix-service-traits = { workspace = true }
+chelix-sessions       = { workspace = true }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
 thiserror             = { workspace = true }

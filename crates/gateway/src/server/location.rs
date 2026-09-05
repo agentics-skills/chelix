@@ -135,9 +135,13 @@ impl chelix_tools::location::LocationRequester for GatewayLocationRequester {
             .session_metadata
             .as_ref()
             .ok_or_else(|| chelix_tools::Error::message("session metadata not available"))?;
-        let entry = session_meta.get(session_key).await.ok_or_else(|| {
-            chelix_tools::Error::message(format!("no session metadata for key {session_key}"))
-        })?;
+        let entry = session_meta
+            .get(session_key)
+            .await
+            .map_err(|error| chelix_tools::Error::message(error.to_string()))?
+            .ok_or_else(|| {
+                chelix_tools::Error::message(format!("no session metadata for key {session_key}"))
+            })?;
         let binding_json = entry.channel_binding.ok_or_else(|| {
             chelix_tools::Error::message(format!("no channel binding for session {session_key}"))
         })?;

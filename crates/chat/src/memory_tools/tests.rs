@@ -1,14 +1,23 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::{pin::Pin, sync::Arc};
+use std::{
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
 use {
     super::*,
-    chelix_agents::model::{CompletionResponse, StreamEvent, Usage, UserContent},
+    chelix_agents::{
+        model::{CompletionResponse, StreamEvent, Usage, UserContent},
+        tool_context::ToolExecutionContext,
+    },
+    chelix_common::{ModelMetadata, ModelModality, ReasoningEffort, ResolvedModelReasoning},
     chelix_memory::{
         config::MemoryConfig, embeddings::EmbeddingProvider, manager::MemoryManager,
         schema::run_migrations, store_sqlite::SqliteMemoryStore,
     },
+    chelix_providers::ModelInfo,
+    chelix_sessions::SessionKey,
     sqlx::SqlitePool,
     tempfile::TempDir,
     tokio_stream::Stream,
@@ -20,6 +29,47 @@ struct DataDirGuard;
 impl Drop for DataDirGuard {
     fn drop(&mut self) {
         chelix_config::clear_data_dir();
+    }
+}
+
+fn memory_forget_context() -> ToolExecutionContext {
+    ToolExecutionContext::for_session(SessionKey::new("agent:writer:main"))
+}
+
+#[test]
+fn memory_forget_arguments_are_closed_and_match_the_schema() {
+    let schema = memory_forget_parameters_schema();
+    assert_eq!(schema["additionalProperties"], json!(false));
+
+    let request = parse_forget_request(&json!({
+        "request": "forget a saved preference",
+        "dry_run": true,
+        "limit": MEMORY_FORGET_MAX_LIMIT,
+    }))
+    .unwrap();
+    assert_eq!(request.request, "forget a saved preference");
+    assert!(request.dry_run);
+    assert_eq!(request.limit, MEMORY_FORGET_MAX_LIMIT);
+
+    let error = parse_forget_request(&json!({
+        "request": "forget a saved preference",
+        "unexpected": true,
+    }))
+    .unwrap_err();
+    assert!(error.to_string().contains("unknown field `unexpected`"));
+}
+
+#[test]
+fn memory_forget_arguments_reject_current_semantic_errors() {
+    for params in [
+        json!({ "request": " " }),
+        json!({ "request": "forget a saved preference", "limit": 0 }),
+        json!({
+            "request": "forget a saved preference",
+            "limit": MEMORY_FORGET_MAX_LIMIT + 1,
+        }),
+    ] {
+        assert!(parse_forget_request(&params).is_err(), "accepted {params}");
     }
 }
 
@@ -125,6 +175,163 @@ impl LlmProvider for ForgetPlannerProvider {
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::empty())
     }
+
+    fn with_reasoning_effort(
+        self: Arc<Self>,
+        _effort: ReasoningEffort,
+    ) -> Option<Arc<dyn LlmProvider>> {
+        Some(Arc::new(Self {
+            needle: self.needle.clone(),
+        }))
+    }
+}
+
+struct AppliedEffortProvider {
+    applied_efforts: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl LlmProvider for AppliedEffortProvider {
+    fn name(&self) -> &str {
+        "applied-effort"
+    }
+
+    fn id(&self) -> &str {
+        "model"
+    }
+
+    fn supports_tools(&self) -> bool {
+        false
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[Value],
+    ) -> anyhow::Result<CompletionResponse> {
+        anyhow::bail!("unexpected planner invocation")
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::empty())
+    }
+
+    fn reasoning_effort(&self) -> Option<ReasoningEffort> {
+        self.applied_efforts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .last()
+            .cloned()
+            .map(ReasoningEffort::from)
+    }
+
+    fn with_reasoning_effort(
+        self: Arc<Self>,
+        effort: ReasoningEffort,
+    ) -> Option<Arc<dyn LlmProvider>> {
+        self.applied_efforts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(effort.as_str().to_string());
+        Some(self)
+    }
+}
+
+struct FailingForgetProvider;
+
+#[async_trait]
+impl LlmProvider for FailingForgetProvider {
+    fn name(&self) -> &str {
+        "failing-memory-forget"
+    }
+
+    fn id(&self) -> &str {
+        "failing-memory-forget"
+    }
+
+    async fn complete(
+        &self,
+        _messages: &[ChatMessage],
+        _tools: &[Value],
+    ) -> anyhow::Result<CompletionResponse> {
+        anyhow::bail!("simulated memory_forget provider failure")
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::empty())
+    }
+
+    fn with_reasoning_effort(
+        self: Arc<Self>,
+        _effort: ReasoningEffort,
+    ) -> Option<Arc<dyn LlmProvider>> {
+        Some(Arc::new(Self))
+    }
+}
+
+fn memory_forget_model_metadata() -> ModelMetadata {
+    ModelMetadata {
+        context_length: 8_192,
+        max_input_tokens: 4_096,
+        max_output_tokens: 1_024,
+        input_modalities: vec![ModelModality::Text],
+        output_modalities: vec![ModelModality::Text],
+        tool_calling: false,
+        streaming: true,
+        zero_data_retention_enabled: false,
+        reasoning_supported_efforts: vec![ReasoningEffort::from("off")],
+        reasoning_summary: None,
+        reasoning_include: None,
+    }
+}
+
+async fn setup_session_metadata() -> Arc<SqliteSessionMetadata> {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    chelix_sessions::run_migrations(&pool).await.unwrap();
+    Arc::new(SqliteSessionMetadata::new(pool))
+}
+
+async fn setup_memory_forget_provider_resolver(
+    provider: Arc<dyn LlmProvider>,
+) -> (
+    MemoryForgetProviderResolver,
+    Arc<RwLock<ProviderRegistry>>,
+    Arc<SqliteSessionMetadata>,
+) {
+    let metadata = setup_session_metadata().await;
+    let model_reasoning =
+        ResolvedModelReasoning::try_new("test::model".to_string(), ReasoningEffort::from("off"))
+            .unwrap();
+    metadata
+        .create_llm_session("agent:writer:main", None, &model_reasoning, Some("writer"))
+        .await
+        .unwrap();
+
+    let mut registry = ProviderRegistry::empty();
+    registry.register(
+        ModelInfo {
+            id: "model".to_string(),
+            provider: "test".to_string(),
+            metadata: memory_forget_model_metadata(),
+        },
+        provider,
+    );
+    let providers = Arc::new(RwLock::new(registry));
+    (
+        MemoryForgetProviderResolver::new(Arc::clone(&providers), Arc::clone(&metadata)),
+        providers,
+        metadata,
+    )
 }
 
 struct NamedTool(&'static str);
@@ -188,6 +395,113 @@ async fn setup_agent_memory(
 }
 
 #[tokio::test]
+async fn memory_forget_provider_resolver_applies_persisted_off_pair() {
+    let applied_efforts = Arc::new(Mutex::new(Vec::new()));
+    let (resolver, _providers, _metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(AppliedEffortProvider {
+            applied_efforts: Arc::clone(&applied_efforts),
+        }))
+        .await;
+
+    resolver
+        .resolve(&SessionKey::new("agent:writer:main"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        *applied_efforts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()),
+        vec!["off".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn memory_forget_provider_resolver_rejects_missing_session_and_invalid_pair() {
+    let metadata = setup_session_metadata().await;
+    let invalid_session_key = "agent:invalid:main";
+    let invalid_pair =
+        ResolvedModelReasoning::try_new("test::missing".to_string(), ReasoningEffort::from("off"))
+            .unwrap();
+    metadata
+        .create_llm_session(invalid_session_key, None, &invalid_pair, Some("writer"))
+        .await
+        .unwrap();
+    let resolver = MemoryForgetProviderResolver::new(
+        Arc::new(RwLock::new(ProviderRegistry::empty())),
+        metadata,
+    );
+
+    for (session_key, expected_error) in [
+        (
+            "agent:missing:main",
+            "session 'agent:missing:main' not found",
+        ),
+        (
+            invalid_session_key,
+            "model `test::missing` is not registered",
+        ),
+    ] {
+        let Err(error) = resolver.resolve(&SessionKey::new(session_key)).await else {
+            panic!("resolver accepted invalid session '{session_key}'");
+        };
+        assert_eq!(error.to_string(), expected_error);
+    }
+}
+
+#[tokio::test]
+async fn global_memory_forget_delegates_to_provider_resolver() {
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
+    let _guard = DataDirGuard;
+    let (manager, _tmp, _memory_path) = setup_agent_memory("writer", "", 4).await;
+    let (_resolver, providers, metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(FailingForgetProvider)).await;
+    let tool = MemoryForgetTool::new(manager, providers, metadata);
+
+    let result = tool
+        .execute_with_context(
+            json!({ "request": "forget dark mode" }),
+            &memory_forget_context(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result["candidate_count"], json!(0));
+}
+
+#[tokio::test]
+async fn memory_forget_propagates_provider_failure() {
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
+    let _guard = DataDirGuard;
+    let (manager, _tmp, _memory_path) =
+        setup_agent_memory("writer", "Color preference dark mode\n", 4).await;
+    let (provider_resolver, _providers, _metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(FailingForgetProvider)).await;
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(NamedTool("memory_forget")));
+    install_agent_scoped_memory_tools(
+        &mut registry,
+        &manager,
+        provider_resolver,
+        "writer",
+        MemoryStyle::Hybrid,
+        AgentMemoryWriteMode::Hybrid,
+    );
+    let tool = registry.get("memory_forget").unwrap();
+    let context = memory_forget_context();
+
+    let error = tool
+        .execute_with_context(json!({ "request": "forget dark mode" }), &context)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "simulated memory_forget provider failure"
+    );
+}
+
+#[tokio::test]
 async fn memory_forget_deletes_selected_scoped_chunk() {
     let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
     let _guard = DataDirGuard;
@@ -197,23 +511,30 @@ async fn memory_forget_deletes_selected_scoped_chunk() {
         4,
     )
     .await;
+    let (provider_resolver, _providers, _metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(ForgetPlannerProvider {
+            needle: "dark mode".to_string(),
+        }))
+        .await;
 
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(NamedTool("memory_forget")));
     install_agent_scoped_memory_tools(
         &mut registry,
         &manager,
-        Arc::new(ForgetPlannerProvider {
-            needle: "dark mode".to_string(),
-        }),
+        provider_resolver,
         "writer",
         MemoryStyle::Hybrid,
         AgentMemoryWriteMode::Hybrid,
     );
 
     let tool = registry.get("memory_forget").unwrap();
+    let context = memory_forget_context();
     let result = tool
-        .execute(json!({ "request": "forget that I prefer dark mode" }))
+        .execute_with_context(
+            json!({ "request": "forget that I prefer dark mode" }),
+            &context,
+        )
         .await
         .unwrap();
 
@@ -242,23 +563,30 @@ async fn memory_forget_refuses_ambiguous_exact_text() {
         4,
     )
     .await;
+    let (provider_resolver, _providers, _metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(ForgetPlannerProvider {
+            needle: "duplicate".to_string(),
+        }))
+        .await;
 
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(NamedTool("memory_forget")));
     install_agent_scoped_memory_tools(
         &mut registry,
         &manager,
-        Arc::new(ForgetPlannerProvider {
-            needle: "duplicate".to_string(),
-        }),
+        provider_resolver,
         "writer",
         MemoryStyle::Hybrid,
         AgentMemoryWriteMode::Hybrid,
     );
 
     let tool = registry.get("memory_forget").unwrap();
+    let context = memory_forget_context();
     let result = tool
-        .execute(json!({ "request": "forget the duplicate memory line" }))
+        .execute_with_context(
+            json!({ "request": "forget the duplicate memory line" }),
+            &context,
+        )
         .await
         .unwrap();
 
@@ -310,15 +638,18 @@ async fn memory_forget_reports_unreadable_files_as_issues() {
     let _guard = DataDirGuard;
     let (manager, _tmp, memory_path) =
         setup_agent_memory("writer", "Color preference dark mode\n", 4).await;
+    let (provider_resolver, _providers, _metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(ForgetPlannerProvider {
+            needle: "dark mode".to_string(),
+        }))
+        .await;
 
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(NamedTool("memory_forget")));
     install_agent_scoped_memory_tools(
         &mut registry,
         &manager,
-        Arc::new(ForgetPlannerProvider {
-            needle: "dark mode".to_string(),
-        }),
+        provider_resolver,
         "writer",
         MemoryStyle::Hybrid,
         AgentMemoryWriteMode::Hybrid,
@@ -327,8 +658,12 @@ async fn memory_forget_reports_unreadable_files_as_issues() {
     std::fs::remove_file(&memory_path).unwrap();
 
     let tool = registry.get("memory_forget").unwrap();
+    let context = memory_forget_context();
     let result = tool
-        .execute(json!({ "request": "forget that I prefer dark mode" }))
+        .execute_with_context(
+            json!({ "request": "forget that I prefer dark mode" }),
+            &context,
+        )
         .await
         .unwrap();
 

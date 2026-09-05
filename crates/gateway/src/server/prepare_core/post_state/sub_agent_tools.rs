@@ -2,8 +2,12 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
-    chelix_service_traits::ChatService,
+    chelix_common::ReasoningEffort,
+    chelix_service_traits::{
+        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ChatService,
+    },
     chelix_sessions::{
+        SessionKey,
         message::PersistedMessage,
         metadata::{SessionEntry, SqliteSessionMetadata},
         store::SessionStore,
@@ -20,7 +24,7 @@ use crate::state::GatewayState;
 struct DiscoverableAgent {
     id: String,
     model: String,
-    reasoning_effort: String,
+    reasoning_effort: ReasoningEffort,
 }
 
 struct SubAgentRuntime {
@@ -122,6 +126,13 @@ impl SubAgentRuntime {
     ) -> chelix_tools::Result<Value> {
         let started = Instant::now();
         let agent = self.discoverable_agent(agent_id).await?;
+        let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+            self.state.services.model.as_ref(),
+            &agent.model,
+            &agent.reasoning_effort,
+        )
+        .await
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
         let parent = self
             .session_metadata
             .try_get(parent_session_key)
@@ -148,22 +159,15 @@ impl SubAgentRuntime {
         }
 
         let session_key = format!("session:{}", uuid::Uuid::new_v4());
-        self.state
-            .services
-            .session
-            .resolve(serde_json::json!({ "key": session_key.clone() }))
-            .await
-            .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
         let label = sub_agent_label(task);
         self.session_metadata
-            .configure_subagent_session(
+            .create_subagent_session(
                 &session_key,
                 &label,
                 parent_session_key,
                 &owner_key,
                 agent_id,
-                &agent.model,
-                &agent.reasoning_effort,
+                &model_reasoning,
             )
             .await
             .map_err(tool_error)?;
@@ -177,10 +181,15 @@ impl SubAgentRuntime {
         );
 
         let chat = self.state.chat();
-        let send_params = first_message_params(&session_key, task);
         match mode {
             SubAgentMode::Blocking => {
-                let response = match chat.send_sync(send_params).await {
+                let response = match chat
+                    .send_sync(
+                        ChatSendSyncRequest::text(task),
+                        ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
+                    )
+                    .await
+                {
                     Ok(response) => response,
                     Err(error) => {
                         record_run_metric(mode, "failed", started.elapsed());
@@ -206,7 +215,13 @@ impl SubAgentRuntime {
                 Ok(output)
             },
             SubAgentMode::Background => {
-                let response = match chat.send(send_params).await {
+                let response = match chat
+                    .send(
+                        ChatSendRequest::text(task),
+                        ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
+                    )
+                    .await
+                {
                     Ok(response) => response,
                     Err(error) => {
                         record_run_metric(mode, "failed", started.elapsed());
@@ -339,31 +354,10 @@ fn discoverable_agent_from_config(
             "agent {agent_id:?} has no non-empty SUBAGENT.md and is not available from sub_agent explore"
         )));
     }
-    let model = agent.model.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent {agent_id:?} has no configured model and is not available from sub_agent explore"
-        ))
-    })?;
-    let reasoning_effort = agent
-        .reasoning_effort
-        .as_ref()
-        .map(|effort| effort.as_str().to_string())
-        .ok_or_else(|| {
-            chelix_tools::Error::message(format!(
-                "agent {agent_id:?} has no configured reasoning_effort and is not available from sub_agent explore"
-            ))
-        })?;
     Ok(DiscoverableAgent {
         id: agent_id.to_string(),
-        model,
-        reasoning_effort,
-    })
-}
-
-fn first_message_params(session_key: &str, task: &str) -> Value {
-    serde_json::json!({
-        "text": task,
-        "_session_key": session_key,
+        model: agent.model.clone(),
+        reasoning_effort: agent.reasoning_effort.clone(),
     })
 }
 
@@ -608,8 +602,10 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        chelix_common::ReasoningEffort,
-        chelix_service_traits::ServiceResult,
+        chelix_service_traits::{
+            ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+            ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceResult,
+        },
         std::sync::atomic::{AtomicUsize, Ordering},
     };
 
@@ -631,21 +627,25 @@ mod tests {
 
     #[async_trait]
     impl ChatService for LifecycleChatService {
-        async fn send(&self, _params: Value) -> ServiceResult {
+        async fn send(
+            &self,
+            _request: ChatSendRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("send is not used by this test service".into())
+        }
+
+        async fn send_sync(
+            &self,
+            _request: ChatSendSyncRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("send_sync is not used by this test service".into())
         }
 
         async fn abort(&self, _params: Value) -> ServiceResult {
             self.abort_calls.fetch_add(1, Ordering::SeqCst);
             Ok(self.abort_response.clone())
-        }
-
-        async fn prompt_queue_list(&self, _params: Value) -> ServiceResult {
-            Err("prompt_queue_list is not used by this test service".into())
-        }
-
-        async fn prompt_queue_cancel(&self, _params: Value) -> ServiceResult {
-            Err("prompt_queue_cancel is not used by this test service".into())
         }
 
         async fn history(&self, _params: Value) -> ServiceResult {
@@ -660,19 +660,35 @@ mod tests {
             Err("clear is not used by this test service".into())
         }
 
-        async fn compact(&self, _params: Value) -> ServiceResult {
+        async fn compact(
+            &self,
+            _request: ChatCompactRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("compact is not used by this test service".into())
         }
 
-        async fn context(&self, _params: Value) -> ServiceResult {
+        async fn context(
+            &self,
+            _request: ChatContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("context is not used by this test service".into())
         }
 
-        async fn raw_prompt(&self, _params: Value) -> ServiceResult {
+        async fn raw_prompt(
+            &self,
+            _request: ChatRawPromptRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("raw_prompt is not used by this test service".into())
         }
 
-        async fn full_context(&self, _params: Value) -> ServiceResult {
+        async fn full_context(
+            &self,
+            _request: ChatFullContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
             Err("full_context is not used by this test service".into())
         }
 
@@ -682,12 +698,11 @@ mod tests {
     }
 
     fn configured_agent() -> chelix_config::AgentConfig {
-        chelix_config::AgentConfig {
-            name: "Reviewer".to_string(),
-            model: Some("provider/model".to_string()),
-            reasoning_effort: Some(ReasoningEffort::from("high")),
-            ..chelix_config::AgentConfig::default()
-        }
+        chelix_config::AgentConfig::new(
+            "Reviewer",
+            "provider::model",
+            ReasoningEffort::from("high"),
+        )
     }
 
     async fn sqlite_metadata() -> SqliteSessionMetadata {
@@ -697,28 +712,41 @@ mod tests {
         SqliteSessionMetadata::new(pool)
     }
 
+    fn test_model_reasoning() -> chelix_common::ResolvedModelReasoning {
+        chelix_common::ResolvedModelReasoning::try_new(
+            "provider::model".to_string(),
+            ReasoningEffort::from("high"),
+        )
+        .unwrap_or_else(|error| panic!("valid test pair: {error}"))
+    }
+
+    async fn create_parent(metadata: &SqliteSessionMetadata, session_key: &str) {
+        metadata
+            .create_llm_session(session_key, None, &test_model_reasoning(), Some("main"))
+            .await
+            .unwrap();
+    }
+
     async fn configure_child(
         metadata: &SqliteSessionMetadata,
         session_key: &str,
         parent_session_key: &str,
     ) {
-        metadata.upsert(session_key, None).await.unwrap();
         metadata
-            .configure_subagent_session(
+            .create_subagent_session(
                 session_key,
                 "Reviewer task",
                 parent_session_key,
                 parent_session_key,
                 "reviewer",
-                "provider/model",
-                "high",
+                &test_model_reasoning(),
             )
             .await
             .unwrap();
     }
 
     #[test]
-    fn discoverable_agent_requires_prompt_model_and_reasoning_effort() {
+    fn discoverable_agent_requires_non_empty_prompt() {
         let configured = configured_agent();
         discoverable_agent_from_config(
             "reviewer",
@@ -732,45 +760,13 @@ mod tests {
         let error = discoverable_agent_from_config("reviewer", &configured, Some("  ".to_string()))
             .unwrap_err();
         assert!(error.to_string().contains("no non-empty SUBAGENT.md"));
-
-        let mut without_model = configured.clone();
-        without_model.model = None;
-        let error = discoverable_agent_from_config(
-            "reviewer",
-            &without_model,
-            Some("Review the task".to_string()),
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("no configured model"));
-
-        let mut without_effort = configured;
-        without_effort.reasoning_effort = None;
-        let error = discoverable_agent_from_config(
-            "reviewer",
-            &without_effort,
-            Some("Review the task".to_string()),
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("no configured reasoning_effort"));
-    }
-
-    #[test]
-    fn first_message_contains_only_task_and_child_session_key() {
-        let params = first_message_params("session:child", "Review this change");
-        assert_eq!(
-            params,
-            serde_json::json!({
-                "text": "Review this change",
-                "_session_key": "session:child",
-            })
-        );
     }
 
     #[tokio::test]
     async fn lifecycle_actions_do_not_access_foreign_children() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
-        metadata.upsert("session:other", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
+        create_parent(&metadata, "session:other").await;
         configure_child(&metadata, "session:own-child", "session:parent").await;
         configure_child(&metadata, "session:foreign-child", "session:other").await;
         let chat = LifecycleChatService::new(
@@ -819,7 +815,7 @@ mod tests {
     #[tokio::test]
     async fn background_result_is_extracted_only_from_the_tracked_run() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
@@ -887,7 +883,7 @@ mod tests {
     #[tokio::test]
     async fn result_requires_an_inactive_chat_run() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
@@ -914,7 +910,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_preserves_active_and_completed_abort_results() {
         let metadata = sqlite_metadata().await;
-        metadata.upsert("session:parent", None).await.unwrap();
+        create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let active = LifecycleChatService::new(
             true,

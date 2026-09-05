@@ -36,25 +36,17 @@ pub(super) fn register(registry: &mut MethodRegistry) {
                 let message = A2uiClientMessage::parse(params.message).map_err(|error| {
                     ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string())
                 })?;
-                let session_key = context
-                    .state
-                    .client_registry
-                    .read()
-                    .await
-                    .active_sessions
-                    .get(&context.client_conn_id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        ErrorShape::new(
-                            error_codes::CONFLICT,
-                            "the client has no active chat session",
-                        )
-                    })?;
+                let session_key = context.resolved_session_id().await.ok_or_else(|| {
+                    ErrorShape::new(
+                        error_codes::CONFLICT,
+                        "the client has no active chat session",
+                    )
+                })?;
 
                 let active_calls = context
                     .state
                     .chat()
-                    .active_tool_invocations(&session_key)
+                    .active_tool_invocations(session_key.as_str())
                     .await;
                 validate_active_interaction(
                     &active_calls,
@@ -64,7 +56,7 @@ pub(super) fn register(registry: &mut MethodRegistry) {
                 )?;
 
                 let key = InteractionKey {
-                    session_key,
+                    session_key: session_key.0,
                     run_id: params.run_id,
                     tool_call_id: params.tool_call_id,
                 };

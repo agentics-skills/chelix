@@ -4,17 +4,22 @@ import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 
 import { addChannel, deriveSignalAccountId, parseChannelConfigPatch } from "../../../channel-utils";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
-import { Modal, ModelSelect } from "../../../ui";
+import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddSignal } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, AllowlistInput } from "../ChannelFields";
+import {
+	AdvancedConfigPatchField,
+	AllowlistInput,
+	ChannelModelFields,
+	resolveChannelModelSelection,
+} from "../ChannelFields";
 
 export function AddSignalModal(): VNode {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const addModel = useSignal("");
+	const addReasoningEffort = useSignal("");
 	const allowlistItems = useSignal<string[]>([]);
 	const groupAllowlistItems = useSignal<string[]>([]);
 	const accountDraft = useSignal("");
@@ -26,6 +31,7 @@ export function AddSignalModal(): VNode {
 
 	function reset(): void {
 		addModel.value = "";
+		addReasoningEffort.value = "";
 		allowlistItems.value = [];
 		groupAllowlistItems.value = [];
 		accountDraft.value = "";
@@ -54,6 +60,11 @@ export function AddSignalModal(): VNode {
 			error.value = advancedPatch.error;
 			return;
 		}
+		const modelSelection = resolveChannelModelSelection(addModel.value, addReasoningEffort.value);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
+			return;
+		}
 		error.value = "";
 		saving.value = true;
 		const addConfig: ChannelConfig = {
@@ -63,14 +74,10 @@ export function AddSignalModal(): VNode {
 			group_policy: groupPolicy.value,
 			group_allowlist: groupAllowlistItems.value,
 			mention_mode: mentionMode.value,
+			...modelSelection.config,
 		};
 		addConfig.account = account;
 		const accountId = deriveSignalAccountId(account);
-		if (addModel.value) {
-			addConfig.model = addModel.value;
-			const found = modelsSig.value.find((x) => x.id === addModel.value);
-			if (found?.provider) addConfig.model_provider = found.provider;
-		}
 		Object.assign(addConfig, advancedPatch.value);
 		addChannel(ChannelType.Signal, accountId, addConfig).then((res: unknown) => {
 			saving.value = false;
@@ -188,15 +195,7 @@ export function AddSignalModal(): VNode {
 						<option value="none">Do not respond in groups</option>
 					</select>
 				</label>
-				<span className="text-xs text-[var(--muted)]">Default Model</span>
-				<ModelSelect
-					ariaLabel="Default Model"
-					models={modelsSig.value}
-					value={addModel.value}
-					onChange={(v: string) => {
-						addModel.value = v;
-					}}
-				/>
+				<ChannelModelFields model={addModel} reasoningEffort={addReasoningEffort} />
 				<span className="text-xs text-[var(--muted)]">DM Allowlist</span>
 				<AllowlistInput
 					ariaLabel="DM Allowlist"

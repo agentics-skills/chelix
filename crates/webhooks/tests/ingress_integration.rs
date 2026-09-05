@@ -58,7 +58,7 @@ async fn test_github_pr_ingress_full_flow() {
             name: "GitHub PR Review".into(),
             description: Some("Reviews pull requests".into()),
             agent_id: Some("code-reviewer".into()),
-            model: None,
+            model_override: None,
             system_prompt_suffix: Some("Focus on security issues.".into()),
             tool_policy: None,
             auth_mode: AuthMode::GithubHmacSha256,
@@ -254,7 +254,7 @@ async fn test_static_header_auth_flow() {
             name: "Generic Hook".into(),
             description: None,
             agent_id: None,
-            model: None,
+            model_override: None,
             system_prompt_suffix: None,
             tool_policy: None,
             auth_mode: AuthMode::StaticHeader,
@@ -414,7 +414,7 @@ async fn test_disabled_webhook_lookup() {
             name: "Disabled Hook".into(),
             description: None,
             agent_id: None,
-            model: None,
+            model_override: None,
             system_prompt_suffix: None,
             tool_policy: None,
             auth_mode: AuthMode::None,
@@ -596,7 +596,7 @@ async fn test_crash_recovery_includes_processing_deliveries() {
             name: "test".into(),
             description: None,
             agent_id: None,
-            model: None,
+            model_override: None,
             system_prompt_suffix: None,
             tool_policy: None,
             auth_mode: AuthMode::None,
@@ -714,7 +714,7 @@ fn test_webhook_redacted_hides_secrets() {
         enabled: true,
         public_id: "wh_test".into(),
         agent_id: None,
-        model: None,
+        model_override: None,
         system_prompt_suffix: None,
         tool_policy: None,
         auth_mode: AuthMode::GithubHmacSha256,
@@ -760,7 +760,7 @@ fn test_webhook_redacted_none_stays_none() {
         enabled: true,
         public_id: "wh_test".into(),
         agent_id: None,
-        model: None,
+        model_override: None,
         system_prompt_suffix: None,
         tool_policy: None,
         auth_mode: AuthMode::None,
@@ -839,54 +839,4 @@ fn test_cidr_empty_allowlist_allows_all() {
     // When allowed_cidrs is empty, the check is skipped (all traffic allowed).
     let allowed_cidrs: Vec<String> = vec![];
     assert!(allowed_cidrs.is_empty()); // guard skips the check
-}
-
-// ── Source profile immutability on edit ────────────────────────────────
-
-#[tokio::test]
-async fn test_source_profile_not_in_patch() {
-    // WebhookPatch does not have source_profile — verify the field is
-    // absent so serde ignores it on the server side.
-    let patch_json = serde_json::json!({
-        "name": "renamed",
-        "sourceProfile": "github",  // should be ignored
-    });
-    let patch: chelix_webhooks::types::WebhookPatch = serde_json::from_value(patch_json).unwrap();
-    assert_eq!(patch.name, Some("renamed".into()));
-    // source_profile is not a field on WebhookPatch, so it's silently ignored.
-    // The webhook keeps its original source_profile.
-
-    let store = setup().await;
-    let wh = store
-        .create_webhook(WebhookCreate {
-            name: "test".into(),
-            description: None,
-            agent_id: None,
-            model: None,
-            system_prompt_suffix: None,
-            tool_policy: None,
-            auth_mode: AuthMode::None,
-            auth_config: None,
-            source_profile: "generic".into(),
-            source_config: None,
-            event_filter: EventFilter::default(),
-            session_mode: SessionMode::PerDelivery,
-            named_session_key: None,
-            allowed_cidrs: vec![],
-            max_body_bytes: 1_048_576,
-            rate_limit_per_minute: 60,
-            deliver_only: false,
-            prompt_template: None,
-            deliver_to: None,
-            deliver_extra: None,
-        })
-        .await
-        .unwrap();
-
-    let updated = store.update_webhook(wh.id, patch).await.unwrap();
-    assert_eq!(updated.name, "renamed");
-    assert_eq!(
-        updated.source_profile, "generic",
-        "source_profile must not change via patch"
-    );
 }

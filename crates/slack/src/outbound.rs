@@ -11,8 +11,8 @@ use {
 use chelix_channels::{
     Error as ChannelError, Result as ChannelResult,
     plugin::{
-        ButtonStyle, ChannelOutbound, ChannelStreamOutbound, ChannelThreadContext,
-        InteractiveMessage, StreamEvent, StreamReceiver, ThreadMessage,
+        ButtonStyle, ChannelOutbound, ChannelStreamOutbound, InteractiveMessage, StreamEvent,
+        StreamReceiver,
     },
 };
 
@@ -814,53 +814,6 @@ impl ChannelStreamOutbound for SlackOutbound {
 
     async fn is_stream_enabled(&self, account_id: &str) -> bool {
         self.get_stream_mode(account_id) != StreamMode::Off
-    }
-}
-
-#[async_trait]
-impl ChannelThreadContext for SlackOutbound {
-    async fn fetch_thread_messages(
-        &self,
-        account_id: &str,
-        channel_id: &str,
-        thread_id: &str,
-        limit: usize,
-    ) -> ChannelResult<Vec<ThreadMessage>> {
-        let (client, token) = self.get_session(account_id)?;
-        let session = client.open_session(&token);
-
-        let req = SlackApiConversationsRepliesRequest::new(channel_id.into(), thread_id.into())
-            .with_limit(limit.min(200) as u16);
-
-        let resp = session
-            .conversations_replies(&req)
-            .await
-            .map_err(|e| ChannelError::unavailable(format!("conversations.replies failed: {e}")))?;
-
-        let messages = resp
-            .messages
-            .into_iter()
-            .map(|msg| {
-                let sender_id = msg
-                    .sender
-                    .user
-                    .as_ref()
-                    .map(|u| u.to_string())
-                    .unwrap_or_default();
-                let is_bot = msg.sender.bot_id.is_some() || msg.sender.display_as_bot == Some(true);
-                let text = msg.content.text.unwrap_or_default();
-                let timestamp = msg.origin.ts.to_string();
-
-                ThreadMessage {
-                    sender_id,
-                    is_bot,
-                    text,
-                    timestamp,
-                }
-            })
-            .collect();
-
-        Ok(messages)
     }
 }
 

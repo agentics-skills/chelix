@@ -5,28 +5,137 @@ import { t } from "./i18n";
 import { showModelNotice } from "./pages/ChatPage";
 import * as S from "./state";
 import { modelStore } from "./stores/model-store";
+import { sessionStore } from "./stores/session-store";
 import type { ModelInfo } from "./types/model";
+import type { RpcResponse } from "./types/rpc";
+import type { SessionModelSelection, SessionPatchPayload } from "./types/session";
+import { showToast } from "./ui";
 
-function setSessionModel(sessionKey: string, modelId: string, reasoningEffort?: string): void {
-	const params: Record<string, string> = { key: sessionKey, model: modelId };
-	if (reasoningEffort !== undefined) params.reasoningEffort = reasoningEffort;
-	sendRpc("sessions.patch", params);
+type ConfirmedSessionModelPayload = SessionPatchPayload & SessionModelSelection;
+
+function isConfirmedSessionModelPayload(
+	payload: unknown,
+	sessionKey: string,
+): payload is ConfirmedSessionModelPayload {
+	if (!payload || typeof payload !== "object") return false;
+	const value = payload as Partial<SessionPatchPayload>;
+	return (
+		value.key === sessionKey &&
+		typeof value.model === "string" &&
+		value.model.length > 0 &&
+		typeof value.reasoningEffort === "string" &&
+		value.reasoningEffort.length > 0 &&
+		Number.isInteger(value.version) &&
+		(value.version as number) >= 0
+	);
 }
 
-export { setSessionModel };
+function applyConfirmedSessionModel(payload: ConfirmedSessionModelPayload): void {
+	const session = sessionStore.getByKey(payload.key);
+	if (session) {
+		if (payload.version < session.version) {
+			restoreConfirmedSessionModel(payload.key);
+			return;
+		}
+		session.model = payload.model;
+		session.reasoningEffort = payload.reasoningEffort;
+		session.version = payload.version;
+		session.dataVersion.value++;
+	}
+	if (sessionStore.activeSessionKey.value !== payload.key) return;
+	modelStore.select(payload.model);
+	modelStore.setReasoningEffort(payload.reasoningEffort);
+	localStorage.setItem("chelix-model", payload.model);
+	const model = modelStore.getById(payload.model);
+	if (model) updateModelComboLabel(model);
+}
+
+export function requireSessionModelState(sessionKey: string): boolean {
+	if (sessionStore.getByKey(sessionKey)) return true;
+	showToast(t("chat:sessionStateUnavailable"), "error");
+	return false;
+}
+
+function restoreConfirmedSessionModel(sessionKey: string): void {
+	const session = sessionStore.getByKey(sessionKey);
+	if (!(session && sessionStore.activeSessionKey.value === sessionKey)) return;
+	modelStore.select(session.model);
+	modelStore.setReasoningEffort(session.reasoningEffort);
+	if (session.model) {
+		localStorage.setItem("chelix-model", session.model);
+	} else {
+		localStorage.removeItem("chelix-model");
+	}
+	const model = modelStore.getById(session.model);
+	if (model) {
+		updateModelComboLabel(model);
+	} else if (S.modelComboLabel) {
+		S.modelComboLabel.textContent = session.model;
+		S.modelComboLabel.title = session.model;
+	}
+}
+
+export async function setSessionModel(
+	sessionKey: string,
+	selection: SessionModelSelection,
+): Promise<RpcResponse<SessionPatchPayload>> {
+	if (!requireSessionModelState(sessionKey)) {
+		return {
+			ok: false,
+			error: { code: "UNAVAILABLE", message: t("chat:sessionStateUnavailable") },
+		};
+	}
+	try {
+		const response = await sendRpc("sessions.patch", { key: sessionKey, ...selection });
+		if (!response.ok) {
+			restoreConfirmedSessionModel(sessionKey);
+			showToast(response.error?.message || "Failed to update session model", "error");
+			return response;
+		}
+		if (!isConfirmedSessionModelPayload(response.payload, sessionKey)) {
+			restoreConfirmedSessionModel(sessionKey);
+			const invalidResponse: RpcResponse<SessionPatchPayload> = {
+				ok: false,
+				error: {
+					code: "INVALID_RESPONSE",
+					message: "Session model update returned invalid state",
+				},
+			};
+			showToast(invalidResponse.error?.message || "Failed to update session model", "error");
+			return invalidResponse;
+		}
+		applyConfirmedSessionModel(response.payload);
+		return response;
+	} catch (error) {
+		restoreConfirmedSessionModel(sessionKey);
+		const message = error instanceof Error ? error.message : "Failed to update session model";
+		showToast(message, "error");
+		return { ok: false, error: { code: "UNAVAILABLE", message } };
+	}
+}
+
+function modelSelection(model: ModelInfo): SessionModelSelection {
+	return {
+		model: model.id,
+		reasoningEffort: modelStore.reasoningEffortForModel(model),
+	};
+}
+
+export function selectedModelSelection(): SessionModelSelection | null {
+	const model = modelStore.selectedModel.value;
+	return model ? modelSelection(model) : null;
+}
 
 export interface ModelLabelInfo {
 	id: string;
-	display_name?: string;
 }
 
 export function modelDisplayLabel(model: ModelLabelInfo): string {
-	return model.display_name || model.id;
+	return model.id;
 }
 
 export function modelTitle(model: ModelLabelInfo): string {
-	const label = modelDisplayLabel(model);
-	return model.display_name && model.display_name !== model.id ? `${model.display_name} (${model.id})` : label;
+	return model.id;
 }
 
 function updateModelComboLabel(model: ModelInfo): void {
@@ -41,8 +150,6 @@ export function fetchModels(): Promise<void> {
 		const model = modelStore.selectedModel.value;
 		if (model) updateModelComboLabel(model);
 
-		// If the dropdown is currently open, re-render to reflect updated flags
-		// (for example when a model becomes unsupported via a WS event).
 		if (S.modelDropdown && !S.modelDropdown.classList.contains("hidden")) {
 			const query = S.modelSearchInput ? (S.modelSearchInput as HTMLInputElement).value.trim() : "";
 			renderModelList(query);
@@ -51,17 +158,28 @@ export function fetchModels(): Promise<void> {
 }
 
 export function selectModel(m: ModelInfo): void {
+	const sessionKey = S.activeSessionKey;
+	if (!requireSessionModelState(sessionKey)) return;
+	const selection = modelSelection(m);
 	modelStore.select(m.id);
+	modelStore.setReasoningEffort(selection.reasoningEffort);
 	updateModelComboLabel(m);
-	localStorage.setItem("chelix-model", m.id);
-	setSessionModel(
-		S.activeSessionKey,
-		m.id,
-		m.reasoning.supported_efforts.length > 0 ? modelStore.reasoningEffort.value : "",
-	);
+	void setSessionModel(sessionKey, selection).then((response) => {
+		if (!(response.ok && response.payload)) return;
+		const payload = response.payload;
+		const session = sessionStore.getByKey(sessionKey);
+		if (
+			sessionStore.activeSessionKey.value === sessionKey &&
+			payload.model === selection.model &&
+			payload.reasoningEffort === selection.reasoningEffort &&
+			session?.model === payload.model &&
+			session.reasoningEffort === payload.reasoningEffort &&
+			session.version === payload.version
+		) {
+			showModelNotice(m);
+		}
+	});
 	closeModelDropdown();
-	// Show notice if model doesn't support tools
-	showModelNotice(m);
 }
 
 export function openModelDropdown(): void {
@@ -86,7 +204,6 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 	const el = document.createElement("div");
 	el.className = "model-dropdown-item";
 	if (m.id === currentId) el.classList.add("selected");
-	if (m.unsupported) el.classList.add("model-dropdown-item-unsupported");
 
 	const label = document.createElement("span");
 	label.className = "model-item-label";
@@ -105,21 +222,11 @@ function buildModelItem(m: ModelInfo, currentId: string): HTMLDivElement {
 		meta.appendChild(prov);
 	}
 
-	if (m.reasoning.supported_efforts.length > 0) {
-		const brainIcon = document.createElement("span");
-		brainIcon.className = "icon icon-xs icon-brain";
-		brainIcon.title = "Supports reasoning";
-		brainIcon.style.cssText = "opacity:0.5;flex-shrink:0;";
-		meta.appendChild(brainIcon);
-	}
-
-	if (m.unsupported) {
-		const badge = document.createElement("span");
-		badge.className = "model-item-unsupported";
-		badge.textContent = t("common:labels.unsupported");
-		if (m.unsupported_reason) badge.title = m.unsupported_reason;
-		meta.appendChild(badge);
-	}
+	const brainIcon = document.createElement("span");
+	brainIcon.className = "icon icon-xs icon-brain";
+	brainIcon.title = "Reasoning";
+	brainIcon.style.cssText = "opacity:0.5;flex-shrink:0;";
+	meta.appendChild(brainIcon);
 
 	if (meta.childNodes.length > 0) el.appendChild(meta);
 	el.addEventListener("click", () => selectModel(m));
@@ -132,9 +239,9 @@ export function renderModelList(query: string): void {
 	const q = query.toLowerCase();
 	const allModels = modelStore.models.value;
 	const filtered = allModels.filter((m) => {
-		const label = (m.display_name || m.id).toLowerCase();
+		const id = m.id.toLowerCase();
 		const provider = (m.provider || "").toLowerCase();
-		return !q || label.indexOf(q) !== -1 || provider.indexOf(q) !== -1 || m.id.toLowerCase().indexOf(q) !== -1;
+		return !q || id.includes(q) || provider.includes(q);
 	});
 	if (filtered.length === 0) {
 		const empty = document.createElement("div");

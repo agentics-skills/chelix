@@ -55,11 +55,17 @@ fn benchmark_model_metadata() -> chelix_common::ModelMetadata {
         context_length: Some(400_000),
         max_input_tokens: Some(272_000),
         max_output_tokens: Some(128_000),
-        reasoning: Some(chelix_common::PartialReasoningMetadata {
-            supported_efforts: Some(Vec::new()),
-            ..Default::default()
-        }),
-        ..Default::default()
+        input_modalities: Some(vec![
+            chelix_common::ModelModality::Text,
+            chelix_common::ModelModality::Image,
+        ]),
+        output_modalities: Some(vec![chelix_common::ModelModality::Text]),
+        tool_calling: Some(true),
+        streaming: Some(true),
+        zero_data_retention_enabled: Some(false),
+        reasoning_supported_efforts: Some(vec!["low".into()]),
+        reasoning_summary: None,
+        reasoning_include: None,
     }
     .resolve()
     .expect("benchmark metadata must be complete")

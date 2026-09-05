@@ -16,6 +16,7 @@ const CONFIG_READ_FAILED: &str = "CONFIG_READ_FAILED";
 const CONFIG_LOAD_FAILED: &str = "CONFIG_LOAD_FAILED";
 const CONFIG_TOML_REQUIRED: &str = "CONFIG_TOML_REQUIRED";
 const CONFIG_INVALID_TOML: &str = "CONFIG_INVALID_TOML";
+const CONFIG_INVALID_CONFIG: &str = "CONFIG_INVALID_CONFIG";
 const CONFIG_SAVE_FAILED: &str = "CONFIG_SAVE_FAILED";
 const CONFIG_RESTART_INVALID: &str = "CONFIG_RESTART_INVALID";
 const CONFIG_RESTART_READ_FAILED: &str = "CONFIG_RESTART_READ_FAILED";
@@ -25,6 +26,29 @@ fn config_error(code: &str, error: impl Into<String>) -> serde_json::Value {
         "code": code,
         "error": error.into(),
     })
+}
+
+fn config_validation_errors(toml_str: &str) -> Vec<String> {
+    chelix_config::validate::validate_toml_str(toml_str)
+        .diagnostics
+        .into_iter()
+        .filter(|diagnostic| diagnostic.severity == chelix_config::Severity::Error)
+        .map(|diagnostic| {
+            if diagnostic.path.is_empty() {
+                diagnostic.message
+            } else {
+                format!("{}: {}", diagnostic.path, diagnostic.message)
+            }
+        })
+        .collect()
+}
+
+async fn validate_effective_config_candidate(toml_str: &str) -> Result<(), String> {
+    let candidate = chelix_config::load_layered_config_candidate(toml_str)
+        .map_err(|error| error.to_string())?;
+    chelix_gateway::model_reasoning::validate_candidate_agents_config(&candidate)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 /// Check if the request should be allowed for config operations.
@@ -255,13 +279,39 @@ pub async fn config_save(
             .into_response();
     };
 
-    // Validate by parsing, then write raw string to preserve comments.
-    if let Err(e) = toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
+    // Validate the complete candidate before the raw write preserves its comments.
+    if let Err(error) = toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
                 "code": CONFIG_INVALID_TOML,
-                "error": format!("invalid TOML: {e}"),
+                "error": format!("invalid TOML: {error}"),
+                "valid": false,
+            })),
+        )
+            .into_response();
+    }
+
+    let diagnostics = config_validation_errors(toml_str);
+    if !diagnostics.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": CONFIG_INVALID_CONFIG,
+                "error": diagnostics.join("; "),
+                "diagnostics": diagnostics,
+                "valid": false,
+            })),
+        )
+            .into_response();
+    }
+
+    if let Err(error) = validate_effective_config_candidate(toml_str).await {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "code": CONFIG_INVALID_CONFIG,
+                "error": error,
                 "valid": false,
             })),
         )
@@ -310,17 +360,17 @@ pub async fn restart(
     if config_path.exists() {
         match std::fs::read_to_string(&config_path) {
             Ok(toml_str) => {
-                if let Err(e) = toml::from_str::<chelix_config::ChelixConfig>(&toml_str) {
+                if let Err(error) = validate_effective_config_candidate(&toml_str).await {
                     tracing::warn!(
                         path = %config_path.display(),
-                        error = %e,
+                        error = %error,
                         "restart refused: saved config is invalid"
                     );
                     return (
                         StatusCode::BAD_REQUEST,
                         Json(serde_json::json!({
                             "code": CONFIG_RESTART_INVALID,
-                            "error": format!("Config is invalid, refusing to restart: {e}"),
+                            "error": format!("Config is invalid, refusing to restart: {error}"),
                             "valid": false,
                         })),
                     )

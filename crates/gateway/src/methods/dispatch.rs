@@ -2,11 +2,28 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
 use tracing::{debug, warn};
 
-use chelix_protocol::{ErrorShape, ResponseFrame, error_codes};
+use {
+    chelix_protocol::{ErrorShape, ResponseFrame, error_codes},
+    chelix_sessions::SessionKey,
+};
 
 use crate::state::GatewayState;
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+/// Transport-level session semantics for an RPC method invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MethodTransport {
+    StatefulConnection,
+    StatelessHttp { session_id: Option<SessionKey> },
+}
+
+impl MethodTransport {
+    #[must_use]
+    pub fn is_stateless_http(&self) -> bool {
+        matches!(self, Self::StatelessHttp { .. })
+    }
+}
 
 /// Context passed to every method handler.
 pub struct MethodContext {
@@ -14,11 +31,30 @@ pub struct MethodContext {
     pub method: String,
     pub params: serde_json::Value,
     pub client_conn_id: String,
+    pub transport: MethodTransport,
     pub client_role: String,
     pub client_scopes: Vec<String>,
     pub state: Arc<GatewayState>,
     /// Optional channel context from the request frame (v4).
     pub channel: Option<String>,
+}
+
+impl MethodContext {
+    /// Resolve the session from the current transport without crossing transport modes.
+    pub async fn resolved_session_id(&self) -> Option<SessionKey> {
+        match &self.transport {
+            MethodTransport::StatefulConnection => self
+                .state
+                .client_registry
+                .read()
+                .await
+                .active_sessions
+                .get(&self.client_conn_id)
+                .cloned()
+                .map(SessionKey::new),
+            MethodTransport::StatelessHttp { session_id } => session_id.clone(),
+        }
+    }
 }
 
 /// The result a method handler produces.
@@ -91,12 +127,12 @@ const READ_METHODS: &[&str] = &[
     "chat.context",
     "chat.raw_prompt",
     "chat.full_context",
+    "chat.queued_prompts.status",
     "providers.available",
     "mcp.list",
     "mcp.status",
     "mcp.tools",
     "mcp.config.get",
-    "tts.generate_phrase",
     "voice.config.get",
     "voice.config.voxtral_requirements",
     "voice.providers.all",
@@ -148,21 +184,16 @@ const WRITE_METHODS: &[&str] = &[
     "chat.send",
     "chat.send_sync",
     "chat.abort",
-    "chat.prompt_queue.cancel",
+    "chat.queued_prompts.remove",
     "external_agents.bind",
     "external_agents.unbind",
     "chat.clear",
     "chat.compact",
     "browser.request",
     "logs.ack",
-    "models.detect_supported",
-    "models.cancel_detect",
-    "models.test",
     "providers.save_key",
-    "providers.save_models",
-    "providers.validate_key",
+    "providers.set_model_preferences",
     "providers.remove_key",
-    "providers.add_custom",
     "channels.add",
     "channels.remove",
     "channels.update",
@@ -615,6 +646,7 @@ mod tests {
             method: "nonexistent.method".into(),
             params: serde_json::Value::Null,
             client_conn_id: "conn-1".into(),
+            transport: MethodTransport::StatefulConnection,
             client_role: "operator".into(),
             client_scopes: scopes(&["operator.admin"]),
             state: GatewayState::new(
@@ -663,6 +695,7 @@ mod tests {
                 "request_timeout_secs": "oops"
             }),
             client_conn_id: "conn-1".into(),
+            transport: MethodTransport::StatefulConnection,
             client_role: "operator".into(),
             client_scopes: scopes(&["operator.write"]),
             state: GatewayState::new(
@@ -684,6 +717,80 @@ mod tests {
             resp.error.as_ref().map(|e| e.message.as_str()),
             Some("invalid 'request_timeout_secs' parameter: expected a positive integer")
         );
+    }
+
+    #[test]
+    fn session_resolution_stays_within_transport_mode() {
+        use crate::{
+            auth::{AuthMode, ResolvedAuth},
+            services::GatewayServices,
+            state::GatewayState,
+        };
+
+        let state = GatewayState::new(
+            ResolvedAuth {
+                mode: AuthMode::Token,
+                token: None,
+                password: None,
+            },
+            GatewayServices::noop(),
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            state
+                .client_registry
+                .write()
+                .await
+                .active_sessions
+                .insert("stateful".into(), "session:stateful".into());
+        });
+
+        let cases = [
+            (
+                "stateful exact",
+                "stateful",
+                MethodTransport::StatefulConnection,
+                Some("session:stateful"),
+            ),
+            (
+                "stateful missing",
+                "missing",
+                MethodTransport::StatefulConnection,
+                None,
+            ),
+            (
+                "stateless exact",
+                "stateful",
+                MethodTransport::StatelessHttp {
+                    session_id: Some(SessionKey::new("session:http")),
+                },
+                Some("session:http"),
+            ),
+            (
+                "stateless missing does not use connection state",
+                "stateful",
+                MethodTransport::StatelessHttp { session_id: None },
+                None,
+            ),
+        ];
+
+        for (name, client_conn_id, transport, expected) in cases {
+            let context = MethodContext {
+                request_id: name.into(),
+                method: "chat.send".into(),
+                params: serde_json::Value::Null,
+                client_conn_id: client_conn_id.into(),
+                transport,
+                client_role: "operator".into(),
+                client_scopes: scopes(&["operator.write"]),
+                state: Arc::clone(&state),
+                channel: None,
+            };
+            let actual = runtime.block_on(context.resolved_session_id());
+            assert_eq!(actual.as_ref().map(SessionKey::as_str), expected, "{name}");
+        }
     }
 
     #[test]

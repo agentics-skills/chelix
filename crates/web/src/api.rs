@@ -393,7 +393,16 @@ pub async fn api_session_history_handler(
     let limit = clamp_history_limit(query.limit);
 
     let metadata_entry = if let Some(ref metadata) = state.gateway.services.session_metadata {
-        metadata.get(&session_key).await
+        match metadata.get(&session_key).await {
+            Ok(entry) => entry,
+            Err(error) => {
+                return api_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    SESSION_HISTORY_FAILED,
+                    error.to_string(),
+                );
+            },
+        }
     } else {
         None
     };
@@ -537,8 +546,8 @@ async fn api_bootstrap_with_query(
     let counts_enabled = query.counts_enabled();
     let identity_enabled = query.identity_enabled();
     let identity = if identity_enabled {
-        match crate::resolve_default_agent_presentation(gw).await {
-            Ok(identity) => Some(identity),
+        match crate::resolve_optional_default_agent_presentation(gw).await {
+            Ok(identity) => identity,
             Err(error) => {
                 return api_error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,

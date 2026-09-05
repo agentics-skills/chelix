@@ -37,15 +37,17 @@ Input:
 }
 ```
 
-`agent_id` is mandatory. The tool does not apply an implicit default agent and
-does not fall back to another agent if the requested agent is missing.
+`agent_id` is mandatory. Accepted input fields are `agent_id`, `label`,
+`project_id`, and `model_override`. Additional fields are rejected before session
+creation. String fields must be non-empty; omit unused optional fields rather
+than passing `null`.
 
 Omit `model_override` to use the selected agent's configured model. `model_override`
 is for advanced intentional overrides only. When it is provided, both
 `model_override.model` and `model_override.reasoning_effort` are mandatory. The
 model must be the base ID shown in the chat model registry (`models.list`) and
-must support reasoning. The tool stores `model` and `reasoning_effort` as
-separate session fields, for example:
+must support the selected effort. The override accepts only `model` and
+`reasoning_effort`. The tool stores the validated pair atomically, for example:
 
 ```json
 {
@@ -57,13 +59,13 @@ separate session fields, for example:
 }
 ```
 
-If `model` is omitted, the selected agent must have both
-`[agents.<agent_id>].model` and
-`[agents.<agent_id>].reasoning_effort` configured. Otherwise the tool returns
-an explicit error explaining which agent field is missing.
+When `model_override` is omitted, the tool uses the selected agent's required
+model/reasoning pair. Agent pairs are validated against the live model registry
+at startup and whenever an agent is created or updated.
 
-Sessions created by an agent are automatically linked to the calling session as
-children (`parentSessionKey`), so the sessions sidebar renders them nested under
+Sessions created by an agent receive the calling session from the typed execution
+context and are automatically linked to it as children (`parentSessionKey`), so
+the sessions sidebar renders them nested under
 their creator — the same tree mechanism used for forks. Nesting works
 recursively: if the created session's agent creates another session, it nests
 one level deeper.
@@ -129,7 +131,16 @@ Send a message to another session, optionally waiting for reply.
 }
 ```
 
-Omit `model_override` in `sessions_send` to use the target session model.
+`key` and `message` are required non-empty strings. Accepted input fields are
+`key`, `message`, `wait_for_reply`, `context`, and `model_override`. Additional
+fields are rejected before reading session state or sending a message.
+`wait_for_reply` is a boolean and defaults to `false` when omitted. Optional
+`context` must be a non-empty string when supplied. Omit unused optional fields;
+explicit `null` is rejected.
+
+Omit `model_override` in `sessions_send` to use the target session's persisted
+model/reasoning pair. A supplied override accepts only the required non-empty
+`model` and `reasoning_effort` fields and is validated against the model registry.
 
 ## Session Access Policy
 
@@ -137,10 +148,18 @@ Configure policy on an agent to control which sessions it can access:
 
 ```toml
 [agents.coordinator]
+name = "Coordinator"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+max_tools_threshold = 128
 tools.allow = ["sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list", "sub_agent"]
 sessions.can_send = true
 
 [agents.observer]
+name = "Observer"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
+max_tools_threshold = 128
 tools.allow = ["sessions_list", "sessions_history", "sessions_search"]
 sessions.key_prefix = "agent:research:"
 sessions.can_send = false
@@ -161,9 +180,13 @@ When no policy is configured, all sessions are visible and sendable.
 Use `sub_agent` for delegated work. `run` with `mode = "blocking"` returns the
 child response directly. `mode = "background"` returns a child session key for
 `status`, `result`, or `cancel`; `list` returns every direct child of the calling
-session. See [Sub-Agent Delegation](sub-agent.md) for the action schemas.
+session. The parent session for `run`, `status`, `list`, `result`, and `cancel`
+comes from the typed execution context; these actions require that context.
+`explore` can execute independently. The public input accepts exactly one
+`action` with its closed parameter object, checked before invoking the action.
+See [Sub-Agent Delegation](sub-agent.md) for the action schemas.
 
-Use `tool_choice` as a top-level request parameter for `chat.send` and
+Use `toolChoice` as a top-level request parameter for `chat.send` and
 `chat.send_sync`, or in a `cron` `agentTurn` payload, to control provider-level
 tool selection:
 
@@ -173,14 +196,14 @@ tool selection:
 - `tool` + `name` — model must call the named tool.
 
 OpenAI Responses, OpenAI Chat Completions, and OpenAI-compatible providers
-support `tool_choice`.
+support `toolChoice`.
 
 Example direct chat request:
 
 ```json
 {
   "text": "Generate the report in a file.",
-  "tool_choice": { "type": "any" }
+  "toolChoice": { "type": "any" }
 }
 ```
 
@@ -190,7 +213,7 @@ Example scheduled agent turn:
 {
   "kind": "agentTurn",
   "message": "Generate the report in a file.",
-  "tool_choice": { "type": "any" }
+  "toolChoice": { "type": "any" }
 }
 ```
 

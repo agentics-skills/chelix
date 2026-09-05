@@ -132,6 +132,8 @@ default = "rex"
 
 [agents.rex]
 name = "Rex"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 
 [tools.web.firecrawl]
@@ -269,6 +271,8 @@ default = "rex"
 
 [agents.rex]
 name = "Rex"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#;
     let path = PathBuf::from("test.toml");
@@ -322,20 +326,22 @@ fn save_user_config_rejects_reserved_agent_ids_before_writing() {
     let path = dir.path().join("chelix.toml");
     let mut config = ChelixConfig::default();
     config.agents.default = "main".to_string();
-    config
-        .agents
-        .entries
-        .insert("main".to_string(), crate::AgentConfig {
-            name: "Main".to_string(),
-            ..Default::default()
-        });
-    config
-        .agents
-        .entries
-        .insert("default".to_string(), crate::AgentConfig {
-            name: "Reserved".to_string(),
-            ..Default::default()
-        });
+    config.agents.entries.insert(
+        "main".to_string(),
+        crate::AgentConfig::new(
+            "Main",
+            "test::model",
+            crate::schema::ReasoningEffort::from("off"),
+        ),
+    );
+    config.agents.entries.insert(
+        "default".to_string(),
+        crate::AgentConfig::new(
+            "Reserved",
+            "test::model",
+            crate::schema::ReasoningEffort::from("off"),
+        ),
+    );
 
     let error = save_user_config_to_path(&path, &config)
         .expect_err("reserved agent id must be rejected before writing");
@@ -799,12 +805,15 @@ default = "main"
 
 [agents.main]
 name = "Main"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 
 [agents.research]
 name = "Research"
+model = "test::research"
+reasoning_effort = "off"
 max_tools_threshold = 7
-model = "openai/gpt-5.2"
 "#,
     )
     .expect("write seed");
@@ -881,6 +890,8 @@ default = "rex"
 
 [agents.rex]
 name = "Rex"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#;
     let shadowed = crate::defaults::find_shadowed_defaults(user);

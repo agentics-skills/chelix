@@ -1,4 +1,7 @@
-use crate::gating::{DmPolicy, GroupPolicy};
+use {
+    crate::gating::{DmPolicy, GroupPolicy},
+    chelix_common::ConfigModelOverride,
+};
 
 /// Typed read-only view of common channel account config fields.
 ///
@@ -21,8 +24,8 @@ pub trait ChannelConfigView: Send + Sync + std::fmt::Debug {
     /// Group access policy.
     fn group_policy(&self) -> GroupPolicy;
 
-    /// Default model ID for this channel account.
-    fn model(&self) -> Option<&str>;
+    /// Default model/reasoning override for this channel account.
+    fn model_override(&self) -> Option<&ConfigModelOverride>;
 
     /// Provider name associated with the model.
     fn model_provider(&self) -> Option<&str>;
@@ -34,8 +37,8 @@ pub trait ChannelConfigView: Send + Sync + std::fmt::Debug {
 
     // ── Per-channel / per-user override methods ─────────────────────────────
 
-    /// Model override for a specific channel/chat ID.
-    fn channel_model(&self, _channel_id: &str) -> Option<&str> {
+    /// Model/reasoning override for a specific channel/chat ID.
+    fn channel_model_override(&self, _channel_id: &str) -> Option<&ConfigModelOverride> {
         None
     }
 
@@ -44,8 +47,8 @@ pub trait ChannelConfigView: Send + Sync + std::fmt::Debug {
         None
     }
 
-    /// Model override for a specific user.
-    fn user_model(&self, _user_id: &str) -> Option<&str> {
+    /// Model/reasoning override for a specific user.
+    fn user_model_override(&self, _user_id: &str) -> Option<&ConfigModelOverride> {
         None
     }
 
@@ -64,11 +67,15 @@ pub trait ChannelConfigView: Send + Sync + std::fmt::Debug {
         None
     }
 
-    /// Resolve effective model: user > channel > account default.
-    fn resolve_model(&self, channel_id: &str, user_id: &str) -> Option<&str> {
-        self.user_model(user_id)
-            .or_else(|| self.channel_model(channel_id))
-            .or_else(|| self.model())
+    /// Resolve effective model/reasoning override: user > channel > account default.
+    fn resolve_model_override(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+    ) -> Option<&ConfigModelOverride> {
+        self.user_model_override(user_id)
+            .or_else(|| self.channel_model_override(channel_id))
+            .or_else(|| self.model_override())
     }
 
     /// Resolve effective provider: user > channel > account default.

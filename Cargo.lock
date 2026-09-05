@@ -1577,6 +1577,7 @@ name = "chelix-cron"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chelix-common",
  "chelix-config",
  "chelix-metrics",
  "chrono",
@@ -1807,7 +1808,9 @@ dependencies = [
  "async-stream",
  "async-trait",
  "bytes",
+ "chelix-common",
  "chelix-service-traits",
+ "chelix-sessions",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1984,7 +1987,6 @@ dependencies = [
 name = "chelix-media"
 version = "0.1.0"
 dependencies = [
- "chelix-metrics",
  "image",
  "mime_guess",
  "thiserror 2.0.18",
@@ -2116,7 +2118,6 @@ name = "chelix-projects"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "chelix-metrics",
  "serde",
  "serde_json",
  "sqlx",
@@ -2239,8 +2240,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chelix-channels",
  "chelix-common",
+ "chelix-config",
  "chelix-protocol",
+ "chelix-sessions",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -2251,6 +2256,7 @@ dependencies = [
 name = "chelix-sessions"
 version = "0.1.0"
 dependencies = [
+ "chelix-channels",
  "chelix-common",
  "fd-lock",
  "lru",
@@ -2575,6 +2581,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "chelix-common",
  "chelix-metrics",
  "hex",
  "hmac 0.12.1",

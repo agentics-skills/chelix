@@ -168,10 +168,18 @@ Example `update_channel_settings` tool call:
   "settings": {
     "dm_policy": "allowlist",
     "allowlist_add": ["alice"],
-    "model": "openai/gpt-5"
+    "model_override": {
+      "model": "openai::gpt-5.2",
+      "reasoningEffort": "medium"
+    }
   }
 }
 ```
+
+A model override is one complete pair: `model` must be an exact canonical ID
+from `models.list`, and `reasoningEffort` must be a non-empty effort listed by
+that model. Set `model_override` to `null` to clear the pair; partial pairs are
+rejected.
 
 `update_channel_settings` intentionally supports a narrow patch surface. It is
 for non-secret channel settings only, not raw `chelix.toml` editing, token

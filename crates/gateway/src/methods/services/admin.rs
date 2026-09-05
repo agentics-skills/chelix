@@ -325,7 +325,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 Box::pin(async move {
                     let mut config =
                         chelix_config::discover_and_load().map_err(ServiceError::message)?;
-                    crate::voice::merge_voice_keys(&mut config);
+                    crate::voice::merge_voice_keys(&mut config).map_err(ServiceError::message)?;
                     let providers = voice::detect_voice_providers(&config).await;
                     Ok(serde_json::json!(providers))
                 })
@@ -337,7 +337,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 Box::pin(async move {
                     let mut config =
                         chelix_config::discover_and_load().map_err(ServiceError::message)?;
-                    crate::voice::merge_voice_keys(&mut config);
+                    crate::voice::merge_voice_keys(&mut config).map_err(ServiceError::message)?;
                     Ok(voice::fetch_elevenlabs_catalog(&config).await)
                 })
             }),
@@ -565,7 +565,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     let store = crate::provider_setup::KeyStore::new();
                     let store_key = crate::voice::voice_key_store_name(provider);
                     store
-                        .save_config(&store_key, Some(api_key.to_string()), None, None)
+                        .save_config(&store_key, Some(api_key.to_string()), None)
                         .map_err(|e| {
                             ErrorShape::new(
                                 error_codes::UNAVAILABLE,

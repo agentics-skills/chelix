@@ -15,9 +15,9 @@ use {
         ProviderSegmentMaterializer,
     },
     chelix_providers::ProviderRegistry,
-    chelix_service_traits::SessionMutationCoordinator,
+    chelix_service_traits::{ChatExecutionContext, SessionMutationCoordinator},
     chelix_sessions::{
-        PersistedMessage, SessionPromptQueueStore,
+        PersistedMessage, QueuedPrompts,
         message::{PersistedFunction, PersistedToolCall},
         metadata::SqliteSessionMetadata,
         state_store::SessionStateStore,
@@ -35,13 +35,12 @@ use {
 
 use crate::{
     error,
-    models::DisabledModelsStore,
+    memory_tools::MemoryForgetProviderResolver,
     prompt::{
-        apply_request_runtime_context, build_policy_context, build_prompt_runtime_context,
+        apply_chat_execution_context, build_policy_context, build_prompt_runtime_context,
         discover_skills_if_enabled, filter_skills_for_agent, load_prompt_persona_for_session,
         prepare_run_registry, prompt_build_limits_from_config,
     },
-    prompt_queue::PromptQueue,
     runtime::ChatRuntime,
     types::*,
 };
@@ -338,9 +337,9 @@ pub(crate) fn latest_tool_segment_index(
     tool_segment_indices.values().copied().max()
 }
 
+#[derive(Clone)]
 pub struct LiveChatService {
     pub(in crate::service) providers: Arc<RwLock<ProviderRegistry>>,
-    pub(in crate::service) model_store: Arc<RwLock<DisabledModelsStore>>,
     pub(in crate::service) state: Arc<dyn ChatRuntime>,
     pub(in crate::service) active_runs: Arc<RwLock<HashMap<String, CancellationToken>>>,
     pub(in crate::service) active_runs_by_session: Arc<RwLock<HashMap<String, String>>>,
@@ -354,8 +353,8 @@ pub struct LiveChatService {
     pub(in crate::service) hook_registry: Option<Arc<chelix_common::hooks::HookRegistry>>,
     /// Per-session coordinator ensuring session history mutations do not race chat turns.
     pub(in crate::service) session_mutations: Arc<SessionMutationCoordinator>,
-    /// Durable per-session queue of prompts submitted during an active run.
-    pub(in crate::service) prompt_queue: Arc<PromptQueue>,
+    /// Primitive FIFO service for prompts submitted during an active run.
+    pub(in crate::service) queued_prompts: Arc<QueuedPrompts>,
     /// Per-session last-seen client sequence number for ordering diagnostics.
     pub(in crate::service) last_client_seq: Arc<RwLock<HashMap<String, u64>>>,
     /// Per-session active tool invocation lifecycle snapshots for `chat.peek`.
@@ -394,19 +393,16 @@ async fn runtime_config_for_agent_run(
 impl LiveChatService {
     pub fn new(
         providers: Arc<RwLock<ProviderRegistry>>,
-        model_store: Arc<RwLock<DisabledModelsStore>>,
         state: Arc<dyn ChatRuntime>,
         session_store: Arc<SessionStore>,
         session_metadata: Arc<SqliteSessionMetadata>,
-        prompt_queue_store: Arc<SessionPromptQueueStore>,
+        queued_prompts: Arc<QueuedPrompts>,
         config: chelix_config::ChelixConfig,
         agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
         tools_config_source: chelix_config::ToolsConfigSource,
     ) -> Self {
-        let prompt_queue = Arc::new(PromptQueue::new(prompt_queue_store, Arc::clone(&state)));
         Self {
             providers,
-            model_store,
             state,
             active_runs: Arc::new(RwLock::new(HashMap::new())),
             active_runs_by_session: Arc::new(RwLock::new(HashMap::new())),
@@ -416,7 +412,7 @@ impl LiveChatService {
             session_store,
             session_metadata,
             session_state_store: None,
-            prompt_queue,
+            queued_prompts,
             hook_registry: None,
             session_mutations: Arc::new(SessionMutationCoordinator::default()),
             last_client_seq: Arc::new(RwLock::new(HashMap::new())),
@@ -449,12 +445,14 @@ impl LiveChatService {
         &self,
         session_key: &str,
         session_entry: Option<&chelix_sessions::metadata::SessionEntry>,
+        requested_agent_id: Option<&str>,
     ) -> error::Result<PromptPersona> {
         let config = self.load_runtime_config_for_agent_run().await?;
         load_prompt_persona_for_session(
             &config,
             session_key,
             session_entry,
+            requested_agent_id,
             self.session_state_store.as_deref(),
         )
         .await
@@ -576,41 +574,6 @@ impl LiveChatService {
         }
     }
 
-    /// Resolve a provider from session metadata or history, or select one for tools.
-    pub(in crate::service) async fn resolve_provider(
-        &self,
-        session_key: &str,
-        history: &[Value],
-    ) -> error::Result<Arc<dyn chelix_agents::model::LlmProvider>> {
-        let reg = self.providers.read().await;
-        let session_model = self
-            .session_metadata
-            .get(session_key)
-            .await
-            .and_then(|e| e.model.clone());
-        let history_model = history
-            .iter()
-            .rev()
-            .find_map(|m| m.get("model").and_then(|v| v.as_str()).map(String::from));
-
-        let provider = if let Some(model_id) = session_model.or(history_model) {
-            reg.get(&model_id).ok_or_else(|| {
-                error::Error::message(format!("model '{model_id}' is not registered"))
-            })?
-        } else {
-            reg.first_with_tools().ok_or_else(|| {
-                error::Error::message("no LLM provider can run tools with its configured tool_mode")
-            })?
-        };
-        validate_tool_mode_compatibility(
-            provider.tool_mode(),
-            provider.supports_tools(),
-            provider.id(),
-        )
-        .map_err(error::Error::message)?;
-        Ok(provider)
-    }
-
     /// Resolve the active session key for a connection.
     pub(in crate::service) async fn session_key_for(&self, conn_id: Option<&str>) -> String {
         if let Some(cid) = conn_id
@@ -656,57 +619,57 @@ impl LiveChatService {
         &self,
         session_key: &str,
         conn_id: Option<&str>,
-    ) -> Option<String> {
-        let project_id = if let Some(cid) = conn_id {
-            self.state.active_project_id(cid).await
+    ) -> error::Result<Option<String>> {
+        let project_id = if let Some(connection_id) = conn_id {
+            self.state.active_project_id(connection_id).await
         } else {
             None
         };
-        // Also check session metadata for project binding (async path).
         let project_id = match project_id {
-            Some(pid) => Some(pid),
+            Some(project_id) => Some(project_id),
             None => self
                 .session_metadata
                 .get(session_key)
-                .await
-                .and_then(|e| e.project_id),
+                .await?
+                .and_then(|entry| entry.project_id),
         };
-
-        let pid = project_id?;
-        let val = self
+        let Some(project_id) = project_id else {
+            return Ok(None);
+        };
+        let value = self
             .state
             .project_service()
-            .get(serde_json::json!({"id": pid}))
+            .get(serde_json::json!({"id": project_id}))
             .await
-            .ok()?;
-        let dir = val.get("directory").and_then(|v| v.as_str())?;
-        let files = match chelix_projects::context::load_context_files(Path::new(dir)) {
-            Ok(f) => f,
-            Err(e) => {
-                warn!("failed to load project context: {e}");
-                return None;
-            },
-        };
-        let project: chelix_projects::Project = serde_json::from_value(val.clone()).ok()?;
+            .map_err(|error| error::Error::message(error.to_string()))?;
+        let directory = value
+            .get("directory")
+            .and_then(Value::as_str)
+            .ok_or_else(|| error::Error::message("project response has no directory"))?
+            .to_string();
+        let context_files = chelix_projects::context::load_context_files(Path::new(&directory))
+            .map_err(|error| error::Error::message(error.to_string()))?;
+        let project: chelix_projects::Project = serde_json::from_value(value)
+            .map_err(|error| error::Error::message(error.to_string()))?;
         let worktree_dir = self
             .session_metadata
             .get(session_key)
-            .await
-            .and_then(|e| e.worktree_branch)
+            .await?
+            .and_then(|entry| entry.worktree_branch)
             .and_then(|_| {
-                let wt_path = Path::new(dir).join(".chelix-worktrees").join(session_key);
-                if wt_path.exists() {
-                    Some(wt_path)
-                } else {
-                    None
-                }
+                let path = Path::new(&directory)
+                    .join(".chelix-worktrees")
+                    .join(session_key);
+                path.exists().then_some(path)
             });
-        let ctx = chelix_projects::ProjectContext {
-            project,
-            context_files: files,
-            worktree_dir,
-        };
-        Some(ctx.to_prompt_section())
+        Ok(Some(
+            chelix_projects::ProjectContext {
+                project,
+                context_files,
+                worktree_dir,
+            }
+            .to_prompt_section(),
+        ))
     }
 
     /// Build the session's system prompt and native tool schemas exactly as a
@@ -720,15 +683,15 @@ impl LiveChatService {
         session_key: &str,
         history: &[Value],
         provider: &Arc<dyn chelix_agents::model::LlmProvider>,
-        params: &Value,
+        context: &ChatExecutionContext,
     ) -> error::Result<(String, Vec<Value>)> {
         let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
         let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
-        let session_entry = self.session_metadata.get(session_key).await;
+        let session_entry = self.session_metadata.get(session_key).await?;
         let persona = self
-            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref())
+            .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref(), None)
             .await?;
         let mut runtime_context = build_prompt_runtime_context(
             &self.state,
@@ -738,9 +701,9 @@ impl LiveChatService {
             session_entry.as_ref(),
         )
         .await;
-        apply_request_runtime_context(
+        apply_chat_execution_context(
             &mut runtime_context.host,
-            params,
+            context,
             persona
                 .user
                 .timezone
@@ -748,8 +711,9 @@ impl LiveChatService {
                 .map(|timezone| timezone.name()),
         );
 
-        let conn_id = params.get("_conn_id").and_then(|v| v.as_str());
-        let project_context = self.resolve_project_context(session_key, conn_id).await;
+        let project_context = self
+            .resolve_project_context(session_key, context.connection_id())
+            .await?;
 
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
         let mcp_disabled = session_entry
@@ -759,13 +723,18 @@ impl LiveChatService {
         let agent_id = persona.agent_id.clone();
         let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
 
-        let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context), Some(params));
+        let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context));
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
-            let memory_setup = self
-                .state
-                .memory_manager()
-                .map(|manager| (manager, Arc::clone(provider)));
+            let memory_setup = self.state.memory_manager().map(|manager| {
+                (
+                    manager,
+                    MemoryForgetProviderResolver::new(
+                        Arc::clone(&self.providers),
+                        Arc::clone(&self.session_metadata),
+                    ),
+                )
+            });
             prepare_run_registry(
                 &registry_guard,
                 &persona.config,
@@ -850,12 +819,14 @@ mod tests {
             default: "main".to_string(),
             ..Default::default()
         };
-        initial
-            .entries
-            .insert("main".to_string(), chelix_config::AgentConfig {
-                name: "Main".to_string(),
-                ..Default::default()
-            });
+        initial.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new(
+                "Main",
+                "test::model",
+                chelix_config::schema::ReasoningEffort::from("off"),
+            ),
+        );
         let live = RwLock::new(initial);
         let base = chelix_config::ChelixConfig::default();
         let tools = chelix_config::ToolsConfigSource::snapshot(
@@ -870,12 +841,14 @@ mod tests {
             let mut agents = live.write().await;
             agents.entries.remove("main");
             agents.default = "writer".to_string();
-            agents
-                .entries
-                .insert("writer".to_string(), chelix_config::AgentConfig {
-                    name: "Writer".to_string(),
-                    ..Default::default()
-                });
+            agents.entries.insert(
+                "writer".to_string(),
+                chelix_config::AgentConfig::new(
+                    "Writer",
+                    "test::model",
+                    chelix_config::schema::ReasoningEffort::from("off"),
+                ),
+            );
         }
 
         let updated = runtime_config_for_agent_run(&base, &live, &tools).await?;

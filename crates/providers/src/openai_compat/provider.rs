@@ -1758,18 +1758,44 @@ pub fn process_responses_event(
         "error" | "response.failed" => {
             let mut events = init_events;
             events.push(raw);
-            let msg = evt["error"]["message"]
-                .as_str()
-                .or_else(|| evt["response"]["error"]["message"].as_str())
+            let nested_error = evt
+                .get("error")
+                .filter(|error| error.is_object())
+                .or_else(|| {
+                    evt.get("response")
+                        .and_then(|response| response.get("error"))
+                        .filter(|error| error.is_object())
+                });
+            let error =
+                nested_error.or_else(|| (evt["type"].as_str() == Some("error")).then_some(&evt));
+            let msg = error
+                .and_then(|error| error.get("message"))
+                .and_then(serde_json::Value::as_str)
                 .or_else(|| evt["message"].as_str())
                 .unwrap_or("unknown error");
+            let has_error_class = nested_error.is_some_and(|error| {
+                ["code", "type"].into_iter().any(|field| {
+                    error
+                        .get(field)
+                        .and_then(serde_json::Value::as_str)
+                        .is_some()
+                })
+            }) || evt
+                .get("code")
+                .and_then(serde_json::Value::as_str)
+                .is_some();
+            let error = if has_error_class {
+                error.map_or_else(|| msg.to_string(), ToString::to_string)
+            } else {
+                msg.to_string()
+            };
             state.segment_closed = true;
             events.push(StreamEvent::SegmentClose {
                 segment_id: state.segment_id.clone(),
                 outcome: ProviderSegmentOutcome::Failed,
                 usage: None,
             });
-            events.push(StreamEvent::Error(msg.to_string()));
+            events.push(StreamEvent::Error(error));
             ResponsesEventResult::Failed(events)
         },
         "response.incomplete" => {

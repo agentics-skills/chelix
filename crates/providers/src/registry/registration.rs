@@ -1,25 +1,31 @@
-//! Config-first model resolution and provider transport construction.
+//! Atomic config-only provider registry construction.
 
 use std::{collections::HashMap, sync::Arc};
 
 use {
+    anyhow::{Result, anyhow},
     chelix_agents::model::LlmProvider,
-    chelix_common::ModelConfigMap,
+    chelix_common::{ModelMetadata, PartialModelMetadata},
     chelix_config::schema::{ProviderEntry, ProvidersConfig},
     secrecy::ExposeSecret,
 };
 
 use crate::{
     config_helpers::{env_value, resolve_api_key},
-    discovered_model::{ResolvedModel, resolve_models},
     model_capabilities::ModelInfo,
     model_catalogs::{OPENAI_COMPAT_PROVIDERS, OpenAiCompatDef},
     openai,
 };
 
-use super::{DiscoveryResult, ProviderRegistry, discover_models};
+use super::ProviderRegistry;
 
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+
+#[derive(Debug, Clone)]
+struct ConfiguredModel {
+    id: String,
+    metadata: ModelMetadata,
+}
 
 fn resolve_openai_base_url(
     config: &ProvidersConfig,
@@ -49,121 +55,98 @@ pub(crate) fn openai_builtin_capabilities(
     }
 }
 
-fn configured_models<'a>(
-    config: &'a ProvidersConfig,
+fn resolve_model(
     provider_name: &str,
-    empty: &'a ModelConfigMap,
-) -> &'a ModelConfigMap {
-    config
-        .get(provider_name)
-        .map(|entry| &entry.models)
-        .unwrap_or(empty)
+    model_id: &str,
+    metadata: &PartialModelMetadata,
+) -> Result<ConfiguredModel> {
+    let metadata = metadata
+        .clone()
+        .resolve()
+        .map_err(|error| anyhow!("provider `{provider_name}` model `{model_id}`: {error}"))?;
+    Ok(ConfiguredModel {
+        id: model_id.to_string(),
+        metadata,
+    })
 }
 
-fn resolved_models(
+fn resolve_configured_models(
     config: &ProvidersConfig,
-    discovery: &DiscoveryResult,
+) -> Result<HashMap<String, Vec<ConfiguredModel>>> {
+    let mut resolved = HashMap::with_capacity(config.providers.len());
+    for (provider_name, entry) in &config.providers {
+        let enabled = config.is_enabled(provider_name);
+        let models = entry
+            .models
+            .iter()
+            .map(|(model_id, metadata)| resolve_model(provider_name, model_id, metadata))
+            .collect::<Result<Vec<_>>>()?;
+        if enabled {
+            resolved.insert(provider_name.clone(), models);
+        }
+    }
+    Ok(resolved)
+}
+
+fn models_for<'a>(
+    resolved: &'a HashMap<String, Vec<ConfiguredModel>>,
     provider_name: &str,
-) -> Vec<ResolvedModel> {
-    let empty = ModelConfigMap::new();
-    resolve_models(
-        configured_models(config, provider_name, &empty),
-        discovery.models_for(provider_name),
-    )
+) -> &'a [ConfiguredModel] {
+    resolved.get(provider_name).map_or(&[], Vec::as_slice)
+}
+
+fn resolve_compatible_api_key(
+    config: &ProvidersConfig,
+    definition: &OpenAiCompatDef,
+    env_overrides: &HashMap<String, String>,
+) -> Option<secrecy::Secret<String>> {
+    let key = resolve_api_key(
+        config,
+        definition.config_name,
+        definition.env_key,
+        env_overrides,
+    );
+    if definition.requires_api_key {
+        return key;
+    }
+    key.or_else(|| Some(secrecy::Secret::new(definition.config_name.into())))
 }
 
 impl ProviderRegistry {
-    /// Build a registry from complete config-only records without network I/O.
-    #[must_use]
-    pub fn from_config(config: &ProvidersConfig, env_overrides: &HashMap<String, String>) -> Self {
-        Self::from_discovery(config, env_overrides, &DiscoveryResult::empty())
-    }
-
-    /// Discover models asynchronously and build a registry from resolved records.
-    pub async fn discover(
+    /// Build and validate the complete registry without network I/O.
+    pub fn from_config(
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-    ) -> Self {
-        let discovery = discover_models(config, env_overrides, None).await;
-        Self::from_discovery(config, env_overrides, &discovery)
-    }
-
-    /// Build a registry from config and an already fetched discovery snapshot.
-    #[must_use]
-    pub fn from_discovery(
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
-    ) -> Self {
+    ) -> Result<Self> {
+        let resolved = resolve_configured_models(config)?;
         let mut registry = Self::empty();
-        registry.register_openai(config, env_overrides, discovery);
-        registry.register_openai_compatible(config, env_overrides, discovery);
-        registry.register_custom(config, discovery);
-        registry
+        registry.register_openai(config, env_overrides, models_for(&resolved, "openai"));
+        registry.register_openai_compatible(config, env_overrides, &resolved);
+        registry.register_custom(config, &resolved);
+        Ok(registry)
     }
 
-    /// Replace only providers whose discovery request completed successfully.
-    ///
-    /// Failed requests are absent from `discovery` and leave current entries untouched.
-    pub fn refresh_from_discovery(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
-    ) -> usize {
-        let previous_ids: std::collections::HashSet<String> =
-            self.models.iter().map(|model| model.id.clone()).collect();
-
-        if discovery.models.contains_key("openai") {
-            self.remove_provider(&provider_label(config, "openai"));
-            self.register_openai(config, env_overrides, discovery);
-        }
-        for definition in OPENAI_COMPAT_PROVIDERS {
-            if discovery.models.contains_key(definition.config_name) {
-                self.remove_provider(&provider_label(config, definition.config_name));
-                self.register_one_openai_compatible(config, env_overrides, discovery, definition);
-            }
-        }
-        for name in config
-            .providers
-            .keys()
-            .filter(|name| name.starts_with("custom-"))
-        {
-            if discovery.models.contains_key(name) {
-                self.remove_provider(name);
-                self.register_one_custom(config, discovery, name);
-            }
-        }
-        self.models
-            .iter()
-            .filter(|model| !previous_ids.contains(&model.id))
-            .count()
-    }
-
-    fn register_resolved<F>(
+    fn register_configured<F>(
         &mut self,
         provider_name: &str,
-        models: Vec<ResolvedModel>,
+        models: &[ConfiguredModel],
         mut build_provider: F,
     ) -> usize
     where
-        F: FnMut(&ResolvedModel) -> Arc<dyn LlmProvider>,
+        F: FnMut(&ConfiguredModel) -> Arc<dyn LlmProvider>,
     {
-        let pending: Vec<ResolvedModel> = models
-            .into_iter()
+        let pending: Vec<&ConfiguredModel> = models
+            .iter()
             .filter(|model| !self.has_provider_model(provider_name, &model.id))
             .collect();
         let count = pending.len();
         pending.into_iter().for_each(|model| {
-            let provider = build_provider(&model);
+            let provider = build_provider(model);
             self.register(
                 ModelInfo {
-                    id: model.id,
+                    id: model.id.clone(),
                     provider: provider_name.to_string(),
-                    display_name: model.display_name,
-                    created_at: model.created_at,
-                    recommended: model.recommended,
-                    metadata: model.metadata,
+                    metadata: model.metadata.clone(),
                 },
                 provider,
             );
@@ -175,22 +158,21 @@ impl ProviderRegistry {
         &mut self,
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
+        models: &[ConfiguredModel],
     ) -> usize {
-        if !config.is_enabled("openai") {
+        let Some(entry) = config.get("openai").filter(|_| config.is_enabled("openai")) else {
             return 0;
-        }
+        };
         let Some(key) = resolve_api_key(config, "openai", "OPENAI_API_KEY", env_overrides) else {
             return 0;
         };
         let (base_url, base_url_overridden) = resolve_openai_base_url(config, env_overrides);
         let capabilities = openai_builtin_capabilities(base_url_overridden);
         let provider_name = provider_label(config, "openai");
-        let entry = config.get("openai").cloned().unwrap_or_default();
-        let models = resolved_models(config, discovery, "openai");
+        let entry = entry.clone();
         let transport_provider_name = provider_name.clone();
 
-        self.register_resolved(&provider_name, models, move |model| {
+        self.register_configured(&provider_name, models, move |model| {
             Arc::new(configure_openai_transport(
                 openai::OpenAiProvider::new_with_name(
                     key.clone(),
@@ -199,7 +181,7 @@ impl ProviderRegistry {
                     transport_provider_name.clone(),
                 )
                 .with_capabilities(capabilities)
-                .with_reasoning_metadata(&model.metadata.reasoning),
+                .with_reasoning_metadata(&model.metadata),
                 &entry,
             ))
         })
@@ -209,12 +191,17 @@ impl ProviderRegistry {
         &mut self,
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
+        resolved: &HashMap<String, Vec<ConfiguredModel>>,
     ) -> usize {
         OPENAI_COMPAT_PROVIDERS
             .iter()
             .map(|definition| {
-                self.register_one_openai_compatible(config, env_overrides, discovery, definition)
+                self.register_one_openai_compatible(
+                    config,
+                    env_overrides,
+                    definition,
+                    models_for(resolved, definition.config_name),
+                )
             })
             .sum()
     }
@@ -223,39 +210,29 @@ impl ProviderRegistry {
         &mut self,
         config: &ProvidersConfig,
         env_overrides: &HashMap<String, String>,
-        discovery: &DiscoveryResult,
         definition: &OpenAiCompatDef,
+        models: &[ConfiguredModel],
     ) -> usize {
-        if !config.is_enabled(definition.config_name) {
-            return 0;
-        }
-        let Some(key) =
-            super::discovery::resolve_compatible_api_key(config, definition, env_overrides)
+        let Some(entry) = config
+            .get(definition.config_name)
+            .filter(|_| config.is_enabled(definition.config_name))
         else {
             return 0;
         };
-        let base_url = config
-            .get(definition.config_name)
-            .and_then(|entry| entry.base_url.clone())
+        let Some(key) = resolve_compatible_api_key(config, definition, env_overrides) else {
+            return 0;
+        };
+        let base_url = entry
+            .base_url
+            .clone()
             .or_else(|| env_value(env_overrides, definition.env_base_url_key))
             .unwrap_or_else(|| definition.default_base_url.into());
-        let entry = config
-            .get(definition.config_name)
-            .cloned()
-            .unwrap_or_default();
-        if definition.local_only {
-            let has_explicit_entry = config.get(definition.config_name).is_some();
-            let has_env_base_url = env_value(env_overrides, definition.env_base_url_key).is_some();
-            if !has_explicit_entry && !has_env_base_url && entry.models.is_empty() {
-                return 0;
-            }
-        }
+        let entry = entry.clone();
         let provider_name = provider_label(config, definition.config_name);
-        let models = resolved_models(config, discovery, definition.config_name);
         let capabilities = definition.capabilities;
         let transport_provider_name = provider_name.clone();
 
-        self.register_resolved(&provider_name, models, move |model| {
+        self.register_configured(&provider_name, models, move |model| {
             Arc::new(configure_openai_transport(
                 openai::OpenAiProvider::new_with_name(
                     key.clone(),
@@ -264,28 +241,32 @@ impl ProviderRegistry {
                     transport_provider_name.clone(),
                 )
                 .with_capabilities(capabilities)
-                .with_reasoning_metadata(&model.metadata.reasoning),
+                .with_reasoning_metadata(&model.metadata),
                 &entry,
             ))
         })
     }
 
-    fn register_custom(&mut self, config: &ProvidersConfig, discovery: &DiscoveryResult) -> usize {
+    fn register_custom(
+        &mut self,
+        config: &ProvidersConfig,
+        resolved: &HashMap<String, Vec<ConfiguredModel>>,
+    ) -> usize {
         config
             .providers
             .keys()
             .filter(|name| name.starts_with("custom-"))
-            .map(|name| self.register_one_custom(config, discovery, name))
+            .map(|name| self.register_one_custom(config, name, models_for(resolved, name)))
             .sum()
     }
 
     fn register_one_custom(
         &mut self,
         config: &ProvidersConfig,
-        discovery: &DiscoveryResult,
         name: &str,
+        models: &[ConfiguredModel],
     ) -> usize {
-        let Some(entry) = config.get(name).filter(|entry| entry.enabled) else {
+        let Some(entry) = config.get(name).filter(|_| config.is_enabled(name)) else {
             return 0;
         };
         let Some(api_key) = entry
@@ -299,9 +280,8 @@ impl ProviderRegistry {
             return 0;
         };
         let entry = entry.clone();
-        let models = resolved_models(config, discovery, name);
 
-        self.register_resolved(name, models, move |model| {
+        self.register_configured(name, models, move |model| {
             Arc::new(configure_openai_transport(
                 openai::OpenAiProvider::new_with_name(
                     api_key.clone(),
@@ -309,7 +289,7 @@ impl ProviderRegistry {
                     base_url.clone(),
                     name.to_string(),
                 )
-                .with_reasoning_metadata(&model.metadata.reasoning),
+                .with_reasoning_metadata(&model.metadata),
                 &entry,
             ))
         })
@@ -330,7 +310,6 @@ fn configure_openai_transport(
     provider = provider
         .with_stream_transport(entry.stream_transport)
         .with_cache_retention(entry.cache_retention)
-        .with_probe_timeout_secs(entry.probe_timeout_secs)
         .with_tool_mode(entry.tool_mode);
     if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
         provider = provider.with_wire_api(entry.wire_api);

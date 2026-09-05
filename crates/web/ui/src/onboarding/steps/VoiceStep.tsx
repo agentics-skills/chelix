@@ -2,10 +2,9 @@
 
 import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { get as getGon } from "../../gon";
+import { TextAreaField } from "../../components/forms/FormField";
 import { t } from "../../i18n";
 import { activeSessionKey } from "../../state";
-import { fetchPhrase } from "../../tts-phrases";
 import { targetValue } from "../../typed-events";
 import {
 	decodeBase64Safe,
@@ -18,7 +17,6 @@ import {
 	VOICE_COUNTERPART_IDS,
 } from "../../voice-utils";
 import { ErrorPanel, ensureWsConnected } from "../shared";
-import type { IdentityInfo } from "../types";
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -382,40 +380,37 @@ async function enableVoiceProviderForTest(
 	return { changed: true, error: null };
 }
 
-function playVoiceTestAudio(payload: { audio: string; mimeType?: string; content_type?: string }): void {
+async function playVoiceTestAudio(payload: { audio: string; mimeType?: string; content_type?: string }): Promise<void> {
 	const bytes = decodeBase64Safe(payload.audio);
 	const audioMime = payload.mimeType || payload.content_type || "audio/mpeg";
 	const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: audioMime }));
 	const audio = new Audio(url);
-	audio.onerror = (event) => {
-		console.error("[TTS] audio element error:", audio.error?.message || event);
+	try {
+		await new Promise<void>((resolve, reject) => {
+			audio.onended = () => resolve();
+			audio.onerror = () => reject(new Error(audio.error?.message || "Audio playback failed"));
+			void audio.play().catch(reject);
+		});
+	} finally {
 		URL.revokeObjectURL(url);
-	};
-	audio.onended = () => URL.revokeObjectURL(url);
-	audio.play().catch((error) => console.error("[TTS] play() failed:", error));
+	}
 }
 
-async function runTtsVoiceTest(providerId: string): Promise<VoiceTestResult> {
+async function runTtsVoiceTest(providerId: string, text: string): Promise<VoiceTestResult> {
 	try {
-		const identity = getGon("identity") as IdentityInfo | null;
-		const userName = identity?.user_name?.trim();
-		const agentName = identity?.name?.trim();
-		if (!(userName && agentName)) {
-			throw new Error("Default agent and user profile names are required for the TTS test");
-		}
-		const text = await fetchPhrase("onboarding", userName, agentName);
 		const response = (await testTts(text, providerId)) as {
 			ok?: boolean;
 			payload?: { audio?: string; mimeType?: string; content_type?: string };
 			error?: { message?: string };
 		};
 		if (!(response.ok && response.payload?.audio)) {
-			return { success: false, error: response.error?.message || "TTS test failed" };
+			throw new Error(response.error?.message || "TTS test returned no audio");
 		}
-		playVoiceTestAudio({ ...response.payload, audio: response.payload.audio });
+		await playVoiceTestAudio({ ...response.payload, audio: response.payload.audio });
 		return { success: true, error: null };
 	} catch (error) {
-		return { success: false, error: (error as Error).message || "TTS test failed" };
+		console.error("[TTS] test failed:", error);
+		return { success: false, error: error instanceof Error ? error.message : "TTS test failed" };
 	}
 }
 
@@ -508,6 +503,7 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 	const [error, setError] = useState<string | null>(null);
 	const [voiceTesting, setVoiceTesting] = useState<VoiceTesting | null>(null);
 	const [voiceTestResults, setVoiceTestResults] = useState<Record<string, VoiceTestResult>>({});
+	const [testText, setTestText] = useState("");
 	const [activeRecorder, setActiveRecorder] = useState<MediaRecorder | null>(null);
 	const [enableSaving, setEnableSaving] = useState(false);
 
@@ -652,6 +648,10 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 			stopActiveRecording();
 			return;
 		}
+		if (type === "tts" && !testText.trim()) {
+			updateVoiceTestResult(providerId, { success: false, error: "Enter text to test the voice" });
+			return;
+		}
 		setError(null);
 		setVoiceTesting({ id: providerId, type, phase: "testing" });
 		const enableResult = await enableVoiceProviderForTest(providerId, type, allProviders);
@@ -662,7 +662,7 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 		}
 		if (enableResult.changed) void fetchProviders();
 		if (type === "tts") {
-			updateVoiceTestResult(providerId, await runTtsVoiceTest(providerId));
+			updateVoiceTestResult(providerId, await runTtsVoiceTest(providerId, testText));
 			setVoiceTesting(null);
 			return;
 		}
@@ -747,6 +747,7 @@ export function VoiceStep({ onNext, onBack }: { onNext: () => void; onBack: () =
 			{cloudTts.length > 0 ? (
 				<div>
 					<h3 className="text-sm font-medium text-[var(--text-strong)] mb-2">Text-to-Speech</h3>
+					<TextAreaField label="Test text" id="onboarding-voice-test-text" value={testText} onInput={setTestText} />
 					<div className="flex flex-col gap-2">
 						{cloudTts.map((prov) => (
 							<OnboardingVoiceRow

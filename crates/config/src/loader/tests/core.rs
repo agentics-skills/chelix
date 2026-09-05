@@ -252,6 +252,21 @@ fn apply_env_overrides_providers_offered_empty_array() {
 }
 
 #[test]
+fn layered_candidate_applies_env_overrides_missing_from_raw_parse() {
+    let raw = "[providers]\noffered = [\"deepinfra\"]\n";
+    let direct = toml::from_str::<ChelixConfig>(raw).expect("raw candidate should parse");
+    let layered =
+        load_layered_config_toml_source(raw, std::path::Path::new("chelix.toml"), true, vec![(
+            "CHELIX_PROVIDERS__OFFERED".into(),
+            "[\"openai\"]".into(),
+        )])
+        .expect("layered candidate should load");
+
+    assert_eq!(direct.providers.offered, vec!["deepinfra"]);
+    assert_eq!(layered.providers.offered, vec!["openai"]);
+}
+
+#[test]
 fn apply_env_overrides_rejects_unknown_config_path() {
     let vars = vec![("CHELIX_TOOLS__REMOVED_OPTION".into(), "true".into())];
     let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
@@ -423,16 +438,18 @@ fn write_default_config_writes_template_to_requested_path() {
         "generated template must not document the removed workspace_mount setting"
     );
 
-    assert!(raw.contains("[agents.main]"));
-    assert!(raw.contains("[agents.coordinator]"));
+    assert!(!raw.contains("\n[agents.main]"));
+    assert!(!raw.contains("\n[agents.coordinator]"));
 
     let parsed: ChelixConfig = parse_config(&raw, &path).expect("parse generated config");
     assert_eq!(
         parsed.server.port, 23456,
         "parsed config should have the correct port"
     );
-    assert_eq!(parsed.agents.default, "main");
-    assert_eq!(parsed.agents.entries.len(), 8);
+    assert!(matches!(
+        parsed.agents.resolve_state(),
+        Ok(crate::AgentsConfigState::Setup)
+    ));
 }
 
 #[test]
@@ -484,6 +501,8 @@ default = "main"
 [agents.main]
 name = "Rex"
 emoji = "🐶"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#,
     )
@@ -852,53 +871,6 @@ fn workspace_markdown_comment_only_is_treated_as_empty() {
 }
 
 #[test]
-fn starter_workspace_materialization_creates_soul_for_every_agent() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-    let starter_ids = [
-        "main",
-        "research",
-        "coder",
-        "reviewer",
-        "qa",
-        "ux",
-        "docs",
-        "coordinator",
-    ];
-
-    materialize_starter_agent_workspaces().expect("materialize starter workspaces");
-
-    for agent_id in starter_ids {
-        let soul_file = dir.path().join("agents").join(agent_id).join("SOUL.md");
-        assert_eq!(
-            load_soul_for_agent(agent_id).as_deref(),
-            Some(DEFAULT_SOUL),
-            "starter agent {agent_id} should receive the initial Soul"
-        );
-        assert_eq!(std::fs::read_to_string(soul_file).unwrap(), DEFAULT_SOUL);
-    }
-
-    clear_data_dir();
-}
-
-#[test]
-fn starter_workspace_materialization_does_not_overwrite_existing_soul() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    let custom = "You are a loyal companion who loves fetch.";
-    save_soul_for_agent("main", Some(custom)).expect("save custom soul");
-
-    materialize_starter_agent_workspaces().expect("materialize starter workspaces");
-
-    assert_eq!(load_soul_for_agent("main").as_deref(), Some(custom));
-
-    clear_data_dir();
-}
-
-#[test]
 fn load_soul_for_agent_does_not_create_missing_file() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
@@ -917,7 +889,7 @@ fn load_soul_for_agent_does_not_reseed_deleted_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     set_data_dir(dir.path().to_path_buf());
 
-    materialize_starter_agent_workspaces().expect("materialize starter workspaces");
+    save_soul_for_agent("main", Some(DEFAULT_SOUL)).expect("save initial soul");
     let soul_file = dir.path().join("agents/main/SOUL.md");
     std::fs::remove_file(&soul_file).unwrap();
 

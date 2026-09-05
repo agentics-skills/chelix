@@ -144,7 +144,10 @@ impl OpenAiProvider {
                 return;
             }
 
-            self.apply_reasoning_responses(&mut response_payload);
+            if let Err(error) = self.apply_reasoning_responses(&mut response_payload) {
+                yield StreamEvent::Error(error.to_string());
+                return;
+            }
 
             let create_event = serde_json::json!({
                 "type": "response.create",
@@ -154,7 +157,7 @@ impl OpenAiProvider {
             debug!(
                 model = %self.model,
                 tools_count = tools.len(),
-                reasoning_effort = ?self.reasoning_effort,
+                reasoning_effort = ?self.selected_reasoning_effort(),
                 "openai stream_with_tools request (websocket)"
             );
             trace!(event = %create_event, "openai websocket create event");

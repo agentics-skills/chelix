@@ -5,6 +5,7 @@ use {
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy},
     },
+    chelix_common::ConfigModelOverride,
     secrecy::Secret,
     serde::{Deserialize, Serialize},
 };
@@ -34,7 +35,7 @@ pub enum InboundPolicy {
 
 /// Configuration for a single telephony account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TelephonyAccountConfig {
     /// Provider backend.
     pub provider: TelephonyProviderId,
@@ -91,9 +92,9 @@ pub struct TelephonyAccountConfig {
     pub tts_provider: Option<String>,
 
     // ── Agent routing ──
-    /// Model override for calls on this account.
+    /// Canonical model/reasoning override for calls on this account.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
 
     /// Model provider override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,7 +131,7 @@ impl Default for TelephonyAccountConfig {
             allowlist: Vec::new(),
             voice_id: None,
             tts_provider: None,
-            model: None,
+            model_override: None,
             model_provider: None,
             agent_id: None,
         }
@@ -158,8 +159,8 @@ impl ChannelConfigView for TelephonyAccountConfig {
         GroupPolicy::Disabled
     }
 
-    fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    fn model_override(&self) -> Option<&ConfigModelOverride> {
+        self.model_override.as_ref()
     }
 
     fn model_provider(&self) -> Option<&str> {

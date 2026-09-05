@@ -9,11 +9,10 @@ import {
 	getPendingAttachments,
 	hasPendingAttachments,
 	type PendingAttachment,
-	type UploadedDocumentFile,
 	uploadDocumentAttachment,
 } from "../../media-drop";
 import { appendUserMessageActions } from "../../message-actions";
-import { setSessionModel } from "../../models";
+import { selectedModelSelection } from "../../models";
 import {
 	bumpSessionCount,
 	cacheOutgoingUserMessage,
@@ -24,35 +23,19 @@ import {
 	setSessionReplying,
 } from "../../sessions";
 import * as S from "../../state";
-import { modelStore } from "../../stores/model-store";
 import { sessionStore } from "../../stores/session-store";
+import type { ChatContentPart, ChatSendPayload, ChatSendRequest } from "../../types/chat";
 import type { RpcResponse } from "../../types/rpc";
 import type { SessionMeta } from "../../types/session";
-import type { QueuedPrompt } from "../../types/ws-events";
-import { setQueuedPrompts } from "./prompt-queue";
+import { replaceQueuedPromptsDock } from "./prompt-queue";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
 
 // ── Types ────────────────────────────────────────────────────
 
-export interface ChatSendParams {
-	text?: string;
-	content?: ChatContentPart[];
-	_document_files?: UploadedDocumentFile[];
-	_seq: number;
-	model?: string;
-	reasoningEffort?: string;
-}
-
-export type ChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+type ChatSendParams = ChatSendRequest & { clientSequence: number };
 
 interface PendingImageAttachment extends PendingAttachment {
 	dataUrl: string;
-}
-
-export interface ChatSendPayload {
-	runId?: string;
-	queued?: boolean;
-	prompts?: QueuedPrompt[];
 }
 
 type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
@@ -151,22 +134,13 @@ export function resetComposerAfterSend(): void {
 	if (window.innerWidth < 768) S.chatInput?.blur();
 }
 
-export function applySelectedModelToChatParams(chatParams: ChatSendParams): void {
-	const modelId = modelStore.selectedModelId.value;
-	if (!modelId) return;
-	const reasoningEffort = modelStore.supportsReasoning.value ? modelStore.reasoningEffort.value : "";
-	chatParams.model = modelId;
-	chatParams.reasoningEffort = reasoningEffort;
-	setSessionModel(S.activeSessionKey, modelId, reasoningEffort);
-}
-
 export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
 	if (res.ok && res.payload?.runId) setSessionActiveRunId(S.activeSessionKey, res.payload.runId);
 	if (res.payload?.queued) {
 		// The prompt is now server state; the optimistic bubble is replaced by
 		// the queue tray, which every client renders from the same snapshot.
 		userEl?.remove();
-		setQueuedPrompts(S.activeSessionKey, res.payload.prompts ?? []);
+		replaceQueuedPromptsDock(res.payload.status);
 		return true;
 	}
 	if (!res.ok) {
@@ -191,8 +165,16 @@ export async function buildChatMessage(
 		const content: ChatContentPart[] = [];
 		if (text) content.push({ type: "text", text });
 		for (const img of images) if (img.dataUrl) content.push({ type: "image_url", image_url: { url: img.dataUrl } });
-		const params: ChatSendParams = content.length > 0 ? { content, _seq: seq } : { text, _seq: seq };
-		if (uploadedDocuments.length > 0) params._document_files = uploadedDocuments;
+		const params: ChatSendParams =
+			content.length > 0 ? { content, clientSequence: seq } : { text, clientSequence: seq };
+		if (uploadedDocuments.length > 0) {
+			params.documents = uploadedDocuments.map((document) => ({
+				displayName: document.display_name,
+				storedFilename: document.stored_filename,
+				mimeType: document.mime_type,
+				sizeBytes: document.size_bytes,
+			}));
+		}
 		const el = chatAddMsgWithAttachments("user", text ? renderMarkdown(text) : "", images, uploadedDocuments);
 		appendUserMessageActions({
 			messageEl: el,
@@ -226,7 +208,7 @@ export async function buildChatMessage(
 		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
 	});
 	return {
-		params: { text, _seq: seq },
+		params: { text, clientSequence: seq },
 		el,
 		enableDeleteAction: () =>
 			appendUserMessageActions({
@@ -331,10 +313,9 @@ function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLEl
  * conversation yet — it is rendered from the server queue snapshot — but the
  * active run keeps the session busy.
  *
- * `chatSeq` is deliberately kept: the queued prompt carries this seq on the
- * server and is persisted with it when the queue is replayed. Reusing the seq
- * for the next message would produce two user messages sharing one seq, which
- * breaks echo suppression and makes deletion truncate at the wrong message.
+ * `chatSeq` is deliberately kept because the accepted queued content retains
+ * this client sequence. Reusing it for the next message would persist two user
+ * messages with the same sequence.
  */
 function rollbackQueuedSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
 	restoreOptimisticSessionState(snapshot, userEl);
@@ -366,15 +347,22 @@ async function sendChatAsync(): Promise<void> {
 	try {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
 		const previousChatSeq = S.chatSeq;
-		S.setChatSeq(previousChatSeq + 1);
-		const msg = await buildChatMessage(text, S.chatSeq);
-		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
+		const modelSelection = selectedModelSelection();
+		if (!modelSelection) {
+			chatAddMsg("error", "Select a model before sending a message");
+			return;
+		}
+		const msg = await buildChatMessage(text, previousChatSeq + 1);
+		S.setChatSeq(msg.params.clientSequence);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
-		const chatParams = msg.params;
+		const chatParams: ChatSendParams = {
+			...msg.params,
+			modelOverride: modelSelection,
+		};
 		const userEl = msg.el;
 		if (userEl) highlightCodeBlocks(userEl);
-		applySelectedModelToChatParams(chatParams);
+		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
 		bumpSessionCount(S.activeSessionKey, 1);
 		cacheOutgoingUserMessage(S.activeSessionKey, chatParams);
 		seedSessionPreviewFromUserText(S.activeSessionKey, text);

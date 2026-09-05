@@ -8,21 +8,20 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::collections::HashSet;
+#[path = "support/reasoning.rs"]
+mod reasoning;
+
+use std::sync::Arc;
 
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
     futures::StreamExt,
-    secrecy::{ExposeSecret, Secret},
+    secrecy::Secret,
 };
 
 const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 const TEST_MODEL: &str = "gpt-5-mini";
-
-/// Known OpenAI models we catalog. Keep in sync with `DEFAULT_OPENAI_MODELS`
-/// in `crates/providers/src/openai.rs`.
-const KNOWN_MODELS: &[&str] = &["gpt-5.2", "gpt-5.2-chat-latest", "gpt-5-mini"];
 
 fn api_key() -> Secret<String> {
     let key =
@@ -30,8 +29,12 @@ fn api_key() -> Secret<String> {
     Secret::new(key)
 }
 
-fn make_provider(model: &str) -> OpenAiProvider {
-    OpenAiProvider::new(api_key(), model.to_string(), OPENAI_BASE_URL.to_string())
+fn make_provider(model: &str) -> Arc<dyn LlmProvider> {
+    reasoning::configure(
+        OpenAiProvider::new(api_key(), model.to_string(), OPENAI_BASE_URL.to_string()),
+        vec!["off".into()],
+        "off".into(),
+    )
 }
 
 fn weather_tool() -> serde_json::Value {
@@ -201,14 +204,7 @@ async fn multi_turn_tool_use() {
     );
 }
 
-// ── Probe & streaming ────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn probe_succeeds() {
-    let p = make_provider(TEST_MODEL);
-    p.probe().await.expect("probe should succeed");
-}
+// ── Streaming ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 #[ignore]
@@ -232,84 +228,4 @@ async fn stream_emits_delta_and_done() {
 
     assert!(saw_delta, "must emit Delta");
     assert!(saw_done, "must emit Done");
-}
-
-// ── Model catalog ────────────────────────────────────────────────────────────
-
-#[tokio::test]
-#[ignore]
-async fn catalog_models_are_live() {
-    let mut alive = Vec::new();
-    let mut dead = Vec::new();
-
-    for &model_id in KNOWN_MODELS {
-        let p = make_provider(model_id);
-        match p.probe().await {
-            Ok(()) => alive.push(model_id),
-            Err(e) => dead.push((model_id, e.to_string())),
-        }
-    }
-
-    eprintln!("\n=== OpenAI Model Catalog Health ===");
-    for m in &alive {
-        eprintln!("  OK {m}");
-    }
-    for (m, err) in &dead {
-        eprintln!("  DEAD {m}: {err}");
-    }
-    eprintln!("==================================\n");
-
-    assert!(alive.contains(&TEST_MODEL), "{TEST_MODEL} should be live");
-}
-
-#[tokio::test]
-#[ignore]
-async fn detect_new_models_via_api() {
-    let key = api_key();
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{OPENAI_BASE_URL}/models"))
-        .header("Authorization", format!("Bearer {}", key.expose_secret()))
-        .send()
-        .await
-        .expect("HTTP request should succeed");
-
-    assert!(
-        resp.status().is_success(),
-        "OpenAI /models should return 200"
-    );
-
-    let body: serde_json::Value = resp.json().await.expect("valid JSON");
-    let models = body.get("data").and_then(|d| d.as_array()).expect("data");
-
-    let known: HashSet<&str> = KNOWN_MODELS.iter().copied().collect();
-    let gpt_ids: Vec<&str> = models
-        .iter()
-        .filter_map(|m| m.get("id").and_then(|id| id.as_str()))
-        .filter(|id| {
-            id.starts_with("gpt-")
-                || id.starts_with("o1")
-                || id.starts_with("o3")
-                || id.starts_with("o4")
-        })
-        .collect();
-
-    eprintln!("\n=== OpenAI /models API (chat-capable) ===");
-    let mut new_count = 0;
-    for id in &gpt_ids {
-        if known.contains(id) {
-            eprintln!("  OK {id}");
-        }
-    }
-    for id in &gpt_ids {
-        if !known.contains(id) {
-            eprintln!("  NEW -> {id}");
-            new_count += 1;
-        }
-    }
-    if new_count > 0 {
-        eprintln!("-> {new_count} new chat-capable models found");
-    }
-    eprintln!("========================================\n");
 }

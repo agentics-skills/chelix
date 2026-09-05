@@ -3,9 +3,8 @@
 import { signal } from "@preact/signals";
 import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import * as gon from "../../gon";
+import { TextAreaField } from "../../components/forms/FormField";
 import { sendRpc } from "../../helpers";
-import { fetchPhrase } from "../../tts-phrases";
 import { targetValue } from "../../typed-events";
 import { Modal } from "../../ui";
 import {
@@ -202,28 +201,23 @@ async function testUnsavedPersona(text: string, draft: PersonaDraft): Promise<Rp
 	return (await sendRpc("tts.convert", params)) as RpcResponse;
 }
 
-async function personaTestResponse(
-	isNew: boolean,
-	editingId: string,
-	text: string,
-	draft: PersonaDraft,
-	savePersona: () => Promise<boolean>,
-): Promise<RpcResponse> {
-	if (isNew) return testUnsavedPersona(text, draft);
-	await savePersona();
-	return (await testTtsWithPersona(text, editingId)) as RpcResponse;
-}
-
-function playPersonaTestResponse(response: RpcResponse): void {
-	if (!response?.ok) return;
-	const payload = response.payload as { audio?: string; mimeType?: string };
-	if (!payload?.audio) return;
+async function playPersonaTestResponse(response: RpcResponse): Promise<void> {
+	if (!response.ok) throw new Error(response.error?.message || "TTS test failed");
+	const payload = response.payload as { audio?: string; mimeType?: string } | undefined;
+	if (!payload?.audio) throw new Error("TTS test returned no audio");
 	const bytes = decodeBase64Safe(payload.audio);
 	const blob = new Blob([bytes as BlobPart], { type: payload.mimeType || "audio/mpeg" });
 	const url = URL.createObjectURL(blob);
 	const audio = new Audio(url);
-	audio.onended = () => URL.revokeObjectURL(url);
-	audio.play().catch((error: Error) => console.error("[TTS]", error));
+	try {
+		await new Promise<void>((resolve, reject) => {
+			audio.onended = () => resolve();
+			audio.onerror = () => reject(new Error(audio.error?.message || "Audio playback failed"));
+			void audio.play().catch(reject);
+		});
+	} finally {
+		URL.revokeObjectURL(url);
+	}
 }
 
 interface PersonaFieldProps {
@@ -393,6 +387,7 @@ export function PersonaEditModal({ editingId, existingPersona, onClose, onSaved 
 	const [draft, setDraft] = useState<PersonaDraft>(() => initialPersonaDraft(existingPersona));
 	const [saving, setSaving] = useState(false);
 	const [testing, setTesting] = useState(false);
+	const [testText, setTestText] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
 	function changeDraft(field: PersonaDraftField, value: string): void {
@@ -423,17 +418,21 @@ export function PersonaEditModal({ editingId, existingPersona, onClose, onSaved 
 	}
 
 	async function handleTest(): Promise<void> {
+		if (!testText.trim()) {
+			setError("Enter text to test the voice");
+			return;
+		}
+		setError(null);
 		setTesting(true);
 		try {
-			const identity = gon.get("identity") as { user_name?: string; name?: string } | undefined;
-			const text = await fetchPhrase(
-				"settings",
-				identity?.user_name || "friend",
-				draft.label || identity?.name || "Chelix",
-			);
-			playPersonaTestResponse(await personaTestResponse(isNew, editingId, text, draft, savePersona));
-		} catch (_error) {
-			// Voice testing is best-effort; save errors remain visible in the modal.
+			if (!isNew && !(await savePersona())) return;
+			const response = isNew
+				? await testUnsavedPersona(testText, draft)
+				: ((await testTtsWithPersona(testText, editingId)) as RpcResponse);
+			await playPersonaTestResponse(response);
+		} catch (caught) {
+			console.error("[TTS] persona test failed:", caught);
+			setError(caught instanceof Error ? caught.message : "TTS test failed");
 		} finally {
 			setTesting(false);
 		}
@@ -455,6 +454,7 @@ export function PersonaEditModal({ editingId, existingPersona, onClose, onSaved 
 				<PersonaIdentityFields isNew={isNew} draft={draft} onChange={changeDraft} />
 				<PersonaPromptFields draft={draft} onChange={changeDraft} />
 				<PersonaProviderBindings draft={draft} onChange={changeDraft} />
+				<TextAreaField label="Test text" id="persona-test-text" value={testText} onInput={setTestText} />
 				{error && <div className="text-xs text-[var(--error)]">{error}</div>}
 				<PersonaActions
 					isNew={isNew}

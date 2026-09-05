@@ -9,8 +9,8 @@ use {
 use crate::{
     Error, Result,
     types::{
-        AuthMode, DeliveryStatus, EventFilter, SessionMode, ToolPolicy, Webhook, WebhookCreate,
-        WebhookDelivery, WebhookPatch, WebhookResponseAction, generate_public_id,
+        AuthMode, DeliveryStatus, EventFilter, ModelOverride, SessionMode, ToolPolicy, Webhook,
+        WebhookCreate, WebhookDelivery, WebhookPatch, WebhookResponseAction, generate_public_id,
     },
 };
 
@@ -106,6 +106,26 @@ fn now_iso() -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
 }
 
+fn row_model_override(row: &sqlx::sqlite::SqliteRow) -> Result<Option<ModelOverride>> {
+    let model = row.get::<Option<String>, _>("model");
+    let reasoning_effort = row.get::<Option<String>, _>("reasoning_effort");
+    match (model, reasoning_effort) {
+        (None, None) => Ok(None),
+        (Some(model), Some(reasoning_effort))
+            if !model.trim().is_empty() && !reasoning_effort.trim().is_empty() =>
+        {
+            Ok(Some(ModelOverride {
+                model,
+                reasoning_effort: reasoning_effort.into(),
+            }))
+        },
+        _ => Err(Error::message(format!(
+            "webhook {} has an invalid model/reasoning pair",
+            row.get::<i64, _>("id")
+        ))),
+    }
+}
+
 fn row_to_webhook(row: &sqlx::sqlite::SqliteRow) -> Result<Webhook> {
     let auth_mode_str: String = row.get("auth_mode");
     let auth_mode: AuthMode =
@@ -138,7 +158,7 @@ fn row_to_webhook(row: &sqlx::sqlite::SqliteRow) -> Result<Webhook> {
         enabled: row.get::<i32, _>("enabled") != 0,
         public_id: row.get("public_id"),
         agent_id: row.get("agent_id"),
-        model: row.get("model"),
+        model_override: row_model_override(row)?,
         system_prompt_suffix: row.get("system_prompt_suffix"),
         tool_policy,
         auth_mode,
@@ -253,20 +273,29 @@ impl WebhookStore for SqliteWebhookStore {
             .as_ref()
             .map(serde_json::to_string)
             .transpose()?;
+        let model = create
+            .model_override
+            .as_ref()
+            .map(|model_override| model_override.model.as_str());
+        let reasoning_effort = create
+            .model_override
+            .as_ref()
+            .map(|model_override| model_override.reasoning_effort.as_str());
 
         let result = sqlx::query(
-            "INSERT INTO webhooks (name, description, public_id, agent_id, model, system_prompt_suffix, \
+            "INSERT INTO webhooks (name, description, public_id, agent_id, model, reasoning_effort, system_prompt_suffix, \
              tool_policy_json, auth_mode, auth_config_json, source_profile, source_config_json, \
              event_filter_json, session_mode, named_session_key, allowed_cidrs_json, \
              max_body_bytes, rate_limit_per_minute, deliver_only, prompt_template, deliver_to, \
              deliver_extra_json, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&create.name)
         .bind(&create.description)
         .bind(&public_id)
         .bind(&create.agent_id)
-        .bind(&create.model)
+        .bind(model)
+        .bind(reasoning_effort)
         .bind(&create.system_prompt_suffix)
         .bind(&tool_policy_json)
         .bind(&auth_mode_str)
@@ -307,8 +336,8 @@ impl WebhookStore for SqliteWebhookStore {
         if let Some(agent_id) = patch.agent_id {
             webhook.agent_id = agent_id;
         }
-        if let Some(model) = patch.model {
-            webhook.model = model;
+        if let Some(model_override) = patch.model_override {
+            webhook.model_override = model_override;
         }
         if let Some(suffix) = patch.system_prompt_suffix {
             webhook.system_prompt_suffix = suffix;
@@ -386,9 +415,17 @@ impl WebhookStore for SqliteWebhookStore {
             .as_ref()
             .map(serde_json::to_string)
             .transpose()?;
+        let model = webhook
+            .model_override
+            .as_ref()
+            .map(|model_override| model_override.model.as_str());
+        let reasoning_effort = webhook
+            .model_override
+            .as_ref()
+            .map(|model_override| model_override.reasoning_effort.as_str());
 
         sqlx::query(
-            "UPDATE webhooks SET name = ?, description = ?, enabled = ?, agent_id = ?, model = ?, \
+            "UPDATE webhooks SET name = ?, description = ?, enabled = ?, agent_id = ?, model = ?, reasoning_effort = ?, \
              system_prompt_suffix = ?, tool_policy_json = ?, auth_mode = ?, auth_config_json = ?, \
              source_config_json = ?, event_filter_json = ?, session_mode = ?, named_session_key = ?, \
              allowed_cidrs_json = ?, max_body_bytes = ?, rate_limit_per_minute = ?, \
@@ -400,7 +437,8 @@ impl WebhookStore for SqliteWebhookStore {
         .bind(&webhook.description)
         .bind(webhook.enabled as i32)
         .bind(&webhook.agent_id)
-        .bind(&webhook.model)
+        .bind(model)
+        .bind(reasoning_effort)
         .bind(&webhook.system_prompt_suffix)
         .bind(&tool_policy_json)
         .bind(&auth_mode_str)
@@ -650,7 +688,7 @@ mod tests {
             name: name.into(),
             description: None,
             agent_id: None,
-            model: None,
+            model_override: None,
             system_prompt_suffix: None,
             tool_policy: None,
             auth_mode: AuthMode::StaticHeader,
@@ -702,6 +740,60 @@ mod tests {
             .unwrap();
         assert_eq!(updated.name, "renamed");
         assert!(!updated.enabled);
+    }
+
+    #[tokio::test]
+    async fn model_reasoning_override_is_persisted_and_patched_as_one_pair() {
+        let store = make_store().await;
+        let mut create = make_create("hook1");
+        create.model_override = Some(ModelOverride {
+            model: "test::model".into(),
+            reasoning_effort: "off".into(),
+        });
+        let webhook = store.create_webhook(create).await.unwrap();
+        assert_eq!(
+            webhook.model_override,
+            Some(ModelOverride {
+                model: "test::model".into(),
+                reasoning_effort: "off".into(),
+            })
+        );
+
+        let unchanged = store
+            .update_webhook(webhook.id, WebhookPatch {
+                name: Some("renamed".into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(unchanged.model_override, webhook.model_override);
+
+        let cleared = store
+            .update_webhook(webhook.id, WebhookPatch {
+                model_override: Some(None),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(cleared.model_override, None);
+
+        let replaced = store
+            .update_webhook(webhook.id, WebhookPatch {
+                model_override: Some(Some(ModelOverride {
+                    model: "test::other".into(),
+                    reasoning_effort: "high".into(),
+                })),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            replaced.model_override,
+            Some(ModelOverride {
+                model: "test::other".into(),
+                reasoning_effort: "high".into(),
+            })
+        );
     }
 
     #[tokio::test]

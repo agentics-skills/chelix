@@ -19,6 +19,8 @@ use {
         state::GatewayState,
     },
     chelix_httpd::server::{build_gateway_base, finalize_gateway_app},
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest},
+    chelix_sessions::SessionKey,
 };
 
 use chelix_providers::ProviderRegistry;
@@ -29,6 +31,8 @@ default = "main"
 
 [agents.main]
 name = "Chelix"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#;
 
@@ -37,12 +41,14 @@ fn test_agents() -> chelix_config::AgentsConfig {
         default: "main".to_owned(),
         ..Default::default()
     };
-    agents
-        .entries
-        .insert("main".to_owned(), chelix_config::AgentConfig {
-            name: "Chelix".to_owned(),
-            ..Default::default()
-        });
+    agents.entries.insert(
+        "main".to_owned(),
+        chelix_config::AgentConfig::new(
+            "Chelix",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        ),
+    );
     agents
 }
 
@@ -329,15 +335,14 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     let session_metadata1 = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
         db_pool1.clone(),
     ));
-    let prompt_queue_store1 = Arc::new(chelix_sessions::SessionPromptQueueStore::new(db_pool1));
+    let queued_prompts1 = Arc::new(chelix_sessions::QueuedPrompts::new(db_pool1));
     if !registry.read().await.is_empty() {
         state.set_chat(Arc::new(LiveChatService::new(
             Arc::clone(&registry),
-            Arc::new(tokio::sync::RwLock::new(DisabledModelsStore::default())),
             chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store1),
             Arc::clone(&session_metadata1),
-            Arc::clone(&prompt_queue_store1),
+            Arc::clone(&queued_prompts1),
             chelix_config::ChelixConfig::default(),
             Arc::new(tokio::sync::RwLock::new(
                 chelix_config::AgentsConfig::default(),
@@ -368,14 +373,13 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     let session_metadata2 = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
         db_pool2.clone(),
     ));
-    let prompt_queue_store2 = Arc::new(chelix_sessions::SessionPromptQueueStore::new(db_pool2));
+    let queued_prompts2 = Arc::new(chelix_sessions::QueuedPrompts::new(db_pool2));
     state2.set_chat(Arc::new(LiveChatService::new(
         Arc::clone(&registry2),
-        Arc::new(tokio::sync::RwLock::new(DisabledModelsStore::default())),
         chelix_gateway::chat::GatewayChatRuntime::from_state(Arc::clone(&state2)),
         Arc::clone(&session_store2),
         Arc::clone(&session_metadata2),
-        Arc::clone(&prompt_queue_store2),
+        Arc::clone(&queued_prompts2),
         chelix_config::ChelixConfig::default(),
         Arc::new(tokio::sync::RwLock::new(
             chelix_config::AgentsConfig::default(),
@@ -387,7 +391,12 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     // not the noop. If no providers are configured it errors; otherwise it may
     // succeed and return a runId.
     let chat = state2.chat();
-    let result = chat.send(serde_json::json!({ "text": "hello" })).await;
+    let result = chat
+        .send(
+            ChatSendRequest::text("hello"),
+            ChatExecutionContext::internal(SessionKey::new("main")),
+        )
+        .await;
     match result {
         Err(e) => assert!(
             !e.to_string().contains("chat not configured"),

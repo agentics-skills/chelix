@@ -6,14 +6,10 @@
 // typed use `unknown` as a placeholder -- callers can narrow with
 // `as` casts until we refine the type here.
 
-import type {
-	ChatContextPayload,
-	ChatFullContextPayload,
-	ChatPromptMemoryRefreshPayload,
-	ChatPromptQueuePayload,
-} from "./chat";
+import type { ChatContextPayload, ChatFullContextPayload, ChatPromptMemoryRefreshPayload } from "./chat";
 import type { ModelInfo, ProviderInfo } from "./model";
-import type { SessionMeta, SetSessionAgentPayload } from "./session";
+import type { SessionMeta, SessionPatchPayload, SetSessionAgentPayload } from "./session";
+import type { QueuedPromptsStatus } from "./ws-events";
 
 /** Maps every RPC method to its response payload type. */
 export interface RpcMethodMap {
@@ -43,8 +39,8 @@ export interface RpcMethodMap {
 	"chat.context": ChatContextPayload;
 	"chat.full_context": ChatFullContextPayload;
 	"chat.prompt_memory.refresh": ChatPromptMemoryRefreshPayload;
-	"chat.prompt_queue.cancel": ChatPromptQueuePayload;
-	"chat.prompt_queue.list": ChatPromptQueuePayload;
+	"chat.queued_prompts.remove": QueuedPromptsStatus;
+	"chat.queued_prompts.status": QueuedPromptsStatus;
 	"chat.send": unknown;
 	"chat.send_sync": unknown;
 
@@ -103,13 +99,10 @@ export interface RpcMethodMap {
 	"memory.status": unknown;
 
 	// ── Models ──────────────────────────────────────────────────
-	"models.cancel_detect": unknown;
-	"models.detect_supported": unknown;
 	"models.disable": unknown;
 	"models.enable": unknown;
 	"models.list": ModelInfo[];
 	"models.list_all": ModelInfo[];
-	"models.test": unknown;
 
 	// ── Projects ────────────────────────────────────────────────
 	"projects.complete_path": unknown;
@@ -119,17 +112,15 @@ export interface RpcMethodMap {
 	"projects.upsert": unknown;
 
 	// ── Providers ───────────────────────────────────────────────
-	"providers.add_custom": unknown;
 	"providers.available": ProviderInfo[];
 	"providers.remove_key": unknown;
 	"providers.save_key": unknown;
-	"providers.save_models": unknown;
-	"providers.validate_key": unknown;
+	"providers.set_model_preferences": unknown;
 
 	// ── Sessions ────────────────────────────────────────────────
 	"sessions.clear_all": unknown;
 	"sessions.delete": unknown;
-	"sessions.patch": { result?: Record<string, unknown> };
+	"sessions.patch": SessionPatchPayload;
 	"sessions.search": SessionMeta[];
 	"sessions.switch": unknown;
 	"sessions.voice.generate": { audio?: string; ttsProvider?: string };
@@ -164,7 +155,6 @@ export interface RpcMethodMap {
 
 	// ── TTS (Text-to-Speech) ────────────────────────────────────
 	"tts.convert": unknown;
-	"tts.generate_phrase": { phrase: string; source: "llm" | "static" };
 	"tts.status": unknown;
 
 	// ── User profile ────────────────────────────────────────────

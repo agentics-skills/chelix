@@ -32,7 +32,10 @@ use super::{
     dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, fallback_final_text_source,
     find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
     lifecycle_now_ms, record_answer_text,
-    retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
+    retry::{
+        EMPTY_PROVIDER_RESPONSE_ERROR, RATE_LIMIT_MAX_RETRIES, SERVER_MAX_RETRIES,
+        UNKNOWN_MAX_RETRIES, next_retry_delay_ms,
+    },
 };
 
 use chelix_sessions::ToolResultStore;
@@ -171,9 +174,10 @@ pub async fn run_agent_loop_with_context_and_limits(
     let mut iterations = 0;
     let mut tool_call_budget = ToolCallBudget::new(limits.max_tools_threshold);
     let mut usage_accumulator = UsageAccumulator::default();
-    let mut server_retries_remaining: u8 = 1;
+    let mut server_retries_remaining: u8 = SERVER_MAX_RETRIES;
     let mut rate_limit_retries_remaining: u8 = RATE_LIMIT_MAX_RETRIES;
     let mut rate_limit_backoff_ms: Option<u64> = None;
+    let mut unknown_retries_remaining: u8 = UNKNOWN_MAX_RETRIES;
     let mut last_answer_text = String::new();
     let mut last_answer_tool_call_id: Option<String> = None;
     let mut malformed_retry_count: u8 = 0;
@@ -309,6 +313,7 @@ pub async fn run_agent_loop_with_context_and_limits(
                     &mut server_retries_remaining,
                     &mut rate_limit_retries_remaining,
                     &mut rate_limit_backoff_ms,
+                    &mut unknown_retries_remaining,
                 ) {
                     iterations -= 1;
                     warn!(
@@ -316,7 +321,8 @@ pub async fn run_agent_loop_with_context_and_limits(
                         delay_ms,
                         server_retries_remaining,
                         rate_limit_retries_remaining,
-                        "transient LLM error, retrying after delay"
+                        unknown_retries_remaining,
+                        "LLM error, retrying after delay"
                     );
                     if let Some(cb) = on_event {
                         cb(RunnerEvent::RetryingAfterError {
@@ -330,6 +336,43 @@ pub async fn run_agent_loop_with_context_and_limits(
                 return Err(AgentRunError::Other(e));
             },
         };
+
+        let is_empty_initial_response = tool_call_budget.used() == 0
+            && response
+                .text
+                .as_deref()
+                .is_none_or(|text| text.trim().is_empty())
+            && response.tool_calls.is_empty()
+            && response.usage.output_tokens == 0;
+        if is_empty_initial_response {
+            let msg = EMPTY_PROVIDER_RESPONSE_ERROR.to_string();
+            if let Some(delay_ms) = next_retry_delay_ms(
+                &msg,
+                &mut server_retries_remaining,
+                &mut rate_limit_retries_remaining,
+                &mut rate_limit_backoff_ms,
+                &mut unknown_retries_remaining,
+            ) {
+                iterations -= 1;
+                warn!(
+                    error = %msg,
+                    delay_ms,
+                    unknown_retries_remaining,
+                    "empty LLM response, retrying after delay"
+                );
+                if let Some(cb) = on_event {
+                    cb(RunnerEvent::RetryingAfterError {
+                        error: msg,
+                        delay_ms,
+                    });
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                continue;
+            }
+            return Err(AgentRunError::Other(anyhow::anyhow!(msg)));
+        }
+        server_retries_remaining = SERVER_MAX_RETRIES;
+        unknown_retries_remaining = UNKNOWN_MAX_RETRIES;
 
         if let Some(cb) = on_event {
             cb(RunnerEvent::ThinkingDone);

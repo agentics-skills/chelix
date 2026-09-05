@@ -1076,14 +1076,14 @@ impl EventHandler for Handler {
             username,
             sender_id: Some(peer_id.clone()),
             message_kind: Some(inferred_kind),
-            model: config
-                .resolve_model_with_pattern(
+            model_override: config
+                .resolve_model_override_with_pattern(
                     &chat_id,
                     &peer_id,
                     channel_name.as_deref(),
                     category_id.as_deref(),
                 )
-                .map(String::from),
+                .map(Into::into),
             agent_id: config
                 .resolve_agent_with_pattern(
                     &chat_id,

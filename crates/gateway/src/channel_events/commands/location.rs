@@ -6,7 +6,7 @@ use chelix_channels::ChannelReplyTarget;
 
 use crate::state::GatewayState;
 
-use super::super::{default_channel_session_key, resolve_channel_session};
+use super::super::resolve_channel_session;
 
 fn persist_location_from_config(
     config: &chelix_config::ChelixConfig,
@@ -34,10 +34,16 @@ pub(in crate::channel_events) async fn update_location(
         return false;
     };
 
-    let session_key = if let Some(ref sm) = state.services.session_metadata {
-        resolve_channel_session(reply_to, sm).await
-    } else {
-        default_channel_session_key(reply_to)
+    let Some(metadata) = state.services.session_metadata.as_ref() else {
+        warn!("session metadata unavailable while resolving channel location");
+        return false;
+    };
+    let session_key = match resolve_channel_session(reply_to, metadata).await {
+        Ok(session_key) => session_key,
+        Err(error) => {
+            warn!(%error, "failed to resolve channel session for location");
+            return false;
+        },
     };
 
     let config = match chelix_config::discover_and_load() {
@@ -87,10 +93,16 @@ pub(in crate::channel_events) async fn resolve_pending_location(
         return false;
     };
 
-    let session_key = if let Some(ref sm) = state.services.session_metadata {
-        resolve_channel_session(reply_to, sm).await
-    } else {
-        default_channel_session_key(reply_to)
+    let Some(metadata) = state.services.session_metadata.as_ref() else {
+        warn!("session metadata unavailable while resolving channel location");
+        return false;
+    };
+    let session_key = match resolve_channel_session(reply_to, metadata).await {
+        Ok(session_key) => session_key,
+        Err(error) => {
+            warn!(%error, "failed to resolve channel session for location");
+            return false;
+        },
     };
     let config = match chelix_config::discover_and_load() {
         Ok(config) => config,

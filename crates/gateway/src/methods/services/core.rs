@@ -1,8 +1,57 @@
 use super::*;
 
-use chelix_common::ActiveToolInvocation;
+use {
+    chelix_common::ActiveToolInvocation,
+    chelix_service_traits::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest,
+    },
+};
 
-use crate::session_reasoning::{enrich_session_entry_for_ui, materialize_agent_session_defaults};
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QueuedPromptsStatusParams {
+    session_key: chelix_sessions::SessionKey,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QueuedPromptsRemoveParams {
+    id: i64,
+}
+
+fn queued_prompts_response(
+    status: chelix_sessions::QueuedPromptsStatus,
+) -> Result<serde_json::Value, ErrorShape> {
+    serde_json::to_value(status).map_err(|error| {
+        ErrorShape::from(ServiceError::message(format!(
+            "failed to serialize queued prompts status: {error}"
+        )))
+    })
+}
+
+async fn chat_execution_context(ctx: &MethodContext) -> Result<ChatExecutionContext, ErrorShape> {
+    let session_id = ctx.resolved_session_id().await.ok_or_else(|| {
+        ErrorShape::new(
+            error_codes::INVALID_REQUEST,
+            "no session context for request",
+        )
+    })?;
+    let (accept_language, remote_ip, timezone) = {
+        let registry = ctx.state.client_registry.read().await;
+        let client = registry.clients.get(&ctx.client_conn_id);
+        (
+            client.and_then(|client| client.accept_language.clone()),
+            client.and_then(|client| client.remote_ip.clone()),
+            client.and_then(|client| client.timezone.clone()),
+        )
+    };
+    let mut context = ChatExecutionContext::client(session_id, ctx.client_conn_id.clone());
+    context.accept_language = accept_language;
+    context.remote_ip = remote_ip;
+    context.timezone = timezone;
+    Ok(context)
+}
 
 fn insert_session_activity_snapshot(
     obj: &mut serde_json::Map<String, serde_json::Value>,
@@ -423,16 +472,18 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 every_ms: interval_ms,
                                 anchor_ms: None,
                             }),
-                            payload: Some(chelix_cron::types::CronPayload::AgentTurn {
-                                message: prompt,
-                                model: patch.model.clone(),
-                                agent_id: patch.agent_id.clone(),
-                                timeout_secs: None,
-                                tool_choice: None,
-                                deliver: patch.deliver,
-                                channel: patch.channel.clone(),
-                                to: patch.to.clone(),
-                            }),
+                            payload: Some(chelix_cron::types::CronPayload::AgentTurn(
+                                chelix_cron::types::CronAgentTurn {
+                                    message: prompt,
+                                    model_override: patch.model_override.as_ref().map(Into::into),
+                                    agent_id: patch.agent_id.clone(),
+                                    timeout_secs: None,
+                                    tool_choice: None,
+                                    deliver: patch.deliver,
+                                    channel: patch.channel.clone(),
+                                    to: patch.to.clone(),
+                                },
+                            )),
                             enabled: Some(effective_enabled),
                             ..Default::default()
                         };
@@ -454,16 +505,18 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 every_ms: interval_ms,
                                 anchor_ms: None,
                             },
-                            payload: chelix_cron::types::CronPayload::AgentTurn {
-                                message: prompt,
-                                model: patch.model.clone(),
-                                agent_id: patch.agent_id.clone(),
-                                timeout_secs: None,
-                                tool_choice: None,
-                                deliver: patch.deliver,
-                                channel: patch.channel.clone(),
-                                to: patch.to.clone(),
-                            },
+                            payload: chelix_cron::types::CronPayload::AgentTurn(
+                                chelix_cron::types::CronAgentTurn {
+                                    message: prompt,
+                                    model_override: patch.model_override.as_ref().map(Into::into),
+                                    agent_id: patch.agent_id.clone(),
+                                    timeout_secs: None,
+                                    tool_choice: None,
+                                    deliver: patch.deliver,
+                                    channel: patch.channel.clone(),
+                                    to: patch.to.clone(),
+                                },
+                            ),
                             session_target: chelix_cron::types::SessionTarget::Named("heartbeat".into()),
                             delete_after_run: false,
                             enabled: effective_enabled,
@@ -553,33 +606,24 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
 
-    // Chat (uses chat_override if set, otherwise falls back to services.chat)
-    // Inject _conn_id and _accept_language so the chat service can resolve
-    // the active session and forward the user's locale to web tools.
+    // Chat (uses chat_override if set, otherwise falls back to services.chat).
     reg.register(
         "chat.send",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                // Forward client Accept-Language, public remote IP, and timezone.
-                {
-                    let registry = ctx.state.client_registry.read().await;
-                    if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
-                        if let Some(ref lang) = client.accept_language {
-                            params["_accept_language"] = serde_json::json!(lang);
-                        }
-                        if let Some(ref ip) = client.remote_ip {
-                            params["_remote_ip"] = serde_json::json!(ip);
-                        }
-                        if let Some(ref tz) = client.timezone {
-                            params["_timezone"] = serde_json::json!(tz);
-                        }
-                    }
-                }
+                let request = serde_json::from_value::<chelix_service_traits::ChatSendRequest>(
+                    ctx.params.clone(),
+                )
+                .map_err(|error| {
+                    ErrorShape::new(
+                        error_codes::INVALID_REQUEST,
+                        format!("invalid chat.send request: {error}"),
+                    )
+                })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .send(params)
+                    .send(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -589,25 +633,19 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.send_sync",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                {
-                    let registry = ctx.state.client_registry.read().await;
-                    if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
-                        if let Some(ref lang) = client.accept_language {
-                            params["_accept_language"] = serde_json::json!(lang);
-                        }
-                        if let Some(ref ip) = client.remote_ip {
-                            params["_remote_ip"] = serde_json::json!(ip);
-                        }
-                        if let Some(ref tz) = client.timezone {
-                            params["_timezone"] = serde_json::json!(tz);
-                        }
-                    }
-                }
+                let request = serde_json::from_value::<chelix_service_traits::ChatSendSyncRequest>(
+                    ctx.params.clone(),
+                )
+                .map_err(|error| {
+                    ErrorShape::new(
+                        error_codes::INVALID_REQUEST,
+                        format!("invalid chat.send_sync request: {error}"),
+                    )
+                })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .send_sync(params)
+                    .send_sync(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -691,30 +729,38 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "chat.prompt_queue.list",
+        "chat.queued_prompts.status",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                ctx.state
+                let params: QueuedPromptsStatusParams = serde_json::from_value(ctx.params)
+                    .map_err(|error| {
+                        ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string())
+                    })?;
+                let status = ctx
+                    .state
                     .chat()
-                    .prompt_queue_list(params)
+                    .queued_prompts_status(params.session_key)
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from)?;
+                queued_prompts_response(status)
             })
         }),
     );
     reg.register(
-        "chat.prompt_queue.cancel",
+        "chat.queued_prompts.remove",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                ctx.state
+                let params: QueuedPromptsRemoveParams = serde_json::from_value(ctx.params)
+                    .map_err(|error| {
+                        ErrorShape::new(error_codes::INVALID_REQUEST, error.to_string())
+                    })?;
+                let status = ctx
+                    .state
                     .chat()
-                    .prompt_queue_cancel(params)
+                    .queued_prompts_remove(params.id)
                     .await
-                    .map_err(ErrorShape::from)
+                    .map_err(ErrorShape::from)?;
+                queued_prompts_response(status)
             })
         }),
     );
@@ -771,7 +817,15 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.compact",
         Box::new(|ctx| {
             Box::pin(async move {
-                let session_key = active_session_key_for_ctx(&ctx).await;
+                let request = serde_json::from_value::<ChatCompactRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.compact request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
+                let session_key = Some(execution_context.session_id.as_str().to_string());
                 let progress = crate::operation_progress::OperationProgressEmitter::new(
                     ctx.state.clone(),
                     ctx.client_conn_id.clone(),
@@ -789,15 +843,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         false,
                     )
                     .await;
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
                 let result = progress
                     .run_with_heartbeat(
                         "compacting",
                         "Compacting the context window…",
                         Some(1),
                         Some(2),
-                        ctx.state.chat().compact(params),
+                        ctx.state.chat().compact(request, execution_context),
                     )
                     .await
                     .map_err(ErrorShape::from);
@@ -834,11 +886,17 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.context",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
+                let request = serde_json::from_value::<ChatContextRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.context request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .context(params)
+                    .context(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -849,26 +907,17 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.raw_prompt",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                // Forward client Accept-Language, public remote IP, and timezone.
-                {
-                    let registry = ctx.state.client_registry.read().await;
-                    if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
-                        if let Some(ref lang) = client.accept_language {
-                            params["_accept_language"] = serde_json::json!(lang);
-                        }
-                        if let Some(ref ip) = client.remote_ip {
-                            params["_remote_ip"] = serde_json::json!(ip);
-                        }
-                        if let Some(ref tz) = client.timezone {
-                            params["_timezone"] = serde_json::json!(tz);
-                        }
-                    }
-                }
+                let request = serde_json::from_value::<ChatRawPromptRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.raw_prompt request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .raw_prompt(params)
+                    .raw_prompt(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -879,26 +928,17 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "chat.full_context",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut params = ctx.params.clone();
-                params["_conn_id"] = serde_json::json!(ctx.client_conn_id);
-                // Forward client Accept-Language, public remote IP, and timezone.
-                {
-                    let registry = ctx.state.client_registry.read().await;
-                    if let Some(client) = registry.clients.get(&ctx.client_conn_id) {
-                        if let Some(ref lang) = client.accept_language {
-                            params["_accept_language"] = serde_json::json!(lang);
-                        }
-                        if let Some(ref ip) = client.remote_ip {
-                            params["_remote_ip"] = serde_json::json!(ip);
-                        }
-                        if let Some(ref tz) = client.timezone {
-                            params["_timezone"] = serde_json::json!(tz);
-                        }
-                    }
-                }
+                let request = serde_json::from_value::<ChatFullContextRequest>(ctx.params.clone())
+                    .map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::INVALID_REQUEST,
+                            format!("invalid chat.full_context request: {error}"),
+                        )
+                    })?;
+                let execution_context = chat_execution_context(&ctx).await?;
                 ctx.state
                     .chat()
-                    .full_context(params)
+                    .full_context(request, execution_context)
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -925,6 +965,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.switch",
         Box::new(|ctx| {
             Box::pin(async move {
+                if ctx.transport.is_stateless_http() {
+                    return Err(ErrorShape::new(
+                        error_codes::INVALID_REQUEST,
+                        "sessions.switch is unavailable over stateless HTTP",
+                    ));
+                }
                 let key = ctx
                     .params
                     .get("key")
@@ -943,7 +989,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 };
                 let was_existing_session =
                     if let Some(ref metadata) = ctx.state.services.session_metadata {
-                        metadata.get(key).await.is_some()
+                        metadata
+                            .get(key)
+                            .await
+                            .map_err(|error| {
+                                ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
+                            })?
+                            .is_some()
                     } else {
                         false
                     };
@@ -994,18 +1046,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         )
                     })?;
 
-                if !was_existing_session
-                    && let Some(entry_obj) = result
-                        .get_mut("entry")
-                        .and_then(|value| value.as_object_mut())
-                    && let Some(agent_id) = entry_obj
-                        .get("agent_id")
-                        .or_else(|| entry_obj.get("agentId"))
-                        .and_then(|value| value.as_str())
-                {
-                    materialize_agent_session_defaults(&ctx.state, key, agent_id).await;
-                }
-
                 // Mark the session as seen so unread state clears.
                 ctx.state.services.session.mark_seen(key).await;
 
@@ -1023,12 +1063,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 }
 
                 if let Some(pid) = ctx.params.get("project_id").and_then(|v| v.as_str()) {
-                    let _ = ctx
-                        .state
+                    ctx.state
                         .services
                         .session
-                        .patch(serde_json::json!({ "key": key, "project_id": pid }))
-                        .await;
+                        .patch(serde_json::json!({ "key": key, "projectId": pid }))
+                        .await
+                        .map_err(ErrorShape::from)?;
 
                     // Auto-create worktree if project has auto_worktree enabled.
                     if let Ok(proj_val) = ctx
@@ -1068,15 +1108,15 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                     .filter(|s| !s.is_empty())
                                     .unwrap_or("chelix");
                                 let branch = format!("{prefix}/{key}");
-                                let _ = ctx
-                                    .state
+                                ctx.state
                                     .services
                                     .session
                                     .patch(serde_json::json!({
                                         "key": key,
-                                        "worktree_branch": branch,
+                                        "worktreeBranch": branch,
                                     }))
-                                    .await;
+                                    .await
+                                    .map_err(ErrorShape::from)?;
 
                                 if let Err(e) = chelix_projects::worktree::copy_project_config(
                                     project_dir,
@@ -1145,12 +1185,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     Vec::new()
                 };
                 let voice_pending = replying && chat.active_voice_pending(key).await;
-                // Queued prompts are session state, not connection state, so a
-                // reload or a second client renders the same pending prompts.
                 let queued_prompts = chat
-                    .prompt_queue_list(serde_json::json!({ "sessionKey": key }))
+                    .queued_prompts_status(chelix_sessions::SessionKey::new(key))
                     .await
                     .map_err(ErrorShape::from)?;
+                let queued_prompts = queued_prompts_response(queued_prompts)?;
                 if let Some(obj) = result.as_object_mut() {
                     insert_session_activity_snapshot(
                         obj,
@@ -1158,14 +1197,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         tool_invocations,
                         voice_pending,
                     );
-                    if let Some(prompts) = queued_prompts.get("prompts") {
-                        obj.insert("queuedPrompts".to_string(), prompts.clone());
-                    }
-                    if let Some(entry_obj) =
-                        obj.get_mut("entry").and_then(|value| value.as_object_mut())
-                    {
-                        enrich_session_entry_for_ui(&ctx.state, entry_obj).await;
-                    }
+                    obj.insert("queuedPrompts".to_string(), queued_prompts);
                 }
 
                 Ok(result)
@@ -1284,78 +1316,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             }),
         );
         reg.register(
-                "tts.generate_phrase",
-                Box::new(|ctx| {
-                    Box::pin(async move {
-                        let context = ctx
-                            .params
-                            .get("context")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("settings");
-
-                        let identity = chelix_config::resolve_identity().map_err(|error| {
-                            ErrorShape::new(error_codes::INTERNAL, error.to_string())
-                        })?;
-                        let user = identity
-                            .user_name
-                            .unwrap_or_else(|| "friend".into());
-                        let bot = identity.name;
-
-                        // Try LLM generation with a 3-second timeout.
-                        // Clone the Arc out so we don't hold the outer RwLock across awaits.
-                        let providers = ctx.state.inner.read().await.llm_providers.clone();
-                        if let Some(providers) = providers {
-                            let provider = providers.read().await.first();
-                            if let Some(provider) = provider {
-                                let system_prompt = format!(
-                                    "You generate short, funny TTS test phrases for a voice assistant.\n\
-                                     The user's name is {user}. The bot's name is {bot}.\n\
-                                     Include SSML <break time=\"0.5s\"/> tags for natural pauses.\n\
-                                     Reply with ONLY the phrase text — no quotes, no markdown. Under 200 chars."
-                                );
-                                let messages = vec![
-                                    chelix_agents::model::ChatMessage::system(system_prompt),
-                                    chelix_agents::model::ChatMessage::user(format!(
-                                        "Generate a {context} TTS test phrase."
-                                    )),
-                                ];
-                                let result = tokio::time::timeout(
-                                    std::time::Duration::from_secs(3),
-                                    provider.complete(&messages, &[]),
-                                )
-                                .await;
-
-                                if let Ok(Ok(response)) = result
-                                    && let Some(text) = response.text
-                                {
-                                    let text = text.trim().to_string();
-                                    if !text.is_empty() {
-                                        return Ok(serde_json::json!({
-                                            "phrase": text,
-                                            "source": "llm",
-                                        }));
-                                    }
-                                }
-                            }
-                        }
-
-                        // Fall back to static phrases with sequential picking.
-                        let phrases =
-                            crate::tts_phrases::static_phrases(&user, &bot, context);
-                        let idx = ctx.state.next_tts_phrase_index(phrases.len());
-                        let phrase = phrases
-                            .into_iter()
-                            .nth(idx)
-                            .unwrap_or_default();
-
-                        Ok(serde_json::json!({
-                            "phrase": phrase,
-                            "source": "static",
-                        }))
-                    })
-                }),
-            );
-        reg.register(
             "tts.setProvider",
             Box::new(|ctx| {
                 Box::pin(async move {
@@ -1425,7 +1385,20 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use super::{ActiveToolInvocation, insert_session_activity_snapshot};
+    use std::sync::Arc;
+
+    use {
+        super::{
+            ActiveToolInvocation, QueuedPromptsRemoveParams, QueuedPromptsStatusParams,
+            insert_session_activity_snapshot,
+        },
+        crate::{
+            auth::{AuthMode, ResolvedAuth},
+            methods::{MethodContext, MethodRegistry, MethodTransport},
+            services::GatewayServices,
+            state::GatewayState,
+        },
+    };
 
     fn active_tool_invocation() -> ActiveToolInvocation {
         ActiveToolInvocation {
@@ -1478,5 +1451,157 @@ mod tests {
         assert_eq!(obj.get("replying").and_then(|v| v.as_bool()), Some(false));
         assert!(obj.get("activeToolInvocations").is_none());
         assert!(obj.get("voicePending").is_none());
+    }
+
+    #[test]
+    fn queued_prompts_status_params_accept_the_canonical_payload() {
+        let params: QueuedPromptsStatusParams =
+            serde_json::from_value(serde_json::json!({ "sessionKey": "session:one" }))
+                .unwrap_or_else(|error| panic!("canonical status params must parse: {error}"));
+
+        assert_eq!(params.session_key.as_str(), "session:one");
+    }
+
+    #[test]
+    fn queued_prompts_status_params_reject_an_additional_field() {
+        assert!(
+            serde_json::from_value::<QueuedPromptsStatusParams>(serde_json::json!({
+                "sessionKey": "session:one",
+                "additional": true,
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn queued_prompts_remove_params_accept_the_canonical_payload() {
+        let params: QueuedPromptsRemoveParams =
+            serde_json::from_value(serde_json::json!({ "id": 42 }))
+                .unwrap_or_else(|error| panic!("canonical remove params must parse: {error}"));
+
+        assert_eq!(params.id, 42);
+    }
+
+    #[test]
+    fn queued_prompts_remove_params_reject_an_additional_field() {
+        assert!(
+            serde_json::from_value::<QueuedPromptsRemoveParams>(serde_json::json!({
+                "id": 42,
+                "additional": true,
+            }))
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_auxiliary_rpc_parsers_reject_invalid_payloads_before_session_lookup() {
+        let state = GatewayState::new(
+            ResolvedAuth {
+                mode: AuthMode::Token,
+                token: None,
+                password: None,
+            },
+            GatewayServices::noop(),
+        );
+        let registry = MethodRegistry::new();
+
+        for method in [
+            "chat.compact",
+            "chat.context",
+            "chat.raw_prompt",
+            "chat.full_context",
+        ] {
+            for params in [
+                serde_json::Value::Null,
+                serde_json::json!({ "unexpected": true }),
+            ] {
+                let response = registry
+                    .dispatch(MethodContext {
+                        request_id: format!("{method}-invalid"),
+                        method: method.to_string(),
+                        params,
+                        client_conn_id: "unbound-client".into(),
+                        transport: MethodTransport::StatefulConnection,
+                        client_role: "operator".into(),
+                        client_scopes: vec![
+                            chelix_protocol::scopes::READ.into(),
+                            chelix_protocol::scopes::WRITE.into(),
+                        ],
+                        state: Arc::clone(&state),
+                        channel: None,
+                    })
+                    .await;
+                let error = response
+                    .error
+                    .unwrap_or_else(|| panic!("{method} invalid payload should fail"));
+                assert_eq!(error.code, chelix_protocol::error_codes::INVALID_REQUEST);
+                assert!(
+                    error
+                        .message
+                        .starts_with(&format!("invalid {method} request:")),
+                    "{method} read session state before rejecting its payload: {}",
+                    error.message
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn stateless_http_session_switch_is_rejected_without_mutating_connection_state() {
+        let state = GatewayState::new(
+            ResolvedAuth {
+                mode: AuthMode::Token,
+                token: None,
+                password: None,
+            },
+            GatewayServices::noop(),
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap_or_else(|error| panic!("failed to build runtime: {error}"));
+        runtime.block_on(async {
+            let mut registry = state.client_registry.write().await;
+            registry
+                .active_sessions
+                .insert("http-rpc".into(), "session:existing".into());
+            registry
+                .active_projects
+                .insert("http-rpc".into(), "project:existing".into());
+        });
+
+        let context = MethodContext {
+            request_id: "switch".into(),
+            method: "sessions.switch".into(),
+            params: serde_json::json!({
+                "key": "session:replacement",
+                "project_id": "project:replacement",
+            }),
+            client_conn_id: "http-rpc".into(),
+            transport: MethodTransport::StatelessHttp {
+                session_id: Some(chelix_sessions::SessionKey::new("session:http")),
+            },
+            client_role: "operator".into(),
+            client_scopes: vec![chelix_protocol::scopes::WRITE.into()],
+            state: Arc::clone(&state),
+            channel: None,
+        };
+        let response = runtime.block_on(MethodRegistry::new().dispatch(context));
+
+        assert!(!response.ok);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.code.as_str()),
+            Some(chelix_protocol::error_codes::INVALID_REQUEST)
+        );
+        runtime.block_on(async {
+            let registry = state.client_registry.read().await;
+            assert_eq!(
+                registry.active_sessions.get("http-rpc").map(String::as_str),
+                Some("session:existing")
+            );
+            assert_eq!(
+                registry.active_projects.get("http-rpc").map(String::as_str),
+                Some("project:existing")
+            );
+        });
     }
 }

@@ -66,7 +66,7 @@ impl chelix_channels::ChannelOutbound for RecordingChannelOutbound {
 pub(crate) fn cron_delivery_request() -> chelix_cron::service::AgentTurnRequest {
     chelix_cron::service::AgentTurnRequest {
         message: "Run background summary".to_string(),
-        model: None,
+        model_override: None,
         agent_id: None,
         timeout_secs: None,
         tool_choice: None,

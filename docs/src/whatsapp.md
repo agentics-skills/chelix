@@ -96,7 +96,7 @@ automated deployments or when you want to pre-configure settings before pairing.
 
 [channels.whatsapp."my-whatsapp"]
 dm_policy = "open"
-model = "anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 ```
 
@@ -110,7 +110,7 @@ paired = true
 display_name = "John's iPhone"
 phone_number = "+15551234567"
 dm_policy = "open"
-model = "anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 ```
 
@@ -128,8 +128,8 @@ Each WhatsApp account is a named entry under `[channels.whatsapp]`:
 | `display_name`      | string | —          | Phone name after pairing (auto-populated)                                 |
 | `phone_number`      | string | —          | Phone number after pairing (auto-populated)                               |
 | `store_path`        | string | —          | Custom path to sled store; defaults to `~/.chelix/whatsapp/<account_id>/` |
-| `model`             | string | —          | Default LLM model ID for this account                                     |
-| `model_provider`    | string | —          | Provider name for the model                                               |
+| `model_override`    | table  | —          | Complete canonical model/reasoning override for this account              |
+| `model_provider`    | string | —          | Informational provider label; model selection uses `model_override.model` |
 | `agent_id`          | string | —          | Default agent ID for this account                                         |
 | `dm_policy`         | string | `"open"`   | DM access policy: `"open"`, `"allowlist"`, or `"disabled"`                |
 | `group_policy`      | string | `"open"`   | Group access policy: `"open"`, `"allowlist"`, or `"disabled"`             |
@@ -146,7 +146,7 @@ Each WhatsApp account is a named entry under `[channels.whatsapp]`:
 paired = true
 display_name = "John's iPhone"
 phone_number = "+15551234567"
-model = "anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 agent_id = "personal"
 dm_policy = "allowlist"
@@ -160,29 +160,38 @@ paired = true
 dm_policy = "open"
 group_policy = "allowlist"
 group_allowlist = ["120363456789@g.us"]
-model = "openai/gpt-4.1"
+model_override = { model = "openai::gpt-4.1", reasoning_effort = "off" }
 model_provider = "openai"
 mention_mode = "mention"
 ```
 
 ### Per-Chat and Per-User Overrides
 
-WhatsApp also supports optional per-chat and per-user overrides for models and
-agents:
+WhatsApp also supports optional per-chat and per-user overrides for complete
+model/reasoning pairs and agents:
 
 ```toml
 [channels.whatsapp."work-bot"]
 paired = true
-model = "openai/gpt-4.1"
+model_override = { model = "openai::gpt-4.1", reasoning_effort = "off" }
 agent_id = "support"
 
 [channels.whatsapp."work-bot.channel_overrides"."120363456789@g.us"]
 agent_id = "triage"
 
 [channels.whatsapp."work-bot.user_overrides"."15551234567@s.whatsapp.net"]
-model = "anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 agent_id = "research"
 ```
+
+User overrides take priority over chat overrides, which take priority over the
+account default. These overrides initialize a newly created channel session;
+they are not re-applied to every message. A direct conversation has its own
+session. A group chat shares one session across participants, so the first
+message that creates it uses the effective user, group-chat, then account pair,
+or the validated agent pair when no channel override is configured. The
+persisted pair then stays unchanged for later senders until it is changed
+explicitly with `/model`.
 
 ## Access Control
 

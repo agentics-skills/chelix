@@ -18,12 +18,13 @@ use {
     chelix_agents::{
         json_repair::repair_json,
         model::{ChatMessage, LlmProvider},
+        tool_context::ToolExecutionContext,
         tool_registry::{AgentTool, ToolRegistry},
     },
     chelix_config::{AgentMemoryWriteMode, MemoryStyle},
     chelix_memory::writer::{ensure_memory_target_not_symlink, remove_exact_text},
     chelix_providers::ProviderRegistry,
-    chelix_sessions::metadata::SqliteSessionMetadata,
+    chelix_sessions::{SessionKey, metadata::SqliteSessionMetadata},
 };
 
 use crate::types::{
@@ -47,12 +48,18 @@ struct ForgetCandidate {
     text: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ForgetRequest {
     request: String,
+    #[serde(default)]
     dry_run: bool,
+    #[serde(default = "default_memory_forget_limit")]
     limit: usize,
-    session_key: Option<String>,
+}
+
+const fn default_memory_forget_limit() -> usize {
+    MEMORY_FORGET_DEFAULT_LIMIT
 }
 
 #[derive(Debug, Serialize)]
@@ -145,38 +152,22 @@ fn strip_markdown_code_fences(raw: &str) -> &str {
 }
 
 fn parse_forget_request(params: &Value) -> anyhow::Result<ForgetRequest> {
-    let request = params
-        .get("request")
-        .and_then(Value::as_str)
-        .ok_or_else(|| anyhow::anyhow!("missing 'request' parameter"))?
-        .trim()
-        .to_string();
-    if request.is_empty() {
+    let mut request: ForgetRequest = serde_json::from_value(params.clone())
+        .map_err(|error| anyhow::anyhow!("invalid memory_forget arguments: {error}"))?;
+    request.request = request.request.trim().to_string();
+    if request.request.is_empty() {
         anyhow::bail!("'request' cannot be empty");
     }
-
-    let requested_limit = params
-        .get("limit")
-        .and_then(Value::as_u64)
-        .map_or(MEMORY_FORGET_DEFAULT_LIMIT, |value| value as usize);
-
-    Ok(ForgetRequest {
-        request,
-        dry_run: params
-            .get("dry_run")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        limit: requested_limit.clamp(1, MEMORY_FORGET_MAX_LIMIT),
-        session_key: params
-            .get("_session_key")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned),
-    })
+    if !(1..=MEMORY_FORGET_MAX_LIMIT).contains(&request.limit) {
+        anyhow::bail!("'limit' must be between 1 and {MEMORY_FORGET_MAX_LIMIT}, inclusive");
+    }
+    Ok(request)
 }
 
 fn memory_forget_parameters_schema() -> Value {
     json!({
         "type": "object",
+        "additionalProperties": false,
         "properties": {
             "request": {
                 "type": "string",
@@ -190,7 +181,9 @@ fn memory_forget_parameters_schema() -> Value {
             "limit": {
                 "type": "integer",
                 "description": "Maximum number of candidate memory chunks to inspect before planning deletions.",
-                "default": MEMORY_FORGET_DEFAULT_LIMIT
+                "default": MEMORY_FORGET_DEFAULT_LIMIT,
+                "minimum": 1,
+                "maximum": MEMORY_FORGET_MAX_LIMIT
             }
         },
         "required": ["request"]
@@ -895,24 +888,60 @@ impl AgentTool for AgentScopedMemoryDeleteTool {
     }
 }
 
+#[derive(Clone)]
+pub(crate) struct MemoryForgetProviderResolver {
+    providers: Arc<RwLock<ProviderRegistry>>,
+    session_metadata: Arc<SqliteSessionMetadata>,
+}
+
+impl MemoryForgetProviderResolver {
+    pub(crate) fn new(
+        providers: Arc<RwLock<ProviderRegistry>>,
+        session_metadata: Arc<SqliteSessionMetadata>,
+    ) -> Self {
+        Self {
+            providers,
+            session_metadata,
+        }
+    }
+
+    async fn resolve(&self, session_key: &SessionKey) -> anyhow::Result<Arc<dyn LlmProvider>> {
+        let session = self
+            .session_metadata
+            .get(session_key.as_str())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("session '{session_key}' not found"))?;
+        let model_reasoning = session.model_reasoning().ok_or_else(|| {
+            anyhow::anyhow!("session '{session_key}' does not have a model/reasoning pair")
+        })?;
+
+        let registry = self.providers.read().await;
+        let resolved = registry.resolve_model_reasoning(
+            Some(model_reasoning.model_id()),
+            Some(model_reasoning.reasoning_effort()),
+        )?;
+        Ok(Arc::clone(resolved.provider()))
+    }
+}
+
 struct AgentScopedMemoryForgetTool {
     manager: chelix_memory::runtime::DynMemoryRuntime,
     writer: AgentScopedMemoryWriter,
-    provider: Arc<dyn LlmProvider>,
+    provider_resolver: MemoryForgetProviderResolver,
     agent_id: String,
 }
 
 impl AgentScopedMemoryForgetTool {
     fn new(
         manager: chelix_memory::runtime::DynMemoryRuntime,
-        provider: Arc<dyn LlmProvider>,
+        provider_resolver: MemoryForgetProviderResolver,
         agent_id: String,
         write_mode: AgentMemoryWriteMode,
     ) -> Self {
         Self {
             manager: Arc::clone(&manager),
             writer: AgentScopedMemoryWriter::new(manager, agent_id.clone(), write_mode),
-            provider,
+            provider_resolver,
             agent_id,
         }
     }
@@ -932,8 +961,24 @@ impl AgentTool for AgentScopedMemoryForgetTool {
         memory_forget_parameters_schema()
     }
 
-    async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+    fn validate(&self, params: &Value) -> anyhow::Result<()> {
+        parse_forget_request(params).map(|_| ())
+    }
+
+    async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+        anyhow::bail!("memory_forget requires typed session execution context")
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
         let request = parse_forget_request(&params)?;
+        let provider = self
+            .provider_resolver
+            .resolve(context.require_session_key()?)
+            .await?;
         let candidates =
             collect_forget_candidates(&self.manager, &request.request, request.limit, |path| {
                 if is_path_in_agent_memory_scope(path, &self.agent_id) {
@@ -957,7 +1002,7 @@ impl AgentTool for AgentScopedMemoryForgetTool {
             }));
         }
 
-        let plan = plan_memory_forget(&*self.provider, &request.request, &candidates).await?;
+        let plan = plan_memory_forget(&*provider, &request.request, &candidates).await?;
         let (validated_actions, issues) =
             validate_forget_actions(&plan.actions, &candidates).await?;
         let planned_matches: Vec<Value> = validated_actions
@@ -1017,8 +1062,7 @@ impl AgentTool for AgentScopedMemoryForgetTool {
 
 pub struct MemoryForgetTool {
     manager: chelix_memory::runtime::DynMemoryRuntime,
-    providers: Arc<RwLock<ProviderRegistry>>,
-    session_metadata: Arc<SqliteSessionMetadata>,
+    provider_resolver: MemoryForgetProviderResolver,
 }
 
 impl MemoryForgetTool {
@@ -1029,34 +1073,8 @@ impl MemoryForgetTool {
     ) -> Self {
         Self {
             manager,
-            providers,
-            session_metadata,
+            provider_resolver: MemoryForgetProviderResolver::new(providers, session_metadata),
         }
-    }
-
-    async fn resolve_provider(
-        &self,
-        session_key: Option<&str>,
-    ) -> anyhow::Result<Arc<dyn LlmProvider>> {
-        let session_model = if let Some(session_key) = session_key {
-            self.session_metadata
-                .get(session_key)
-                .await
-                .and_then(|entry| entry.model)
-        } else {
-            None
-        };
-
-        let registry = self.providers.read().await;
-        if let Some(model) = session_model {
-            return registry.get(&model).ok_or_else(|| {
-                anyhow::anyhow!("memory_forget session model '{model}' is not registered")
-            });
-        }
-
-        registry.first_with_tools().ok_or_else(|| {
-            anyhow::anyhow!("no LLM provider can run memory_forget with its configured tool_mode")
-        })
     }
 }
 
@@ -1074,10 +1092,23 @@ impl AgentTool for MemoryForgetTool {
         memory_forget_parameters_schema()
     }
 
-    async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+    fn validate(&self, params: &Value) -> anyhow::Result<()> {
+        parse_forget_request(params).map(|_| ())
+    }
+
+    async fn execute(&self, _params: Value) -> anyhow::Result<Value> {
+        anyhow::bail!("memory_forget requires typed session execution context")
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
         let request = parse_forget_request(&params)?;
         let provider = self
-            .resolve_provider(request.session_key.as_deref())
+            .provider_resolver
+            .resolve(context.require_session_key()?)
             .await?;
         let candidates =
             collect_forget_candidates(&self.manager, &request.request, request.limit, |path| {
@@ -1152,7 +1183,7 @@ impl AgentTool for MemoryForgetTool {
 pub(crate) fn install_agent_scoped_memory_tools(
     registry: &mut ToolRegistry,
     manager: &chelix_memory::runtime::DynMemoryRuntime,
-    provider: Arc<dyn LlmProvider>,
+    provider_resolver: MemoryForgetProviderResolver,
     agent_id: &str,
     style: MemoryStyle,
     write_mode: AgentMemoryWriteMode,
@@ -1197,7 +1228,7 @@ pub(crate) fn install_agent_scoped_memory_tools(
     if had_forget && memory_write_mode_allows_save(write_mode) {
         registry.register(Box::new(AgentScopedMemoryForgetTool::new(
             Arc::clone(manager),
-            provider,
+            provider_resolver,
             agent_id.to_string(),
             write_mode,
         )));

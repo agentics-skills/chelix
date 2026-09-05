@@ -491,10 +491,10 @@ interface OnboardingPlan {
 	steps: string[];
 	stepIndex: number;
 	llmStep: number;
+	identityStep: number;
 	voiceStep: number;
 	skillsStep: number;
 	channelStep: number;
-	identityStep: number;
 	summaryStep: number;
 }
 
@@ -538,28 +538,23 @@ async function fetchOnboardingAuthPlan(): Promise<OnboardingAuthPlan> {
 
 function buildOnboardingPlan(step: number, authNeeded: boolean, voiceAvailable: boolean): OnboardingPlan {
 	const allLabels = [t("onboarding:steps.security")];
-	allLabels.push(t("onboarding:steps.llm"));
+	allLabels.push(t("onboarding:steps.llm"), t("onboarding:steps.identity"));
 	if (voiceAvailable) allLabels.push(t("onboarding:steps.voice"));
-	allLabels.push(
-		t("onboarding:steps.skills"),
-		t("onboarding:steps.channel"),
-		t("onboarding:steps.identity"),
-		t("onboarding:steps.summary"),
-	);
+	allLabels.push(t("onboarding:steps.skills"), t("onboarding:steps.channel"), t("onboarding:steps.summary"));
 	let nextIndex = 1;
 	const llmStep = nextIndex++;
+	const identityStep = nextIndex++;
 	const voiceStep = voiceAvailable ? nextIndex++ : -1;
 	const skillsStep = nextIndex++;
 	const channelStep = nextIndex++;
-	const identityStep = nextIndex++;
 	return {
 		steps: authNeeded ? allLabels : allLabels.slice(1),
 		stepIndex: authNeeded ? step : step - 1,
 		llmStep,
+		identityStep,
 		voiceStep,
 		skillsStep,
 		channelStep,
-		identityStep,
 		summaryStep: nextIndex,
 	};
 }
@@ -579,10 +574,10 @@ function OnboardingStepContent(props: OnboardingStepContentProps): VNode | null 
 	if (props.step === props.plan.llmStep) {
 		return <ProviderStep onNext={props.onNext} onBack={props.authNeeded ? props.onBack : null} />;
 	}
+	if (props.step === props.plan.identityStep) return <IdentityStep onNext={props.onNext} onBack={props.onBack} />;
 	if (props.step === props.plan.voiceStep) return <VoiceStep onNext={props.onNext} onBack={props.onBack} />;
 	if (props.step === props.plan.skillsStep) return <SkillsStep onNext={props.onNext} onBack={props.onBack} />;
 	if (props.step === props.plan.channelStep) return <ChannelStep onNext={props.onNext} onBack={props.onBack} />;
-	if (props.step === props.plan.identityStep) return <IdentityStep onNext={props.onNext} onBack={props.onBack} />;
 	if (props.step === props.plan.summaryStep) return <SummaryStep onBack={props.onBack} onFinish={props.onFinish} />;
 	return null;
 }

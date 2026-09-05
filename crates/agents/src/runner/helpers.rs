@@ -317,7 +317,7 @@ pub enum RunnerEvent {
     /// Text from the final iteration of the run.
     FinalText(String),
     Iteration(usize),
-    /// A transient LLM error occurred and the runner will retry.
+    /// An LLM error occurred and the runner will retry.
     RetryingAfterError {
         error: String,
         delay_ms: u64,

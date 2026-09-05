@@ -5,13 +5,18 @@
 
 use async_graphql::{Context, Object, Result};
 
+use {
+    chelix_service_traits::{ChatCompactRequest, ChatExecutionContext, ChatSendRequest},
+    chelix_sessions::SessionKey,
+};
+
 use crate::{
-    error::{from_service, from_service_json},
+    error::{from_service, from_service_json, from_typed_service_json},
     scalars::Json,
     services,
     types::{
-        BoolResult, McpOAuthStartResult, ModelTestResult, SessionShareResult, TranscriptionResult,
-        TtsConvertResult,
+        BoolResult, McpOAuthStartResult, ModelOverrideInput, SessionShareResult,
+        TranscriptionResult, TtsConvertResult,
     },
 };
 
@@ -171,14 +176,13 @@ impl ChatMutation {
         ctx: &Context<'_>,
         message: String,
         session_key: String,
-        model: Option<String>,
+        model_override: Option<ModelOverrideInput>,
     ) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(
-            s.chat
-                .send(serde_json::json!({ "message": message, "sessionKey": session_key, "model": model }))
-                .await,
-        )
+        let mut request = ChatSendRequest::text(message);
+        request.model_override = model_override.map(Into::into);
+        let context = ChatExecutionContext::internal(SessionKey::new(session_key));
+        from_service(s.chat.send(request, context).await)
     }
 
     /// Abort active chat response.
@@ -191,25 +195,10 @@ impl ChatMutation {
         )
     }
 
-    /// Cancel queued prompts of a session.
-    ///
-    /// Cancels a single prompt when `prompt_id` is given, otherwise the whole
-    /// session queue. Returns the remaining queue.
-    async fn cancel_queued_prompts(
-        &self,
-        ctx: &Context<'_>,
-        session_key: String,
-        prompt_id: Option<String>,
-    ) -> Result<Json> {
+    /// Remove one queued prompt by its auto-incremented ID.
+    async fn remove_queued_prompt(&self, ctx: &Context<'_>, id: i64) -> Result<Json> {
         let s = services!(ctx);
-        from_service_json(
-            s.chat
-                .prompt_queue_cancel(serde_json::json!({
-                    "sessionKey": session_key,
-                    "promptId": prompt_id,
-                }))
-                .await,
-        )
+        from_typed_service_json(s.chat.queued_prompts_remove(id).await)
     }
 
     /// Clear chat history for session.
@@ -227,7 +216,10 @@ impl ChatMutation {
         let s = services!(ctx);
         from_service(
             s.chat
-                .compact(serde_json::json!({ "sessionKey": session_key }))
+                .compact(
+                    ChatCompactRequest::default(),
+                    ChatExecutionContext::internal(SessionKey::new(session_key)),
+                )
                 .await,
         )
     }
@@ -614,16 +606,6 @@ impl ModelMutation {
         let s = services!(ctx);
         from_service(s.model.disable(input.0).await)
     }
-
-    async fn detect_supported(&self, ctx: &Context<'_>) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.model.detect_supported(serde_json::json!({})).await)
-    }
-
-    async fn test(&self, ctx: &Context<'_>, input: Json) -> Result<ModelTestResult> {
-        let s = services!(ctx);
-        from_service(s.model.test(input.0).await)
-    }
 }
 
 // ── Providers ───────────────────────────────────────────────────────────────
@@ -638,14 +620,9 @@ impl ProviderMutation {
         from_service(s.provider_setup.save_key(input.0).await)
     }
 
-    async fn validate_key(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
+    async fn set_model_preferences(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
         let s = services!(ctx);
-        from_service(s.provider_setup.validate_key(input.0).await)
-    }
-
-    async fn save_models(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.save_models(input.0).await)
+        from_service(s.provider_setup.set_model_preferences(input.0).await)
     }
 
     async fn remove_key(&self, ctx: &Context<'_>, provider: String) -> Result<BoolResult> {
@@ -655,11 +632,6 @@ impl ProviderMutation {
                 .remove_key(serde_json::json!({ "provider": provider }))
                 .await,
         )
-    }
-
-    async fn add_custom(&self, ctx: &Context<'_>, input: Json) -> Result<BoolResult> {
-        let s = services!(ctx);
-        from_service(s.provider_setup.add_custom(input.0).await)
     }
 }
 

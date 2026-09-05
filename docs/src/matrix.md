@@ -299,8 +299,8 @@ picker list from `chelix.toml`.
 | `room_allowlist`           | no       | `[]`              | Matrix room IDs or aliases allowed to interact with the bot                          |
 | `user_allowlist`           | no       | `[]`              | Matrix user IDs allowed to DM the bot                                                |
 | `auto_join`                | no       | `"always"`        | Invite handling: `"always"`, `"allowlist"`, or `"off"`                               |
-| `model`                    | no       | —                 | Override the default model for this account                                          |
-| `model_provider`           | no       | —                 | Provider for the overridden model                                                    |
+| `model_override`           | no       | —                 | Complete canonical model/reasoning override for this account                         |
+| `model_provider`           | no       | —                 | Informational provider label; model selection uses `model_override.model`            |
 | `stream_mode`              | no       | `"edit_in_place"` | How streaming replies are sent: `"edit_in_place"` or `"off"`                         |
 | `edit_throttle_ms`         | no       | `500`             | Minimum milliseconds between edit-in-place streaming updates                         |
 | `stream_min_initial_chars` | no       | `30`              | Minimum buffered characters before the first streamed send                           |
@@ -365,7 +365,7 @@ mention_mode = "mention"
 room_allowlist = ["!ops:example.com", "#support:example.com"]
 user_allowlist = ["@alice:example.com", "@bob:example.com"]
 auto_join = "allowlist"
-model = "gpt-4.1"
+model_override = { model = "openai::gpt-4.1", reasoning_effort = "off" }
 model_provider = "openai"
 stream_mode = "edit_in_place"
 edit_throttle_ms = 500
@@ -376,13 +376,21 @@ otp_self_approval = true
 otp_cooldown_secs = 300
 
 [channels.matrix.my-bot.channel_overrides."!ops:example.com"]
-model = "anthropic/claude-sonnet-4"
+model_override = { model = "openrouter::anthropic/claude-sonnet-4", reasoning_effort = "medium" }
 model_provider = "openrouter"
 
 [channels.matrix.my-bot.user_overrides."@alice:example.com"]
-model = "o3"
+model_override = { model = "openai::o3", reasoning_effort = "medium" }
 model_provider = "openai"
 ```
+
+User overrides take priority over room overrides, which take priority over the
+account default. These overrides initialize a newly created channel session;
+they are not re-applied to every message. A direct room has its own session. A
+shared room has one session across participants, so the first message that
+creates it uses the effective user, room, then account pair, or the validated
+agent pair when no channel override is configured. The persisted pair then
+stays unchanged for later senders until it is changed explicitly with `/model`.
 
 ## Access Control
 
@@ -428,10 +436,6 @@ When `mention_mode = "mention"`, Chelix checks Matrix intentional mentions
 Matrix replies now preserve thread context when the referenced event belongs to
 an existing thread. When `reply_to_message = true`, Chelix sends a rich reply
 and keeps the reply inside the thread when appropriate.
-
-For thread context injection, Chelix resolves the inbound event to the thread
-root and fetches prior `m.thread` relations so the LLM sees the room thread
-history instead of just the last message.
 
 ## Voice and Location Messages
 

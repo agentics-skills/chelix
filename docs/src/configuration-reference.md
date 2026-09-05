@@ -41,6 +41,8 @@
   - [`user`](#user)
 - **Chat & Agents**
   - [`chat`](#chat)
+  - [`auxiliary`](#auxiliary--auxiliarymodelsconfig)
+  - [`auxiliary.title_generation`](#auxiliarytitle_generation--configmodeloverride)
   - [`agents`](#agents)
   - [`agents.<id>`](#agentsid)
   - [`agents.<id>.sessions`](#agentsidsessions)
@@ -202,16 +204,41 @@ User profile collected during onboarding.
 
 | Key                        | Type                                           | Default         | Description                                                                                                                                                                                         |
 | -------------------------- | ---------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto_title`              | bool                                           | `true`          | Automatically generate a session title after the first exchange. Generation requires a complete `auxiliary.title_generation` pair. |
 | `prompt_memory_mode`       | enum: `live-reload`, `frozen-at-session-start` | `"live-reload"` | How `MEMORY.md` is loaded into the prompt for an ongoing session. `live-reload` reloads from disk before each turn; `frozen-at-session-start` freezes the initial content for the session lifetime. |
 | `workspace_file_max_chars` | integer                                        | `32000`         | Maximum characters from each workspace prompt file (`AGENTS.md`, `TOOLS.md`).                                                                                                                       |
 | `priority_models`          | array                                          | `[]`            | Preferred model IDs to show first in selectors (full or raw model IDs).                                                                                                                             |
 
+### `auxiliary` — AuxiliaryModelsConfig
+
+| Key                | Type                           | Default | Description                                            |
+| ------------------ | ------------------------------ | ------- | ------------------------------------------------------ |
+| `title_generation` | optional `ConfigModelOverride` | absent  | Complete model/reasoning pair for session title generation. |
+
+### `auxiliary.title_generation` — ConfigModelOverride
+
+| Key                | Type   | Default  | Description                                                               |
+| ------------------ | ------ | -------- | ------------------------------------------------------------------------- |
+| `model`            | string | required | Exact canonical registry model ID from `models.list`, such as `openai::gpt-5.2`. |
+| `reasoning_effort` | string | required | Non-empty effort from the selected model's `reasoning_supported_efforts`. |
+
+Both auxiliary tables reject additional fields. A partial title pair is a config
+load error. Title generation requires the configured pair to resolve successfully
+before the LLM call; missing configuration, unknown or noncanonical models, and
+empty or unsupported efforts return errors. Provider errors are returned to the
+caller. See [Session Titles](configuration.md#session-titles) for configuration
+and automatic error logging.
+
 ### `agents` — AgentsConfig
 
-| Key       | Type                 | Default  | Description                                                                                      |
-| --------- | -------------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `default` | string               | required | Agent ID used by new sessions.                                                                   |
-| `<id>`    | map of `AgentConfig` | `{}`     | User-owned agents keyed directly by ID. The configured `default` must reference one of these IDs. |
+| Key       | Type                 | Default | Description                                                                                                              |
+| --------- | -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `default` | string               | `""`    | Agent ID used by new sessions. Required to reference an existing agent once any agent is configured.                     |
+| `<id>`    | map of `AgentConfig` | `{}`    | User-owned agents keyed directly by ID. The configured `default` must reference one of these IDs.                         |
+
+The exact first-run setup state has an empty `default` and no agent entries. An
+empty `default` is invalid as soon as any agent exists; a non-empty `default`
+must reference a configured agent.
 
 ### `agents.<id>` — AgentConfig
 
@@ -221,7 +248,7 @@ User profile collected during onboarding.
 | `emoji`                 | optional string                                                           | `null`   | Agent emoji identifier.                                                                                                                                                                                                      |
 | `description`           | optional string                                                           | `null`   | Short agent description.                                                                                                                                                                                                     |
 | `voice_persona_id`      | optional string                                                           | `null`   | Voice persona identifier.                                                                                                                                                                                                    |
-| `model`                 | optional string                                                           | `null`   | Model override for this agent.                                                                                                                                                                                               |
+| `model`                 | string                                                                    | required | Canonical model ID from the live model registry, such as `openai::gpt-5.2`.                                                                                                                                                   |
 | `tools.allow`           | array                                                                     | `[]`     | Tool whitelist. An empty list allows every tool not denied by another policy entry.                                                                                                                                          |
 | `tools.deny`            | array                                                                     | `[]`     | Tool deny list, applied after `allow`.                                                                                                                                                                                        |
 | `tools.preload`         | array                                                                     | `[]`     | Tool schemas exposed immediately in lazy registry mode. Names are resolved after effective policy filtering and do not grant access.                                                                                         |
@@ -229,11 +256,13 @@ User profile collected during onboarding.
 | `timeout_secs`          | optional integer                                                          | `null`   | Timeout in seconds for sessions using this agent. `0` disables the agent-specific timeout.                                                                                                                                    |
 | `max_tool_result_bytes` | optional integer                                                          | `null`   | Maximum in-context bytes per tool result for this agent. Falls back to `tools.max_tool_result_bytes`.                                                                                                                         |
 | `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`   | Session access policy for inter-agent communication.                                                                                                                                                                         |
-| `reasoning_effort`      | optional enum: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | `null`   | Reasoning/thinking effort for models that support it.                                                                                                                                                                        |
+| `reasoning_effort`      | string                                                                    | required | Provider-defined reasoning effort supported by the selected model. Non-reasoning models use their registered effort, such as `off`.                                                                                          |
 | `mcp`                   | optional `AgentMcpPolicy`                                                 | `null`   | MCP server allow or deny policy.                                                                                                                                                                                             |
 | `skills`                | optional `AgentSkillPolicy`                                               | `null`   | Per-agent skill visibility policy.                                                                                                                                                                                           |
 
-Unknown fields in an agent table are rejected. Sessions with the `chat` prompt
+At startup, every configured model/reasoning pair is resolved through the live
+model registry. Unknown models and efforts unsupported by the selected model
+are rejected. Unknown fields in an agent table are rejected. Sessions with the `chat` prompt
 profile load `<data_dir>/agents/<id>/SOUL.md`; sessions with the `subagent`
 prompt profile load `<data_dir>/agents/<id>/SUBAGENT.md`.
 
@@ -601,7 +630,7 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | ----------------- | ---------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
 | `enabled`         | bool                               | `true`  | Whether the heartbeat is enabled.                                                           |
 | `every`           | string                             | `"30m"` | Interval between heartbeats (e.g. `"30m"`, `"1h"`).                                         |
-| `model`           | optional string                    | —       | Provider/model override for heartbeat turns.                                                |
+| `model_override`  | optional table                     | —       | Complete canonical model/reasoning override for heartbeat turns.                            |
 | `prompt`          | optional string                    | —       | Custom prompt override. Empty uses the built-in default.                                    |
 | `ack_max_chars`   | integer                            | `300`   | Max characters for an acknowledgment reply before truncation.                               |
 | `active_hours`    | map (see `heartbeat.active_hours`) | —       | Active hours window — heartbeats only run during this window.                               |
@@ -609,6 +638,17 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `channel`         | optional string                    | —       | Channel account identifier for heartbeat delivery.                                          |
 | `to`              | optional string                    | —       | Destination chat/recipient id for heartbeat delivery.                                       |
 | `wake_cooldown`   | string                             | `"5m"`  | Minimum duration between command-triggered heartbeat wakes. Use `"0"` to disable the guard. |
+
+### `heartbeat.model_override`
+
+**Struct:** `ConfigModelOverride`
+
+| Key                | Type   | Default  | Description                                                        |
+| ------------------ | ------ | -------- | ------------------------------------------------------------------ |
+| `model`            | string | required | Exact canonical model ID returned by `models.list`.                |
+| `reasoning_effort` | string | required | Non-empty effort listed in the selected model's supported efforts. |
+
+Both keys are required whenever `[heartbeat.model_override]` is present.
 
 ### `heartbeat.active_hours`
 
@@ -680,65 +720,59 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 
 **Struct:** `ProvidersConfig`
 
-| Key                  | Type                        | Default | Description                                                                         |
-| -------------------- | --------------------------- | ------- | ----------------------------------------------------------------------------------- |
-| `offered`            | array of string             | `[]`    | Allowlist of enabled providers (also controls web UI pickers). Empty = all enabled. |
-| `show_legacy_models` | bool                        | `false` | Show models older than one year in the chat model selector.                         |
-| `<name>`             | `ProviderEntry` (see below) | —       | Provider-specific settings keyed by provider name.                                  |
+| Key      | Type                        | Default | Description                                                                         |
+| -------- | --------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `offered` | array of string            | `[]`    | Allowlist of enabled providers (also controls web UI pickers). Empty = all enabled. |
+| `<name>` | `ProviderEntry` (see below) | —       | Provider-specific settings keyed by provider name.                                  |
 
 ### `providers.<name>` — ProviderEntry
 
-| Key                | Type                                    | Default              | Description                                                    |
-| ------------------ | --------------------------------------- | -------------------- | -------------------------------------------------------------- |
-| `enabled`          | bool                                    | `true`               | Whether this provider is enabled.                              |
-| `api_key`          | optional string (secret)                | —                    | Override the API key. Env var takes precedence if set.         |
-| `base_url`         | optional string                         | —                    | Override the base URL. Alias: `url`.                           |
-| `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered allowlist entry and highest-priority metadata source.  |
-| `fetch_models`     | bool                                    | `true`               | Whether to fetch provider model catalogs dynamically.          |
-| `stream_transport` | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
-| `wire_api`         | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
-| `alias`            | optional string                         | —                    | Alias used in metrics labels instead of the provider name.     |
-| `tool_mode`        | enum (`native`, `text`, `off`)          | `"native"`           | How tool calling is handled for this provider.                 |
-| `cache_retention`  | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
-| `policy`           | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
+| Key                 | Type                                    | Default              | Description                                                    |
+| ------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------------- |
+| `enabled`           | bool                                    | `true`               | Whether this provider is enabled.                              |
+| `api_key`           | optional string (secret)                | —                    | Override the API key. Env var takes precedence if set.         |
+| `base_url`          | optional string                         | —                    | Override the base URL.                                         |
+| `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered complete model record.                                 |
+| `stream_transport`  | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
+| `wire_api`          | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
+| `alias`             | optional string                         | —                    | Alias used in metrics labels instead of the provider name.     |
+| `tool_mode`         | enum (`native`, `text`, `off`)          | `"native"`           | How tool calling is handled for this provider.                 |
+| `cache_retention`   | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
+| `policy`            | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
 
 ### `providers.<name>.models.<model_id>` — PartialModelMetadata
 
 Declare each model only as a
 `[providers.<name>.models."<raw-model-id>"]` table. The table name contains the
-provider's raw model ID. These tables form an ordered allowlist; with no model
-tables, every discovered model whose metadata resolves to a complete record is
-accepted. Configuration values take precedence field by field, provider
-`/models` discovery supplements missing fields, and optional defaults apply
-last. A model is excluded when mandatory metadata remains missing or its token
-limits/modalities/reasoning metadata are inconsistent.
+provider's raw model ID. The service configuration is the only source of model
+composition and parameters. A provider may declare no models regardless of its
+status, and provider credentials can be saved without model records. Every model
+record that is present must be complete. Invalid or incomplete metadata refuses
+service load; the registry does not exclude a problematic model to continue
+startup.
 
-| Key                       | Type                        | Default            | Description                                                        |
-| ------------------------- | --------------------------- | ------------------ | ------------------------------------------------------------------ |
-| `context_length`          | optional positive integer   | —                  | Mandatory after config and discovery are merged.                   |
-| `max_input_tokens`        | optional positive integer   | —                  | Mandatory after merge; input + output must fit the context window. |
-| `max_output_tokens`       | optional positive integer   | —                  | Mandatory after merge; input + output must fit the context window. |
-| `input_modalities`        | array of modality           | `text`, `image`    | Accepted input media; must be non-empty and unique.                |
-| `output_modalities`       | array of modality           | `text`             | Produced output media; must be non-empty and unique.               |
-| `tool_calling`            | bool                        | `true`             | Whether native tool calling is supported.                          |
-| `streaming`               | bool                        | `true`             | Whether streaming is supported.                                    |
-| `zeroDataRetentionEnabled` | bool                       | `true`             | Whether zero-data-retention operation is supported.                |
-| `reasoning`               | `PartialReasoningMetadata`  | —                  | Reasoning metadata; `supported_efforts` is mandatory after merge.  |
+| Key                         | Type                      | Required | Description                                                               |
+| --------------------------- | ------------------------- | -------- | ------------------------------------------------------------------------- |
+| `context_length`            | positive integer          | yes      | Must be greater than zero.                                                |
+| `max_input_tokens`          | positive integer          | yes      | Input plus output must not exceed `context_length`.                       |
+| `max_output_tokens`         | positive integer          | yes      | Input plus output must not exceed `context_length`.                       |
+| `input_modalities`          | array of modality         | yes      | Accepted input media; must be non-empty and unique.                       |
+| `output_modalities`         | array of modality         | yes      | Produced output media; must be non-empty and unique.                      |
+| `tool_calling`              | bool                      | yes      | Whether native tool calling is supported.                                 |
+| `streaming`                 | bool                      | yes      | Whether streaming is supported.                                           |
+| `zeroDataRetentionEnabled`  | bool                      | yes      | Whether zero-data-retention operation is supported.                       |
+| `reasoning_supported_efforts` | non-empty array of string | yes    | Provider-defined ordered values; empty strings are invalid.               |
+| `reasoning_summary`         | optional enum             | no       | `auto`, `concise`, or `detailed`.                                         |
+| `reasoning_include`         | optional array of enum    | no       | Unique `encrypted_content` values.                                        |
 
 Modalities are `text`, `image`, `audio`, `video`, and `file`.
-
-### `providers.<name>.models.<model_id>.reasoning` — PartialReasoningMetadata
-
-| Key                 | Type                      | Default                                      | Description                                                                  |
-| ------------------- | ------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------- |
-| `supported_efforts` | array of reasoning effort | —                                            | Mandatory after merge; `[]` explicitly marks a non-reasoning model.          |
-| `summary`           | optional enum             | `detailed` for reasoning models              | Metadata for reasoning-summary requests: `auto`, `concise`, or `detailed`.   |
-| `include`           | array of enum             | `reasoning.encrypted_content` when reasoning | Additional reasoning payload metadata.                                       |
-
-Supported effort values are `none`, `minimal`, `low`, `medium`, `high`,
-`xhigh`, and `max`. `summary` and `include` are metadata-only: they neither
-enable reasoning nor select an effort. They must not request reasoning options
-when `supported_efforts = []`.
+`reasoning_supported_efforts` values are preserved without filtering,
+renaming, replacement, or reordering. `off` is not required, so `["low"]` is
+valid. Exact `["off"]` is the only non-reasoning API path; `reasoning_summary`
+and `reasoning_include` are allowed in that configuration and are preserved up
+to the reasoning-policy boundary. The `reasoning_include` configuration value
+`encrypted_content` is sent to the provider as `reasoning.encrypted_content`
+when the policy returns a reasoning request.
 
 ### `providers.<name>.policy`
 

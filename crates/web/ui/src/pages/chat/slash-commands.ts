@@ -4,12 +4,13 @@ import { chatAddMsg } from "../../chat-ui";
 import { renderMarkdown, sendRpc } from "../../helpers";
 import { clearActiveSession, fetchSessions, switchSession } from "../../sessions";
 import * as S from "../../state";
+import type { ChatSendSyncRequest } from "../../types/chat";
 import { renderContextCard } from "./context-card";
 
 // ── Types ────────────────────────────────────────────────────
 
 /** Known slash command names — adding a name here requires a handler in `slashHandlers`. */
-type SlashCommandName = "btw" | "clear" | "compact" | "context" | "fast" | "fork" | "insights" | "new" | "reset";
+type SlashCommandName = "clear" | "compact" | "context" | "fast" | "fork" | "insights" | "new" | "reset";
 
 export interface SlashCommand {
 	name: SlashCommandName;
@@ -51,7 +52,6 @@ function fmtNum(n: number): string {
 // ── Slash commands list ─────────────────────────────────────
 
 export const slashCommands: SlashCommand[] = [
-	{ name: "btw", description: "Quick side question (no tools, not persisted)" },
 	{ name: "clear", description: "Clear conversation history" },
 	{ name: "compact", description: "Summarize conversation to save tokens" },
 	{ name: "context", description: "Show session context and project info" },
@@ -301,25 +301,11 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 			.catch((err: Error) => chatAddMsg("error", `Insights failed: ${err.message}`));
 	},
 
-	btw: (args) => {
-		if (!args.trim()) {
-			chatAddMsg("error", "Usage: /btw <question>");
-			return;
-		}
-		chatAddMsg("system", "Thinking\u2026");
-		sendRpc("chat.send_sync", { text: args, _ephemeral: true, _tool_policy: { deny: ["*"] } }).then((res) => {
-			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-			if (res.ok && res.payload) {
-				const text = typeof res.payload === "string" ? res.payload : (res.payload as UnknownRecord).text;
-				chatAddMsg("system", renderMarkdown(String(text || "(no response)")), true);
-			} else chatAddMsg("error", res.error?.message || "/btw failed");
-		});
-	},
-
 	fast: (args) => {
 		const arg = args.trim().toLowerCase();
 		chatAddMsg("system", `Fast mode: ${arg || "toggle"}\u2026`);
-		sendRpc("chat.send_sync", { text: `/fast ${arg}`.trim() }).then((res) => {
+		const request: ChatSendSyncRequest = { text: `/fast ${arg}`.trim() };
+		sendRpc("chat.send_sync", request).then((res) => {
 			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
 			if (res.ok && res.payload) {
 				const text = typeof res.payload === "string" ? res.payload : (res.payload as UnknownRecord).text;

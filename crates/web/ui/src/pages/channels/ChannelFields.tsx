@@ -6,7 +6,7 @@ import type { VNode } from "preact";
 
 import { models as modelsSig } from "../../stores/model-store";
 import { targetValue } from "../../typed-events";
-import { ModelSelect } from "../../ui";
+import { ComboSelect, ModelSelect } from "../../ui";
 import type { ChannelConfig } from "../ChannelsPage";
 
 // ── Advanced config patch field ──────────────────────────────
@@ -150,17 +150,88 @@ export function AllowlistInput({ value, onChange, preserveAt, placeholder, ariaL
 
 // ── Shared form fields ───────────────────────────────────────
 
+type ChannelModelConfig = Pick<ChannelConfig, "model_override" | "model_provider">;
+
+type ChannelModelSelection =
+	| { ok: true; config: ChannelModelConfig }
+	| { ok: false; error: string };
+
+export function resolveChannelModelSelection(modelId: string, reasoningEffort: string): ChannelModelSelection {
+	if (!modelId) return { ok: true, config: {} };
+	const model = modelsSig.value.find((candidate) => candidate.id === modelId);
+	if (!model) return { ok: false, error: "Selected model is no longer available." };
+	if (!reasoningEffort) return { ok: false, error: "Select a reasoning effort for the default model." };
+	if (!model.reasoning_supported_efforts.includes(reasoningEffort)) {
+		return { ok: false, error: "The selected reasoning effort is not supported by this model." };
+	}
+	return {
+		ok: true,
+		config: {
+			model_override: {
+				model: model.id,
+				reasoning_effort: reasoningEffort,
+			},
+			model_provider: model.provider,
+		},
+	};
+}
+
+interface ChannelModelFieldsProps {
+	model: Signal<string>;
+	reasoningEffort: Signal<string>;
+}
+
+export function ChannelModelFields({ model, reasoningEffort }: ChannelModelFieldsProps): VNode {
+	const selectedModel = modelsSig.value.find((candidate) => candidate.id === model.value);
+	const effortOptions = (selectedModel?.reasoning_supported_efforts || []).map((effort) => ({
+		value: effort,
+		label: effort,
+	}));
+
+	return (
+		<>
+			<span className="text-xs text-[var(--muted)]">Default Model</span>
+			<ModelSelect
+				ariaLabel="Default Model"
+				models={modelsSig.value}
+				value={model.value}
+				onChange={(modelId: string) => {
+					if (modelId !== model.value) reasoningEffort.value = "";
+					model.value = modelId;
+				}}
+				placeholder="(use agent model)"
+			/>
+			{selectedModel ? (
+				<>
+					<span className="text-xs text-[var(--muted)]">Reasoning Effort</span>
+					<ComboSelect
+						ariaLabel="Reasoning Effort"
+						options={effortOptions}
+						value={reasoningEffort.value}
+						onChange={(effort) => {
+							reasoningEffort.value = effort;
+						}}
+						placeholder="Select reasoning effort"
+						searchable={false}
+						allowEmpty={false}
+					/>
+				</>
+			) : null}
+		</>
+	);
+}
+
 interface SharedChannelFieldsProps {
 	addModel: Signal<string>;
+	addReasoningEffort: Signal<string>;
 	allowlistItems: Signal<string[]>;
 }
 
-export function SharedChannelFields({ addModel, allowlistItems }: SharedChannelFieldsProps): VNode {
-	const defaultPlaceholder =
-		modelsSig.value.length > 0
-			? `(default: ${modelsSig.value[0].display_name || modelsSig.value[0].id})`
-			: "(server default)";
-
+export function SharedChannelFields({
+	addModel,
+	addReasoningEffort,
+	allowlistItems,
+}: SharedChannelFieldsProps): VNode {
 	return (
 		<>
 			<label>
@@ -179,16 +250,7 @@ export function SharedChannelFields({ addModel, allowlistItems }: SharedChannelF
 					<option value="none">Don't respond in groups</option>
 				</select>
 			</label>
-			<span className="text-xs text-[var(--muted)]">Default Model</span>
-			<ModelSelect
-				ariaLabel="Default Model"
-				models={modelsSig.value}
-				value={addModel.value}
-				onChange={(v: string) => {
-					addModel.value = v;
-				}}
-				placeholder={defaultPlaceholder}
-			/>
+			<ChannelModelFields model={addModel} reasoningEffort={addReasoningEffort} />
 			<span className="text-xs text-[var(--muted)]">DM Allowlist</span>
 			<AllowlistInput
 				ariaLabel="DM Allowlist"

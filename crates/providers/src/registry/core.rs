@@ -11,7 +11,7 @@ use {
         ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, ReasoningEffort,
         StreamEvent, ToolChoice,
     },
-    chelix_common::{ModelMetadata, ModelModality},
+    chelix_common::{ModelMetadata, ModelModality, ResolvedModelReasoningError},
     tokio_stream::Stream,
 };
 
@@ -19,6 +19,64 @@ use crate::{
     model_capabilities::ModelInfo,
     model_id::{namespaced_model_id, raw_model_id},
 };
+
+use super::ResolvedModelReasoning;
+
+/// Runtime provider resolved from one validated model/reasoning pair.
+#[derive(Clone)]
+pub struct ResolvedModel {
+    model_reasoning: ResolvedModelReasoning,
+    provider: Arc<dyn LlmProvider>,
+}
+
+impl ResolvedModel {
+    /// Validated canonical model/reasoning pair.
+    #[must_use]
+    pub const fn model_reasoning(&self) -> &ResolvedModelReasoning {
+        &self.model_reasoning
+    }
+
+    /// Provider configured with the validated reasoning effort.
+    #[must_use]
+    pub const fn provider(&self) -> &Arc<dyn LlmProvider> {
+        &self.provider
+    }
+}
+
+/// Semantic errors returned by strict model/reasoning resolution.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ModelResolutionError {
+    #[error("model is required")]
+    MissingModel,
+    #[error("model `{model_id}` is not registered")]
+    UnknownModel { model_id: String },
+    #[error("model ID `{model_id}` is not canonical; use `{canonical_model_id}`")]
+    NonCanonicalModelId {
+        model_id: String,
+        canonical_model_id: String,
+    },
+    #[error("raw model ID `{model_id}` is ambiguous; use one of {canonical_model_ids:?}")]
+    AmbiguousModelId {
+        model_id: String,
+        canonical_model_ids: Vec<String>,
+    },
+    #[error("reasoning effort is required for model `{model_id}`")]
+    MissingReasoningEffort { model_id: String },
+    #[error("reasoning effort must not be empty for model `{model_id}`")]
+    EmptyReasoningEffort { model_id: String },
+    #[error("model `{model_id}` does not support reasoning effort `{reasoning_effort}`")]
+    UnsupportedReasoningEffort {
+        model_id: String,
+        reasoning_effort: String,
+    },
+    #[error(
+        "provider for model `{model_id}` could not apply reasoning effort `{reasoning_effort}`"
+    )]
+    ReasoningEffortApplicationFailed {
+        model_id: String,
+        reasoning_effort: String,
+    },
+}
 
 struct RegistryModelProvider {
     model_id: String,
@@ -112,7 +170,7 @@ impl LlmProvider for RegistryModelProvider {
         self: Arc<Self>,
         effort: ReasoningEffort,
     ) -> Option<Arc<dyn LlmProvider>> {
-        if !self.metadata.reasoning.supported_efforts.contains(&effort) {
+        if !self.metadata.reasoning_supported_efforts.contains(&effort) {
             return None;
         }
         let new_inner = Arc::clone(&self.inner).with_reasoning_effort(effort)?;
@@ -144,22 +202,34 @@ impl ProviderRegistry {
             .contains_key(&namespaced_model_id(provider, model_id))
     }
 
-    pub(crate) fn resolve_registry_model_id(
-        &self,
-        model_id: &str,
-        provider_hint: Option<&str>,
-    ) -> Option<String> {
-        if self.providers.contains_key(model_id) {
-            return Some(model_id.to_string());
+    fn model_lookup_error(&self, model_id: &str) -> ModelResolutionError {
+        if raw_model_id(model_id) != model_id {
+            return ModelResolutionError::UnknownModel {
+                model_id: model_id.to_string(),
+            };
         }
 
-        let raw = raw_model_id(model_id);
-        self.models
+        let mut canonical_model_ids = self
+            .models
             .iter()
-            .filter(|model| raw_model_id(&model.id) == raw)
-            .filter(|model| provider_hint.is_none_or(|hint| model.provider == hint))
+            .filter(|model| raw_model_id(&model.id) == model_id)
             .map(|model| model.id.clone())
-            .next()
+            .collect::<Vec<_>>();
+        canonical_model_ids.sort();
+
+        match canonical_model_ids.as_slice() {
+            [] => ModelResolutionError::UnknownModel {
+                model_id: model_id.to_string(),
+            },
+            [canonical_model_id] => ModelResolutionError::NonCanonicalModelId {
+                model_id: model_id.to_string(),
+                canonical_model_id: canonical_model_id.clone(),
+            },
+            _ => ModelResolutionError::AmbiguousModelId {
+                model_id: model_id.to_string(),
+                canonical_model_ids,
+            },
+        }
     }
 
     /// Register one fully resolved model and its wire transport.
@@ -176,67 +246,78 @@ impl ProviderRegistry {
         self.models.push(info);
     }
 
-    /// Remove one model. Returns whether it was registered.
+    /// Remove one exact canonical model key. Returns whether it was registered.
     pub fn unregister(&mut self, model_id: &str) -> bool {
-        let resolved_id = self.resolve_registry_model_id(model_id, None);
-        let removed = resolved_id
-            .as_deref()
-            .and_then(|id| self.providers.remove(id))
-            .is_some();
-        if removed && let Some(id) = resolved_id {
-            self.models.retain(|model| model.id != id);
+        let removed = self.providers.remove(model_id).is_some();
+        if removed {
+            self.models.retain(|model| model.id != model_id);
         }
         removed
     }
 
-    pub(crate) fn remove_provider(&mut self, provider_name: &str) {
-        let model_ids: HashSet<String> = self
+    /// Return the provider registered under one exact canonical model key.
+    pub fn get(&self, model_id: &str) -> Option<Arc<dyn LlmProvider>> {
+        self.providers.get(model_id).cloned()
+    }
+
+    /// Resolve and apply one complete model/reasoning selection.
+    pub fn resolve_model_reasoning(
+        &self,
+        model_id: Option<&str>,
+        reasoning_effort: Option<&ReasoningEffort>,
+    ) -> Result<ResolvedModel, ModelResolutionError> {
+        let model_id = model_id.ok_or(ModelResolutionError::MissingModel)?;
+        let model = self
             .models
             .iter()
-            .filter(|model| model.provider == provider_name)
-            .map(|model| model.id.clone())
-            .collect();
-        self.models.retain(|model| model.provider != provider_name);
-        self.providers
-            .retain(|model_id, _| !model_ids.contains(model_id));
-    }
-
-    pub fn get(&self, model_id: &str) -> Option<Arc<dyn LlmProvider>> {
-        self.resolve_registry_model_id(model_id, None)
-            .as_deref()
-            .and_then(|id| self.providers.get(id))
+            .find(|model| model.id == model_id)
+            .ok_or_else(|| self.model_lookup_error(model_id))?;
+        let provider = self
+            .providers
+            .get(model_id)
             .cloned()
-    }
+            .ok_or_else(|| self.model_lookup_error(model_id))?;
 
-    pub fn first(&self) -> Option<Arc<dyn LlmProvider>> {
-        self.models
-            .first()
-            .and_then(|model| self.providers.get(&model.id))
-            .cloned()
-    }
+        let effort =
+            reasoning_effort.ok_or_else(|| ModelResolutionError::MissingReasoningEffort {
+                model_id: model.id.clone(),
+            })?;
+        let model_reasoning = ResolvedModelReasoning::try_new(model.id.clone(), effort.clone())
+            .map_err(|error| match error {
+                ResolvedModelReasoningError::EmptyModelId => ModelResolutionError::UnknownModel {
+                    model_id: model.id.clone(),
+                },
+                ResolvedModelReasoningError::EmptyReasoningEffort => {
+                    ModelResolutionError::EmptyReasoningEffort {
+                        model_id: model.id.clone(),
+                    }
+                },
+            })?;
+        if !model
+            .metadata
+            .reasoning_supported_efforts
+            .contains(model_reasoning.reasoning_effort())
+        {
+            return Err(ModelResolutionError::UnsupportedReasoningEffort {
+                model_id: model.id.clone(),
+                reasoning_effort: model_reasoning.reasoning_effort().as_str().to_string(),
+            });
+        }
+        let provider = Arc::clone(&provider)
+            .with_reasoning_effort(model_reasoning.reasoning_effort().clone())
+            .ok_or_else(|| ModelResolutionError::ReasoningEffortApplicationFailed {
+                model_id: model.id.clone(),
+                reasoning_effort: model_reasoning.reasoning_effort().as_str().to_string(),
+            })?;
 
-    /// Return the first provider that can run tools with its configured tool mode.
-    pub fn first_with_tools(&self) -> Option<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .filter_map(|model| self.providers.get(&model.id))
-            .find(|provider| match provider.tool_mode() {
-                chelix_config::ToolMode::Native => provider.supports_tools(),
-                chelix_config::ToolMode::Text => true,
-                chelix_config::ToolMode::Off => false,
-            })
-            .cloned()
+        Ok(ResolvedModel {
+            model_reasoning,
+            provider,
+        })
     }
 
     pub fn list_models(&self) -> &[ModelInfo] {
         &self.models
-    }
-
-    pub fn all_providers(&self) -> Vec<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .filter_map(|model| self.providers.get(&model.id).cloned())
-            .collect()
     }
 
     #[must_use]

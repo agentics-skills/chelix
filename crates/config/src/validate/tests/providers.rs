@@ -175,6 +175,8 @@ default = "main"
 
 [agents.main]
 name = "Chelix"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 
 [env]
@@ -251,25 +253,6 @@ tool_mode = "text"
     assert!(
         unknown.is_none(),
         "tool_mode should be a known field, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn url_field_accepted_in_provider_entry() {
-    let toml = r#"
-[providers.openrouter]
-enabled = true
-url = "http://192.168.0.9:11434"
-"#;
-    let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("providers.openrouter.url"));
-    assert!(
-        unknown.is_none(),
-        "url should be accepted as a provider field alias, got: {:?}",
         result.diagnostics
     );
 }

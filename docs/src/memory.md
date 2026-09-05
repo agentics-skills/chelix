@@ -344,10 +344,12 @@ affected file so the new content is immediately searchable via `memory_search`.
 
 ### memory_forget
 
-Forget saved memory using natural language. This tool searches memory, asks the
-configured LLM to choose which chunk or chunks match the forget request, then
+Forget saved memory using natural language. The tool uses the persisted canonical
+model and reasoning-effort pair of the current session, searches memory, asks that
+exact provider to choose which chunk or chunks match the forget request, then
 deletes the exact stored text through the same deterministic file mutation path
-used by `memory_delete`.
+used by `memory_delete`. A missing session or invalid persisted pair is returned as
+an error instead of selecting another provider.
 
 ```json
 {
@@ -366,7 +368,7 @@ mutating files.
 | --------- | ------- | ------------ | ------------------------------------------------------------ |
 | `request` | string  | _(required)_ | Natural-language description of what saved memory to forget  |
 | `dry_run` | boolean | `false`      | Preview planned deletions without mutating files             |
-| `limit`   | integer | `6`          | Maximum number of candidate chunks inspected before planning |
+| `limit`   | integer | `6`          | Maximum candidate chunks inspected; accepted range is `1`–`12` |
 
 Use `memory_forget` for normal "forget X" requests. Use `memory_delete` only
 when you already know the exact file and exact snippet to remove.

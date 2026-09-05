@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub use chelix_common::{ModelOverride, ToolPolicy};
+
 // ── Webhook definition ──────────────────────────────────────────────────
 
 /// A configured generic webhook endpoint.
@@ -17,9 +19,9 @@ pub struct Webhook {
     /// Agent preset to run for each delivery.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
-    /// Optional model override.
+    /// Optional complete canonical model/reasoning override.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverride>,
     /// Extra text appended to the agent system prompt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt_suffix: Option<String>,
@@ -102,7 +104,7 @@ impl Webhook {
 
 /// Input for creating a new webhook.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WebhookCreate {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,7 +112,7 @@ pub struct WebhookCreate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverride>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt_suffix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,7 +149,7 @@ pub struct WebhookCreate {
 
 /// Input for patching a webhook.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WebhookPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -157,8 +159,12 @@ pub struct WebhookPatch {
     pub enabled: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<Option<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub model_override: Option<Option<ModelOverride>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt_suffix: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -219,19 +225,9 @@ pub enum SessionMode {
     NamedSession,
 }
 
-/// Tool allow/deny policy.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolPolicy {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allow: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deny: Vec<String>,
-}
-
 /// Event type filter.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EventFilter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allow: Vec<String>,
@@ -357,6 +353,14 @@ pub struct ProfileSummary {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<T>::deserialize(deserializer)?))
+}
+
 fn default_true() -> bool {
     true
 }
@@ -461,7 +465,10 @@ mod tests {
             name: "GitHub PR Hook".into(),
             description: Some("Reviews PRs".into()),
             agent_id: Some("code-reviewer".into()),
-            model: None,
+            model_override: Some(ModelOverride {
+                model: "openai::gpt-5.2".into(),
+                reasoning_effort: "high".into(),
+            }),
             system_prompt_suffix: None,
             tool_policy: None,
             auth_mode: AuthMode::GithubHmacSha256,
@@ -486,5 +493,87 @@ mod tests {
         let roundtrip: WebhookCreate = serde_json::from_value(json).unwrap();
         assert_eq!(roundtrip.name, "GitHub PR Hook");
         assert_eq!(roundtrip.auth_mode, AuthMode::GithubHmacSha256);
+        assert_eq!(roundtrip.model_override, create.model_override);
+    }
+
+    #[test]
+    fn webhook_create_rejects_invalid_model_override_shapes() {
+        for model_override in [
+            serde_json::json!({ "model": "openai::gpt-5.2" }),
+            serde_json::json!({ "reasoningEffort": "high" }),
+            serde_json::json!({
+                "model": "openai::gpt-5.2",
+                "reasoningEffort": "high",
+                "extra": true
+            }),
+        ] {
+            let result = serde_json::from_value::<WebhookCreate>(serde_json::json!({
+                "name": "hook",
+                "modelOverride": model_override
+            }));
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn webhook_create_rejects_an_additional_field() {
+        let result = serde_json::from_value::<WebhookCreate>(serde_json::json!({
+            "name": "hook",
+            "extra": true
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn webhook_patch_distinguishes_omitted_cleared_and_complete_model_override() {
+        let omitted = serde_json::from_value::<WebhookPatch>(serde_json::json!({})).unwrap();
+        assert_eq!(omitted.model_override, None);
+
+        let cleared = serde_json::from_value::<WebhookPatch>(serde_json::json!({
+            "modelOverride": null
+        }))
+        .unwrap();
+        assert_eq!(cleared.model_override, Some(None));
+
+        let complete = serde_json::from_value::<WebhookPatch>(serde_json::json!({
+            "modelOverride": {
+                "model": "openai::gpt-5.2",
+                "reasoningEffort": "high"
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            complete.model_override,
+            Some(Some(ModelOverride {
+                model: "openai::gpt-5.2".into(),
+                reasoning_effort: "high".into(),
+            }))
+        );
+    }
+
+    #[test]
+    fn webhook_patch_rejects_invalid_model_override_shapes() {
+        for model_override in [
+            serde_json::json!({ "model": "openai::gpt-5.2" }),
+            serde_json::json!({ "reasoningEffort": "high" }),
+            serde_json::json!({
+                "model": "openai::gpt-5.2",
+                "reasoningEffort": "high",
+                "extra": true
+            }),
+        ] {
+            let result = serde_json::from_value::<WebhookPatch>(serde_json::json!({
+                "modelOverride": model_override
+            }));
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn webhook_patch_rejects_an_additional_field() {
+        let result = serde_json::from_value::<WebhookPatch>(serde_json::json!({
+            "extra": true
+        }));
+        assert!(result.is_err());
     }
 }

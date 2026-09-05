@@ -99,9 +99,9 @@ mod tests {
             snippet.contains("usage_hint: \"[on | off]\""),
             "manifest should include /fast choices in usage_hint"
         );
-        // /model has a free-form arg, so usage_hint should show description.
+        // /model has a free-form selection, so usage_hint should show its description.
         assert!(
-            snippet.contains("usage_hint: \"[Model name or provider:model]\""),
+            snippet.contains("usage_hint: \"[Model number and reasoning effort]\""),
             "manifest should include /model arg description in usage_hint"
         );
         // /new has no arg, so usage_hint should be empty.

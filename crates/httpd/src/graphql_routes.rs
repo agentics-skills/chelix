@@ -18,9 +18,15 @@ use {
     serde_json::Value,
 };
 
-use chelix_gateway::{
-    services::{ChatService, ServiceResult},
-    state::GatewayState,
+use {
+    chelix_gateway::{
+        services::{ChatService, ServiceResult},
+        state::GatewayState,
+    },
+    chelix_service_traits::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest,
+    },
 };
 
 use crate::server::AppState;
@@ -44,24 +50,34 @@ pub struct GraphqlChatServiceProxy {
 
 #[async_trait]
 impl ChatService for GraphqlChatServiceProxy {
-    async fn send(&self, params: Value) -> ServiceResult {
-        self.state.chat().send(params).await
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult {
+        self.state.chat().send(request, context).await
     }
 
-    async fn send_sync(&self, params: Value) -> ServiceResult {
-        self.state.chat().send_sync(params).await
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().send_sync(request, context).await
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
         self.state.chat().abort(params).await
     }
 
-    async fn prompt_queue_list(&self, params: Value) -> ServiceResult {
-        self.state.chat().prompt_queue_list(params).await
+    async fn queued_prompts_status(
+        &self,
+        session_id: chelix_sessions::SessionKey,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        self.state.chat().queued_prompts_status(session_id).await
     }
 
-    async fn prompt_queue_cancel(&self, params: Value) -> ServiceResult {
-        self.state.chat().prompt_queue_cancel(params).await
+    async fn queued_prompts_remove(
+        &self,
+        id: i64,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        self.state.chat().queued_prompts_remove(id).await
     }
 
     async fn history(&self, params: Value) -> ServiceResult {
@@ -76,20 +92,36 @@ impl ChatService for GraphqlChatServiceProxy {
         self.state.chat().clear(params).await
     }
 
-    async fn compact(&self, params: Value) -> ServiceResult {
-        self.state.chat().compact(params).await
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().compact(request, context).await
     }
 
-    async fn context(&self, params: Value) -> ServiceResult {
-        self.state.chat().context(params).await
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().context(request, context).await
     }
 
-    async fn raw_prompt(&self, params: Value) -> ServiceResult {
-        self.state.chat().raw_prompt(params).await
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().raw_prompt(request, context).await
     }
 
-    async fn full_context(&self, params: Value) -> ServiceResult {
-        self.state.chat().full_context(params).await
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.state.chat().full_context(request, context).await
     }
 
     async fn active(&self, params: Value) -> ServiceResult {

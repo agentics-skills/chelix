@@ -1,6 +1,8 @@
 use {
     super::types::ToolCall,
-    chelix_common::{ProviderOutputItem, ProviderSegmentId, ReasoningContent},
+    chelix_common::{
+        ProviderOutputItem, ProviderOutputPayload, ProviderSegmentId, ReasoningContent,
+    },
 };
 
 // ── Typed chat messages ─────────────────────────────────────────────────────
@@ -232,15 +234,32 @@ impl ChatMessage {
             ChatMessage::Assistant {
                 content,
                 tool_calls,
+                provider_items,
                 ..
             } => {
-                if tool_calls.is_empty() {
-                    serde_json::json!({
-                        "role": "assistant",
-                        "content": content.as_deref().unwrap_or(""),
+                let canonical_tool_calls: Vec<serde_json::Value> = provider_items
+                    .iter()
+                    .filter_map(|item| {
+                        let ProviderOutputPayload::FunctionCall {
+                            call_id,
+                            name,
+                            arguments,
+                        } = &item.payload
+                        else {
+                            return None;
+                        };
+                        Some(serde_json::json!({
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "arguments": arguments,
+                            }
+                        }))
                     })
-                } else {
-                    let tc_json: Vec<serde_json::Value> = tool_calls
+                    .collect();
+                let tc_json = if canonical_tool_calls.is_empty() {
+                    tool_calls
                         .iter()
                         .map(|tc| {
                             serde_json::json!({
@@ -252,7 +271,16 @@ impl ChatMessage {
                                 }
                             })
                         })
-                        .collect();
+                        .collect()
+                } else {
+                    canonical_tool_calls
+                };
+                if tc_json.is_empty() {
+                    serde_json::json!({
+                        "role": "assistant",
+                        "content": content.as_deref().unwrap_or(""),
+                    })
+                } else {
                     let mut msg = serde_json::json!({
                         "role": "assistant",
                         "tool_calls": tc_json,

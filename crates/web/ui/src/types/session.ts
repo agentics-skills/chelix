@@ -17,8 +17,8 @@ export interface SessionMeta {
 	id: number;
 	key: string;
 	label?: string;
-	model?: string;
-	reasoningEffort?: string;
+	model?: string | null;
+	reasoningEffort?: string | null;
 	provider?: string;
 	createdAt?: number;
 	updatedAt?: number;
@@ -47,6 +47,20 @@ export interface SessionMeta {
 	_replying?: boolean;
 	/** Legacy client-side flag. */
 	replying?: boolean;
+}
+
+/** Complete model/reasoning selection persisted for a session. */
+export interface SessionModelSelection {
+	model: string;
+	reasoningEffort: string;
+}
+
+/** Authoritative session state returned by `sessions.patch`. */
+export interface SessionPatchPayload {
+	key: string;
+	model: string | null;
+	reasoningEffort: string | null;
+	version: number;
 }
 
 /** Authoritative session settings returned after assigning an agent. */

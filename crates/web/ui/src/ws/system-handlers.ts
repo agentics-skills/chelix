@@ -89,10 +89,7 @@ export function handleAuthCredentialsChanged(payload: AuthCredentialsPayload): v
 }
 
 let modelsUpdatedTimer: ReturnType<typeof setTimeout> | null = null;
-export function handleModelsUpdated(payload: ModelsUpdatedPayload): void {
-	// Progress/status frames are consumed directly by the Providers page.
-	// Avoid spamming model refresh requests while a probe is running.
-	if (payload?.phase === "start" || payload?.phase === "progress") return;
+export function handleModelsUpdated(_payload: ModelsUpdatedPayload): void {
 	if (modelsUpdatedTimer) return;
 	modelsUpdatedTimer = setTimeout(() => {
 		modelsUpdatedTimer = null;

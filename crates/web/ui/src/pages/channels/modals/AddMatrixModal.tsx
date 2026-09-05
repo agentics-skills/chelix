@@ -22,12 +22,16 @@ import {
 	validateChannelFields,
 } from "../../../channel-utils";
 import { sendRpc } from "../../../helpers";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetChecked, targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
-import { Modal, ModelSelect } from "../../../ui";
+import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddMatrix } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, AllowlistInput } from "../ChannelFields";
+import {
+	AdvancedConfigPatchField,
+	AllowlistInput,
+	ChannelModelFields,
+	resolveChannelModelSelection,
+} from "../ChannelFields";
 
 interface MatrixDraft {
 	authMode: string;
@@ -38,6 +42,7 @@ interface MatrixDraft {
 	deviceDisplayName: string;
 	ownershipMode: string;
 	modelId: string;
+	reasoningEffort: string;
 }
 
 interface MatrixOidcStartResponse {
@@ -55,12 +60,6 @@ function formSelectValue(form: HTMLElement, field: string): string {
 	return (form.querySelector(`[data-field=${field}]`) as HTMLSelectElement).value;
 }
 
-function selectedMatrixModelConfig(modelId: string): Pick<ChannelConfig, "model" | "model_provider"> {
-	if (!modelId) return {};
-	const provider = modelsSig.value.find((model) => model.id === modelId)?.provider;
-	return provider ? { model: modelId, model_provider: provider } : { model: modelId };
-}
-
 function matrixBaseConfig(
 	form: HTMLElement,
 	draft: MatrixDraft,
@@ -68,6 +67,7 @@ function matrixBaseConfig(
 	roomAllowlist: string[],
 	otpSelfApproval: boolean,
 	otpCooldown: string,
+	modelConfig: Pick<ChannelConfig, "model_override" | "model_provider">,
 ): ChannelConfig {
 	return {
 		homeserver: draft.homeserver,
@@ -81,7 +81,7 @@ function matrixBaseConfig(
 		room_allowlist: roomAllowlist,
 		otp_self_approval: otpSelfApproval,
 		otp_cooldown_secs: normalizeMatrixOtpCooldown(otpCooldown),
-		...selectedMatrixModelConfig(draft.modelId),
+		...modelConfig,
 	};
 }
 
@@ -103,15 +103,11 @@ function matrixAddConfig(base: ChannelConfig, draft: MatrixDraft): ChannelConfig
 	return config;
 }
 
-function defaultModelPlaceholder(): string {
-	const defaultModel = modelsSig.value[0];
-	return defaultModel ? `(default: ${defaultModel.display_name || defaultModel.id})` : "(server default)";
-}
-
 export function AddMatrixModal(): VNode {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const addModel = useSignal("");
+	const addReasoningEffort = useSignal("");
 	const userAllowlistItems = useSignal<string[]>([]);
 	const roomAllowlistItems = useSignal<string[]>([]);
 	const homeserverDraft = useSignal(MATRIX_DEFAULT_HOMESERVER);
@@ -132,6 +128,7 @@ export function AddMatrixModal(): VNode {
 			oidcPollRef.current = null;
 		}
 		addModel.value = "";
+		addReasoningEffort.value = "";
 		userAllowlistItems.value = [];
 		roomAllowlistItems.value = [];
 		homeserverDraft.value = MATRIX_DEFAULT_HOMESERVER;
@@ -221,6 +218,7 @@ export function AddMatrixModal(): VNode {
 			deviceDisplayName: deviceDisplayNameDraft.value.trim(),
 			ownershipMode: ownershipModeDraft.value,
 			modelId: addModel.value,
+			reasoningEffort: addReasoningEffort.value,
 		};
 		const validationError = matrixDraftError(draft);
 		if (validationError) {
@@ -230,6 +228,11 @@ export function AddMatrixModal(): VNode {
 		const advancedPatch = parseChannelConfigPatch(advancedConfigPatch.value);
 		if (!advancedPatch.ok) {
 			error.value = advancedPatch.error;
+			return;
+		}
+		const modelSelection = resolveChannelModelSelection(draft.modelId, draft.reasoningEffort);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
 			return;
 		}
 		error.value = "";
@@ -242,6 +245,7 @@ export function AddMatrixModal(): VNode {
 			roomAllowlistItems.value,
 			otpSelfApprovalDraft.value,
 			otpCooldownDraft.value,
+			modelSelection.config,
 		);
 		if (draft.deviceDisplayName) baseConfig.device_display_name = draft.deviceDisplayName;
 		Object.assign(baseConfig, advancedPatch.value);
@@ -259,8 +263,6 @@ export function AddMatrixModal(): VNode {
 		const addConfig = matrixAddConfig(baseConfig, draft);
 		addChannel(ChannelType.Matrix, draft.accountId, addConfig).then(handleMatrixAdd);
 	}
-
-	const defaultPlaceholder = defaultModelPlaceholder();
 
 	return (
 		<Modal
@@ -474,16 +476,7 @@ export function AddMatrixModal(): VNode {
 				<div className="text-xs text-[var(--muted)]">
 					With DM policy on allowlist, unknown users get a 6-digit PIN challenge by default.
 				</div>
-				<span className="text-xs text-[var(--muted)]">Default Model</span>
-				<ModelSelect
-					ariaLabel="Default Model"
-					models={modelsSig.value}
-					value={addModel.value}
-					onChange={(v: string) => {
-						addModel.value = v;
-					}}
-					placeholder={defaultPlaceholder}
-				/>
+				<ChannelModelFields model={addModel} reasoningEffort={addReasoningEffort} />
 				<span className="text-xs text-[var(--muted)]">DM Allowlist (Matrix user IDs)</span>
 				<AllowlistInput
 					ariaLabel="DM Allowlist (Matrix user IDs)"

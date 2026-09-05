@@ -10,7 +10,7 @@ import { refresh as refreshGon } from "../gon";
 import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
 import { models as modelsSig } from "../stores/model-store";
-import type { CronJob, CronPayload, CronSchedule } from "../types/gon";
+import type { ConfigModelOverride, CronJob, CronPayload, CronSchedule } from "../types/gon";
 import { ComboSelect, ConfirmDialog, Modal, ModelSelect, requestConfirm } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ interface CronStatusInfo {
 interface HeartbeatConfig {
 	enabled?: boolean;
 	every?: string;
-	model?: string;
+	model_override?: ConfigModelOverride;
 	prompt?: string;
 	ack_max_chars?: number;
 	deliver?: boolean;
@@ -79,7 +79,11 @@ const heartbeatSaving = signal(false);
 const heartbeatRunning = signal(false);
 const heartbeatConfig = signal<HeartbeatConfig>((gon.get("heartbeat_config") as HeartbeatConfig | null) || {});
 const channelAccounts = signal<ChannelAccount[]>([]);
-const heartbeatModel = signal((gon.get("heartbeat_config") as HeartbeatConfig | null)?.model || "");
+const heartbeatModel = signal((gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.model || "");
+const heartbeatReasoningEffort = signal(
+	(gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.reasoning_effort || "",
+);
+const heartbeatError = signal("");
 function loadChannelAccounts(): void {
 	fetchChannelStatus().then((res: unknown) => {
 		const r = res as { ok?: boolean; payload?: { channels?: ChannelAccount[] } } | null;
@@ -204,10 +208,21 @@ function HeartbeatJobStatus({ job }: { job: CronJob | null }): VNode | null {
 	);
 }
 
-function defaultModelPlaceholder(): string {
-	if (!modelsSig.value.length) return "(server default)";
-	const m = modelsSig.value[0] as unknown as { displayName?: string; id: string };
-	return `(default: ${m.displayName || m.id})`;
+function modelOverrideSelectionError(modelId: string, reasoningEffort: string): string | null {
+	if (!modelId && !reasoningEffort) return null;
+	if (!modelId) return "Select a model or clear the reasoning effort.";
+	if (!reasoningEffort) return "Select a reasoning effort for the selected model.";
+	const model = modelsSig.value.find((candidate) => candidate.id === modelId);
+	if (!model) return "The selected model is no longer available.";
+	if (!model.reasoning_supported_efforts.includes(reasoningEffort)) {
+		return "The selected reasoning effort is not supported by this model.";
+	}
+	return null;
+}
+
+function reasoningEffortOptions(modelId: string): Array<{ value: string; label: string }> {
+	const model = modelsSig.value.find((candidate) => candidate.id === modelId);
+	return (model?.reasoning_supported_efforts || []).map((effort) => ({ value: effort, label: effort }));
 }
 
 const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -221,7 +236,13 @@ function collectHeartbeatForm(form: Element): HeartbeatConfig {
 	return {
 		enabled: (form.querySelector("[data-hb=enabled]") as HTMLInputElement).checked,
 		every: (form.querySelector("[data-hb=every]") as HTMLInputElement).value.trim() || "30m",
-		model: heartbeatModel.value || undefined,
+		model_override:
+			heartbeatModel.value && heartbeatReasoningEffort.value
+				? {
+						model: heartbeatModel.value,
+						reasoning_effort: heartbeatReasoningEffort.value,
+					}
+				: undefined,
 		prompt: (form.querySelector("[data-hb=prompt]") as HTMLTextAreaElement).value.trim() || undefined,
 		ack_max_chars: parseInt((form.querySelector("[data-hb=ackMax]") as HTMLInputElement).value, 10) || 300,
 		deliver: (form.querySelector("[data-hb=deliver]") as HTMLInputElement).checked,
@@ -252,21 +273,31 @@ function HeartbeatSection(): VNode {
 	const promptSource = heartbeatStatus.value?.promptSource || "default";
 	const job = findHeartbeatJob();
 	const runBlockedReason = heartbeatRunBlockedReason(cfg, promptSource, job);
+	const heartbeatEffortOptions = reasoningEffortOptions(heartbeatModel.value);
 
 	function onSave(e: TargetedSubmitEvent<HTMLFormElement>): void {
 		e.preventDefault();
+		const modelError = modelOverrideSelectionError(heartbeatModel.value, heartbeatReasoningEffort.value);
+		if (modelError) {
+			heartbeatError.value = modelError;
+			return;
+		}
 		const updated = collectHeartbeatForm(e.currentTarget);
+		heartbeatError.value = "";
 		heartbeatSaving.value = true;
 		sendRpc("heartbeat.update", updated).then((res) => {
 			heartbeatSaving.value = false;
-			if (res?.ok) {
-				heartbeatConfig.value = updated;
-				heartbeatModel.value = updated.model || "";
-				refreshGon();
-				loadHeartbeatStatus();
-				loadJobs();
-				loadStatus();
+			if (!res?.ok) {
+				heartbeatError.value = res?.error?.message || "Failed to save heartbeat settings.";
+				return;
 			}
+			heartbeatConfig.value = updated;
+			heartbeatModel.value = updated.model_override?.model || "";
+			heartbeatReasoningEffort.value = updated.model_override?.reasoning_effort || "";
+			refreshGon();
+			loadHeartbeatStatus();
+			loadJobs();
+			loadStatus();
 		});
 	}
 
@@ -324,6 +355,7 @@ function HeartbeatSection(): VNode {
 			<p className="text-sm text-[var(--muted)] mb-4">
 				Periodic AI check-in that monitors your environment and reports status.
 			</p>
+			{heartbeatError.value && <div className="text-xs text-[var(--error)] mb-4">{heartbeatError.value}</div>}
 			{runBlockedReason && (
 				<div className="alert-info-text max-w-form mb-4">
 					<span className="alert-label-info">Heartbeat inactive:</span> {runBlockedReason}
@@ -348,11 +380,28 @@ function HeartbeatSection(): VNode {
 							models={modelsSig.value}
 							value={heartbeatModel.value}
 							onChange={(v: string) => {
+								if (v !== heartbeatModel.value) heartbeatReasoningEffort.value = "";
 								heartbeatModel.value = v;
+								heartbeatError.value = "";
 							}}
-							placeholder={defaultModelPlaceholder()}
+							placeholder="(use agent model)"
 						/>
 					</div>
+					{heartbeatModel.value && (
+						<div>
+							<span className="block text-xs text-[var(--muted)] mb-1">Reasoning Effort</span>
+							<ComboSelect
+								ariaLabel="Heartbeat Reasoning Effort"
+								options={heartbeatEffortOptions}
+								value={heartbeatReasoningEffort.value}
+								onChange={(value: string) => {
+									heartbeatReasoningEffort.value = value;
+									heartbeatError.value = "";
+								}}
+								placeholder="Select reasoning effort"
+							/>
+						</div>
+					)}
 				</div>
 			</div>
 
@@ -530,7 +579,7 @@ function StatusBar(): VNode {
 }
 
 function CronJobRow({ job }: { job: CronJob }): VNode {
-	const modelLabel = job.payload.kind === "agentTurn" ? job.payload.model || "default" : "\u2014";
+	const modelLabel = job.payload.kind === "agentTurn" ? job.payload.modelOverride?.model || "agent model" : "\u2014";
 	const deliveryLabel =
 		job.payload.kind === "agentTurn" && job.payload.deliver && job.payload.channel
 			? `\u2192 ${job.payload.channel}`
@@ -699,6 +748,7 @@ function parseScheduleFromForm(
 interface CronModalDraft {
 	schedKind: string;
 	jobModel: string;
+	jobReasoningEffort: string;
 	jobName: string;
 	payloadKind: string;
 	sessionTarget: string;
@@ -723,12 +773,15 @@ interface CronJobFields {
 	enabled: boolean;
 }
 
-type CronSaveCommand = { ok: true; fields: CronJobFields } | { ok: false; errorField: string };
+type CronSaveCommand =
+	| { ok: true; fields: CronJobFields }
+	| { ok: false; errorField: string; error?: string };
 
 function emptyCronModalDraft(): CronModalDraft {
 	return {
 		schedKind: "cron",
 		jobModel: "",
+		jobReasoningEffort: "",
 		jobName: "",
 		payloadKind: "systemEvent",
 		sessionTarget: "main",
@@ -750,7 +803,8 @@ function cronModalDraft(job: CronJob | null): CronModalDraft {
 	const agentPayload = job.payload.kind === "agentTurn" ? job.payload : null;
 	return {
 		schedKind: job.schedule.kind,
-		jobModel: agentPayload?.model || "",
+		jobModel: agentPayload?.modelOverride?.model || "",
+		jobReasoningEffort: agentPayload?.modelOverride?.reasoningEffort || "",
 		jobName: job.name,
 		payloadKind: job.payload.kind,
 		sessionTarget: job.sessionTarget || "main",
@@ -772,7 +826,12 @@ function agentTurnPayload(draft: CronModalDraft, message: string): CronPayload {
 	if (draft.deliverToChannel && draft.deliverChannel) payload.channel = draft.deliverChannel;
 	const recipient = draft.deliverTo.trim();
 	if (draft.deliverToChannel && recipient) payload.to = recipient;
-	if (draft.jobModel) payload.model = draft.jobModel;
+	if (draft.jobModel) {
+		payload.modelOverride = {
+			model: draft.jobModel,
+			reasoningEffort: draft.jobReasoningEffort,
+		};
+	}
 	return payload;
 }
 
@@ -783,6 +842,10 @@ function cronSaveCommand(draft: CronModalDraft): CronSaveCommand {
 	if (!parsedSchedule.schedule) return { ok: false, errorField: parsedSchedule.error || "cron" };
 	const message = draft.messageText.trim();
 	if (!message) return { ok: false, errorField: "message" };
+	if (draft.payloadKind === "agentTurn") {
+		const modelError = modelOverrideSelectionError(draft.jobModel, draft.jobReasoningEffort);
+		if (modelError) return { ok: false, errorField: "modelOverride", error: modelError };
+	}
 	const payload: CronPayload =
 		draft.payloadKind === "systemEvent" ? { kind: "systemEvent", text: message } : agentTurnPayload(draft, message);
 	return {
@@ -804,7 +867,9 @@ function CronModal(): VNode {
 	const saving = useSignal(false);
 	const schedKind = useSignal("cron");
 	const errorField = useSignal<string | null>(null);
+	const errorMessage = useSignal("");
 	const jobModel = useSignal("");
+	const jobReasoningEffort = useSignal("");
 	const jobName = useSignal("");
 	const payloadKind = useSignal("systemEvent");
 	const sessionTarget = useSignal("main");
@@ -823,8 +888,10 @@ function CronModal(): VNode {
 		const draft = cronModalDraft(editingJob.value);
 		saving.value = false;
 		errorField.value = null;
+		errorMessage.value = "";
 		schedKind.value = draft.schedKind;
 		jobModel.value = draft.jobModel;
+		jobReasoningEffort.value = draft.jobReasoningEffort;
 		jobName.value = draft.jobName;
 		payloadKind.value = draft.payloadKind;
 		sessionTarget.value = draft.sessionTarget;
@@ -845,6 +912,7 @@ function CronModal(): VNode {
 		const command = cronSaveCommand({
 			schedKind: schedKind.value,
 			jobModel: jobModel.value,
+			jobReasoningEffort: jobReasoningEffort.value,
 			jobName: jobName.value,
 			payloadKind: payloadKind.value,
 			sessionTarget: sessionTarget.value,
@@ -861,19 +929,24 @@ function CronModal(): VNode {
 		});
 		if (!command.ok) {
 			errorField.value = command.errorField;
+			errorMessage.value = command.error || "";
 			return;
 		}
+		errorField.value = null;
+		errorMessage.value = "";
 		saving.value = true;
 		const rpcMethod = isEdit ? "cron.update" : "cron.add";
 		const rpcParams = isEdit ? { id: job?.id, patch: command.fields } : command.fields;
 		sendRpc(rpcMethod, rpcParams).then((res) => {
 			saving.value = false;
-			if (res?.ok) {
-				showModal.value = false;
-				editingJob.value = null;
-				loadJobs();
-				loadStatus();
+			if (!res?.ok) {
+				errorMessage.value = res?.error?.message || "Failed to save cron job.";
+				return;
 			}
+			showModal.value = false;
+			editingJob.value = null;
+			loadJobs();
+			loadStatus();
 		});
 	}
 
@@ -929,6 +1002,8 @@ function CronModal(): VNode {
 		);
 	}
 
+	const jobEffortOptions = reasoningEffortOptions(jobModel.value);
+
 	return (
 		<Modal
 			show={showModal.value}
@@ -939,6 +1014,7 @@ function CronModal(): VNode {
 			title={isEdit ? "Edit Job" : "Add Job"}
 		>
 			<div className="provider-key-form">
+				{errorMessage.value && <div className="text-xs text-[var(--error)]">{errorMessage.value}</div>}
 				<label>
 					<span className="text-xs text-[var(--muted)]">Name</span>
 					<input
@@ -1007,10 +1083,29 @@ function CronModal(): VNode {
 					models={modelsSig.value}
 					value={jobModel.value}
 					onChange={(v: string) => {
+						if (v !== jobModel.value) jobReasoningEffort.value = "";
 						jobModel.value = v;
+						errorField.value = null;
+						errorMessage.value = "";
 					}}
-					placeholder={defaultModelPlaceholder()}
+					placeholder="(use agent model)"
 				/>
+				{jobModel.value && (
+					<>
+						<span className="text-xs text-[var(--muted)]">Reasoning Effort (Agent Turn)</span>
+						<ComboSelect
+							ariaLabel="Reasoning Effort (Agent Turn)"
+							options={jobEffortOptions}
+							value={jobReasoningEffort.value}
+							onChange={(value: string) => {
+								jobReasoningEffort.value = value;
+								errorField.value = null;
+								errorMessage.value = "";
+							}}
+							placeholder="Select reasoning effort"
+						/>
+					</>
+				)}
 				<p className="text-xs text-[var(--muted)] mt-1">Only used for Agent Turn jobs.</p>
 
 				{payloadKind.value === "agentTurn" && (
@@ -1182,7 +1277,10 @@ export function initCrons(container: HTMLElement, param?: string | null): void {
 	heartbeatStatus.value = null;
 	heartbeatRuns.value = (gon.get("heartbeat_runs") as CronRun[] | null) || [];
 	channelAccounts.value = [];
-	heartbeatModel.value = (gon.get("heartbeat_config") as HeartbeatConfig | null)?.model || "";
+	heartbeatModel.value = (gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.model || "";
+	heartbeatReasoningEffort.value =
+		(gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.reasoning_effort || "";
+	heartbeatError.value = "";
 	activeSection.value = param === "heartbeat" ? "heartbeat" : "jobs";
 	loadHeartbeatRuns();
 	loadHeartbeatStatus();

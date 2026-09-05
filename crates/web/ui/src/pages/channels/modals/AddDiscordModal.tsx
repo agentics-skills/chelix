@@ -4,12 +4,16 @@ import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 
 import { addChannel, parseChannelConfigPatch, validateChannelFields } from "../../../channel-utils";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
 import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddDiscord } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, AllowlistInput, SharedChannelFields } from "../ChannelFields";
+import {
+	AdvancedConfigPatchField,
+	AllowlistInput,
+	resolveChannelModelSelection,
+	SharedChannelFields,
+} from "../ChannelFields";
 
 // ── Discord invite URL helper ────────────────────────────────
 
@@ -30,6 +34,7 @@ export function AddDiscordModal(): VNode {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const addModel = useSignal("");
+	const addReasoningEffort = useSignal("");
 	const allowlistItems = useSignal<string[]>([]);
 	const channelNamePatterns = useSignal<string[]>([]);
 	const categoryAllowlist = useSignal<string[]>([]);
@@ -52,6 +57,11 @@ export function AddDiscordModal(): VNode {
 			error.value = advancedPatch.error;
 			return;
 		}
+		const modelSelection = resolveChannelModelSelection(addModel.value, addReasoningEffort.value);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
+			return;
+		}
 		error.value = "";
 		saving.value = true;
 		const addConfig: ChannelConfig = {
@@ -59,14 +69,10 @@ export function AddDiscordModal(): VNode {
 			dm_policy: (form.querySelector("[data-field=dmPolicy]") as HTMLSelectElement).value,
 			mention_mode: (form.querySelector("[data-field=mentionMode]") as HTMLSelectElement).value,
 			allowlist: allowlistItems.value,
+			...modelSelection.config,
 		};
 		if (channelNamePatterns.value.length > 0) addConfig.channel_name_patterns = channelNamePatterns.value;
 		if (categoryAllowlist.value.length > 0) addConfig.category_allowlist = categoryAllowlist.value;
-		if (addModel.value) {
-			addConfig.model = addModel.value;
-			const found = modelsSig.value.find((x) => x.id === addModel.value);
-			if (found?.provider) addConfig.model_provider = found.provider;
-		}
 		Object.assign(addConfig, advancedPatch.value);
 		addChannel(ChannelType.Discord, accountId, addConfig).then((res: unknown) => {
 			saving.value = false;
@@ -74,6 +80,7 @@ export function AddDiscordModal(): VNode {
 			if (r?.ok) {
 				showAddDiscord.value = false;
 				addModel.value = "";
+				addReasoningEffort.value = "";
 				allowlistItems.value = [];
 				channelNamePatterns.value = [];
 				categoryAllowlist.value = [];
@@ -169,7 +176,11 @@ export function AddDiscordModal(): VNode {
 						</a>
 					</div>
 				)}
-				<SharedChannelFields addModel={addModel} allowlistItems={allowlistItems} />
+				<SharedChannelFields
+					addModel={addModel}
+					addReasoningEffort={addReasoningEffort}
+					allowlistItems={allowlistItems}
+				/>
 				<span className="text-xs text-[var(--muted)]">Channel Name Patterns (optional)</span>
 				<AllowlistInput
 					ariaLabel="Channel Name Patterns (optional)"

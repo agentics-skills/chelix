@@ -172,13 +172,40 @@ Tokens    {tokens}</code>"
 
 pub(super) async fn send_model_keyboard(bot: &Bot, to: &str, text: &str) {
     let (chat, thread_id) = parse_chat_target_lossy(to);
+    let first_line = text.lines().next().unwrap_or_default().trim();
+    let is_provider_list = first_line == "providers:";
+    let effort_model_index = if let Some(index) = first_line.strip_prefix("efforts:") {
+        match index.parse::<usize>() {
+            Ok(index) if index > 0 => Some(index),
+            _ => {
+                let mut req = bot.send_message(chat, "Error: invalid reasoning effort list");
+                if let Some(tid) = thread_id {
+                    req = req.message_thread_id(tid);
+                }
+                let _ = req.await;
+                return;
+            },
+        }
+    } else {
+        None
+    };
 
-    let is_provider_list = text.starts_with("providers:");
+    if first_line.ends_with(':') && !is_provider_list && effort_model_index.is_none() {
+        let mut req = bot.send_message(chat, "Error: unknown model selection list");
+        if let Some(tid) = thread_id {
+            req = req.message_thread_id(tid);
+        }
+        let _ = req.await;
+        return;
+    }
 
     let mut buttons: Vec<Vec<InlineKeyboardButton>> = Vec::new();
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed == "providers:" {
+        if (is_provider_list && trimmed == "providers:")
+            || (effort_model_index.is_some()
+                && (trimmed == first_line || trimmed.starts_with("Model: ")))
+        {
             continue;
         }
         if let Some(dot_pos) = trimmed.find(". ")
@@ -193,23 +220,25 @@ pub(super) async fn send_model_keyboard(bot: &Bot, to: &str, text: &str) {
                 format!("○ {clean}")
             };
 
-            if is_provider_list {
+            let callback = if is_provider_list {
                 let provider_name = clean.rfind(" (").map(|i| &clean[..i]).unwrap_or(clean);
-                buttons.push(vec![InlineKeyboardButton::callback(
-                    display,
-                    format!("model_provider:{provider_name}"),
-                )]);
+                format!("model_provider:{provider_name}")
+            } else if let Some(model_index) = effort_model_index {
+                format!("model_effort:{model_index}:{clean}")
             } else {
-                buttons.push(vec![InlineKeyboardButton::callback(
-                    display,
-                    format!("model_switch:{n}"),
-                )]);
-            }
+                format!("model_switch:{n}")
+            };
+            buttons.push(vec![InlineKeyboardButton::callback(display, callback)]);
         }
     }
 
     if buttons.is_empty() {
-        let mut req = bot.send_message(chat, "No models available.");
+        let message = if effort_model_index.is_some() {
+            "No reasoning efforts available."
+        } else {
+            "No models available."
+        };
+        let mut req = bot.send_message(chat, message);
         if let Some(tid) = thread_id {
             req = req.message_thread_id(tid);
         }
@@ -219,6 +248,8 @@ pub(super) async fn send_model_keyboard(bot: &Bot, to: &str, text: &str) {
 
     let heading = if is_provider_list {
         "🤖 Select a provider:"
+    } else if effort_model_index.is_some() {
+        "🤖 Select a reasoning effort:"
     } else {
         "🤖 Select a model:"
     };
@@ -291,7 +322,27 @@ pub(super) async fn handle_callback_query(
     } else if let Some(n_str) = data.strip_prefix("agent_switch:") {
         Some(format!("agent {n_str}"))
     } else if let Some(n_str) = data.strip_prefix("model_switch:") {
-        Some(format!("model {n_str}"))
+        Some(format!("model efforts:{n_str}"))
+    } else if let Some(selection) = data.strip_prefix("model_effort:") {
+        let Some((model_index, effort)) = selection.split_once(':') else {
+            if let Some(ref bot) = bot {
+                let _ = bot
+                    .answer_callback_query(query.id.clone())
+                    .text("Error: invalid model effort selection")
+                    .await;
+            }
+            return Ok(());
+        };
+        if model_index.is_empty() || effort.is_empty() {
+            if let Some(ref bot) = bot {
+                let _ = bot
+                    .answer_callback_query(query.id.clone())
+                    .text("Error: invalid model effort selection")
+                    .await;
+            }
+            return Ok(());
+        }
+        Some(format!("model {model_index} {effort}"))
     } else if data.starts_with("model_provider:") {
         None
     } else {
@@ -369,12 +420,35 @@ pub(super) async fn handle_callback_query(
     };
 
     if let Some(ref sink) = event_sink {
-        let response = match sink
+        let response = sink
             .dispatch_command(&cmd_text, reply_target, Some(&sender_id))
-            .await
-        {
-            Ok(msg) => msg,
-            Err(e) => format!("Error: {e}"),
+            .await;
+
+        if data.starts_with("model_switch:") {
+            if let Some(ref bot) = bot {
+                let _ = bot.answer_callback_query(query.id.clone()).await;
+            }
+            match response {
+                Ok(text) => {
+                    if let Some(ref bot) = bot {
+                        send_model_keyboard(bot, &outbound_to, &text).await;
+                    }
+                },
+                Err(error) => {
+                    if let Err(send_error) = outbound
+                        .send_text(account_id, &outbound_to, &format!("Error: {error}"), None)
+                        .await
+                    {
+                        warn!(account_id, "failed to send callback response: {send_error}");
+                    }
+                },
+            }
+            return Ok(());
+        }
+
+        let response = match response {
+            Ok(message) => message,
+            Err(error) => format!("Error: {error}"),
         };
 
         if let Some(ref bot) = bot {
@@ -384,11 +458,11 @@ pub(super) async fn handle_callback_query(
                 .await;
         }
 
-        if let Err(e) = outbound
+        if let Err(error) = outbound
             .send_text(account_id, &outbound_to, &response, None)
             .await
         {
-            warn!(account_id, "failed to send callback response: {e}");
+            warn!(account_id, "failed to send callback response: {error}");
         }
     } else if let Some(ref bot) = bot {
         let _ = bot.answer_callback_query(query.id.clone()).await;

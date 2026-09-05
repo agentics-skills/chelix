@@ -19,5 +19,6 @@ pub mod silent_turn;
 pub mod skills;
 pub mod title;
 pub mod tool_arg_validator;
+pub mod tool_context;
 pub mod tool_loop_detector;
 pub mod tool_registry;

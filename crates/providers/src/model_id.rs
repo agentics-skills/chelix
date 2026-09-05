@@ -19,10 +19,6 @@ pub fn raw_model_id(model_id: &str) -> &str {
         .unwrap_or(model_id)
 }
 
-pub(crate) fn configured_model_for_provider(model_id: &str) -> &str {
-    raw_model_id(model_id)
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

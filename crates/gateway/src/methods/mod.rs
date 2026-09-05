@@ -9,4 +9,6 @@ mod subscribe;
 mod voice;
 
 pub(crate) use dispatch::load_disabled_hooks;
-pub use dispatch::{HandlerFn, MethodContext, MethodRegistry, MethodResult, authorize_method};
+pub use dispatch::{
+    HandlerFn, MethodContext, MethodRegistry, MethodResult, MethodTransport, authorize_method,
+};

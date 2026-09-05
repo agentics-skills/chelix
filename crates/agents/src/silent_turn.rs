@@ -336,7 +336,7 @@ pub async fn run_silent_memory_turn_with_prompt(
                 .record(duration);
             }
             warn!(error = %e, variant = label, "silent memory turn failed");
-            Ok(Vec::new())
+            Err(e.into())
         },
     }
 }
@@ -528,7 +528,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_silent_turn_variant_does_not_crash_on_failure() {
+    async fn test_silent_turn_propagates_provider_failure() {
         /// Provider that always returns an error.
         struct FailingProvider;
 
@@ -546,6 +546,14 @@ mod tests {
                 Some(TEST_CONTEXT_WINDOW)
             }
 
+            fn max_input_tokens(&self) -> Option<u32> {
+                Some(TEST_MAX_INPUT_TOKENS)
+            }
+
+            fn max_output_tokens(&self) -> Option<u32> {
+                Some(TEST_MAX_OUTPUT_TOKENS)
+            }
+
             fn supports_tools(&self) -> bool {
                 true
             }
@@ -555,7 +563,9 @@ mod tests {
                 _messages: &[ChatMessage],
                 _tools: &[serde_json::Value],
             ) -> Result<CompletionResponse> {
-                Err(anyhow::anyhow!("simulated LLM failure"))
+                Err(anyhow::anyhow!(
+                    "invalid_request_error: simulated LLM failure"
+                ))
             }
 
             fn stream(
@@ -572,9 +582,8 @@ mod tests {
             dir: tmp.path().to_path_buf(),
         });
 
-        // Should return Ok(empty) instead of propagating the error.
         let tools_config = chelix_config::schema::ToolsConfig::default();
-        let paths = run_silent_memory_turn_with_prompt(
+        let error = run_silent_memory_turn_with_prompt(
             provider,
             &tools_config,
             chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
@@ -583,9 +592,12 @@ mod tests {
             SilentTurnPrompt::PeriodicExtract,
         )
         .await
-        .unwrap();
+        .unwrap_err();
 
-        assert!(paths.is_empty());
+        assert_eq!(
+            error.to_string(),
+            "invalid_request_error: simulated LLM failure"
+        );
     }
 
     #[test]

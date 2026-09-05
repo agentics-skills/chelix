@@ -2,8 +2,12 @@ use std::sync::Arc;
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
+    chelix_common::ModelOverride,
     chelix_config::schema::ReasoningEffort,
-    chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
+    chelix_service_traits::{
+        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ResolvedModelReasoning,
+    },
+    chelix_sessions::{SessionKey, metadata::SqliteSessionMetadata, store::SessionStore},
     serde_json::Value,
 };
 
@@ -82,7 +86,7 @@ fn build_explore_sessions(
                         "emoji": agent.emoji,
                         "isDefault": id == &default_id,
                         "model": agent.model,
-                        "reasoningEffort": agent.reasoning_effort.as_ref().map(ReasoningEffort::as_str),
+                        "reasoningEffort": agent.reasoning_effort.as_str(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -114,56 +118,51 @@ fn build_create_session(
                 let parent_session_key = req.parent_session_key.clone();
 
                 validate_agent_id(&state, &agent_id).await?;
-                let (model, reasoning_effort) = resolve_model_and_reasoning_effort(
+                let model_reasoning = resolve_model_and_reasoning_effort(
                     &state,
                     &agent_id,
                     req.model_override.as_ref(),
                 )
                 .await?;
 
-                state
-                    .services
-                    .session
-                    .resolve(serde_json::json!({ "key": key.clone() }))
-                    .await
-                    .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-
                 metadata
-                    .set_agent_id(&key, Some(&agent_id))
+                    .create_llm_session(
+                        &key,
+                        req.label.as_deref(),
+                        &model_reasoning,
+                        Some(&agent_id),
+                    )
                     .await
                     .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
 
-                let mut patch = serde_json::Map::new();
-                patch.insert("key".to_string(), serde_json::json!(key.clone()));
-                if let Some(label) = req.label {
-                    patch.insert("label".to_string(), serde_json::json!(label));
+                if let Some(project_id) = req.project_id.as_deref() {
+                    metadata
+                        .set_project_id(&key, Some(project_id))
+                        .await
+                        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
                 }
-                patch.insert("model".to_string(), serde_json::json!(model));
-                patch.insert(
-                    "reasoningEffort".to_string(),
-                    serde_json::json!(reasoning_effort.as_str()),
-                );
-                if let Some(project_id) = req.project_id {
-                    patch.insert("projectId".to_string(), serde_json::json!(project_id));
-                }
-                state
-                    .services
-                    .session
-                    .patch(Value::Object(patch))
-                    .await
-                    .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-
-                // Link the new session to its creator so the UI renders it as a child.
-                if let Some(parent) = parent_session_key
+                if let Some(parent) = parent_session_key.as_deref()
                     && parent != key
-                    && metadata.get(&parent).await.is_some()
+                    && metadata
+                        .get(parent)
+                        .await
+                        .map_err(|error| chelix_tools::Error::message(error.to_string()))?
+                        .is_some()
                 {
-                    metadata.set_parent(&key, Some(parent), None).await;
+                    metadata
+                        .set_parent(&key, Some(parent), None)
+                        .await
+                        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
                 }
-
-                let entry = metadata.get(&key).await.ok_or_else(|| {
-                    chelix_tools::Error::message(format!("session '{key}' not found after create"))
-                })?;
+                let entry = metadata
+                    .get(&key)
+                    .await
+                    .map_err(|error| chelix_tools::Error::message(error.to_string()))?
+                    .ok_or_else(|| {
+                        chelix_tools::Error::message(format!(
+                            "session '{key}' disappeared after create"
+                        ))
+                    })?;
                 Ok(session_entry_payload(entry))
             })
         },
@@ -198,23 +197,27 @@ fn build_send_to_session(
         move |req: chelix_tools::sessions_communicate::SendToSessionRequest| {
             let state = Arc::clone(&state);
             Box::pin(async move {
-                let mut params = serde_json::json!({
-                    "text": req.message,
-                    "_session_key": req.key,
-                });
-                if let Some(model_override) = req.model_override {
-                    let model = model_from_override(&state, &model_override).await?;
-                    params["model"] = serde_json::json!(model);
-                    params["reasoningEffort"] =
-                        serde_json::json!(model_override.reasoning_effort.as_str());
-                }
+                let model_override = if let Some(model_override) = req.model_override {
+                    let model_reasoning = model_from_override(&state, &model_override).await?;
+                    Some(ModelOverride {
+                        model: model_reasoning.model_id().to_string(),
+                        reasoning_effort: model_reasoning.reasoning_effort().clone(),
+                    })
+                } else {
+                    None
+                };
+                let context = ChatExecutionContext::internal(SessionKey::new(req.key));
                 let chat = state.chat();
                 if req.wait_for_reply {
-                    chat.send_sync(params)
+                    let mut request = ChatSendSyncRequest::text(req.message);
+                    request.model_override = model_override;
+                    chat.send_sync(request, context)
                         .await
                         .map_err(|error| chelix_tools::Error::message(error.to_string()))
                 } else {
-                    chat.send(params)
+                    let mut request = ChatSendRequest::text(req.message);
+                    request.model_override = model_override;
+                    chat.send(request, context)
                         .await
                         .map_err(|error| chelix_tools::Error::message(error.to_string()))
                 }
@@ -242,8 +245,8 @@ async fn validate_agent_id(state: &GatewayState, agent_id: &str) -> chelix_tools
 async fn resolve_model_and_reasoning_effort(
     state: &GatewayState,
     agent_id: &str,
-    model_override: Option<&chelix_tools::session_model_override::ModelOverride>,
-) -> chelix_tools::Result<(String, ReasoningEffort)> {
+    model_override: Option<&ModelOverride>,
+) -> chelix_tools::Result<ResolvedModelReasoning> {
     let (model, effort) = if let Some(model_override) = model_override {
         (
             model_override.model.clone(),
@@ -253,22 +256,20 @@ async fn resolve_model_and_reasoning_effort(
         agent_model_and_reasoning(state, agent_id).await?
     };
 
-    validate_model_and_reasoning_effort(state, &model, &effort).await?;
-    Ok((model, effort))
+    validate_model_and_reasoning_effort(state, &model, &effort).await
 }
 
 #[tracing::instrument(skip(state, model_override))]
 async fn model_from_override(
     state: &GatewayState,
-    model_override: &chelix_tools::session_model_override::ModelOverride,
-) -> chelix_tools::Result<String> {
+    model_override: &ModelOverride,
+) -> chelix_tools::Result<ResolvedModelReasoning> {
     validate_model_and_reasoning_effort(
         state,
         &model_override.model,
         &model_override.reasoning_effort,
     )
-    .await?;
-    Ok(model_override.model.clone())
+    .await
 }
 
 #[tracing::instrument(skip(state))]
@@ -276,8 +277,14 @@ async fn validate_model_and_reasoning_effort(
     state: &GatewayState,
     model: &str,
     reasoning_effort: &ReasoningEffort,
-) -> chelix_tools::Result<()> {
-    validate_base_model(state, model, reasoning_effort).await
+) -> chelix_tools::Result<ResolvedModelReasoning> {
+    crate::model_reasoning::resolve_model_reasoning(
+        state.services.model.as_ref(),
+        model,
+        reasoning_effort,
+    )
+    .await
+    .map_err(|error| chelix_tools::Error::message(error.to_string()))
 }
 
 #[tracing::instrument(skip(state))]
@@ -294,73 +301,18 @@ async fn agent_model_and_reasoning(
     let agent = guard
         .get(agent_id)
         .ok_or_else(|| chelix_tools::Error::message(format!("agent '{agent_id}' not found")))?;
-    let model = agent.model.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no model; pass model+reasoning_effort or configure [agents.{agent_id}].model"
-        ))
-    })?;
-    let effort = agent.reasoning_effort.clone().ok_or_else(|| {
-        chelix_tools::Error::message(format!(
-            "agent '{agent_id}' has no reasoning_effort; pass model+reasoning_effort or configure [agents.{agent_id}].reasoning_effort"
-        ))
-    })?;
-    Ok((model, effort))
-}
-
-#[tracing::instrument(skip(state))]
-async fn validate_base_model(
-    state: &GatewayState,
-    model_id: &str,
-    reasoning_effort: &ReasoningEffort,
-) -> chelix_tools::Result<()> {
-    let models = state
-        .services
-        .model
-        .list()
-        .await
-        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-    let Some(models) = models.as_array() else {
-        return Err(chelix_tools::Error::message(
-            "models.list returned an invalid response",
-        ));
-    };
-
-    let Some(model) = models
-        .iter()
-        .find(|model| model.get("id").and_then(Value::as_str) == Some(model_id))
-    else {
-        return Err(chelix_tools::Error::message(format!(
-            "model '{model_id}' not found in chat model registry"
-        )));
-    };
-
-    let supported_efforts = model
-        .get("reasoning")
-        .and_then(|reasoning| reasoning.get("supported_efforts"))
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            chelix_tools::Error::message(format!(
-                "model '{model_id}' has no reasoning.supported_efforts metadata"
-            ))
-        })?;
-    if !supported_efforts
-        .iter()
-        .any(|supported| supported.as_str() == Some(reasoning_effort.as_str()))
-    {
-        return Err(chelix_tools::Error::message(format!(
-            "model '{model_id}' does not support reasoning_effort '{}'",
-            reasoning_effort.as_str()
-        )));
-    }
-    Ok(())
+    Ok((agent.model.clone(), agent.reasoning_effort.clone()))
 }
 
 fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Value {
+    let model = entry.model().map(str::to_string);
+    let reasoning_effort = entry
+        .reasoning_effort()
+        .map(|effort| effort.as_str().to_string());
     let chelix_sessions::metadata::SessionEntry {
         id,
         key,
         label,
-        model,
         created_at,
         updated_at,
         message_count,
@@ -377,6 +329,7 @@ fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Valu
             "key": key,
             "label": label,
             "model": model,
+            "reasoningEffort": reasoning_effort,
             "createdAt": created_at,
             "updatedAt": updated_at,
             "messageCount": message_count,
@@ -387,4 +340,131 @@ fn session_entry_payload(entry: chelix_sessions::metadata::SessionEntry) -> Valu
             "version": version,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use {
+        async_trait::async_trait,
+        chelix_service_traits::{ModelService, ServiceError, ServiceResult},
+        chelix_tools::sessions_manage::CreateSessionRequest,
+    };
+
+    struct ExactModelService;
+
+    #[async_trait]
+    impl ModelService for ExactModelService {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn resolve_model_reasoning(
+            &self,
+            model: &str,
+            reasoning_effort: Option<&ReasoningEffort>,
+        ) -> Result<ResolvedModelReasoning, ServiceError> {
+            let effort = reasoning_effort
+                .ok_or_else(|| ServiceError::message("reasoning effort is required"))?;
+            if model != "test::valid" || effort.as_str() != "medium" {
+                return Err(ServiceError::message(format!(
+                    "unsupported pair '{model}' + '{}'",
+                    effort.as_str()
+                )));
+            }
+            ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
+                .map_err(|error| ServiceError::message(error.to_string()))
+        }
+
+        async fn disable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn enable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    async fn create_test_state() -> Result<
+        (
+            Arc<GatewayState>,
+            Arc<SqliteSessionMetadata>,
+            tempfile::TempDir,
+        ),
+        Box<dyn std::error::Error>,
+    > {
+        let dir = tempfile::tempdir()?;
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await?;
+        chelix_projects::run_migrations(&pool).await?;
+        SqliteSessionMetadata::init(&pool).await?;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        let mut agents = chelix_config::AgentsConfig {
+            default: "main".to_string(),
+            ..Default::default()
+        };
+        agents.entries.insert(
+            "main".to_string(),
+            chelix_config::AgentConfig::new("Main", "test::valid", ReasoningEffort::from("medium")),
+        );
+        let agents_config = Arc::new(tokio::sync::RwLock::new(agents));
+        let model_service: Arc<dyn ModelService> = Arc::new(ExactModelService);
+        let session_service = crate::session::LiveSessionService::from_router(
+            Arc::clone(&store),
+            Arc::clone(&metadata),
+            Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+            Arc::clone(&agents_config),
+            Arc::clone(&model_service),
+        );
+        let services = crate::services::GatewayServices::noop()
+            .with_session(Arc::new(session_service))
+            .with_model(model_service)
+            .with_agents_config(agents_config)
+            .with_session_metadata(Arc::clone(&metadata));
+        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        Ok((state, metadata, dir))
+    }
+
+    fn create_request(key: &str, model: &str) -> CreateSessionRequest {
+        CreateSessionRequest {
+            key: key.to_string(),
+            agent_id: "main".to_string(),
+            label: None,
+            model_override: Some(ModelOverride {
+                model: model.to_string(),
+                reasoning_effort: ReasoningEffort::from("medium"),
+            }),
+            project_id: None,
+            parent_session_key: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn model_validation_precedes_session_metadata_mutation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (state, metadata, _dir) = create_test_state().await?;
+        let create = build_create_session(state, Arc::clone(&metadata));
+        create(create_request("session:valid", "test::valid")).await?;
+        let valid_entry = metadata
+            .get("session:valid")
+            .await?
+            .ok_or_else(|| std::io::Error::other("valid session metadata was not created"))?;
+        assert_eq!(valid_entry.model(), Some("test::valid"));
+        assert_eq!(
+            valid_entry.reasoning_effort().map(ReasoningEffort::as_str),
+            Some("medium")
+        );
+
+        let (state, metadata, _dir) = create_test_state().await?;
+        let create = build_create_session(state, Arc::clone(&metadata));
+        let invalid = create(create_request("session:invalid", "test::invalid")).await;
+        assert!(invalid.is_err());
+        assert!(metadata.get("session:invalid").await?.is_none());
+        Ok(())
+    }
 }

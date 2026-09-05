@@ -51,7 +51,7 @@ itself using the `webhook` tool. They are not part of the onboarding flow.
 2. Choose a **source profile** (GitHub, GitLab, Stripe, or Generic).
 3. Configure **authentication** — the profile pre-selects a recommended mode.
 4. Optionally filter which **event types** to process.
-5. Select a **target agent** and optional model override.
+5. Select a **target agent** and optional complete model/reasoning override.
 6. Click **Create** — the endpoint URL is displayed with a copy button.
 7. Register this URL in the external service's webhook settings.
 
@@ -264,22 +264,45 @@ Sessions are labeled for easy identification in the sidebar:
 
 ## Agent Execution
 
-Each webhook is bound to an agent. When a delivery is processed:
+Each webhook is configured with an agent. When a delivery is processed:
 
-1. The worker creates a session with the webhook's session key.
-2. The configured agent is assigned to the session.
+1. The worker resolves the webhook's session key.
+2. If the session does not exist and the delivery has no model/reasoning override,
+   the worker initializes it atomically with the configured agent's pair. Existing
+   named and per-entity sessions retain their persisted agent and pair unless the
+   delivery supplies an explicit complete model/reasoning override.
 3. A normalized message describing the event is injected.
 4. `chat.send_sync` runs the agent turn.
 5. The delivery record is updated with status, duration, and token counts.
+
+The configured agent initializes a missing session; it does not reassign an
+existing session on every delivery.
 
 ### Execution Overrides
 
 Webhooks can override specific settings without changing the configured agent:
 
-- **Model** — use a different LLM for webhook processing.
+- **Model/reasoning pair** — use a specific canonical model and one of its
+  supported reasoning efforts for webhook processing.
 - **System prompt suffix** — append extra instructions (e.g., "Focus on security
   issues" for a code review webhook).
 - **Tool policy** — restrict which tools the agent can use.
+
+The create and update transports represent the pair as one object:
+
+```json
+{
+  "modelOverride": {
+    "model": "openai::gpt-5.2",
+    "reasoningEffort": "medium"
+  }
+}
+```
+
+Whenever `modelOverride` is present, both fields are required. `model` must
+exactly match an ID returned by `models.list`, and `reasoningEffort` must be a
+non-empty effort supported by that model. Omit the field to use the persisted
+session pair; send `null` in an update patch to clear a stored override.
 
 ### Delivery Message Format
 

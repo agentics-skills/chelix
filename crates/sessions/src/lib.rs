@@ -4,6 +4,7 @@
 //! `<data_dir>/agents/<agentId>/sessions/<sessionKey>.jsonl`
 //! with file locking for concurrent access.
 
+pub mod backing;
 pub mod error;
 pub mod key;
 pub mod message;
@@ -20,7 +21,11 @@ pub use {
     error::{Error, Result},
     key::SessionKey,
     message::{ContentBlock, MessageContent, PersistedMessage, UserDocument},
-    prompt_queue::{QueuedPrompt, SessionPromptQueueStore},
+    prompt_queue::{
+        QueuedPrompt, QueuedPromptChannelMetadata, QueuedPromptContent, QueuedPromptContentBlock,
+        QueuedPromptDocument, QueuedPromptImageUrl, QueuedPromptMessageContent, QueuedPrompts,
+        QueuedPromptsDrain, QueuedPromptsStatus,
+    },
     store::SearchResult,
     tool_results::{PersistedToolResult, ToolResultStore},
     ui_history::{

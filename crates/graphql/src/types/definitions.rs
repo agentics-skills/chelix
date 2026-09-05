@@ -7,11 +7,37 @@
 //!
 //! For dynamic/untyped fields, the `Json` scalar is used.
 
-use {async_graphql::SimpleObject, serde::Deserialize};
+use {
+    async_graphql::{InputObject, SimpleObject},
+    serde::Deserialize,
+};
 
 use crate::scalars::Json;
 
 // ── Common result type ──────────────────────────────────────────────────────
+
+/// Complete model/reasoning override accepted by GraphQL chat mutations.
+#[derive(Debug, InputObject)]
+pub struct ModelOverrideInput {
+    pub model: String,
+    pub reasoning_effort: String,
+}
+
+impl From<ModelOverrideInput> for chelix_common::ModelOverride {
+    fn from(value: ModelOverrideInput) -> Self {
+        Self {
+            model: value.model,
+            reasoning_effort: value.reasoning_effort.into(),
+        }
+    }
+}
+
+/// Complete model/reasoning override returned by GraphQL status queries.
+#[derive(Debug, SimpleObject, Deserialize)]
+pub struct ModelOverrideInfo {
+    pub model: String,
+    pub reasoning_effort: String,
+}
 
 /// Generic boolean result for mutations that return `{ "ok": true }`.
 #[derive(Debug, SimpleObject, Deserialize)]
@@ -253,7 +279,7 @@ pub struct HeartbeatConfig {
     #[serde(default)]
     pub every: Option<String>,
     #[serde(default)]
-    pub model: Option<String>,
+    pub model_override: Option<ModelOverrideInfo>,
     #[serde(default)]
     pub prompt: Option<String>,
     #[serde(default)]
@@ -405,33 +431,27 @@ pub struct ProviderInfo {
     pub configured: Option<bool>,
     #[serde(default)]
     pub auth_method: Option<String>,
-    #[serde(default)]
-    pub models: Option<Vec<String>>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default, alias = "displayName")]
-    pub name: Option<String>,
-    #[serde(default)]
-    pub provider: Option<String>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-    #[serde(default)]
-    pub supports_tools: Option<bool>,
-    #[serde(default)]
-    pub supports_vision: Option<bool>,
-    #[serde(default)]
-    pub supports_reasoning: Option<bool>,
-    #[serde(default)]
-    pub supports_streaming: Option<bool>,
-    #[serde(default)]
-    pub context_window: Option<u64>,
-    #[serde(default)]
-    pub max_output_tokens: Option<u64>,
+    pub id: String,
+    pub provider: String,
+    pub preferred: bool,
+    pub disabled: bool,
+    pub context_length: u32,
+    pub max_input_tokens: u32,
+    pub max_output_tokens: u32,
+    pub input_modalities: Vec<String>,
+    pub output_modalities: Vec<String>,
+    pub tool_calling: bool,
+    pub streaming: bool,
+    #[graphql(name = "zeroDataRetentionEnabled")]
+    #[serde(rename = "zeroDataRetentionEnabled")]
+    pub zero_data_retention_enabled: bool,
+    pub reasoning_supported_efforts: Vec<String>,
+    pub reasoning_summary: Option<String>,
+    pub reasoning_include: Option<Vec<String>>,
 }
 
 #[derive(Debug, SimpleObject, Deserialize)]
@@ -443,14 +463,6 @@ pub struct McpOAuthStartResult {
     pub oauth_pending: Option<bool>,
     #[serde(default)]
     pub auth_url: Option<String>,
-}
-
-#[derive(Debug, SimpleObject, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelTestResult {
-    pub ok: bool,
-    #[serde(default)]
-    pub model_id: Option<String>,
 }
 
 // ── Skills ──────────────────────────────────────────────────────────────────

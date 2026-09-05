@@ -9,7 +9,8 @@ agent_timeout_secs = 120
 
 [agents.quick]
 name = "Quick"
-model = "openai/gpt-5.2"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 11
 "#,
     )
@@ -30,6 +31,8 @@ agent_timeout_secs = 120
 
 [agents.quick]
 name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
 timeout_secs = 5
 max_tools_threshold = 11
 "#,
@@ -54,7 +57,8 @@ fn agent_rejects_missing_name() {
     let result = toml::from_str::<ChelixConfig>(
         r#"
 [agents.quick]
-model = "openai/gpt-5.2"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 11
 "#,
     );
@@ -68,7 +72,8 @@ fn agent_rejects_missing_max_tools_threshold() {
         r#"
 [agents.quick]
 name = "Quick"
-model = "openai/gpt-5.2"
+model = "test::model"
+reasoning_effort = "off"
 "#,
     );
     assert!(result.is_err());
@@ -81,6 +86,89 @@ model = "openai/gpt-5.2"
 }
 
 #[test]
+fn agent_requires_model_and_reasoning_effort() {
+    let cases = [
+        (
+            r#"
+[agents.quick]
+name = "Quick"
+reasoning_effort = "off"
+max_tools_threshold = 128
+"#,
+            "model",
+        ),
+        (
+            r#"
+[agents.quick]
+name = "Quick"
+model = "test::model"
+max_tools_threshold = 128
+"#,
+            "reasoning_effort",
+        ),
+    ];
+
+    for (config, missing_field) in cases {
+        let error = toml::from_str::<ChelixConfig>(config)
+            .expect_err("incomplete agent configuration must be rejected");
+        assert!(
+            error.to_string().contains(missing_field),
+            "expected missing {missing_field} error, got: {error}"
+        );
+    }
+}
+
+#[test]
+fn agent_rejects_empty_model_and_reasoning_effort() {
+    let cases = [
+        (
+            "model = \"\"\nreasoning_effort = \"off\"",
+            "agents.quick.model",
+        ),
+        (
+            "model = \"test::model\"\nreasoning_effort = \"\"",
+            "agents.quick.reasoning_effort",
+        ),
+    ];
+
+    for (selection, expected_path) in cases {
+        let result = validate_toml_str(&format!(
+            "[agents]\ndefault = \"quick\"\n\n[agents.quick]\nname = \"Quick\"\n{selection}\nmax_tools_threshold = 128\n"
+        ));
+        assert!(
+            result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.severity == Severity::Error && diagnostic.path == expected_path
+            }),
+            "expected error at {expected_path}, got: {:?}",
+            result.diagnostics
+        );
+    }
+}
+
+#[test]
+fn agent_rejects_arbitrary_extra_key() {
+    let result = validate_toml_str(
+        r#"
+[agents]
+default = "quick"
+
+[agents.quick]
+name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
+max_tools_threshold = 128
+arbitrary_extra_key = true
+"#,
+    );
+
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.severity == Severity::Error
+            && diagnostic.category == "unknown-field"
+            && diagnostic.path == "agents.quick.arbitrary_extra_key"
+    }));
+}
+
+#[test]
 fn agent_runtime_limits_max_tool_result_bytes_falls_back_to_global() {
     let config: ChelixConfig = toml::from_str(
         r#"
@@ -89,7 +177,8 @@ max_tool_result_bytes = 12345
 
 [agents.quick]
 name = "Quick"
-model = "openai/gpt-5.2"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#,
     )
@@ -112,6 +201,8 @@ max_tool_result_bytes = 12345
 
 [agents.quick]
 name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 max_tool_result_bytes = 999
 "#,
@@ -135,6 +226,8 @@ default = "quick"
 
 [agents.quick]
 name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 max_tool_result_bytes = 100000
 "#,
@@ -158,6 +251,8 @@ default = "quick"
 
 [agents.quick]
 name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 
 [agents.quick.tools]
@@ -180,6 +275,8 @@ fn agent_max_tools_threshold_must_be_positive() {
         r#"
 [agents.quick]
 name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 0
 "#,
     );
@@ -193,13 +290,14 @@ max_tools_threshold = 0
 #[test]
 fn semantic_validation_rejects_reserved_agent_ids() {
     let mut config = ChelixConfig::default();
-    config
-        .agents
-        .entries
-        .insert("default".to_string(), crate::AgentConfig {
-            name: "Reserved".to_string(),
-            ..Default::default()
-        });
+    config.agents.entries.insert(
+        "default".to_string(),
+        crate::AgentConfig::new(
+            "Reserved",
+            "test::model",
+            crate::schema::ReasoningEffort::from("off"),
+        ),
+    );
     let mut diagnostics = Vec::new();
 
     crate::validate::semantic::check_semantic_warnings(&config, &mut diagnostics);
@@ -221,6 +319,8 @@ default = "missing"
 
 [agents.main]
 name = "Main"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#,
     );
@@ -232,37 +332,12 @@ max_tools_threshold = 128
 }
 
 #[test]
-fn legacy_agent_keys_are_rejected() {
-    for legacy in [
-        "default_preset = \"research\"",
-        "theme = \"focused\"",
-        "delegate_only = true",
-        "system_prompt_suffix = \"legacy\"",
-    ] {
-        let toml = if legacy.starts_with("default_preset") {
-            format!("[agents]\n{legacy}\n")
-        } else {
-            format!("[agents.main]\nname = \"Main\"\nmax_tools_threshold = 128\n{legacy}\n")
-        };
-        let result = validate_toml_str(&toml);
-        assert!(
-            result
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.severity == Severity::Error),
-            "legacy key should be rejected: {legacy}; diagnostics: {:?}",
-            result.diagnostics
-        );
-    }
-}
-
-#[test]
 fn reasoning_effort_accepts_provider_defined_value() {
     let result = validate_toml_str(
         r#"
 [agents.thinker]
 name = "Thinker"
-model = "claude-opus-4-5-20251101"
+model = "anthropic::claude-opus-4-5-20251101"
 max_tools_threshold = 128
 reasoning_effort = "ultra"
 "#,
@@ -286,6 +361,7 @@ fn reasoning_effort_is_recognized_in_schema() {
         r#"
 [agents.thinker]
 name = "Thinker"
+model = "test::model"
 max_tools_threshold = 128
 reasoning_effort = "high"
 "#,

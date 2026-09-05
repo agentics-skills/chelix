@@ -11,10 +11,11 @@ import { chatAddMsg, scrollChatToBottom, smartScrollToBottom } from "./chat-ui";
 import * as gon from "./gon";
 import { renderAudioPlayer, renderMarkdown, sendRpc, warmAudioPlayback } from "./helpers";
 import { t } from "./i18n";
+import { selectedModelSelection } from "./models";
 import { bumpSessionCount, seedSessionPreviewFromUserText, setSessionReplying } from "./sessions";
 import * as S from "./state";
-import { modelStore } from "./stores/model-store";
 import { sessionStore } from "./stores/session-store";
+import type { ChatSendRequest } from "./types/chat";
 
 // ── Shared state ─────────────────────────────────────────────
 let micBtn: HTMLButtonElement | null = null;
@@ -443,20 +444,13 @@ function sendTranscribedMessage(
 	}
 	if (userEl) appendSttProviderFooter(userEl, providerInfo);
 
-	const chatParams: {
-		text: string;
-		_input_medium: string;
-		_audio_filename?: string;
-		_stt_provider?: string;
-		model?: string;
-	} = {
+	const modelOverride = selectedModelSelection();
+	const chatParams: ChatSendRequest = {
 		text,
-		_input_medium: "voice",
+		inputMedium: "voice",
+		...(audioFilename ? { audioFilename } : {}),
+		...(modelOverride ? { modelOverride } : {}),
 	};
-	if (audioFilename) chatParams._audio_filename = audioFilename;
-	if (providerInfo?.id) chatParams._stt_provider = providerInfo.id;
-	const selectedModel = modelStore.selectedModelId.value;
-	if (selectedModel) chatParams.model = selectedModel;
 
 	bumpSessionCount(S.activeSessionKey, 1);
 	seedSessionPreviewFromUserText(S.activeSessionKey, text);

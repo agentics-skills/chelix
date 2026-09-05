@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use {
+    chelix_common::ConfigModelOverride,
+    serde::{Deserialize, Serialize},
+};
 
 /// Chat configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,21 +67,10 @@ pub enum ToolRegistryMode {
     Lazy,
 }
 
-/// Auxiliary model assignments for side tasks.
-///
-/// Route compression, title generation, and vision to cheaper/faster models
-/// while keeping the main session on a more capable model. Falls back to the
-/// session's primary provider when a field is `None`.
-///
-/// ```toml
-/// [auxiliary]
-/// title_generation = "openrouter/openai/gpt-5-mini"
-/// ```
+/// Session title generation model and reasoning configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AuxiliaryModelsConfig {
-    /// Model for session title generation.
-    pub title_generation: Option<String>,
-    /// Model for vision/image analysis tasks.
-    pub vision: Option<String>,
+    /// Complete model/reasoning pair required when generating a session title.
+    pub title_generation: Option<ConfigModelOverride>,
 }

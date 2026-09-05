@@ -33,3 +33,13 @@ pub fn from_service_json(result: ServiceResult) -> async_graphql::Result<Json> {
     let value = result.map_err(gql_err)?;
     Ok(Json(value))
 }
+
+/// Convert a typed service result into a raw JSON GraphQL result.
+pub fn from_typed_service_json<T: serde::Serialize>(
+    result: Result<T, chelix_service_traits::ServiceError>,
+) -> async_graphql::Result<Json> {
+    let value = result.map_err(gql_err)?;
+    serde_json::to_value(value).map(Json).map_err(|error| {
+        async_graphql::Error::new(format!("failed to serialize response: {error}"))
+    })
+}

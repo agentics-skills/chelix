@@ -40,7 +40,10 @@ use super::{
     dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
     fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
     is_substantive_answer_text, lifecycle_now_ms, record_answer_text,
-    retry::{RATE_LIMIT_MAX_RETRIES, next_retry_delay_ms},
+    retry::{
+        EMPTY_PROVIDER_RESPONSE_ERROR, RATE_LIMIT_MAX_RETRIES, SERVER_MAX_RETRIES,
+        UNKNOWN_MAX_RETRIES, next_retry_delay_ms,
+    },
     streaming_tool_call_message_content,
 };
 
@@ -273,9 +276,10 @@ pub async fn run_agent_loop_streaming_with_limits(
     let mut iterations = 0;
     let mut tool_call_budget = ToolCallBudget::new(limits.max_tools_threshold);
     let mut usage_accumulator = UsageAccumulator::default();
-    let mut server_retries_remaining: u8 = 1;
+    let mut server_retries_remaining: u8 = SERVER_MAX_RETRIES;
     let mut rate_limit_retries_remaining: u8 = RATE_LIMIT_MAX_RETRIES;
     let mut rate_limit_backoff_ms: Option<u64> = None;
+    let mut unknown_retries_remaining: u8 = UNKNOWN_MAX_RETRIES;
     let mut raw_llm_responses: Vec<serde_json::Value> = Vec::new();
     // Track answer text from iterations that also contained tool calls.
     // When the final iteration is empty (e.g. model stop after browser close),
@@ -623,6 +627,16 @@ pub async fn run_agent_loop_streaming_with_limits(
             }
         }
 
+        let is_empty_initial_response = stream_error.is_none()
+            && tool_call_budget.used() == 0
+            && accumulated_text.trim().is_empty()
+            && materializer.segment.items.is_empty()
+            && tool_calls.is_empty()
+            && request_usage.output_tokens == 0;
+        if is_empty_initial_response {
+            stream_error = Some(EMPTY_PROVIDER_RESPONSE_ERROR.to_string());
+        }
+
         if let Some(cb) = on_event {
             cb(RunnerEvent::ThinkingDone);
         }
@@ -638,7 +652,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             .await?;
         }
 
-        // Handle stream errors — retry on transient failures/rate limits.
+        // Handle stream errors according to the provider retry policy.
         if let Some(err) = stream_error {
             // The attempt is over either way, so its segment is closed before
             // the loop decides whether to retry or to give up.
@@ -652,6 +666,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 &mut server_retries_remaining,
                 &mut rate_limit_retries_remaining,
                 &mut rate_limit_backoff_ms,
+                &mut unknown_retries_remaining,
             ) {
                 // Don't count the failed attempt as an iteration.
                 iterations -= 1;
@@ -669,7 +684,8 @@ pub async fn run_agent_loop_streaming_with_limits(
                     delay_ms,
                     server_retries_remaining,
                     rate_limit_retries_remaining,
-                    "transient LLM error, retrying after delay"
+                    unknown_retries_remaining,
+                    "LLM error, retrying after delay"
                 );
                 if let Some(cb) = on_event {
                     cb(RunnerEvent::RetryingAfterError {
@@ -691,6 +707,8 @@ pub async fn run_agent_loop_streaming_with_limits(
             return Err(AgentRunError::Other(anyhow::anyhow!(err)));
         }
 
+        server_retries_remaining = SERVER_MAX_RETRIES;
+        unknown_retries_remaining = UNKNOWN_MAX_RETRIES;
         usage_accumulator.record_request(request_usage.clone());
 
         // Finalize tool call arguments from accumulated strings.

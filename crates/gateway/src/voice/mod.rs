@@ -31,9 +31,9 @@ use secrecy::Secret;
 /// config and overlays any voice-specific keys found in the store, giving the
 /// store priority over legacy TOML values.
 #[cfg(feature = "voice")]
-pub(crate) fn load_voice_config() -> chelix_config::Result<chelix_config::ChelixConfig> {
+pub(crate) fn load_voice_config() -> anyhow::Result<chelix_config::ChelixConfig> {
     let mut cfg = chelix_config::discover_and_load()?;
-    merge_voice_keys(&mut cfg);
+    merge_voice_keys(&mut cfg)?;
     Ok(cfg)
 }
 
@@ -42,25 +42,25 @@ pub(crate) fn load_voice_config() -> chelix_config::Result<chelix_config::Chelix
 /// Keys in the store take precedence over those in the TOML config.
 /// Shared keys (ElevenLabs, Google) are applied to both TTS and STT sections.
 #[cfg(feature = "voice")]
-pub(crate) fn merge_voice_keys(cfg: &mut chelix_config::ChelixConfig) {
+pub(crate) fn merge_voice_keys(cfg: &mut chelix_config::ChelixConfig) -> anyhow::Result<()> {
     let store = crate::provider_setup::KeyStore::new();
 
     // ElevenLabs (shared TTS + STT)
-    if let Some(key) = store.load("voice-elevenlabs") {
+    if let Some(key) = store.load("voice-elevenlabs")? {
         let secret = Secret::new(key);
         cfg.voice.tts.elevenlabs.api_key = Some(secret.clone());
         cfg.voice.stt.elevenlabs.api_key = Some(secret);
     }
 
     // Google (shared TTS + STT)
-    if let Some(key) = store.load("voice-google") {
+    if let Some(key) = store.load("voice-google")? {
         let secret = Secret::new(key);
         cfg.voice.tts.google.api_key = Some(secret.clone());
         cfg.voice.stt.google.api_key = Some(secret);
     }
 
     // OpenAI TTS (voice-specific, separate from LLM provider key)
-    if let Some(key) = store.load("voice-openai") {
+    if let Some(key) = store.load("voice-openai")? {
         cfg.voice.tts.openai.api_key = Some(Secret::new(key.clone()));
         // Also set STT whisper key since they share the same OpenAI API
         if cfg.voice.stt.whisper.api_key.is_none() {
@@ -69,14 +69,16 @@ pub(crate) fn merge_voice_keys(cfg: &mut chelix_config::ChelixConfig) {
     }
 
     // Whisper STT (voice-specific OpenAI key for STT only)
-    if let Some(key) = store.load("voice-whisper") {
+    if let Some(key) = store.load("voice-whisper")? {
         cfg.voice.stt.whisper.api_key = Some(Secret::new(key));
     }
 
     // Deepgram STT
-    if let Some(key) = store.load("voice-deepgram") {
+    if let Some(key) = store.load("voice-deepgram")? {
         cfg.voice.stt.deepgram.api_key = Some(Secret::new(key));
     }
+
+    Ok(())
 }
 
 /// Map a UI provider name to its credential-store key name.
@@ -102,7 +104,9 @@ pub(crate) fn voice_key_store_name(provider: &str) -> String {
 /// store the TOML value is ignored (store wins).  After migration the
 /// TOML file no longer contains voice secrets.
 #[cfg(feature = "voice")]
-pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConfig) {
+pub(crate) fn migrate_voice_keys_to_key_store(
+    config: &chelix_config::ChelixConfig,
+) -> anyhow::Result<()> {
     use secrecy::ExposeSecret;
 
     let store = crate::provider_setup::KeyStore::new();
@@ -139,7 +143,7 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConf
     let mut migrated = Vec::new();
     for (store_key, tts_key, stt_key) in &candidates {
         // Skip if the store already has this key.
-        if store.load(store_key).is_some() {
+        if store.load(store_key)?.is_some() {
             continue;
         }
         // Pick whichever TOML key is present (TTS first).
@@ -147,23 +151,18 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConf
         if let Some(secret) = value {
             let plaintext = secret.expose_secret();
             if !plaintext.is_empty() && !plaintext.starts_with('$') {
-                if let Err(e) =
-                    store.save_config(store_key, Some(plaintext.to_string()), None, None)
-                {
-                    tracing::warn!(key = store_key, error = %e, "failed to migrate voice key");
-                    continue;
-                }
+                store.save_config(store_key, Some(plaintext.to_string()), None)?;
                 migrated.push(*store_key);
             }
         }
     }
 
     if migrated.is_empty() {
-        return;
+        return Ok(());
     }
 
     // Clear the TOML entries so secrets don't linger in the config file.
-    if let Err(e) = chelix_config::update_config(|cfg| {
+    chelix_config::update_config(|cfg| {
         for key in &migrated {
             match *key {
                 "voice-elevenlabs" => {
@@ -186,15 +185,13 @@ pub(crate) fn migrate_voice_keys_to_key_store(config: &chelix_config::ChelixConf
                 _ => {},
             }
         }
-    }) {
-        tracing::warn!(error = %e, "failed to clear migrated voice keys from config");
-    } else {
-        tracing::info!(
-            count = migrated.len(),
-            keys = ?migrated,
-            "migrated voice API keys from chelix.toml to credential store"
-        );
-    }
+    })?;
+    tracing::info!(
+        count = migrated.len(),
+        keys = ?migrated,
+        "migrated voice API keys from chelix.toml to credential store"
+    );
+    Ok(())
 }
 
 /// Resolve an OpenAI API key with fallback: voice-specific config -> `OPENAI_API_KEY`
@@ -400,13 +397,13 @@ mod tests {
         // Save a key to the store via the public save_config method.
         let store = crate::provider_setup::KeyStore::new();
         store
-            .save_config("voice-elevenlabs", Some("el-test-key".into()), None, None)
+            .save_config("voice-elevenlabs", Some("el-test-key".into()), None)
             .unwrap();
 
         let mut cfg = chelix_config::ChelixConfig::default();
         assert!(cfg.voice.tts.elevenlabs.api_key.is_none());
 
-        merge_voice_keys(&mut cfg);
+        merge_voice_keys(&mut cfg).expect("merge voice keys");
 
         assert!(cfg.voice.tts.elevenlabs.api_key.is_some());
         assert_eq!(
@@ -426,24 +423,24 @@ mod tests {
         cfg.voice.tts.elevenlabs.api_key = Some(Secret::new("el-legacy-key".to_string()));
         cfg.voice.stt.deepgram.api_key = Some(Secret::new("deepgram-legacy-key".to_string()));
 
-        migrate_voice_keys_to_key_store(&cfg);
+        migrate_voice_keys_to_key_store(&cfg).expect("migrate voice keys");
 
         // Keys should now be in the store.
         let store = crate::provider_setup::KeyStore::new();
         assert_eq!(
-            store.load("voice-elevenlabs").as_deref(),
+            store.load("voice-elevenlabs").unwrap().as_deref(),
             Some("el-legacy-key")
         );
         assert_eq!(
-            store.load("voice-deepgram").as_deref(),
+            store.load("voice-deepgram").unwrap().as_deref(),
             Some("deepgram-legacy-key")
         );
 
         // Running again with empty config is a no-op (keys already in store).
         let cfg2 = chelix_config::ChelixConfig::default();
-        migrate_voice_keys_to_key_store(&cfg2);
+        migrate_voice_keys_to_key_store(&cfg2).expect("repeat voice key migration");
         assert_eq!(
-            store.load("voice-elevenlabs").as_deref(),
+            store.load("voice-elevenlabs").unwrap().as_deref(),
             Some("el-legacy-key")
         );
 
@@ -457,11 +454,11 @@ mod tests {
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.tts.elevenlabs.api_key = Some(Secret::new("${ELEVENLABS_API_KEY}".to_string()));
 
-        migrate_voice_keys_to_key_store(&cfg);
+        migrate_voice_keys_to_key_store(&cfg).expect("migrate voice keys");
 
         // Env var reference should NOT be migrated.
         let store = crate::provider_setup::KeyStore::new();
-        assert!(store.load("voice-elevenlabs").is_none());
+        assert!(store.load("voice-elevenlabs").unwrap().is_none());
 
         drop(guard);
     }

@@ -13,8 +13,10 @@ use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
 
 use {
     chelix_providers::ProviderRegistry,
+    chelix_service_traits::{ChatExecutionContext, ChatSendSyncRequest},
     chelix_sessions::{
-        metadata::SqliteSessionMetadata, session_events::SessionEventBus, store::SessionStore,
+        SessionKey, metadata::SqliteSessionMetadata, session_events::SessionEventBus,
+        store::SessionStore,
     },
 };
 
@@ -27,7 +29,6 @@ use crate::{
         ExternalAgentChatService, ExternalAgentSessionService, GatewayExternalAgentService,
     },
     methods::MethodRegistry,
-    provider_setup::LiveProviderSetupService,
     services::GatewayServices,
     state::{DiscoveredHookInfo, GatewayState},
 };
@@ -54,9 +55,7 @@ pub(super) struct PostStateInputs {
     pub registry: Arc<tokio::sync::RwLock<ProviderRegistry>>,
     pub provider_summary: String,
     pub mcp_configured_count: usize,
-    pub model_store: Arc<tokio::sync::RwLock<crate::chat::DisabledModelsStore>>,
     pub live_model_service: Arc<LiveModelService>,
-    pub provider_setup_service: Arc<LiveProviderSetupService>,
     pub live_mcp: Arc<crate::mcp_service::LiveMcpService>,
     pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
     pub code_index: Arc<chelix_code_index::CodeIndex>,
@@ -68,7 +67,7 @@ pub(super) struct PostStateInputs {
     pub session_metadata: Arc<SqliteSessionMetadata>,
     pub session_share_store: Arc<crate::share_store::ShareStore>,
     pub session_state_store: Arc<chelix_sessions::state_store::SessionStateStore>,
-    pub prompt_queue_store: Arc<chelix_sessions::SessionPromptQueueStore>,
+    pub queued_prompts: Arc<chelix_sessions::QueuedPrompts>,
     pub sandbox_router: Arc<chelix_tools::sandbox::SandboxRouter>,
     pub tools_service: Arc<chelix_tools::tools_service::ManagedToolsService>,
     pub cron_service: Arc<chelix_cron::service::CronService>,
@@ -222,9 +221,7 @@ pub(super) async fn complete_startup(
         registry,
         provider_summary,
         mcp_configured_count,
-        model_store,
         live_model_service,
-        provider_setup_service,
         live_mcp,
         memory_manager,
         credential_store,
@@ -233,7 +230,7 @@ pub(super) async fn complete_startup(
         session_metadata,
         session_share_store: _session_share_store,
         session_state_store,
-        prompt_queue_store,
+        queued_prompts,
         sandbox_router,
         tools_service,
         cron_service,
@@ -322,6 +319,8 @@ pub(super) async fn complete_startup(
         config.external_agents.clone(),
         Arc::clone(&session_metadata),
         Arc::clone(&approval_manager),
+        Arc::clone(&agents_config),
+        Arc::clone(&services.model),
     ));
     let session_service = Arc::clone(&services.session);
     services = services.with_session(Arc::new(ExternalAgentSessionService::new(
@@ -358,7 +357,7 @@ pub(super) async fn complete_startup(
         .map_err(|_| anyhow::anyhow!("managed tools service was already initialized"))?;
 
     // Wire the shared LLM provider registry for lightweight generation
-    // (auto-title, session summary, tts.generate_phrase).
+    // (auto-title, session summary).
     state.inner.write().await.llm_providers = Some(Arc::clone(&registry));
 
     {
@@ -390,23 +389,27 @@ pub(super) async fn complete_startup(
             Arc::new(move |req: chelix_webhooks::worker::ExecuteRequest| {
                 let chat_state = Arc::clone(&worker_state_ref);
                 Box::pin(async move {
+                    let session_id = SessionKey::new(req.session_key.clone());
+                    crate::session::ensure_internal_chat_session(
+                        &chat_state.services,
+                        &session_id,
+                        req.agent_id.as_deref(),
+                        req.model_override.as_ref(),
+                    )
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
                     let chat = chat_state.chat();
-                    let mut params = serde_json::json!({
-                        "text": req.message,
-                        "_session_key": req.session_key,
-                    });
-                    if let Some(ref model) = req.model {
-                        params["model"] = serde_json::Value::String(model.clone());
-                    }
-                    if let Some(ref agent_id) = req.agent_id {
-                        params["agent_id"] = serde_json::Value::String(agent_id.clone());
-                    }
-                    if let Some(ref tool_policy) = req.tool_policy {
-                        params["_tool_policy"] = serde_json::to_value(tool_policy)
-                            .map_err(|error| anyhow::anyhow!(error))?;
-                    }
+                    let request = ChatSendSyncRequest {
+                        text: req.message.clone(),
+                        model_override: req.model_override.clone(),
+                        tool_choice: None,
+                        input_medium: None,
+                    };
+                    let mut context = ChatExecutionContext::internal(session_id);
+                    context.agent_id = req.agent_id.clone();
+                    context.tool_policy = req.tool_policy.clone();
                     let result = chat
-                        .send_sync(params)
+                        .send_sync(request, context)
                         .await
                         .map_err(|e| anyhow::anyhow!("{e}"))?;
                     let input_tokens = result.get("inputTokens").and_then(|v| v.as_i64());
@@ -429,9 +432,6 @@ pub(super) async fn complete_startup(
 
     let _ = deferred_state.set(Arc::clone(&state));
 
-    provider_setup_service.set_broadcaster(Arc::new(crate::provider_setup::GatewayBroadcaster {
-        state: Arc::clone(&state),
-    }));
     live_model_service.set_state(crate::chat::GatewayChatRuntime::from_state(Arc::clone(
         &state,
     )));
@@ -811,11 +811,10 @@ pub(super) async fn complete_startup(
         let shared_tool_registry = Arc::new(tokio::sync::RwLock::new(tool_registry));
         let mut chat_service = LiveChatService::new(
             Arc::clone(&registry),
-            Arc::clone(&model_store),
             crate::chat::GatewayChatRuntime::from_state(Arc::clone(&state)),
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),
-            Arc::clone(&prompt_queue_store),
+            Arc::clone(&queued_prompts),
             config.clone(),
             Arc::clone(&agents_config),
             chelix_config::ToolsConfigSource::Filesystem,

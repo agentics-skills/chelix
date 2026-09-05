@@ -21,21 +21,30 @@ pub use error::{Error, Result};
 pub(crate) async fn resolve_default_agent_presentation(
     gateway: &chelix_gateway::state::GatewayState,
 ) -> Result<chelix_config::ResolvedIdentity> {
+    resolve_optional_default_agent_presentation(gateway)
+        .await?
+        .ok_or_else(|| Error::message("default agent is not configured"))
+}
+
+pub(crate) async fn resolve_optional_default_agent_presentation(
+    gateway: &chelix_gateway::state::GatewayState,
+) -> Result<Option<chelix_config::ResolvedIdentity>> {
     let agents = gateway
         .services
         .agents_config
         .as_ref()
         .ok_or_else(|| Error::message("agent configuration is not available"))?;
     let agents = agents.read().await;
-    let default_id = agents.default.as_str();
-    if default_id.trim().is_empty() {
-        return Err(Error::message("agents.default is empty"));
-    }
-    let agent = agents.entries.get(default_id).ok_or_else(|| {
-        Error::message(format!(
-            "default agent \"{default_id}\" is not defined under [agents]"
-        ))
-    })?;
+    let (default_id, agent) = match agents
+        .resolve_state()
+        .map_err(|error| Error::message(error.to_string()))?
+    {
+        chelix_config::schema::AgentsConfigState::Setup => return Ok(None),
+        chelix_config::schema::AgentsConfigState::Configured {
+            default_id,
+            default_agent,
+        } => (default_id, default_agent),
+    };
     if agent.name.trim().is_empty() {
         return Err(Error::message(format!(
             "default agent \"{default_id}\" has an empty name"
@@ -54,12 +63,12 @@ pub(crate) async fn resolve_default_agent_presentation(
     let user: chelix_config::UserProfile = serde_json::from_value(user)
         .map_err(|error| Error::message(format!("invalid user profile: {error}")))?;
 
-    Ok(chelix_config::ResolvedIdentity {
+    Ok(Some(chelix_config::ResolvedIdentity {
         name,
         emoji,
         soul: None,
         user_name: user.name,
-    })
+    }))
 }
 
 use {

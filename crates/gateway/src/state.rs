@@ -1,9 +1,8 @@
+#[cfg(feature = "graphql")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
+    sync::Arc,
     time::Instant,
 };
 
@@ -315,7 +314,7 @@ pub struct GatewayInner {
     /// Push notification service for sending notifications to subscribed devices.
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<crate::push::PushService>>,
-    /// LLM provider registry for lightweight generation (e.g. TTS phrases).
+    /// Shared LLM provider registry for auto-title and session summary.
     pub llm_providers: Option<Arc<RwLock<chelix_providers::ProviderRegistry>>>,
     /// Cached user geolocation from browser Geolocation API, persisted to `USER.md`.
     pub cached_location: Option<chelix_config::GeoLocation>,
@@ -470,9 +469,6 @@ pub struct GatewayState {
     /// so `chat()` never awaits the `inner` tokio lock.
     pub chat_override: std::sync::RwLock<Option<Arc<dyn crate::services::ChatService>>>,
 
-    // ── Atomics (lock-free) ───────────────────────────────��─────────────────
-    pub tts_phrase_counter: AtomicUsize,
-
     // ── Broadcast state (lock-free) ─────────────────────────────────────────
     /// Lock-free broadcast state (seq counter, GraphQL subscription channel).
     pub broadcaster: Arc<Broadcaster>,
@@ -583,7 +579,6 @@ impl GatewayState {
             webhook_worker_tx: std::sync::OnceLock::new(),
             skill_usage_store: std::sync::OnceLock::new(),
             chat_override: std::sync::RwLock::new(None),
-            tts_phrase_counter: AtomicUsize::new(0),
             broadcaster: Arc::new(Broadcaster::new()),
             client_registry: RwLock::new(ClientRegistryInner::new()),
             inner: RwLock::new(GatewayInner::new(hook_registry, cached_location)),
@@ -637,14 +632,6 @@ impl GatewayState {
     #[cfg(feature = "push-notifications")]
     pub async fn get_push_service(&self) -> Option<Arc<crate::push::PushService>> {
         self.inner.read().await.push_service.clone()
-    }
-
-    /// Return the next sequential index for TTS phrase round-robin picking.
-    pub fn next_tts_phrase_index(&self, len: usize) -> usize {
-        if len == 0 {
-            return 0;
-        }
-        self.tts_phrase_counter.fetch_add(1, Ordering::Relaxed) % len
     }
 
     /// Get the active chat service (override or default).

@@ -6,7 +6,10 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::{collections::BTreeMap, time::Duration};
+#[path = "support/reasoning.rs"]
+mod reasoning;
+
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use {
     chelix_agents::model::{ChatMessage, LlmProvider},
@@ -84,16 +87,20 @@ fn configured_base_url(config: &ProviderConfig) -> Option<String> {
     configured_base_url_from_override(config, config.base_url_env.and_then(optional_var))
 }
 
-fn configured_provider(config: &ProviderConfig) -> Option<OpenAiProvider> {
+fn configured_provider(config: &ProviderConfig) -> Option<Arc<dyn LlmProvider>> {
     let api_key = optional_var(config.api_key_env)?;
     let base_url = configured_base_url(config)?;
     let model = optional_var(config.model_env).unwrap_or_else(|| config.default_model.to_string());
 
-    Some(OpenAiProvider::new_with_name(
-        Secret::new(api_key),
-        model,
-        base_url,
-        config.provider_name.to_string(),
+    Some(reasoning::configure(
+        OpenAiProvider::new_with_name(
+            Secret::new(api_key),
+            model,
+            base_url,
+            config.provider_name.to_string(),
+        ),
+        vec!["off".into()],
+        "off".into(),
     ))
 }
 
@@ -140,7 +147,7 @@ fn is_account_unavailable_provider_error(provider_name: &str, error: &anyhow::Er
 }
 
 async fn complete_scenario_with_retries(
-    provider: &OpenAiProvider,
+    provider: &dyn LlmProvider,
     provider_name: &str,
     scenario: &Scenario,
 ) -> Option<chelix_agents::model::CompletionResponse> {
@@ -180,7 +187,7 @@ async fn complete_scenario_with_retries(
     unreachable!("bounded retry loop returns or panics")
 }
 
-async fn run_provider_scenarios(provider_name: &str, provider: OpenAiProvider) {
+async fn run_provider_scenarios(provider_name: &str, provider: Arc<dyn LlmProvider>) {
     let suite = load_suite();
     assert!(
         !suite.scenarios.is_empty(),
@@ -193,7 +200,7 @@ async fn run_provider_scenarios(provider_name: &str, provider: OpenAiProvider) {
         }
 
         let Some(response) =
-            complete_scenario_with_retries(&provider, provider_name, scenario).await
+            complete_scenario_with_retries(provider.as_ref(), provider_name, scenario).await
         else {
             return;
         };

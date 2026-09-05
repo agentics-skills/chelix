@@ -367,9 +367,6 @@ export function localizedApiErrorMessage(payload: ApiPayload | null | undefined,
 
 export function localizeRpcError(error: RpcErrorObj | null | undefined): LocalizedRpcError | null | undefined {
 	if (!error) return error;
-	// When the server provides a specific message (not just an error code),
-	// preserve it as `serverMessage` so callers like model probes can show
-	// the precise backend reason instead of a generic locale string.
 	const message = localizedRpcErrorMessage(error);
 	if (error.message === message) return error;
 	return Object.assign({}, error, { message: message, serverMessage: error.message });

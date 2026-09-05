@@ -37,10 +37,7 @@ use {
 
 use crate::{
     ActiveToolInvocation, LiveChatService,
-    agent_loop::{
-        ChannelStreamDispatcher, OrderedRunnerEvent, clear_unsupported_model,
-        mark_unsupported_model, ordered_runner_event_callbacks,
-    },
+    agent_loop::{ChannelStreamDispatcher, OrderedRunnerEvent, ordered_runner_event_callbacks},
     channels::{
         deliver_channel_error, deliver_channel_replies, dispatch_document_to_channels,
         document_payload_from_data_uri, document_payload_from_ref, generate_tts_audio,
@@ -49,8 +46,8 @@ use crate::{
     },
     chat_error::{parse_agent_run_error, parse_chat_error},
     compaction,
+    memory_tools::MemoryForgetProviderResolver,
     message::apply_voice_reply_suffix,
-    models::DisabledModelsStore,
     prompt::{
         build_policy_context, build_tool_context, prepare_run_registry,
         prompt_build_limits_from_config,
@@ -660,10 +657,9 @@ pub(crate) async fn run_with_tools(
     runtime_limits: AgentRuntimeLimits,
     cancellation_token: &CancellationToken,
     state: &Arc<dyn ChatRuntime>,
-    model_store: &Arc<RwLock<DisabledModelsStore>>,
     run_id: &str,
     provider: Arc<dyn chelix_agents::model::LlmProvider>,
-    model_id: &str,
+    memory_forget_provider_resolver: MemoryForgetProviderResolver,
     tool_registry: &Arc<RwLock<ToolRegistry>>,
     user_content: &UserContent,
     provider_name: &str,
@@ -704,14 +700,14 @@ pub(crate) async fn run_with_tools(
     let native_tools = matches!(tool_mode, ToolMode::Native);
     let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
-    let policy_ctx = build_policy_context(agent_id, runtime_context, None);
+    let policy_ctx = build_policy_context(agent_id, runtime_context);
     // Shared registry preparation: filter → agent-scoped memory tools → lazy
     // wrap, identical to the debug/UI prompt surfaces so they never diverge.
     let filtered_registry = {
         let registry_guard = tool_registry.read().await;
         let memory_setup = state
             .memory_manager()
-            .map(|manager| (manager, Arc::clone(&provider)));
+            .map(|manager| (manager, memory_forget_provider_resolver.clone()));
         prepare_run_registry(
             &registry_guard,
             &persona.config,
@@ -1449,8 +1445,6 @@ pub(crate) async fn run_with_tools(
             ChatRunOutcome::Cancelled
         },
         Ok(result) => {
-            clear_unsupported_model(state, model_store, model_id).await;
-
             let iterations = result.iterations;
             let tool_calls_made = result.tool_calls_made;
             let usage = result.usage;
@@ -1729,7 +1723,6 @@ pub(crate) async fn run_with_tools(
             warn!(run_id, error = %error_str, "agent run error");
             state.set_run_error(run_id, error_str.clone()).await;
             let error_obj = parse_agent_run_error(&e, &error_str, Some(provider_name));
-            mark_unsupported_model(state, model_store, model_id, provider_name, &error_obj).await;
             deliver_channel_error(state, session_key, &error_obj).await;
             let error_payload = ChatErrorBroadcast {
                 run_id: run_id.to_string(),

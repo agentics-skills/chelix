@@ -83,6 +83,34 @@ fallback copied to `~/.chelix/docs/chelix/`. Chelix also writes a generated
 `config-template.md` under `~/.chelix/docs/chelix/` for the current server port
 and points agents at it separately.
 
+## Session Titles
+
+`chat.auto_title` controls automatic session title generation after the first
+exchange and defaults to `true`. Title generation requires a complete
+`auxiliary.title_generation` model/reasoning pair:
+
+```toml
+[auxiliary.title_generation]
+model = "openai::gpt-5.2"
+reasoning_effort = "low"
+```
+
+These values are examples. Choose an exact canonical model ID from `models.list`
+and a non-empty effort from that model's `reasoning_supported_efforts`. Both
+fields are required when the table is present. Partial tables and additional
+fields in `auxiliary` or `auxiliary.title_generation` cause a config load error.
+
+Before calling the LLM, title generation resolves this pair through the model
+registry and applies the selected effort to the provider. Missing title
+configuration, an unknown or noncanonical model ID, and an empty or unsupported
+effort return an error before the LLM call. Provider errors are returned to the
+caller; automatic title tasks log generation failures. A generated title updates
+the label of the existing session.
+
+For a model with `reasoning_supported_efforts = ["off"]`, configure
+`reasoning_effort = "off"` as the required selected effort. Reasoning fields are
+encoded according to the shared [provider reasoning policy](providers.md#non-reasoning-model).
+
 ## Basic Settings
 
 ```toml
@@ -95,11 +123,19 @@ default = "main"
 
 [agents.main]
 name = "Chelix"                 # Agent display name
+model = "openai::gpt-5.2"       # Required canonical registry model ID
+reasoning_effort = "medium"     # Required effort supported by this model
 max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 
 [tools]
 agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
 ```
+
+A first-run configuration contains no agents until provider setup exposes at
+least one registered model. Onboarding then creates the first agent with an
+explicit canonical model ID and one of that model's supported reasoning
+efforts. Once any agent exists, `[agents].default` must reference a configured
+agent and every agent must include both fields.
 
 ## LLM Providers
 
@@ -108,28 +144,37 @@ can be set via environment variables (e.g. `OPENAI_API_KEY` or
 `OPENROUTER_API_KEY`) or in the config file.
 
 ```toml
-[providers]
-offered = ["openai", "openrouter"]
-
-[providers.openai]
+[providers.custom-ai-example]
 enabled = true
-stream_transport = "sse"        # "sse", "websocket", or "auto"
+base_url = "https://ai.example.invalid/v1"
+wire_api = "responses"
 
-[providers.openai.models."gpt-5.3"]
-[providers.openai.models."gpt-5.2"]
+[providers.custom-ai-example.models."muse-flash-0.9"]
+context_length = 262144
+max_input_tokens = 196608
+max_output_tokens = 65536
+input_modalities = ["text"]
+output_modalities = ["text"]
+tool_calling = true
+streaming = true
+zeroDataRetentionEnabled = false
+reasoning_supported_efforts = ["off"]
+reasoning_summary = "detailed"
+reasoning_include = ["encrypted_content"]
 
 [chat]
-priority_models = ["gpt-5.2"]
+priority_models = ["custom-ai-example::muse-flash-0.9"]
 ```
 
-Selected models use one TOML form:
-`[providers.<name>.models."<raw-model-id>"]`. These tables form an ordered
-allowlist. Configuration wins field by field, `/models` discovery supplements
-missing metadata, and optional defaults apply last. Chelix excludes a model
-unless `context_length`,
-`max_input_tokens`, `max_output_tokens`, and
-`reasoning.supported_efforts` resolve to a valid record. Use
-`chat.priority_models` only for cross-provider selector ordering.
+The service configuration is the only source of model composition and model
+parameters. A provider may declare no models regardless of its status, and saving
+provider credentials does not require model records. Every model table that is
+present must be complete: a missing mandatory parameter, an invalid value, or an
+unknown model setting refuses service load. `reasoning_supported_efforts` must be
+a non-empty array without empty strings; `["low"]` is valid without `off`. Exact
+`["off"]` is the only non-reasoning API path, and `reasoning_summary` and
+`reasoning_include` remain valid configuration for it. Use `chat.priority_models`
+only for cross-provider selector ordering.
 
 See [Providers](providers.md) for the full list of supported providers and
 configuration options.
@@ -235,9 +280,9 @@ body.
 
 ## Chat Prompt Queue
 
-Prompts submitted while an agent run is active are queued on the server and
-replayed as a single run after that run finishes. See
-[Prompt Queue](prompt-queue.md).
+Prompts submitted while an agent turn is active are stored by the internal
+`queuedPrompts` service. After the complete final gate, the ordered batch enters
+the existing session as one full turn. See [queuedPrompts](prompt-queue.md).
 
 ```toml
 [chat]
@@ -472,6 +517,8 @@ default = "main"
 
 [agents.main]
 name = "Atlas"
+model = "openai::gpt-5.2"
+reasoning_effort = "medium"
 max_tools_threshold = 128
 
 [tools]

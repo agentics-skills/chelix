@@ -1,7 +1,9 @@
 use serde_json::json;
 
 use crate::{
-    BrowserService, ChatService, NoopBrowserService, ServiceResult, SessionBusyReason,
+    BrowserService, ChatCompactRequest, ChatContextRequest, ChatExecutionContext,
+    ChatFullContextRequest, ChatRawPromptRequest, ChatSendMessage, ChatSendRequest,
+    ChatSendSyncRequest, ChatService, NoopBrowserService, ServiceResult, SessionBusyReason,
     SessionMutationCoordinator, interfaces::model_service_not_configured_error,
 };
 
@@ -11,20 +13,24 @@ struct DefaultRefreshChatService;
 
 #[async_trait::async_trait]
 impl ChatService for DefaultRefreshChatService {
-    async fn send(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn send(
+        &self,
+        _request: ChatSendRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
+        Ok(json!({}))
+    }
+
+    async fn send_sync(
+        &self,
+        _request: ChatSendSyncRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
     async fn abort(&self, _params: serde_json::Value) -> ServiceResult {
         Ok(json!({}))
-    }
-
-    async fn prompt_queue_list(&self, _params: serde_json::Value) -> ServiceResult {
-        Ok(json!({ "prompts": [] }))
-    }
-
-    async fn prompt_queue_cancel(&self, _params: serde_json::Value) -> ServiceResult {
-        Ok(json!({ "prompts": [] }))
     }
 
     async fn history(&self, _params: serde_json::Value) -> ServiceResult {
@@ -39,19 +45,35 @@ impl ChatService for DefaultRefreshChatService {
         Ok(json!({}))
     }
 
-    async fn compact(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn compact(
+        &self,
+        _request: ChatCompactRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn context(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn context(
+        &self,
+        _request: ChatContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn raw_prompt(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn raw_prompt(
+        &self,
+        _request: ChatRawPromptRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 
-    async fn full_context(&self, _params: serde_json::Value) -> ServiceResult {
+    async fn full_context(
+        &self,
+        _request: ChatFullContextRequest,
+        _context: ChatExecutionContext,
+    ) -> ServiceResult {
         Ok(json!({}))
     }
 }
@@ -97,7 +119,7 @@ async fn browser_shutdown_with_grace_times_out() {
 
 #[test]
 fn model_service_not_configured_error_returns_expected_message() {
-    let error = model_service_not_configured_error("models.test");
+    let error = model_service_not_configured_error("models.disable");
     assert_eq!(error.to_string(), "model service not configured");
 }
 
@@ -112,6 +134,111 @@ async fn chat_service_default_refresh_prompt_memory_returns_not_configured() {
         Err(error) => error,
     };
     assert_eq!(error.to_string(), "chat not configured");
+}
+
+#[test]
+fn chat_send_request_accepts_the_closed_public_payload() {
+    let request: ChatSendRequest = match serde_json::from_value(json!({
+        "text": "Hello",
+        "modelOverride": {
+            "model": "test::model",
+            "reasoningEffort": "low"
+        },
+        "clientSequence": 7
+    })) {
+        Ok(request) => request,
+        Err(error) => panic!("valid chat.send payload should deserialize: {error}"),
+    };
+
+    assert_eq!(request.message, ChatSendMessage::Text("Hello".into()));
+    let Some(model_override) = request.model_override else {
+        panic!("valid override should be present");
+    };
+    assert_eq!(model_override.model, "test::model");
+    assert_eq!(model_override.reasoning_effort.as_str(), "low");
+    assert_eq!(request.client_sequence, Some(7));
+}
+
+#[test]
+fn chat_send_request_rejects_invalid_message_or_override_shapes() {
+    let cases = [
+        json!({}),
+        json!({ "text": "Hello", "content": [{ "type": "text", "text": "Hello" }] }),
+        json!({ "text": "Hello", "modelOverride": { "model": "test::model" } }),
+    ];
+
+    for value in cases {
+        assert!(serde_json::from_value::<ChatSendRequest>(value).is_err());
+    }
+}
+
+#[test]
+fn chat_send_request_rejects_an_additional_field() {
+    let result = serde_json::from_value::<ChatSendRequest>(json!({
+        "text": "Hello",
+        "unexpected": true
+    }));
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn chat_send_sync_request_accepts_the_closed_public_payload() {
+    let request: ChatSendSyncRequest = match serde_json::from_value(json!({
+        "text": "Hello",
+        "modelOverride": {
+            "model": "test::model",
+            "reasoningEffort": "low"
+        }
+    })) {
+        Ok(request) => request,
+        Err(error) => panic!("valid chat.send_sync payload should deserialize: {error}"),
+    };
+
+    assert_eq!(request.text, "Hello");
+    let Some(model_override) = request.model_override else {
+        panic!("valid override should be present");
+    };
+    assert_eq!(model_override.model, "test::model");
+    assert_eq!(model_override.reasoning_effort.as_str(), "low");
+}
+
+#[test]
+fn chat_send_sync_request_rejects_invalid_public_shapes() {
+    let cases = [
+        json!({}),
+        json!({ "text": "Hello", "modelOverride": { "model": "test::model" } }),
+    ];
+
+    for value in cases {
+        assert!(serde_json::from_value::<ChatSendSyncRequest>(value).is_err());
+    }
+}
+
+#[test]
+fn chat_send_sync_request_rejects_an_additional_field() {
+    let result = serde_json::from_value::<ChatSendSyncRequest>(json!({
+        "text": "Hello",
+        "unexpected": true
+    }));
+
+    assert!(result.is_err());
+}
+
+#[test]
+fn chat_auxiliary_requests_accept_only_an_empty_object() {
+    assert!(serde_json::from_value::<ChatCompactRequest>(json!({})).is_ok());
+    assert!(serde_json::from_value::<ChatContextRequest>(json!({})).is_ok());
+    assert!(serde_json::from_value::<ChatRawPromptRequest>(json!({})).is_ok());
+    assert!(serde_json::from_value::<ChatFullContextRequest>(json!({})).is_ok());
+
+    let invalid_values = [json!(null), json!({ "unexpected": true })];
+    for value in invalid_values {
+        assert!(serde_json::from_value::<ChatCompactRequest>(value.clone()).is_err());
+        assert!(serde_json::from_value::<ChatContextRequest>(value.clone()).is_err());
+        assert!(serde_json::from_value::<ChatRawPromptRequest>(value.clone()).is_err());
+        assert!(serde_json::from_value::<ChatFullContextRequest>(value).is_err());
+    }
 }
 
 #[tokio::test]

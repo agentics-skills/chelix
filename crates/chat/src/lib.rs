@@ -20,7 +20,7 @@ pub mod runtime;
 
 pub use {
     memory_tools::{AgentScopedMemoryWriter, MemoryForgetTool},
-    models::{DisabledModelsStore, LiveModelService, UnsupportedModelInfo},
+    models::{DisabledModelsStore, LiveModelService},
     runtime::{ChatRuntime, TtsOverride},
     service::{ActiveToolInvocation, LiveChatService},
     types::{

@@ -34,9 +34,8 @@ pub use {
     agents::*,
     chat::*,
     chelix_common::{
-        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, ModelReasoningMetadata,
-        PartialModelMetadata, PartialReasoningMetadata, ReasoningEffort, ReasoningInclude,
-        ReasoningSummary,
+        ModelConfigMap, ModelMetadata, ModelMetadataError, ModelModality, PartialModelMetadata,
+        ReasoningEffort, ReasoningInclude, ReasoningSummary,
     },
     code_index::*,
     hooks::*,
@@ -188,29 +187,51 @@ pub struct ResolvedIdentity {
     pub user_name: Option<String>,
 }
 
-impl ResolvedIdentity {
-    pub fn from_config(config: &ChelixConfig) -> crate::Result<Self> {
-        let default_id = config.agents.default.as_str();
-        if default_id.trim().is_empty() {
-            return Err(crate::Error::message("agents.default is empty"));
-        }
-        let agent = config.agents.entries.get(default_id).ok_or_else(|| {
-            crate::Error::message(format!(
-                "default agent \"{default_id}\" is not defined under [agents]"
-            ))
-        })?;
-        if agent.name.trim().is_empty() {
-            return Err(crate::Error::message(format!(
-                "default agent \"{default_id}\" has an empty name"
-            )));
-        }
-        Ok(Self {
-            name: agent.name.clone(),
-            emoji: agent.emoji.clone(),
-            soul: None,
-            user_name: config.user.name.clone(),
-        })
+/// Stable network and container slug used while no agent exists yet.
+pub const SETUP_INSTANCE_SLUG: &str = "chelix-setup";
+
+/// Resolve one instance slug from the exact configured/setup agents state.
+pub fn resolve_instance_slug(config: &ChelixConfig) -> crate::Result<String> {
+    match config
+        .agents
+        .resolve_state()
+        .map_err(|error| crate::Error::message(error.to_string()))?
+    {
+        AgentsConfigState::Setup => Ok(SETUP_INSTANCE_SLUG.to_string()),
+        AgentsConfigState::Configured {
+            default_id,
+            default_agent,
+        } => {
+            let name_slug = sanitize_instance_slug(&default_agent.name);
+            if name_slug.is_empty() {
+                Ok(default_id.to_string())
+            } else {
+                Ok(name_slug)
+            }
+        },
     }
+}
+
+fn sanitize_instance_slug(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_dash = false;
+    for character in value.to_lowercase().chars() {
+        let mapped = if character.is_ascii_alphanumeric() {
+            character
+        } else {
+            '-'
+        };
+        if mapped == '-' {
+            if !last_dash {
+                out.push(mapped);
+            }
+            last_dash = true;
+        } else {
+            out.push(mapped);
+            last_dash = false;
+        }
+    }
+    out.trim_matches('-').to_string()
 }
 
 /// Root configuration.
@@ -240,7 +261,7 @@ pub struct ChelixConfig {
     pub caldav: CalDavConfig,
     pub home_assistant: HomeAssistantConfig,
     pub webhooks: WebhooksConfig,
-    /// Auxiliary model assignments for side tasks (compaction, titles, vision).
+    /// Session title generation model and reasoning configuration.
     pub auxiliary: AuxiliaryModelsConfig,
     /// Code-index configuration for codebase search tools.
     pub code_index: CodeIndexTomlConfig,
@@ -406,14 +427,6 @@ where
 
 fn default_true() -> bool {
     true
-}
-
-const fn is_true(value: &bool) -> bool {
-    *value
-}
-
-const fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 const fn is_default_provider_stream_transport(value: &ProviderStreamTransport) -> bool {

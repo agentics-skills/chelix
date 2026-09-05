@@ -4,7 +4,10 @@ use std::{
 };
 
 use {
-    chelix_service_traits::{ServiceResult, Services},
+    chelix_service_traits::{
+        ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+        ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceResult, Services,
+    },
     serde_json::{Value, json},
     tokio::sync::broadcast,
 };
@@ -272,20 +275,55 @@ impl chelix_service_traits::CronService for MockCron {
 
 #[async_trait::async_trait]
 impl chelix_service_traits::ChatService for MockChat {
-    async fn send(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.send", p)
+    async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult {
+        let request = serde_json::to_value(request)?;
+        self.0.call(
+            "chat.send",
+            json!({
+                "request": request,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
+    }
+
+    async fn send_sync(
+        &self,
+        request: ChatSendSyncRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        let request = serde_json::to_value(request)?;
+        self.0.call(
+            "chat.send_sync",
+            json!({
+                "request": request,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
     async fn abort(&self, p: Value) -> ServiceResult {
         self.0.call("chat.abort", p)
     }
 
-    async fn prompt_queue_list(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.prompt_queue.list", p)
+    async fn queued_prompts_status(
+        &self,
+        session_id: chelix_sessions::SessionKey,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        let value = self.0.call(
+            "chat.queued_prompts.status",
+            json!({ "sessionKey": session_id }),
+        )?;
+        serde_json::from_value(value).map_err(|error| error.to_string().into())
     }
 
-    async fn prompt_queue_cancel(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.prompt_queue.cancel", p)
+    async fn queued_prompts_remove(
+        &self,
+        id: i64,
+    ) -> Result<chelix_sessions::QueuedPromptsStatus, chelix_service_traits::ServiceError> {
+        let value = self
+            .0
+            .call("chat.queued_prompts.remove", json!({ "id": id }))?;
+        serde_json::from_value(value).map_err(|error| error.to_string().into())
     }
 
     async fn history(&self, p: Value) -> ServiceResult {
@@ -300,20 +338,60 @@ impl chelix_service_traits::ChatService for MockChat {
         self.0.call("chat.clear", p)
     }
 
-    async fn compact(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.compact", p)
+    async fn compact(
+        &self,
+        request: ChatCompactRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.compact",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
-    async fn context(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.context", p)
+    async fn context(
+        &self,
+        request: ChatContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.context",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
-    async fn raw_prompt(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.raw_prompt", p)
+    async fn raw_prompt(
+        &self,
+        request: ChatRawPromptRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.raw_prompt",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 
-    async fn full_context(&self, p: Value) -> ServiceResult {
-        self.0.call("chat.full_context", p)
+    async fn full_context(
+        &self,
+        request: ChatFullContextRequest,
+        context: ChatExecutionContext,
+    ) -> ServiceResult {
+        self.0.call(
+            "chat.full_context",
+            json!({
+                "request": serde_json::to_value(request)?,
+                "context": { "sessionId": context.session_id },
+            }),
+        )
     }
 }
 
@@ -605,24 +683,32 @@ impl chelix_service_traits::ModelService for MockModel {
         self.0.call("models.list_all", json!({}))
     }
 
+    async fn resolve_model_reasoning(
+        &self,
+        model: &str,
+        reasoning_effort: Option<&chelix_service_traits::ReasoningEffort>,
+    ) -> Result<chelix_service_traits::ResolvedModelReasoning, chelix_service_traits::ServiceError>
+    {
+        self.0.call(
+            "models.resolve_model_reasoning",
+            json!({
+                "model": model,
+                "reasoningEffort": reasoning_effort,
+            }),
+        )?;
+        let reasoning_effort = reasoning_effort.cloned().ok_or_else(|| {
+            chelix_service_traits::ServiceError::message("reasoning effort is required")
+        })?;
+        chelix_service_traits::ResolvedModelReasoning::try_new(model.to_string(), reasoning_effort)
+            .map_err(chelix_service_traits::ServiceError::message)
+    }
+
     async fn disable(&self, p: Value) -> ServiceResult {
         self.0.call("models.disable", p)
     }
 
     async fn enable(&self, p: Value) -> ServiceResult {
         self.0.call("models.enable", p)
-    }
-
-    async fn detect_supported(&self, p: Value) -> ServiceResult {
-        self.0.call("models.detect_supported", p)
-    }
-
-    async fn cancel_detect(&self) -> ServiceResult {
-        self.0.call("models.cancel_detect", json!({}))
-    }
-
-    async fn test(&self, p: Value) -> ServiceResult {
-        self.0.call("models.test", p)
     }
 }
 
@@ -693,16 +779,8 @@ impl chelix_service_traits::ProviderSetupService for MockProviderSetup {
         self.0.call("providers.remove_key", p)
     }
 
-    async fn validate_key(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.validate_key", p)
-    }
-
-    async fn save_models(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.save_models", p)
-    }
-
-    async fn add_custom(&self, p: Value) -> ServiceResult {
-        self.0.call("providers.add_custom", p)
+    async fn set_model_preferences(&self, p: Value) -> ServiceResult {
+        self.0.call("providers.set_model_preferences", p)
     }
 }
 

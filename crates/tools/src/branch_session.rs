@@ -32,7 +32,7 @@ impl AgentTool for BranchSessionTool {
     fn description(&self) -> &str {
         "Fork the current session into a new branch at a given message index. \
          Messages up to fork_point are copied to the new session. \
-         The new session inherits the parent's model and project."
+         The new session inherits the parent's model, reasoning effort, agent, and project."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -46,8 +46,7 @@ impl AgentTool for BranchSessionTool {
                 },
                 "fork_point": {
                     "type": "integer",
-                    "description": "Message index to fork at (0-based, exclusive). \
-                                    Defaults to all messages."
+                    "description": "Message index to fork at (0-based, exclusive). Defaults to all messages."
                 }
             }
         })
@@ -56,66 +55,64 @@ impl AgentTool for BranchSessionTool {
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
         let parent_key = params
             .get("_session_key")
-            .and_then(|v| v.as_str())
+            .and_then(Value::as_str)
             .ok_or_else(|| Error::message("missing session context"))?;
-
         let label = params
             .get("label")
-            .and_then(|v| v.as_str())
+            .and_then(Value::as_str)
             .ok_or_else(|| Error::message("missing 'label'"))?;
 
+        let parent = self
+            .metadata
+            .get(parent_key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{parent_key}' not found")))?;
+        let model_reasoning = parent.model_reasoning().cloned().ok_or_else(|| {
+            Error::message(format!(
+                "session '{parent_key}' has no LLM model/reasoning pair"
+            ))
+        })?;
         let messages = self.store.read(parent_key).await?;
-        let msg_count = messages.len();
-
+        let message_count = messages.len();
         let fork_point = params
             .get("fork_point")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
-            .unwrap_or(msg_count);
-
-        if fork_point > msg_count {
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .unwrap_or(message_count);
+        if fork_point > message_count {
             return Err(Error::message(format!(
-                "fork_point {fork_point} exceeds message count {msg_count}"
+                "fork_point {fork_point} exceeds message count {message_count}"
             ))
             .into());
         }
 
         let new_key = format!("session:{}", uuid::Uuid::new_v4());
-        let forked_messages: Vec<Value> = messages[..fork_point].to_vec();
-
         self.store
-            .replace_history(&new_key, forked_messages)
+            .replace_history(&new_key, messages[..fork_point].to_vec())
             .await?;
-
+        self.metadata
+            .create_llm_session(
+                &new_key,
+                Some(label),
+                &model_reasoning,
+                parent.agent_id.as_deref(),
+            )
+            .await?;
+        let ui_message_count = self.store.ui_message_count(&new_key).await?;
+        self.metadata.touch(&new_key, ui_message_count).await?;
+        if let Some(project_id) = parent.project_id.as_deref() {
+            self.metadata
+                .set_project_id(&new_key, Some(project_id))
+                .await?;
+        }
+        self.metadata
+            .set_parent(&new_key, Some(parent_key), Some(fork_point as u32))
+            .await?;
         let entry = self
             .metadata
-            .upsert(&new_key, Some(label.to_string()))
-            .await
-            .map_err(|e| Error::message(format!("failed to create session: {e}")))?;
-
-        let ui_message_count = self.store.ui_message_count(&new_key).await?;
-        self.metadata.touch(&new_key, ui_message_count).await;
-
-        // Inherit model and project from parent.
-        if let Some(parent) = self.metadata.get(parent_key).await {
-            if parent.model.is_some() {
-                self.metadata.set_model(&new_key, parent.model).await;
-            }
-            if parent.project_id.is_some() {
-                self.metadata
-                    .set_project_id(&new_key, parent.project_id)
-                    .await;
-            }
-        }
-
-        // Set parent relationship.
-        self.metadata
-            .set_parent(
-                &new_key,
-                Some(parent_key.to_string()),
-                Some(fork_point as u32),
-            )
-            .await;
+            .get(&new_key)
+            .await?
+            .ok_or_else(|| Error::message(format!("session '{new_key}' disappeared")))?;
 
         Ok(json!({
             "sessionKey": new_key,
@@ -132,6 +129,7 @@ impl AgentTool for BranchSessionTool {
 mod tests {
     use {
         super::*,
+        chelix_common::{ReasoningEffort, ResolvedModelReasoning},
         chelix_sessions::{MessageContent, PersistedMessage},
     };
 
@@ -153,119 +151,76 @@ mod tests {
         Arc<SqliteSessionMetadata>,
         tempfile::TempDir,
     ) {
-        let tmp = tempfile::tempdir().unwrap();
-        let store = Arc::new(SessionStore::new(tmp.path().to_path_buf()));
-
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(temp_dir.path().to_path_buf()));
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-        sqlx::query("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY)")
+        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
             .execute(&pool)
             .await
             .unwrap();
         SqliteSessionMetadata::init(&pool).await.unwrap();
-        // Add the branch columns.
-        sqlx::query("ALTER TABLE sessions ADD COLUMN parent_session_key TEXT")
-            .execute(&pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE sessions ADD COLUMN fork_point INTEGER")
-            .execute(&pool)
-            .await
-            .ok();
-
-        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        (store, metadata, tmp)
+        (store, Arc::new(SqliteSessionMetadata::new(pool)), temp_dir)
     }
 
     #[tokio::test]
-    async fn test_branch_at_midpoint() {
-        let (store, metadata, _tmp) = setup().await;
+    async fn branch_inherits_the_complete_pair() {
+        let (store, metadata, _temp_dir) = setup().await;
         let tool = BranchSessionTool::new(Arc::clone(&store), Arc::clone(&metadata));
-
-        // Create parent session with 4 messages.
         let parent_key = "session:parent";
+        let pair = ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            ReasoningEffort::from("high"),
+        )
+        .unwrap();
         metadata
-            .upsert(parent_key, Some("Parent".into()))
+            .create_llm_session(parent_key, Some("Parent"), &pair, Some("main"))
             .await
             .unwrap();
-        for i in 0..4 {
+        for index in 0..4 {
             store
-                .append(parent_key, &user_message(format!("msg {i}")))
+                .append(parent_key, &user_message(format!("message {index}")))
                 .await
                 .unwrap();
         }
-        metadata.touch(parent_key, 4).await;
-        metadata.set_model(parent_key, Some("gpt-4".into())).await;
+        metadata.touch(parent_key, 4).await.unwrap();
 
         let result = tool
             .execute(json!({
-                "label": "Branch at 2",
+                "label": "Branch",
                 "fork_point": 2,
                 "_session_key": parent_key,
             }))
             .await
             .unwrap();
-
         let new_key = result["sessionKey"].as_str().unwrap();
-        assert_eq!(result["forkPoint"], 2);
-        assert_eq!(result["messageCount"], 2);
-
-        // Verify the child has 2 messages.
-        let child_msgs = store.read(new_key).await.unwrap();
-        assert_eq!(child_msgs.len(), 2);
-
-        // Parent still has 4 messages.
-        let parent_msgs = store.read(parent_key).await.unwrap();
-        assert_eq!(parent_msgs.len(), 4);
-
-        // Child inherits model.
-        let child_entry = metadata.get(new_key).await.unwrap();
-        assert_eq!(child_entry.model.as_deref(), Some("gpt-4"));
+        let child = metadata.get(new_key).await.unwrap().unwrap();
+        assert_eq!(child.model(), Some("test::model"));
+        assert_eq!(
+            child.reasoning_effort().map(ReasoningEffort::as_str),
+            Some("high")
+        );
+        assert_eq!(child.agent_id.as_deref(), Some("main"));
+        assert_eq!(store.read(new_key).await.unwrap().len(), 2);
     }
 
     #[tokio::test]
-    async fn test_fork_point_beyond_count() {
-        let (store, metadata, _tmp) = setup().await;
+    async fn missing_parent_metadata_is_rejected_before_history_changes() {
+        let (store, metadata, _temp_dir) = setup().await;
         let tool = BranchSessionTool::new(Arc::clone(&store), Arc::clone(&metadata));
-
-        let parent_key = "session:parent2";
-        metadata.upsert(parent_key, None).await.unwrap();
-        store.append(parent_key, &user_message("hi")).await.unwrap();
+        let parent_key = "session:missing";
+        store
+            .append(parent_key, &user_message("unchanged"))
+            .await
+            .unwrap();
 
         let result = tool
             .execute(json!({
-                "label": "Bad fork",
-                "fork_point": 99,
+                "label": "Rejected",
                 "_session_key": parent_key,
             }))
             .await;
         assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_fork_all_messages() {
-        let (store, metadata, _tmp) = setup().await;
-        let tool = BranchSessionTool::new(Arc::clone(&store), Arc::clone(&metadata));
-
-        let parent_key = "session:parent3";
-        metadata.upsert(parent_key, None).await.unwrap();
-        for i in 0..3 {
-            store
-                .append(parent_key, &user_message(format!("msg {i}")))
-                .await
-                .unwrap();
-        }
-
-        // Default fork_point = all messages.
-        let result = tool
-            .execute(json!({
-                "label": "Full fork",
-                "_session_key": parent_key,
-            }))
-            .await
-            .unwrap();
-
-        let new_key = result["sessionKey"].as_str().unwrap();
-        let child_msgs = store.read(new_key).await.unwrap();
-        assert_eq!(child_msgs.len(), 3);
+        assert_eq!(store.read(parent_key).await.unwrap().len(), 1);
+        assert!(metadata.list().await.unwrap().is_empty());
     }
 }

@@ -39,12 +39,6 @@ pub struct ProvidersConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub offered: Vec<String>,
 
-    /// Show models older than one year in the chat model selector.
-    /// By default only recent models are shown; legacy models remain
-    /// accessible in the settings page regardless of this flag.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub show_legacy_models: bool,
-
     /// Provider-specific settings keyed by provider name.
     /// See [`KNOWN_PROVIDER_NAMES`] for the full list of recognised names.
     #[serde(flatten)]
@@ -118,7 +112,7 @@ pub enum ProviderStreamTransport {
 
 /// Configuration for a single LLM provider.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ProviderEntry {
     /// Whether this provider is enabled. Defaults to true.
     pub enabled: bool,
@@ -132,20 +126,11 @@ pub struct ProviderEntry {
     pub api_key: Option<Secret<String>>,
 
     /// Override the base URL.
-    /// Accepts legacy `url` as an alias for compatibility.
-    #[serde(alias = "url")]
     pub base_url: Option<String>,
 
-    /// Ordered model allowlist and highest-priority metadata source.
-    ///
-    /// An empty map allows every model whose discovery metadata resolves to a
-    /// complete record. A non-empty map limits registration to these IDs.
+    /// Complete model records keyed by raw model ID.
     #[serde(default, skip_serializing_if = "ModelConfigMap::is_empty")]
     pub models: ModelConfigMap,
-
-    /// Whether to fetch provider model catalogs dynamically when available.
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
-    pub fetch_models: bool,
 
     /// Streaming transport for this provider (`sse`, `websocket`, `auto`).
     ///
@@ -192,19 +177,6 @@ pub struct ProviderEntry {
     /// routed through this provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<ToolPolicyConfig>,
-
-    /// Timeout in seconds for completion-based model probes.
-    ///
-    /// When the lightweight catalog check (`GET /v1/models`) is unavailable,
-    /// probing falls back to sending a completion request. This setting
-    /// controls how long to wait for that fallback.
-    ///
-    /// Increase this for slow providers that need extra time to respond to
-    /// the first probe request.
-    ///
-    /// `None` (default) uses the built-in 30-second timeout.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub probe_timeout_secs: Option<u64>,
 }
 
 impl std::fmt::Debug for ProviderEntry {
@@ -214,14 +186,12 @@ impl std::fmt::Debug for ProviderEntry {
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
             .field("base_url", &self.base_url)
             .field("models", &self.models)
-            .field("fetch_models", &self.fetch_models)
             .field("stream_transport", &self.stream_transport)
             .field("wire_api", &self.wire_api)
             .field("alias", &self.alias)
             .field("tool_mode", &self.tool_mode)
             .field("cache_retention", &self.cache_retention)
             .field("policy", &self.policy)
-            .field("probe_timeout_secs", &self.probe_timeout_secs)
             .finish()
     }
 }
@@ -233,14 +203,12 @@ impl Default for ProviderEntry {
             api_key: None,
             base_url: None,
             models: ModelConfigMap::new(),
-            fetch_models: true,
             stream_transport: ProviderStreamTransport::Sse,
             wire_api: WireApi::ChatCompletions,
             alias: None,
             tool_mode: ToolMode::Native,
             cache_retention: CacheRetention::Short,
             policy: None,
-            probe_timeout_secs: None,
         }
     }
 }

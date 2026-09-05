@@ -1,7 +1,5 @@
 use super::*;
 
-use crate::session_reasoning::enrich_session_entry_for_ui;
-
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Sessions
     reg.register(
@@ -27,7 +25,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 "replying".to_string(),
                                 serde_json::Value::Bool(active_keys.iter().any(|k| k == &key)),
                             );
-                            enrich_session_entry_for_ui(&ctx.state, obj).await;
                         }
                     }
                 }
@@ -65,47 +62,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.resolve",
         Box::new(|ctx| {
             Box::pin(async move {
-                let mut result = ctx
-                    .state
+                ctx.state
                     .services
                     .session
                     .resolve(ctx.params.clone())
                     .await
-                    .map_err(ErrorShape::from)?;
-
-                if let Some(entry_obj) = result
-                    .get_mut("entry")
-                    .and_then(|value| value.as_object_mut())
-                {
-                    enrich_session_entry_for_ui(&ctx.state, entry_obj).await;
-                }
-
-                // Newly created sessions have an empty history array.
-                let is_new = result
-                    .get("history")
-                    .and_then(|h| h.as_array())
-                    .is_some_and(|a| a.is_empty());
-                if is_new
-                    && let Some(key) = result
-                        .get("entry")
-                        .and_then(|e| e.get("key"))
-                        .and_then(|k| k.as_str())
-                {
-                    broadcast(
-                        &ctx.state,
-                        "session",
-                        serde_json::json!({
-                            "kind": "created",
-                            "sessionKey": key,
-                        }),
-                        BroadcastOpts {
-                            drop_if_slow: true,
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                }
-                Ok(result)
+                    .map_err(ErrorShape::from)
             })
         }),
     );
@@ -113,32 +75,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.patch",
         Box::new(|ctx| {
             Box::pin(async move {
-                let key = ctx
-                    .params
-                    .get("key")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let result = ctx
-                    .state
+                ctx.state
                     .services
                     .session
                     .patch(ctx.params.clone())
                     .await
-                    .map_err(ErrorShape::from)?;
-                let version = result.get("version").and_then(|v| v.as_u64()).unwrap_or(0);
-                broadcast(
-                    &ctx.state,
-                    "session",
-                    serde_json::json!({
-                        "kind": "patched",
-                        "sessionKey": key,
-                        "version": version,
-                    }),
-                    BroadcastOpts::default(),
-                )
-                .await;
-                Ok(result)
+                    .map_err(ErrorShape::from)
             })
         }),
     );
@@ -190,7 +132,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
                 // Run session-end memory summary before clearing, if enabled.
                 if !key.is_empty() {
-                    progress
+                    let summary_result = progress
                         .run_with_heartbeat(
                             "summarizing",
                             "Creating memory summary and embeddings before reset…",
@@ -201,6 +143,19 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             ),
                         )
                         .await;
+                    if let Err(error) = summary_result {
+                        let message = error.to_string();
+                        progress
+                            .emit(
+                                "failed",
+                                &format!("Session reset failed: {message}"),
+                                None,
+                                None,
+                                true,
+                            )
+                            .await;
+                        return Err(ErrorShape::from(ServiceError::message(message)));
+                    }
 
                     // Export the session before the reset destroys its history.
                     let hooks = ctx.state.inner.read().await.hook_registry.clone();
@@ -260,35 +215,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.delete",
         Box::new(|ctx| {
             Box::pin(async move {
-                let key = ctx
-                    .params
-                    .get("key")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let result = ctx
-                    .state
+                ctx.state
                     .services
                     .session
                     .delete(ctx.params.clone())
                     .await
-                    .map_err(ErrorShape::from)?;
-                if !key.is_empty() {
-                    broadcast(
-                        &ctx.state,
-                        "session",
-                        serde_json::json!({
-                            "kind": "deleted",
-                            "sessionKey": key,
-                        }),
-                        BroadcastOpts {
-                            drop_if_slow: true,
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                }
-                Ok(result)
+                    .map_err(ErrorShape::from)
             })
         }),
     );
@@ -312,11 +244,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .session_mutations
                     .reserve_mutation(&key)
                     .await;
-                ctx.state
-                    .chat()
-                    .prompt_queue_cancel(serde_json::json!({ "sessionKey": key }))
-                    .await
-                    .map_err(ErrorShape::from)?;
                 let _ = ctx
                     .state
                     .chat()
@@ -434,29 +361,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "sessions.fork",
         Box::new(|ctx| {
             Box::pin(async move {
-                let result = ctx
-                    .state
+                ctx.state
                     .services
                     .session
                     .fork(ctx.params.clone())
                     .await
-                    .map_err(ErrorShape::from)?;
-                if let Some(key) = result.get("key").and_then(|k| k.as_str()) {
-                    broadcast(
-                        &ctx.state,
-                        "session",
-                        serde_json::json!({
-                            "kind": "created",
-                            "sessionKey": key,
-                        }),
-                        BroadcastOpts {
-                            drop_if_slow: true,
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-                }
-                Ok(result)
+                    .map_err(ErrorShape::from)
             })
         }),
     );
@@ -503,8 +413,14 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .map_err(|e| ErrorShape::new(error_codes::UNAVAILABLE, e.to_string()))?;
                 let label = if generated.is_some() {
                     generated
-                } else if let Some(ref meta) = ctx.state.services.session_metadata {
-                    meta.get(&key).await.and_then(|e| e.label)
+                } else if let Some(ref metadata) = ctx.state.services.session_metadata {
+                    metadata
+                        .get(&key)
+                        .await
+                        .map_err(|error| {
+                            ErrorShape::new(error_codes::UNAVAILABLE, error.to_string())
+                        })?
+                        .and_then(|entry| entry.label)
                 } else {
                     None
                 };

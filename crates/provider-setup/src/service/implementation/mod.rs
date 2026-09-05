@@ -1,15 +1,12 @@
 //! `LiveProviderSetupService` — the runtime implementation of
-//! `ProviderSetupService` that manages provider credentials, key validation,
-//! and provider registry rebuilds.
+//! `ProviderSetupService` that manages provider credentials and registry rebuilds.
 
 #[path = "../support.rs"]
 mod support;
 
 mod available;
 mod credentials;
-mod custom;
 mod service;
-mod validate;
 
 pub use service::*;
 

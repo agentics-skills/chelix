@@ -23,21 +23,31 @@ You'll see output like:
 
 ## 3. Configure a Provider
 
-You need an LLM provider configured to chat. The fastest options:
+You need complete model records in the service configuration and provider
+credentials to chat.
 
-### Configure an API Key
+### Configure Models and Credentials
 
-1. Set an API key as an environment variable and restart Chelix:
+1. Declare each model in `chelix.toml` under a complete
+   `[providers.<name>.models."<model-id>"]` table. See
+   [Providers](providers.md) for the required fields and supported providers.
 
-   ```bash
-   export OPENAI_API_KEY="sk-..."          # OpenAI
-   ```
+2. Provide the provider credentials using either method:
 
-2. Models appear automatically in the model picker.
+   - Set an API key as an environment variable and restart Chelix:
 
-Or configure via the web UI: **Settings** → **Providers** → enter your API key.
+     ```bash
+     export OPENAI_API_KEY="sk-..."          # OpenAI
+     ```
 
-See [Providers](providers.md) for the full list of supported providers.
+   - After the complete model records are declared, use **Settings** →
+     **Providers** to save the credentials. Credentials saved through provider
+     setup are persisted in `~/.config/chelix/provider_keys.json` and loaded for
+     matching providers declared in the service configuration.
+
+3. Complete the onboarding identity step. Chelix creates no incomplete starter
+   agents: select a registered canonical model and one of its supported
+   reasoning efforts to create the first agent and make it the default.
 
 ## 4. Chat
 
@@ -121,10 +131,14 @@ Add knowledge by placing Markdown files in `~/.chelix/memory/`.
 | Command         | Description                            |
 | --------------- | -------------------------------------- |
 | `/new`          | Start a new session                    |
-| `/model <name>` | Switch models                          |
+| `/model`        | List models and choose a model/effort pair |
 | `/agent`        | List or switch chat agents             |
 | `/clear`        | Clear chat history                     |
 | `/help`         | Show available commands                |
+
+Use `/model efforts:<N>` to list supported efforts for model `N`, then switch
+with `/model <N> <reasoning-effort>`. `/model providers` lists providers and
+`/model provider:<name>` filters the model list.
 
 ## File Locations
 

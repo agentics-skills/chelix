@@ -14,7 +14,7 @@ use chelix_channels::{
     message_log::MessageLog,
     plugin::{
         ChannelEventSink, ChannelHealthSnapshot, ChannelOutbound, ChannelPlugin, ChannelStatus,
-        ChannelStreamOutbound, ChannelThreadContext,
+        ChannelStreamOutbound,
     },
 };
 
@@ -255,10 +255,6 @@ impl ChannelPlugin for SlackPlugin {
         })
     }
 
-    fn thread_context(&self) -> Option<&dyn ChannelThreadContext> {
-        Some(&self.outbound)
-    }
-
     fn channel_webhook_verifier(
         &self,
         account_id: &str,
@@ -385,9 +381,7 @@ mod tests {
         assert_eq!(desc.display_name, "Slack");
         assert_eq!(desc.capabilities.inbound_mode, InboundMode::SocketMode);
 
-        // Threads: Slack implements ChannelThreadContext
         assert!(desc.capabilities.supports_threads);
-        assert!(plugin.thread_context().is_some());
 
         // OTP: Slack does NOT implement ChannelOtpProvider
         assert!(!desc.capabilities.supports_otp);

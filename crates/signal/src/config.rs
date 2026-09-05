@@ -5,6 +5,7 @@ use {
         config_view::ChannelConfigView,
         gating::{DmPolicy, GroupPolicy, MentionMode},
     },
+    chelix_common::ConfigModelOverride,
     serde::{Deserialize, Serialize},
 };
 
@@ -12,7 +13,7 @@ const DEFAULT_HTTP_URL: &str = "http://127.0.0.1:8080";
 const DEFAULT_TEXT_CHUNK_LIMIT: usize = 4000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SignalAccountConfig {
     /// Whether this account should be started.
     pub enabled: bool,
@@ -42,9 +43,9 @@ pub struct SignalAccountConfig {
     pub otp_cooldown_secs: u64,
     /// Maximum text characters per outbound Signal message.
     pub text_chunk_limit: usize,
-    /// Default model ID for sessions created from this account.
+    /// Default canonical model/reasoning override for sessions from this account.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model_override: Option<ConfigModelOverride>,
     /// Provider name associated with the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_provider: Option<String>,
@@ -69,7 +70,7 @@ impl Default for SignalAccountConfig {
             otp_self_approval: true,
             otp_cooldown_secs: 300,
             text_chunk_limit: DEFAULT_TEXT_CHUNK_LIMIT,
-            model: None,
+            model_override: None,
             model_provider: None,
             agent_id: None,
         }
@@ -125,8 +126,8 @@ impl ChannelConfigView for SignalAccountConfig {
         self.group_policy.clone()
     }
 
-    fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    fn model_override(&self) -> Option<&ConfigModelOverride> {
+        self.model_override.as_ref()
     }
 
     fn model_provider(&self) -> Option<&str> {

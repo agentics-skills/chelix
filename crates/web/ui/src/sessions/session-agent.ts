@@ -63,7 +63,7 @@ export function setSessionAgent(sessionKey: string, agentId: string): Promise<Rp
 		if (session) {
 			session.agent_id = payload.agent_id;
 			session.model = payload.model || "";
-			session.reasoningEffort = payload.reasoningEffort ?? "";
+			session.reasoningEffort = payload.reasoningEffort;
 			session.version = payload.version;
 			session.dataVersion.value++;
 		}

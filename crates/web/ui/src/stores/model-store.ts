@@ -11,22 +11,16 @@ import type { RpcResponse } from "../types/rpc";
 // ── Signals ──────────────────────────────────────────────────
 export const models = signal<ModelInfo[]>([]);
 export const selectedModelId = signal<string>(localStorage.getItem("chelix-model") || "");
-export const reasoningEffort = signal<string>(localStorage.getItem("chelix-reasoning-effort") || "");
+export const reasoningEffort = signal<string | null>(localStorage.getItem("chelix-reasoning-effort"));
 
 export const selectedModel = computed<ModelInfo | null>(() => {
 	const id = selectedModelId.value;
 	return models.value.find((m) => m.id === id) || null;
 });
 
-/** True when the currently selected model supports extended thinking. */
-export const supportsReasoning = computed<boolean>(() => {
-	const m = selectedModel.value;
-	return (m?.reasoning.supported_efforts.length || 0) > 0;
-});
-
 /** Reasoning efforts supported by the currently selected model. */
 export const supportedReasoningEfforts = computed<string[]>(() => {
-	return selectedModel.value?.reasoning.supported_efforts || [];
+	return selectedModel.value?.reasoning_supported_efforts || [];
 });
 
 // ── Methods ──────────────────────────────────────────────────
@@ -34,6 +28,14 @@ export const supportedReasoningEfforts = computed<string[]>(() => {
 /** Replace the full model list (e.g. after fetch or bootstrap). */
 export function setAll(arr: ModelInfo[]): void {
 	models.value = arr || [];
+}
+
+/** Return the selected compatible effort or the model's first configured effort. */
+export function reasoningEffortForModel(model: ModelInfo): string {
+	const selectedEffort = reasoningEffort.value;
+	return selectedEffort !== null && model.reasoning_supported_efforts.includes(selectedEffort)
+		? selectedEffort
+		: model.reasoning_supported_efforts[0];
 }
 
 /** Fetch models from the server via RPC. */
@@ -47,6 +49,7 @@ export function fetch(): Promise<void> {
 		const found = models.value.find((m) => m.id === saved);
 		const model = found || models.value[0];
 		select(model.id);
+		setReasoningEffort(reasoningEffortForModel(model));
 		if (!found) localStorage.setItem("chelix-model", model.id);
 	});
 }
@@ -56,10 +59,14 @@ export function select(id: string): void {
 	selectedModelId.value = id;
 }
 
-/** Set the reasoning effort level. Empty string means off. */
-export function setReasoningEffort(effort: string): void {
-	reasoningEffort.value = effort || "";
-	localStorage.setItem("chelix-reasoning-effort", effort || "");
+/** Set an exact reasoning effort or clear unavailable session state. */
+export function setReasoningEffort(effort: string | null): void {
+	reasoningEffort.value = effort;
+	if (effort === null) {
+		localStorage.removeItem("chelix-reasoning-effort");
+	} else {
+		localStorage.setItem("chelix-reasoning-effort", effort);
+	}
 }
 
 /** Look up a model by id. */
@@ -72,8 +79,8 @@ export const modelStore = {
 	selectedModelId,
 	selectedModel,
 	reasoningEffort,
-	supportsReasoning,
 	supportedReasoningEfforts,
+	reasoningEffortForModel,
 	setAll,
 	fetch,
 	select,

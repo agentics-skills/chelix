@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::schema::{ChelixConfig, ResolvedIdentity, UserProfile},
+    crate::schema::{ChelixConfig, UserProfile},
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
 };
@@ -25,12 +25,6 @@ pub fn agent_workspace_dir(agent_id: &str) -> PathBuf {
     data_dir().join("agents").join(agent_id)
 }
 
-/// Build presentation data from the configured default agent and user profile.
-pub fn resolve_identity() -> crate::Result<ResolvedIdentity> {
-    let config = discover_and_load()?;
-    resolve_identity_from_config(&config)
-}
-
 /// Build a fully-resolved user profile by merging `chelix.toml` `[user]` with `USER.md`.
 pub fn resolve_user_profile() -> crate::Result<UserProfile> {
     let config = discover_and_load()?;
@@ -52,14 +46,6 @@ pub fn resolve_user_profile_from_config(config: &ChelixConfig) -> UserProfile {
         }
     }
     user
-}
-
-/// Like [`resolve_identity`] but accepts a pre-loaded config.
-pub fn resolve_identity_from_config(config: &ChelixConfig) -> crate::Result<ResolvedIdentity> {
-    let mut identity = ResolvedIdentity::from_config(config)?;
-    identity.user_name = resolve_user_profile_from_config(config).name;
-    identity.soul = load_soul_for_agent(&config.agents.default);
-    Ok(identity)
 }
 
 /// Load user values from `USER.md` frontmatter if present.
@@ -122,70 +108,6 @@ If you change this file, tell the user — it's your soul, and they should know.
 ---\n\
 \n\
 _This file is yours to evolve. As you learn who you are, update it._";
-
-const STARTER_AGENT_IDS: &[&str] = &[
-    "main",
-    "research",
-    "coder",
-    "reviewer",
-    "qa",
-    "ux",
-    "docs",
-    "coordinator",
-];
-
-const STARTER_SUBAGENT_PROMPTS: &[(&str, &str)] = &[
-    (
-        "research",
-        "Gather evidence before concluding. Prefer targeted file reads, searches, and browser automation when the answer depends on current or external facts. Do not edit files unless the task explicitly asks for changes. Return a concise synthesis with source paths, URLs, commands, and open questions.",
-    ),
-    (
-        "coder",
-        "Implement scoped code changes. Read the surrounding code first, follow existing patterns, keep edits small, and remove dead code you directly replace. Run the smallest relevant verification and report changed files, validation, and any remaining risk.",
-    ),
-    (
-        "reviewer",
-        "Review for correctness, regressions, security issues, data loss, and missing tests. Findings come first, ordered by severity, with concrete file and line references when available. Do not make edits unless explicitly asked.",
-    ),
-    (
-        "qa",
-        "Validate behavior end to end. Reproduce reported bugs, exercise the user workflow, use browser automation when available, capture useful evidence, and report exact steps, expected behavior, actual behavior, and pass/fail status.",
-    ),
-    (
-        "ux",
-        "Evaluate flows, information architecture, accessibility, visual hierarchy, copy, responsive behavior, and edge states. Propose concrete changes that fit the existing design system and call out usability risks without hand-wavy vibes.",
-    ),
-    (
-        "docs",
-        "Update or draft user-facing documentation. Keep docs aligned with behavior, include runnable examples when useful, verify command names and config keys, and flag any product behavior that is unclear or undocumented.",
-    ),
-    (
-        "coordinator",
-        "Break broad work into independent subtasks, delegate only when useful, track dependencies, and integrate results into a single answer. Avoid doing implementation work directly unless coordination is not enough.",
-    ),
-];
-
-pub(super) fn materialize_starter_agent_workspaces() -> crate::Result<()> {
-    for agent_id in STARTER_AGENT_IDS {
-        let dir = agent_workspace_dir(agent_id);
-        std::fs::create_dir_all(&dir)?;
-
-        let soul_path = dir.join("SOUL.md");
-        if !soul_path.exists() {
-            std::fs::write(soul_path, DEFAULT_SOUL)?;
-        }
-
-        let subagent_path = dir.join("SUBAGENT.md");
-        if !subagent_path.exists() {
-            let prompt = STARTER_SUBAGENT_PROMPTS
-                .iter()
-                .find_map(|(id, prompt)| (*id == *agent_id).then_some(*prompt))
-                .unwrap_or_default();
-            std::fs::write(subagent_path, prompt)?;
-        }
-    }
-    Ok(())
-}
 
 /// Load the chat system prompt for a specific agent.
 pub fn load_soul_for_agent(agent_id: &str) -> Option<String> {

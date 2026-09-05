@@ -263,126 +263,15 @@ fn normalize_schedule_value(schedule: &mut Value) -> Result<()> {
     }
 }
 
-fn normalize_payload_kind(raw: &str) -> Option<&'static str> {
-    let normalized = raw.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "systemevent" | "system_event" | "system-event" | "event" => Some("systemEvent"),
-        "agentturn" | "agent_turn" | "agent-turn" | "agent" => Some("agentTurn"),
-        _ => None,
+fn normalize_payload_value(payload: &mut Value) -> Result<()> {
+    let obj = payload
+        .as_object_mut()
+        .ok_or_else(|| Error::message("payload must be an object"))?;
+    if let Some(timeout_raw) = obj.get("timeoutSecs") {
+        let timeout = parse_timeout_seconds(timeout_raw, "payload.timeoutSecs")?;
+        obj.insert("timeoutSecs".to_string(), json!(timeout));
     }
-}
-
-fn prefers_system_event(session_target_hint: Option<&str>) -> bool {
-    session_target_hint
-        .map(str::trim)
-        .is_some_and(|target| target.eq_ignore_ascii_case("main"))
-}
-
-fn normalize_payload_value(payload: &mut Value, session_target_hint: Option<&str>) -> Result<()> {
-    // Rescue double-serialised objects before interpreting plain strings as
-    // shorthand message text.
-    rescue_stringified_object(payload);
-    match payload {
-        Value::String(message) => {
-            let message = message.trim();
-            if message.is_empty() {
-                return Err(Error::message("payload message cannot be empty"));
-            }
-            if prefers_system_event(session_target_hint) {
-                *payload = json!({ "kind": "systemEvent", "text": message });
-            } else {
-                *payload = json!({ "kind": "agentTurn", "message": message });
-            }
-            Ok(())
-        },
-        Value::Object(obj) => {
-            take_alias(obj, "kind", &["payloadKind", "type"]);
-            take_alias(obj, "text", &["event", "instruction"]);
-            take_alias(obj, "message", &["prompt", "content"]);
-            take_alias(obj, "timeout_secs", &[
-                "timeoutSecs",
-                "timeout",
-                "timeoutSeconds",
-                "timeout_seconds",
-            ]);
-
-            if let Some(timeout_raw) = obj.get("timeout_secs") {
-                let timeout = parse_timeout_seconds(timeout_raw, "payload.timeout_secs")?;
-                obj.insert("timeout_secs".to_string(), json!(timeout));
-            }
-
-            if let Some(kind_val) = obj.get_mut("kind") {
-                let kind_raw = kind_val
-                    .as_str()
-                    .ok_or_else(|| Error::message("payload.kind must be a string"))?;
-                let kind_norm = normalize_payload_kind(kind_raw).ok_or_else(|| {
-                    Error::message(format!(
-                        "invalid payload kind `{kind_raw}` (expected `systemEvent` or `agentTurn`)"
-                    ))
-                })?;
-                *kind_val = Value::String(kind_norm.to_string());
-            } else {
-                let has_text = obj.contains_key("text");
-                let has_message = obj.contains_key("message");
-                let inferred = match (has_text, has_message) {
-                    (true, false) => "systemEvent",
-                    (false, true) => "agentTurn",
-                    (true, true) if prefers_system_event(session_target_hint) => "systemEvent",
-                    (true, true) => "agentTurn",
-                    (false, false) => {
-                        return Err(Error::message(
-                            "invalid payload: missing `kind` and no recognizable fields (expected one of `text` or `message`)",
-                        ));
-                    },
-                };
-                obj.insert("kind".to_string(), Value::String(inferred.to_string()));
-            }
-
-            let kind = obj
-                .get("kind")
-                .and_then(Value::as_str)
-                .ok_or_else(|| Error::message("payload.kind must be a string"))?;
-            match kind {
-                "systemEvent" => {
-                    if !obj.contains_key("text")
-                        && let Some(message) = obj.get("message").cloned()
-                    {
-                        obj.insert("text".to_string(), message);
-                    }
-                    let text = obj
-                        .get("text")
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|text| !text.is_empty())
-                        .ok_or_else(|| {
-                            Error::message("payload kind `systemEvent` requires `text`")
-                        })?;
-                    obj.insert("text".to_string(), Value::String(text.to_string()));
-                },
-                "agentTurn" => {
-                    if !obj.contains_key("message")
-                        && let Some(text) = obj.get("text").cloned()
-                    {
-                        obj.insert("message".to_string(), text);
-                    }
-                    let message = obj
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|message| !message.is_empty())
-                        .ok_or_else(|| {
-                            Error::message("payload kind `agentTurn` requires `message`")
-                        })?;
-                    obj.insert("message".to_string(), Value::String(message.to_string()));
-                },
-                _ => unreachable!("payload kind normalized above"),
-            }
-            Ok(())
-        },
-        _ => Err(Error::message(
-            "payload must be an object or message string",
-        )),
-    }
+    Ok(())
 }
 
 fn normalize_wake_mode(raw: &str) -> Option<&'static str> {
@@ -437,11 +326,6 @@ fn normalize_job_value(job: &Value) -> Result<Value> {
     normalize_session_target_field(obj);
     normalize_wake_mode_field(obj)?;
 
-    let session_target_hint = obj
-        .get("sessionTarget")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-
     let schedule = obj
         .get_mut("schedule")
         .ok_or_else(|| Error::message("missing `schedule`"))?;
@@ -450,7 +334,7 @@ fn normalize_job_value(job: &Value) -> Result<Value> {
     let payload = obj
         .get_mut("payload")
         .ok_or_else(|| Error::message("missing `payload`"))?;
-    normalize_payload_value(payload, session_target_hint.as_deref())?;
+    normalize_payload_value(payload)?;
 
     Ok(normalized)
 }
@@ -464,16 +348,11 @@ fn normalize_patch_value(patch: &Value) -> Result<Value> {
     normalize_session_target_field(obj);
     normalize_wake_mode_field(obj)?;
 
-    let session_target_hint = obj
-        .get("sessionTarget")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-
     if let Some(schedule) = obj.get_mut("schedule") {
         normalize_schedule_value(schedule)?;
     }
     if let Some(payload) = obj.get_mut("payload") {
-        normalize_payload_value(payload, session_target_hint.as_deref())?;
+        normalize_payload_value(payload)?;
     }
 
     Ok(normalized)
@@ -516,7 +395,10 @@ impl AgentTool for CronTool {
            sessionTarget \"isolated\" + kind \"agentTurn\" + deliver fields\n\
          \n\
          Optional execution control for agent turns:\n\
-         - payload.model: model id for this job"
+         - payload.modelOverride: complete canonical model/reasoning pair\n\
+         - payload.agentId: agent id for this job\n\
+         - payload.timeoutSecs: timeout in seconds\n\
+         - payload.toolChoice: provider tool choice"
     }
 
     fn parameters_schema(&self) -> Value {
@@ -554,20 +436,32 @@ impl AgentTool for CronTool {
                             "required": ["kind"]
                         },
                         "payload": {
-                            "type": ["object", "string"],
-                            "description": "What to do. Use {kind:'systemEvent', text} for main-session reminders or {kind:'agentTurn', message, model?, timeout_secs?, tool_choice?, deliver?, channel?, to?}. `payload.model` selects the LLM for that job. This tool also accepts a shorthand message string at runtime.",
+                            "type": "object",
+                            "description": "What to do. Use {kind:'systemEvent', text} for main-session reminders or {kind:'agentTurn', message, modelOverride?, agentId?, timeoutSecs?, toolChoice?, deliver?, channel?, to?} for agent runs.",
+                            "additionalProperties": false,
                             "properties": {
                                 "kind": { "type": "string", "enum": ["systemEvent", "agentTurn"] },
                                 "text": { "type": "string" },
                                 "message": { "type": "string" },
-                                "model": { "type": "string" },
-                                "timeout_secs": {
+                                "modelOverride": {
+                                    "type": "object",
+                                    "description": "Optional complete canonical model/reasoning pair.",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "model": { "type": "string", "minLength": 1 },
+                                        "reasoningEffort": { "type": "string", "minLength": 1 }
+                                    },
+                                    "required": ["model", "reasoningEffort"]
+                                },
+                                "agentId": { "type": "string" },
+                                "timeoutSecs": {
                                     "type": ["integer", "string"],
                                     "description": "Optional timeout in seconds. Accepts an integer number of seconds or a duration string like '2m'."
                                 },
-                                "tool_choice": {
+                                "toolChoice": {
                                     "type": "object",
                                     "description": "Optional provider tool choice, e.g. {type:'tool', name:'overwrite_file'}.",
+                                    "additionalProperties": false,
                                     "properties": {
                                         "type": { "type": "string", "enum": ["auto", "any", "none", "tool"] },
                                         "name": { "type": "string" }

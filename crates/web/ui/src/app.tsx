@@ -21,7 +21,6 @@ import * as _channelsPage from "./pages/ChannelsPage";
 import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
 import { openModelSelectorForProvider, showApiKeyForm } from "./providers/auth-flow";
-import { showCustomProviderForm } from "./providers/custom-provider";
 import { closeProviderModal, openProviderModal } from "./providers/shared";
 import { initPWA } from "./pwa";
 import { initInstallBanner } from "./pwa-install";
@@ -59,7 +58,6 @@ import * as _wsConnect from "./ws-connect";
 const providerE2eBridge = {
 	openModelSelectorForProvider,
 	showApiKeyForm,
-	showCustomProviderForm,
 	closeProviderModal,
 	openProviderModal,
 };

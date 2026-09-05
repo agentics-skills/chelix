@@ -34,6 +34,7 @@ pub mod mcp_service;
 pub mod mdns;
 pub mod message_log_store;
 pub mod methods;
+pub mod model_reasoning;
 pub mod onboarding;
 pub(crate) mod operation_progress;
 pub mod project;
@@ -49,7 +50,6 @@ pub mod session_types;
 pub mod share_store;
 pub mod ssh_probe;
 pub mod state;
-pub mod tts_phrases;
 pub mod update_check;
 pub mod updater;
 #[cfg(feature = "vault")]

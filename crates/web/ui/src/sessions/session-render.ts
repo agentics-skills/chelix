@@ -137,9 +137,38 @@ interface TruncateTailPayload {
 }
 
 interface AgentInfo {
-	id?: string;
-	name?: string;
-	emoji?: string;
+	id: string;
+	name: string;
+	emoji?: string | null;
+	model: string;
+	reasoning_effort: string;
+}
+
+function isAgentsListPayload(value: unknown): value is Parameters<typeof parseAgentsListPayload>[0] {
+	if (typeof value !== "object" || value === null) return false;
+	const record = value as Record<string, unknown>;
+	return Array.isArray(record.agents) && typeof record.default_id === "string";
+}
+
+function toAgentInfo(value: unknown): AgentInfo | null {
+	if (typeof value !== "object" || value === null) return null;
+	const record = value as Record<string, unknown>;
+	const { id, name, emoji, model, reasoning_effort: reasoningEffort } = record;
+	if (
+		!(
+			typeof id === "string" &&
+			id.trim().length > 0 &&
+			typeof name === "string" &&
+			name.trim().length > 0 &&
+			(emoji === undefined || emoji === null || typeof emoji === "string") &&
+			typeof model === "string" &&
+			model.trim().length > 0 &&
+			typeof reasoningEffort === "string" &&
+			reasoningEffort.trim().length > 0
+		)
+	)
+		return null;
+	return { id, name, emoji, model, reasoning_effort: reasoningEffort };
 }
 
 /** History message with an optional seq field, used for resuming chat sequence counters. */
@@ -475,7 +504,7 @@ function createWelcomeAgentChip(agent: AgentInfo, agentId: string, activeAgentId
 	chip.style.fontSize = "0.7rem";
 	chip.style.padding = "3px 8px";
 	const labelPrefix = agent.emoji ? `${agent.emoji} ` : "";
-	chip.textContent = `${labelPrefix}${agent.name || agentId}`;
+	chip.textContent = `${labelPrefix}${agent.name}`;
 	chip.addEventListener("click", () => selectWelcomeAgent(chip, agentId));
 	return chip;
 }
@@ -501,10 +530,8 @@ function renderWelcomeAgentOptions(
 	container.classList.add("flex");
 	let activeAgent: AgentInfo | null = null;
 	for (const agent of agents) {
-		const agentId = agent?.id;
-		if (!agentId) continue;
-		if (agentId === activeAgentId) activeAgent = agent;
-		container.appendChild(createWelcomeAgentChip(agent, agentId, activeAgentId));
+		if (agent.id === activeAgentId) activeAgent = agent;
+		container.appendChild(createWelcomeAgentChip(agent, agent.id, activeAgentId));
 	}
 	appendHatchAgentButton(container);
 	return activeAgent;
@@ -522,8 +549,27 @@ function handleWelcomeAgentsResponse(
 		container.classList.add("hidden");
 		return;
 	}
-	const parsed = parseAgentsListPayload(response.payload as Parameters<typeof parseAgentsListPayload>[0]);
-	const agents = (parsed.agents || []) as AgentInfo[];
+	const payload = response.payload;
+	if (!isAgentsListPayload(payload)) {
+		container.textContent = "";
+		container.classList.add("hidden");
+		container.classList.remove("flex");
+		onActiveAgentResolved(null);
+		return;
+	}
+	const parsed = parseAgentsListPayload(payload);
+	const agents: AgentInfo[] = [];
+	for (const entry of parsed.agents) {
+		const agent = toAgentInfo(entry);
+		if (!agent) {
+			container.textContent = "";
+			container.classList.add("hidden");
+			container.classList.remove("flex");
+			onActiveAgentResolved(null);
+			return;
+		}
+		agents.push(agent);
+	}
 	const effectiveActive = activeAgentId || parsed.defaultId;
 	onActiveAgentResolved(renderWelcomeAgentOptions(container, agents, effectiveActive));
 }

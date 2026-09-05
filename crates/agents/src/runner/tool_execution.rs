@@ -15,6 +15,7 @@ use {
 use crate::{
     model::{ToolCall, ToolChoice},
     tool_arg_validator::validate_tool_args,
+    tool_context::ToolExecutionContext,
     tool_registry::ToolRegistry,
 };
 
@@ -81,8 +82,9 @@ impl ToolInvocationExecutor<'_> {
         }
         let (tool, resolved_name) = resolve_tool_lookup(self.tools, sanitized.as_ref());
         let execution_name = resolved_name.into_owned();
-        let public_arguments = public_tool_arguments(&tool_call.arguments);
-        let mut execution_arguments = tool_call.arguments.clone();
+        let raw_arguments = tool_call.arguments.clone();
+        let public_arguments = public_tool_arguments(&raw_arguments);
+        let mut execution_arguments = raw_arguments.clone();
         enrich_tool_arguments(&mut execution_arguments, self.tool_context, &tool_call.id);
         log_tool_argument_diagnostic(&execution_name, tool_call.argument_diagnostic.as_ref());
         let validation_error = if matches!(self.tool_choice, Some(ToolChoice::None)) {
@@ -176,6 +178,7 @@ impl ToolInvocationExecutor<'_> {
             tool_call,
             &execution_name,
             tool.as_ref(),
+            raw_arguments,
             execution_arguments,
             &mut sequence,
         );
@@ -200,8 +203,9 @@ impl ToolInvocationExecutor<'_> {
             },
             None => execution.await?,
         };
-        let (success, wrapped_result, error, effective_arguments) = raw_execution;
-        let public_arguments = public_tool_arguments(&effective_arguments);
+        let (success, wrapped_result, error, effective_public_arguments, effective_arguments) =
+            raw_execution;
+        let public_arguments = public_tool_arguments(&effective_public_arguments);
         let has_raw_result = wrapped_result.get("result").is_some();
         let raw_result = wrapped_result
             .get("result")
@@ -257,9 +261,19 @@ impl ToolInvocationExecutor<'_> {
         tool_call: &ToolCall,
         execution_name: &str,
         tool: Option<&Arc<dyn crate::tool_registry::AgentTool>>,
+        mut public_arguments: serde_json::Value,
         mut arguments: serde_json::Value,
         sequence: &mut u64,
-    ) -> Result<(bool, serde_json::Value, Option<String>, serde_json::Value), AgentRunError> {
+    ) -> Result<
+        (
+            bool,
+            serde_json::Value,
+            Option<String>,
+            serde_json::Value,
+            serde_json::Value,
+        ),
+        AgentRunError,
+    > {
         if let Some(hooks) = self.hook_registry {
             let payload = HookPayload::BeforeToolCall {
                 session_key: self.session_key.to_owned(),
@@ -275,15 +289,19 @@ impl ToolInvocationExecutor<'_> {
                         false,
                         serde_json::json!({ "error": error.clone() }),
                         Some(error),
+                        public_arguments,
                         arguments,
                     ));
                 },
                 Ok(HookAction::ModifyPayload(value)) => {
-                    arguments = value;
+                    public_arguments = public_arguments_after_hook(&value, self.tool_context);
+                    arguments = public_arguments.clone();
                     enrich_tool_arguments(&mut arguments, self.tool_context, &tool_call.id);
                     if let Some(tool) = tool {
                         let schema = tool.parameters_schema();
-                        if let Err(validation_error) = validate_tool_args(&schema, &arguments) {
+                        if let Err(validation_error) =
+                            validate_tool_args(&schema, &public_arguments)
+                        {
                             let error = validation_error.to_llm_error_message(execution_name);
                             warn!(
                                 tool = %execution_name,
@@ -294,6 +312,24 @@ impl ToolInvocationExecutor<'_> {
                                 false,
                                 serde_json::json!({ "error": error.clone() }),
                                 Some(error),
+                                public_arguments,
+                                arguments,
+                            ));
+                        }
+                        if let Err(validation_error) = tool.validate(&public_arguments) {
+                            let error = format!(
+                                "Tool call rejected before execution by `{execution_name}`: {validation_error}"
+                            );
+                            warn!(
+                                tool = %execution_name,
+                                error = %validation_error,
+                                "tool call rejected after BeforeToolCall hook modified arguments"
+                            );
+                            return Ok((
+                                false,
+                                serde_json::json!({ "error": error.clone() }),
+                                Some(error),
+                                public_arguments,
                                 arguments,
                             ));
                         }
@@ -312,16 +348,17 @@ impl ToolInvocationExecutor<'_> {
                 false,
                 serde_json::json!({ "error": error.clone() }),
                 Some(error),
+                public_arguments,
                 arguments,
             ));
         };
 
-        let public_arguments = public_tool_arguments(&arguments);
+        let lifecycle_arguments = public_tool_arguments(&public_arguments);
         self.emit(
             tool_call,
             sequence,
             ToolLifecycleUpdate::Executing {
-                arguments: public_arguments.clone(),
+                arguments: lifecycle_arguments.clone(),
                 started_at_ms: lifecycle_now_ms()?,
             },
             None,
@@ -333,7 +370,7 @@ impl ToolInvocationExecutor<'_> {
             tool_call,
             sequence,
             ToolLifecycleUpdate::ExecutionProgress {
-                arguments: public_arguments.clone(),
+                arguments: lifecycle_arguments.clone(),
                 elapsed_ms: 0,
                 message: "wait for result [0] sec.".to_owned(),
             },
@@ -341,7 +378,9 @@ impl ToolInvocationExecutor<'_> {
         )
         .await?;
 
-        let execution = tool.execute(arguments.clone());
+        let execution_context =
+            ToolExecutionContext::from_runner(self.tool_context, arguments.clone());
+        let execution = tool.execute_with_context(public_arguments.clone(), &execution_context);
         tokio::pin!(execution);
         let mut interval = tokio::time::interval_at(
             Instant::now() + Duration::from_secs(1),
@@ -359,7 +398,7 @@ impl ToolInvocationExecutor<'_> {
                         tool_call,
                         sequence,
                         ToolLifecycleUpdate::ExecutionProgress {
-                            arguments: public_arguments.clone(),
+                            arguments: lifecycle_arguments.clone(),
                             elapsed_ms: elapsed_seconds.saturating_mul(1_000),
                             message: format!("wait for result [{elapsed_seconds}] sec."),
                         },
@@ -388,6 +427,7 @@ impl ToolInvocationExecutor<'_> {
                     !has_error,
                     serde_json::json!({ "result": value }),
                     error,
+                    public_arguments,
                     arguments,
                 ))
             },
@@ -399,6 +439,7 @@ impl ToolInvocationExecutor<'_> {
                     false,
                     serde_json::json!({ "error": error.clone() }),
                     Some(error),
+                    public_arguments,
                     arguments,
                 ))
             },
@@ -513,6 +554,23 @@ impl ToolInvocationExecutor<'_> {
         runner_event.context_budget = Some(self.context_budget.clone());
         deliver_tool_lifecycle(self.on_lifecycle, runner_event).await
     }
+}
+
+fn public_arguments_after_hook(
+    arguments: &serde_json::Value,
+    trusted_context: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    let Some(arguments) = arguments.as_object() else {
+        return arguments.clone();
+    };
+    let mut public_arguments = arguments.clone();
+    if let Some(context) = trusted_context.and_then(serde_json::Value::as_object) {
+        for key in context.keys() {
+            public_arguments.remove(key);
+        }
+    }
+    public_arguments.remove("_tool_call_id");
+    serde_json::Value::Object(public_arguments)
 }
 
 pub(crate) fn lifecycle_now_ms() -> Result<u64, AgentRunError> {

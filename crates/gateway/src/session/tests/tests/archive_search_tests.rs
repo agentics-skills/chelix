@@ -7,14 +7,15 @@ async fn patch_archived_allows_unarchive_for_current_channel_session() {
     let pool = sqlite_pool().await;
     let metadata = Arc::new(SqliteSessionMetadata::new(pool));
     let binding = r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#.to_string();
+    create_test_session(&metadata, "telegram:bot1:123", Some("Telegram current")).await;
     metadata
-        .upsert("telegram:bot1:123", Some("Telegram current".to_string()))
+        .set_channel_binding("telegram:bot1:123", Some(&binding))
         .await
         .unwrap();
     metadata
-        .set_channel_binding("telegram:bot1:123", Some(binding))
-        .await;
-    metadata.set_archived("telegram:bot1:123", true).await;
+        .set_archived("telegram:bot1:123", true)
+        .await
+        .unwrap();
 
     let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -26,7 +27,14 @@ async fn patch_archived_allows_unarchive_for_current_channel_session() {
         result.get("archived").and_then(|v| v.as_bool()),
         Some(false)
     );
-    assert!(!metadata.get("telegram:bot1:123").await.unwrap().archived);
+    assert!(
+        !metadata
+            .get("telegram:bot1:123")
+            .await
+            .unwrap()
+            .unwrap()
+            .archived
+    );
 }
 
 #[tokio::test]
@@ -35,13 +43,7 @@ async fn patch_archived_rejection_does_not_partially_mutate_session() {
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let pool = sqlite_pool().await;
     let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-    metadata
-        .upsert("main", Some("Main".to_string()))
-        .await
-        .unwrap();
-    metadata
-        .set_model("main", Some("claude-sonnet".to_string()))
-        .await;
+    create_test_session(&metadata, "main", Some("Main")).await;
 
     let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
@@ -57,9 +59,9 @@ async fn patch_archived_rejection_does_not_partially_mutate_session() {
 
     assert!(error.to_string().contains("cannot be archived"));
 
-    let entry = metadata.get("main").await.unwrap();
+    let entry = metadata.get("main").await.unwrap().unwrap();
     assert_eq!(entry.label.as_deref(), Some("Main"));
-    assert_eq!(entry.model.as_deref(), Some("claude-sonnet"));
+    assert_eq!(entry.model(), Some("custom-patch::reasoning"));
     assert!(!entry.archived);
 }
 
@@ -69,15 +71,9 @@ async fn search_excludes_archived_sessions_unless_requested() {
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let pool = sqlite_pool().await;
     let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-    metadata
-        .upsert("session:visible", Some("Visible".to_string()))
-        .await
-        .unwrap();
-    metadata
-        .upsert("session:hidden", Some("Hidden".to_string()))
-        .await
-        .unwrap();
-    metadata.set_archived("session:hidden", true).await;
+    create_test_session(&metadata, "session:visible", Some("Visible")).await;
+    create_test_session(&metadata, "session:hidden", Some("Hidden")).await;
+    metadata.set_archived("session:hidden", true).await.unwrap();
     store
         .append(
             "session:visible",

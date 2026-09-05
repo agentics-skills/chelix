@@ -1,13 +1,10 @@
 // ── Reasoning effort toggle ──────────────────────────────────
 //
-// Adds a "brain" combo next to the model selector that lets users
-// pick Low / Medium / High reasoning effort for models that support
-// extended thinking. The selected effort is sent as an explicit
-// `reasoningEffort` value alongside the selected model.
+// Adds a "brain" combo next to the model selector for choosing one exact
+// provider-defined effort. The selected effort is sent together with the model.
 
 import { effect } from "@preact/signals";
-import { sendRpc } from "./helpers";
-import { t } from "./i18n";
+import { requireSessionModelState, setSessionModel } from "./models";
 import * as S from "./state";
 import { modelStore } from "./stores/model-store";
 
@@ -16,18 +13,17 @@ let reasoningComboBtn: HTMLElement | null = null;
 let reasoningComboLabel: HTMLElement | null = null;
 let reasoningDropdown: HTMLElement | null = null;
 let reasoningDropdownList: HTMLElement | null = null;
-let disposeVisibility: (() => void) | null = null;
+let disposeLabel: (() => void) | null = null;
 
 function effortLabel(effort: string): string {
-	return effort || t("chat:reasoningOff");
+	return effort;
 }
 
 function renderOptions(): void {
 	if (!reasoningDropdownList) return;
 	reasoningDropdownList.textContent = "";
 	const current = modelStore.reasoningEffort.value;
-	const effortValues = ["", ...modelStore.supportedReasoningEfforts.value];
-	for (const value of effortValues) {
+	for (const value of modelStore.supportedReasoningEfforts.value) {
 		const el = document.createElement("div");
 		el.className = "model-dropdown-item";
 		if (value === current) el.classList.add("selected");
@@ -41,8 +37,13 @@ function renderOptions(): void {
 }
 
 function selectEffort(effort: string): void {
+	const model = modelStore.selectedModel.value;
+	if (!(model && requireSessionModelState(S.activeSessionKey))) return;
 	modelStore.setReasoningEffort(effort);
-	sendRpc("sessions.patch", { key: S.activeSessionKey, reasoningEffort: effort });
+	void setSessionModel(S.activeSessionKey, {
+		model: model.id,
+		reasoningEffort: effort,
+	});
 	if (reasoningComboLabel) reasoningComboLabel.textContent = effortLabel(effort);
 	closeDropdown();
 }
@@ -82,39 +83,23 @@ export function bindReasoningToggle(): void {
 
 	document.addEventListener("click", handleOutsideClick);
 
-	// Reactively show/hide the combo based on model reasoning support
-	disposeVisibility = effect(() => {
-		const show = modelStore.supportsReasoning.value;
-		const supportedEfforts = modelStore.supportedReasoningEfforts.value;
-		reasoningCombo?.classList.toggle("hidden", !show);
-		// Reset effort only when the selected model is resolved in the loaded
-		// model list and genuinely lacks reasoning support. During initial
-		// page load the list is still empty, so supportsReasoning is false
-		// merely because the model is unresolved yet — wiping the restored
-		// effort here made the toggle always show "Off" on chat open.
-		const modelResolved = modelStore.selectedModel.value !== null;
-		const selectedEffort = modelStore.reasoningEffort.value;
-		if (modelResolved && selectedEffort && !supportedEfforts.includes(selectedEffort)) {
-			modelStore.setReasoningEffort("");
-		}
-		if (reasoningComboLabel) {
-			reasoningComboLabel.textContent = effortLabel(modelStore.reasoningEffort.value);
+	disposeLabel = effect(() => {
+		const model = modelStore.selectedModel.value;
+		if (model && reasoningComboLabel) {
+			reasoningComboLabel.textContent = effortLabel(modelStore.reasoningEffortForModel(model));
 		}
 	});
 }
 
 /** Restore reasoning toggle state from a session's stored reasoning effort. */
 export function restoreReasoningEffort(storedEffort?: string | null): void {
-	modelStore.setReasoningEffort(storedEffort || "");
-	if (reasoningComboLabel) {
-		reasoningComboLabel.textContent = effortLabel(modelStore.reasoningEffort.value);
-	}
+	modelStore.setReasoningEffort(storedEffort ?? null);
 }
 
 export function unbindReasoningToggle(): void {
 	document.removeEventListener("click", handleOutsideClick);
-	disposeVisibility?.();
-	disposeVisibility = null;
+	disposeLabel?.();
+	disposeLabel = null;
 	reasoningCombo = null;
 	reasoningComboBtn = null;
 	reasoningComboLabel = null;

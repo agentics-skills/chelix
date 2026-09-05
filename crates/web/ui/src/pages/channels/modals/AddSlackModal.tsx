@@ -4,12 +4,16 @@ import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 
 import { addChannel, parseChannelConfigPatch } from "../../../channel-utils";
-import { models as modelsSig } from "../../../stores/model-store";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
 import { Modal } from "../../../ui";
 import { type ChannelConfig, ConnectionModeHint, loadChannels, showAddSlack } from "../../ChannelsPage";
-import { AdvancedConfigPatchField, AllowlistInput, SharedChannelFields } from "../ChannelFields";
+import {
+	AdvancedConfigPatchField,
+	AllowlistInput,
+	resolveChannelModelSelection,
+	SharedChannelFields,
+} from "../ChannelFields";
 
 interface SlackDraft {
 	accountId: string;
@@ -29,16 +33,11 @@ function slackDraftError(draft: SlackDraft): string | null {
 	return null;
 }
 
-function selectedModelConfig(modelId: string): Pick<ChannelConfig, "model" | "model_provider"> {
-	if (!modelId) return {};
-	const provider = modelsSig.value.find((model) => model.id === modelId)?.provider;
-	return provider ? { model: modelId, model_provider: provider } : { model: modelId };
-}
-
 export function AddSlackModal(): VNode {
 	const error = useSignal("");
 	const saving = useSignal(false);
 	const addModel = useSignal("");
+	const addReasoningEffort = useSignal("");
 	const allowlistItems = useSignal<string[]>([]);
 	const channelAllowlistItems = useSignal<string[]>([]);
 	const accountDraft = useSignal("");
@@ -50,6 +49,7 @@ export function AddSlackModal(): VNode {
 
 	function resetForm(): void {
 		addModel.value = "";
+		addReasoningEffort.value = "";
 		allowlistItems.value = [];
 		channelAllowlistItems.value = [];
 		accountDraft.value = "";
@@ -80,6 +80,11 @@ export function AddSlackModal(): VNode {
 			error.value = advancedPatch.error;
 			return;
 		}
+		const modelSelection = resolveChannelModelSelection(addModel.value, addReasoningEffort.value);
+		if (!modelSelection.ok) {
+			error.value = modelSelection.error;
+			return;
+		}
 		error.value = "";
 		saving.value = true;
 		const addConfig: ChannelConfig = {
@@ -91,7 +96,7 @@ export function AddSlackModal(): VNode {
 			mention_mode: (form.querySelector("[data-field=mentionMode]") as HTMLSelectElement).value,
 			allowlist: allowlistItems.value,
 			channel_allowlist: channelAllowlistItems.value,
-			...selectedModelConfig(addModel.value),
+			...modelSelection.config,
 		};
 		if (draft.connectionMode === "events_api") addConfig.signing_secret = draft.signingSecret;
 		Object.assign(addConfig, advancedPatch.value);
@@ -241,7 +246,11 @@ export function AddSlackModal(): VNode {
 						<option value="disabled">Disabled (no channel messages)</option>
 					</select>
 				</label>
-				<SharedChannelFields addModel={addModel} allowlistItems={allowlistItems} />
+				<SharedChannelFields
+					addModel={addModel}
+					addReasoningEffort={addReasoningEffort}
+					allowlistItems={allowlistItems}
+				/>
 				<span className="text-xs text-[var(--muted)]">Channel Allowlist (Slack channel IDs)</span>
 				<AllowlistInput
 					ariaLabel="Channel Allowlist (Slack channel IDs)"

@@ -1,4 +1,4 @@
-//! Agent loop support: model flagging, channel streaming, and compaction.
+//! Agent loop support: channel streaming and compaction.
 
 use std::{
     collections::HashSet,
@@ -9,101 +9,13 @@ use std::{
 };
 
 use {
-    serde_json::Value,
-    tokio::sync::{Mutex, Notify, RwLock, mpsc, oneshot},
-    tracing::{debug, info, warn},
+    tokio::sync::{Mutex, Notify, mpsc, oneshot},
+    tracing::{debug, warn},
 };
 
 use chelix_agents::runner::{OnEvent, OnToolLifecycle, RunnerEvent, RunnerToolLifecycleEvent};
 
-use crate::{models::DisabledModelsStore, runtime::ChatRuntime, types::*};
-
-pub(crate) async fn mark_unsupported_model(
-    state: &Arc<dyn ChatRuntime>,
-    model_store: &Arc<RwLock<DisabledModelsStore>>,
-    model_id: &str,
-    provider_name: &str,
-    error_obj: &Value,
-) {
-    if error_obj.get("type").and_then(|v| v.as_str()) != Some("unsupported_model") {
-        return;
-    }
-
-    let detail = error_obj
-        .get("detail")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Model is not supported for this account/provider");
-    let provider = error_obj
-        .get("provider")
-        .and_then(|v| v.as_str())
-        .unwrap_or(provider_name);
-
-    let mut store = model_store.write().await;
-    if store.mark_unsupported(model_id, detail, Some(provider)) {
-        let unsupported = store.unsupported_info(model_id).cloned();
-        if let Err(err) = store.save() {
-            warn!(
-                model = model_id,
-                provider = provider,
-                error = %err,
-                "failed to persist unsupported model flag"
-            );
-        } else {
-            info!(
-                model = model_id,
-                provider = provider,
-                "flagged model as unsupported"
-            );
-        }
-        drop(store);
-        broadcast(
-            state,
-            "models.updated",
-            serde_json::json!({
-                "modelId": model_id,
-                "unsupported": true,
-                "unsupportedReason": unsupported.as_ref().map(|u| u.detail.as_str()).unwrap_or(detail),
-                "unsupportedProvider": unsupported
-                    .as_ref()
-                    .and_then(|u| u.provider.as_deref())
-                    .unwrap_or(provider),
-                "unsupportedUpdatedAt": unsupported.map(|u| u.updated_at_ms).unwrap_or_else(now_ms),
-            }),
-            BroadcastOpts::default(),
-        )
-        .await;
-    }
-}
-
-pub(crate) async fn clear_unsupported_model(
-    state: &Arc<dyn ChatRuntime>,
-    model_store: &Arc<RwLock<DisabledModelsStore>>,
-    model_id: &str,
-) {
-    let mut store = model_store.write().await;
-    if store.clear_unsupported(model_id) {
-        if let Err(err) = store.save() {
-            warn!(
-                model = model_id,
-                error = %err,
-                "failed to persist unsupported model clear"
-            );
-        } else {
-            info!(model = model_id, "cleared unsupported model flag");
-        }
-        drop(store);
-        broadcast(
-            state,
-            "models.updated",
-            serde_json::json!({
-                "modelId": model_id,
-                "unsupported": false,
-            }),
-            BroadcastOpts::default(),
-        )
-        .await;
-    }
-}
+use crate::runtime::ChatRuntime;
 
 #[derive(Clone, Default)]
 pub(crate) struct RunnerEventBarrier {

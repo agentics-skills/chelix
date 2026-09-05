@@ -108,6 +108,19 @@ fn try_parse_known_error(raw: &str) -> Value {
             );
         }
 
+        if matches_type_or_message(err_obj, "server_error", "internal server error") {
+            let detail = extract_message(err_obj)
+                .unwrap_or("The upstream provider returned an error. Please try again later.");
+            return build_error(
+                "server_error",
+                "\u{1F6A8}",
+                "Server error",
+                detail,
+                None,
+                None,
+            );
+        }
+
         // Generic JSON error with a message field
         if let Some(msg) = extract_message(err_obj)
             && is_unsupported_model_message(msg)
@@ -242,9 +255,11 @@ fn is_unsupported_model_message(message: &str) -> bool {
 }
 
 fn matches_type_or_message(obj: &Value, type_str: &str, message_substr: &str) -> bool {
-    if let Some(t) = obj.get("type").and_then(|v| v.as_str())
-        && t == type_str
-    {
+    if ["type", "code"].into_iter().any(|field| {
+        obj.get(field)
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.eq_ignore_ascii_case(type_str))
+    }) {
         return true;
     }
     if let Some(m) = obj.get("message").and_then(|v| v.as_str())

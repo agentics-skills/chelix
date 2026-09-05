@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use tracing::{debug, trace, warn};
 
 use crate::{
@@ -35,207 +33,6 @@ fn should_warn_on_api_error(status: reqwest::StatusCode, body_text: &str) -> boo
 }
 
 impl OpenAiProvider {
-    pub(super) async fn probe_chat_completions(&self) -> anyhow::Result<()> {
-        let messages = vec![ChatMessage::user("ping")];
-        let mut openai_messages = self.serialize_messages_for_request(&messages);
-        self.apply_openrouter_cache_control(&mut openai_messages);
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "messages": openai_messages,
-        });
-        self.apply_system_prompt_rewrite(&mut body);
-
-        let url = self.chat_completions_url();
-        debug!(model = %self.model, url = %url, "openai probe request");
-        trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai probe request body");
-
-        let http_resp = self.send_chat_completions_request(&body).await?;
-
-        let status = http_resp.status();
-        if !status.is_success() {
-            let retry_after_ms = retry_after_ms_from_headers(http_resp.headers());
-            let body_text = http_resp.text().await.unwrap_or_default();
-            if should_warn_on_api_error(status, &body_text) {
-                warn!(
-                    status = %status,
-                    model = %self.model,
-                    provider = %self.provider_name,
-                    url = %url,
-                    body = %body_text,
-                    "openai probe API error"
-                );
-            } else {
-                debug!(
-                    status = %status,
-                    model = %self.model,
-                    provider = %self.provider_name,
-                    url = %url,
-                    "openai probe model unsupported for chat/completions endpoint"
-                );
-            }
-
-            anyhow::bail!(
-                "{}",
-                with_retry_after_marker(
-                    format!("OpenAI API error at {url} HTTP {status}: {body_text}"),
-                    retry_after_ms,
-                )
-            );
-        }
-
-        Ok(())
-    }
-
-    pub(super) async fn probe_responses(&self) -> anyhow::Result<()> {
-        let messages = vec![ChatMessage::user("ping")];
-        let (instructions, input) = split_responses_instructions_and_input(messages);
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "input": input,
-            "max_output_tokens": 1,
-            "store": false,
-        });
-
-        if let Some(instructions) = instructions {
-            body["instructions"] = serde_json::Value::String(instructions);
-        }
-
-        self.apply_reasoning_responses(&mut body);
-
-        debug!(model = %self.model, "openai responses probe request");
-        trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai responses probe request body");
-
-        let url = self.responses_sse_url();
-        let http_resp = self
-            .client
-            .post(&url)
-            .header("Authorization", self.bearer_auth_header())
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-
-        let status = http_resp.status();
-        if !status.is_success() {
-            let retry_after_ms = retry_after_ms_from_headers(http_resp.headers());
-            let body_text = http_resp.text().await.unwrap_or_default();
-            warn!(
-                status = %status,
-                model = %self.model,
-                provider = %self.provider_name,
-                body = %body_text,
-                "openai responses probe API error"
-            );
-            anyhow::bail!(
-                "{}",
-                with_retry_after_marker(
-                    format!("OpenAI API error HTTP {status}: {body_text}"),
-                    retry_after_ms,
-                )
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Lightweight availability check via `GET /v1/models`.
-    ///
-    /// Verifies the provider is reachable and lists this model without
-    /// triggering model loading or token generation. Falls back to
-    /// [`probe()`](Self::probe_chat_completions) if the models endpoint
-    /// is unavailable or does not list the model.
-    pub(super) async fn check_model_in_catalog(&self) -> anyhow::Result<()> {
-        let url = format!("{}/models", self.base_url.trim().trim_end_matches('/'));
-
-        debug!(
-            model = %self.model,
-            provider = %self.provider_name,
-            url = %url,
-            "checking model availability via catalog endpoint"
-        );
-
-        let resp = self
-            .client
-            .get(&url)
-            .timeout(Duration::from_secs(15))
-            .header("Authorization", self.bearer_auth_header())
-            .header("Accept", "application/json")
-            .send()
-            .await;
-
-        let resp = match resp {
-            Ok(r) => r,
-            Err(err) => {
-                debug!(
-                    error = %err,
-                    provider = %self.provider_name,
-                    "catalog endpoint unreachable, falling back to completion probe"
-                );
-                return self.timed_probe_chat_completions().await;
-            },
-        };
-
-        if !resp.status().is_success() {
-            debug!(
-                status = %resp.status(),
-                provider = %self.provider_name,
-                "catalog endpoint returned error, falling back to completion probe"
-            );
-            return self.timed_probe_chat_completions().await;
-        }
-
-        let body: serde_json::Value = match resp.json().await {
-            Ok(v) => v,
-            Err(err) => {
-                debug!(
-                    error = %err,
-                    provider = %self.provider_name,
-                    "catalog response parse failed, falling back to completion probe"
-                );
-                return self.timed_probe_chat_completions().await;
-            },
-        };
-
-        // Walk the response looking for model IDs in standard locations.
-        let mut ids = Vec::new();
-        collect_model_ids(&body, &mut ids);
-
-        if ids.iter().any(|id| id == &self.model) {
-            debug!(
-                model = %self.model,
-                provider = %self.provider_name,
-                "model found in catalog"
-            );
-            return Ok(());
-        }
-
-        // Model not listed — could mean the endpoint doesn't list all models
-        // (e.g. some servers only list loaded models). Fall back to probe.
-        debug!(
-            model = %self.model,
-            provider = %self.provider_name,
-            catalog_models = ids.len(),
-            "model not found in catalog, falling back to completion probe"
-        );
-        self.timed_probe_chat_completions().await
-    }
-
-    /// Run `probe_chat_completions()` with the configured `probe_timeout()`.
-    async fn timed_probe_chat_completions(&self) -> anyhow::Result<()> {
-        let timeout = self.probe_timeout_duration();
-        tokio::time::timeout(timeout, self.probe_chat_completions())
-            .await
-            .map_err(|_| {
-                anyhow::anyhow!("Connection timed out after {} seconds", timeout.as_secs())
-            })?
-    }
-
-    pub(crate) fn probe_timeout_duration(&self) -> Duration {
-        self.probe_timeout_secs
-            .map(|s| Duration::from_secs(s.max(1)))
-            .unwrap_or_else(|| Duration::from_secs(30))
-    }
-
     /// Non-streaming completion using the Chat Completions API.
     pub(super) async fn complete_chat(
         &self,
@@ -259,13 +56,13 @@ impl OpenAiProvider {
             body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
         }
 
-        self.apply_reasoning_effort_chat(&mut body);
+        self.apply_reasoning_effort_chat(&mut body)?;
 
         debug!(
             model = %self.model,
             messages_count = messages.len(),
             tools_count = tools.len(),
-            reasoning_effort = ?self.reasoning_effort,
+            reasoning_effort = ?self.selected_reasoning_effort(),
             "openai complete request"
         );
         trace!(body = %serde_json::to_string(&body).unwrap_or_default(), "openai request body");
@@ -353,7 +150,7 @@ impl OpenAiProvider {
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_output_tokens"] = serde_json::json!(max_output_tokens);
         }
-        self.apply_reasoning_responses(&mut body);
+        self.apply_reasoning_responses(&mut body)?;
 
         debug!(
             model = %self.model,
@@ -450,12 +247,36 @@ impl OpenAiProvider {
                     }
                 },
                 "error" | "response.failed" => {
-                    let msg = evt["error"]["message"]
-                        .as_str()
-                        .or_else(|| evt["response"]["error"]["message"].as_str())
+                    let nested_error =
+                        evt.get("error")
+                            .filter(|error| error.is_object())
+                            .or_else(|| {
+                                evt.get("response")
+                                    .and_then(|response| response.get("error"))
+                                    .filter(|error| error.is_object())
+                            });
+                    let msg = nested_error
+                        .and_then(|error| error.get("message"))
+                        .and_then(serde_json::Value::as_str)
                         .or_else(|| evt["message"].as_str())
                         .unwrap_or("unknown error");
-                    anyhow::bail!("Responses API error: {msg}");
+                    let classified_error = nested_error
+                        .filter(|error| {
+                            ["code", "type"].into_iter().any(|field| {
+                                error
+                                    .get(field)
+                                    .and_then(serde_json::Value::as_str)
+                                    .is_some()
+                            })
+                        })
+                        .or_else(|| {
+                            evt.get("code")
+                                .and_then(serde_json::Value::as_str)
+                                .map(|_| &evt)
+                        });
+                    let error =
+                        classified_error.map_or_else(|| msg.to_string(), ToString::to_string);
+                    anyhow::bail!("Responses API error: {error}");
                 },
                 _ => {},
             }
@@ -498,30 +319,6 @@ impl OpenAiProvider {
     }
 }
 
-/// Extract model IDs from a `/models` JSON response.
-///
-/// Walks standard locations: top-level `data` array (OpenAI), `models` array,
-/// or the root if it is an array. Collects all `"id"` string fields found.
-fn collect_model_ids<'a>(value: &'a serde_json::Value, out: &mut Vec<&'a str>) {
-    let items = match value {
-        serde_json::Value::Array(arr) => arr.as_slice(),
-        serde_json::Value::Object(map) => {
-            for key in ["data", "models", "items", "results"] {
-                if let Some(nested) = map.get(key) {
-                    collect_model_ids(nested, out);
-                }
-            }
-            return;
-        },
-        _ => return,
-    };
-    for entry in items {
-        if let Some(id) = entry.get("id").and_then(serde_json::Value::as_str) {
-            out.push(id);
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -536,12 +333,12 @@ mod tests {
             response::Response,
             routing::post,
         },
-        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, ReasoningEffort},
+        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider},
         secrecy::Secret,
         tokio::sync::Mutex,
     };
 
-    use super::OpenAiProvider;
+    use super::{super::core::tests::configure_reasoning, OpenAiProvider};
 
     type CapturedBodies = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
@@ -602,62 +399,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn max_reasoning_effort_is_sent_exactly_in_both_openai_wire_formats() {
-        let (base_url, captured) = start_capture_server().await;
-        let messages = [ChatMessage::user("hello")];
-
-        let chat = Arc::new(OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "Combos/z.ai/glm".to_string(),
-            base_url.clone(),
-            "custom-ai-example".to_string(),
-        ));
-        let chat = chat
-            .with_reasoning_effort(ReasoningEffort::from("max"))
-            .expect("chat provider should accept max");
-        chat.complete(&messages, &[])
-            .await
-            .expect("chat fixture should complete");
-
-        let responses = Arc::new(
-            OpenAiProvider::new_with_name(
-                Secret::new("test-key".to_string()),
-                "Combos/z.ai/glm".to_string(),
-                base_url,
-                "custom-ai-example".to_string(),
-            )
-            .with_wire_api(chelix_config::WireApi::Responses),
-        );
-        let responses = responses
-            .with_reasoning_effort(ReasoningEffort::from("max"))
-            .expect("responses provider should accept max");
-        responses
-            .complete(&messages, &[])
-            .await
-            .expect("responses fixture should complete");
-
-        let captured = captured.lock().await;
-        assert_eq!(captured["/v1/chat/completions"]["reasoning_effort"], "max");
-        assert_eq!(captured["/v1/responses"]["reasoning"]["effort"], "max");
-    }
-
-    #[tokio::test]
     async fn output_limit_is_summary_only_in_both_openai_wire_formats() {
         let (base_url, captured) = start_capture_server().await;
         let messages = [ChatMessage::user("hello")];
-        let chat = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-chat".to_string(),
-            base_url.clone(),
-            "test-provider".to_string(),
+        let chat = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-chat".to_string(),
+                base_url.clone(),
+                "test-provider".to_string(),
+            ),
+            vec!["off".into()],
+            "off".into(),
         );
-        let responses = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-responses".to_string(),
-            base_url,
-            "test-provider".to_string(),
-        )
-        .with_wire_api(chelix_config::WireApi::Responses);
+        let responses = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-responses".to_string(),
+                base_url,
+                "test-provider".to_string(),
+            )
+            .with_wire_api(chelix_config::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
 
         chat.complete(&messages, &[])
             .await
@@ -730,23 +495,31 @@ mod tests {
             }
         })];
 
-        let chat = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-chat".to_string(),
-            base_url.clone(),
-            "test-provider".to_string(),
+        let chat = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-chat".to_string(),
+                base_url.clone(),
+                "test-provider".to_string(),
+            ),
+            vec!["off".into()],
+            "off".into(),
         );
         chat.complete(&messages, &tools)
             .await
             .expect("chat completion should succeed");
 
-        let responses = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-responses".to_string(),
-            base_url,
-            "test-provider".to_string(),
-        )
-        .with_wire_api(chelix_config::WireApi::Responses);
+        let responses = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-responses".to_string(),
+                base_url,
+                "test-provider".to_string(),
+            )
+            .with_wire_api(chelix_config::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
         responses
             .complete(&messages, &tools)
             .await

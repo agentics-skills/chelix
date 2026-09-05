@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use {
     chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
+    chelix_common::{ModelOverride, ReasoningEffort},
     chelix_sessions::metadata::SqliteSessionMetadata,
 };
 
@@ -143,6 +144,7 @@ pub(in crate::channel_events) async fn handle_agent(
     let requested_agent = session_metadata
         .get(session_key)
         .await
+        .map_err(ChannelError::unavailable)?
         .and_then(|entry| entry.agent_id)
         .filter(|value| !value.trim().is_empty());
     let current_agent =
@@ -189,24 +191,22 @@ pub(in crate::channel_events) async fn handle_agent(
             )));
         }
         let (chosen_id, chosen) = &agents[n - 1];
-        session_metadata
-            .set_agent_id(session_key, Some(chosen_id))
-            .await
-            .map_err(|e| ChannelError::external("setting session agent", e))?;
-
-        broadcast(
-            state,
-            "session",
-            serde_json::json!({
-                "kind": "patched",
-                "sessionKey": session_key,
-            }),
-            BroadcastOpts {
-                drop_if_slow: true,
-                ..Default::default()
-            },
+        let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
+            state.services.model.as_ref(),
+            &chosen.model,
+            &chosen.reasoning_effort,
         )
-        .await;
+        .await
+        .map_err(ChannelError::unavailable)?;
+        session_metadata
+            .assign_llm_agent(session_key, chosen_id, &model_reasoning)
+            .await
+            .map_err(|error| ChannelError::external("setting session agent", error))?;
+        state
+            .services
+            .external_agent
+            .shutdown_session(session_key)
+            .await;
 
         let emoji = chosen.emoji.clone().unwrap_or_default();
         if emoji.is_empty() {
@@ -233,10 +233,14 @@ pub(in crate::channel_events) async fn handle_model(
         .as_array()
         .ok_or_else(|| ChannelError::invalid_input("bad model list"))?;
 
-    let current_model = {
-        let entry = session_metadata.get(session_key).await;
-        entry.and_then(|e| e.model.clone())
-    };
+    let current_model_reasoning = session_metadata
+        .get(session_key)
+        .await
+        .map_err(ChannelError::unavailable)?
+        .and_then(|entry| entry.model_reasoning().cloned());
+    let current_model = current_model_reasoning
+        .as_ref()
+        .map(|model_reasoning| model_reasoning.model_id().to_string());
 
     if args.is_empty() {
         // List unique providers (sorted, deduplicated).
@@ -280,11 +284,10 @@ pub(in crate::channel_events) async fn handle_model(
             current_model.as_deref(),
             Some(provider),
         ))
-    } else {
-        // Switch mode -- arg is a 1-based global index.
-        let n: usize = args
+    } else if let Some(index) = args.strip_prefix("efforts:") {
+        let n: usize = index
             .parse()
-            .map_err(|_| ChannelError::invalid_input("usage: /model [number]"))?;
+            .map_err(|_| ChannelError::invalid_input("usage: /model efforts:<number>"))?;
         if n == 0 || n > models.len() {
             return Err(ChannelError::invalid_input(format!(
                 "invalid model number. Use 1\u{2013}{}.",
@@ -294,26 +297,76 @@ pub(in crate::channel_events) async fn handle_model(
         let chosen = &models[n - 1];
         let model_id = chosen
             .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ChannelError::invalid_input("model has no id"))?;
-        let display = chosen
-            .get("displayName")
-            .and_then(|v| v.as_str())
-            .unwrap_or(model_id);
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ChannelError::unavailable("model metadata has no id"))?;
+        let supported_efforts = chosen
+            .get("reasoning_supported_efforts")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                ChannelError::unavailable("model metadata missing reasoning_supported_efforts")
+            })?;
+        if supported_efforts.is_empty() {
+            return Err(ChannelError::unavailable(
+                "model metadata has no reasoning_supported_efforts",
+            ));
+        }
 
-        let patch_res = state
-            .services
-            .session
-            .patch(serde_json::json!({
-                "key": session_key,
-                "model": model_id,
-            }))
-            .await
-            .map_err(ChannelError::unavailable)?;
-        let version = patch_res
-            .get("version")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let current_effort = current_model_reasoning
+            .as_ref()
+            .and_then(|model_reasoning| {
+                (model_reasoning.model_id() == model_id)
+                    .then(|| model_reasoning.reasoning_effort().as_str())
+            });
+        let mut lines = vec![format!("efforts:{n}"), format!("Model: {model_id}")];
+        for (index, effort) in supported_efforts.iter().enumerate() {
+            let effort = effort
+                .as_str()
+                .filter(|effort| !effort.trim().is_empty())
+                .ok_or_else(|| {
+                    ChannelError::unavailable("model metadata contains an invalid reasoning effort")
+                })?;
+            let marker = if current_effort == Some(effort) {
+                " *"
+            } else {
+                ""
+            };
+            lines.push(format!("{}. {effort}{marker}", index + 1));
+        }
+        Ok(lines.join("\n"))
+    } else {
+        let mut selection = args.split_whitespace();
+        let index = selection.next().ok_or_else(|| {
+            ChannelError::invalid_input("usage: /model <number> <reasoning-effort>")
+        })?;
+        let effort = selection.next().ok_or_else(|| {
+            ChannelError::invalid_input("usage: /model <number> <reasoning-effort>")
+        })?;
+        if selection.next().is_some() {
+            return Err(ChannelError::invalid_input(
+                "usage: /model <number> <reasoning-effort>",
+            ));
+        }
+
+        let n: usize = index.parse().map_err(|_| {
+            ChannelError::invalid_input("usage: /model <number> <reasoning-effort>")
+        })?;
+        if n == 0 || n > models.len() {
+            return Err(ChannelError::invalid_input(format!(
+                "invalid model number. Use 1\u{2013}{}.",
+                models.len()
+            )));
+        }
+        let chosen = &models[n - 1];
+        let model_id = chosen
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ChannelError::unavailable("model metadata has no id"))?;
+        let model_override = ModelOverride {
+            model: model_id.to_string(),
+            reasoning_effort: ReasoningEffort::from(effort),
+        };
+        let patch =
+            super::super::patch_channel_session_model(state, session_key, &model_override).await?;
 
         broadcast(
             state,
@@ -321,7 +374,7 @@ pub(in crate::channel_events) async fn handle_model(
             serde_json::json!({
                 "kind": "patched",
                 "sessionKey": session_key,
-                "version": version,
+                "version": patch.version,
             }),
             BroadcastOpts {
                 drop_if_slow: true,
@@ -330,7 +383,10 @@ pub(in crate::channel_events) async fn handle_model(
         )
         .await;
 
-        Ok(format!("Model switched to: {display}"))
+        Ok(format!(
+            "Model switched to: {} (reasoning effort: {})",
+            patch.model, patch.reasoning_effort
+        ))
     }
 }
 

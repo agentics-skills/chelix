@@ -765,46 +765,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             })
         }),
     );
-    reg.register(
-        "models.detect_supported",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .model
-                    .detect_supported(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "models.cancel_detect",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .model
-                    .cancel_detect()
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "models.test",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .model
-                    .test(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
     // Provider setup
     reg.register(
         "providers.available",
@@ -833,26 +793,13 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "providers.validate_key",
+        "providers.set_model_preferences",
         Box::new(|ctx| {
             Box::pin(async move {
                 ctx.state
                     .services
                     .provider_setup
-                    .validate_key(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-    reg.register(
-        "providers.save_models",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .provider_setup
-                    .save_models(ctx.params.clone())
+                    .set_model_preferences(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
             })
@@ -866,20 +813,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .services
                     .provider_setup
                     .remove_key(ctx.params.clone())
-                    .await
-                    .map_err(ErrorShape::from)
-            })
-        }),
-    );
-
-    reg.register(
-        "providers.add_custom",
-        Box::new(|ctx| {
-            Box::pin(async move {
-                ctx.state
-                    .services
-                    .provider_setup
-                    .add_custom(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
             })

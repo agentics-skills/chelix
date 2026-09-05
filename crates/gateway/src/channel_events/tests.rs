@@ -129,19 +129,29 @@ fn unique_providers_empty_input() {
     assert!(unique_providers(&[]).is_empty());
 }
 
-#[test]
-fn attachable_session_filter_skips_archived_and_cron_sessions() {
-    let archived = SessionEntry {
-        id: "1".into(),
-        key: "session:archived".into(),
-        label: None,
-        reasoning_effort: None,
+fn session_entry(
+    id: &str,
+    key: &str,
+    label: Option<&str>,
+    message_count: u32,
+    archived: bool,
+) -> SessionEntry {
+    SessionEntry {
+        id: id.to_string(),
+        key: key.to_string(),
+        label: label.map(str::to_string),
+        backing: chelix_sessions::metadata::SessionBacking::external(
+            chelix_sessions::metadata::ExternalSessionIdentity::new(
+                chelix_sessions::metadata::ExternalAgentKind::Codex,
+                None,
+            ),
+        ),
         created_at: 0,
         updated_at: 0,
-        message_count: 0,
+        message_count,
         last_seen_message_count: 0,
         project_id: None,
-        archived: true,
+        archived,
         worktree_branch: None,
         channel_binding: None,
         parent_session_key: None,
@@ -151,11 +161,13 @@ fn attachable_session_filter_skips_archived_and_cron_sessions() {
         preview: None,
         agent_id: None,
         prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-        model: None,
-        external_agent_kind: None,
-        external_session_id: None,
         version: 0,
-    };
+    }
+}
+
+#[test]
+fn attachable_session_filter_skips_archived_and_cron_sessions() {
+    let archived = session_entry("1", "session:archived", None, 0, true);
     let cron = SessionEntry {
         key: "cron:heartbeat".into(),
         archived: false,
@@ -175,56 +187,8 @@ fn attachable_session_filter_skips_archived_and_cron_sessions() {
 #[test]
 fn format_attachable_sessions_shows_session_keys_when_labels_are_present() {
     let sessions = vec![
-        SessionEntry {
-            id: "1".into(),
-            key: "main".into(),
-            label: None,
-            reasoning_effort: None,
-            created_at: 0,
-            updated_at: 0,
-            message_count: 3,
-            last_seen_message_count: 0,
-            project_id: None,
-            archived: false,
-            worktree_branch: None,
-            channel_binding: None,
-            parent_session_key: None,
-            sandbox_owner_key: None,
-            fork_point: None,
-            mcp_disabled: None,
-            preview: None,
-            agent_id: None,
-            prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-            model: None,
-            external_agent_kind: None,
-            external_session_id: None,
-            version: 0,
-        },
-        SessionEntry {
-            id: "2".into(),
-            key: "session:abc".into(),
-            label: Some("Build Fix".into()),
-            reasoning_effort: None,
-            created_at: 0,
-            updated_at: 0,
-            message_count: 12,
-            last_seen_message_count: 0,
-            project_id: None,
-            archived: false,
-            worktree_branch: None,
-            channel_binding: None,
-            parent_session_key: None,
-            sandbox_owner_key: None,
-            fork_point: None,
-            mcp_disabled: None,
-            preview: None,
-            agent_id: None,
-            prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
-            model: None,
-            external_agent_kind: None,
-            external_session_id: None,
-            version: 0,
-        },
+        session_entry("1", "main", None, 3, false),
+        session_entry("2", "session:abc", Some("Build Fix"), 12, false),
     ];
 
     let rendered = format_attachable_sessions_list(&sessions, "session:abc");
@@ -257,42 +221,70 @@ fn format_pending_approvals_renders_numbered_commands() {
 #[test]
 fn channel_session_defaults_use_sender_override_for_group_commands() {
     let config = serde_json::json!({
-        "model": "default-model",
+        "model_override": {
+            "model": "default-model",
+            "reasoning_effort": "low"
+        },
         "agent_id": "default-agent",
         "channel_overrides": {
             "group-1": {
-                "model": "channel-model",
+                "model_override": {
+                    "model": "channel-model",
+                    "reasoning_effort": "medium"
+                },
                 "agent_id": "channel-agent"
             }
         },
         "user_overrides": {
             "user-42": {
-                "model": "user-model",
+                "model_override": {
+                    "model": "user-model",
+                    "reasoning_effort": "high"
+                },
                 "agent_id": "user-agent"
             }
         }
     });
 
     let defaults =
-        resolve_channel_session_defaults_from_config(&config, "group-1", Some("user-42"));
-    assert_eq!(defaults.model.as_deref(), Some("user-model"));
+        resolve_channel_session_defaults_from_config(&config, "group-1", Some("user-42")).unwrap();
+    assert_eq!(
+        defaults.model_override,
+        Some(ModelOverride {
+            model: "user-model".to_string(),
+            reasoning_effort: "high".into(),
+        })
+    );
     assert_eq!(defaults.agent_id.as_deref(), Some("user-agent"));
 }
 
 #[test]
 fn channel_session_defaults_use_chat_id_for_dm_commands() {
     let config = serde_json::json!({
-        "model": "default-model",
+        "model_override": {
+            "model": "default-model",
+            "reasoning_effort": "low"
+        },
         "agent_id": "default-agent",
         "user_overrides": {
             "dm-1": {
-                "model": "dm-model",
+                "model_override": {
+                    "model": "dm-model",
+                    "reasoning_effort": "off"
+                },
                 "agent_id": "dm-agent"
             }
         }
     });
 
-    let defaults = resolve_channel_session_defaults_from_config(&config, "dm-1", Some("dm-1"));
-    assert_eq!(defaults.model.as_deref(), Some("dm-model"));
+    let defaults =
+        resolve_channel_session_defaults_from_config(&config, "dm-1", Some("dm-1")).unwrap();
+    assert_eq!(
+        defaults.model_override,
+        Some(ModelOverride {
+            model: "dm-model".to_string(),
+            reasoning_effort: "off".into(),
+        })
+    );
     assert_eq!(defaults.agent_id.as_deref(), Some("dm-agent"));
 }

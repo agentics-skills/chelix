@@ -30,14 +30,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let reasoning_metadata = || {
-        Struct(HashMap::from([
-            ("supported_efforts", Array(Box::new(Leaf))),
-            ("summary", Leaf),
-            ("include", Array(Box::new(Leaf))),
-        ]))
-    };
-
     let model_metadata = || {
         Struct(HashMap::from([
             ("context_length", Leaf),
@@ -48,7 +40,9 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("tool_calling", Leaf),
             ("streaming", Leaf),
             ("zeroDataRetentionEnabled", Leaf),
-            ("reasoning", reasoning_metadata()),
+            ("reasoning_supported_efforts", Array(Box::new(Leaf))),
+            ("reasoning_summary", Leaf),
+            ("reasoning_include", Array(Box::new(Leaf))),
         ]))
     };
 
@@ -57,16 +51,13 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("enabled", Leaf),
             ("api_key", Leaf),
             ("base_url", Leaf),
-            ("url", Leaf),
             ("models", Map(Box::new(model_metadata()))),
-            ("fetch_models", Leaf),
             ("stream_transport", Leaf),
             ("wire_api", Leaf),
             ("alias", Leaf),
             ("tool_mode", Leaf),
             ("cache_retention", Leaf),
             ("policy", tool_policy_entry()),
-            ("probe_timeout_secs", Leaf),
         ]))
     };
 
@@ -327,10 +318,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ),
         ("providers", MapWithFields {
             value: Box::new(provider_entry()),
-            fields: HashMap::from([
-                ("offered", Array(Box::new(Leaf))),
-                ("show_legacy_models", Leaf),
-            ]),
+            fields: HashMap::from([("offered", Array(Box::new(Leaf)))]),
         }),
         (
             "chat",
@@ -486,7 +474,10 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             Struct(HashMap::from([
                 ("enabled", Leaf),
                 ("every", Leaf),
-                ("model", Leaf),
+                (
+                    "model_override",
+                    Struct(HashMap::from([("model", Leaf), ("reasoning_effort", Leaf)])),
+                ),
                 ("agent_id", Leaf),
                 ("prompt", Leaf),
                 ("ack_max_chars", Leaf),
@@ -554,10 +545,10 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ),
         (
             "auxiliary",
-            Struct(HashMap::from([
-                ("title_generation", Leaf),
-                ("vision", Leaf),
-            ])),
+            Struct(HashMap::from([(
+                "title_generation",
+                Struct(HashMap::from([("model", Leaf), ("reasoning_effort", Leaf)])),
+            )])),
         ),
         (
             "code_index",

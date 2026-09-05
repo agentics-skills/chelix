@@ -4,38 +4,26 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use {chelix_config::schema::ModelConfigMap, serde_json::Value, tracing::warn};
-
-pub(crate) fn parse_models_param(
-    params: &Value,
-) -> Result<Option<ModelConfigMap>, serde_json::Error> {
-    params
-        .get("models")
-        .cloned()
-        .map(serde_json::from_value)
-        .transpose()
-}
+use tracing::warn;
 
 // ── ProviderConfig ─────────────────────────────────────────────────────────
 
-/// Per-provider stored configuration (API key, base URL, preferred models).
+/// Per-provider stored credentials and endpoint configuration.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
-    #[serde(default, skip_serializing_if = "ModelConfigMap::is_empty")]
-    pub models: ModelConfigMap,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
 }
 
 // ── KeyStore ───────────────────────────────────────────────────────────────
 
-/// File-based provider config storage at `~/.config/chelix/provider_keys.json`.
-/// Stores per-provider configuration including API keys, base URLs, and models.
+/// File-based provider credential storage at `~/.config/chelix/provider_keys.json`.
+/// Stores API keys, base URLs, and custom provider display names.
 #[derive(Debug, Clone)]
 pub struct KeyStore {
     inner: Arc<Mutex<KeyStoreInner>>,
@@ -78,32 +66,38 @@ impl KeyStore {
     }
 
     /// Load all provider configs from the canonical object format.
-    fn load_all_configs_from_path(path: &PathBuf) -> HashMap<String, ProviderConfig> {
+    fn load_all_configs_from_path(
+        path: &PathBuf,
+    ) -> crate::error::Result<HashMap<String, ProviderConfig>> {
         let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
+            Ok(content) => content,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(HashMap::new());
+            },
             Err(error) => {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    warn!(
-                        path = %path.display(),
-                        error = %error,
-                        "failed to read provider key store"
-                    );
-                }
-                return HashMap::new();
+                warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "failed to read provider key store"
+                );
+                return Err(crate::error::Error::external(
+                    "failed to read provider key store",
+                    error,
+                ));
             },
         };
 
-        serde_json::from_str::<HashMap<String, ProviderConfig>>(&content).unwrap_or_else(|error| {
+        serde_json::from_str::<HashMap<String, ProviderConfig>>(&content).map_err(|error| {
             warn!(
                 path = %path.display(),
                 error = %error,
-                "provider key store does not match the canonical schema and will be ignored"
+                "provider key store does not match the canonical schema"
             );
-            HashMap::new()
+            crate::error::Error::external("failed to parse provider key store", error)
         })
     }
 
-    pub fn load_all_configs(&self) -> HashMap<String, ProviderConfig> {
+    pub fn load_all_configs(&self) -> crate::error::Result<HashMap<String, ProviderConfig>> {
         let guard = self.lock();
         Self::load_all_configs_from_path(&guard.path)
     }
@@ -167,29 +161,31 @@ impl KeyStore {
 
     /// Load all API keys (used in tests).
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn load_all(&self) -> HashMap<String, String> {
-        self.load_all_configs()
+    pub(crate) fn load_all(&self) -> crate::error::Result<HashMap<String, String>> {
+        Ok(self
+            .load_all_configs()?
             .into_iter()
-            .filter_map(|(k, v)| v.api_key.map(|key| (k, key)))
-            .collect()
+            .filter_map(|(key, config)| config.api_key.map(|api_key| (key, api_key)))
+            .collect())
     }
 
     /// Load a provider's API key.
-    pub fn load(&self, provider: &str) -> Option<String> {
-        self.load_all_configs()
+    pub fn load(&self, provider: &str) -> crate::error::Result<Option<String>> {
+        Ok(self
+            .load_all_configs()?
             .get(provider)
-            .and_then(|c| c.api_key.clone())
+            .and_then(|config| config.api_key.clone()))
     }
 
     /// Load a provider's full config.
-    pub fn load_config(&self, provider: &str) -> Option<ProviderConfig> {
-        self.load_all_configs().get(provider).cloned()
+    pub fn load_config(&self, provider: &str) -> crate::error::Result<Option<ProviderConfig>> {
+        Ok(self.load_all_configs()?.get(provider).cloned())
     }
 
     /// Remove a provider's configuration.
     pub fn remove(&self, provider: &str) -> crate::error::Result<()> {
         let guard = self.lock();
-        let mut configs = Self::load_all_configs_from_path(&guard.path);
+        let mut configs = Self::load_all_configs_from_path(&guard.path)?;
         configs.remove(provider);
         Self::save_all_configs_to_path(&guard.path, &configs)
     }
@@ -201,7 +197,6 @@ impl KeyStore {
             provider,
             Some(api_key.to_string()),
             None, // preserve existing base_url
-            None, // preserve existing models
         )
     }
 
@@ -211,31 +206,34 @@ impl KeyStore {
         provider: &str,
         api_key: Option<String>,
         base_url: Option<String>,
-        models: Option<ModelConfigMap>,
     ) -> crate::error::Result<()> {
-        self.save_config_with_display_name(provider, api_key, base_url, models, None)
+        self.save_config_with_display_name(provider, api_key, base_url, None)
     }
 
-    /// Load all provider configs from vault-encrypted storage, falling back to
-    /// plaintext when the vault is unavailable or when the plaintext file is
-    /// newer than the encrypted copy (indicating a sync write occurred since
-    /// the last vault-unseal encryption).
+    /// Load all provider configs from the newest canonical store copy.
+    ///
+    /// A newer plaintext copy is read directly. Otherwise, an existing encrypted
+    /// copy must be decrypted successfully; read, decrypt, and schema errors are
+    /// propagated. Plaintext is used when no encrypted copy exists.
     #[cfg(feature = "vault")]
     pub async fn load_all_configs_encrypted<C: chelix_vault::Cipher>(
         &self,
         vault: Option<&chelix_vault::Vault<C>>,
-    ) -> HashMap<String, ProviderConfig> {
+    ) -> crate::error::Result<HashMap<String, ProviderConfig>> {
         let path = self.path();
 
-        // If the plaintext is newer than the .enc file, a sync write happened
-        // after the last vault-unseal encryption.  Prefer the fresher plaintext
-        // so we don't silently return stale data.
+        // If the plaintext is newer than the encrypted file, a synchronous write
+        // happened after encryption. Read the newer canonical file.
         let enc_path = path.with_extension("json.enc");
         if path.exists() && enc_path.exists() {
-            let json_mod = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
-            let enc_mod = std::fs::metadata(&enc_path).and_then(|m| m.modified()).ok();
-            if let (Some(j), Some(e)) = (json_mod, enc_mod)
-                && j > e
+            let json_mod = std::fs::metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .ok();
+            let enc_mod = std::fs::metadata(&enc_path)
+                .and_then(|metadata| metadata.modified())
+                .ok();
+            if let (Some(json_modified), Some(encrypted_modified)) = (json_mod, enc_mod)
+                && json_modified > encrypted_modified
             {
                 return Self::load_all_configs_from_path(&path);
             }
@@ -245,21 +243,23 @@ impl KeyStore {
             .await
         {
             Ok(Some(content)) => serde_json::from_str::<HashMap<String, ProviderConfig>>(&content)
-                .unwrap_or_else(|error| {
+                .map_err(|error| {
                     warn!(
                         error = %error,
                         "encrypted provider key store does not match the canonical schema"
                     );
-                    HashMap::new()
+                    crate::error::Error::external(
+                        "failed to parse encrypted provider key store",
+                        error,
+                    )
                 }),
-            Ok(None) => HashMap::new(),
-            Err(chelix_vault::VaultError::Sealed) => {
-                warn!("vault sealed, falling back to plaintext provider key store");
-                Self::load_all_configs_from_path(&path)
-            },
-            Err(e) => {
-                warn!(error = %e, "failed to decrypt provider key store, falling back to plaintext");
-                Self::load_all_configs_from_path(&path)
+            Ok(None) => Ok(HashMap::new()),
+            Err(error) => {
+                warn!(error = %error, "failed to load encrypted provider key store");
+                Err(crate::error::Error::external(
+                    "failed to load encrypted provider key store",
+                    error,
+                ))
             },
         }
     }
@@ -305,11 +305,10 @@ impl KeyStore {
         provider: &str,
         api_key: Option<String>,
         base_url: Option<String>,
-        models: Option<ModelConfigMap>,
         display_name: Option<String>,
     ) -> crate::error::Result<()> {
         let guard = self.lock();
-        let mut configs = Self::load_all_configs_from_path(&guard.path);
+        let mut configs = Self::load_all_configs_from_path(&guard.path)?;
         let entry = configs.entry(provider.to_string()).or_default();
 
         // Only update fields that are provided (Some), preserve existing for None
@@ -323,9 +322,6 @@ impl KeyStore {
                 Some(url)
             };
         }
-        if let Some(models) = models {
-            entry.models = models;
-        }
         if let Some(name) = display_name {
             entry.display_name = Some(name);
         }
@@ -337,50 +333,28 @@ impl KeyStore {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        chelix_config::schema::{PartialModelMetadata, PartialReasoningMetadata},
-    };
-
-    fn model_metadata() -> PartialModelMetadata {
-        PartialModelMetadata {
-            context_length: Some(128_000),
-            max_input_tokens: Some(96_000),
-            max_output_tokens: Some(32_000),
-            reasoning: Some(PartialReasoningMetadata {
-                supported_efforts: Some(Vec::new()),
-                ..Default::default()
-            }),
-            ..Default::default()
-        }
-    }
-
-    fn model_map(ids: &[&str]) -> ModelConfigMap {
-        ids.iter()
-            .map(|id| ((*id).to_string(), model_metadata()))
-            .collect()
-    }
-
-    fn model_ids(models: &ModelConfigMap) -> Vec<&str> {
-        models.keys().map(String::as_str).collect()
-    }
+    use super::*;
 
     #[test]
     fn key_store_save_and_load() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-        assert!(store.load("openrouter").is_none());
+        assert!(store.load("openrouter").unwrap().is_none());
+
         store.save("openrouter", "test-123").unwrap();
-        assert_eq!(store.load("openrouter").unwrap(), "test-123");
-        // Overwrite
+        assert_eq!(
+            store.load("openrouter").unwrap().as_deref(),
+            Some("test-123")
+        );
+
         store.save("openrouter", "new-key").unwrap();
-        assert_eq!(store.load("openrouter").unwrap(), "new-key");
-        // Multiple providers
         store.save("openai", "sk-openai").unwrap();
-        assert_eq!(store.load("openai").unwrap(), "sk-openai");
-        assert_eq!(store.load("openrouter").unwrap(), "new-key");
-        let all = store.load_all();
-        assert_eq!(all.len(), 2);
+        assert_eq!(
+            store.load("openrouter").unwrap().as_deref(),
+            Some("new-key")
+        );
+        assert_eq!(store.load("openai").unwrap().as_deref(), Some("sk-openai"));
+        assert_eq!(store.load_all().unwrap().len(), 2);
     }
 
     #[test]
@@ -392,155 +366,95 @@ mod tests {
     }
 
     #[test]
-    fn key_store_invalid_json_returns_empty_map() {
+    fn key_store_invalid_json_returns_error() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("keys.json");
         std::fs::write(&path, "{ invalid json").unwrap();
 
-        let store = KeyStore::with_path(path);
-        assert!(store.load_all_configs().is_empty());
+        let error = KeyStore::with_path(path)
+            .load_all_configs()
+            .expect_err("invalid JSON must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to parse provider key store")
+        );
     }
 
     #[test]
-    fn key_store_remove() {
+    fn key_store_rejects_model_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("keys.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "openai": {
+                    "apiKey": "sk-test",
+                    "models": {}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let error = KeyStore::with_path(path)
+            .load_all_configs()
+            .expect_err("model metadata must not be accepted by the credential store");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to parse provider key store")
+        );
+        assert!(error.to_string().contains("unknown field `models`"));
+    }
+
+    #[test]
+    fn key_store_remove_preserves_other_entries() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
         store.save("openrouter", "test-key").unwrap();
         store.save("openai", "sk-openai").unwrap();
-        assert!(store.load("openrouter").is_some());
+
         store.remove("openrouter").unwrap();
-        assert!(store.load("openrouter").is_none());
-        // Other keys unaffected
-        assert_eq!(store.load("openai").unwrap(), "sk-openai");
-        // Removing non-existent key is fine
+        assert!(store.load("openrouter").unwrap().is_none());
+        assert_eq!(store.load("openai").unwrap().as_deref(), Some("sk-openai"));
+
         store.remove("nonexistent").unwrap();
     }
 
     #[test]
-    fn key_store_save_config_with_all_fields() {
+    fn key_store_save_config_preserves_unspecified_fields() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-
-        // Save full config
         store
             .save_config(
                 "openai",
                 Some("sk-openai".into()),
                 Some("https://custom.api.com/v1".into()),
-                Some(model_map(&["gpt-4o", "gpt-4o-mini"])),
             )
             .unwrap();
 
-        let config = store.load_config("openai").unwrap();
+        store
+            .save_config("openai", None, Some(String::new()))
+            .unwrap();
+
+        let config = store.load_config("openai").unwrap().unwrap();
         assert_eq!(config.api_key.as_deref(), Some("sk-openai"));
-        assert_eq!(
-            config.base_url.as_deref(),
-            Some("https://custom.api.com/v1")
-        );
-        assert_eq!(model_ids(&config.models), vec!["gpt-4o", "gpt-4o-mini"]);
-        assert!(
-            config
-                .models
-                .values()
-                .all(|metadata| metadata.clone().resolve().is_ok())
-        );
-    }
-
-    #[test]
-    fn key_store_save_config_preserves_existing_fields() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = KeyStore::with_path(dir.path().join("keys.json"));
-
-        // Save initial config with all fields
-        store
-            .save_config(
-                "openai",
-                Some("sk-openai".into()),
-                Some("https://custom.api.com/v1".into()),
-                Some(model_map(&["gpt-4o"])),
-            )
-            .unwrap();
-
-        // Update only models, preserve others
-        store
-            .save_config("openai", None, None, Some(model_map(&["gpt-4o-mini"])))
-            .unwrap();
-
-        let config = store.load_config("openai").unwrap();
-        assert_eq!(config.api_key.as_deref(), Some("sk-openai")); // preserved
-        assert_eq!(
-            config.base_url.as_deref(),
-            Some("https://custom.api.com/v1")
-        ); // preserved
-        assert_eq!(model_ids(&config.models), vec!["gpt-4o-mini"]); // updated
-    }
-
-    #[test]
-    fn key_store_save_config_preserves_other_providers() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = KeyStore::with_path(dir.path().join("keys.json"));
-
-        store
-            .save_config(
-                "openrouter",
-                Some("openrouter-key".into()),
-                Some("https://openrouter.ai/api/v1".into()),
-                Some(model_map(&["anthropic/claude-sonnet-4"])),
-            )
-            .unwrap();
-
-        store
-            .save_config(
-                "openai",
-                Some("sk-openai".into()),
-                Some("https://api.openai.com/v1".into()),
-                Some(model_map(&["gpt-4o"])),
-            )
-            .unwrap();
-
-        // Update only OpenAI models; OpenRouter should remain unchanged.
-        store
-            .save_config("openai", None, None, Some(model_map(&["gpt-5"])))
-            .unwrap();
-
-        let openrouter = store.load_config("openrouter").unwrap();
-        assert_eq!(openrouter.api_key.as_deref(), Some("openrouter-key"));
-        assert_eq!(
-            openrouter.base_url.as_deref(),
-            Some("https://openrouter.ai/api/v1")
-        );
-        assert_eq!(model_ids(&openrouter.models), vec![
-            "anthropic/claude-sonnet-4"
-        ]);
-
-        let openai = store.load_config("openai").unwrap();
-        assert_eq!(openai.api_key.as_deref(), Some("sk-openai"));
-        assert_eq!(
-            openai.base_url.as_deref(),
-            Some("https://api.openai.com/v1")
-        );
-        assert_eq!(model_ids(&openai.models), vec!["gpt-5"]);
+        assert!(config.base_url.is_none());
     }
 
     #[test]
     fn key_store_concurrent_writes_do_not_drop_provider_entries() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeyStore::with_path(dir.path().join("keys.json"));
-
         let mut handles = Vec::new();
-        for (provider, key, models) in [
-            ("openai", "sk-openai", model_map(&["gpt-5"])),
-            (
-                "openrouter",
-                "openrouter-key",
-                model_map(&["anthropic/claude-sonnet-4"]),
-            ),
-        ] {
+
+        for (provider, key) in [("openai", "sk-openai"), ("openrouter", "openrouter-key")] {
             let store = store.clone();
             handles.push(std::thread::spawn(move || {
                 for _ in 0..100 {
                     store
-                        .save_config(provider, Some(key.to_string()), None, Some(models.clone()))
+                        .save_config(provider, Some(key.to_string()), None)
                         .unwrap();
                 }
             }));
@@ -550,51 +464,33 @@ mod tests {
             handle.join().unwrap();
         }
 
-        let all = store.load_all_configs();
+        let all = store.load_all_configs().unwrap();
         assert!(all.contains_key("openai"));
         assert!(all.contains_key("openrouter"));
-    }
-
-    #[test]
-    fn key_store_save_config_clears_empty_values() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = KeyStore::with_path(dir.path().join("keys.json"));
-
-        // Save initial config
-        store
-            .save_config(
-                "openai",
-                Some("sk-openai".into()),
-                Some("https://custom.api.com/v1".into()),
-                Some(model_map(&["gpt-4o"])),
-            )
-            .unwrap();
-
-        // Clear base_url by setting empty string
-        store
-            .save_config("openai", None, Some(String::new()), None)
-            .unwrap();
-
-        let config = store.load_config("openai").unwrap();
-        assert_eq!(config.api_key.as_deref(), Some("sk-openai")); // preserved
-        assert!(config.base_url.is_none()); // cleared
-        assert_eq!(model_ids(&config.models), vec!["gpt-4o"]); // preserved
     }
 
     #[test]
     fn key_store_rejects_legacy_string_format() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("keys.json");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "openrouter": "old-key",
+                "openai": "sk-openai-old"
+            })
+            .to_string(),
+        )
+        .unwrap();
 
-        let old_data = serde_json::json!({
-            "openrouter": "old-key",
-            "openai": "sk-openai-old"
-        });
-        std::fs::write(&path, serde_json::to_string(&old_data).unwrap()).unwrap();
-
-        let store = KeyStore::with_path(path);
-        assert!(store.load_all_configs().is_empty());
-        assert!(store.load("openai").is_none());
+        let error = KeyStore::with_path(path)
+            .load_all_configs()
+            .expect_err("legacy string entries must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to parse provider key store")
+        );
     }
 
     #[test]
@@ -607,32 +503,16 @@ mod tests {
                 "custom-together-ai",
                 Some("sk-test".into()),
                 Some("https://api.together.ai/v1".into()),
-                Some(model_map(&["meta-llama/Llama-3-70b"])),
                 Some("together.ai".into()),
             )
             .unwrap();
 
-        let config = store.load_config("custom-together-ai").unwrap();
+        let config = store.load_config("custom-together-ai").unwrap().unwrap();
         assert_eq!(config.api_key.as_deref(), Some("sk-test"));
         assert_eq!(
             config.base_url.as_deref(),
             Some("https://api.together.ai/v1")
         );
         assert_eq!(config.display_name.as_deref(), Some("together.ai"));
-        assert_eq!(model_ids(&config.models), vec!["meta-llama/Llama-3-70b"]);
-    }
-
-    #[test]
-    fn models_param_requires_canonical_object_and_preserves_order() {
-        let models = model_map(&["gpt-5.2", "anthropic/claude-sonnet-4"]);
-        let params = serde_json::json!({ "models": models });
-        let parsed = parse_models_param(&params).unwrap().unwrap();
-        assert_eq!(model_ids(&parsed), vec![
-            "gpt-5.2",
-            "anthropic/claude-sonnet-4"
-        ]);
-
-        let legacy = serde_json::json!({ "models": ["gpt-5.2"] });
-        assert!(parse_models_param(&legacy).is_err());
     }
 }

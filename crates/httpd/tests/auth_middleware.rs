@@ -34,19 +34,22 @@ default = "main"
 
 [agents.main]
 name = "Chelix"
+model = "test::model"
+reasoning_effort = "off"
 max_tools_threshold = 128
 "#;
 
 fn test_config() -> chelix_config::ChelixConfig {
     let mut config = chelix_config::ChelixConfig::default();
     config.agents.default = "main".to_owned();
-    config
-        .agents
-        .entries
-        .insert("main".to_owned(), chelix_config::AgentConfig {
-            name: "Chelix".to_owned(),
-            ..Default::default()
-        });
+    config.agents.entries.insert(
+        "main".to_owned(),
+        chelix_config::AgentConfig::new(
+            "Chelix",
+            "test::model",
+            chelix_config::schema::ReasoningEffort::from("off"),
+        ),
+    );
     config
 }
 

@@ -227,7 +227,7 @@ mod tests {
             enabled: true,
             delete_after_run: false,
             schedule: CronSchedule::At { at_ms: 1000 },
-            payload: CronPayload::SystemEvent { text: "hi".into() },
+            payload: CronPayload::SystemEvent(CronSystemEvent { text: "hi".into() }),
             session_target: SessionTarget::Main,
             state: CronJobState::default(),
             auto_prune_container: None,
@@ -312,6 +312,28 @@ mod tests {
             .await
             .expect_err("expected parse failure");
         assert!(err.to_string().contains("failed to parse run record"));
+    }
+
+    #[tokio::test]
+    async fn test_file_store_rejects_incomplete_persisted_model_override_without_rewrite() {
+        let tmp = TempDir::new().unwrap();
+        let store = make_store(tmp.path());
+        let jobs_path = tmp.path().join("jobs.json");
+        let mut job = serde_json::to_value(make_job("1")).unwrap();
+        job["payload"] = serde_json::json!({
+            "kind": "agentTurn",
+            "message": "hello",
+            "modelOverride": { "model": "test::model" }
+        });
+        let original = serde_json::to_string_pretty(&vec![job]).unwrap();
+        fs::write(&jobs_path, &original).await.unwrap();
+
+        let error = store
+            .load_jobs()
+            .await
+            .expect_err("incomplete persisted pair must be rejected");
+        assert!(error.to_string().contains("failed to parse jobs.json"));
+        assert_eq!(fs::read_to_string(&jobs_path).await.unwrap(), original);
     }
 
     #[tokio::test]

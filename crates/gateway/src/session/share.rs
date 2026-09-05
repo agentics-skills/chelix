@@ -22,6 +22,7 @@ impl LiveSessionService {
             .metadata
             .get(key)
             .await
+            .map_err(ServiceError::message)?
             .ok_or_else(|| format!("session '{key}' not found"))?;
         let history = self.store.read(key).await.map_err(ServiceError::message)?;
 
@@ -82,7 +83,10 @@ impl LiveSessionService {
         }
         match self.store.ui_message_count(key).await {
             Ok(message_count) => {
-                self.metadata.touch(key, message_count).await;
+                self.metadata
+                    .touch(key, message_count)
+                    .await
+                    .map_err(ServiceError::message)?;
             },
             Err(e) => {
                 warn!(session_key = key, error = %e, "failed to update session UI message count");

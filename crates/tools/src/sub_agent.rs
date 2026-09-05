@@ -3,21 +3,13 @@
 use std::sync::Arc;
 
 use {
-    async_trait::async_trait, chelix_agents::tool_registry::AgentTool, futures::future::BoxFuture,
+    async_trait::async_trait,
+    chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
+    futures::future::BoxFuture,
     serde_json::Value,
 };
 
 use crate::Error;
-
-const INTERNAL_PARAMETERS: &[&str] = &[
-    "_session_key",
-    "_sandbox_id",
-    "_channel",
-    "_accept_language",
-    "_conn_id",
-    "_tool_call_id",
-    "_run_id",
-];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubAgentMode {
@@ -172,10 +164,10 @@ fn required_string<'a>(
     Ok(value)
 }
 
-fn validate_parameters(params: &Value, allow_internal: bool) -> crate::Result<SubAgentAction> {
+fn validate_parameters(params: &Value) -> crate::Result<SubAgentAction> {
     let params = object(params)?;
     for name in params.keys() {
-        if name != "action" && !(allow_internal && INTERNAL_PARAMETERS.contains(&name.as_str())) {
+        if name != "action" {
             return Err(Error::message(format!("unknown parameter: {name}")));
         }
     }
@@ -207,12 +199,19 @@ fn validate_parameters(params: &Value, allow_internal: bool) -> crate::Result<Su
     Ok(action)
 }
 
-fn parent_session_key(params: &serde_json::Map<String, Value>) -> crate::Result<String> {
-    required_string(params, "_session_key").map(ToOwned::to_owned)
+fn parent_session_key(context: Option<&ToolExecutionContext>) -> crate::Result<String> {
+    context
+        .ok_or_else(|| Error::message("session execution context is required"))?
+        .require_session_key()
+        .map(|key| key.as_str().to_owned())
+        .map_err(|error| Error::message(error.to_string()))
 }
 
-fn parse_request(params: &Value) -> crate::Result<SubAgentRequest> {
-    let action = validate_parameters(params, true)?;
+fn parse_request(
+    params: &Value,
+    context: Option<&ToolExecutionContext>,
+) -> crate::Result<SubAgentRequest> {
+    let action = validate_parameters(params)?;
     let params = object(params)?;
     let (_, payload) = action_payload(params)?;
     match action {
@@ -228,25 +227,25 @@ fn parse_request(params: &Value) -> crate::Result<SubAgentRequest> {
                 },
             };
             Ok(SubAgentRequest::Run {
-                parent_session_key: parent_session_key(params)?,
+                parent_session_key: parent_session_key(context)?,
                 agent_id: required_string(payload, "agent_id")?.to_string(),
                 task: required_string(payload, "task")?.to_string(),
                 mode,
             })
         },
         SubAgentAction::Status => Ok(SubAgentRequest::Status {
-            parent_session_key: parent_session_key(params)?,
+            parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
         }),
         SubAgentAction::List => Ok(SubAgentRequest::List {
-            parent_session_key: parent_session_key(params)?,
+            parent_session_key: parent_session_key(context)?,
         }),
         SubAgentAction::Result => Ok(SubAgentRequest::Result {
-            parent_session_key: parent_session_key(params)?,
+            parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
         }),
         SubAgentAction::Cancel => Ok(SubAgentRequest::Cancel {
-            parent_session_key: parent_session_key(params)?,
+            parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
         }),
     }
@@ -376,9 +375,7 @@ impl AgentTool for SubAgentTool {
     }
 
     fn validate(&self, params: &Value) -> anyhow::Result<()> {
-        validate_parameters(params, false)
-            .map(|_| ())
-            .map_err(Into::into)
+        validate_parameters(params).map(|_| ()).map_err(Into::into)
     }
 
     #[tracing::instrument(
@@ -394,7 +391,16 @@ impl AgentTool for SubAgentTool {
         )
     )]
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
-        let request = parse_request(&params)?;
+        let request = parse_request(&params, None)?;
+        (self.execute_fn)(request).await.map_err(Into::into)
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
+        let request = parse_request(&params, Some(context))?;
         (self.execute_fn)(request).await.map_err(Into::into)
     }
 }
@@ -415,6 +421,94 @@ mod tests {
             .err()
             .map(|error| error.to_string())
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn actions_use_typed_session_context() -> anyhow::Result<()> {
+        use chelix_sessions::SessionKey;
+
+        let context = ToolExecutionContext::for_session(SessionKey::new("session:parent"));
+        let cases = [
+            (
+                serde_json::json!({"action": {"explore": {}}}),
+                SubAgentRequest::Explore,
+            ),
+            (
+                serde_json::json!({"action": {"run": {
+                    "agent_id": "reviewer", "task": "Do work", "mode": "blocking"
+                }}}),
+                SubAgentRequest::Run {
+                    parent_session_key: "session:parent".into(),
+                    agent_id: "reviewer".into(),
+                    task: "Do work".into(),
+                    mode: SubAgentMode::Blocking,
+                },
+            ),
+            (
+                serde_json::json!({"action": {"list": {}}}),
+                SubAgentRequest::List {
+                    parent_session_key: "session:parent".into(),
+                },
+            ),
+            (
+                serde_json::json!({"action": {"status": {"session_key": "session:child"}}}),
+                SubAgentRequest::Status {
+                    parent_session_key: "session:parent".into(),
+                    session_key: "session:child".into(),
+                },
+            ),
+            (
+                serde_json::json!({"action": {"result": {"session_key": "session:child"}}}),
+                SubAgentRequest::Result {
+                    parent_session_key: "session:parent".into(),
+                    session_key: "session:child".into(),
+                },
+            ),
+            (
+                serde_json::json!({"action": {"cancel": {"session_key": "session:child"}}}),
+                SubAgentRequest::Cancel {
+                    parent_session_key: "session:parent".into(),
+                    session_key: "session:child".into(),
+                },
+            ),
+        ];
+        for (params, expected) in cases {
+            let requires_context = expected != SubAgentRequest::Explore;
+            let tool = SubAgentTool::new(Arc::new(move |request| {
+                assert_eq!(request, expected);
+                async { Ok(serde_json::json!({"accepted": true})) }.boxed()
+            }));
+            tool.validate(&params)?;
+            assert_eq!(
+                tool.execute_with_context(params.clone(), &context).await?,
+                serde_json::json!({"accepted": true}),
+            );
+            if requires_context {
+                assert!(tool.execute(params).await.is_err());
+            } else {
+                assert_eq!(
+                    tool.execute(params).await?,
+                    serde_json::json!({"accepted": true})
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rejects_additional_field_before_callback() {
+        let tool = SubAgentTool::new(Arc::new(|_| panic!("invalid input reached callback")));
+        let context =
+            ToolExecutionContext::for_session(chelix_sessions::SessionKey::new("session:parent"));
+        assert_eq!(tool.parameters_schema()["additionalProperties"], false);
+        for params in [
+            serde_json::json!({"action": {"explore": {}}, "extra_field": true}),
+            serde_json::json!({"action": {"explore": {"extra_field": true}}}),
+        ] {
+            assert!(tool.validate(&params).is_err());
+            assert!(tool.execute(params.clone()).await.is_err());
+            assert!(tool.execute_with_context(params, &context).await.is_err());
+        }
     }
 
     #[test]

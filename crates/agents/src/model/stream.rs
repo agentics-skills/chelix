@@ -1,6 +1,6 @@
-use std::{pin::Pin, sync::Arc, time::Duration};
+use std::{pin::Pin, sync::Arc};
 
-use {async_trait::async_trait, futures::StreamExt, tokio_stream::Stream};
+use {async_trait::async_trait, tokio_stream::Stream};
 
 use super::{
     CompletionOptions, ReasoningEffort, ToolChoice,
@@ -174,61 +174,6 @@ pub trait LlmProvider: Send + Sync {
         _effort: ReasoningEffort,
     ) -> Option<Arc<dyn LlmProvider>> {
         None
-    }
-
-    /// Send the cheapest request available that proves the model can answer.
-    ///
-    /// The default implementation streams a tiny prompt and returns as soon as
-    /// the first text delta or terminal event arrives. Providers can override
-    /// this to use provider-specific low-cost probe requests.
-    async fn probe(&self) -> anyhow::Result<()> {
-        let timeout = self.probe_timeout();
-        let probe = vec![ChatMessage::user("ping")];
-        let mut stream = self.stream(probe);
-
-        let result = tokio::time::timeout(timeout, async {
-            while let Some(event) = stream.next().await {
-                match event {
-                    StreamEvent::Delta(_) | StreamEvent::Done(_) => return Ok(()),
-                    StreamEvent::Error(err) => return Err(anyhow::anyhow!(err)),
-                    _ => continue,
-                }
-            }
-            Err(anyhow::anyhow!("stream ended without producing any output"))
-        })
-        .await;
-
-        drop(stream);
-
-        match result {
-            Ok(inner) => inner,
-            Err(_) => Err(anyhow::anyhow!(
-                "Connection timed out after {} seconds",
-                timeout.as_secs()
-            )),
-        }
-    }
-
-    /// Timeout for the completion-based `probe()` fallback.
-    ///
-    /// Providers with slow model loading (e.g. local LLM servers) should
-    /// override this with a longer duration. The default is 30 seconds.
-    fn probe_timeout(&self) -> Duration {
-        Duration::from_secs(30)
-    }
-
-    /// Check whether the provider is reachable and knows about this model.
-    ///
-    /// Unlike [`probe()`](Self::probe), this does **not** require the model to
-    /// generate output. It uses lightweight endpoints such as `GET /v1/models`
-    /// or `POST /api/show` to verify model availability without triggering
-    /// model loading.
-    ///
-    /// The default implementation falls back to [`probe()`](Self::probe).
-    /// Providers should override this with a catalog/listing check whenever
-    /// the server supports one.
-    async fn check_availability(&self) -> anyhow::Result<()> {
-        self.probe().await
     }
 }
 
