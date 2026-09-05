@@ -8,18 +8,34 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use {async_trait::async_trait, futures::future::BoxFuture, serde_json::Value};
+use {async_trait::async_trait, futures::future::BoxFuture, serde::Deserialize, serde_json::Value};
 
 use {
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
     chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
 };
 
 use crate::{
     Error,
-    params::{bool_param, owned_str_param, require_str, str_param, u64_param, without_null_params},
-    session_model_override::{ModelOverride, model_override_schema, parse_model_override},
+    params::{require_str, str_param, u64_param},
+    session_model_override::{ModelOverride, deserialize_model_override, model_override_schema},
+    session_tool_params::{nonempty_string, optional_nonempty_string},
 };
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsSendParams {
+    #[serde(deserialize_with = "nonempty_string")]
+    key: String,
+    #[serde(deserialize_with = "nonempty_string")]
+    message: String,
+    #[serde(default)]
+    wait_for_reply: bool,
+    #[serde(default, deserialize_with = "optional_nonempty_string")]
+    context: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_model_override")]
+    model_override: Option<ModelOverride>,
+}
 
 /// Request payload for cross-session message delivery.
 #[derive(Debug, Clone)]
@@ -456,14 +472,27 @@ impl AgentTool for SessionsSendTool {
         })
     }
 
+    fn validate(&self, params: &Value) -> anyhow::Result<()> {
+        serde_json::from_value::<SessionsSendParams>(params.clone())?;
+        Ok(())
+    }
+
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        _context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
+        self.execute(params).await
+    }
+
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
-        let params = without_null_params(params);
-        let key = require_str(&params, "key")?.to_string();
-        let message = require_str(&params, "message")?.to_string();
-        let wait_for_reply = bool_param(&params, "wait_for_reply", false)
-            || bool_param(&params, "waitForReply", false);
-        let context = owned_str_param(&params, &["context"]);
-        let model_override = parse_model_override(&params)?;
+        let SessionsSendParams {
+            key,
+            message,
+            wait_for_reply,
+            context,
+            model_override,
+        } = serde_json::from_value(params)?;
 
         // Enforce session access policy.
         if let Some(ref policy) = self.policy {
@@ -786,30 +815,51 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sessions_send_ignores_null_parameters() -> TestResult<()> {
-        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        create_test_session(&metadata, "session:target", "Target").await?;
+    async fn sessions_send_rejects_invalid_parameters_before_state() -> TestResult<()> {
+        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:")?;
+        pool.close().await;
+        let tool = SessionsSendTool::new(
+            Arc::new(SqliteSessionMetadata::new(pool)),
+            Arc::new(|_| {
+                Box::pin(async { panic!("invalid parameters must not reach the callback") })
+            }),
+        );
+        for params in [
+            serde_json::json!({"message": "hello"}),
+            serde_json::json!({"key": "session:target"}),
+            serde_json::json!({"key": "", "message": "hello"}),
+            serde_json::json!({"key": "session:target", "message": ""}),
+            serde_json::json!({"key": "session:target", "message": "hello", "context": null}),
+            serde_json::json!({"key": "session:target", "message": "hello", "wait_for_reply": null}),
+            serde_json::json!({"key": "session:target", "message": "hello", "wait_for_reply": "true"}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model_override": null}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model_override": {"reasoning_effort": "low"}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model_override": {"model": "", "reasoning_effort": "low"}}),
+        ] {
+            assert!(tool.validate(&params).is_err(), "{params}");
+            let result = tool.execute(params).await;
+            assert!(matches!(result, Err(ref error) if error.is::<serde_json::Error>()));
+        }
+        Ok(())
+    }
 
-        let send_fn: SendToSessionFn = Arc::new(move |req| {
-            Box::pin(async move {
-                assert!(req.model_override.is_none());
-                assert!(!req.wait_for_reply);
-                Ok(serde_json::json!({ "ok": true }))
-            })
+    #[tokio::test]
+    async fn sessions_send_rejects_additional_field() -> TestResult<()> {
+        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:")?;
+        pool.close().await;
+        let tool = SessionsSendTool::new(
+            Arc::new(SqliteSessionMetadata::new(pool)),
+            Arc::new(|_| {
+                Box::pin(async { panic!("additional fields must not reach the callback") })
+            }),
+        );
+        assert_eq!(tool.parameters_schema()["additionalProperties"], false);
+        let params = serde_json::json!({
+            "key": "session:target", "message": "hello", "extra_field": true,
         });
-        let tool = SessionsSendTool::new(metadata, send_fn);
-
-        let result = tool
-            .execute(serde_json::json!({
-                "key": "session:target",
-                "message": "Do work",
-                "context": null,
-                "wait_for_reply": null,
-                "model_override": null
-            }))
-            .await?;
-
-        assert_eq!(result["sent"], true);
+        assert!(tool.validate(&params).is_err());
+        let result = tool.execute(params).await;
+        assert!(matches!(result, Err(ref error) if error.is::<serde_json::Error>()));
         Ok(())
     }
 

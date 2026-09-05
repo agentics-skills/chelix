@@ -36,7 +36,7 @@ impl ResolvedModel {
         &self.model_reasoning
     }
 
-    /// Provider configured with the validated reasoning effort when applicable.
+    /// Provider configured with the validated reasoning effort.
     #[must_use]
     pub const fn provider(&self) -> &Arc<dyn LlmProvider> {
         &self.provider
@@ -316,35 +316,8 @@ impl ProviderRegistry {
         })
     }
 
-    pub fn first(&self) -> Option<Arc<dyn LlmProvider>> {
-        self.models
-            .first()
-            .and_then(|model| self.providers.get(&model.id))
-            .cloned()
-    }
-
-    /// Return the first provider that can run tools with its configured tool mode.
-    pub fn first_with_tools(&self) -> Option<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .filter_map(|model| self.providers.get(&model.id))
-            .find(|provider| match provider.tool_mode() {
-                chelix_config::ToolMode::Native => provider.supports_tools(),
-                chelix_config::ToolMode::Text => true,
-                chelix_config::ToolMode::Off => false,
-            })
-            .cloned()
-    }
-
     pub fn list_models(&self) -> &[ModelInfo] {
         &self.models
-    }
-
-    pub fn all_providers(&self) -> Vec<Arc<dyn LlmProvider>> {
-        self.models
-            .iter()
-            .filter_map(|model| self.providers.get(&model.id).cloned())
-            .collect()
     }
 
     #[must_use]

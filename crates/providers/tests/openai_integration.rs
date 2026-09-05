@@ -8,6 +8,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+#[path = "support/reasoning.rs"]
+mod reasoning;
+
+use std::sync::Arc;
+
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
@@ -24,8 +29,12 @@ fn api_key() -> Secret<String> {
     Secret::new(key)
 }
 
-fn make_provider(model: &str) -> OpenAiProvider {
-    OpenAiProvider::new(api_key(), model.to_string(), OPENAI_BASE_URL.to_string())
+fn make_provider(model: &str) -> Arc<dyn LlmProvider> {
+    reasoning::configure(
+        OpenAiProvider::new(api_key(), model.to_string(), OPENAI_BASE_URL.to_string()),
+        vec!["off".into()],
+        "off".into(),
+    )
 }
 
 fn weather_tool() -> serde_json::Value {

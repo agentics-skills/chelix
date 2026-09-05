@@ -1,10 +1,12 @@
 //! Shared model override parsing for session tools.
 
-use {chelix_common::ReasoningEffort, serde_json::Value};
+use {
+    chelix_common::ConfigModelOverride,
+    serde::{Deserialize, Deserializer, de::Error as _},
+    serde_json::Value,
+};
 
 pub use chelix_common::ModelOverride;
-
-use crate::{Error, Result, params::str_param};
 
 pub fn model_override_schema() -> Value {
     serde_json::json!({
@@ -27,28 +29,17 @@ pub fn model_override_schema() -> Value {
     })
 }
 
-pub fn parse_model_override(params: &Value) -> Result<Option<ModelOverride>> {
-    let Some(value) = params.get("model_override") else {
-        return Ok(None);
-    };
-    let object = value.as_object().ok_or_else(|| {
-        Error::message("model_override must be an object; omit the field instead of passing null")
-    })?;
-    for key in object.keys() {
-        if key != "model" && key != "reasoning_effort" {
-            return Err(Error::message(format!(
-                "unsupported model_override field '{key}'; expected only model and reasoning_effort"
-            )));
-        }
+pub(crate) fn deserialize_model_override<'de, D>(
+    deserializer: D,
+) -> Result<Option<ModelOverride>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let model_override = ConfigModelOverride::deserialize(deserializer)?;
+    if model_override.model.is_empty() || model_override.reasoning_effort.as_str().is_empty() {
+        return Err(D::Error::custom(
+            "model_override requires non-empty model and reasoning_effort",
+        ));
     }
-    let model = str_param(value, "model")
-        .ok_or_else(|| Error::message("model_override.model must be a non-empty string"))?
-        .to_string();
-    let reasoning_effort = str_param(value, "reasoning_effort")
-        .ok_or_else(|| Error::message("model_override.reasoning_effort must be a non-empty string"))
-        .map(ReasoningEffort::from)?;
-    Ok(Some(ModelOverride {
-        model,
-        reasoning_effort,
-    }))
+    Ok(Some(model_override.into()))
 }

@@ -124,8 +124,7 @@ unsupported effort is rejected before persistence or an LLM call. The selected
 provider's tool mode is then checked for compatibility with the request.
 
 If `modelOverride` is omitted, the methods use the complete persisted session
-model/reasoning pair. They do not select a model from history, a persona, or the
-first registered provider. A request override is persisted only as one atomic
+model/reasoning pair. A request override is persisted only as one atomic
 model/reasoning pair.
 
 The public payload is closed. `chat.send` accepts exactly one of `text` or

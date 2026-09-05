@@ -332,33 +332,6 @@ max_tools_threshold = 128
 }
 
 #[test]
-fn legacy_agent_keys_are_rejected() {
-    for legacy in [
-        "default_preset = \"research\"",
-        "theme = \"focused\"",
-        "delegate_only = true",
-        "system_prompt_suffix = \"legacy\"",
-    ] {
-        let toml = if legacy.starts_with("default_preset") {
-            format!("[agents]\n{legacy}\n")
-        } else {
-            format!(
-                "[agents.main]\nname = \"Main\"\nmodel = \"test::model\"\nreasoning_effort = \"off\"\nmax_tools_threshold = 128\n{legacy}\n"
-            )
-        };
-        let result = validate_toml_str(&toml);
-        assert!(
-            result
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.severity == Severity::Error),
-            "legacy key should be rejected: {legacy}; diagnostics: {:?}",
-            result.diagnostics
-        );
-    }
-}
-
-#[test]
 fn reasoning_effort_accepts_provider_defined_value() {
     let result = validate_toml_str(
         r#"

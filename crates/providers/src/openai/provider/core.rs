@@ -157,31 +157,43 @@ impl OpenAiProvider {
             .map(ReasoningRequestState::selected_effort)
     }
 
-    fn reasoning_policy(&self) -> Option<ReasoningPolicyDecision<'_>> {
-        self.reasoning_request
-            .as_ref()
-            .map(resolve_reasoning_policy)
+    fn reasoning_policy(&self) -> anyhow::Result<ReasoningPolicyDecision<'_>> {
+        let state = self.reasoning_request.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "provider `{}` model `{}` requires a selected reasoning effort and model metadata",
+                self.provider_name,
+                self.model,
+            )
+        })?;
+        Ok(resolve_reasoning_policy(state))
     }
 
     /// Apply `reasoning_effort` for the **Chat Completions** API (used by
     /// `complete()` and `stream_with_tools_sse()`).
     ///
     /// Format: `"reasoning_effort": "high"` (top-level string field).
-    pub(crate) fn apply_reasoning_effort_chat(&self, body: &mut serde_json::Value) {
-        if let Some(ReasoningPolicyDecision::Send { effort, .. }) = self.reasoning_policy() {
+    pub(crate) fn apply_reasoning_effort_chat(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> anyhow::Result<()> {
+        if let ReasoningPolicyDecision::Send { effort, .. } = self.reasoning_policy()? {
             body["reasoning_effort"] = serde_json::json!(effort.as_str());
         }
+        Ok(())
     }
 
     /// Apply the resolved reasoning options for the Responses API only.
-    pub(crate) fn apply_reasoning_responses(&self, body: &mut serde_json::Value) {
-        let Some(ReasoningPolicyDecision::Send {
+    pub(crate) fn apply_reasoning_responses(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let ReasoningPolicyDecision::Send {
             effort,
             summary,
             include,
-        }) = self.reasoning_policy()
+        } = self.reasoning_policy()?
         else {
-            return;
+            return Ok(());
         };
 
         let mut reasoning = serde_json::Map::new();
@@ -198,6 +210,7 @@ impl OpenAiProvider {
                     .collect(),
             );
         }
+        Ok(())
     }
 
     /// Build the HTTP URL for the Responses API (`/responses`).
@@ -403,57 +416,107 @@ pub(crate) fn apply_openai_chat_tool_choice(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
+pub(super) mod tests {
     use {
         super::*,
         chelix_common::{ModelModality, ReasoningInclude, ReasoningSummary},
     };
 
-    fn provider_with_reasoning() -> OpenAiProvider {
+    fn test_provider() -> OpenAiProvider {
         OpenAiProvider::new_with_name(
             secrecy::Secret::new("test-key".to_string()),
             "gpt-5.2".to_string(),
             "https://api.openai.com/v1".to_string(),
             "openai".to_string(),
         )
-        .with_reasoning_metadata(&ModelMetadata {
-            context_length: 128_000,
-            max_input_tokens: 96_000,
-            max_output_tokens: 32_000,
-            input_modalities: vec![ModelModality::Text],
-            output_modalities: vec![ModelModality::Text],
-            tool_calling: true,
-            streaming: true,
-            zero_data_retention_enabled: false,
-            reasoning_supported_efforts: vec!["off".into(), "low".into()],
-            reasoning_summary: Some(ReasoningSummary::Detailed),
-            reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
-        })
-        .with_selected_reasoning_effort("off".into())
-        .expect("configured effort should be accepted")
+    }
+
+    pub(crate) fn configure_reasoning(
+        provider: OpenAiProvider,
+        supported_efforts: Vec<ReasoningEffort>,
+        selected_effort: ReasoningEffort,
+    ) -> OpenAiProvider {
+        provider
+            .with_reasoning_metadata(&ModelMetadata {
+                context_length: 128_000,
+                max_input_tokens: 96_000,
+                max_output_tokens: 32_000,
+                input_modalities: vec![ModelModality::Text],
+                output_modalities: vec![ModelModality::Text],
+                tool_calling: true,
+                streaming: true,
+                zero_data_retention_enabled: false,
+                reasoning_supported_efforts: supported_efforts,
+                reasoning_summary: Some(ReasoningSummary::Detailed),
+                reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
+            })
+            .with_selected_reasoning_effort(selected_effort)
+            .expect("configured effort should be accepted")
+    }
+
+    #[test]
+    fn reasoning_boundary_requires_complete_request_state() {
+        let mut configured = configure_reasoning(test_provider(), vec!["low".into()], "low".into());
+        configured.reasoning_request = None;
+        for provider in [test_provider(), configured] {
+            let error = provider.reasoning_policy().unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("requires a selected reasoning effort and model metadata")
+            );
+        }
     }
 
     #[test]
     fn chat_completions_serializer_encodes_reasoning_policy() {
-        let mut body = serde_json::json!({});
-
-        provider_with_reasoning().apply_reasoning_effort_chat(&mut body);
-
-        assert_eq!(body, serde_json::json!({"reasoning_effort": "off"}));
+        for (supported, selected, expected) in [
+            (vec!["off".into()], "off", serde_json::json!({})),
+            (
+                vec!["off".into(), "low".into()],
+                "off",
+                serde_json::json!({"reasoning_effort": "off"}),
+            ),
+            (
+                vec!["low".into()],
+                "low",
+                serde_json::json!({"reasoning_effort": "low"}),
+            ),
+        ] {
+            let mut body = serde_json::json!({});
+            configure_reasoning(test_provider(), supported, selected.into())
+                .apply_reasoning_effort_chat(&mut body)
+                .unwrap();
+            assert_eq!(body, expected);
+        }
     }
 
     #[test]
     fn responses_serializer_encodes_reasoning_policy() {
-        let mut body = serde_json::json!({});
-
-        provider_with_reasoning().apply_reasoning_responses(&mut body);
-
-        assert_eq!(
-            body,
-            serde_json::json!({
-                "reasoning": {"effort": "off", "summary": "detailed"},
-                "include": ["reasoning.encrypted_content"],
-            })
-        );
+        for (supported, selected, expected) in [
+            (vec!["off".into()], "off", serde_json::json!({})),
+            (
+                vec!["off".into(), "low".into()],
+                "off",
+                serde_json::json!({
+                    "reasoning": {"effort": "off", "summary": "detailed"},
+                    "include": ["reasoning.encrypted_content"],
+                }),
+            ),
+            (
+                vec!["low".into()],
+                "low",
+                serde_json::json!({
+                    "reasoning": {"effort": "low", "summary": "detailed"},
+                    "include": ["reasoning.encrypted_content"],
+                }),
+            ),
+        ] {
+            let mut body = serde_json::json!({});
+            configure_reasoning(test_provider(), supported, selected.into())
+                .apply_reasoning_responses(&mut body)
+                .unwrap();
+            assert_eq!(body, expected);
+        }
     }
 }

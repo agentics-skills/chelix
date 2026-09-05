@@ -56,7 +56,7 @@ impl OpenAiProvider {
             body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
         }
 
-        self.apply_reasoning_effort_chat(&mut body);
+        self.apply_reasoning_effort_chat(&mut body)?;
 
         debug!(
             model = %self.model,
@@ -150,7 +150,7 @@ impl OpenAiProvider {
         if let Some(max_output_tokens) = options.max_output_tokens {
             body["max_output_tokens"] = serde_json::json!(max_output_tokens);
         }
-        self.apply_reasoning_responses(&mut body);
+        self.apply_reasoning_responses(&mut body)?;
 
         debug!(
             model = %self.model,
@@ -338,7 +338,7 @@ mod tests {
         tokio::sync::Mutex,
     };
 
-    use super::OpenAiProvider;
+    use super::{super::core::tests::configure_reasoning, OpenAiProvider};
 
     type CapturedBodies = Arc<Mutex<HashMap<String, serde_json::Value>>>;
 
@@ -402,19 +402,27 @@ mod tests {
     async fn output_limit_is_summary_only_in_both_openai_wire_formats() {
         let (base_url, captured) = start_capture_server().await;
         let messages = [ChatMessage::user("hello")];
-        let chat = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-chat".to_string(),
-            base_url.clone(),
-            "test-provider".to_string(),
+        let chat = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-chat".to_string(),
+                base_url.clone(),
+                "test-provider".to_string(),
+            ),
+            vec!["off".into()],
+            "off".into(),
         );
-        let responses = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-responses".to_string(),
-            base_url,
-            "test-provider".to_string(),
-        )
-        .with_wire_api(chelix_config::WireApi::Responses);
+        let responses = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-responses".to_string(),
+                base_url,
+                "test-provider".to_string(),
+            )
+            .with_wire_api(chelix_config::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
 
         chat.complete(&messages, &[])
             .await
@@ -487,23 +495,31 @@ mod tests {
             }
         })];
 
-        let chat = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-chat".to_string(),
-            base_url.clone(),
-            "test-provider".to_string(),
+        let chat = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-chat".to_string(),
+                base_url.clone(),
+                "test-provider".to_string(),
+            ),
+            vec!["off".into()],
+            "off".into(),
         );
         chat.complete(&messages, &tools)
             .await
             .expect("chat completion should succeed");
 
-        let responses = OpenAiProvider::new_with_name(
-            Secret::new("test-key".to_string()),
-            "test-responses".to_string(),
-            base_url,
-            "test-provider".to_string(),
-        )
-        .with_wire_api(chelix_config::WireApi::Responses);
+        let responses = configure_reasoning(
+            OpenAiProvider::new_with_name(
+                Secret::new("test-key".to_string()),
+                "test-responses".to_string(),
+                base_url,
+                "test-provider".to_string(),
+            )
+            .with_wire_api(chelix_config::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
         responses
             .complete(&messages, &tools)
             .await

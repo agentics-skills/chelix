@@ -8,6 +8,11 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+#[path = "support/reasoning.rs"]
+mod reasoning;
+
+use std::sync::Arc;
+
 use {
     chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, ToolCall},
     chelix_providers::openai::OpenAiProvider,
@@ -26,12 +31,16 @@ fn api_key() -> Secret<String> {
     )
 }
 
-fn make_provider(model: &str) -> OpenAiProvider {
-    OpenAiProvider::new_with_name(
-        api_key(),
-        model.to_string(),
-        BASE_URL.to_string(),
-        "openrouter".to_string(),
+fn make_provider(model: &str) -> Arc<dyn LlmProvider> {
+    reasoning::configure(
+        OpenAiProvider::new_with_name(
+            api_key(),
+            model.to_string(),
+            BASE_URL.to_string(),
+            "openrouter".to_string(),
+        ),
+        vec!["off".into()],
+        "off".into(),
     )
 }
 

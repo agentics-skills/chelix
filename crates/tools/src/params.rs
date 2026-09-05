@@ -72,11 +72,6 @@ pub fn u64_param(params: &Value, key: &str, default: u64) -> u64 {
     params.get(key).and_then(Value::as_u64).unwrap_or(default)
 }
 
-/// Extract an owned `String` from the first matching key.
-pub fn owned_str_param(params: &Value, keys: &[&str]) -> Option<String> {
-    str_param_any(params, keys).map(String::from)
-}
-
 /// Recursively drop `null` entries from JSON object parameters.
 ///
 /// Model callers sometimes pass explicit `null` for optional fields; treat

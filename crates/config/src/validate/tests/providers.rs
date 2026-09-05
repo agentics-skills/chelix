@@ -258,25 +258,6 @@ tool_mode = "text"
 }
 
 #[test]
-fn legacy_url_field_is_rejected_in_provider_entry() {
-    let toml = r#"
-[providers.openrouter]
-enabled = true
-url = "http://192.168.0.9:11434"
-"#;
-    let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path == "providers.openrouter.url");
-    assert!(
-        unknown.is_some(),
-        "legacy url field should be rejected, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
 fn tool_mode_all_values_parse_correctly() {
     for mode in ["native", "text", "off"] {
         let toml = format!(

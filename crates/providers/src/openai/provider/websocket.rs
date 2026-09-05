@@ -144,7 +144,10 @@ impl OpenAiProvider {
                 return;
             }
 
-            self.apply_reasoning_responses(&mut response_payload);
+            if let Err(error) = self.apply_reasoning_responses(&mut response_payload) {
+                yield StreamEvent::Error(error.to_string());
+                return;
+            }
 
             let create_event = serde_json::json!({
                 "type": "response.create",

@@ -34,6 +34,7 @@ pub mod sandbox;
 pub mod sandbox_packages;
 pub mod session_model_override;
 pub mod session_state;
+mod session_tool_params;
 pub mod sessions_communicate;
 pub mod sessions_manage;
 pub mod skill_tools;

@@ -53,7 +53,10 @@ impl OpenAiProvider {
                 return;
             }
 
-            self.apply_reasoning_responses(&mut body);
+            if let Err(error) = self.apply_reasoning_responses(&mut body) {
+                yield StreamEvent::Error(error.to_string());
+                return;
+            }
 
             debug!(
                 model = %self.model,
@@ -223,7 +226,10 @@ impl OpenAiProvider {
                 return;
             }
 
-            self.apply_reasoning_effort_chat(&mut body);
+            if let Err(error) = self.apply_reasoning_effort_chat(&mut body) {
+                yield StreamEvent::Error(error.to_string());
+                return;
+            }
 
             debug!(
                 model = %self.model,
@@ -351,7 +357,7 @@ mod tests {
         secrecy::Secret,
     };
 
-    use super::OpenAiProvider;
+    use super::{super::core::tests::configure_reasoning, OpenAiProvider};
 
     async fn responses_sse_events(body: String) -> Vec<StreamEvent> {
         let app = Router::new().route(
@@ -373,12 +379,16 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
 
-        let provider = OpenAiProvider::new(
-            Secret::new("test-key".to_string()),
-            "gpt-5.4".to_string(),
-            format!("http://{addr}"),
-        )
-        .with_wire_api(chelix_config::schema::WireApi::Responses);
+        let provider = configure_reasoning(
+            OpenAiProvider::new(
+                Secret::new("test-key".to_string()),
+                "gpt-5.4".to_string(),
+                format!("http://{addr}"),
+            )
+            .with_wire_api(chelix_config::schema::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
 
         provider
             .stream(vec![ChatMessage::user("hello")])
@@ -409,12 +419,16 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
 
-        let provider = OpenAiProvider::new(
-            Secret::new("test-key".to_string()),
-            "gpt-5.4".to_string(),
-            format!("http://{addr}"),
-        )
-        .with_wire_api(chelix_config::schema::WireApi::Responses);
+        let provider = configure_reasoning(
+            OpenAiProvider::new(
+                Secret::new("test-key".to_string()),
+                "gpt-5.4".to_string(),
+                format!("http://{addr}"),
+            )
+            .with_wire_api(chelix_config::schema::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
 
         let events: Vec<_> = provider
             .stream(vec![ChatMessage::user("hello")])
