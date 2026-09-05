@@ -133,7 +133,6 @@ const READ_METHODS: &[&str] = &[
     "mcp.status",
     "mcp.tools",
     "mcp.config.get",
-    "tts.generate_phrase",
     "voice.config.get",
     "voice.config.voxtral_requirements",
     "voice.providers.all",

@@ -155,7 +155,6 @@ export interface RpcMethodMap {
 
 	// ── TTS (Text-to-Speech) ────────────────────────────────────
 	"tts.convert": unknown;
-	"tts.generate_phrase": { phrase: string; source: "llm" | "static" };
 	"tts.status": unknown;
 
 	// ── User profile ────────────────────────────────────────────

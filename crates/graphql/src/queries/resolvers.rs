@@ -456,11 +456,6 @@ impl TtsQuery {
         let s = services!(ctx);
         from_service(s.tts.providers().await)
     }
-
-    /// Generate a TTS test phrase.
-    async fn generate_phrase(&self, _ctx: &Context<'_>) -> Result<String> {
-        Ok("Hello, how can I help you today?".to_string())
-    }
 }
 
 // ── STT ─────────────────────────────────────────────────────────────────────

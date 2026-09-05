@@ -357,7 +357,7 @@ pub(super) async fn complete_startup(
         .map_err(|_| anyhow::anyhow!("managed tools service was already initialized"))?;
 
     // Wire the shared LLM provider registry for lightweight generation
-    // (auto-title, session summary, tts.generate_phrase).
+    // (auto-title, session summary).
     state.inner.write().await.llm_providers = Some(Arc::clone(&registry));
 
     {

@@ -50,7 +50,6 @@ pub mod session_types;
 pub mod share_store;
 pub mod ssh_probe;
 pub mod state;
-pub mod tts_phrases;
 pub mod update_check;
 pub mod updater;
 #[cfg(feature = "vault")]

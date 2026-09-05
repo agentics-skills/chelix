@@ -2,12 +2,12 @@
 
 import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { TextAreaField } from "../../components/forms/FormField";
 import { TabBar } from "../../components/forms/Tabs";
 import * as gon from "../../gon";
 import { sendRpc } from "../../helpers";
 import { connected } from "../../signals";
 import * as S from "../../state";
-import { fetchPhrase } from "../../tts-phrases";
 import { targetChecked, targetValue } from "../../typed-events";
 import { showToast } from "../../ui";
 import { getPttKey, getVadSensitivity, setPttKey, setVadSensitivity } from "../../voice-input";
@@ -107,36 +107,33 @@ interface SttRecordingCallbacks {
 	onResult: (result: VoiceTestResult) => void;
 }
 
-function settingsVoiceIdentity(): { user: string; bot: string } {
-	const identity = gon.get("identity") as { user_name?: string; name?: string } | undefined;
-	return { user: identity?.user_name || "friend", bot: identity?.name || "Chelix" };
-}
-
-function playProviderTestAudio(payload: VoiceAudioPayload): void {
+async function playProviderTestAudio(payload: VoiceAudioPayload): Promise<void> {
 	const bytes = decodeBase64Safe(payload.audio);
 	const blob = new Blob([bytes as BlobPart], { type: payload.mimeType || payload.content_type || "audio/mpeg" });
 	const url = URL.createObjectURL(blob);
 	const audio = new Audio(url);
-	audio.onerror = (event) => {
-		console.error("[TTS] audio element error:", audio.error?.message || event);
+	try {
+		await new Promise<void>((resolve, reject) => {
+			audio.onended = () => resolve();
+			audio.onerror = () => reject(new Error(audio.error?.message || "Audio playback failed"));
+			void audio.play().catch(reject);
+		});
+	} finally {
 		URL.revokeObjectURL(url);
-	};
-	audio.onended = () => URL.revokeObjectURL(url);
-	audio.play().catch((error: Error) => console.error("[TTS] play() failed:", error));
+	}
 }
 
-async function runTtsProviderTest(providerId: string): Promise<VoiceTestResult> {
+async function runTtsProviderTest(providerId: string, text: string): Promise<VoiceTestResult> {
 	try {
-		const identity = settingsVoiceIdentity();
-		const text = await fetchPhrase("settings", identity.user, identity.bot);
 		const response = (await testTts(text, providerId)) as RpcResponse;
 		const payload = response.payload as VoiceAudioPayload | undefined;
 		if (!(response.ok && payload?.audio)) {
-			return { success: false, error: response.error?.message || "TTS test failed" };
+			throw new Error(response.error?.message || "TTS test returned no audio");
 		}
-		playProviderTestAudio(payload);
+		await playProviderTestAudio(payload);
 		return { success: true, error: null };
 	} catch (caught) {
+		console.error("[TTS] test failed:", caught);
 		return { success: false, error: caught instanceof Error ? caught.message : "TTS test failed" };
 	}
 }
@@ -215,36 +212,14 @@ function humanizeMicError(error: { name?: string; message?: string }): string {
 
 type PersonaTestPhase = "testing" | "playing" | "";
 
-interface PersonaTestCallbacks {
-	onPlaying: () => void;
-	onEnded: () => void;
-}
-
-function playPersonaAudio(payload: { audio: string; mimeType?: string }, onEnded: () => void): void {
-	const bytes = decodeBase64Safe(payload.audio);
-	const blob = new Blob([bytes as BlobPart], { type: payload.mimeType || "audio/mpeg" });
-	const url = URL.createObjectURL(blob);
-	const audio = new Audio(url);
-	audio.onended = () => {
-		URL.revokeObjectURL(url);
-		onEnded();
-	};
-	audio.play().catch((error: Error) => console.error("[TTS]", error));
-}
-
-async function startPersonaTest(personaId: string, callbacks: PersonaTestCallbacks): Promise<boolean> {
-	try {
-		const identity = settingsVoiceIdentity();
-		const text = await fetchPhrase("settings", identity.user, identity.bot);
-		const response = (await testTtsWithPersona(text, personaId)) as RpcResponse;
-		const payload = response.payload as { audio?: string; mimeType?: string } | undefined;
-		if (!(response.ok && payload?.audio)) return false;
-		callbacks.onPlaying();
-		playPersonaAudio({ ...payload, audio: payload.audio }, callbacks.onEnded);
-		return true;
-	} catch (_error) {
-		return false;
+async function startPersonaTest(personaId: string, text: string, onPlaying: () => void): Promise<void> {
+	const response = (await testTtsWithPersona(text, personaId)) as RpcResponse;
+	const payload = response.payload as VoiceAudioPayload | undefined;
+	if (!(response.ok && payload?.audio)) {
+		throw new Error(response.error?.message || "TTS test returned no audio");
 	}
+	onPlaying();
+	await playProviderTestAudio(payload);
 }
 
 function personaTestLabel(phase: PersonaTestPhase): string {
@@ -412,6 +387,7 @@ export function VoiceSection(): VNode {
 	const [voiceTesting, setVoiceTesting] = useState<VoiceTesting | null>(null);
 	const [activeRecorder, setActiveRecorder] = useState<MediaRecorder | null>(null);
 	const [voiceTestResults, setVoiceTestResults] = useState<Record<string, VoiceTestResult>>({});
+	const [testText, setTestText] = useState("");
 
 	// Tab state
 	const [activeTab, setActiveTab] = useState("stt");
@@ -505,10 +481,17 @@ export function VoiceSection(): VNode {
 			return;
 		}
 
+		if (type === "tts" && !testText.trim()) {
+			setVoiceTestResults((current) => ({
+				...current,
+				[providerId]: { success: false, error: "Enter text to test the voice" },
+			}));
+			return;
+		}
 		setVoiceTesting({ id: providerId, type, phase: "testing" });
 		rerender();
 		if (type === "tts") {
-			const result = await runTtsProviderTest(providerId);
+			const result = await runTtsProviderTest(providerId, testText);
 			setVoiceTestResults((current) => ({ ...current, [providerId]: result }));
 			setVoiceTesting(null);
 			rerender();
@@ -538,16 +521,23 @@ export function VoiceSection(): VNode {
 	}
 
 	async function testPersona(personaId: string): Promise<void> {
+		if (!testText.trim()) {
+			showToast("Enter text to test the voice", "error");
+			return;
+		}
 		const setPhase = (phase: PersonaTestPhase): void => {
 			setPersonaTesting((current) => ({ ...current, [personaId]: phase }));
 			rerender();
 		};
 		setPhase("testing");
-		const started = await startPersonaTest(personaId, {
-			onPlaying: () => setPhase("playing"),
-			onEnded: () => setPhase(""),
-		});
-		if (!started) setPhase("");
+		try {
+			await startPersonaTest(personaId, testText, () => setPhase("playing"));
+		} catch (error) {
+			console.error("[TTS] persona test failed:", error);
+			showToast(error instanceof Error ? error.message : "TTS test failed", "error");
+		} finally {
+			setPhase("");
+		}
 	}
 
 	async function setActivePersona(personaId: string | null): Promise<void> {
@@ -588,6 +578,9 @@ export function VoiceSection(): VNode {
 			<TabBar tabs={voiceTabs} active={activeTab} onChange={setActiveTab} />
 
 			<div style={{ maxWidth: "700px", display: "flex", flexDirection: "column", gap: "16px" }}>
+				{(activeTab === "tts" || activeTab === "personas") && (
+					<TextAreaField label="Test text" id="voice-test-text" value={testText} onInput={setTestText} />
+				)}
 				{activeTab === "stt" && (
 					<div className="flex flex-col gap-3">
 						<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>

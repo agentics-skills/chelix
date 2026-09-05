@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::schema::{ChelixConfig, ResolvedIdentity, UserProfile},
+    crate::schema::{ChelixConfig, UserProfile},
     serde::{Deserialize, Serialize},
     std::path::PathBuf,
 };
@@ -25,12 +25,6 @@ pub fn agent_workspace_dir(agent_id: &str) -> PathBuf {
     data_dir().join("agents").join(agent_id)
 }
 
-/// Build presentation data from the configured default agent and user profile.
-pub fn resolve_identity() -> crate::Result<ResolvedIdentity> {
-    let config = discover_and_load()?;
-    resolve_identity_from_config(&config)
-}
-
 /// Build a fully-resolved user profile by merging `chelix.toml` `[user]` with `USER.md`.
 pub fn resolve_user_profile() -> crate::Result<UserProfile> {
     let config = discover_and_load()?;
@@ -52,14 +46,6 @@ pub fn resolve_user_profile_from_config(config: &ChelixConfig) -> UserProfile {
         }
     }
     user
-}
-
-/// Like [`resolve_identity`] but accepts a pre-loaded config.
-pub fn resolve_identity_from_config(config: &ChelixConfig) -> crate::Result<ResolvedIdentity> {
-    let mut identity = ResolvedIdentity::from_config(config)?;
-    identity.user_name = resolve_user_profile_from_config(config).name;
-    identity.soul = load_soul_for_agent(&config.agents.default);
-    Ok(identity)
 }
 
 /// Load user values from `USER.md` frontmatter if present.

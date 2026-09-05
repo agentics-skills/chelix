@@ -187,37 +187,6 @@ pub struct ResolvedIdentity {
     pub user_name: Option<String>,
 }
 
-impl ResolvedIdentity {
-    pub fn from_config(config: &ChelixConfig) -> crate::Result<Self> {
-        let (default_id, agent) = match config
-            .agents
-            .resolve_state()
-            .map_err(|error| crate::Error::message(error.to_string()))?
-        {
-            AgentsConfigState::Setup => {
-                return Err(crate::Error::message(
-                    "default agent is not configured during setup",
-                ));
-            },
-            AgentsConfigState::Configured {
-                default_id,
-                default_agent,
-            } => (default_id, default_agent),
-        };
-        if agent.name.trim().is_empty() {
-            return Err(crate::Error::message(format!(
-                "default agent \"{default_id}\" has an empty name"
-            )));
-        }
-        Ok(Self {
-            name: agent.name.clone(),
-            emoji: agent.emoji.clone(),
-            soul: None,
-            user_name: config.user.name.clone(),
-        })
-    }
-}
-
 /// Stable network and container slug used while no agent exists yet.
 pub const SETUP_INSTANCE_SLUG: &str = "chelix-setup";
 
