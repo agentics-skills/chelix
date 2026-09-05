@@ -261,7 +261,7 @@ pub struct ChelixConfig {
     pub caldav: CalDavConfig,
     pub home_assistant: HomeAssistantConfig,
     pub webhooks: WebhooksConfig,
-    /// Auxiliary model assignments for side tasks (compaction, titles, vision).
+    /// Session title generation model and reasoning configuration.
     pub auxiliary: AuxiliaryModelsConfig,
     /// Code-index configuration for codebase search tools.
     pub code_index: CodeIndexTomlConfig,

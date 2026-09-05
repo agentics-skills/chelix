@@ -41,6 +41,8 @@
   - [`user`](#user)
 - **Chat & Agents**
   - [`chat`](#chat)
+  - [`auxiliary`](#auxiliary--auxiliarymodelsconfig)
+  - [`auxiliary.title_generation`](#auxiliarytitle_generation--configmodeloverride)
   - [`agents`](#agents)
   - [`agents.<id>`](#agentsid)
   - [`agents.<id>.sessions`](#agentsidsessions)
@@ -202,9 +204,30 @@ User profile collected during onboarding.
 
 | Key                        | Type                                           | Default         | Description                                                                                                                                                                                         |
 | -------------------------- | ---------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto_title`              | bool                                           | `true`          | Automatically generate a session title after the first exchange. Generation requires a complete `auxiliary.title_generation` pair. |
 | `prompt_memory_mode`       | enum: `live-reload`, `frozen-at-session-start` | `"live-reload"` | How `MEMORY.md` is loaded into the prompt for an ongoing session. `live-reload` reloads from disk before each turn; `frozen-at-session-start` freezes the initial content for the session lifetime. |
 | `workspace_file_max_chars` | integer                                        | `32000`         | Maximum characters from each workspace prompt file (`AGENTS.md`, `TOOLS.md`).                                                                                                                       |
 | `priority_models`          | array                                          | `[]`            | Preferred model IDs to show first in selectors (full or raw model IDs).                                                                                                                             |
+
+### `auxiliary` — AuxiliaryModelsConfig
+
+| Key                | Type                           | Default | Description                                            |
+| ------------------ | ------------------------------ | ------- | ------------------------------------------------------ |
+| `title_generation` | optional `ConfigModelOverride` | absent  | Complete model/reasoning pair for session title generation. |
+
+### `auxiliary.title_generation` — ConfigModelOverride
+
+| Key                | Type   | Default  | Description                                                               |
+| ------------------ | ------ | -------- | ------------------------------------------------------------------------- |
+| `model`            | string | required | Exact canonical registry model ID from `models.list`, such as `openai::gpt-5.2`. |
+| `reasoning_effort` | string | required | Non-empty effort from the selected model's `reasoning_supported_efforts`. |
+
+Both auxiliary tables reject additional fields. A partial title pair is a config
+load error. Title generation requires the configured pair to resolve successfully
+before the LLM call; missing configuration, unknown or noncanonical models, and
+empty or unsupported efforts return errors. Provider errors are returned to the
+caller. See [Session Titles](configuration.md#session-titles) for configuration
+and automatic error logging.
 
 ### `agents` — AgentsConfig
 

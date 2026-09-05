@@ -83,6 +83,34 @@ fallback copied to `~/.chelix/docs/chelix/`. Chelix also writes a generated
 `config-template.md` under `~/.chelix/docs/chelix/` for the current server port
 and points agents at it separately.
 
+## Session Titles
+
+`chat.auto_title` controls automatic session title generation after the first
+exchange and defaults to `true`. Title generation requires a complete
+`auxiliary.title_generation` model/reasoning pair:
+
+```toml
+[auxiliary.title_generation]
+model = "openai::gpt-5.2"
+reasoning_effort = "low"
+```
+
+These values are examples. Choose an exact canonical model ID from `models.list`
+and a non-empty effort from that model's `reasoning_supported_efforts`. Both
+fields are required when the table is present. Partial tables and additional
+fields in `auxiliary` or `auxiliary.title_generation` cause a config load error.
+
+Before calling the LLM, title generation resolves this pair through the model
+registry and applies the selected effort to the provider. Missing title
+configuration, an unknown or noncanonical model ID, and an empty or unsupported
+effort return an error before the LLM call. Provider errors are returned to the
+caller; automatic title tasks log generation failures. A generated title updates
+the label of the existing session.
+
+For a model with `reasoning_supported_efforts = ["off"]`, configure
+`reasoning_effort = "off"` as the required selected effort. Reasoning fields are
+encoded according to the shared [provider reasoning policy](providers.md#non-reasoning-model).
+
 ## Basic Settings
 
 ```toml

@@ -545,10 +545,10 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ),
         (
             "auxiliary",
-            Struct(HashMap::from([
-                ("title_generation", Leaf),
-                ("vision", Leaf),
-            ])),
+            Struct(HashMap::from([(
+                "title_generation",
+                Struct(HashMap::from([("model", Leaf), ("reasoning_effort", Leaf)])),
+            )])),
         ),
         (
             "code_index",

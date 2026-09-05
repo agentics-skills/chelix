@@ -192,6 +192,11 @@ zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 ```
 
+## Session Titles
+
+See [Session Titles](configuration.md#session-titles) for the model/reasoning
+configuration used by title generation.
+
 ## Available Providers
 
 ### API Key Providers

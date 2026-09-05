@@ -30,7 +30,6 @@ fn is_reserved_main_session(session_key: &str) -> bool {
 /// response. No-ops silently when:
 /// - the session already has a label
 /// - there are too few messages
-/// - no provider is available
 pub(crate) async fn generate_title_if_needed(state: &Arc<GatewayState>, session_key: &str) {
     let Err(e) = try_generate_title_if_needed(state, session_key).await else {
         return;
@@ -102,21 +101,17 @@ pub(crate) async fn generate_title_for_session(
         };
         let reg = registry.read().await;
 
-        let Some(auxiliary_model) = state.config.auxiliary.title_generation.as_deref() else {
-            anyhow::bail!("auto-title auxiliary.title_generation is not configured");
-        };
-        let Some(provider) = reg.get(auxiliary_model) else {
-            let available: Vec<_> = reg.list_models().iter().map(|m| m.id.as_str()).collect();
-            warn!(
-                requested = auxiliary_model,
-                available = ?available,
-                "auto-title: configured auxiliary title_generation model is unavailable"
-            );
-            anyhow::bail!(
-                "auto-title auxiliary.title_generation model `{auxiliary_model}` is unavailable"
-            );
-        };
-        provider
+        let title_config = state
+            .config
+            .auxiliary
+            .title_generation
+            .as_ref()
+            .context("auto-title auxiliary.title_generation is not configured")?;
+        let resolved = reg.resolve_model_reasoning(
+            Some(&title_config.model),
+            Some(&title_config.reasoning_effort),
+        )?;
+        Arc::clone(resolved.provider())
     };
 
     let chat_msgs = chelix_agents::model::values_to_chat_messages(&history)
@@ -150,13 +145,19 @@ pub(crate) async fn generate_title_for_session(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use std::{pin::Pin, sync::Arc};
+    use std::{
+        pin::Pin,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
     use {
         async_trait::async_trait,
         chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
         chelix_auth::{AuthMode, ResolvedAuth},
-        chelix_common::{ModelMetadata, ModelModality},
+        chelix_common::{ConfigModelOverride, ModelMetadata, ModelModality, ReasoningEffort},
         chelix_providers::{ModelInfo, ProviderRegistry},
         chelix_sessions::{metadata::SqliteSessionMetadata, store::SessionStore},
         tokio::sync::RwLock,
@@ -165,14 +166,36 @@ mod tests {
 
     use {super::*, crate::services::GatewayServices};
 
+    #[derive(Clone)]
     struct MockTitleProvider {
-        result: Result<&'static str>,
+        result: Result<&'static str, &'static str>,
+        expected_effort: ReasoningEffort,
+        applied_effort: Option<ReasoningEffort>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl MockTitleProvider {
+        fn new(result: Result<&'static str, &'static str>, effort: &str) -> Self {
+            Self {
+                result,
+                expected_effort: ReasoningEffort::from(effort),
+                applied_effort: None,
+                calls: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    fn title_config(effort: &str) -> ConfigModelOverride {
+        ConfigModelOverride {
+            model: "mock::mock-title".to_string(),
+            reasoning_effort: ReasoningEffort::from(effort),
+        }
     }
 
     fn title_pair() -> chelix_common::ResolvedModelReasoning {
         chelix_common::ResolvedModelReasoning::try_new(
             "mock::mock-title".to_string(),
-            chelix_common::ReasoningEffort::from("low"),
+            ReasoningEffort::from("low"),
         )
         .unwrap()
     }
@@ -192,6 +215,8 @@ mod tests {
             _messages: &[ChatMessage],
             _tools: &[serde_json::Value],
         ) -> Result<CompletionResponse> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(self.applied_effort.as_ref(), Some(&self.expected_effort));
             let text = match &self.result {
                 Ok(title) => Some((*title).to_string()),
                 Err(e) => anyhow::bail!(e.to_string()),
@@ -209,9 +234,23 @@ mod tests {
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
             Box::pin(tokio_stream::empty())
         }
+
+        fn with_reasoning_effort(
+            self: Arc<Self>,
+            effort: ReasoningEffort,
+        ) -> Option<Arc<dyn LlmProvider>> {
+            Some(Arc::new(Self {
+                applied_effort: Some(effort),
+                ..self.as_ref().clone()
+            }))
+        }
     }
 
-    async fn test_state(provider: Arc<dyn LlmProvider>) -> (Arc<GatewayState>, tempfile::TempDir) {
+    async fn test_state(
+        provider: Arc<dyn LlmProvider>,
+        title_config: Option<ConfigModelOverride>,
+        supported_effort: &str,
+    ) -> (Arc<GatewayState>, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -223,9 +262,7 @@ mod tests {
             .with_session_metadata(Arc::clone(&session_metadata));
         let mut config = chelix_config::ChelixConfig::default();
         config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
-        // Title generation refuses service without an explicit auxiliary model,
-        // so the tests must configure the one registered below.
-        config.auxiliary.title_generation = Some("mock::mock-title".to_string());
+        config.auxiliary.title_generation = title_config;
         let state = GatewayState::with_options(
             ResolvedAuth {
                 mode: AuthMode::Token,
@@ -270,7 +307,7 @@ mod tests {
                     tool_calling: false,
                     streaming: true,
                     zero_data_retention_enabled: true,
-                    reasoning_supported_efforts: vec!["low".into()],
+                    reasoning_supported_efforts: vec![supported_effort.into()],
                     reasoning_summary: None,
                     reasoning_include: None,
                 },
@@ -301,48 +338,103 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn generate_title_for_session_persists_label() {
-        let (state, _dir) = test_state(Arc::new(MockTitleProvider {
-            result: Ok("Docker Deployment"),
-        }))
-        .await;
+    async fn generate_title_for_session_applies_auxiliary_effort_and_persists_label() {
+        for effort in ["low", "off"] {
+            let provider = Arc::new(MockTitleProvider::new(Ok("Docker Deployment"), effort));
+            let (state, _dir) =
+                test_state(provider.clone(), Some(title_config(effort)), effort).await;
 
-        let title = generate_title_for_session(&state, "session:test")
-            .await
-            .unwrap();
+            let title = generate_title_for_session(&state, "session:test")
+                .await
+                .unwrap();
 
-        assert_eq!(title.as_deref(), Some("Docker Deployment"));
-        let label = state
-            .services
-            .session_metadata
-            .as_ref()
-            .unwrap()
-            .get("session:test")
-            .await
-            .unwrap()
-            .and_then(|entry| entry.label);
-        assert_eq!(label.as_deref(), Some("Docker Deployment"));
+            assert_eq!(title.as_deref(), Some("Docker Deployment"));
+            assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+            let label = state
+                .services
+                .session_metadata
+                .as_ref()
+                .unwrap()
+                .get("session:test")
+                .await
+                .unwrap()
+                .and_then(|entry| entry.label);
+            assert_eq!(label.as_deref(), Some("Docker Deployment"));
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_title_for_session_rejects_invalid_pair_before_llm_and_label_update() {
+        let cases = [
+            (None, "auxiliary.title_generation is not configured"),
+            (Some(title_config("")), "reasoning effort must not be empty"),
+            (
+                Some(title_config("unsupported")),
+                "does not support reasoning effort",
+            ),
+            (
+                Some(ConfigModelOverride {
+                    model: "missing::title".to_string(),
+                    ..title_config("low")
+                }),
+                "is not registered",
+            ),
+            (
+                Some(ConfigModelOverride {
+                    model: String::new(),
+                    ..title_config("low")
+                }),
+                "is not registered",
+            ),
+            (
+                Some(ConfigModelOverride {
+                    model: "mock-title".to_string(),
+                    ..title_config("low")
+                }),
+                "is not canonical",
+            ),
+        ];
+        for (pair, expected_error) in cases {
+            let provider = Arc::new(MockTitleProvider::new(Ok("Unused Title"), "low"));
+            let (state, _dir) = test_state(provider.clone(), pair, "low").await;
+            let metadata = state.services.session_metadata.as_ref().unwrap();
+            let before = metadata
+                .update_label("session:test", Some("Existing Label"))
+                .await
+                .unwrap();
+
+            let error = generate_title_for_session(&state, "session:test")
+                .await
+                .unwrap_err();
+
+            assert!(error.to_string().contains(expected_error), "{error}");
+            assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+            let after = metadata.get("session:test").await.unwrap().unwrap();
+            assert_eq!(after.label, before.label);
+            assert_eq!(after.version, before.version);
+        }
     }
 
     #[tokio::test]
     async fn generate_title_for_session_returns_provider_errors() {
-        let (state, _dir) = test_state(Arc::new(MockTitleProvider {
-            result: Err(anyhow::anyhow!("provider unavailable")),
-        }))
-        .await;
+        let provider = Arc::new(MockTitleProvider::new(Err("provider unavailable"), "low"));
+        let (state, _dir) = test_state(provider.clone(), Some(title_config("low")), "low").await;
 
         let err = generate_title_for_session(&state, "session:test")
             .await
             .unwrap_err();
 
-        assert!(err.to_string().contains("provider unavailable"));
+        assert_eq!(err.to_string(), "provider unavailable");
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
     async fn generate_title_for_session_skips_main_session() {
-        let (state, _dir) = test_state(Arc::new(MockTitleProvider {
-            result: Ok("Should Not Be Used"),
-        }))
+        let (state, _dir) = test_state(
+            Arc::new(MockTitleProvider::new(Ok("Should Not Be Used"), "low")),
+            Some(title_config("low")),
+            "low",
+        )
         .await;
         let metadata = state.services.session_metadata.as_ref().unwrap();
         let store = state.services.session_store.as_ref().unwrap();
@@ -379,9 +471,11 @@ mod tests {
 
     #[tokio::test]
     async fn generate_title_for_session_skip_keeps_existing_label() {
-        let (state, _dir) = test_state(Arc::new(MockTitleProvider {
-            result: Ok("Should Not Be Used"),
-        }))
+        let (state, _dir) = test_state(
+            Arc::new(MockTitleProvider::new(Ok("Should Not Be Used"), "low")),
+            Some(title_config("low")),
+            "low",
+        )
         .await;
         let metadata = state.services.session_metadata.as_ref().unwrap();
         metadata

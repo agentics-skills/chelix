@@ -189,12 +189,13 @@ port = {port}                           # Port number (auto-generated for this i
 # ══════════════════════════════════════════════════════════════════════════════
 # AUXILIARY MODELS
 # ══════════════════════════════════════════════════════════════════════════════
-# Route side tasks to cheaper/faster models while keeping the main session on a
-# more capable model.
+# Session title generation requires a complete model/reasoning pair.
+# Choose an exact model ID from models.list and an effort from that model's
+# reasoning_supported_efforts. The values below are examples.
 #
-# [auxiliary]
-# title_generation = "openrouter/openai/gpt-5-mini"  # Model for session titles
-# vision = "openrouter/openai/gpt-5-mini"            # Model for vision/image tasks
+# [auxiliary.title_generation]
+# model = "openai::gpt-5.2"
+# reasoning_effort = "low"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AGENTS
