@@ -66,7 +66,6 @@ static DEFAULT_EXTENSIONS: LazyLock<Vec<String>> = LazyLock::new(|| {
         "dockerfile",
         "containerfile",
         // DSLs
-        "graphql",
         "proto",
     ]
     .iter()

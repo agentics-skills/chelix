@@ -23,8 +23,6 @@ pub mod ws;
 
 pub use error::Error;
 
-#[cfg(feature = "graphql")]
-pub mod graphql_routes;
 #[cfg(feature = "metrics")]
 pub mod metrics_middleware;
 #[cfg(feature = "metrics")]

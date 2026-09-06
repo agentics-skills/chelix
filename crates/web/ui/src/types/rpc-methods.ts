@@ -59,10 +59,6 @@ export interface RpcMethodMap {
 	"external_agents.status": unknown;
 	"external_agents.unbind": unknown;
 
-	// ── GraphQL ─────────────────────────────────────────────────
-	"graphql.config.get": unknown;
-	"graphql.config.set": unknown;
-
 	// ── Heartbeat ───────────────────────────────────────────────
 	"heartbeat.run": unknown;
 	"heartbeat.runs": unknown;

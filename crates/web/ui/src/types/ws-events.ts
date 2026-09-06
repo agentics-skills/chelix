@@ -283,7 +283,15 @@ export interface QueuedPromptDocument {
 
 export type QueuedPromptMedium = "text" | "voice";
 export type QueuedPromptChannelType = "telegram" | "whatsapp" | "discord" | "slack" | "matrix" | "signal" | "telephony";
-export type QueuedPromptMessageKind = "text" | "voice" | "audio" | "photo" | "document" | "video" | "location" | "other";
+export type QueuedPromptMessageKind =
+	| "text"
+	| "voice"
+	| "audio"
+	| "photo"
+	| "document"
+	| "video"
+	| "location"
+	| "other";
 
 export interface QueuedPromptChannelMetadata {
 	channel_type: QueuedPromptChannelType;

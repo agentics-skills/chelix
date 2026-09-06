@@ -241,8 +241,8 @@ Explicitly commands exactly from the list:
 cargo +nightly-2026-07-30 fmt --all                                                 # Format Rust
 cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features # Lint
 cargo +nightly-2026-07-30 test --workspace                                          # The only allowed way to run tests
-taplo fmt                # Format TOML files
-npx biome check --write  # Lint/format
+taplo fmt                                   # Format TOML files
+npx biome check --write crates/web/ui/src/  # Lint/format
 npx tsc --noEmit
 ```
 

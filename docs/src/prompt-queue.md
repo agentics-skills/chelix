@@ -63,9 +63,6 @@ The queue RPC methods are:
 - `chat.queued_prompts.status` with `sessionKey`;
 - `chat.queued_prompts.remove` with only the numeric prompt `id`.
 
-GraphQL exposes the same operations as `chat.queuedPrompts(sessionKey)` and
-`chat.removeQueuedPrompt(id)`.
-
 A successful enqueue, removal, or drain produces one canonical status. The RPC
 response and the `chat` WebSocket event use that same status without another
 read or local adjustment. The event has `state: "prompt_queue"` and carries the

@@ -59,8 +59,7 @@ function normalizeSessionMeta(
 		key: serverData.key,
 		label: stringValue(serverData.label),
 		model: stringValue(serverData.model),
-		reasoningEffort:
-			serverData.reasoningEffort === undefined ? currentReasoningEffort : serverData.reasoningEffort,
+		reasoningEffort: serverData.reasoningEffort === undefined ? currentReasoningEffort : serverData.reasoningEffort,
 		provider: stringValue(serverData.provider),
 		projectId: stringValue(serverData.projectId),
 		messageCount: numberValue(serverData.messageCount),

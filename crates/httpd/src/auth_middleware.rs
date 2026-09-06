@@ -453,12 +453,6 @@ mod tests {
 
     #[cfg(feature = "web-ui")]
     #[test]
-    fn graphql_paths_are_not_public() {
-        assert!(!is_public_path("/graphql"));
-    }
-
-    #[cfg(feature = "web-ui")]
-    #[test]
     fn public_identity_path_is_public() {
         assert!(is_public_path("/api/public/identity"));
     }

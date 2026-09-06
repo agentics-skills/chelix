@@ -264,17 +264,6 @@ export function buildCommands(): Command[] {
 			action: settingsNav("terminal"),
 		});
 	}
-	if (gon.get("graphql_enabled")) {
-		cmds.push({
-			id: "set-graphql",
-			label: "GraphQL",
-			group: "settings",
-			icon: "icon-graphql",
-			keywords: ["query", "playground"],
-			action: settingsNav("graphql"),
-		});
-	}
-
 	// ── Actions ──────────────────────────────────────────────
 	cmds.push(
 		{

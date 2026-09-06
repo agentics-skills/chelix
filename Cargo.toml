@@ -21,7 +21,6 @@ default-members = [
   "crates/external-agents",
   "crates/gateway",
   "crates/github",
-  "crates/graphql",
   "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
@@ -80,7 +79,6 @@ members = [
   "crates/external-agents",
   "crates/gateway",
   "crates/github",
-  "crates/graphql",
   "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
@@ -99,7 +97,6 @@ members = [
   "crates/providers",
   "crates/qmd",
   "crates/routing",
-  "crates/schema-export",
   "crates/secret-store",
   "crates/service-traits",
   "crates/sessions",
@@ -194,20 +191,17 @@ base64            = "0.22"
 bytemuck          = { features = ["derive"], version = "1" }
 bytes             = "1"
 fd-lock           = "4"
+gix               = "0.83"
+hex               = "0.4"
+hmac              = "0.12"
 jsonschema        = { default-features = false, version = "0.49" }
+llama-cpp-2       = "0.1"
+matrix-sdk        = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
+mockito           = "1.7"
 serde_yaml        = "0.9"
 tokio-tungstenite = "0.26"
 toml              = "0.8"
 toml_edit         = "0.22"
-# GraphQL
-async-graphql      = "7"
-async-graphql-axum = "7"
-gix                = "0.83"
-hex                = "0.4"
-hmac               = "0.12"
-llama-cpp-2        = "0.1"
-matrix-sdk         = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
-mockito            = "1.7"
 # Not called directly: pulled in transitively (native-tls, ece/web-push,
 # webauthn-attestation-ca) and declared here only to unify the `vendored`
 # feature, which builds OpenSSL from source. Required for cross-compiling the
@@ -328,7 +322,6 @@ chelix-duckduckgo       = { path = "crates/duckduckgo" }
 chelix-external-agents  = { path = "crates/external-agents" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
 chelix-github           = { path = "crates/github" }
-chelix-graphql          = { path = "crates/graphql" }
 chelix-home-assistant   = { path = "crates/home-assistant" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }
 chelix-linkup           = { path = "crates/linkup" }

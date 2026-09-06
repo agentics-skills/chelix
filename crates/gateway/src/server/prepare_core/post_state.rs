@@ -469,8 +469,6 @@ pub(super) async fn complete_startup(
         inner.heartbeat_config = config.heartbeat.clone();
         inner.channels_offered = config.channels.offered.clone();
     }
-    #[cfg(feature = "graphql")]
-    state.set_graphql_enabled(config.graphql.enabled);
 
     {
         let broadcaster: Arc<dyn chelix_tools::approval::ApprovalBroadcaster> =

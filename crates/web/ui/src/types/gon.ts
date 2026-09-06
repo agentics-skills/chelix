@@ -19,7 +19,6 @@ export interface SpaRoutes {
 	skills: string;
 	crons: string;
 	monitoring: string;
-	graphql: string;
 }
 
 // ── Nav counts ──────────────────────────────────────────────
@@ -241,7 +240,6 @@ export interface GonData {
 	voice_enabled: boolean;
 	stt_enabled: boolean;
 	tts_enabled: boolean;
-	graphql_enabled: boolean;
 	terminal_enabled: boolean;
 	terminal_scrollback_lines: number;
 	git_branch?: string;

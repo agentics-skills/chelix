@@ -112,10 +112,7 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 		["zeroDataRetentionEnabled", recordValue(model.zeroDataRetentionEnabled)],
 		["reasoning_supported_efforts", JSON.stringify(model.reasoning_supported_efforts)],
 		["reasoning_summary", recordValue(model.reasoning_summary)],
-		[
-			"reasoning_include",
-			model.reasoning_include === undefined ? "null" : JSON.stringify(model.reasoning_include),
-		],
+		["reasoning_include", model.reasoning_include === undefined ? "null" : JSON.stringify(model.reasoning_include)],
 	];
 
 	return (

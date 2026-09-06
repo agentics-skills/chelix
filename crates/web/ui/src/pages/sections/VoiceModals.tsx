@@ -425,7 +425,7 @@ export function PersonaEditModal({ editingId, existingPersona, onClose, onSaved 
 		setError(null);
 		setTesting(true);
 		try {
-			if (!isNew && !(await savePersona())) return;
+			if (!(isNew || (await savePersona()))) return;
 			const response = isNew
 				? await testUnsavedPersona(testText, draft)
 				: ((await testTtsWithPersona(testText, editingId)) as RpcResponse);

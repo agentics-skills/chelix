@@ -40,7 +40,6 @@
 - [Browser Automation](browser-automation.md)
 - [DuckDuckGo Search](duckduckgo-search.md)
 - [CalDAV (Calendars)](caldav.md)
-- [GraphQL API](graphql.md)
 - [Session State](session-state.md)
 - [Session Message Deletion](session-message-deletion.md)
 - [Slash Commands](commands.md)

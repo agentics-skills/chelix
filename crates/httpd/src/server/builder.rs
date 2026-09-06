@@ -52,29 +52,13 @@ pub(super) fn build_gateway_base_internal(
         router = router.nest("/api/auth", auth_router().with_state(auth_state));
     }
 
-    #[cfg(feature = "graphql")]
-    let graphql_schema = crate::graphql_routes::build_graphql_schema(Arc::clone(&state));
-
     let app_state = AppState {
         gateway: state,
         methods,
         request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
         webauthn_registry: webauthn_registry.clone(),
         push_service,
-        #[cfg(feature = "graphql")]
-        graphql_schema,
     };
-
-    // GraphQL routes -- auth is handled by the global auth_gate in
-    // finalize_gateway_app.
-    #[cfg(feature = "graphql")]
-    {
-        router = router.route(
-            "/graphql",
-            get(crate::graphql_routes::graphql_get_handler)
-                .post(crate::graphql_routes::graphql_handler),
-        );
-    }
 
     (router, app_state)
 }
@@ -129,28 +113,12 @@ pub(super) fn build_gateway_base_internal(
         router = router.nest("/api/auth", auth_router().with_state(auth_state));
     }
 
-    #[cfg(feature = "graphql")]
-    let graphql_schema = crate::graphql_routes::build_graphql_schema(Arc::clone(&state));
-
     let app_state = AppState {
         gateway: state,
         methods,
         request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
         webauthn_registry: webauthn_registry.clone(),
-        #[cfg(feature = "graphql")]
-        graphql_schema,
     };
-
-    // GraphQL routes -- auth is handled by the global auth_gate in
-    // finalize_gateway_app.
-    #[cfg(feature = "graphql")]
-    {
-        router = router.route(
-            "/graphql",
-            get(crate::graphql_routes::graphql_get_handler)
-                .post(crate::graphql_routes::graphql_handler),
-        );
-    }
 
     (router, app_state)
 }

@@ -10,15 +10,9 @@ export interface ChatSendDocument {
 	sizeBytes?: number;
 }
 
-export type ChatContentPart =
-	| { type: "text"; text: string }
-	| { type: "image_url"; image_url: { url: string } };
+export type ChatContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
 
-export type ChatToolChoice =
-	| { type: "auto" }
-	| { type: "any" }
-	| { type: "none" }
-	| { type: "tool"; name: string };
+export type ChatToolChoice = { type: "auto" } | { type: "any" } | { type: "none" } | { type: "tool"; name: string };
 
 type ChatSendMessage = { text: string; content?: never } | { text?: never; content: ChatContentPart[] };
 
