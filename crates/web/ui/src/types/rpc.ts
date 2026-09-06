@@ -1,7 +1,7 @@
 // ── RPC helper types ────────────────────────────────────────────
 //
-// Mirrors the WebSocket RPC frame shape used by `ws-connect.js` and
-// `helpers.js`. The server sends `{ type: "res", id, ok, payload?, error? }`.
+// Mirrors the WebSocket RPC frame shape used by `ws-connect.ts` and
+// `helpers.ts`. The server sends `{ type: "res", id, ok, payload?, error? }`.
 
 /** Error detail inside an RPC response. */
 export interface RpcError {

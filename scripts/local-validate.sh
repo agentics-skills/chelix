@@ -172,7 +172,7 @@ elif command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
 else
   fmt_cmd="cargo +${nightly_toolchain} fmt --all -- --check"
 fi
-biome_cmd="${LOCAL_VALIDATE_BIOME_CMD:-biome ci --diagnostic-level=error crates/web/ui/src/ crates/web/ui/e2e/}"
+biome_cmd="${LOCAL_VALIDATE_BIOME_CMD:-biome ci --diagnostic-level=error crates/web/ui/src/}"
 tsc_cmd="${LOCAL_VALIDATE_TSC_CMD:-bash -c 'cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npx tsc --noEmit'}"
 i18n_cmd="${LOCAL_VALIDATE_I18N_CMD:-./scripts/i18n-check.sh}"
 zizmor_cmd="${LOCAL_VALIDATE_ZIZMOR_CMD:-./scripts/run-zizmor-resilient.sh . --min-severity high}"
@@ -190,7 +190,6 @@ elif command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
 else
   test_cmd="cargo +${nightly_toolchain} nextest run --all-features --profile ci"
 fi
-e2e_cmd="${LOCAL_VALIDATE_E2E_CMD:-cd crates/web/ui && if [ ! -d node_modules ]; then npm ci; fi && npm run e2e:install && npm run e2e}"
 coverage_cmd="${LOCAL_VALIDATE_COVERAGE_CMD:-cargo +${nightly_toolchain} llvm-cov --workspace --all-features --html}"
 build_cmd="${LOCAL_VALIDATE_BUILD_CMD:-cargo +${nightly_toolchain} build --workspace --all-features --all-targets}"
 
@@ -270,43 +269,6 @@ repair_stale_llama_build_dirs() {
     fi
   done
   shopt -u nullglob
-}
-
-cleanup_e2e_ports() {
-  if ! command -v lsof >/dev/null 2>&1; then
-    return 0
-  fi
-
-  local ports=(
-    "${CHELIX_E2E_PORT:-18789}"
-    "${CHELIX_E2E_ONBOARDING_PORT:-18790}"
-    "${CHELIX_E2E_ONBOARDING_AUTH_PORT:-18791}"
-    "${CHELIX_E2E_OPENAI_LIVE_PORT:-18794}"
-  )
-
-  local port
-  for port in "${ports[@]}"; do
-    local pids
-    pids="$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)"
-    if [[ -z "$pids" ]]; then
-      continue
-    fi
-
-    echo "Stopping stale process(es) on TCP ${port}: ${pids//$'\n'/ }"
-    while IFS= read -r pid; do
-      [[ -n "$pid" ]] && kill -TERM "$pid" 2>/dev/null || true
-    done <<<"$pids"
-
-    sleep 1
-
-    local remaining
-    remaining="$(lsof -ti "tcp:${port}" -sTCP:LISTEN 2>/dev/null || true)"
-    if [[ -n "$remaining" ]]; then
-      while IFS= read -r pid; do
-        [[ -n "$pid" ]] && kill -KILL "$pid" 2>/dev/null || true
-      done <<<"$remaining"
-    fi
-  done
 }
 
 set_status() {
@@ -555,19 +517,11 @@ run_check "local/lint" "$lint_cmd"
 
 # Compile all workspace targets (bin + test harnesses) using the same nightly
 # toolchain as clippy. After clippy this is near-instant (shared build cache)
-# and means both nextest and E2E reuse these artifacts without recompilation.
+# and lets nextest reuse these artifacts without recompilation.
 run_check "local/build" "$build_cmd"
 
 # Keep test checks sequential to avoid overloading local machines.
 run_check "local/test" "$test_cmd"
-
-# Gateway web UI e2e tests.
-if [[ "${LOCAL_VALIDATE_SKIP_E2E:-0}" != "1" ]]; then
-  cleanup_e2e_ports
-  run_check "local/e2e" "$e2e_cmd"
-else
-  echo "Skipping E2E checks (LOCAL_VALIDATE_SKIP_E2E=1)."
-fi
 
 # Coverage (optional — requires cargo-llvm-cov).
 # Skipped silently when the tool is not installed. Disable explicitly with

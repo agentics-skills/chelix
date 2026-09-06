@@ -100,7 +100,6 @@ const connectOpts: ConnectOptions = {
 		// Subscribe to all needed events (v4 protocol).
 		// Await so that events are not lost to a race between subscribe and
 		// the first broadcast after connect.
-		S.setSubscribed(false);
 		await subscribeEvents(
 			Object.keys(eventHandlers).concat([
 				"tick",
@@ -123,7 +122,6 @@ const connectOpts: ConnectOptions = {
 				"mcp.status",
 			]),
 		);
-		S.setSubscribed(true);
 		// Keep initial hydration authoritative via app bootstrap/gon.
 		// On reconnect, force a fresh snapshot in case realtime events were missed.
 		if (isReconnect) {

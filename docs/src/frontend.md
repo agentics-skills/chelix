@@ -28,7 +28,6 @@ crates/web/
 │   │   ├── ws/                  # WebSocket handler sub-modules
 │   │   ├── hooks/               # Custom Preact hooks
 │   │   └── locales/             # i18n translations (en, fr, zh)
-│   ├── e2e/                     # Playwright E2E tests
 │   ├── vite.config.ts           # Vite build configuration
 │   ├── tsconfig.json            # TypeScript strict config
 │   └── package.json             # Dependencies & scripts
@@ -36,7 +35,7 @@ crates/web/
 │   ├── assets/                  # Served static assets
 │   │   ├── dist/                # Generated Vite build output (ignored)
 │   │   ├── css/                 # Stylesheets (Tailwind + custom)
-│   │   ├── js/                  # E2E test shims + share page
+│   │   ├── js/                  # Share page
 │   │   ├── icons/               # Favicons & PWA icons
 │   │   └── sw.js                # Service worker
 │   └── templates/               # Askama HTML templates
@@ -107,7 +106,6 @@ npm run build:all      # Vite + Tailwind + service worker
 | Charts              | [uPlot](https://github.com/leeoniya/uPlot)                      |
 | Terminal            | [xterm.js](https://xtermjs.org/)                                |
 | Syntax highlighting | [Shiki](https://shiki.style/) (bundled, lazy-loaded)            |
-| E2E testing         | [Playwright](https://playwright.dev/)                           |
 
 ## Provider Segment and Keyed Rendering
 
@@ -212,18 +210,6 @@ The Rust `chelix-web` crate serves assets with three-tier resolution:
 HTML templates are rendered by [Askama](https://github.com/djc/askama) with
 server-injected data (`window.__CHELIX__`, the "gon" pattern).
 
-## E2E Test Compatibility
-
-E2E tests dynamically import individual JS modules (e.g.,
-`await import("js/state.js")`) to inspect and mock internal app state. With Vite
-bundling, individual modules don't exist as standalone files.
-
-**Shim layer**: small proxy files in `src/assets/js/` re-export from
-`window.__chelix_modules` (populated by `app.tsx` at startup). This lets tests
-import modules at their original paths without changes.
-
-The shims are only loaded by E2E tests, never by the production app.
-
 ## A2UI chat surfaces
 
 `src/a2ui-renderer.ts` owns the official A2UI Lit `MessageProcessor`, surface
@@ -250,9 +236,6 @@ biome check --write src/
 
 # 3. Build (commits dist/ output)
 npm run build
-
-# 4. Run E2E tests
-npx playwright test --project default
 ```
 
 For CSS changes, also run `npm run build:css` and commit `style.css`.

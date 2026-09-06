@@ -18,7 +18,7 @@ let kbIdx = -1;
 export function fetchProjects(): void {
 	projectStore.fetch().then(() => {
 		const projects = projectStore.projects.value;
-		// Dual-write to state.js for backward compat
+		// Keep state.ts synchronized for imperative consumers.
 		S.setProjects(projects);
 		renderProjectSelect();
 		renderSessionProjectSelect();
@@ -34,7 +34,7 @@ export function fetchProjects(): void {
 
 function selectFilter(id: string): void {
 	projectStore.setFilterId(id);
-	// Dual-write to state.js for backward compat
+	// Keep state.ts synchronized for imperative consumers.
 	S.setProjectFilterId(id);
 	const p = projectStore.getById(id);
 	label.textContent = p ? (p as ProjectInfo & { label?: string }).label || p.id : t("common:sessions.allSessions");

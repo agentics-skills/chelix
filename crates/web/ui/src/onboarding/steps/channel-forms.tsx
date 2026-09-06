@@ -84,7 +84,7 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 	).filter(([type]) => offered.has(type));
 
 	return (
-		<div className="grid grid-cols-2 gap-3 md:grid-cols-3" data-testid="channel-type-selector">
+		<div className="grid grid-cols-2 gap-3 md:grid-cols-3">
 			{channelOptions.map(([type, iconClass, label]) => (
 				<button
 					key={type}

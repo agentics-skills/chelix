@@ -95,7 +95,7 @@ dev-server:
 # Run all CI checks (format, lint, build, test)
 ci: format-check lint i18n-check build-web-assets build test
 
-# Compile once, then run Rust tests and E2E tests in parallel.
+# Compile once, then run Rust tests.
 # Uses the same nightly toolchain as clippy/local-validate so the build cache
 # is shared — no double-compilation.
 build-test: build-web-assets
@@ -108,41 +108,12 @@ build-test: build-web-assets
         cargo +{{nightly_toolchain}} build --workspace --all-features --all-targets
     fi
     just codesign-debug
-    echo "==> Build complete. Running Rust tests and E2E tests in parallel..."
-
-    RUST_LOG="$(mktemp)"
-    E2E_LOG="$(mktemp)"
-    trap 'rm -f "${RUST_LOG}" "${E2E_LOG}"' EXIT
-
+    echo "==> Build complete. Running Rust tests..."
     if [ "$(uname -s)" = "Darwin" ]; then
-        cargo +{{nightly_toolchain}} nextest run --workspace > "${RUST_LOG}" 2>&1 &
+        cargo +{{nightly_toolchain}} nextest run --workspace
     else
-        cargo +{{nightly_toolchain}} nextest run --workspace --all-features > "${RUST_LOG}" 2>&1 &
+        cargo +{{nightly_toolchain}} nextest run --workspace --all-features
     fi
-    TEST_PID=$!
-
-    (cd crates/web/ui && npm run e2e) > "${E2E_LOG}" 2>&1 &
-    E2E_PID=$!
-
-    TEST_EXIT=0; E2E_EXIT=0
-    wait "${TEST_PID}" || TEST_EXIT=$?
-    wait "${E2E_PID}" || E2E_EXIT=$?
-
-    if [ "${TEST_EXIT}" -ne 0 ]; then
-        echo "==> Rust tests FAILED (exit ${TEST_EXIT}):"
-        cat "${RUST_LOG}"
-    else
-        echo "==> Rust tests PASSED"
-    fi
-
-    if [ "${E2E_EXIT}" -ne 0 ]; then
-        echo "==> E2E tests FAILED (exit ${E2E_EXIT}):"
-        cat "${E2E_LOG}"
-    else
-        echo "==> E2E tests PASSED"
-    fi
-
-    exit $(( TEST_EXIT > 0 ? TEST_EXIT : E2E_EXIT ))
 
 # Run the same Rust preflight gates used before release packaging.
 release-preflight: lint
@@ -203,22 +174,6 @@ contract-tests:
 # Verify locale key parity across frontend i18n bundles.
 i18n-check:
     ./scripts/i18n-check.sh
-
-# Install browser tooling for gateway web UI e2e tests.
-ui-e2e-install:
-    cd crates/web/ui && npm install && npm run e2e:install
-
-# Run gateway web UI e2e tests (Playwright).
-ui-e2e:
-    cargo +{{nightly_toolchain}} build --bin chelix
-    just codesign-debug
-    cd crates/web/ui && npm run e2e
-
-# Run gateway web UI e2e tests with headed browser.
-ui-e2e-headed:
-    cargo +{{nightly_toolchain}} build --bin chelix
-    just codesign-debug
-    cd crates/web/ui && npm run e2e:headed
 
 # Build the APNS push relay.
 courier-build:

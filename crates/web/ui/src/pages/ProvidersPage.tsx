@@ -116,10 +116,7 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 	];
 
 	return (
-		<dl
-			data-testid={`provider-model-record-${model.id}`}
-			className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2"
-		>
+		<dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
 			{fields.map(([name, value]) => (
 				<div key={name} className="flex min-w-0 gap-2">
 					<dt className="shrink-0 font-mono text-[var(--muted)]">{name}:</dt>
@@ -327,7 +324,6 @@ function ProvidersPageComponent(): VNode {
 					<button
 						type="button"
 						id="providersAddLlmBtn"
-						data-testid="providers-add-llm"
 						className="provider-btn"
 						onClick={() => {
 							if (connected.value) openProviderModal();
@@ -354,18 +350,13 @@ function ProvidersPageComponent(): VNode {
 					}
 					if (configuredModels.value.length === 0) {
 						return (
-							<div
-								id="providersEmptyState"
-								data-testid="providers-empty-state"
-								className="text-xs text-[var(--muted)]"
-								style={{ padding: "12px 0" }}
-							>
+							<div id="providersEmptyState" className="text-xs text-[var(--muted)]" style={{ padding: "12px 0" }}>
 								{t("providers:noProvidersConfigured")}
 							</div>
 						);
 					}
 					return (
-						<div id="providersConfiguredList" data-testid="providers-configured-list" style={{ maxWidth: "600px" }}>
+						<div id="providersConfiguredList" style={{ maxWidth: "600px" }}>
 							{groups.length > 1 ? (
 								<div className="flex flex-wrap gap-1 mb-3">
 									{groups.map((g) => (

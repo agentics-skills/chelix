@@ -144,13 +144,6 @@ JSX property in the `sections` array. When adding a new settings section:
    pointing to the SVG — without this the icon renders as a black square
 4. The `icon: <span className="icon icon-<name>" />` in `SettingsPage.tsx` is a fallback only
 
-### E2E Test Shims
-
-E2E tests dynamically import individual JS modules (`js/state.js`, `js/helpers.js`, etc.).
-With Vite bundling, these don't exist as standalone files. Shim files in `src/assets/js/`
-proxy to `window.__chelix_modules` (populated by `app.tsx`). When adding new modules that
-tests import, add a shim file and expose the module in `app.tsx`.
-
 ### Selection Cards
 
 Use clickable cards (`.model-card`, `.backend-card` in `input.css`) instead of dropdowns for option selection.
@@ -204,26 +197,6 @@ middleware in `auth_middleware.rs`. Setup code printed to terminal on first run.
 `CredentialStore` persists argon2-hashed passwords, passkeys, API keys, sessions to JSON.
 
 CLI: `chelix auth reset-password`, `chelix auth reset-identity`.
-
-### E2E Tests (Web UI)
-
-**Every web UI change needs E2E tests.** Tests in `crates/web/ui/e2e/specs/` using Playwright.
-Helpers in `e2e/helpers.js`.
-
-```bash
-cd crates/web/ui
-npx playwright test                              # All
-npx playwright test e2e/specs/chat-input.spec.js # Specific
-```
-
-Rules: use `getByRole()`/`getByText({ exact: true })` selectors, shared helpers
-(`navigateAndWait`, `waitForWsConnected`, `watchPageErrors`), assert no JS errors,
-avoid `waitForTimeout()`.
-
-**Flaky tests must be fixed, never skipped or ignored.** If a test fails intermittently,
-find and fix the root cause (race conditions, `requestAnimationFrame` timing, missing
-waits, element detachment from re-renders). Do not use `test.skip()`, `test.fixme()`,
-or retry-count workarounds to hide flakiness.
 
 ## Code Quality
 

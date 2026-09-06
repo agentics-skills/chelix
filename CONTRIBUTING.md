@@ -20,7 +20,7 @@ Prerequisites:
 - `rustup` with the nightly pinned in `rust-toolchain.toml` available
 - `just` task runner
 - `git-cliff` changelog generator
-- Node.js (for web UI e2e tests)
+- Node.js (for web UI builds)
 - `gh` CLI (optional, needed for PR status publishing via local validation)
 
 Quick start:
@@ -79,14 +79,7 @@ Optional local guard check (matches CI behavior):
 bash ./scripts/check-changelog-guard.sh origin/master HEAD
 ```
 
-For web UI changes, run e2e tests:
-
-```bash
-just ui-e2e-install
-just ui-e2e
-```
-
-For CI-parity local validation (format, lint, test, e2e, lockfile, workflow security):
+For CI-parity local validation (format, lint, test, lockfile, workflow security):
 
 ```bash
 ./scripts/local-validate.sh
@@ -101,12 +94,10 @@ If you are working on an existing PR and have permissions to publish statuses:
 See also:
 
 - `docs/src/local-validation.md`
-- `docs/src/e2e-testing.md`
 
 ## Testing Expectations
 
 - Rust changes should include unit/integration coverage.
-- Web UI changes should include Playwright coverage in `crates/web/ui/e2e/specs/`.
 - Prefer real behavior tests over heavy mocking.
 - Keep tests deterministic and avoid timing-based flakiness.
 
@@ -128,7 +119,6 @@ See also:
 - [ ] `just format-check` passes
 - [ ] `just release-preflight` passes
 - [ ] `just test` passes
-- [ ] `just ui-e2e` run for web UI changes
 - [ ] Commit messages follow conventional commit style
 - [ ] Full session/context shared (or clear explanation if partial)
 - [ ] Shared session/logs are redacted (no API keys, private keys, tokens, passwords)

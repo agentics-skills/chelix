@@ -34,7 +34,6 @@ done < <(
     -not -path './target/*' \
     -not -path './.chelix/*' \
     -not -path '*/node_modules/*' \
-    -not -path '*/e2e/*' \
     -not -path '*/skills/src/assets/*' \
     -print0 \
   | xargs -0 wc -l \
