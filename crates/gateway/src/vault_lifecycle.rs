@@ -739,16 +739,16 @@ mod tests {
             .await
             .unwrap();
 
-        let mut channel_config = serde_json::json!({ "token": "Bot discord-token" });
+        let mut channel_config = serde_json::json!({ "token": "Bot telegram-token" });
         chelix_secret_store::encrypt_secret_fields(
             &mut channel_config,
             &["token"],
-            "channel:discord:main",
+            "channel:telegram:main",
             vault.as_ref(),
         )
         .await
         .unwrap();
-        sqlx::query("INSERT INTO channels (channel_type, account_id, config, created_at, updated_at) VALUES ('discord', 'main', ?, 1, 1)")
+        sqlx::query("INSERT INTO channels (channel_type, account_id, config, created_at, updated_at) VALUES ('telegram', 'main', ?, 1, 1)")
             .bind(serde_json::to_string(&channel_config).unwrap())
             .execute(&pool)
             .await
@@ -788,7 +788,7 @@ mod tests {
                 .await
                 .unwrap();
         let channel_json: serde_json::Value = serde_json::from_str(&channel.0).unwrap();
-        assert_eq!(channel_json["token"], "Bot discord-token");
+        assert_eq!(channel_json["token"], "Bot telegram-token");
     }
 
     #[tokio::test]

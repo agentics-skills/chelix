@@ -523,12 +523,11 @@ through a template and forwarded directly to a channel. Zero LLM tokens,
 sub-second delivery.
 
 This turns Chelix into a **webhook proxy**: external services POST events, and
-formatted messages appear in your Telegram, Discord, Slack, or any other
+formatted messages appear in your Telegram, Slack, or any other
 configured channel.
 
 ### When to Use Deliver-Only
 
-- **Monitoring alerts**: Datadog/Grafana/Sentry → Discord
 - **Payment notifications**: Stripe → Telegram
 - **CI/CD status**: GitHub Actions → Slack
 - **Inter-service notifications**: any HTTP POST → any channel
@@ -613,19 +612,6 @@ When someone opens issue #42 "Fix auth bug", Telegram receives:
 
 ```
 #42 Fix auth bug (opened by alice)
-```
-
-### Example: Stripe Payment → Discord
-
-```bash
-chelix webhooks create \
-  --name stripe-notify \
-  --source-profile stripe \
-  --auth-mode stripe_webhook_signature \
-  --deliver-only \
-  --prompt-template "Payment {data.object.status}: {data.object.amount} cents ({data.object.currency})" \
-  --deliver-to discord \
-  --events "payment_intent.succeeded,payment_intent.payment_failed"
 ```
 
 ## Comparison with Channels and Cron

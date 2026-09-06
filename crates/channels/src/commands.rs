@@ -1,6 +1,6 @@
 //! Centralized channel command registry.
 //!
-//! Every channel (Telegram, Discord, Slack, Matrix, etc.) derives its
+//! Every channel (Telegram, Slack, Matrix, etc.) derives its
 //! command interception, help text, and platform registration from this single
 //! source of truth. Adding a command here automatically propagates to all
 //! channels.
@@ -8,22 +8,12 @@
 /// A single argument that a command accepts.
 #[derive(Debug, Clone, Copy)]
 pub struct CommandArg {
-    /// Semantic name for the argument (e.g. `"model"`, `"mode"`, `"id"`).
-    ///
-    /// Used as the Discord option name and shown in platform UIs.
-    pub name: &'static str,
     /// Short description shown next to the argument in platform UIs.
     pub description: &'static str,
     /// Fixed choices the user can pick from (label, value).
     ///
-    /// Platforms like Discord render these as a dropdown. An empty slice means
-    /// free-form input.
+    /// An empty slice means free-form input.
     pub choices: &'static [(&'static str, &'static str)],
-    /// Whether the argument must be provided.
-    ///
-    /// When `true`, platforms like Discord enforce the argument at the UI level
-    /// and won't allow bare invocation.
-    pub required: bool,
 }
 
 /// A channel command definition.
@@ -54,30 +44,24 @@ pub fn all_commands() -> &'static [CommandDef] {
             name: "sessions",
             description: "List and switch sessions",
             arg: Some(CommandArg {
-                name: "id",
                 description: "Session ID to switch to",
                 choices: &[],
-                required: false,
             }),
         },
         CommandDef {
             name: "attach",
             description: "Attach an existing session here",
             arg: Some(CommandArg {
-                name: "id",
                 description: "Session ID to attach",
                 choices: &[],
-                required: true,
             }),
         },
         CommandDef {
             name: "fork",
             description: "Fork this session into a new branch",
             arg: Some(CommandArg {
-                name: "title",
                 description: "Optional title for the fork",
                 choices: &[],
-                required: false,
             }),
         },
         CommandDef {
@@ -110,50 +94,40 @@ pub fn all_commands() -> &'static [CommandDef] {
             name: "approve",
             description: "Approve a pending command request",
             arg: Some(CommandArg {
-                name: "id",
                 description: "Approval ID",
                 choices: &[],
-                required: true,
             }),
         },
         CommandDef {
             name: "deny",
             description: "Deny a pending command request",
             arg: Some(CommandArg {
-                name: "id",
                 description: "Approval ID",
                 choices: &[],
-                required: true,
             }),
         },
         CommandDef {
             name: "agent",
             description: "Switch session agent",
             arg: Some(CommandArg {
-                name: "name",
                 description: "Agent name",
                 choices: &[],
-                required: false,
             }),
         },
         CommandDef {
             name: "mode",
             description: "Switch session mode",
             arg: Some(CommandArg {
-                name: "mode",
                 description: "Mode number or name",
                 choices: &[],
-                required: false,
             }),
         },
         CommandDef {
             name: "model",
             description: "List models or switch model/reasoning",
             arg: Some(CommandArg {
-                name: "selection",
                 description: "Model number and reasoning effort",
                 choices: &[],
-                required: false,
             }),
         },
         CommandDef {
@@ -175,10 +149,8 @@ pub fn all_commands() -> &'static [CommandDef] {
             name: "update",
             description: "Update chelix to latest or specified version",
             arg: Some(CommandArg {
-                name: "version",
                 description: "Version to update to",
                 choices: &[],
-                required: false,
             }),
         },
         // Quick actions
@@ -186,40 +158,32 @@ pub fn all_commands() -> &'static [CommandDef] {
             name: "fast",
             description: "Toggle fast/priority mode",
             arg: Some(CommandArg {
-                name: "toggle",
                 description: "Enable or disable",
                 choices: &[("On", "on"), ("Off", "off")],
-                required: false,
             }),
         },
         CommandDef {
             name: "insights",
             description: "Show session analytics and usage stats",
             arg: Some(CommandArg {
-                name: "scope",
                 description: "Scope or filter",
                 choices: &[],
-                required: false,
             }),
         },
         CommandDef {
             name: "steer",
             description: "Inject guidance into the current agent run",
             arg: Some(CommandArg {
-                name: "guidance",
                 description: "Guidance text",
                 choices: &[],
-                required: true,
             }),
         },
         CommandDef {
             name: "queue",
             description: "Queue a message for the next agent turn",
             arg: Some(CommandArg {
-                name: "message",
                 description: "Message to queue",
                 choices: &[],
-                required: true,
             }),
         },
         // Meta

@@ -1,6 +1,6 @@
 //! Channel plugin system.
 //!
-//! Each channel (Telegram, Discord, Slack, WhatsApp, etc.) implements the
+//! Each channel (Telegram, Slack, WhatsApp, etc.) implements the
 //! ChannelPlugin trait with sub-traits for config, auth, inbound/outbound
 //! messaging, status, and gateway lifecycle.
 

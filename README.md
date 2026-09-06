@@ -22,7 +22,7 @@ Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any
 
 **Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; native filesystem tools run in the required `chelix-tools-service` managed sidecar, and local embeddings use a separate optional sidecar.
 
-**Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, Signal, Discord, browser automation, standards-based A2UI generative interfaces, MCP servers, managed SSH deploy keys and targets with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
+**Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, Signal, browser automation, standards-based A2UI generative interfaces, MCP servers, managed SSH deploy keys and targets with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
 
 **Auditable** — The agent runner and model interface fit in ~7.5K lines, with providers in ~19K more. The Rust workspace is ~270K lines across 60 modular crates you can audit independently, with 470+ Rust files containing tests. Unsafe code is isolated to FFI and precompiled runtime boundaries, not the core agent loop.
 
@@ -63,7 +63,7 @@ Current Rust workspace: ~271K LoC across 60 crates. The table below groups the m
 
 | Category | Crates | Combined LoC |
 |----------|--------|-------------|
-| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-discord`, `chelix-matrix`, `chelix-slack`, `chelix-channels` | 39.3K |
+| Channels | `chelix-telegram`, `chelix-whatsapp`, `chelix-signal`, `chelix-matrix`, `chelix-slack`, `chelix-channels` | — |
 | Web and APIs | `chelix-web`, `chelix-webhooks` | 10.8K |
 | Extensibility | `chelix-mcp`, `chelix-mcp-agent-bridge`, `chelix-skills`, `chelix-plugins`, `chelix-github` | 12.9K |
 | Memory and context | `chelix-memory`, `chelix-qmd`, `chelix-code-index`, `chelix-projects` | 11.7K |
@@ -92,7 +92,7 @@ Verify releases with `gh attestation verify <artifact> -R agentics-skills/chelix
 ## Features
 
 - **AI Gateway** — Multi-provider LLM support, streaming responses, agent loop with [sub-agent delegation](docs/src/sub-agent.md), session modes, parallel tool execution, durable prompt queue that replays messages sent during a run as a single turn
-- **Communication** — Web UI, Telegram, Signal, Discord, API access, voice I/O (8 TTS + 7 STT providers), mobile PWA with push notifications
+- **Communication** — Web UI, Telegram, Signal, API access, voice I/O (8 TTS + 7 STT providers), mobile PWA with push notifications
 - **Generative UI** — A2UI v0.9.1 basic-catalog interfaces rendered in web chat with standard event actions returned to the waiting agent tool
 - **Memory & Recall** — Per-agent memory workspaces, embeddings-powered long-term memory, hybrid vector + full-text search, session persistence with auto-compaction, cross-session recall, Cursor-compatible project context, context-file safety scanning
 - **Extensibility** — MCP servers (stdio + HTTP/SSE), Context7 documentation tools, built-in Linkup and DuckDuckGo web search, skill system, 14 lifecycle hook events with circuit breaker
@@ -109,7 +109,7 @@ or sandbox endpoint.
 
 ```
 ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│   Web UI    │  │  Telegram   │  │  Discord    │
+│   Web UI    │  │  Telegram   │  │  Signal     │
 └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
        │                │                │
        └────────┬───────┴────────┬───────┘

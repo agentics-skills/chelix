@@ -208,6 +208,37 @@ fn apply_env_overrides_rejects_noncanonical_offered_provider_names() {
 }
 
 #[test]
+fn parse_config_rejects_unknown_channel_types() {
+    for (raw, expected_path) in [
+        (
+            "[channels.unknown_type.bot]\ntoken = 'test'",
+            "channels.unknown_type",
+        ),
+        (
+            "[channels]\noffered = ['unknown_type']",
+            "channels.offered[0]",
+        ),
+    ] {
+        let error = parse_config(raw, std::path::Path::new("chelix.toml"))
+            .expect_err("unknown channel type must fail config load");
+        assert!(error.to_string().contains(expected_path), "{error}");
+    }
+}
+
+#[test]
+fn parse_config_accepts_matrix_accounts_in_extra() {
+    let config = parse_config(
+        "[channels]\noffered = ['matrix']\n[channels.matrix.bot]\naccess_token = 'test'",
+        std::path::Path::new("chelix.toml"),
+    )
+    .expect("known channel config must load");
+    assert_eq!(
+        config.channels.extra["matrix"]["bot"]["access_token"],
+        "test"
+    );
+}
+
+#[test]
 fn parse_config_rejects_unknown_provider_section() {
     let error = parse_config(
         "[providers.unsupported-provider]\nenabled = true\n",

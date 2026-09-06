@@ -462,24 +462,16 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
     // Registry loading validates each required model/reasoning pair against
     // the exact canonical model metadata.
 
-    // Unknown channel types in channels.offered — accept built-in types plus
-    // any dynamically configured types from `[channels.<type>]` sections.
-    let mut valid_channel_types: Vec<&str> = crate::schema::KNOWN_CHANNEL_TYPES.to_vec();
-    for ct in config.channels.extra.keys() {
-        valid_channel_types.push(ct.as_str());
-    }
-    for (idx, entry) in config.channels.offered.iter().enumerate() {
-        if !valid_channel_types.contains(&entry.as_str()) {
-            diagnostics.push(Diagnostic {
-                severity: Severity::Warning,
-                category: "unknown-field",
-                path: format!("channels.offered[{idx}]"),
-                message: format!(
-                    "unknown channel type \"{entry}\"; expected one of: {}",
-                    valid_channel_types.join(", ")
-                ),
-            });
-        }
+    for (path, channel_type) in config.channels.invalid_channel_types() {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "unknown-field",
+            path,
+            message: format!(
+                "unknown channel type \"{channel_type}\"; expected one of: {}",
+                crate::schema::KNOWN_CHANNEL_TYPES.join(", ")
+            ),
+        });
     }
 
     let valid_agent_kinds = ["claude-code", "opencode", "codex", "pi-agent", "acp"];

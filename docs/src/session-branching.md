@@ -14,7 +14,7 @@ The quickest way to fork — type in the chat input or on any channel:
 /fork experiment-a       # fork with a custom label
 ```
 
-Available in the web UI, Telegram, Discord, Slack, Matrix, and all other
+Available in the web UI, Telegram, Slack, Matrix, and all other
 channels. See [Slash Commands](commands.md) for the full list.
 
 ## Forking from the UI
@@ -114,7 +114,7 @@ leaving them in the main sidebar list.
 
 Archive is available for any non-`main` session, including cron and
 channel-bound chats, except when the session is the current active session for
-its bound channel chat. That prevents hiding the live Telegram, Discord, or
+its bound channel chat. That prevents hiding the live Telegram, or
 similar chat out from under the channel router.
 
 ```admonish info title="Independence"

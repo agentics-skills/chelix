@@ -16,7 +16,6 @@ default-members = [
   "crates/context7",
   "crates/cron",
   "crates/ctl",
-  "crates/discord",
   "crates/duckduckgo",
   "crates/external-agents",
   "crates/gateway",
@@ -210,7 +209,6 @@ openssl        = { features = ["vendored"], version = "0.10" }
 rand           = "0.10"
 ring           = "0.17"
 secrecy        = { features = ["serde"], version = "0.8" }
-serenity       = { features = ["cache", "client", "gateway", "model", "rustls_backend"], version = "0.12" }
 sha1           = "0.10"
 sha2           = "0.10"
 slack-morphism = { features = ["axum", "hyper"], version = "2.20" }
@@ -317,7 +315,6 @@ chelix-common           = { path = "crates/common" }
 chelix-config           = { path = "crates/config" }
 chelix-context7         = { path = "crates/context7" }
 chelix-cron             = { path = "crates/cron" }
-chelix-discord          = { path = "crates/discord" }
 chelix-duckduckgo       = { path = "crates/duckduckgo" }
 chelix-external-agents  = { path = "crates/external-agents" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }

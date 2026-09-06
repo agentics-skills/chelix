@@ -53,7 +53,6 @@ webauthn-rs      = { features = ["danger-allow-state-serialisation"], workspace 
 
 [features]
 default = [
-  "discord",
   "matrix",
   "mdns",
   "metrics",
@@ -67,7 +66,6 @@ default = [
   "voice",
   "web-ui",
 ]
-discord = ["chelix-gateway/discord"]
 matrix = ["chelix-gateway/matrix"]
 mdns = ["chelix-gateway/mdns", "dep:hostname"]
 metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]

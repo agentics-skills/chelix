@@ -19,7 +19,7 @@ pub enum ChatMessage {
     },
     User {
         content: UserContent,
-        /// Optional sender name for channel messages (Telegram, Discord, etc.).
+        /// Optional sender name for channel messages (Telegram, etc.).
         name: Option<String>,
     },
     Assistant {

@@ -227,7 +227,7 @@ struct ChannelStreamWorker {
     receives_progress_deltas: bool,
 }
 
-/// Fan out model deltas to channel stream workers (Telegram/Discord edit-in-place).
+/// Fan out model deltas to channel stream workers (Telegram edit-in-place).
 ///
 /// Workers are started eagerly so channel typing indicators remain active
 /// during long-running tool execution before the first text delta arrives.

@@ -153,7 +153,6 @@ const CATEGORY_MAP: &[(&str, &[&str])] = &[
         "neomutt",
     ]),
     ("Newsgroups (NNTP)", &["tin", "slrn"]),
-    ("Messaging APIs", &["python3-discord"]),
 ];
 
 /// Returns `true` for packages that are infrastructure/library deps and should
@@ -564,7 +563,6 @@ mod tests {
             "notmuch".into(),
             "tin".into(),
             "slrn".into(),
-            "python3-discord".into(),
         ];
         let grouped = categorize_packages(&packages);
         let cat_names: Vec<&str> = grouped.iter().map(|(c, _)| *c).collect();
@@ -572,7 +570,6 @@ mod tests {
         assert!(cat_names.contains(&"CalDAV/CardDAV"));
         assert!(cat_names.contains(&"Email"));
         assert!(cat_names.contains(&"Newsgroups (NNTP)"));
-        assert!(cat_names.contains(&"Messaging APIs"));
     }
 
     #[test]

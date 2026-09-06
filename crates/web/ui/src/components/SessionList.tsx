@@ -10,7 +10,6 @@ import {
 	makeBranchIcon,
 	makeChatIcon,
 	makeCronIcon,
-	makeDiscordIcon,
 	makeMatrixIcon,
 	makeProjectIcon,
 	makeSlackIcon,
@@ -42,7 +41,6 @@ const spinnerFrames: string[] = [
 function channelSessionType(s: Session): ChannelType | null {
 	const key = s.key || "";
 	if (key.startsWith(`${ChannelType.Telegram}:`)) return ChannelType.Telegram;
-	if (key.startsWith(`${ChannelType.Discord}:`)) return ChannelType.Discord;
 	if (key.startsWith(`${ChannelType.Slack}:`)) return ChannelType.Slack;
 	if (key.startsWith(`${ChannelType.Matrix}:`)) return ChannelType.Matrix;
 	const binding = s.channelBinding || null;
@@ -63,13 +61,11 @@ function formatHHMM(epochMs: number): string {
 
 const channelIconFactories: Partial<Record<ChannelType, () => HTMLSpanElement>> = {
 	[ChannelType.Telegram]: makeTelegramIcon,
-	[ChannelType.Discord]: makeDiscordIcon,
 	[ChannelType.Slack]: makeSlackIcon,
 	[ChannelType.Matrix]: makeMatrixIcon,
 };
 
 const channelLabels: Partial<Record<ChannelType, string>> = {
-	[ChannelType.Discord]: "Discord",
 	[ChannelType.Slack]: "Slack",
 	[ChannelType.Matrix]: "Matrix",
 	[ChannelType.Telegram]: "Telegram",

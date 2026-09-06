@@ -1,7 +1,7 @@
 // ── Channel step (channel selection, complex forms) ───────────
 //
 // ChannelStep orchestrates channel type selection and delegates to
-// per-channel form components. Simpler forms (Telegram, Discord)
+// per-channel form components. Simpler forms (Telegram, Signal)
 // live in channel-forms.tsx; complex forms below.
 
 import type { VNode } from "preact";
@@ -35,7 +35,6 @@ import {
 	ChannelStorageNotice,
 	ChannelSuccess,
 	ChannelTypeSelector,
-	DiscordForm,
 	SignalForm,
 	TelegramForm,
 } from "./channel-forms";
@@ -861,13 +860,7 @@ function SlackForm({ onConnected, error, setError }: ChannelFormProps): VNode {
 // ── ChannelStep ─────────────────────────────────────────────
 
 export function ChannelStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }): VNode {
-	const offeredList = (getGon("channels_offered") as string[] | null) || [
-		"telegram",
-		"whatsapp",
-		"discord",
-		"slack",
-		"matrix",
-	];
+	const offeredList = (getGon("channels_offered") as string[] | null) || ["telegram", "whatsapp", "slack", "matrix"];
 	const offered = new Set(offeredList);
 	const singleType = offeredList.length === 1 ? offeredList[0] : null;
 
@@ -915,9 +908,6 @@ export function ChannelStep({ onNext, onBack }: { onNext: () => void; onBack: ()
 			)}
 			{phase === "form" && selectedType === "whatsapp" && (
 				<WhatsAppForm onConnected={onConnected} error={channelError} setError={setChannelError} />
-			)}
-			{phase === "form" && selectedType === "discord" && (
-				<DiscordForm onConnected={onConnected} error={channelError} setError={setChannelError} />
 			)}
 			{phase === "form" && selectedType === "slack" && (
 				<SlackForm onConnected={onConnected} error={channelError} setError={setChannelError} />

@@ -117,7 +117,7 @@ body:
         - CLI
         - Sandbox (Docker / Apple Container)
         - MCP servers
-        - Channels (Telegram, Discord, etc.)
+        - Channels (Telegram, etc.)
         - Agent / LLM providers
         - Configuration
         - Other

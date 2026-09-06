@@ -1000,7 +1000,7 @@ pub async fn prepare_gateway_core(
         Arc::clone(&deferred_state),
         &data_dir,
     )
-    .await;
+    .await?;
     services = channel_result.services;
     #[cfg(feature = "slack")]
     let slack_webhook_plugin = channel_result.slack_webhook_plugin;

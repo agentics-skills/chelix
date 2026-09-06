@@ -170,7 +170,7 @@ Currently encrypted:
 | ----------------------------------------------------- | ------- | ------------------------------------- |
 | Environment variables (`env_variables` table)         | SQLite  | `env:{key}`                           |
 | Managed SSH private keys (`ssh_keys` table)           | SQLite  | `ssh-key:{name}`                      |
-| Channel account secrets, including Discord bot tokens | SQLite  | `channel:{type}:{account_id}:{field}` |
+| Channel account secrets | SQLite  | `channel:{type}:{account_id}:{field}` |
 | Webhook auth/source secrets                           | SQLite  | `webhook:config:{field}`              |
 | Provider API keys (`provider_keys.json.enc`)          | File    | `provider_keys`                       |
 

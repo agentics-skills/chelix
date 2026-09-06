@@ -1132,8 +1132,8 @@ mod tests {
 
     #[test]
     fn sanitize_session_component_replaces_unsafe_chars() {
-        let sanitized = sanitize_session_component("discord:chelix:1476434288646815864");
-        assert_eq!(sanitized, "discord_chelix_1476434288646815864");
+        let sanitized = sanitize_session_component("telegram:chelix:1476434288646815864");
+        assert_eq!(sanitized, "telegram_chelix_1476434288646815864");
     }
 
     #[test]

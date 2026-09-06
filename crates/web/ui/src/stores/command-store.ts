@@ -208,7 +208,7 @@ export function buildCommands(): Command[] {
 			label: "Channels",
 			group: "settings",
 			icon: "icon-channels",
-			keywords: ["telegram", "whatsapp", "slack", "discord"],
+			keywords: ["telegram", "whatsapp", "slack"],
 			action: settingsNav("channels"),
 		},
 		{

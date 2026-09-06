@@ -17,7 +17,6 @@ use crate::{Error, Result, config_view::ChannelConfigView};
 pub enum ChannelType {
     Telegram,
     Whatsapp,
-    Discord,
     Slack,
     Matrix,
     Signal,
@@ -30,7 +29,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "telegram",
             Self::Whatsapp => "whatsapp",
-            Self::Discord => "discord",
             Self::Slack => "slack",
             Self::Matrix => "matrix",
             Self::Signal => "signal",
@@ -43,7 +41,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
-            Self::Discord => "Discord",
             Self::Slack => "Slack",
             Self::Matrix => "Matrix",
             Self::Signal => "Signal",
@@ -81,7 +78,6 @@ impl ChannelType {
         match self {
             Self::Telegram => &["token"],
             Self::Whatsapp => &[],
-            Self::Discord => &["token"],
             Self::Slack => &["bot_token", "app_token", "signing_secret"],
             Self::Matrix => &["access_token", "password"],
             Self::Signal => &[],
@@ -103,7 +99,6 @@ impl std::str::FromStr for ChannelType {
         match s {
             "telegram" => Ok(Self::Telegram),
             "whatsapp" => Ok(Self::Whatsapp),
-            "discord" => Ok(Self::Discord),
             "slack" => Ok(Self::Slack),
             "matrix" | "element" => Ok(Self::Matrix),
             "signal" => Ok(Self::Signal),
@@ -120,7 +115,6 @@ impl ChannelType {
     pub const ALL: &[ChannelType] = &[
         Self::Telegram,
         Self::Whatsapp,
-        Self::Discord,
         Self::Slack,
         Self::Matrix,
         Self::Signal,
@@ -161,22 +155,6 @@ impl ChannelType {
                     supports_otp: true,
                     supports_reactions: false,
                     supports_location: false,
-                },
-            },
-            Self::Discord => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "Discord",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::GatewayLoop,
-                    supports_outbound: true,
-                    supports_streaming: true,
-                    supports_interactive: true,
-                    supports_threads: true,
-                    supports_voice_ingest: true,
-                    supports_pairing: false,
-                    supports_otp: false,
-                    supports_reactions: false,
-                    supports_location: true,
                 },
             },
             Self::Slack => ChannelDescriptor {
@@ -257,7 +235,6 @@ pub enum InboundMode {
     None,
     /// Long-polling loop (Telegram).
     Polling,
-    /// Persistent gateway/WebSocket connection (Discord, WhatsApp).
     GatewayLoop,
     /// Socket Mode connection (Slack).
     SocketMode,
@@ -514,7 +491,7 @@ pub struct ChannelMessageMeta {
     pub channel_type: ChannelType,
     pub sender_name: Option<String>,
     pub username: Option<String>,
-    /// Platform-specific sender/peer ID (e.g. Telegram user ID, Discord user ID).
+    /// Platform-specific sender/peer ID (e.g. Telegram user ID).
     /// Used for per-sender tool policy resolution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sender_id: Option<String>,
@@ -701,7 +678,7 @@ pub struct InteractiveMessage {
 /// Core channel plugin trait. Each messaging platform implements this.
 #[async_trait]
 pub trait ChannelPlugin: Send + Sync {
-    /// Channel identifier (e.g. "telegram", "discord").
+    /// Channel identifier (e.g. "telegram", "slack").
     fn id(&self) -> &str;
 
     /// Human-readable channel name.
@@ -1110,21 +1087,12 @@ mod tests {
         for ct in [
             ChannelType::Telegram,
             ChannelType::Whatsapp,
-            ChannelType::Discord,
             ChannelType::Slack,
         ] {
             let json = serde_json::to_string(&ct).unwrap();
             let parsed: ChannelType = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, ct);
         }
-    }
-
-    #[test]
-    fn channel_type_discord_roundtrip() {
-        let ct = ChannelType::Discord;
-        assert_eq!(ct.as_str(), "discord");
-        assert_eq!(ct.to_string(), "discord");
-        assert_eq!("discord".parse::<ChannelType>().unwrap(), ct);
     }
 
     #[test]
@@ -1240,7 +1208,6 @@ mod tests {
         for (s, expected) in [
             ("telegram", ChannelType::Telegram),
             ("whatsapp", ChannelType::Whatsapp),
-            ("discord", ChannelType::Discord),
             ("slack", ChannelType::Slack),
             ("matrix", ChannelType::Matrix),
         ] {
@@ -1262,7 +1229,6 @@ mod tests {
         for ct in [
             ChannelType::Telegram,
             ChannelType::Whatsapp,
-            ChannelType::Discord,
             ChannelType::Slack,
             ChannelType::Matrix,
         ] {
@@ -1276,7 +1242,7 @@ mod tests {
     #[test]
     fn all_covers_every_variant() {
         // If a new variant is added to ChannelType, this test forces updating ALL.
-        assert_eq!(ChannelType::ALL.len(), 7);
+        assert_eq!(ChannelType::ALL.len(), 6);
         for ct in ChannelType::ALL {
             // descriptor() must not panic
             let desc = ct.descriptor();
@@ -1288,7 +1254,6 @@ mod tests {
     fn descriptor_returns_correct_display_names() {
         assert_eq!(ChannelType::Telegram.descriptor().display_name, "Telegram");
         assert_eq!(ChannelType::Whatsapp.descriptor().display_name, "WhatsApp");
-        assert_eq!(ChannelType::Discord.descriptor().display_name, "Discord");
         assert_eq!(ChannelType::Slack.descriptor().display_name, "Slack");
         assert_eq!(ChannelType::Matrix.descriptor().display_name, "Matrix");
     }
@@ -1309,7 +1274,6 @@ mod tests {
     fn channel_type_secret_fields_are_declared() {
         assert_eq!(ChannelType::Telegram.secret_fields(), ["token"]);
         assert_eq!(ChannelType::Whatsapp.secret_fields(), &[] as &[&str]);
-        assert_eq!(ChannelType::Discord.secret_fields(), ["token"]);
         assert_eq!(ChannelType::Slack.secret_fields(), [
             "bot_token",
             "app_token",
@@ -1360,7 +1324,6 @@ mod tests {
             ChannelType::Telegram.classify_chat("123").as_deref(),
             Some("private")
         );
-        assert!(ChannelType::Discord.classify_chat("123").is_none());
     }
 
     #[test]

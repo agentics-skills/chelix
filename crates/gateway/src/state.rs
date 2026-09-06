@@ -364,7 +364,6 @@ impl GatewayInner {
             channels_offered: vec![
                 "telegram".into(),
                 "whatsapp".into(),
-                "discord".into(),
                 "slack".into(),
                 "matrix".into(),
             ],
@@ -1047,7 +1046,6 @@ mod tests {
         assert_eq!(inner.channels_offered, vec![
             "telegram".to_owned(),
             "whatsapp".to_owned(),
-            "discord".to_owned(),
             "slack".to_owned(),
             "matrix".to_owned(),
         ]);

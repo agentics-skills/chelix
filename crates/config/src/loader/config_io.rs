@@ -981,6 +981,15 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     let context = format!("config {}", path.display());
     validate_provider_names(&config.providers, &context)?;
     validate_agent_ids(&config.agents, &context)?;
+    let invalid_channels = config.channels.invalid_channel_types();
+    if !invalid_channels.is_empty() {
+        let paths = invalid_channels
+            .into_iter()
+            .map(|(path, channel_type)| format!("{path}: unknown channel type '{channel_type}'"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(crate::Error::message(format!("invalid {context}: {paths}")));
+    }
     validate_context7_request_timeout(&config, &context)?;
     validate_linkup_request_timeout(&config, &context)?;
     Ok(config)

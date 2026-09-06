@@ -58,7 +58,7 @@ body:
         - CLI
         - Sandbox
         - MCP integration
-        - Channels (Telegram, Discord, etc.)
+        - Channels (Telegram, etc.)
         - Agent loop / LLM providers
         - Configuration
         - API / SDK

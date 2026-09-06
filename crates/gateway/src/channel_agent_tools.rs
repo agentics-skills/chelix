@@ -37,7 +37,7 @@ impl AgentTool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a proactive message to any configured channel account/chat (Telegram, Discord, Slack, Matrix, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
+        "Send a proactive message to any configured channel account/chat (Telegram, Slack, Matrix, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -59,7 +59,7 @@ impl AgentTool for SendMessageTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "discord", "slack", "matrix", "whatsapp"],
+                    "enum": ["telegram", "slack", "matrix", "whatsapp"],
                     "description": "Optional channel type hint when account ids may overlap across channel types."
                 },
                 "reply_to": {
@@ -241,7 +241,6 @@ impl AgentTool for UpdateChannelSettingsTool {
                     "enum": [
                         "telegram",
                         "whatsapp",
-                        "discord",
                         "slack",
                         "matrix",
                         "signal",
@@ -265,7 +264,7 @@ impl AgentTool for UpdateChannelSettingsTool {
                         "mention_mode": {
                             "type": "string",
                             "enum": ["mention", "always", "none"],
-                            "description": "Supported by Telegram, Discord, Slack, and WhatsApp."
+                            "description": "Supported by Telegram, Slack, and WhatsApp."
                         },
                         "model_override": {
                             "description": "Set the complete canonical model/reasoning override for this account, or null to clear it.",
@@ -292,25 +291,25 @@ impl AgentTool for UpdateChannelSettingsTool {
                         "group_allowlist_add": {
                             "type": "array",
                             "items": { "type": "string" },
-                            "description": "Group, guild, or channel ids to add to the group allowlist."
+                            "description": "Group or channel ids to add to the group allowlist."
                         },
                         "group_allowlist_remove": {
                             "type": "array",
                             "items": { "type": "string" },
-                            "description": "Group, guild, or channel ids to remove from the group allowlist."
+                            "description": "Group or channel ids to remove from the group allowlist."
                         },
                         "otp_self_approval": {
                             "type": "boolean",
-                            "description": "Supported by Telegram, Discord, and WhatsApp."
+                            "description": "Supported by Telegram, and WhatsApp."
                         },
                         "otp_cooldown_secs": {
                             "type": "integer",
                             "minimum": 0,
-                            "description": "Supported by Telegram, Discord, and WhatsApp."
+                            "description": "Supported by Telegram, and WhatsApp."
                         },
                         "reply_to_message": {
                             "type": "boolean",
-                            "description": "Supported by Telegram and Discord."
+                            "description": "Supported by Telegram."
                         },
                         "thread_replies": {
                             "type": "boolean",
@@ -322,10 +321,10 @@ impl AgentTool for UpdateChannelSettingsTool {
                             "description": "Supported by Telegram (`edit_in_place`, `off`) and Slack (`edit_in_place`, `native`, `off`)."
                         },
                         "channel_override": targeted_model_override_schema(
-                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Discord/Slack/WhatsApp channel or chat id."
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Slack/WhatsApp channel or chat id."
                         ),
                         "user_override": targeted_model_override_schema(
-                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Discord/Slack/WhatsApp user id."
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Slack/WhatsApp user id."
                         )
                     }
                 }
@@ -565,19 +564,16 @@ fn ensure_supported(channel_type: ChannelType, field: &str, supported: bool) -> 
 fn supports_mention_mode(channel_type: ChannelType) -> bool {
     matches!(
         channel_type,
-        ChannelType::Telegram | ChannelType::Discord | ChannelType::Slack | ChannelType::Whatsapp
+        ChannelType::Telegram | ChannelType::Slack | ChannelType::Whatsapp
     )
 }
 
 fn supports_otp_settings(channel_type: ChannelType) -> bool {
-    matches!(
-        channel_type,
-        ChannelType::Telegram | ChannelType::Discord | ChannelType::Whatsapp
-    )
+    matches!(channel_type, ChannelType::Telegram | ChannelType::Whatsapp)
 }
 
 fn supports_reply_to_message(channel_type: ChannelType) -> bool {
-    matches!(channel_type, ChannelType::Telegram | ChannelType::Discord)
+    matches!(channel_type, ChannelType::Telegram)
 }
 
 fn supports_thread_replies(channel_type: ChannelType) -> bool {
@@ -587,7 +583,7 @@ fn supports_thread_replies(channel_type: ChannelType) -> bool {
 fn supports_model_overrides(channel_type: ChannelType) -> bool {
     matches!(
         channel_type,
-        ChannelType::Telegram | ChannelType::Discord | ChannelType::Slack | ChannelType::Whatsapp
+        ChannelType::Telegram | ChannelType::Slack | ChannelType::Whatsapp
     )
 }
 
@@ -630,7 +626,6 @@ fn validate_stream_mode(
 fn group_allowlist_key(channel_type: ChannelType) -> &'static str {
     match channel_type {
         ChannelType::Telegram | ChannelType::Whatsapp => "group_allowlist",
-        ChannelType::Discord => "guild_allowlist",
         ChannelType::Slack => "channel_allowlist",
         _ => "group_allowlist",
     }
@@ -1235,12 +1230,12 @@ mod tests {
     async fn update_channel_settings_replaces_complete_model_override() {
         let service = Arc::new(RecordingChannelService::new());
         let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
-            "discord-main",
-            "discord",
+            "telegram-main",
+            "telegram",
             json!({
-                "token": "discord-secret",
+                "token": "telegram-secret",
                 "allowlist": [],
-                "guild_allowlist": [],
+                "group_allowlist": [],
                 "channel_overrides": {
                     "chan-1": {
                         "model_override": {
@@ -1258,7 +1253,7 @@ mod tests {
         );
 
         tool.execute(json!({
-            "account_id": "discord-main",
+            "account_id": "telegram-main",
             "settings": {
                 "channel_override": {
                     "target_id": "chan-1",

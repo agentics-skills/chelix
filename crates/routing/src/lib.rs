@@ -2,11 +2,10 @@
 //!
 //! Binding cascade (precedence):
 //! 1. Peer binding (exact peer ID match)
-//! 2. Guild binding (Discord guild ID)
-//! 3. Team binding (Slack team ID)
-//! 4. Account binding (channel + account)
-//! 5. Channel binding (channel + wildcard account)
-//! 6. Default agent (agents.defaults.id)
+//! 2. Team binding (Slack team ID)
+//! 3. Account binding (channel + account)
+//! 4. Channel binding (channel + wildcard account)
+//! 5. Default agent (agents.defaults.id)
 
 pub mod error;
 pub mod resolve;
