@@ -35,7 +35,6 @@ pub struct MsgContext {
     pub media_path: Option<String>,
     pub media_url: Option<String>,
     pub group_id: Option<String>,
-    pub team_id: Option<String>,
     pub sender_name: Option<String>,
 }
 

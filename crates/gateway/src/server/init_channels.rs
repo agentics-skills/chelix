@@ -10,8 +10,6 @@ use crate::services::GatewayServices;
 /// needs to store in gateway state or pass to other init phases.
 pub(crate) struct ChannelInitResult {
     pub(crate) services: GatewayServices,
-    #[cfg(feature = "slack")]
-    pub(crate) slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
     pub(crate) telephony_webhook_plugin:
         Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
@@ -124,21 +122,6 @@ pub(crate) async fn init_channels(
         telephony_webhook_plugin = Arc::clone(&telephony_plugin);
         registry
             .register(telephony_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-
-    #[cfg(feature = "slack")]
-    let slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>;
-    #[cfg(feature = "slack")]
-    {
-        let slack_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_slack::SlackPlugin::new()
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        slack_webhook_plugin = Arc::clone(&slack_plugin);
-        registry
-            .register(slack_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
             .await;
     }
 
@@ -257,8 +240,6 @@ pub(crate) async fn init_channels(
 
     Ok(ChannelInitResult {
         services,
-        #[cfg(feature = "slack")]
-        slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
     })

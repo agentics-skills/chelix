@@ -749,7 +749,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("slack"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("matrix"))))
             .await;
 
         registry
@@ -758,7 +758,7 @@ mod tests {
             .unwrap();
 
         let result = registry
-            .start_account("slack", "shared-id", serde_json::json!({}))
+            .start_account("matrix", "shared-id", serde_json::json!({}))
             .await;
         assert!(result.is_err());
     }
@@ -786,7 +786,7 @@ mod tests {
     async fn unknown_channel_type_errors() {
         let registry = ChannelRegistry::new();
         let result = registry
-            .start_account("slack", "bot1", serde_json::json!({}))
+            .start_account("matrix", "bot1", serde_json::json!({}))
             .await;
         assert!(result.is_err());
     }
@@ -798,7 +798,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("slack"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("matrix"))))
             .await;
 
         registry
@@ -806,14 +806,14 @@ mod tests {
             .await
             .unwrap();
         registry
-            .start_account("slack", "sl1", serde_json::json!({}))
+            .start_account("matrix", "mx1", serde_json::json!({}))
             .await
             .unwrap();
 
         let mut accounts = registry.all_accounts();
         accounts.sort();
         assert_eq!(accounts, vec![
-            ("slack".into(), "sl1".into()),
+            ("matrix".into(), "mx1".into()),
             ("telegram".into(), "tg1".into()),
         ]);
     }
@@ -917,7 +917,7 @@ mod tests {
             .register(Arc::new(RwLock::new(TestPlugin::new("telegram"))))
             .await;
         registry
-            .register(Arc::new(RwLock::new(TestPlugin::new("slack"))))
+            .register(Arc::new(RwLock::new(TestPlugin::new("matrix"))))
             .await;
 
         let mut descs: Vec<String> = registry
@@ -926,7 +926,7 @@ mod tests {
             .map(|d| d.channel_type.to_string())
             .collect();
         descs.sort();
-        assert_eq!(descs, vec!["slack", "telegram"]);
+        assert_eq!(descs, vec!["matrix", "telegram"]);
     }
 
     #[test]

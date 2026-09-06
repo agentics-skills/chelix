@@ -59,7 +59,6 @@ default = [
   "prometheus",
   "push-notifications",
   "signal",
-  "slack",
   "telephony",
   "tls",
   "vault",
@@ -72,7 +71,6 @@ metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
 prometheus = ["chelix-gateway/prometheus", "metrics"]
 push-notifications = ["chelix-gateway/push-notifications", "dep:chrono"]
 signal = ["chelix-gateway/signal"]
-slack = ["chelix-gateway/slack"]
 telephony = ["chelix-gateway/telephony", "dep:chelix-telephony"]
 tls = ["chelix-gateway/tls", "dep:chelix-tls", "dep:rustls"]
 vault = ["chelix-gateway/vault", "dep:chelix-vault"]

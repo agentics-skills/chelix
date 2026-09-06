@@ -83,7 +83,7 @@ chelix webhooks create \
 
 The agent can create webhooks programmatically using the `webhook` tool:
 
-> "Set up a webhook for GitHub issues on my repo and forward them to my Slack
+> "Set up a webhook for GitHub issues on my repo and forward them to my Telegram
 > channel"
 
 The agent will use the `webhook` tool with `action: "create"` to set up the
@@ -523,13 +523,13 @@ through a template and forwarded directly to a channel. Zero LLM tokens,
 sub-second delivery.
 
 This turns Chelix into a **webhook proxy**: external services POST events, and
-formatted messages appear in your Telegram, Slack, or any other
+formatted messages appear in your Telegram or any other
 configured channel.
 
 ### When to Use Deliver-Only
 
 - **Payment notifications**: Stripe → Telegram
-- **CI/CD status**: GitHub Actions → Slack
+- **CI/CD status**: GitHub Actions → Telegram
 - **Inter-service notifications**: any HTTP POST → any channel
 - **High-volume events**: where per-event LLM calls would be wasteful
 
@@ -550,7 +550,7 @@ chelix webhooks create \
   --auth-mode static_header \
   --deliver-only \
   --prompt-template "Deploy {status}: {environment} ({commit_sha})" \
-  --deliver-to slack
+  --deliver-to telegram
 ```
 
 **Agent**: The agent can also create deliver-only webhooks using the `webhook`

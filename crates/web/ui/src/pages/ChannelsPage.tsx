@@ -22,7 +22,6 @@ import * as S from "../state";
 import { ConfirmDialog, copyToClipboard, requestConfirm, showToast } from "../ui";
 import { AddMatrixModal } from "./channels/modals/AddMatrixModal";
 import { AddSignalModal } from "./channels/modals/AddSignalModal";
-import { AddSlackModal } from "./channels/modals/AddSlackModal";
 // ── Sub-module imports (modals + shared fields) ──────────────
 import { AddTelegramModal } from "./channels/modals/AddTelegramModal";
 import { AddWhatsAppModal } from "./channels/modals/AddWhatsAppModal";
@@ -71,17 +70,11 @@ export interface ChannelConfig {
 	// Common
 	token?: string;
 	dm_policy?: string;
+	group_policy?: string;
 	mention_mode?: string;
 	allowlist?: string[];
 	model_override?: ChannelModelOverride;
 	model_provider?: string;
-	// Slack
-	bot_token?: string;
-	app_token?: string;
-	connection_mode?: string;
-	group_policy?: string;
-	signing_secret?: string;
-	channel_allowlist?: string[];
 	// Matrix
 	homeserver?: string;
 	user_id?: string;
@@ -162,7 +155,6 @@ const senders: Signal<SenderEntry[]> = signal([]);
 const activeTab: Signal<string> = signal("channels");
 export const showAddTelegram: Signal<boolean> = signal(false);
 export const showAddWhatsApp: Signal<boolean> = signal(false);
-export const showAddSlack: Signal<boolean> = signal(false);
 export const showAddMatrix: Signal<boolean> = signal(false);
 export const showAddSignal: Signal<boolean> = signal(false);
 export const editingChannel: Signal<Channel | null> = signal(null);
@@ -183,7 +175,6 @@ export function channelType(type: string | undefined): string {
 export function channelLabel(type: string | undefined): string {
 	const t = channelType(type);
 	if (t === "whatsapp") return "WhatsApp";
-	if (t === "slack") return "Slack";
 	if (t === "matrix") return "Matrix";
 	if (t === "signal") return "Signal";
 	return "Telegram";
@@ -198,7 +189,6 @@ const MODE_LABELS: Record<string, string> = {
 	none: "Send only",
 	polling: "Polling",
 	gateway_loop: "Gateway",
-	socket_mode: "Socket Mode",
 	webhook: "Webhook",
 };
 
@@ -206,7 +196,6 @@ const MODE_HINTS: Record<string, string> = {
 	webhook: "Requires a publicly reachable URL. Configure your platform to send events to the endpoint shown below.",
 	polling: "Connects automatically via long-polling. No public URL needed.",
 	gateway_loop: "Maintains a persistent connection. No public URL needed.",
-	socket_mode: "Connects via Socket Mode. No public URL needed.",
 	none: "This channel is send-only and cannot receive inbound messages.",
 };
 
@@ -536,7 +525,6 @@ interface ChannelIconProps {
 function ChannelIcon({ type }: ChannelIconProps): VNode {
 	const t = channelType(type);
 	if (t === "whatsapp") return <span className="icon icon-whatsapp" />;
-	if (t === "slack") return <span className="icon icon-slack" />;
 	if (t === "matrix") return <span className="icon icon-matrix" />;
 	return <span className="icon icon-telegram" />;
 }
@@ -689,7 +677,7 @@ function ChannelCard({ channel: ch }: ChannelCardProps): VNode {
 // ── Connect channel buttons ──────────────────────────────────
 
 function ConnectButtons(): VNode {
-	const offered = new Set((getGon("channels_offered") || ["telegram", "whatsapp", "slack", "matrix"]) as string[]);
+	const offered = new Set((getGon("channels_offered") || ["telegram", "whatsapp", "matrix"]) as string[]);
 	return (
 		<div className="flex gap-2 flex-wrap">
 			{offered.has("telegram") && (
@@ -701,17 +689,6 @@ function ConnectButtons(): VNode {
 					}}
 				>
 					<span className="icon icon-telegram" /> Connect Telegram
-				</button>
-			)}
-			{offered.has("slack") && (
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary inline-flex items-center gap-1.5"
-					onClick={() => {
-						if (connected.value) showAddSlack.value = true;
-					}}
-				>
-					<span className="icon icon-slack" /> Connect Slack
 				</button>
 			)}
 			{offered.has("matrix") && (
@@ -982,7 +959,6 @@ function ChannelsPageComponent(): VNode {
 			{activeTab.value === "channels" && <ChannelStorageNotice />}
 			{activeTab.value === "channels" ? <ChannelsTab /> : <SendersTab />}
 			<AddTelegramModal />
-			<AddSlackModal />
 			<AddMatrixModal />
 			<AddSignalModal />
 			<AddWhatsAppModal />
@@ -1001,7 +977,6 @@ export function initChannels(container: HTMLElement): void {
 	container.style.cssText = "flex-direction:column;padding:0;overflow:hidden;";
 	activeTab.value = "channels";
 	showAddTelegram.value = false;
-	showAddSlack.value = false;
 	showAddMatrix.value = false;
 	showAddSignal.value = false;
 	showAddWhatsApp.value = false;

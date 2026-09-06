@@ -14,9 +14,6 @@ pub struct PreparedGatewayCore {
     pub methods: Arc<MethodRegistry>,
     /// WebAuthn registry for passkey auth.
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
-    /// Slack webhook plugin.
-    #[cfg(feature = "slack")]
-    pub slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     /// Telephony webhook plugin.
     #[cfg(feature = "telephony")]
     pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,

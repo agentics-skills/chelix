@@ -44,7 +44,6 @@ default-members = [
   "crates/sessions",
   "crates/signal",
   "crates/skills",
-  "crates/slack",
   "crates/telegram",
   "crates/telephony",
   "crates/tls",
@@ -101,7 +100,6 @@ members = [
   "crates/sessions",
   "crates/signal",
   "crates/skills",
-  "crates/slack",
   "crates/splitter",
   "crates/telegram",
   "crates/telephony",
@@ -205,16 +203,15 @@ toml_edit         = "0.22"
 # webauthn-attestation-ca) and declared here only to unify the `vendored`
 # feature, which builds OpenSSL from source. Required for cross-compiling the
 # static musl Linux binary, where no system OpenSSL exists.
-openssl        = { features = ["vendored"], version = "0.10" }
-rand           = "0.10"
-ring           = "0.17"
-secrecy        = { features = ["serde"], version = "0.8" }
-sha1           = "0.10"
-sha2           = "0.10"
-slack-morphism = { features = ["axum", "hyper"], version = "2.20" }
-sled           = "0.34"
-sysinfo        = "0.34"
-teloxide       = { features = ["macros"], version = "0.17" }
+openssl  = { features = ["vendored"], version = "0.10" }
+rand     = "0.10"
+ring     = "0.17"
+secrecy  = { features = ["serde"], version = "0.8" }
+sha1     = "0.10"
+sha2     = "0.10"
+sled     = "0.34"
+sysinfo  = "0.34"
+teloxide = { features = ["macros"], version = "0.17" }
 # WhatsApp (sqlite-storage disabled to avoid libsqlite3-sys conflict with sqlx;
 # re-enable once sqlx 0.9 stabilises).
 wacore                         = { default-features = false, version = "0.5" }
@@ -342,7 +339,6 @@ chelix-service-traits   = { path = "crates/service-traits" }
 chelix-sessions         = { path = "crates/sessions" }
 chelix-signal           = { path = "crates/signal" }
 chelix-skills           = { path = "crates/skills" }
-chelix-slack            = { path = "crates/slack" }
 chelix-splitter         = { path = "crates/splitter" }
 chelix-telegram         = { path = "crates/telegram" }
 chelix-telephony        = { path = "crates/telephony" }

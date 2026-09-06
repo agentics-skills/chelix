@@ -228,41 +228,6 @@ impl Default for CronConfig {
     }
 }
 
-/// Channel webhook middleware configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WebhooksConfig {
-    /// Per-account rate limiting settings.
-    pub rate_limit: WebhookRateLimitConfig,
-}
-
-/// Rate limiting configuration for channel webhooks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WebhookRateLimitConfig {
-    /// Whether rate limiting is enabled (default: true).
-    pub enabled: bool,
-    /// Override max requests per minute per account. When set, overrides the
-    /// channel's built-in default. Leave unset to use per-channel defaults
-    /// (Slack: 30/min).
-    pub requests_per_minute: Option<u32>,
-    /// Override burst allowance per account.
-    pub burst: Option<u32>,
-    /// Interval in seconds between stale bucket cleanup (default: 300).
-    pub cleanup_interval_secs: u64,
-}
-
-impl Default for WebhookRateLimitConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            requests_per_minute: None,
-            burst: None,
-            cleanup_interval_secs: 300,
-        }
-    }
-}
-
 /// CalDAV integration configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]

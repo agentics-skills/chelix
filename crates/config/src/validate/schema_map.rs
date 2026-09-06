@@ -384,7 +384,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ("offered", Array(Box::new(Leaf))),
                     ("telegram", Map(Box::new(channel_account()))),
                     ("whatsapp", Map(Box::new(channel_account()))),
-                    ("slack", Map(Box::new(channel_account()))),
                     ("matrix", Map(Box::new(channel_account()))),
                     ("signal", Map(Box::new(channel_account()))),
                     ("telephony", Map(Box::new(channel_account()))),
@@ -528,18 +527,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ])))),
                 ),
             ])),
-        ),
-        (
-            "webhooks",
-            Struct(HashMap::from([(
-                "rate_limit",
-                Struct(HashMap::from([
-                    ("enabled", Leaf),
-                    ("requests_per_minute", Leaf),
-                    ("burst", Leaf),
-                    ("cleanup_interval_secs", Leaf),
-                ])),
-            )])),
         ),
         (
             "auxiliary",

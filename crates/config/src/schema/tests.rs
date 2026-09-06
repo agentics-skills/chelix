@@ -541,7 +541,6 @@ fn channels_config_defaults_offered() {
     assert_eq!(config.offered, vec![
         "telegram".to_string(),
         "whatsapp".to_string(),
-        "slack".to_string(),
         "matrix".to_string(),
         "signal".to_string(),
     ]);
@@ -553,7 +552,6 @@ fn channels_config_empty_toml_defaults_offered() {
     assert_eq!(config.offered, vec![
         "telegram".to_string(),
         "whatsapp".to_string(),
-        "slack".to_string(),
         "matrix".to_string(),
         "signal".to_string(),
     ]);
@@ -566,38 +564,6 @@ fn channels_config_explicit_offered() {
         "telegram".to_string(),
         "matrix".to_string()
     ]);
-}
-
-#[test]
-fn channels_slack_is_named_field_not_extra() {
-    let toml_str = r#"
-[slack.my-bot]
-token = "xoxb-test"
-"#;
-    let config: ChannelsConfig = toml::from_str(toml_str).unwrap();
-    assert!(
-        config.slack.contains_key("my-bot"),
-        "slack should be in named field"
-    );
-    assert!(
-        !config.extra.contains_key("slack"),
-        "slack should not appear in extra"
-    );
-}
-
-#[test]
-fn channels_all_channel_configs_includes_slack() {
-    let mut config = ChannelsConfig::default();
-    config
-        .slack
-        .insert("bot1".into(), serde_json::json!({"token": "xoxb-test"}));
-    let all = config.all_channel_configs();
-    let slack_entry = all.iter().find(|(ct, _)| *ct == "slack");
-    assert!(
-        slack_entry.is_some(),
-        "all_channel_configs should include slack"
-    );
-    assert!(slack_entry.unwrap().1.contains_key("bot1"));
 }
 
 #[test]

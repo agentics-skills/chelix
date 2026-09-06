@@ -404,21 +404,6 @@ allowlist = ["123456789"]       # Telegram user IDs or usernames (strings)
 See [Telegram](telegram.md) for full configuration reference and setup
 instructions.
 
-## Slack Integration
-
-```toml
-[channels]
-offered = ["slack"]
-
-[channels.slack.my-bot]
-bot_token = "xoxb-..."
-app_token = "xapp-..."
-dm_policy = "allowlist"
-allowlist = ["U123456789"]
-```
-
-See [Slack](slack.md) for full configuration reference and setup instructions.
-
 ## TLS / HTTPS
 
 ```toml

@@ -37,17 +37,9 @@ When `upstream_proxy` is set, the following traffic routes through the proxy:
 - **Tool HTTP requests** (web fetch, web search, Firecrawl)
 - **OAuth flows** (authorization and token exchange)
 - **MCP server auth** (OAuth for remote MCP servers)
-- **Channel outbound** (Slack streaming)
 
 Localhost and loopback addresses (`127.0.0.1`, `::1`, `localhost`) are
 automatically excluded from the proxy (`no_proxy`).
-
-### Slack caveat
-
-Slack streaming messages (progressive edits) are proxied via reqwest. However,
-regular `chat.postMessage` calls go through the `slack-morphism` library's
-built-in hyper connector, which does **not** use the upstream proxy. If you need
-full Slack proxy coverage, also set the `HTTPS_PROXY` environment variable.
 
 ### Telegram caveat
 

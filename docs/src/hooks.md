@@ -349,12 +349,6 @@ name = "llm-filter"
 command = "./hooks/filter-injection.sh"
 events = ["BeforeLLMCall", "AfterLLMCall"]
 timeout = 10
-
-[[hooks.hooks]]
-name = "notify-slack"
-command = "./hooks/slack-notify.sh"
-events = ["SessionEnd"]
-env = { SLACK_WEBHOOK_URL = "https://hooks.slack.com/..." }
 ```
 
 ## Eligibility Requirements
@@ -365,7 +359,6 @@ Hooks can declare requirements that must be met:
 [requires]
 os = ["darwin", "linux"]       # Only run on these OSes
 bins = ["jq", "curl"]          # Required binaries in PATH
-env = ["SLACK_WEBHOOK_URL"]    # Required environment variables
 ```
 
 If requirements aren't met, the hook is skipped (not an error).
@@ -447,21 +440,6 @@ information for future sessions.
 Logs all `Command` events to a JSONL file for auditing.
 
 ## Example Hooks
-
-### Slack Notification on Session End
-
-```bash
-#!/bin/bash
-# slack-notify.sh
-payload=$(cat)
-session_key=$(echo "$payload" | jq -r '.session_key')
-
-curl -X POST "$SLACK_WEBHOOK_URL" \
-  -H 'Content-Type: application/json' \
-  -d "{\"text\":\"Session $session_key ended\"}"
-
-exit 0
-```
 
 ### Redact Secrets from Tool Arguments
 

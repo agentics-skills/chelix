@@ -215,14 +215,7 @@ pub struct McpOAuthOverrideEntry {
 ///
 /// Kept in `chelix-config` (not `chelix-channels`) so the config crate stays
 /// independent of the channels crate while still validating channel names.
-pub const KNOWN_CHANNEL_TYPES: &[&str] = &[
-    "telegram",
-    "whatsapp",
-    "slack",
-    "matrix",
-    "signal",
-    "telephony",
-];
+pub const KNOWN_CHANNEL_TYPES: &[&str] = &["telegram", "whatsapp", "matrix", "signal", "telephony"];
 
 /// Per-chat-type tool policy for a channel account.
 ///
@@ -265,7 +258,7 @@ pub struct ChannelToolPolicyOverride {
 #[serde(default)]
 pub struct ChannelsConfig {
     /// Which channel types are offered in the web UI (onboarding + channels page).
-    /// Defaults to `["telegram", "whatsapp", "slack", "matrix", "signal"]`.
+    /// Defaults to `["telegram", "whatsapp", "matrix", "signal"]`.
     #[serde(
         default = "default_channels_offered",
         skip_serializing_if = "Vec::is_empty"
@@ -277,9 +270,6 @@ pub struct ChannelsConfig {
     /// WhatsApp linked-device accounts, keyed by account ID.
     #[serde(default)]
     pub whatsapp: HashMap<String, serde_json::Value>,
-    /// Slack bot accounts, keyed by account ID.
-    #[serde(default)]
-    pub slack: HashMap<String, serde_json::Value>,
     /// Signal accounts backed by signal-cli, keyed by account ID.
     #[serde(default)]
     pub signal: HashMap<String, serde_json::Value>,
@@ -317,11 +307,10 @@ impl ChannelsConfig {
     ///
     /// This is the single source of truth for the set of named channel types.
     /// Keep in sync with the struct fields.
-    fn named_fields(&self) -> [(&str, &HashMap<String, serde_json::Value>); 5] {
+    fn named_fields(&self) -> [(&str, &HashMap<String, serde_json::Value>); 4] {
         [
             ("telegram", &self.telegram),
             ("whatsapp", &self.whatsapp),
-            ("slack", &self.slack),
             ("signal", &self.signal),
             ("telephony", &self.telephony),
         ]
@@ -361,7 +350,6 @@ fn default_channels_offered() -> Vec<String> {
     vec![
         "telegram".into(),
         "whatsapp".into(),
-        "slack".into(),
         "matrix".into(),
         "signal".into(),
     ]
@@ -373,7 +361,6 @@ impl Default for ChannelsConfig {
             offered: default_channels_offered(),
             telegram: HashMap::new(),
             whatsapp: HashMap::new(),
-            slack: HashMap::new(),
             signal: HashMap::new(),
             telephony: HashMap::new(),
             extra: HashMap::new(),

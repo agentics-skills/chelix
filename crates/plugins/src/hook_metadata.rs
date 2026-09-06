@@ -12,7 +12,6 @@
 //! [requires]
 //! os = ["darwin", "linux"]
 //! bins = ["jq"]
-//! env = ["SLACK_WEBHOOK_URL"]
 //! +++
 //!
 //! # My Hook

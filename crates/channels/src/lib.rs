@@ -1,10 +1,9 @@
 //! Channel plugin system.
 //!
-//! Each channel (Telegram, Slack, WhatsApp, etc.) implements the
+//! Each channel (Telegram, WhatsApp, etc.) implements the
 //! ChannelPlugin trait with sub-traits for config, auth, inbound/outbound
 //! messaging, status, and gateway lifecycle.
 
-pub mod channel_webhook_middleware;
 pub mod commands;
 pub mod config_view;
 pub mod contract;
@@ -18,10 +17,6 @@ pub mod registry;
 pub mod store;
 
 pub use {
-    channel_webhook_middleware::{
-        ChannelWebhookDedupeResult, ChannelWebhookRatePolicy, ChannelWebhookRejection,
-        ChannelWebhookVerifier, TimestampGuard, VerifiedChannelWebhook,
-    },
     config_view::ChannelConfigView,
     error::{Error, Result},
     media_download::{InboundMediaDownloader, InboundMediaSource},

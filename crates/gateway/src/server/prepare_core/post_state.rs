@@ -78,8 +78,6 @@ pub(super) struct PostStateInputs {
     pub discovered_hooks_info: Vec<DiscoveredHookInfo>,
     pub persisted_disabled: std::collections::HashSet<String>,
     pub agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
-    #[cfg(feature = "slack")]
-    pub slack_webhook_plugin: Arc<tokio::sync::RwLock<chelix_slack::SlackPlugin>>,
     #[cfg(feature = "telephony")]
     pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
     #[cfg(feature = "vault")]
@@ -241,8 +239,6 @@ pub(super) async fn complete_startup(
         discovered_hooks_info,
         persisted_disabled,
         agents_config,
-        #[cfg(feature = "slack")]
-        slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
         #[cfg(feature = "vault")]
@@ -919,8 +915,6 @@ pub(super) async fn complete_startup(
         state: Arc::clone(&state),
         methods: Arc::clone(&methods),
         webauthn_registry,
-        #[cfg(feature = "slack")]
-        slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
         #[cfg(feature = "push-notifications")]

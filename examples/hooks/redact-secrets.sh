@@ -19,7 +19,6 @@ fi
 REDACTED=$(echo "$INPUT" | sed -E \
     -e 's/(sk-[a-zA-Z0-9]{20,})/[REDACTED]/g' \
     -e 's/(ghp_[a-zA-Z0-9]{36,})/[REDACTED]/g' \
-    -e 's/(xoxb-[a-zA-Z0-9-]+)/[REDACTED]/g' \
     -e 's/("password"\s*:\s*")[^"]+/\1[REDACTED]/g')
 
 # Check if anything was redacted.

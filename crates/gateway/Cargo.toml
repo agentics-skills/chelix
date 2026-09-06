@@ -43,7 +43,6 @@ chelix-service-traits   = { workspace = true }
 chelix-sessions         = { workspace = true }
 chelix-signal           = { optional = true, workspace = true }
 chelix-skills           = { workspace = true }
-chelix-slack            = { optional = true, workspace = true }
 chelix-telegram         = { optional = true, workspace = true }
 chelix-telephony        = { optional = true, workspace = true }
 chelix-tools            = { workspace = true }
@@ -52,12 +51,10 @@ chelix-voice            = { optional = true, workspace = true }
 chelix-webhooks         = { workspace = true }
 chelix-whatsapp         = { optional = true, workspace = true }
 chrono                  = { features = ["serde"], optional = true, workspace = true }
-dashmap                 = { workspace = true }
 flate2                  = { workspace = true }
 futures                 = { workspace = true }
 gix                     = { workspace = true }
 hostname                = { workspace = true }
-http                    = { workspace = true }
 mdns-sd                 = { optional = true, workspace = true }
 p256                    = { features = ["ecdsa"], optional = true, workspace = true }
 pulldown-cmark          = { features = ["html"], workspace = true }
@@ -112,7 +109,6 @@ default = [
   "push-notifications",
   "qmd",
   "signal",
-  "slack",
   "telegram",
   "telephony",
   "tls",
@@ -149,7 +145,6 @@ prometheus = ["chelix-metrics/prometheus", "metrics"]
 push-notifications = ["chelix-chat/push-notifications", "dep:chrono", "dep:p256", "dep:web-push"]
 qmd = ["chelix-code-index/qmd", "dep:chelix-qmd"]
 signal = ["dep:chelix-signal"]
-slack = ["chelix-slack/metrics", "dep:chelix-slack"]
 telegram = ["chelix-chat/telegram", "dep:chelix-telegram"]
 telephony = ["dep:chelix-telephony"]
 tls = []
