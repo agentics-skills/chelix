@@ -91,7 +91,7 @@ impl AgentTool for WebhookTool {
                 },
                 "deliver_to": {
                     "type": "string",
-                    "description": "Target channel for deliver_only mode (telegram, discord, slack, etc.)."
+                    "description": "Target channel for deliver_only mode (telegram, slack, etc.)."
                 },
                 "webhook_id": {
                     "type": "integer",

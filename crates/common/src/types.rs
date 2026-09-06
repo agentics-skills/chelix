@@ -9,7 +9,7 @@ pub type AccountId = String;
 /// Unique identifier for a peer (user on a channel).
 pub type PeerId = String;
 
-/// Channel identifier (e.g. "telegram", "discord", "whatsapp").
+/// Channel identifier (e.g. "telegram", "whatsapp").
 pub type ChannelId = String;
 
 /// Chat type for routing and session scoping.
@@ -35,7 +35,6 @@ pub struct MsgContext {
     pub media_path: Option<String>,
     pub media_url: Option<String>,
     pub group_id: Option<String>,
-    pub guild_id: Option<String>,
     pub team_id: Option<String>,
     pub sender_name: Option<String>,
 }

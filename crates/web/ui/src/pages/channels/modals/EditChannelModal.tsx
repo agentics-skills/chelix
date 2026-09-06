@@ -42,8 +42,6 @@ interface EditChannelDraft {
 	matrixOtpCooldown: string;
 	signalAccount: string;
 	signalHttpUrl: string;
-	channelNamePatterns: string[];
-	categoryAllowlist: string[];
 }
 
 function configString(value: unknown, fallback = ""): string {
@@ -72,8 +70,6 @@ function channelEditDraft(config: ChannelConfig): EditChannelDraft {
 		matrixOtpCooldown: String(config.otp_cooldown_secs || 300),
 		signalAccount: configString(config.account),
 		signalHttpUrl: configString(config.http_url, "http://127.0.0.1:8080"),
-		channelNamePatterns: firstConfigArray([config.channel_name_patterns]),
-		categoryAllowlist: firstConfigArray([config.category_allowlist]),
 	};
 }
 
@@ -112,7 +108,6 @@ function applyChannelCredentials(
 	draft: EditChannelDraft,
 	form: HTMLElement,
 ): void {
-	if (channelKind === ChannelType.Discord) config.token = draft.credential || current.token || "";
 	if (channelKind === ChannelType.Telegram) config.token = current.token || "";
 	if (channelKind === ChannelType.Signal) {
 		config.account = draft.signalAccount.trim();
@@ -165,61 +160,8 @@ function buildChannelUpdateConfig(
 	if (channelKind === ChannelType.Matrix) applyMatrixPolicy(config, current, draft, form);
 	if (channelKind === ChannelType.Signal) applySignalPolicy(config, current, draft, form);
 	if (!isWhatsApp) config.mention_mode = formFieldValue(form, "mentionMode", "mention");
-	if (channelKind === ChannelType.Discord) {
-		config.channel_name_patterns = draft.channelNamePatterns;
-		config.category_allowlist = draft.categoryAllowlist;
-	}
 	applyChannelCredentials(config, channelKind, current, draft, form);
 	return config;
-}
-
-interface DiscordEditFieldsProps {
-	credential: Signal<string>;
-	channelNamePatterns: Signal<string[]>;
-	categoryAllowlist: Signal<string[]>;
-}
-
-function DiscordEditFields({ credential, channelNamePatterns, categoryAllowlist }: DiscordEditFieldsProps): VNode {
-	return (
-		<>
-			<label>
-				<span className="text-xs text-[var(--muted)]">Bot Token (optional: leave blank to keep existing)</span>
-				<input
-					type="password"
-					className="channel-input w-full"
-					value={credential.value}
-					onInput={(event) => {
-						credential.value = targetValue(event);
-					}}
-				/>
-			</label>
-			<span className="text-xs text-[var(--muted)]">Channel Name Patterns (optional)</span>
-			<AllowlistInput
-				ariaLabel="Channel Name Patterns (optional)"
-				value={channelNamePatterns.value}
-				onChange={(value) => {
-					channelNamePatterns.value = value;
-				}}
-				placeholder="e.g. ticket-* (glob patterns, Enter to add)"
-			/>
-			<div className="text-xs text-[var(--muted)] -mt-1">
-				When set, the bot only responds in guild channels whose name matches a pattern. Matched channels do not require
-				@mention. Supports * wildcards.
-			</div>
-			<span className="text-xs text-[var(--muted)]">Category IDs (optional)</span>
-			<AllowlistInput
-				ariaLabel="Category IDs (optional)"
-				value={categoryAllowlist.value}
-				onChange={(value) => {
-					categoryAllowlist.value = value;
-				}}
-				placeholder="Discord category ID (Enter to add)"
-			/>
-			<div className="text-xs text-[var(--muted)] -mt-1">
-				Only respond in channels under these Discord categories. Combined with name patterns via OR.
-			</div>
-		</>
-	);
 }
 
 interface SignalEditFieldsProps {
@@ -588,8 +530,6 @@ export function EditChannelModal(): VNode | null {
 	const editMatrixOtpCooldown = useSignal("300");
 	const editSignalAccount = useSignal("");
 	const editSignalHttpUrl = useSignal("http://127.0.0.1:8080");
-	const editChannelNamePatterns = useSignal<string[]>([]);
-	const editCategoryAllowlist = useSignal<string[]>([]);
 	const editAdvancedConfigPatch = useSignal("");
 
 	useEffect(() => {
@@ -607,8 +547,6 @@ export function EditChannelModal(): VNode | null {
 		editMatrixOtpCooldown.value = draft.matrixOtpCooldown;
 		editSignalAccount.value = draft.signalAccount;
 		editSignalHttpUrl.value = draft.signalHttpUrl;
-		editChannelNamePatterns.value = draft.channelNamePatterns;
-		editCategoryAllowlist.value = draft.categoryAllowlist;
 		editAdvancedConfigPatch.value = "";
 	}, [ch]);
 
@@ -625,7 +563,6 @@ export function EditChannelModal(): VNode | null {
 
 	const cfg = ch.config || {};
 	const chType = channelType(ch.type);
-	const isDiscord = chType === ChannelType.Discord;
 	const isWhatsApp = chType === ChannelType.WhatsApp;
 	const isTelegram = chType === ChannelType.Telegram;
 	const isMatrix = chType === ChannelType.Matrix;
@@ -646,8 +583,6 @@ export function EditChannelModal(): VNode | null {
 			matrixOtpCooldown: editMatrixOtpCooldown.value,
 			signalAccount: editSignalAccount.value,
 			signalHttpUrl: editSignalHttpUrl.value,
-			channelNamePatterns: editChannelNamePatterns.value,
-			categoryAllowlist: editCategoryAllowlist.value,
 		};
 	}
 
@@ -708,13 +643,6 @@ export function EditChannelModal(): VNode | null {
 						t.me/{ch.account_id}
 					</a>
 				)}
-				{isDiscord ? (
-					<DiscordEditFields
-						credential={editCredential}
-						channelNamePatterns={editChannelNamePatterns}
-						categoryAllowlist={editCategoryAllowlist}
-					/>
-				) : null}
 				{isSignal ? <SignalEditFields account={editSignalAccount} httpUrl={editSignalHttpUrl} /> : null}
 				{isMatrix ? (
 					<MatrixEditFields

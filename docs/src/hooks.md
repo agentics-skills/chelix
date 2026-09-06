@@ -128,7 +128,7 @@ dispatched.
 
 | Field          | Type        | Description                                                                    |
 | -------------- | ----------- | ------------------------------------------------------------------------------ |
-| `surface`      | string/null | Runtime surface, for example `telegram`, `discord`, `web`, `cron`, `heartbeat` |
+| `surface`      | string/null | Runtime surface, for example `telegram`, `web`, `cron`, `heartbeat` |
 | `session_kind` | string/null | High-level source kind, usually `channel`, `web`, or `cron`                    |
 | `channel_type` | string/null | Channel plugin type when channel-bound                                         |
 | `account_id`   | string/null | Channel account identifier                                                     |

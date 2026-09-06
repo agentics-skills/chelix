@@ -173,7 +173,7 @@ values above the threshold may exceed 100%.
 
 ## Channel notifications
 
-When a session attached to a channel (Telegram, Discord, Matrix, WhatsApp, etc.)
+When a session attached to a channel (Telegram, Matrix, WhatsApp, etc.)
 is summarized, pending reply targets receive a short notice with the model,
 token usage, and the number of messages checkpointed.
 

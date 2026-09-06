@@ -67,7 +67,6 @@ full = [
   "code-index-builtin",
   "code-splitter",
   "context7",
-  "discord",
   "duckduckgo",
   "file-watcher",
   "firecrawl",
@@ -112,7 +111,6 @@ full = [
 code-index-builtin = ["chelix-gateway/code-index-builtin"]
 code-splitter      = ["chelix-memory/code-splitter"]
 context7           = ["chelix-gateway/context7"]
-discord            = ["chelix-httpd/discord"]
 duckduckgo         = ["chelix-gateway/duckduckgo"]
 embedded-assets    = ["chelix-web?/embedded-assets"]
 file-watcher       = ["chelix-gateway/file-watcher"]

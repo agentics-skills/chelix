@@ -12,5 +12,5 @@ pub fn resolve_agent_route(
     _msg: &MsgContext,
     _config: &serde_json::Value,
 ) -> Result<ResolvedRoute> {
-    todo!("walk binding cascade: peer → guild → team → account → channel → default")
+    todo!("walk binding cascade: peer → team → account → channel → default")
 }

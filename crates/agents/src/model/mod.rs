@@ -1073,7 +1073,7 @@ mod tests {
             "content": "hello",
             "channel": {
                 "username": "bob99",
-                "channel_type": "discord"
+                "channel_type": "telegram"
             }
         })];
         let msgs = values_to_chat_messages(&values).expect("valid message history");

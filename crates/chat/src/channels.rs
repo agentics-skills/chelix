@@ -78,8 +78,7 @@ pub(crate) async fn deliver_channel_replies(
     } else {
         targets = drained_targets;
     }
-    let is_channel_session =
-        session_key.starts_with("telegram:") || session_key.starts_with("discord:");
+    let is_channel_session = session_key.starts_with("telegram:");
     if targets.is_empty() && streamed_targets.is_empty() {
         let _ = state.drain_channel_status_log(session_key).await;
         if is_channel_session {
@@ -245,7 +244,7 @@ fn format_channel_error_message(error_obj: &Value) -> String {
 /// Format a user-facing notice announcing that a session was summarized
 /// into a checkpoint.
 ///
-/// Shown verbatim to channel users (Telegram, Discord, WhatsApp, etc.) and
+/// Shown verbatim to channel users (Telegram, WhatsApp, etc.) and
 /// kept short so small mobile clients don't wrap the whole thing.
 fn format_channel_compaction_notice(outcome: &compaction::CheckpointOutcome) -> String {
     let total = outcome.input_tokens.saturating_add(outcome.output_tokens);

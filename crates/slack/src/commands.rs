@@ -1,6 +1,6 @@
 //! Slack slash command manifest generation.
 //!
-//! Slack does not support programmatic command registration (unlike Discord).
+//! Slack does not support programmatic command registration.
 //! Commands must be configured in the Slack app manifest. This module
 //! generates the manifest snippet that users paste into their Slack app config.
 

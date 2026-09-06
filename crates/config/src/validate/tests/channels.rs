@@ -19,24 +19,6 @@ offered = ["telegram"]
 }
 
 #[test]
-fn channels_offered_discord_accepted() {
-    let toml = r#"
-[channels]
-offered = ["telegram", "discord"]
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path.starts_with("channels.offered") && d.category == "unknown-field");
-    assert!(
-        warning.is_none(),
-        "discord in channels.offered should not produce warnings, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
 fn channels_offered_telephony_accepted_for_manual_compatibility() {
     let toml = r#"
 [channels]
@@ -55,26 +37,7 @@ offered = ["telephony"]
 }
 
 #[test]
-fn channels_discord_config_accepted() {
-    let toml = r#"
-[channels.discord.my_bot]
-token = "test-token"
-dm_policy = "allowlist"
-"#;
-    let result = validate_toml_str(toml);
-    let error = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path.starts_with("channels.discord") && d.severity == Severity::Error);
-    assert!(
-        error.is_none(),
-        "discord channel config should be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn channels_offered_unknown_type_warned() {
+fn channels_offered_unknown_type_rejected() {
     let toml = r#"
 [channels]
 offered = ["telegram", "foobar"]
@@ -85,10 +48,18 @@ offered = ["telegram", "foobar"]
         .iter()
         .find(|d| d.path == "channels.offered[1]" && d.category == "unknown-field");
     assert!(
-        warning.is_some(),
-        "unknown channel type should produce warning, got: {:?}",
+        warning.is_some_and(|diagnostic| diagnostic.severity == Severity::Error),
+        "unknown channel type should produce an error, got: {:?}",
         result.diagnostics
     );
+}
+
+#[test]
+fn channels_unknown_account_type_rejected() {
+    let result = validate_toml_str("[channels.unknown_type.bot]\ntoken = 'test'");
+    assert!(result.diagnostics.iter().any(|diagnostic| {
+        diagnostic.path == "channels.unknown_type" && diagnostic.severity == Severity::Error
+    }));
 }
 
 #[test]
@@ -128,7 +99,7 @@ offered = ["telegram", "matrix"]
 }
 
 #[test]
-fn channels_offered_dynamic_type_accepted() {
+fn channels_offered_configured_known_type_accepted() {
     let toml = r#"
 [channels]
 offered = ["telegram", "slack"]
@@ -143,7 +114,7 @@ token = "xoxb-test"
         .find(|d| d.path.starts_with("channels.offered") && d.category == "unknown-field");
     assert!(
         warning.is_none(),
-        "dynamically configured channel type should be accepted in offered, got: {:?}",
+        "configured known channel type should be accepted in offered, got: {:?}",
         result.diagnostics
     );
 }
@@ -151,13 +122,13 @@ token = "xoxb-test"
 #[test]
 fn channels_extra_config_accepted() {
     let toml = r#"
-[channels.slack.my-bot]
-token = "xoxb-test"
+[channels.matrix.my-bot]
+access_token = "matrix-test"
 dm_policy = "allowlist"
 "#;
     let result = validate_toml_str(toml);
     let error = result.diagnostics.iter().find(|d| {
-        d.path.starts_with("channels.slack")
+        d.path.starts_with("channels.matrix")
             && (d.severity == Severity::Error || d.category == "unknown-field")
     });
     assert!(

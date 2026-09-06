@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/agentics-skills/chelix/master/insta
   `chelix-tools-service`
 - **MCP Support** — Connect to Model Context Protocol servers for extended
   capabilities
-- **Multi-Channel** — Web UI, Telegram, Discord, API access with synchronized
+- **Multi-Channel** — Web UI, Telegram, API access with synchronized
   responses
 - **Built-in Throttling** — Per-IP endpoint limits with strict login protection
 - **Long-Term Memory** — Embeddings-powered knowledge base with hybrid search
@@ -83,7 +83,7 @@ Authentication is only required when accessing Chelix from a non-localhost addre
 
 ```
 ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-│  Web UI  │  │ Telegram │  │ Discord  │  │   API    │
+│  Web UI  │  │ Telegram │  │  Signal  │  │   API    │
 └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
      │             │             │             │
      └─────────────┴─────────┬───┴─────────────┘

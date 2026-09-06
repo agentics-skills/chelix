@@ -780,8 +780,6 @@ fn default_sandbox_packages() -> Vec<String> {
         // Newsgroups (NNTP)
         "tin",
         "slrn",
-        // Messaging APIs
-        "python3-discord",
     ]
     .iter()
     .map(|s| (*s).to_string())

@@ -40,10 +40,10 @@ uuid                  = { workspace = true }
 which                 = { workspace = true }
 
 [dev-dependencies]
-mockito      = { workspace = true }
-sqlx         = { workspace = true }
-tempfile     = { workspace = true }
-tokio        = { features = ["macros", "rt-multi-thread"], workspace = true }
+mockito  = { workspace = true }
+sqlx     = { workspace = true }
+tempfile = { workspace = true }
+tokio    = { features = ["macros", "rt-multi-thread"], workspace = true }
 
 [lints]
 workspace = true

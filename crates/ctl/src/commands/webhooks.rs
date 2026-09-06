@@ -44,7 +44,7 @@ pub enum WebhooksCommand {
         /// Template with {dot.notation} variables from the payload.
         #[arg(long)]
         prompt_template: Option<String>,
-        /// Target channel for deliver_only mode (telegram, discord, slack, etc.).
+        /// Target channel for deliver_only mode (telegram, slack, etc.).
         #[arg(long)]
         deliver_to: Option<String>,
         /// Full JSON params (overrides individual flags).

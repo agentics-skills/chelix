@@ -1,6 +1,6 @@
 // ── Channel form sub-components for onboarding ───────────────
 //
-// Shared helpers and simple channel forms (Telegram, Discord).
+// Shared helpers and simple channel forms (Telegram, Signal).
 // Complex forms (Matrix, WhatsApp, Slack) live in ChannelStep.tsx.
 
 import type { VNode } from "preact";
@@ -76,7 +76,6 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 		[
 			["telegram", "icon-telegram", "Telegram"],
 			["whatsapp", "icon-whatsapp", "WhatsApp"],
-			["discord", "icon-discord", "Discord"],
 			["slack", "icon-slack", "Slack"],
 			["matrix", "icon-matrix", "Matrix"],
 			["signal", "icon-signal", "Signal"],
@@ -103,7 +102,6 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 // ── Channel success display ─────────────────────────────────
 
 export function channelDisplayLabel(type: string): string {
-	if (type === "discord") return "Discord";
 	if (type === "slack") return "Slack";
 	if (type === "whatsapp") return "WhatsApp";
 	if (type === "matrix") return "Matrix";
@@ -132,32 +130,6 @@ export function ChannelSuccess({
 					</div>
 				</div>
 			</div>
-			{type === "discord" && (
-				<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 text-xs text-[var(--muted)] flex flex-col gap-1.5">
-					<span className="font-medium text-[var(--text-strong)]">Next steps</span>
-					<span>
-						&bull; <strong>Invite to a server:</strong> the invite link was shown on the previous screen. You can also
-						generate one in the{" "}
-						<a
-							href="https://discord.com/developers/applications"
-							target="_blank"
-							rel="noopener"
-							className="text-[var(--accent)] underline"
-						>
-							Developer Portal
-						</a>{" "}
-						&rarr; OAuth2 &rarr; URL Generator (scope: bot, permissions: Send Messages, Attach Files, Read Message
-						History).
-					</span>
-					<span>
-						&bull; <strong>DM the bot:</strong> search for the bot&rsquo;s username in Discord and click Message. Make
-						sure your username is in the DM allowlist.
-					</span>
-					<span>
-						&bull; <strong>In a server:</strong> @mention the bot to get a response.
-					</span>
-				</div>
-			)}
 			<button
 				type="button"
 				className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none underline self-start"
@@ -296,200 +268,6 @@ export function TelegramForm({ onConnected, error, setError }: ChannelFormProps)
 				</label>
 				<div className="text-xs text-[var(--muted)] mt-1">
 					One username per line, without the @ sign. These users can DM your bot.
-				</div>
-			</div>
-			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />
-			{error && <ErrorPanel message={error} />}
-			<button type="submit" className="provider-btn" disabled={saving}>
-				{saving ? "Connecting\u2026" : "Connect Bot"}
-			</button>
-		</form>
-	);
-}
-
-// ── Discord form ────────────────────────────────────────────
-
-function discordInviteUrl(token: string): string {
-	if (!token) return "";
-	const parts = token.split(".");
-	if (parts.length < 3) return "";
-	try {
-		const id = atob(parts[0]);
-		if (!/^\d+$/.test(id)) return "";
-		return `https://discord.com/oauth2/authorize?client_id=${id}&scope=bot&permissions=100352`;
-	} catch {
-		return "";
-	}
-}
-
-export function DiscordForm({ onConnected, error, setError }: ChannelFormProps): VNode {
-	const [accountId, setAccountId] = useState("");
-	const [token, setToken] = useState("");
-	const [dmPolicy, setDmPolicy] = useState("allowlist");
-	const [allowlist, setAllowlist] = useState("");
-	const [channelPatterns, setChannelPatterns] = useState("");
-	const [advancedConfig, setAdvancedConfig] = useState("");
-	const [saving, setSaving] = useState(false);
-
-	function onSubmit(e: Event): void {
-		e.preventDefault();
-		const v = validateChannelFields("discord", accountId, token);
-		if (!v.valid) {
-			setError(v.error);
-			return;
-		}
-		const advancedPatch = parseChannelConfigPatch(advancedConfig);
-		if (!advancedPatch.ok) {
-			setError(advancedPatch.error);
-			return;
-		}
-		setError(null);
-		setSaving(true);
-		const allowlistEntries = allowlist
-			.trim()
-			.split(/\n/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		const patternEntries = channelPatterns
-			.trim()
-			.split(/\n/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		const config: Record<string, unknown> = {
-			token: token.trim(),
-			dm_policy: dmPolicy,
-			mention_mode: "mention",
-			allowlist: allowlistEntries,
-		};
-		if (patternEntries.length > 0) config.channel_name_patterns = patternEntries;
-		Object.assign(config, advancedPatch.value);
-		(
-			addChannel("discord", accountId.trim(), config) as Promise<{
-				ok?: boolean;
-				error?: { message?: string; detail?: string };
-			}>
-		).then((res) => {
-			setSaving(false);
-			if (res?.ok) {
-				onConnected(accountId.trim(), "discord");
-			} else {
-				setError((res?.error && (res.error.message || res.error.detail)) || "Failed to connect bot.");
-			}
-		});
-	}
-
-	const inviteUrl = discordInviteUrl(token);
-
-	return (
-		<form onSubmit={onSubmit} className="flex flex-col gap-3">
-			<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-3 text-xs text-[var(--muted)] flex flex-col gap-1">
-				<span className="font-medium text-[var(--text-strong)]">How to set up a Discord bot</span>
-				<span>
-					1. Go to the{" "}
-					<a
-						href="https://discord.com/developers/applications"
-						target="_blank"
-						rel="noopener"
-						className="text-[var(--accent)] underline"
-					>
-						Discord Developer Portal
-					</a>
-				</span>
-				<span>2. Create a new Application &rarr; Bot tab &rarr; copy the bot token</span>
-				<span>
-					3. Enable <strong>Message Content Intent</strong> under Privileged Gateway Intents
-				</span>
-				<span>4. Paste the token below &mdash; an invite link will be generated automatically</span>
-				<span>5. You can also DM the bot directly without adding it to a server</span>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Account ID</span>
-					<input
-						type="text"
-						className="provider-key-input w-full"
-						value={accountId}
-						onInput={(e) => setAccountId(targetValue(e))}
-						placeholder="e.g. my_discord_bot"
-						autoComplete="off"
-						autoCapitalize="none"
-						autoCorrect="off"
-						spellcheck={false}
-						name="discord_account_id"
-					/>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Bot token</span>
-					<input
-						type="password"
-						className="provider-key-input w-full"
-						value={token}
-						onInput={(e) => setToken(targetValue(e))}
-						placeholder="Bot token from Developer Portal"
-						autoComplete="new-password"
-						autoCapitalize="none"
-						autoCorrect="off"
-						spellcheck={false}
-						name="discord_bot_token"
-					/>
-				</label>
-			</div>
-			{inviteUrl && (
-				<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] p-2.5 text-xs flex flex-col gap-1">
-					<span className="font-medium text-[var(--text-strong)]">Invite bot to a server</span>
-					<span className="text-[var(--muted)]">
-						Open this link to add the bot (Send Messages, Attach Files, Read Message History):
-					</span>
-					<a href={inviteUrl} target="_blank" rel="noopener" className="text-[var(--accent)] underline break-all">
-						{inviteUrl}
-					</a>
-				</div>
-			)}
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">DM Policy</span>
-					<select
-						className="provider-key-input w-full cursor-pointer"
-						value={dmPolicy}
-						onChange={(e) => setDmPolicy(targetValue(e))}
-					>
-						<option value="allowlist">Allowlist only (recommended)</option>
-						<option value="open">Open (anyone)</option>
-						<option value="disabled">Disabled</option>
-					</select>
-				</label>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Allowed Discord username(s)</span>
-					<textarea
-						className="provider-key-input w-full"
-						rows={2}
-						value={allowlist}
-						onInput={(e) => setAllowlist(targetValue(e))}
-						placeholder="your_username"
-						style="resize:vertical;font-family:var(--font-body);"
-					/>
-				</label>
-				<div className="text-xs text-[var(--muted)] mt-1">One username per line. These users can DM your bot.</div>
-			</div>
-			<div>
-				<label>
-					<span className="text-xs text-[var(--muted)] mb-1 block">Channel Name Patterns (optional)</span>
-					<textarea
-						className="provider-key-input w-full"
-						rows={2}
-						value={channelPatterns}
-						onInput={(e) => setChannelPatterns(targetValue(e))}
-						placeholder="ticket-*"
-						style="resize:vertical;font-family:var(--font-body);"
-					/>
-				</label>
-				<div className="text-xs text-[var(--muted)] mt-1">
-					One glob pattern per line. When set, the bot only responds in matching guild channels (no @mention needed).
-					Supports * wildcards. E.g., ticket-*, support-*.
 				</div>
 			</div>
 			<AdvancedConfigPatchField value={advancedConfig} onInput={setAdvancedConfig} />

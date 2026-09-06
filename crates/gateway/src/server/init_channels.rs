@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use tracing::info;
+use {anyhow::Context, tracing::info};
 
 use chelix_channels::ChannelPlugin;
 
@@ -30,28 +30,25 @@ pub(crate) async fn init_channels(
     session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
     deferred_state: Arc<tokio::sync::OnceCell<Arc<crate::state::GatewayState>>>,
     data_dir: &std::path::Path,
-) -> ChannelInitResult {
-    #[cfg(not(feature = "whatsapp"))]
-    let _ = data_dir;
-
+) -> anyhow::Result<ChannelInitResult> {
     use chelix_channels::{
         registry::{ChannelRegistry, RegistryOutboundRouter},
         store::ChannelStore,
     };
 
-    #[cfg(feature = "vault")]
-    let channel_store: Arc<dyn ChannelStore> = {
-        let inner: Arc<dyn ChannelStore> = Arc::new(crate::channel_store::SqliteChannelStore::new(
-            db_pool.clone(),
-        ));
-        Arc::new(crate::channel_store::VaultChannelStore::new(
-            inner,
-            vault.clone(),
-        ))
-    };
-    #[cfg(not(feature = "vault"))]
     let channel_store: Arc<dyn ChannelStore> = Arc::new(
         crate::channel_store::SqliteChannelStore::new(db_pool.clone()),
+    );
+    let db_path = data_dir.join("chelix.db");
+    let stored = channel_store
+        .list()
+        .await
+        .with_context(|| format!("failed to load stored channels from {}", db_path.display()))?;
+    validate_stored_channel_types(&stored, &db_path)?;
+
+    #[cfg(feature = "vault")]
+    let channel_store: Arc<dyn ChannelStore> = Arc::new(
+        crate::channel_store::VaultChannelStore::new(channel_store, vault.clone()),
     );
 
     let channel_sink: Arc<dyn chelix_channels::ChannelEventSink> = Arc::new(
@@ -70,18 +67,6 @@ pub(crate) async fn init_channels(
         ));
         registry
             .register(tg_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
-            .await;
-    }
-
-    #[cfg(feature = "discord")]
-    {
-        let discord_plugin = Arc::new(tokio::sync::RwLock::new(
-            chelix_discord::DiscordPlugin::new()
-                .with_message_log(Arc::clone(&message_log))
-                .with_event_sink(Arc::clone(&channel_sink)),
-        ));
-        registry
-            .register(discord_plugin as Arc<tokio::sync::RwLock<dyn ChannelPlugin>>)
             .await;
     }
 
@@ -270,11 +255,83 @@ pub(crate) async fn init_channels(
         Arc::clone(&session_metadata),
     ));
 
-    ChannelInitResult {
+    Ok(ChannelInitResult {
         services,
         #[cfg(feature = "slack")]
         slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
+    })
+}
+
+fn validate_stored_channel_types(
+    channels: &[chelix_channels::store::StoredChannel],
+    db_path: &std::path::Path,
+) -> anyhow::Result<()> {
+    let mut unknown: Vec<_> = channels
+        .iter()
+        .filter(|channel| {
+            channel
+                .channel_type
+                .parse::<chelix_channels::ChannelType>()
+                .is_err()
+        })
+        .map(|channel| format!("{}:{}", channel.channel_type, channel.account_id))
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    unknown.sort();
+    anyhow::bail!(
+        "unknown stored channel types in {}: {}",
+        db_path.display(),
+        unknown.join(", ")
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::validate_stored_channel_types,
+        chelix_channels::{ChannelType, store::StoredChannel},
+    };
+
+    fn stored_channel(channel_type: &str, account_id: &str) -> StoredChannel {
+        StoredChannel {
+            account_id: account_id.into(),
+            channel_type: channel_type.into(),
+            config: serde_json::json!({}),
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn stored_channel_types_accept_supported_accounts() {
+        let channels: Vec<_> = ChannelType::ALL
+            .iter()
+            .map(|channel_type| stored_channel(channel_type.as_str(), "bot"))
+            .collect();
+        assert!(
+            validate_stored_channel_types(&channels, std::path::Path::new("chelix.db")).is_ok()
+        );
+    }
+
+    #[test]
+    fn stored_channel_types_report_all_unknown_accounts_and_database_path() {
+        let channels = vec![
+            stored_channel("telegram", "known"),
+            stored_channel("unknown-b", "bot2"),
+            stored_channel("unknown-a", "bot1"),
+        ];
+        let result =
+            validate_stored_channel_types(&channels, std::path::Path::new("data/chelix.db"));
+        let Err(error) = result else {
+            panic!("unknown types must prevent channel startup");
+        };
+        let error = error.to_string();
+        assert!(error.contains("data/chelix.db"), "{error}");
+        assert!(error.contains("unknown-a:bot1, unknown-b:bot2"), "{error}");
+        assert!(!error.contains("telegram:known"), "{error}");
     }
 }

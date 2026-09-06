@@ -150,7 +150,7 @@ then stays unchanged for later senders until it is changed explicitly with
 
 ## Access Control
 
-Telegram uses the same gating system as Discord and other channels.
+Telegram uses the same gating system as other channels.
 
 ### DM Policy
 

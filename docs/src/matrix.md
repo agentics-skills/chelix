@@ -276,7 +276,7 @@ To show Matrix in the channel picker, include `"matrix"` in `channels.offered`:
 
 ```toml
 [channels]
-offered = ["telegram", "discord", "slack", "matrix"]
+offered = ["telegram", "slack", "matrix"]
 ```
 
 After editing `channels.offered`, reload the web UI so it fetches the latest

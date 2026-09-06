@@ -107,7 +107,6 @@ body:
       options:
         - Web UI
         - Telegram
-        - Discord
         - API
         - Other
 

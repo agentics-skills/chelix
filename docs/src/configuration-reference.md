@@ -481,8 +481,8 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 
 | Key              | Type                       | Default                                                                                | Description                                                                                                                                                                    |
 | ---------------- | -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `offered`        | array of string            | `["telegram", "whatsapp", "discord", "slack", "matrix", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
-| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `discord`, `slack`, `matrix`, `signal`. Additional types accepted via flatten. |
+| `offered`        | array of string            | `["telegram", "whatsapp", "slack", "matrix", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
+| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `slack`, `matrix`, `signal`, `telephony`. Channel types are validated against this set. |
 
 Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary
 JSON object that may contain provider-specific keys plus a `tools` sub-block

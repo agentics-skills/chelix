@@ -4,9 +4,9 @@ name              = "chelix-media"
 version.workspace = true
 
 [dependencies]
-image          = { workspace = true }
-mime_guess     = { workspace = true }
-thiserror      = { workspace = true }
+image      = { workspace = true }
+mime_guess = { workspace = true }
+thiserror  = { workspace = true }
 
 [lints]
 workspace = true

@@ -20,7 +20,6 @@ import { updateNavCount } from "../nav-counts";
 import { connected } from "../signals";
 import * as S from "../state";
 import { ConfirmDialog, copyToClipboard, requestConfirm, showToast } from "../ui";
-import { AddDiscordModal } from "./channels/modals/AddDiscordModal";
 import { AddMatrixModal } from "./channels/modals/AddMatrixModal";
 import { AddSignalModal } from "./channels/modals/AddSignalModal";
 import { AddSlackModal } from "./channels/modals/AddSlackModal";
@@ -162,7 +161,6 @@ export function prefetchChannels(): Promise<void> {
 const senders: Signal<SenderEntry[]> = signal([]);
 const activeTab: Signal<string> = signal("channels");
 export const showAddTelegram: Signal<boolean> = signal(false);
-export const showAddDiscord: Signal<boolean> = signal(false);
 export const showAddWhatsApp: Signal<boolean> = signal(false);
 export const showAddSlack: Signal<boolean> = signal(false);
 export const showAddMatrix: Signal<boolean> = signal(false);
@@ -184,7 +182,6 @@ export function channelType(type: string | undefined): string {
 
 export function channelLabel(type: string | undefined): string {
 	const t = channelType(type);
-	if (t === "discord") return "Discord";
 	if (t === "whatsapp") return "WhatsApp";
 	if (t === "slack") return "Slack";
 	if (t === "matrix") return "Matrix";
@@ -538,7 +535,6 @@ interface ChannelIconProps {
 
 function ChannelIcon({ type }: ChannelIconProps): VNode {
 	const t = channelType(type);
-	if (t === "discord") return <span className="icon icon-discord" />;
 	if (t === "whatsapp") return <span className="icon icon-whatsapp" />;
 	if (t === "slack") return <span className="icon icon-slack" />;
 	if (t === "matrix") return <span className="icon icon-matrix" />;
@@ -693,9 +689,7 @@ function ChannelCard({ channel: ch }: ChannelCardProps): VNode {
 // ── Connect channel buttons ──────────────────────────────────
 
 function ConnectButtons(): VNode {
-	const offered = new Set(
-		(getGon("channels_offered") || ["telegram", "whatsapp", "discord", "slack", "matrix"]) as string[],
-	);
+	const offered = new Set((getGon("channels_offered") || ["telegram", "whatsapp", "slack", "matrix"]) as string[]);
 	return (
 		<div className="flex gap-2 flex-wrap">
 			{offered.has("telegram") && (
@@ -707,17 +701,6 @@ function ConnectButtons(): VNode {
 					}}
 				>
 					<span className="icon icon-telegram" /> Connect Telegram
-				</button>
-			)}
-			{offered.has("discord") && (
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary inline-flex items-center gap-1.5"
-					onClick={() => {
-						if (connected.value) showAddDiscord.value = true;
-					}}
-				>
-					<span className="icon icon-discord" /> Connect Discord
 				</button>
 			)}
 			{offered.has("slack") && (
@@ -999,7 +982,6 @@ function ChannelsPageComponent(): VNode {
 			{activeTab.value === "channels" && <ChannelStorageNotice />}
 			{activeTab.value === "channels" ? <ChannelsTab /> : <SendersTab />}
 			<AddTelegramModal />
-			<AddDiscordModal />
 			<AddSlackModal />
 			<AddMatrixModal />
 			<AddSignalModal />
@@ -1019,7 +1001,6 @@ export function initChannels(container: HTMLElement): void {
 	container.style.cssText = "flex-direction:column;padding:0;overflow:hidden;";
 	activeTab.value = "channels";
 	showAddTelegram.value = false;
-	showAddDiscord.value = false;
 	showAddSlack.value = false;
 	showAddMatrix.value = false;
 	showAddSignal.value = false;

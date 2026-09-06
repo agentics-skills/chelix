@@ -165,7 +165,7 @@ This requires your Chelix instance to be reachable from the internet.
 
 ## Access Control
 
-Slack uses the same gating system as Telegram, Discord, and other channels.
+Slack uses the same gating system as Telegram, and other channels.
 
 ### DM Policy
 

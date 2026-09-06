@@ -1,7 +1,7 @@
 # Deploy Chelix on a VPS
 
 Run your own AI agent on a $5/month VPS. This guide covers provisioning,
-installation, and connecting channels (Telegram, Discord, etc.) so you can talk
+installation, and connecting channels (Telegram, etc.) so you can talk
 to your agent from anywhere.
 
 ## Prerequisites
@@ -129,7 +129,6 @@ web UI. Each channel has its own setup flow:
 | Channel  | What you need                                                         |
 | -------- | --------------------------------------------------------------------- |
 | Telegram | Bot token from [@BotFather](https://t.me/BotFather)                   |
-| Discord  | Bot token from the [Developer Portal](https://discord.com/developers) |
 | Slack    | Bot + App tokens from [api.slack.com](https://api.slack.com/apps)     |
 | Matrix   | Homeserver URL + credentials                                          |
 
