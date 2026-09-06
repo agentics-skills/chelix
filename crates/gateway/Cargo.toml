@@ -105,7 +105,6 @@ default = [
   "file-watcher",
   "firecrawl",
   "github",
-  "graphql",
   "home-assistant",
   "linkup",
   "matrix",
@@ -133,7 +132,6 @@ file-watcher = [
 ]
 firecrawl = ["chelix-tools/firecrawl"]
 github = ["dep:chelix-github"]
-graphql = []
 home-assistant = ["dep:chelix-home-assistant"]
 linkup = ["dep:chelix-linkup"]
 local-embeddings = ["chelix-memory/local-embeddings"]

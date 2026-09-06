@@ -13,10 +13,7 @@ import { showToast } from "./ui";
 
 type ConfirmedSessionModelPayload = SessionPatchPayload & SessionModelSelection;
 
-function isConfirmedSessionModelPayload(
-	payload: unknown,
-	sessionKey: string,
-): payload is ConfirmedSessionModelPayload {
+function isConfirmedSessionModelPayload(payload: unknown, sessionKey: string): payload is ConfirmedSessionModelPayload {
 	if (!payload || typeof payload !== "object") return false;
 	const value = payload as Partial<SessionPatchPayload>;
 	return (

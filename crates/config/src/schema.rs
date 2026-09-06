@@ -249,7 +249,6 @@ pub struct ChelixConfig {
     pub channels: ChannelsConfig,
     pub tls: TlsConfig,
     pub auth: AuthConfig,
-    pub graphql: GraphqlConfig,
     pub metrics: MetricsConfig,
     pub user: UserProfile,
     pub hooks: Option<HooksConfig>,

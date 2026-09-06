@@ -31,7 +31,6 @@ pub(crate) struct SpaRoutes {
     skills: &'static str,
     crons: &'static str,
     monitoring: &'static str,
-    graphql: &'static str,
 }
 
 pub(crate) static SPA_ROUTES: SpaRoutes = SpaRoutes {
@@ -47,7 +46,6 @@ pub(crate) static SPA_ROUTES: SpaRoutes = SpaRoutes {
     skills: "/skills",
     crons: "/settings/crons",
     monitoring: "/monitoring",
-    graphql: "/settings/graphql",
 };
 
 // ── GonData ──────────────────────────────────────────────────────────────────
@@ -67,7 +65,6 @@ pub(crate) struct GonData {
     voice_enabled: bool,
     stt_enabled: bool,
     tts_enabled: bool,
-    graphql_enabled: bool,
     terminal_enabled: bool,
     terminal_scrollback_lines: u32,
     git_branch: Option<String>,
@@ -553,7 +550,6 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
         voice_enabled: cfg!(feature = "voice"),
         stt_enabled: cfg!(feature = "voice") && gw.config.voice.stt.enabled,
         tts_enabled: cfg!(feature = "voice") && gw.config.voice.tts.enabled,
-        graphql_enabled: cfg!(feature = "graphql"),
         terminal_enabled: gw.config.server.is_terminal_enabled(),
         terminal_scrollback_lines: gw.config.server.scrollback_lines,
         git_branch: tokio::task::spawn_blocking(detect_git_branch)

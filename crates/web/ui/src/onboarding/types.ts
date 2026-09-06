@@ -2,7 +2,6 @@
 
 export type { ModelInfo as ModelSelectorRow, ModelInfo as RawModelRow, ProviderInfo } from "../types/model";
 
-
 export interface IdentityInfo {
 	user_name?: string;
 	name?: string;

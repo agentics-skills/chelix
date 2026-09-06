@@ -75,7 +75,7 @@ function webhookFormValues(webhook: Webhook | null): WebhookFormValues {
 }
 
 function modelOverrideSelectionError(modelId: string, reasoningEffort: string): string | null {
-	if (!modelId && !reasoningEffort) return null;
+	if (!(modelId || reasoningEffort)) return null;
 	if (!modelId) return "Select a model or clear the reasoning effort.";
 	if (!reasoningEffort) return "Select a reasoning effort for the selected model.";
 	const model = modelsSig.value.find((candidate) => candidate.id === modelId);

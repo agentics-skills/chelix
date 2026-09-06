@@ -72,7 +72,6 @@ full = [
   "file-watcher",
   "firecrawl",
   "github",
-  "graphql",
   "home-assistant",
   "jemalloc",
   "lang-bash",
@@ -119,7 +118,6 @@ embedded-assets    = ["chelix-web?/embedded-assets"]
 file-watcher       = ["chelix-gateway/file-watcher"]
 firecrawl          = ["chelix-gateway/firecrawl"]
 github             = ["chelix-gateway/github"]
-graphql            = ["chelix-httpd/graphql", "chelix-web?/graphql"]
 jemalloc           = ["dep:tikv-jemallocator"]
 lang-bash          = ["chelix-memory/lang-bash"]
 lang-c             = ["chelix-memory/lang-c"]

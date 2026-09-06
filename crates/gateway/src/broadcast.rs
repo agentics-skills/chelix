@@ -12,7 +12,7 @@ const MANDATORY_EVENT_DELIVERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 // ── Broadcaster ──────────────────────────────────────────────────────────────
 
-/// Lock-free broadcast state: sequence counter and GraphQL subscription channel.
+/// Lock-free broadcast state: sequence counter.
 ///
 /// Phase 1 of broadcaster decoupling — owns only fields that never participate
 /// in the `GatewayInner` RwLock. Client registry remains in `GatewayInner`
@@ -20,9 +20,6 @@ const MANDATORY_EVENT_DELIVERY_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Broadcaster {
     /// Monotonically increasing sequence counter for broadcast events.
     seq: std::sync::atomic::AtomicU64,
-    /// Broadcast channel for GraphQL subscriptions. Events are `(event_name, payload)`.
-    #[cfg(feature = "graphql")]
-    pub graphql_broadcast: tokio::sync::broadcast::Sender<(String, serde_json::Value)>,
 }
 
 impl Default for Broadcaster {
@@ -36,11 +33,6 @@ impl Broadcaster {
     pub fn new() -> Self {
         Self {
             seq: std::sync::atomic::AtomicU64::new(0),
-            #[cfg(feature = "graphql")]
-            graphql_broadcast: {
-                let (tx, _) = tokio::sync::broadcast::channel(256);
-                tx
-            },
         }
     }
 
@@ -114,15 +106,6 @@ pub async fn broadcast(
             return;
         },
     };
-
-    // Forward to GraphQL subscription broadcast channel.
-    #[cfg(feature = "graphql")]
-    if let Some(ref payload) = frame.payload {
-        let _ = state
-            .broadcaster
-            .graphql_broadcast
-            .send((event.to_string(), payload.clone()));
-    }
 
     let guards = event_scope_guards();
     let required_scopes = guards.get(event);

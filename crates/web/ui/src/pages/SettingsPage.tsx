@@ -36,7 +36,7 @@ import {
 	setRerenderFn,
 	userProfile,
 } from "./sections/_shared";
-import { ConfigSection, GraphqlSection } from "./sections/ConfigSection";
+import { ConfigSection } from "./sections/ConfigSection";
 import { EnvironmentSection } from "./sections/EnvironmentSection";
 import { IdentitySection } from "./sections/IdentitySection";
 import { ImportSection } from "./sections/ImportSection";
@@ -180,7 +180,6 @@ const sections: SectionItem[] = [
 	{ id: "terminal", label: "Terminal", page: true },
 	{ id: "monitoring", label: "Monitoring", page: true },
 	{ id: "logs", label: "Logs", page: true },
-	{ id: "graphql", label: "GraphQL" },
 	{ id: "config", label: "Configuration" },
 ];
 
@@ -188,7 +187,6 @@ function getVisibleSections(): SectionItem[] {
 	const vs = gon.get("vault_status");
 	return sections.filter((section) => {
 		if (!("id" in section)) return true;
-		if (section.id === "graphql" && !gon.get("graphql_enabled")) return false;
 		if (section.id === "vault" && (!vs || vs === "disabled")) return false;
 		return true;
 	});
@@ -371,7 +369,6 @@ const inlineSectionRenderers: Record<string, () => VNode> = {
 	phone: () => <PhoneSection />,
 	notifications: () => <NotificationsSection />,
 	import: () => <ImportSection />,
-	graphql: () => <GraphqlSection />,
 	config: () => <ConfigSection />,
 };
 

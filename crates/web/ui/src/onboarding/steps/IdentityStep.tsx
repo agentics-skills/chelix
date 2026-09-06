@@ -111,9 +111,9 @@ function parseIdentityLoadResult(
 	const models = selectableModels(modelsResponse.payload);
 	if (models.length === 0) {
 		return {
-				ok: false,
-				message: "No configured models are available. Go back to LLM setup and configure a provider before continuing.",
-			};
+			ok: false,
+			message: "No configured models are available. Go back to LLM setup and configure a provider before continuing.",
+		};
 	}
 
 	const defaultMaxToolsThreshold = parseDefaultMaxToolsThreshold(agentsResponse.payload);
@@ -268,14 +268,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setSaving(true);
 		const timezone = user.timezone || detectBrowserTimezone() || null;
 		const agentId = agent?.id || FIRST_AGENT_ID;
-		const agentConfig = agentConfigForSave(
-			agent,
-			name,
-			emoji,
-			model,
-			reasoningEffort,
-			defaultMaxToolsThreshold,
-		);
+		const agentConfig = agentConfigForSave(agent, name, emoji, model, reasoningEffort, defaultMaxToolsThreshold);
 		const soul = agent?.soul ?? "";
 		const subagentPrompt = agent?.subagent_prompt ?? "";
 		const agentResponse = await sendRpc(agent ? "agents.update" : "agents.create", {
@@ -394,11 +387,11 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 						</button>
 					) : null}
 					<button
-							key={`id-${saving}`}
-							type="submit"
-							className="provider-btn"
-							disabled={saving || models.length === 0 || defaultMaxToolsThreshold === null}
-						>
+						key={`id-${saving}`}
+						type="submit"
+						className="provider-btn"
+						disabled={saving || models.length === 0 || defaultMaxToolsThreshold === null}
+					>
 						{saving ? "Saving\u2026" : "Continue"}
 					</button>
 				</div>

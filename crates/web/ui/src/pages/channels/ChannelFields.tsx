@@ -152,9 +152,7 @@ export function AllowlistInput({ value, onChange, preserveAt, placeholder, ariaL
 
 type ChannelModelConfig = Pick<ChannelConfig, "model_override" | "model_provider">;
 
-type ChannelModelSelection =
-	| { ok: true; config: ChannelModelConfig }
-	| { ok: false; error: string };
+type ChannelModelSelection = { ok: true; config: ChannelModelConfig } | { ok: false; error: string };
 
 export function resolveChannelModelSelection(modelId: string, reasoningEffort: string): ChannelModelSelection {
 	if (!modelId) return { ok: true, config: {} };
@@ -227,11 +225,7 @@ interface SharedChannelFieldsProps {
 	allowlistItems: Signal<string[]>;
 }
 
-export function SharedChannelFields({
-	addModel,
-	addReasoningEffort,
-	allowlistItems,
-}: SharedChannelFieldsProps): VNode {
+export function SharedChannelFields({ addModel, addReasoningEffort, allowlistItems }: SharedChannelFieldsProps): VNode {
 	return (
 		<>
 			<label>

@@ -3,14 +3,12 @@
 //! Each trait has a `Noop` implementation that returns empty/default responses,
 //! allowing the gateway to run standalone before domain crates are wired in.
 
-mod bundle;
 mod chat_request;
 mod error;
 mod interfaces;
 mod session_mutations;
 
 pub use crate::{
-    bundle::Services,
     chat_request::{
         ChatChannelMetadata, ChatCompactRequest, ChatContextRequest, ChatExecutionContext,
         ChatFullContextRequest, ChatRawPromptRequest, ChatRequestOrigin, ChatSendDocument,

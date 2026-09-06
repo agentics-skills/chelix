@@ -25,20 +25,6 @@ impl Default for AuthConfig {
     }
 }
 
-/// Runtime GraphQL server configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GraphqlConfig {
-    /// Whether GraphQL HTTP/WS handlers accept requests.
-    pub enabled: bool,
-}
-
-impl Default for GraphqlConfig {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
-
 /// Metrics and observability configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

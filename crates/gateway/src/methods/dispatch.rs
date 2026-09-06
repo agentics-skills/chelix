@@ -139,8 +139,6 @@ const READ_METHODS: &[&str] = &[
     "voice.elevenlabs.catalog",
     "voice.personas.list",
     "voice.personas.get",
-    #[cfg(feature = "graphql")]
-    "graphql.config.get",
     "memory.status",
     "memory.config.get",
     "memory.qmd.status",
@@ -254,8 +252,6 @@ const WRITE_METHODS: &[&str] = &[
     "voice.personas.update",
     "voice.personas.delete",
     "voice.personas.set_active",
-    #[cfg(feature = "graphql")]
-    "graphql.config.set",
     "memory.config.update",
     "hooks.enable",
     "hooks.disable",
@@ -516,44 +512,6 @@ mod tests {
                 "FORBIDDEN",
             );
         }
-    }
-
-    #[cfg(feature = "graphql")]
-    #[test]
-    fn graphql_config_get_requires_read() {
-        assert!(
-            authorize_method(
-                "graphql.config.get",
-                "operator",
-                &scopes(&["operator.read"])
-            )
-            .is_none()
-        );
-        assert_error_code(
-            authorize_method("graphql.config.get", "operator", &scopes(&[])),
-            "UNAUTHORIZED",
-        );
-    }
-
-    #[cfg(feature = "graphql")]
-    #[test]
-    fn graphql_config_set_requires_write() {
-        assert!(
-            authorize_method(
-                "graphql.config.set",
-                "operator",
-                &scopes(&["operator.write"])
-            )
-            .is_none()
-        );
-        assert_error_code(
-            authorize_method(
-                "graphql.config.set",
-                "operator",
-                &scopes(&["operator.read"]),
-            ),
-            "UNAUTHORIZED",
-        );
     }
 
     #[test]

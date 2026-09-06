@@ -22,7 +22,6 @@ pub async fn api_gon_handler(State(state): State<AppState>) -> Response {
 #[derive(serde::Serialize)]
 struct PublicIdentityPayload {
     identity: PublicIdentity,
-    graphql_enabled: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -50,17 +49,11 @@ pub async fn api_public_identity_handler(State(state): State<AppState>) -> Respo
         }
     });
 
-    #[cfg(feature = "graphql")]
-    let graphql_enabled = state.gateway.is_graphql_enabled();
-    #[cfg(not(feature = "graphql"))]
-    let graphql_enabled = false;
-
     Json(PublicIdentityPayload {
         identity: PublicIdentity {
             name: identity.name,
             emoji,
         },
-        graphql_enabled,
     })
     .into_response()
 }

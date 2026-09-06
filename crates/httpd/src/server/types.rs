@@ -16,8 +16,6 @@ pub struct AppState {
     pub webauthn_registry: Option<SharedWebAuthnRegistry>,
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<chelix_gateway::push::PushService>>,
-    #[cfg(feature = "graphql")]
-    pub graphql_schema: chelix_graphql::ChelixSchema,
 }
 
 /// Function signature for adding extra routes (e.g. web-UI) to the gateway.

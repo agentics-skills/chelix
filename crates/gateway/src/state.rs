@@ -1,5 +1,3 @@
-#[cfg(feature = "graphql")]
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
@@ -419,9 +417,6 @@ pub struct GatewayState {
     pub tls_active: bool,
     /// Whether WebSocket request/response logging is enabled.
     pub ws_request_logs: bool,
-    /// Runtime GraphQL availability toggle.
-    #[cfg(feature = "graphql")]
-    pub graphql_enabled: AtomicBool,
     /// Session event bus for cross-UI synchronisation (macOS ↔ web).
     pub session_event_bus: SessionEventBus,
     /// Broker for standard A2UI actions returned by authenticated chat clients.
@@ -470,7 +465,7 @@ pub struct GatewayState {
     pub chat_override: std::sync::RwLock<Option<Arc<dyn crate::services::ChatService>>>,
 
     // ── Broadcast state (lock-free) ─────────────────────────────────────────
-    /// Lock-free broadcast state (seq counter, GraphQL subscription channel).
+    /// Lock-free broadcast state (sequence counter).
     pub broadcaster: Arc<Broadcaster>,
 
     // ── Client registry (dedicated lock — hot path) ─────────────────────────
@@ -561,8 +556,6 @@ impl GatewayState {
             deploy_platform,
             port,
             started_at: Instant::now(),
-            #[cfg(feature = "graphql")]
-            graphql_enabled: AtomicBool::new(true),
             #[cfg(feature = "metrics")]
             metrics_handle,
             #[cfg(feature = "metrics")]
@@ -650,16 +643,6 @@ impl GatewayState {
 
     pub fn next_seq(&self) -> u64 {
         self.broadcaster.next_seq()
-    }
-
-    #[cfg(feature = "graphql")]
-    pub fn is_graphql_enabled(&self) -> bool {
-        self.graphql_enabled.load(Ordering::Relaxed)
-    }
-
-    #[cfg(feature = "graphql")]
-    pub fn set_graphql_enabled(&self, enabled: bool) {
-        self.graphql_enabled.store(enabled, Ordering::Relaxed);
     }
 
     /// Register a new client connection.

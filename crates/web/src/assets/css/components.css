@@ -1331,10 +1331,6 @@
   -webkit-mask-image: url("../icons/masks/mask-5883df2e24ebc841.svg");
   mask-image: url("../icons/masks/mask-5883df2e24ebc841.svg");
 }
-.settings-nav-item[data-section="graphql"]::before {
-  -webkit-mask-image: url("../icons/masks/mask-4440661ac01a3ffb.svg");
-  mask-image: url("../icons/masks/mask-4440661ac01a3ffb.svg");
-}
 .settings-nav-item[data-section="config"]::before {
   -webkit-mask-image: url("../icons/masks/mask-fcba023b215b3a32.svg");
   mask-image: url("../icons/masks/mask-fcba023b215b3a32.svg");

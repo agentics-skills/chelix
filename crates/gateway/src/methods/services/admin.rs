@@ -761,50 +761,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         );
     }
 
-    #[cfg(feature = "graphql")]
-    {
-        reg.register(
-            "graphql.config.get",
-            Box::new(|ctx| {
-                Box::pin(async move {
-                    Ok(serde_json::json!({
-                        "enabled": ctx.state.is_graphql_enabled(),
-                    }))
-                })
-            }),
-        );
-        reg.register(
-            "graphql.config.set",
-            Box::new(|ctx| {
-                Box::pin(async move {
-                    let enabled = ctx
-                        .params
-                        .get("enabled")
-                        .and_then(|v| v.as_bool())
-                        .ok_or_else(|| {
-                            ErrorShape::new(error_codes::INVALID_REQUEST, "missing enabled")
-                        })?;
-
-                    ctx.state.set_graphql_enabled(enabled);
-
-                    let mut persisted = true;
-                    if let Err(error) = chelix_config::update_config(|cfg| {
-                        cfg.graphql.enabled = enabled;
-                    }) {
-                        persisted = false;
-                        tracing::warn!(%error, enabled, "failed to persist graphql config");
-                    }
-
-                    Ok(serde_json::json!({
-                        "ok": true,
-                        "enabled": enabled,
-                        "persisted": persisted,
-                    }))
-                })
-            }),
-        );
-    }
-
     // ── Memory ─────────────────────────────────────────────────────
 
     reg.register(

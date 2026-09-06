@@ -394,7 +394,7 @@ function handleChatChannelUser(p: ChatPayload, isActive: boolean, isChatPage: bo
 }
 
 // Handle user messages broadcast by the backend after persisting a message
-// sent via the GraphQL API, mobile app, or any non-web-UI client.
+// sent via the mobile app or any non-web-UI client.
 // The originating web client already rendered the message optimistically,
 // so we skip rendering when the broadcast's seq matches a seq this client
 // has already sent (seq <= S.chatSeq).

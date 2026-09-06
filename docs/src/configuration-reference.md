@@ -33,7 +33,6 @@
   - [`server`](#server)
   - [`auth`](#auth)
   - [`tls`](#tls)
-  - [`graphql`](#graphql)
   - [`upstream_proxy`](#upstream-proxy)
 - **Observability**
   - [`metrics`](#metrics)
@@ -153,14 +152,6 @@ TLS configuration for the gateway HTTPS server.
 | `ca_cert_path`       | optional string  | —       | Path to the CA certificate (PEM) used for trust instructions.                                                                                                         |
 | `public_ip`          | optional string  | —       | Public IPv4 or IPv6 address to include as an IP SAN in auto-generated certificates. Use this for direct `https://<public-ip>` access after trusting Chelix' local CA. |
 | `http_redirect_port` | optional integer | —       | Port for the plain-HTTP redirect/CA-download server. Defaults to the gateway port + 1 when not set.                                                                   |
-
-### `graphql` — GraphqlConfig
-
-Runtime GraphQL server configuration.
-
-| Key       | Type | Default | Description                                       |
-| --------- | ---- | ------- | ------------------------------------------------- |
-| `enabled` | bool | `true`  | Whether GraphQL HTTP/WS handlers accept requests. |
 
 ### `upstream_proxy` (top-level scalar)
 
