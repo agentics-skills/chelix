@@ -1,7 +1,6 @@
 // ── Channel store (signal-based) ─────────────────────────────
 //
 // Single source of truth for channel data.
-// Centralizes signals previously local to page-channels.js.
 
 import { signal } from "@preact/signals";
 import type { ChannelInfo, SenderInfo } from "../types/channel";

@@ -1,10 +1,9 @@
 // ── Preact signal bridge for shared state ─────────────────────
-// Mirrors key state.js vars as Preact signals so that both imperative
-// code (websocket.js) and Preact pages can coexist during migration.
+// Mirrors shared state.ts values as Preact signals for imperative
+// code (websocket.ts) and Preact pages.
 //
 // Signals for models, projects, sessions, selectedModelId, and
-// activeSessionKey have moved to stores/*.js. They are re-exported
-// here for backward compat with pages that still import from signals.js.
+// activeSessionKey are owned by stores/*.ts and re-exported by signals.ts.
 
 import type { Signal } from "@preact/signals";
 import { signal } from "@preact/signals";
@@ -15,7 +14,7 @@ import type { SandboxGonInfo } from "./types/gon";
 
 export { activeSessionKey, models, projects, selectedModelId, sessions };
 
-// Signals that haven't moved to stores yet
+// Shared UI signals
 export const connected: Signal<boolean> = signal(false);
 export const cachedChannels: Signal<unknown | null> = signal(null);
 export const unseenErrors: Signal<number> = signal(0);

@@ -3,14 +3,8 @@ import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { applyIdentityFavicon, formatLoginTitle } from "./branding";
 import { init as initI18n, t } from "./i18n";
-import * as S from "./state";
 import { initTheme } from "./theme";
 import type { VaultStatus } from "./types/gon";
-import * as _wsConnect from "./ws-connect";
-
-// Expose state module for E2E test WS mocking via shims.
-window.__chelix_state = S;
-window.__chelix_modules = { ...(window.__chelix_modules || {}), "ws-connect": _wsConnect };
 
 // ── Types ────────────────────────────────────────────────────
 

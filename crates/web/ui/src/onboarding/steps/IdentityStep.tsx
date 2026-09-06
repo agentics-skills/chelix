@@ -192,6 +192,41 @@ function locationForSave(location: UserLocation | null | undefined): UnknownReco
 	};
 }
 
+function validateIdentityFields(
+	name: string,
+	userName: string,
+	models: ModelInfo[],
+	model: string,
+	supportedReasoningEfforts: readonly string[],
+	reasoningEffort: string,
+): string | null {
+	if (!name.trim()) return "Agent name is required.";
+	if (!userName.trim()) return "Your name is required.";
+	if (!models.some((configuredModel) => configuredModel.id === model)) return "Select an available configured model.";
+	if (!supportedReasoningEfforts.includes(reasoningEffort)) return "Select a reasoning effort supported by the model.";
+	return null;
+}
+
+type AgentSaveResult = { ok: true; agent: AgentEntry } | { ok: false; message: string };
+
+async function saveDefaultAgent(agent: AgentEntry | null, agentConfig: UnknownRecord): Promise<AgentSaveResult> {
+	const agentId = agent?.id || FIRST_AGENT_ID;
+	const soul = agent?.soul ?? "";
+	const subagentPrompt = agent?.subagent_prompt ?? "";
+	const response = await sendRpc(agent ? "agents.update" : "agents.create", {
+		id: agentId,
+		agent: agentConfig,
+		soul,
+		subagent_prompt: subagentPrompt,
+	});
+	if (!response.ok) {
+		return { ok: false, message: response.error?.message || `Failed to ${agent ? "update" : "create"} default agent` };
+	}
+	const savedAgent = confirmedAgentEntry(response.payload, agentId, agentConfig, soul, subagentPrompt);
+	if (!savedAgent) return { ok: false, message: "Agent save returned invalid state." };
+	return { ok: true, agent: savedAgent };
+}
+
 export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
 	const [agent, setAgent] = useState<AgentEntry | null>(null);
 	const [user, setUser] = useState<UserProfile | null>(null);
@@ -239,20 +274,16 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 
 	async function onSubmit(event: Event): Promise<void> {
 		event.preventDefault();
-		if (!name.trim()) {
-			setError("Agent name is required.");
-			return;
-		}
-		if (!userName.trim()) {
-			setError("Your name is required.");
-			return;
-		}
-		if (!models.some((configuredModel) => configuredModel.id === model)) {
-			setError("Select an available configured model.");
-			return;
-		}
-		if (!supportedReasoningEfforts.includes(reasoningEffort)) {
-			setError("Select a reasoning effort supported by the model.");
+		const validationError = validateIdentityFields(
+			name,
+			userName,
+			models,
+			model,
+			supportedReasoningEfforts,
+			reasoningEffort,
+		);
+		if (validationError) {
+			setError(validationError);
 			return;
 		}
 		if (!user) {
@@ -267,28 +298,14 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setError(null);
 		setSaving(true);
 		const timezone = user.timezone || detectBrowserTimezone() || null;
-		const agentId = agent?.id || FIRST_AGENT_ID;
 		const agentConfig = agentConfigForSave(agent, name, emoji, model, reasoningEffort, defaultMaxToolsThreshold);
-		const soul = agent?.soul ?? "";
-		const subagentPrompt = agent?.subagent_prompt ?? "";
-		const agentResponse = await sendRpc(agent ? "agents.update" : "agents.create", {
-			id: agentId,
-			agent: agentConfig,
-			soul,
-			subagent_prompt: subagentPrompt,
-		});
-		if (!agentResponse.ok) {
+		const agentResult = await saveDefaultAgent(agent, agentConfig);
+		if (!agentResult.ok) {
 			setSaving(false);
-			setError(agentResponse.error?.message || `Failed to ${agent ? "update" : "create"} default agent`);
+			setError(agentResult.message);
 			return;
 		}
-		const savedAgent = confirmedAgentEntry(agentResponse.payload, agentId, agentConfig, soul, subagentPrompt);
-		if (!savedAgent) {
-			setSaving(false);
-			setError("Agent save returned invalid state.");
-			return;
-		}
-		setAgent(savedAgent);
+		setAgent(agentResult.agent);
 
 		const userResponse = await sendRpc("user.update", {
 			name: userName.trim(),

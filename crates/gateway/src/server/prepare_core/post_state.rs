@@ -450,8 +450,7 @@ pub(super) async fn complete_startup(
 
     let setup_code_display =
         if !credential_store.is_setup_complete() && !credential_store.is_auth_disabled() {
-            let code = std::env::var("CHELIX_E2E_SETUP_CODE")
-                .unwrap_or_else(|_| auth::generate_setup_code());
+            let code = auth::generate_setup_code();
             {
                 let mut inner = state.inner.write().await;
                 inner.setup_code = Some(Secret::new(code.clone()));

@@ -143,8 +143,8 @@ export function teardownAgents(): void {
 	containerRef = null;
 }
 
-function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: AgentFormProps): VNode {
-	const [values, setValues] = useState<AgentFormValues>({
+function initialAgentFormValues(agent: AgentEntry | null, defaultMaxToolsThreshold: number): AgentFormValues {
+	return {
 		id: agent?.id || "",
 		name: agent?.name || "",
 		emoji: agent?.emoji || "",
@@ -154,7 +154,30 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 		maxToolsThreshold: String(agent?.max_tools_threshold || defaultMaxToolsThreshold),
 		soul: agent?.soul || "",
 		subagentPrompt: agent?.subagent_prompt || "",
-	});
+	};
+}
+
+function validateAgentForm(
+	values: AgentFormValues,
+	models: ModelInfo[],
+	supportedReasoningEfforts: string[],
+): string | null {
+	const id = values.id.trim();
+	const name = values.name.trim();
+	const threshold = Number(values.maxToolsThreshold);
+	if (!name) return "Name is required.";
+	if (!id) return "ID is required.";
+	if (id === "default") return 'ID "default" is reserved by the agent configuration table.';
+	if (!Number.isSafeInteger(threshold) || threshold < 1) return "Max tools threshold must be a positive integer.";
+	if (!values.model) return "Model is required.";
+	if (!models.some((model) => model.id === values.model)) return "Select an available configured model.";
+	if (!supportedReasoningEfforts.includes(values.reasoningEffort))
+		return "Select a reasoning effort supported by the model.";
+	return null;
+}
+
+function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: AgentFormProps): VNode {
+	const [values, setValues] = useState<AgentFormValues>(initialAgentFormValues(agent, defaultMaxToolsThreshold));
 	const [models, setModels] = useState<ModelInfo[]>([]);
 	const [loadingModels, setLoadingModels] = useState(true);
 	const [modelsError, setModelsError] = useState<string | null>(null);
@@ -186,34 +209,9 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 
 	function save(): void {
 		const id = values.id.trim();
-		const name = values.name.trim();
-		const threshold = Number(values.maxToolsThreshold);
-		if (!name) {
-			setError("Name is required.");
-			return;
-		}
-		if (!id) {
-			setError("ID is required.");
-			return;
-		}
-		if (id === "default") {
-			setError('ID "default" is reserved by the agent configuration table.');
-			return;
-		}
-		if (!Number.isSafeInteger(threshold) || threshold < 1) {
-			setError("Max tools threshold must be a positive integer.");
-			return;
-		}
-		if (!values.model) {
-			setError("Model is required.");
-			return;
-		}
-		if (!models.some((model) => model.id === values.model)) {
-			setError("Select an available configured model.");
-			return;
-		}
-		if (!supportedReasoningEfforts.includes(values.reasoningEffort)) {
-			setError("Select a reasoning effort supported by the model.");
+		const validationError = validateAgentForm(values, models, supportedReasoningEfforts);
+		if (validationError) {
+			setError(validationError);
 			return;
 		}
 
@@ -441,6 +439,30 @@ function AgentCard({
 	);
 }
 
+type AgentsLoadResult =
+	| { ok: true; agents: AgentEntry[]; defaultId: string; defaultMaxToolsThreshold: number }
+	| { ok: false; message: string };
+
+function parseAgentsLoadResult(payload: unknown): AgentsLoadResult {
+	if (!isAgentsListPayload(payload)) {
+		return { ok: false, message: "Agent list returned invalid configuration data." };
+	}
+	const parsed = parseAgentsListPayload(payload);
+	const defaultThreshold = parseDefaultMaxToolsThreshold(payload);
+	if (defaultThreshold === null) {
+		return { ok: false, message: "Agent list returned invalid defaults data." };
+	}
+	const validAgents: AgentEntry[] = [];
+	for (const entry of parsed.agents) {
+		const agent = toAgentEntry(entry);
+		if (!agent) {
+			return { ok: false, message: "Agent list returned invalid configuration data." };
+		}
+		validAgents.push(agent);
+	}
+	return { ok: true, agents: validAgents, defaultId: parsed.defaultId, defaultMaxToolsThreshold: defaultThreshold };
+}
+
 function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	const [agents, setAgents] = useState<AgentEntry[]>([]);
 	const [defaultId, setDefaultId] = useState("");
@@ -470,28 +492,14 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					setError(response?.error?.message || "Failed to load agents");
 					return;
 				}
-				if (!isAgentsListPayload(response.payload)) {
-					setError("Agent list returned invalid configuration data.");
+				const result = parseAgentsLoadResult(response.payload);
+				if (!result.ok) {
+					setError(result.message);
 					return;
 				}
-				const parsed = parseAgentsListPayload(response.payload);
-				const defaultThreshold = parseDefaultMaxToolsThreshold(response.payload);
-				if (defaultThreshold === null) {
-					setError("Agent list returned invalid defaults data.");
-					return;
-				}
-				const validAgents: AgentEntry[] = [];
-				for (const entry of parsed.agents) {
-					const agent = toAgentEntry(entry);
-					if (!agent) {
-						setError("Agent list returned invalid configuration data.");
-						return;
-					}
-					validAgents.push(agent);
-				}
-				setDefaultId(parsed.defaultId);
-				setDefaultMaxToolsThreshold(defaultThreshold);
-				setAgents(validAgents);
+				setDefaultId(result.defaultId);
+				setDefaultMaxToolsThreshold(result.defaultMaxToolsThreshold);
+				setAgents(result.agents);
 				setError(null);
 			});
 		}

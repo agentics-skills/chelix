@@ -1,6 +1,5 @@
 // ── Shared channel RPC wrappers and validation ────────────────
 //
-// Used by page-channels.js and onboarding-view.js.
 
 import { get as getGon } from "./gon";
 import { sendRpc } from "./helpers";

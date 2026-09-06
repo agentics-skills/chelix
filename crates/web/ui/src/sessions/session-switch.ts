@@ -150,14 +150,12 @@ function isLatestSwitchRequest(key: string, requestId: number): boolean {
 export function startSessionRefresh(key: string, blockRealtimeEvents: boolean): void {
 	sessionStore.refreshInProgressKey.value = key;
 	sessionStore.switchInProgress.value = !!blockRealtimeEvents;
-	S.setSessionSwitchInProgress(!!blockRealtimeEvents);
 }
 
 function finishSessionRefresh(key: string): void {
 	if (sessionStore.refreshInProgressKey.value !== key) return;
 	sessionStore.refreshInProgressKey.value = "";
 	sessionStore.switchInProgress.value = false;
-	S.setSessionSwitchInProgress(false);
 }
 
 function resetSwitchViewState(): void {

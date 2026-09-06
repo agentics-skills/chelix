@@ -3,32 +3,22 @@
 import { render } from "preact";
 import prettyBytes from "pretty-bytes";
 import { applyIdentityFavicon, formatPageTitle } from "./branding";
-import * as _chatUi from "./chat-ui";
-import * as _codeHighlight from "./code-highlight";
 import { initHighlighter } from "./code-highlight";
 import { SessionList } from "./components/SessionList";
-import * as _events from "./events";
 import { onEvent } from "./events";
 import * as gon from "./gon";
 import "./github-stats";
-import * as _helpers from "./helpers";
-import * as _i18n from "./i18n";
 import { init as initI18n, translateStaticElements } from "./i18n";
 import { initMobile, toggleSessions } from "./mobile";
 import { fetchModels } from "./models";
 import { updateNavCounts } from "./nav-counts";
-import * as _channelsPage from "./pages/ChannelsPage";
 import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
-import { openModelSelectorForProvider, showApiKeyForm } from "./providers/auth-flow";
-import { closeProviderModal, openProviderModal } from "./providers/shared";
 import { initPWA } from "./pwa";
 import { initInstallBanner } from "./pwa-install";
 import { mount, navigate, registerPage, sessionPath } from "./router";
 import { routes } from "./routes";
-import * as _sandbox from "./sandbox";
 import { updateSandboxUI } from "./sandbox";
-import * as _sessions from "./sessions";
 import {
 	fetchSessions,
 	markSessionTailLocallyTruncated,
@@ -40,10 +30,7 @@ import {
 import * as S from "./state";
 import { togglePalette } from "./stores/command-store";
 import * as modelStore from "./stores/model-store";
-import * as _modelStore from "./stores/model-store";
 import * as projectStore from "./stores/project-store";
-import * as _sessionHistoryCache from "./stores/session-history-cache";
-import * as _sessionStoreModule from "./stores/session-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
 import type { SandboxGonInfo, VaultStatus } from "./types/gon";
@@ -51,36 +38,6 @@ import type { ModelInfo } from "./types/model";
 import type { SessionMeta } from "./types/session";
 import { GlobalDialogs, Toasts } from "./ui";
 import { connect } from "./websocket";
-import * as _wsConnect from "./ws-connect";
-
-// Expose stores and modules on window for E2E test shims.
-// The shim files in assets/js/ proxy to these bundled modules.
-const providerE2eBridge = {
-	openModelSelectorForProvider,
-	showApiKeyForm,
-	closeProviderModal,
-	openProviderModal,
-};
-
-window.__chelix_stores = { sessionStore, modelStore, projectStore };
-window.__chelix_state = S;
-window.__chelix_modules = {
-	state: S,
-	helpers: _helpers,
-	events: _events,
-	"chat-ui": _chatUi,
-	sandbox: _sandbox,
-	sessions: _sessions,
-	gon,
-	"code-highlight": _codeHighlight,
-	"ws-connect": _wsConnect,
-	providers: providerE2eBridge,
-	"page-channels": _channelsPage,
-	i18n: _i18n,
-	"stores/model-store": _modelStore,
-	"stores/session-store": _sessionStoreModule,
-	"stores/session-history-cache": _sessionHistoryCache,
-};
 
 // Import page modules to register their routes
 import "./pages/ChatPage";
@@ -634,7 +591,7 @@ function fetchBootstrap(): void {
 			if (boot.sessions) {
 				const bootSessions = boot.sessions || [];
 				sessionStore.setAll(bootSessions as never[]);
-				// Dual-write to state.js for backward compat
+				// Keep state.ts synchronized for imperative consumers.
 				S.setSessions(bootSessions);
 				renderSessionList();
 			} else {
@@ -646,7 +603,7 @@ function fetchBootstrap(): void {
 			if (boot.projects) {
 				const bootProjects = boot.projects || [];
 				projectStore.setAll(bootProjects as never[]);
-				// Dual-write to state.js for backward compat
+				// Keep state.ts synchronized for imperative consumers.
 				S.setProjects(bootProjects);
 				renderProjectSelect();
 				renderSessionProjectSelect();

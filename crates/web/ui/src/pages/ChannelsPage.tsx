@@ -965,7 +965,6 @@ function handleChannelEvent(_payload: unknown): void {
 
 function ChannelsPageComponent(): VNode {
 	useEffect(() => {
-		S.setRefreshChannelsPage(loadChannels);
 		// Use prefetched cache for instant render
 		if (S.cachedChannels !== null) channels.value = S.cachedChannels as Channel[];
 		if (connected.value) loadChannels();
@@ -974,7 +973,6 @@ function ChannelsPageComponent(): VNode {
 		S.setChannelEventUnsub(unsub);
 
 		return () => {
-			S.setRefreshChannelsPage(null);
 			if (unsub) unsub();
 			S.setChannelEventUnsub(null);
 		};
@@ -1033,7 +1031,6 @@ export function initChannels(container: HTMLElement): void {
 }
 
 export function teardownChannels(): void {
-	S.setRefreshChannelsPage(null);
 	if (S.channelEventUnsub) {
 		S.channelEventUnsub();
 		S.setChannelEventUnsub(null);

@@ -111,9 +111,7 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - Unit tests for access control and OTP behavior.
 - Unit tests for any parsing helpers, thread/reaction/media helpers, and merge
   logic.
-- Web UI E2E coverage for add or edit flows.
-- Run the targeted Rust tests, JS formatting/linting, and relevant Playwright
-  specs.
+- Run the targeted Rust tests and JS formatting/linting.
 
 ## Matrix-specific lessons worth reusing
 

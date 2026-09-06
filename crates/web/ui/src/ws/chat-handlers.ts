@@ -1057,7 +1057,6 @@ export function handleChatEvent(p: ChatPayload): void {
 		}
 		if (p.state === "final" || p.state === "error" || p.state === "aborted") {
 			sessionStore.switchInProgress.value = false;
-			S.setSessionSwitchInProgress(false);
 		}
 	}
 

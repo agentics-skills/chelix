@@ -11,7 +11,6 @@ import { type OperationProgressPayload, WsEventName } from "./types/ws-events";
 declare global {
 	interface Window {
 		webkitAudioContext?: typeof AudioContext;
-		__chelixTestRpcTimeoutMs?: number;
 	}
 }
 
@@ -258,7 +257,6 @@ const PROGRESS_RPC_IDLE_TIMEOUT_MS = 120_000;
 const PROGRESS_AWARE_METHODS = new Set(["sessions.reset", "sessions.compact", "chat.compact"]);
 
 function rpcIdleTimeoutMs(method: string, progressSeen: boolean): number {
-	if (window.__chelixTestRpcTimeoutMs != null) return window.__chelixTestRpcTimeoutMs;
 	if (progressSeen || PROGRESS_AWARE_METHODS.has(method)) return PROGRESS_RPC_IDLE_TIMEOUT_MS;
 	return DEFAULT_RPC_IDLE_TIMEOUT_MS;
 }

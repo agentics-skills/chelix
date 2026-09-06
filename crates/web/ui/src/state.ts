@@ -8,7 +8,6 @@ import type { SessionTokens } from "./types/session";
 export let ws: WebSocket | null = null;
 export let reqId = 0;
 export let connected = false;
-export let subscribed = false;
 export let reconnectDelay = 1000;
 export const pending: Record<string, (value: RpcResponse) => void> = {};
 export let activeSessionKey: string = localStorage.getItem("chelix-session") || "main";
@@ -60,16 +59,14 @@ export let chatInput: HTMLElement | null = null;
 export let chatSendBtn: HTMLElement | null = null;
 export let chatBatchLoading = false;
 export let autoScrollMode: string = localStorage.getItem("chelix-auto-scroll") || "smart";
-export let sessionSwitchInProgress = false;
 // Highest message index loaded from session history; used to deduplicate
 // real-time events that duplicate already-rendered history entries.
 export let lastHistoryIndex = -1;
 export let sessionContextWindow = 0;
 export let sessionToolsEnabled = true;
 
-// Provider/channel page refresh callbacks
+// Provider page refresh and channel event cleanup callbacks
 export let refreshProvidersPage: (() => void) | null = null;
-export let refreshChannelsPage: (() => void) | null = null;
 export let channelEventUnsub: (() => void) | null = null;
 
 // Prefetched channel data
@@ -118,9 +115,6 @@ export function setReqId(v: number): void {
 export function setConnected(v: boolean): void {
 	connected = v;
 	sig.connected.value = v;
-}
-export function setSubscribed(v: boolean): void {
-	subscribed = v;
 }
 export function setReconnectDelay(v: number): void {
 	reconnectDelay = v;
@@ -228,9 +222,6 @@ export function setAutoScrollMode(v: string): void {
 	autoScrollMode = v;
 	localStorage.setItem("chelix-auto-scroll", v);
 }
-export function setSessionSwitchInProgress(v: boolean): void {
-	sessionSwitchInProgress = v;
-}
 export function setLastHistoryIndex(v: number): void {
 	lastHistoryIndex = v;
 }
@@ -242,9 +233,6 @@ export function setSessionToolsEnabled(v: boolean): void {
 }
 export function setRefreshProvidersPage(v: (() => void) | null): void {
 	refreshProvidersPage = v;
-}
-export function setRefreshChannelsPage(v: (() => void) | null): void {
-	refreshChannelsPage = v;
 }
 export function setChannelEventUnsub(v: (() => void) | null): void {
 	channelEventUnsub = v;

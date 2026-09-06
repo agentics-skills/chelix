@@ -12,7 +12,6 @@
   - [Upstream Proxy](upstream-proxy.md)
   - [Configuration Reference](configuration-reference.md)
 - [Local Validation](local-validation.md)
-- [End-to-End Testing](e2e-testing.md)
 
 ---
 

@@ -22,7 +22,6 @@ import { sessionStore } from "./stores/session-store";
 import type { SessionMeta } from "./types/session";
 import { confirmDialog } from "./ui";
 
-// This module is the intentional runtime and E2E compatibility entry point for session APIs.
 export type SearchContext = SessionSearchContext;
 export const setSessionAgent = setSessionAgentImpl;
 export const cacheOutgoingUserMessage = sessionHistory.cacheOutgoingUserMessage;

@@ -330,7 +330,7 @@ interface ExternalAgentPickerProps {
 function ExternalAgentPicker(props: ExternalAgentPickerProps): VNode | null {
 	if (!props.show) return null;
 	return (
-		<div className="flex items-center gap-1.5" data-testid="external-agent-picker">
+		<div className="flex items-center gap-1.5">
 			<ComboSelect
 				options={props.options}
 				value={props.value}
@@ -670,8 +670,8 @@ export function SessionHeader({
 	}, [canRename]);
 
 	// Populate, focus, and select the rename input synchronously after
-	// render (useLayoutEffect) so there is no rAF race with Playwright
-	// or other async interactions that could blur the input.
+	// render (useLayoutEffect) so there is no rAF race with async
+	// interactions that could blur the input.
 	useLayoutEffect(() => {
 		if (renaming && inputRef.current) {
 			inputRef.current.value = fullName;
