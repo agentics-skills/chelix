@@ -129,7 +129,6 @@ web UI. Each channel has its own setup flow:
 | Channel  | What you need                                                         |
 | -------- | --------------------------------------------------------------------- |
 | Telegram | Bot token from [@BotFather](https://t.me/BotFather)                   |
-| Slack    | Bot + App tokens from [api.slack.com](https://api.slack.com/apps)     |
 | Matrix   | Homeserver URL + credentials                                          |
 
 See the individual [channel docs](channels.md) for detailed setup instructions.

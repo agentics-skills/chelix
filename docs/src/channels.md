@@ -11,7 +11,6 @@ capabilities that control what features are available.
 | Telegram        | Polling                      | No                  | Streaming, voice ingest, reactions, OTP, location                                                                                        |
 | Matrix          | Gateway (sync loop)          | No                  | Streaming, voice ingest, interactive polls, threads, reactions, OTP, location, encrypted chats, device verification, ownership bootstrap |
 | WhatsApp        | Gateway (WebSocket)          | No                  | Streaming, voice ingest, OTP, pairing, location                                                                                          |
-| Slack           | Socket Mode                  | No                  | Streaming, interactive messages, threads, reactions                                                                                      |
 | Signal          | Gateway (signal-cli SSE)     | No                  | OTP, DMs, groups, outbound text                                                                                                          |
 
 ## Inbound Modes
@@ -26,11 +25,6 @@ or open port is needed. Used by Telegram.
 The bot opens a persistent outbound WebSocket connection to the platform and
 receives events in real time, or uses a persistent sync loop over outbound HTTP.
 No public URL needed. Used by Matrix, and WhatsApp.
-
-### Socket Mode
-
-Similar to a gateway connection, but uses the platform's Socket Mode protocol.
-No public URL needed. Used by Slack.
 
 ### Webhook
 
@@ -96,10 +90,6 @@ token = "123456:ABC-DEF..."
 dm_policy = "allowlist"
 allowlist = ["alice", "bob"]
 
-[channels.slack.my_slack_bot]
-bot_token = "xoxb-..."
-app_token = "xapp-..."
-
 [channels.matrix.my_matrix_bot]
 homeserver = "https://matrix.example.com"
 access_token = "syt_..."
@@ -114,7 +104,7 @@ http_url = "http://127.0.0.1:8080"
 ```
 
 For detailed configuration, see the per-channel pages: [Telegram](telegram.md),
-[Slack](slack.md), [Matrix](matrix.md),
+[Matrix](matrix.md),
 [WhatsApp](whatsapp.md), [Signal](signal.md).
 
 You can also use the web UI's **Channels** tab for guided setup with each
@@ -213,8 +203,7 @@ Controls who can interact with the bot in group chats / channels.
 | `"disabled"`  | Group messages are silently ignored      |
 
 The group allowlist field name varies by channel: `group_allowlist` (Telegram,
-WhatsApp), `channel_allowlist` (Slack),
-`room_allowlist` (Matrix).
+WhatsApp), `room_allowlist` (Matrix).
 
 ### Mention Mode
 

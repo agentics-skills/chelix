@@ -10,7 +10,6 @@ events = ["BeforeToolCall"]
 # [requires]
 # os = ["darwin", "linux"]
 # bins = ["jq", "curl"]
-# env = ["SLACK_WEBHOOK_URL"]
 +++
 
 # Example Hook

@@ -1,7 +1,7 @@
 // ── Channel form sub-components for onboarding ───────────────
 //
 // Shared helpers and simple channel forms (Telegram, Signal).
-// Complex forms (Matrix, WhatsApp, Slack) live in ChannelStep.tsx.
+// Complex forms (Matrix, WhatsApp) live in ChannelStep.tsx.
 
 import type { VNode } from "preact";
 import { useState } from "preact/hooks";
@@ -76,7 +76,6 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 		[
 			["telegram", "icon-telegram", "Telegram"],
 			["whatsapp", "icon-whatsapp", "WhatsApp"],
-			["slack", "icon-slack", "Slack"],
 			["matrix", "icon-matrix", "Matrix"],
 			["signal", "icon-signal", "Signal"],
 		] as [string, string, string][]
@@ -102,7 +101,6 @@ export function ChannelTypeSelector({ onSelect, offered }: ChannelTypeSelectorPr
 // ── Channel success display ─────────────────────────────────
 
 export function channelDisplayLabel(type: string): string {
-	if (type === "slack") return "Slack";
 	if (type === "whatsapp") return "WhatsApp";
 	if (type === "matrix") return "Matrix";
 	if (type === "signal") return "Signal";

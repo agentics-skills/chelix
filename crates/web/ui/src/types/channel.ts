@@ -6,7 +6,7 @@
  * Channel type identifier.
  * Serialised as lowercase via `#[serde(rename_all = "lowercase")]`.
  */
-export type ChannelType = "telegram" | "whatsapp" | "slack" | "matrix" | "signal" | "telephony";
+export type ChannelType = "telegram" | "whatsapp" | "matrix" | "signal" | "telephony";
 
 /**
  * Runtime constants for `ChannelType` values.
@@ -15,7 +15,6 @@ export type ChannelType = "telegram" | "whatsapp" | "slack" | "matrix" | "signal
 export const ChannelType = {
 	Telegram: "telegram" as const,
 	WhatsApp: "whatsapp" as const,
-	Slack: "slack" as const,
 	Matrix: "matrix" as const,
 	Signal: "signal" as const,
 	Telephony: "telephony" as const,
@@ -25,7 +24,7 @@ export const ChannelType = {
  * How a channel receives inbound messages.
  * Serialised as snake_case via `#[serde(rename_all = "snake_case")]`.
  */
-export type InboundMode = "none" | "polling" | "gateway_loop" | "socket_mode" | "webhook";
+export type InboundMode = "none" | "polling" | "gateway_loop" | "webhook";
 
 /** Static capability flags for a channel type. */
 export interface ChannelCapabilities {

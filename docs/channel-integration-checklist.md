@@ -31,8 +31,7 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 
 ## Feature inventory across current channels
 
-- Inbound connection modes: `none`, polling, persistent gateway loop, Socket
-  Mode, and webhook.
+- Inbound connection modes: `none`, polling, persistent gateway loop, and webhook.
 - Outbound text plus basic rich text or HTML rendering.
 - Configurable streaming responses.
 - Interactive flows, native in some channels and fallback-driven in others.
@@ -40,7 +39,7 @@ Use this when adding a new channel crate or bringing an existing one to parity.
 - Voice or audio ingest in Telegram, WhatsApp, and Matrix.
 - Pairing in WhatsApp.
 - OTP approval flow for unknown DM users in Telegram, WhatsApp, and Matrix.
-- Reaction support in Slack and Matrix.
+- Reaction support in Matrix.
 - Location send or receive support in Telegram, and
   Matrix.
 - Access control patterns: DM policy, group or room policy, allowlists, mention

@@ -688,7 +688,6 @@ mod tests {
     fn session_key_supports_channel_location_accepts_channel_like_prefixes() {
         assert!(session_key_supports_channel_location("matrix:bot:room"));
         assert!(session_key_supports_channel_location("telegram:bot:chat"));
-        assert!(session_key_supports_channel_location("slack:team:channel"));
     }
 
     #[tokio::test]

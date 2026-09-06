@@ -17,7 +17,6 @@ use crate::{Error, Result, config_view::ChannelConfigView};
 pub enum ChannelType {
     Telegram,
     Whatsapp,
-    Slack,
     Matrix,
     Signal,
     Telephony,
@@ -29,7 +28,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "telegram",
             Self::Whatsapp => "whatsapp",
-            Self::Slack => "slack",
             Self::Matrix => "matrix",
             Self::Signal => "signal",
             Self::Telephony => "telephony",
@@ -41,7 +39,6 @@ impl ChannelType {
         match self {
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
-            Self::Slack => "Slack",
             Self::Matrix => "Matrix",
             Self::Signal => "Signal",
             Self::Telephony => "Phone Call",
@@ -78,7 +75,6 @@ impl ChannelType {
         match self {
             Self::Telegram => &["token"],
             Self::Whatsapp => &[],
-            Self::Slack => &["bot_token", "app_token", "signing_secret"],
             Self::Matrix => &["access_token", "password"],
             Self::Signal => &[],
             Self::Telephony => &["auth_token"],
@@ -99,7 +95,6 @@ impl std::str::FromStr for ChannelType {
         match s {
             "telegram" => Ok(Self::Telegram),
             "whatsapp" => Ok(Self::Whatsapp),
-            "slack" => Ok(Self::Slack),
             "matrix" | "element" => Ok(Self::Matrix),
             "signal" => Ok(Self::Signal),
             "telephony" | "phone" | "voice_call" | "voicecall" => Ok(Self::Telephony),
@@ -115,7 +110,6 @@ impl ChannelType {
     pub const ALL: &[ChannelType] = &[
         Self::Telegram,
         Self::Whatsapp,
-        Self::Slack,
         Self::Matrix,
         Self::Signal,
         Self::Telephony,
@@ -154,22 +148,6 @@ impl ChannelType {
                     supports_pairing: true,
                     supports_otp: true,
                     supports_reactions: false,
-                    supports_location: false,
-                },
-            },
-            Self::Slack => ChannelDescriptor {
-                channel_type: *self,
-                display_name: "Slack",
-                capabilities: ChannelCapabilities {
-                    inbound_mode: InboundMode::SocketMode,
-                    supports_outbound: true,
-                    supports_streaming: true,
-                    supports_interactive: true,
-                    supports_threads: true,
-                    supports_voice_ingest: false,
-                    supports_pairing: false,
-                    supports_otp: false,
-                    supports_reactions: true,
                     supports_location: false,
                 },
             },
@@ -236,8 +214,6 @@ pub enum InboundMode {
     /// Long-polling loop (Telegram).
     Polling,
     GatewayLoop,
-    /// Socket Mode connection (Slack).
-    SocketMode,
     /// HTTP webhook endpoint.
     Webhook,
 }
@@ -678,7 +654,7 @@ pub struct InteractiveMessage {
 /// Core channel plugin trait. Each messaging platform implements this.
 #[async_trait]
 pub trait ChannelPlugin: Send + Sync {
-    /// Channel identifier (e.g. "telegram", "slack").
+    /// Channel identifier (e.g. "telegram", "matrix").
     fn id(&self) -> &str;
 
     /// Human-readable channel name.
@@ -735,15 +711,6 @@ pub trait ChannelPlugin: Send + Sync {
 
     /// Downcast to OTP provider if this channel supports OTP self-approval.
     fn as_otp_provider(&self) -> Option<&dyn ChannelOtpProvider> {
-        None
-    }
-
-    /// Return the webhook verifier for this channel account, if this channel
-    /// uses HTTP webhooks. Channels that use polling/socket modes return `None`.
-    fn channel_webhook_verifier(
-        &self,
-        _account_id: &str,
-    ) -> Option<Box<dyn crate::channel_webhook_middleware::ChannelWebhookVerifier>> {
         None
     }
 
@@ -1084,11 +1051,7 @@ mod tests {
 
     #[test]
     fn channel_type_serde_roundtrip() {
-        for ct in [
-            ChannelType::Telegram,
-            ChannelType::Whatsapp,
-            ChannelType::Slack,
-        ] {
+        for ct in [ChannelType::Telegram, ChannelType::Whatsapp] {
             let json = serde_json::to_string(&ct).unwrap();
             let parsed: ChannelType = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, ct);
@@ -1188,17 +1151,17 @@ mod tests {
     #[test]
     fn reaction_change_event_serialization() {
         let event = ChannelEvent::ReactionChange {
-            channel_type: ChannelType::Slack,
-            account_id: "slack1".into(),
-            chat_id: "C123".into(),
-            message_id: "1234.5678".into(),
-            user_id: "U456".into(),
+            channel_type: ChannelType::Matrix,
+            account_id: "matrix1".into(),
+            chat_id: "!room:example.com".into(),
+            message_id: "$event".into(),
+            user_id: "@user:example.com".into(),
             emoji: "thumbsup".into(),
             added: true,
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["kind"], "reaction_change");
-        assert_eq!(json["channel_type"], "slack");
+        assert_eq!(json["channel_type"], "matrix");
         assert_eq!(json["emoji"], "thumbsup");
         assert_eq!(json["added"], true);
     }
@@ -1208,7 +1171,6 @@ mod tests {
         for (s, expected) in [
             ("telegram", ChannelType::Telegram),
             ("whatsapp", ChannelType::Whatsapp),
-            ("slack", ChannelType::Slack),
             ("matrix", ChannelType::Matrix),
         ] {
             let parsed: ChannelType = s.parse().unwrap_or_else(|e| panic!("parse {s}: {e}"));
@@ -1229,7 +1191,6 @@ mod tests {
         for ct in [
             ChannelType::Telegram,
             ChannelType::Whatsapp,
-            ChannelType::Slack,
             ChannelType::Matrix,
         ] {
             let json = serde_json::to_string(&ct).unwrap_or_else(|e| panic!("serialize: {e}"));
@@ -1242,7 +1203,7 @@ mod tests {
     #[test]
     fn all_covers_every_variant() {
         // If a new variant is added to ChannelType, this test forces updating ALL.
-        assert_eq!(ChannelType::ALL.len(), 6);
+        assert_eq!(ChannelType::ALL.len(), 5);
         for ct in ChannelType::ALL {
             // descriptor() must not panic
             let desc = ct.descriptor();
@@ -1254,7 +1215,6 @@ mod tests {
     fn descriptor_returns_correct_display_names() {
         assert_eq!(ChannelType::Telegram.descriptor().display_name, "Telegram");
         assert_eq!(ChannelType::Whatsapp.descriptor().display_name, "WhatsApp");
-        assert_eq!(ChannelType::Slack.descriptor().display_name, "Slack");
         assert_eq!(ChannelType::Matrix.descriptor().display_name, "Matrix");
     }
 
@@ -1274,11 +1234,6 @@ mod tests {
     fn channel_type_secret_fields_are_declared() {
         assert_eq!(ChannelType::Telegram.secret_fields(), ["token"]);
         assert_eq!(ChannelType::Whatsapp.secret_fields(), &[] as &[&str]);
-        assert_eq!(ChannelType::Slack.secret_fields(), [
-            "bot_token",
-            "app_token",
-            "signing_secret"
-        ]);
         assert_eq!(ChannelType::Matrix.secret_fields(), [
             "access_token",
             "password"
@@ -1304,8 +1259,6 @@ mod tests {
         assert_eq!(json, "\"polling\"");
         let json = serde_json::to_string(&InboundMode::GatewayLoop).unwrap();
         assert_eq!(json, "\"gateway_loop\"");
-        let json = serde_json::to_string(&InboundMode::SocketMode).unwrap();
-        assert_eq!(json, "\"socket_mode\"");
         let json = serde_json::to_string(&InboundMode::Webhook).unwrap();
         assert_eq!(json, "\"webhook\"");
     }

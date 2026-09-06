@@ -57,7 +57,7 @@ channels list in `chelix.toml`:
 
 \`\`\`toml
 [channels]
-offered = ["telegram", "slack", "whatsapp"]
+offered = ["telegram", "whatsapp"]
 \`\`\`
 
 Restart Chelix after changing this setting. The **+ Add Channel** menu
@@ -398,7 +398,7 @@ Switch to the **Senders** tab to see everyone who has messaged the bot:
 
   ```toml
   [channels]
-  offered = ["telegram", "slack", "whatsapp"]
+  offered = ["telegram", "whatsapp"]
   ```
 
 - Restart Chelix after changing this setting

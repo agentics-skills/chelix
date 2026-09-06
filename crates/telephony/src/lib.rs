@@ -14,7 +14,6 @@ pub mod provider;
 pub mod providers;
 pub mod tool;
 pub mod types;
-pub mod webhook;
 
 pub use {
     config::TelephonyAccountConfig,

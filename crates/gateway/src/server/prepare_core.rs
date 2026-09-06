@@ -1002,8 +1002,6 @@ pub async fn prepare_gateway_core(
     )
     .await?;
     services = channel_result.services;
-    #[cfg(feature = "slack")]
-    let slack_webhook_plugin = channel_result.slack_webhook_plugin;
     #[cfg(feature = "telephony")]
     let telephony_webhook_plugin = channel_result.telephony_webhook_plugin;
 
@@ -1098,8 +1096,6 @@ pub async fn prepare_gateway_core(
         discovered_hooks_info,
         persisted_disabled,
         agents_config,
-        #[cfg(feature = "slack")]
-        slack_webhook_plugin,
         #[cfg(feature = "telephony")]
         telephony_webhook_plugin,
         #[cfg(feature = "vault")]

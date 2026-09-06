@@ -361,12 +361,7 @@ impl GatewayInner {
             channel_status_log: HashMap::new(),
             fast_mode_sessions: HashSet::new(),
             steer_text: HashMap::new(),
-            channels_offered: vec![
-                "telegram".into(),
-                "whatsapp".into(),
-                "slack".into(),
-                "matrix".into(),
-            ],
+            channels_offered: vec!["telegram".into(), "whatsapp".into(), "matrix".into()],
             passkey_host_update_pending: HashSet::new(),
             shiki_cdn_url: None,
         }
@@ -436,15 +431,6 @@ pub struct GatewayState {
     /// Encryption-at-rest vault for environment variables.
     #[cfg(feature = "vault")]
     pub vault: Option<Arc<chelix_vault::Vault>>,
-
-    // ── Channel webhook deduplication (separate lock) ──────────────────────
-    /// Idempotency dedup store for channel webhooks. Uses its own
-    /// `std::sync::RwLock` to avoid contending with the main `inner` lock.
-    pub channel_webhook_dedup:
-        std::sync::RwLock<crate::channel_webhook_dedup::ChannelWebhookDedupeStore>,
-
-    /// Per-(channel, account) rate limiter for channel webhooks.
-    pub channel_webhook_rate_limiter: crate::channel_webhook_rate_limit::ChannelWebhookRateLimiter,
 
     // ── Generic webhook ingress ───────────────────────────────────────────────
     /// Webhook store for direct access from HTTP ingress handlers.
@@ -561,11 +547,6 @@ impl GatewayState {
             metrics_store,
             #[cfg(feature = "vault")]
             vault,
-            channel_webhook_dedup: std::sync::RwLock::new(
-                crate::channel_webhook_dedup::ChannelWebhookDedupeStore::new(),
-            ),
-            channel_webhook_rate_limiter:
-                crate::channel_webhook_rate_limit::ChannelWebhookRateLimiter::new(),
             webhook_store: std::sync::OnceLock::new(),
             webhook_rate_limiter: chelix_webhooks::rate_limit::WebhookRateLimiter::default(),
             webhook_worker_tx: std::sync::OnceLock::new(),
@@ -1046,7 +1027,6 @@ mod tests {
         assert_eq!(inner.channels_offered, vec![
             "telegram".to_owned(),
             "whatsapp".to_owned(),
-            "slack".to_owned(),
             "matrix".to_owned(),
         ]);
     }

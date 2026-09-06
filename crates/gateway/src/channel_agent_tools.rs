@@ -37,7 +37,7 @@ impl AgentTool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a proactive message to any configured channel account/chat (Telegram, Slack, Matrix, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
+        "Send a proactive message to any configured channel account/chat (Telegram, Matrix, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -59,7 +59,7 @@ impl AgentTool for SendMessageTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "slack", "matrix", "whatsapp"],
+                    "enum": ["telegram", "matrix", "whatsapp"],
                     "description": "Optional channel type hint when account ids may overlap across channel types."
                 },
                 "reply_to": {
@@ -110,7 +110,6 @@ struct ChannelSettingsPatch {
     otp_self_approval: Option<bool>,
     otp_cooldown_secs: Option<u64>,
     reply_to_message: Option<bool>,
-    thread_replies: Option<bool>,
     stream_mode: Option<ChannelSettingsStreamMode>,
     allowlist_add: Vec<String>,
     allowlist_remove: Vec<String>,
@@ -138,18 +137,7 @@ struct ModelOverridePatch {
 #[serde(rename_all = "snake_case")]
 enum ChannelSettingsStreamMode {
     EditInPlace,
-    Native,
     Off,
-}
-
-impl ChannelSettingsStreamMode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::EditInPlace => "edit_in_place",
-            Self::Native => "native",
-            Self::Off => "off",
-        }
-    }
 }
 
 fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -241,7 +229,6 @@ impl AgentTool for UpdateChannelSettingsTool {
                     "enum": [
                         "telegram",
                         "whatsapp",
-                        "slack",
                         "matrix",
                         "signal",
                         "telephony"
@@ -264,7 +251,7 @@ impl AgentTool for UpdateChannelSettingsTool {
                         "mention_mode": {
                             "type": "string",
                             "enum": ["mention", "always", "none"],
-                            "description": "Supported by Telegram, Slack, and WhatsApp."
+                            "description": "Supported by Telegram and WhatsApp."
                         },
                         "model_override": {
                             "description": "Set the complete canonical model/reasoning override for this account, or null to clear it.",
@@ -311,20 +298,16 @@ impl AgentTool for UpdateChannelSettingsTool {
                             "type": "boolean",
                             "description": "Supported by Telegram."
                         },
-                        "thread_replies": {
-                            "type": "boolean",
-                            "description": "Supported by Slack."
-                        },
                         "stream_mode": {
                             "type": "string",
-                            "enum": ["edit_in_place", "native", "off"],
-                            "description": "Supported by Telegram (`edit_in_place`, `off`) and Slack (`edit_in_place`, `native`, `off`)."
+                            "enum": ["edit_in_place", "off"],
+                            "description": "Supported by Telegram (`edit_in_place`, `off`)."
                         },
                         "channel_override": targeted_model_override_schema(
-                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Slack/WhatsApp channel or chat id."
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/WhatsApp channel or chat id."
                         ),
                         "user_override": targeted_model_override_schema(
-                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/Slack/WhatsApp user id."
+                            "Set or clear model/reasoning, provider metadata, or agent overrides for a specific Telegram/WhatsApp user id."
                         )
                     }
                 }
@@ -494,17 +477,12 @@ fn apply_channel_settings_patch(
         config.insert("reply_to_message".into(), json!(reply_to_message));
         changes.push("reply_to_message".to_string());
     }
-    if let Some(thread_replies) = patch.thread_replies {
+    if let Some(stream_mode) = &patch.stream_mode {
         ensure_supported(
             channel_type,
-            "thread_replies",
-            supports_thread_replies(channel_type),
+            "stream_mode",
+            matches!(channel_type, ChannelType::Telegram),
         )?;
-        config.insert("thread_replies".into(), json!(thread_replies));
-        changes.push("thread_replies".to_string());
-    }
-    if let Some(stream_mode) = &patch.stream_mode {
-        validate_stream_mode(channel_type, stream_mode)?;
         config.insert("stream_mode".into(), json!(stream_mode));
         changes.push("stream_mode".to_string());
     }
@@ -518,7 +496,7 @@ fn apply_channel_settings_patch(
     }
     if update_string_array(
         config,
-        group_allowlist_key(channel_type),
+        "group_allowlist",
         &patch.group_allowlist_add,
         &patch.group_allowlist_remove,
     )? {
@@ -562,10 +540,7 @@ fn ensure_supported(channel_type: ChannelType, field: &str, supported: bool) -> 
 }
 
 fn supports_mention_mode(channel_type: ChannelType) -> bool {
-    matches!(
-        channel_type,
-        ChannelType::Telegram | ChannelType::Slack | ChannelType::Whatsapp
-    )
+    matches!(channel_type, ChannelType::Telegram | ChannelType::Whatsapp)
 }
 
 fn supports_otp_settings(channel_type: ChannelType) -> bool {
@@ -576,59 +551,8 @@ fn supports_reply_to_message(channel_type: ChannelType) -> bool {
     matches!(channel_type, ChannelType::Telegram)
 }
 
-fn supports_thread_replies(channel_type: ChannelType) -> bool {
-    matches!(channel_type, ChannelType::Slack)
-}
-
 fn supports_model_overrides(channel_type: ChannelType) -> bool {
-    matches!(
-        channel_type,
-        ChannelType::Telegram | ChannelType::Slack | ChannelType::Whatsapp
-    )
-}
-
-fn validate_stream_mode(
-    channel_type: ChannelType,
-    stream_mode: &ChannelSettingsStreamMode,
-) -> Result<()> {
-    let valid_values: Option<&[ChannelSettingsStreamMode]> = match channel_type {
-        ChannelType::Telegram => Some(&[
-            ChannelSettingsStreamMode::EditInPlace,
-            ChannelSettingsStreamMode::Off,
-        ]),
-        ChannelType::Slack => Some(&[
-            ChannelSettingsStreamMode::EditInPlace,
-            ChannelSettingsStreamMode::Native,
-            ChannelSettingsStreamMode::Off,
-        ]),
-        _ => None,
-    };
-
-    match valid_values {
-        None => Err(anyhow!(
-            "'stream_mode' is not supported for channel type '{}'",
-            channel_type.as_str()
-        )),
-        Some(valid_values) if valid_values.contains(stream_mode) => Ok(()),
-        Some(valid_values) => Err(anyhow!(
-            "invalid stream_mode '{}' for channel type '{}'; valid values are: {}",
-            stream_mode.as_str(),
-            channel_type.as_str(),
-            valid_values
-                .iter()
-                .map(|value| value.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
-    }
-}
-
-fn group_allowlist_key(channel_type: ChannelType) -> &'static str {
-    match channel_type {
-        ChannelType::Telegram | ChannelType::Whatsapp => "group_allowlist",
-        ChannelType::Slack => "channel_allowlist",
-        _ => "group_allowlist",
-    }
+    matches!(channel_type, ChannelType::Telegram | ChannelType::Whatsapp)
 }
 
 fn set_optional_string(config: &mut Map<String, Value>, key: &str, value: &Option<String>) {
@@ -1357,48 +1281,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_channel_settings_rejects_invalid_stream_mode_for_supported_channel() {
+    async fn update_channel_settings_rejects_stream_mode_for_unsupported_channel() {
         let service = Arc::new(RecordingChannelService::new());
         let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
-            "tg-main",
-            "telegram",
-            json!({
-                "token": "telegram-secret",
-                "allowlist": [],
-                "group_allowlist": []
-            }),
+            "mx-main",
+            "matrix",
+            json!({}),
         )]));
         let tool = UpdateChannelSettingsTool::new(
-            service as Arc<dyn ChannelService>,
+            service.clone() as Arc<dyn ChannelService>,
             Some(store as Arc<dyn ChannelStore>),
         );
 
         let err = tool
             .execute(json!({
-                "account_id": "tg-main",
+                "account_id": "mx-main",
                 "settings": {
-                    "stream_mode": "native"
+                    "stream_mode": "off"
                 }
             }))
             .await
-            .expect_err("telegram should reject native stream mode");
+            .expect_err("matrix should reject stream mode settings");
 
-        assert!(err.to_string().contains("invalid stream_mode 'native'"));
-        assert!(
-            err.to_string()
-                .contains("valid values are: edit_in_place, off")
+        assert_eq!(
+            err.to_string(),
+            "'stream_mode' is not supported for channel type 'matrix'"
         );
+        assert!(service.updated.lock().await.is_none());
     }
 
     #[tokio::test]
-    async fn send_message_tool_schema_lists_matrix_and_slack() {
+    async fn send_message_tool_schema_lists_matrix_and_telegram() {
         let tool = SendMessageTool::new(Arc::new(RecordingChannelService::new()));
         let schema = tool.parameters_schema();
         let channel_types = schema["properties"]["type"]["enum"]
             .as_array()
             .expect("channel type enum");
 
-        assert!(channel_types.iter().any(|value| value == "slack"));
+        assert!(channel_types.iter().any(|value| value == "telegram"));
         assert!(channel_types.iter().any(|value| value == "matrix"));
     }
 }

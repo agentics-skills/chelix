@@ -309,7 +309,7 @@ mod tests {
                 name: "overwrite_file".into(),
             }),
             deliver: true,
-            channel: Some("slack".into()),
+            channel: Some("telegram".into()),
             to: None,
         });
         let json = serde_json::to_string(&p).unwrap();

@@ -111,7 +111,7 @@ network such as `none` when a sandbox must not reach external services.
 
 ## Channel Authorization
 
-Channels (Telegram, Slack, etc.) allow external parties to interact with your
+Channels (Telegram, etc.) allow external parties to interact with your
 Chelix agent. This requires careful access control.
 
 ### Sender Allowlisting

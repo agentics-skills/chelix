@@ -30,7 +30,6 @@
 - [Voice](voice.md)
 - [Channels](channels.md)
   - [Telegram](telegram.md)
-  - [Slack](slack.md)
   - [Matrix](matrix.md)
   - [WhatsApp](whatsapp.md)
   - [Signal](signal.md)

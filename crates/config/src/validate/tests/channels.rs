@@ -63,24 +63,6 @@ fn channels_unknown_account_type_rejected() {
 }
 
 #[test]
-fn channels_offered_slack_accepted() {
-    let toml = r#"
-[channels]
-offered = ["telegram", "slack"]
-"#;
-    let result = validate_toml_str(toml);
-    let warning = result
-        .diagnostics
-        .iter()
-        .find(|d| d.path == "channels.offered[1]" && d.category == "unknown-field");
-    assert!(
-        warning.is_none(),
-        "slack should be accepted, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
 fn channels_offered_matrix_accepted() {
     let toml = r#"
 [channels]
@@ -102,10 +84,10 @@ offered = ["telegram", "matrix"]
 fn channels_offered_configured_known_type_accepted() {
     let toml = r#"
 [channels]
-offered = ["telegram", "slack"]
+offered = ["telegram", "matrix"]
 
-[channels.slack.my-bot]
-token = "xoxb-test"
+[channels.matrix.my-bot]
+access_token = "matrix-test"
 "#;
     let result = validate_toml_str(toml);
     let warning = result

@@ -14,7 +14,7 @@ The quickest way to fork — type in the chat input or on any channel:
 /fork experiment-a       # fork with a custom label
 ```
 
-Available in the web UI, Telegram, Slack, Matrix, and all other
+Available in the web UI, Telegram, Matrix, and all other
 channels. See [Slash Commands](commands.md) for the full list.
 
 ## Forking from the UI

@@ -24,7 +24,7 @@
 - **Tools — Policy & Agent Limits**
 - **Channels & Integrations**
 - **Memory**
-- **Scheduling & Webhooks**
+- **Scheduling**
 - **LLM Providers**
 - **Voice — Text-to-Speech**
 - **Voice — Speech-to-Text**
@@ -78,14 +78,12 @@
   - [`memory`](#memory)
   - [`memory.qmd`](#memoryqmd)
   - [`memory.qmd.collections.<name>`](#memoryqmdcollectionsname)
-- **Scheduling & Webhooks**
+- **Scheduling**
   - [`heartbeat`](#heartbeat)
   - [`heartbeat.active_hours`](#heartbeatactive-hours)
   - [`cron`](#cron)
   - [`caldav`](#caldav)
   - [`caldav.accounts.<name>`](#caldavaccountsname)
-  - [`webhooks`](#webhooks)
-  - [`webhooks.rate_limit`](#webhooksrate-limit)
 - **LLM Providers**
   - [`providers`](#providers)
   - [`providers.<name>.policy`](#providersnamepolicy)
@@ -481,8 +479,8 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 
 | Key              | Type                       | Default                                                                                | Description                                                                                                                                                                    |
 | ---------------- | -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `offered`        | array of string            | `["telegram", "whatsapp", "slack", "matrix", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
-| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `slack`, `matrix`, `signal`, `telephony`. Channel types are validated against this set. |
+| `offered`        | array of string            | `["telegram", "whatsapp", "matrix", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
+| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `matrix`, `signal`, `telephony`. Channel types are validated against this set. |
 
 Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary
 JSON object that may contain provider-specific keys plus a `tools` sub-block
@@ -611,7 +609,7 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 
 ---
 
-## Scheduling & Webhooks
+## Scheduling
 
 ### `heartbeat`
 
@@ -683,25 +681,6 @@ Both keys are required whenever `[heartbeat.model_override]` is present.
 | `password`        | optional string (secret) | —       | Password or app-specific password.                       |
 | `provider`        | optional string          | —       | Provider hint: `"fastmail"`, `"icloud"`, or `"generic"`. |
 | `timeout_seconds` | integer                  | `30`    | HTTP request timeout in seconds.                         |
-
-### `webhooks`
-
-**Struct:** `WebhooksConfig`
-
-| Key          | Type                            | Default | Description                         |
-| ------------ | ------------------------------- | ------- | ----------------------------------- |
-| `rate_limit` | map (see `webhooks.rate_limit`) | —       | Per-account rate limiting settings. |
-
-### `webhooks.rate_limit`
-
-**Struct:** `WebhookRateLimitConfig`
-
-| Key                     | Type             | Default | Description                                                            |
-| ----------------------- | ---------------- | ------- | ---------------------------------------------------------------------- |
-| `enabled`               | bool             | `true`  | Whether rate limiting is enabled.                                      |
-| `requests_per_minute`   | optional integer | —       | Max requests per minute per account. `None` uses per-channel defaults. |
-| `burst`                 | optional integer | —       | Burst allowance per account.                                           |
-| `cleanup_interval_secs` | integer          | `300`   | Interval in seconds between stale bucket cleanup.                      |
 
 ---
 

@@ -259,7 +259,6 @@ pub struct ChelixConfig {
     pub cron: CronConfig,
     pub caldav: CalDavConfig,
     pub home_assistant: HomeAssistantConfig,
-    pub webhooks: WebhooksConfig,
     /// Session title generation model and reasoning configuration.
     pub auxiliary: AuxiliaryModelsConfig,
     /// Code-index configuration for codebase search tools.

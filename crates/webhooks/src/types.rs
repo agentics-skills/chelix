@@ -67,7 +67,7 @@ pub struct Webhook {
     /// (`deliver_only` mode). When empty, the default normalized payload is used.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_template: Option<String>,
-    /// Channel to deliver to in `deliver_only` mode (e.g. "telegram", "slack").
+    /// Channel to deliver to in `deliver_only` mode (e.g. "telegram").
     /// Ignored when `deliver_only` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deliver_to: Option<String>,

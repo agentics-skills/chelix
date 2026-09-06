@@ -97,7 +97,6 @@ full = [
   "push-notifications",
   "qmd",
   "signal",
-  "slack",
   "telegram",
   "telephony",
   "tls",
@@ -144,7 +143,6 @@ prometheus         = ["chelix-httpd/prometheus"]
 push-notifications = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]
 qmd                = ["chelix-gateway/qmd"]
 signal             = ["chelix-httpd/signal"]
-slack              = ["chelix-httpd/slack"]
 telegram           = ["chelix-gateway/telegram"]
 telephony          = ["chelix-httpd/telephony"]
 tls                = ["chelix-httpd/tls"]
