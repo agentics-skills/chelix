@@ -30,7 +30,7 @@ const MAX_COMMAND_BYTES: usize = 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_TOOL_CALL_ID_BYTES: usize = 1024;
 const MULTILINE_COMMAND_LINE_DELAY: Duration = Duration::from_millis(25);
-const PROMPT_COMMAND: &str = r#"__chelix_status=$?; printf '\033]633;D;%s\007' "$__chelix_status"; trap 'trap - DEBUG; printf "\033]633;C\007"' DEBUG"#;
+const PROMPT_COMMAND: &str = r#"__chelix_status=$?; set +H; printf '\033]633;D;%s\007' "$__chelix_status"; trap 'trap - DEBUG; printf "\033]633;C\007"' DEBUG"#;
 
 pub(crate) struct TerminalManager {
     default_working_dir: PathBuf,
