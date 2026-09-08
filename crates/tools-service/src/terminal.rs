@@ -29,8 +29,8 @@ const DEFAULT_ROWS: u16 = 56;
 const MAX_COMMAND_BYTES: usize = 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_TOOL_CALL_ID_BYTES: usize = 1024;
-const MULTILINE_COMMAND_LINE_DELAY: Duration = Duration::from_millis(25);
-const PROMPT_COMMAND: &str = r#"__chelix_status=$?; set +H; printf '\033]633;D;%s\007' "$__chelix_status"; trap 'trap - DEBUG; printf "\033]633;C\007"' DEBUG"#;
+const PROMPT_COMMAND: &str = include_str!("terminal_prompt.bash");
+const PROMPT_ID_EXPRESSION: &str = "$((__chelix_prompt_id += 1))";
 
 pub(crate) struct TerminalManager {
     default_working_dir: PathBuf,
@@ -64,6 +64,12 @@ struct TerminalOutput {
     last_exit_code: Option<i32>,
     ready: bool,
     at_prompt: bool,
+    input_prompt: Option<PromptKind>,
+    prompt_id: Option<u64>,
+    pending_prompt_id: Option<u64>,
+    pending_prompt_kind: Option<PromptKind>,
+    primary_prompt_pending: bool,
+    run_error: Option<String>,
     closed: bool,
 }
 
@@ -71,9 +77,19 @@ struct ManagedRun {
     id: String,
     submission_line: usize,
     output_start_line: Option<usize>,
+    command_output_end_line: Option<usize>,
     output_end_line: Option<usize>,
+    command_started_count: u64,
+    command_finished_count: u64,
+    input_complete: bool,
     exit_code: Option<i32>,
     completed: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PromptKind {
+    Primary,
+    Continuation,
 }
 
 struct ToolCallTerminalBinding<'a> {
@@ -95,8 +111,13 @@ struct ParsedOutput {
 #[derive(Debug, PartialEq, Eq)]
 enum ParsedOutputItem {
     Output(Vec<u8>),
+    PromptId(u64),
+    PromptExpansionDisabled,
+    PromptStarted(PromptKind),
+    PromptFinished(PromptKind),
     CommandStarted,
     CommandFinished(i32),
+    InvalidMarker(&'static str),
 }
 
 impl TerminalManager {
@@ -133,9 +154,19 @@ impl TerminalManager {
 
         let run_id = Uuid::new_v4().simple().to_string();
         let command = build_command_input(&request)?;
-        let submission_line = {
+        let first_line_end = command_line_end(&command, 0);
+        let next_line_start = (first_line_end + 1 < command.len()).then_some(first_line_end + 1);
+        {
+            let writer = lock(&terminal.writer);
             let mut output = lock(&terminal.output);
+            check_run_error(&output)?;
             if output.active_run.as_ref().is_some_and(|run| !run.completed) {
+                if output.input_prompt == Some(PromptKind::Continuation) {
+                    bail!(
+                        "terminal {} is waiting for continuation of an unfinished shell construct; use process.paste or process.send_keys to continue or interrupt it",
+                        terminal.id
+                    );
+                }
                 bail!(
                     "terminal {} is still running a command; use read_terminal_output or newTerminal=true",
                     terminal.id
@@ -152,24 +183,43 @@ impl TerminalManager {
                 id: run_id.clone(),
                 submission_line,
                 output_start_line: None,
+                command_output_end_line: None,
                 output_end_line: None,
+                command_started_count: 0,
+                command_finished_count: 0,
+                input_complete: next_line_start.is_none(),
                 exit_code: None,
                 completed: false,
             });
             output.at_prompt = false;
-            submission_line
-        };
-
-        if let Err(error) = write_command(&terminal, &command).await {
-            let mut output = lock(&terminal.output);
-            output.active_run = None;
-            output.at_prompt = true;
-            terminal.output_notify.notify_waiters();
-            return Err(error);
+            output.input_prompt = None;
+            let bracketed_paste = output.screen.screen().mode() & MODE_BRACKETPASTE != 0;
+            drop(output);
+            if let Err(error) =
+                write_command_line(&writer, &command[..first_line_end], bracketed_paste)
+            {
+                record_run_error(&terminal, &run_id, &error);
+                return Err(error);
+            }
         }
 
-        if request.background {
-            return response_for_run(&terminal, &run_id, submission_line, false, false, true);
+        let background_response = if request.background {
+            match response_for_run(&terminal, &run_id, false, false, true) {
+                Ok(response) => Some(response),
+                Err(error) => {
+                    record_run_error(&terminal, &run_id, &error);
+                    return Err(error);
+                },
+            }
+        } else {
+            None
+        };
+        if let Some(start) = next_line_start {
+            spawn_command_feeder(Arc::clone(&terminal), run_id.clone(), command, start);
+        }
+
+        if let Some(response) = background_response {
+            return Ok(response);
         }
 
         let completed = wait_for_run(
@@ -178,14 +228,7 @@ impl TerminalManager {
             Duration::from_millis(request.timeout_millis),
         )
         .await?;
-        response_for_run(
-            &terminal,
-            &run_id,
-            submission_line,
-            completed,
-            !completed,
-            false,
-        )
+        response_for_run(&terminal, &run_id, completed, !completed, false)
     }
 
     pub(crate) async fn read_terminal_output(
@@ -196,12 +239,13 @@ impl TerminalManager {
             .find_terminal(&request.session_key, &request.terminal_id)
             .await?;
         let output = lock(&terminal.output);
-        let running = !output.closed && !output.at_prompt;
+        let running = terminal_running(&output);
         let completed = !running;
         let text = retained_text(output.screen.screen(), request.max_lines)?;
         Ok(ReadTerminalOutputResponse {
             terminal_id: terminal.id.clone(),
             output: text,
+            error: output.run_error.clone(),
             exit_code: output.last_exit_code,
             completed,
             running,
@@ -303,11 +347,10 @@ impl TerminalManager {
             bail!("terminal input exceeds {MAX_INPUT_BYTES} bytes");
         }
         let terminal = self.find_terminal(session_key, terminal_id).await?;
+        let writer = lock(&terminal.writer);
         ensure_terminal_alive(&terminal)?;
         record_terminal_input(&terminal, bytes);
-        lock(&terminal.writer)
-            .write_all(bytes)
-            .context("writing terminal input")
+        writer.write_all(bytes).context("writing terminal input")
     }
 
     pub(crate) async fn resize_terminal(
@@ -496,6 +539,12 @@ impl TerminalManager {
                 last_exit_code: None,
                 ready: false,
                 at_prompt: false,
+                input_prompt: None,
+                prompt_id: None,
+                pending_prompt_id: None,
+                pending_prompt_kind: None,
+                primary_prompt_pending: false,
+                run_error: None,
                 closed: false,
             }),
             output_notify: Notify::new(),
@@ -587,42 +636,170 @@ fn spawn_output_reader(terminal: Arc<ManagedTerminal>, reader: PtyIo) -> Result<
 fn process_output(terminal: &ManagedTerminal, bytes: &[u8]) {
     let mut output = lock(&terminal.output);
     let parsed = output.parser.feed(bytes);
+    let mut invalid_count = 0;
+    let mut invalid_reason = None;
+    let mut integration_error = None;
     for item in parsed.items {
-        match item {
-            ParsedOutputItem::Output(bytes) => {
-                append_visible_output(terminal, &mut output, bytes);
-            },
-            ParsedOutputItem::CommandStarted => {
-                output.at_prompt = false;
-                let output_start_line = output.screen.screen().cursor_absolute_y();
-                if let Some(run) = output.active_run.as_mut() {
-                    run.output_start_line = Some(output_start_line);
-                }
-            },
-            ParsedOutputItem::CommandFinished(exit_code) => {
-                let was_ready = output.ready;
-                output.ready = true;
-                output.at_prompt = true;
-                let output_end_line = output.screen.screen().cursor_absolute_y();
-                if was_ready {
-                    output.last_exit_code = Some(exit_code);
-                }
-                if let Some(run) = output.active_run.as_mut() {
-                    run.output_end_line = Some(output_end_line);
-                    run.exit_code = Some(exit_code);
-                    run.completed = true;
-                    output.last_exit_code = Some(exit_code);
-                }
-            },
+        if let ParsedOutputItem::InvalidMarker(reason) = &item {
+            invalid_count += 1;
+            invalid_reason.get_or_insert(*reason);
+        }
+        if let Err(error) = process_output_item(&mut output, item)
+            && output.run_error.is_none()
+        {
+            let reason = error.to_string();
+            set_run_error(&mut output, reason.clone());
+            integration_error = Some(reason);
         }
     }
     let replies = output.screen.take_replies();
     drop(output);
+    if let Some(error) = integration_error {
+        tracing::error!(terminal_id = %terminal.id, error, "RMUX shell integration failed");
+    }
+    if let Some(reason) = invalid_reason {
+        tracing::debug!(terminal_id = %terminal.id, count = invalid_count, reason, "ignoring invalid OSC 633 markers");
+    }
     if !replies.is_empty()
         && let Err(error) = lock(&terminal.writer).write_all(&replies)
     {
         tracing::error!(terminal_id = %terminal.id, %error, "writing RMUX terminal reply failed");
     }
+    terminal.output_notify.notify_waiters();
+}
+
+fn process_output_item(output: &mut TerminalOutput, item: ParsedOutputItem) -> Result<()> {
+    match item {
+        ParsedOutputItem::Output(bytes) => {
+            output.screen.feed(&bytes);
+            output.history.extend_from_slice(&bytes);
+        },
+        ParsedOutputItem::PromptId(id) => {
+            output.pending_prompt_id = Some(id);
+            output.pending_prompt_kind = None;
+        },
+        ParsedOutputItem::PromptStarted(kind) => {
+            output.pending_prompt_kind = Some(kind);
+        },
+        ParsedOutputItem::PromptFinished(kind) => {
+            let pending_kind = output.pending_prompt_kind.take();
+            let Some(id) = output.pending_prompt_id.take() else {
+                return Ok(());
+            };
+            if pending_kind != Some(kind) {
+                return Ok(());
+            }
+            let fresh = match kind {
+                PromptKind::Primary => std::mem::take(&mut output.primary_prompt_pending),
+                PromptKind::Continuation => output.prompt_id != Some(id),
+            };
+            if !fresh {
+                return Ok(());
+            }
+            output.prompt_id = Some(id);
+            output.input_prompt = Some(kind);
+            output.at_prompt = kind == PromptKind::Primary;
+            if kind == PromptKind::Primary {
+                output.ready = true;
+                let end_line = capture_end_line(output);
+                if let Some(run) = output.active_run.as_mut().filter(|run| !run.completed)
+                    && run.input_complete
+                {
+                    run.output_end_line = Some(end_line);
+                    run.completed = true;
+                    tracing::debug!(run_id = %run.id,
+                        command_starts = run.command_started_count,
+                        command_finishes = run.command_finished_count,
+                        exit_code = run.exit_code, "managed terminal run completed");
+                }
+            }
+        },
+        ParsedOutputItem::CommandStarted => {
+            output.at_prompt = false;
+            output.input_prompt = None;
+            output.primary_prompt_pending = false;
+            output.pending_prompt_id = None;
+            output.pending_prompt_kind = None;
+            let start_line = output.screen.screen().cursor_absolute_y();
+            if let Some(run) = output.active_run.as_mut().filter(|run| !run.completed) {
+                run.output_start_line.get_or_insert(start_line);
+                run.command_output_end_line = None;
+                run.command_started_count += 1;
+            }
+        },
+        ParsedOutputItem::CommandFinished(exit_code) => {
+            output.at_prompt = false;
+            output.input_prompt = None;
+            output.primary_prompt_pending = true;
+            output.pending_prompt_id = None;
+            output.pending_prompt_kind = None;
+            if output.ready {
+                output.last_exit_code = Some(exit_code);
+            }
+            let end_line = output.screen.screen().cursor_absolute_y();
+            if let Some(run) = output.active_run.as_mut().filter(|run| !run.completed) {
+                run.command_output_end_line = Some(end_line);
+                run.command_finished_count += 1;
+                run.exit_code = Some(exit_code);
+            }
+        },
+        ParsedOutputItem::PromptExpansionDisabled if output.primary_prompt_pending => {
+            bail!(
+                "Bash promptvars is disabled; managed shell prompt identifiers cannot be expanded"
+            );
+        },
+        ParsedOutputItem::PromptExpansionDisabled | ParsedOutputItem::InvalidMarker(_) => {},
+    }
+    Ok(())
+}
+
+fn capture_end_line(output: &TerminalOutput) -> usize {
+    output
+        .screen
+        .screen()
+        .cursor_absolute_y()
+        .saturating_add(1)
+        .min(output.screen.screen().absolute_line_count())
+}
+
+fn terminal_running(output: &TerminalOutput) -> bool {
+    !output.closed
+        && (!output.at_prompt || output.active_run.as_ref().is_some_and(|run| !run.completed))
+}
+
+fn check_run_error(output: &TerminalOutput) -> Result<()> {
+    if let Some(error) = &output.run_error {
+        bail!("{error}");
+    }
+    Ok(())
+}
+
+fn set_run_error(output: &mut TerminalOutput, error: String) {
+    if output.run_error.is_some() {
+        return;
+    }
+    output.run_error = Some(error);
+    let end_line = capture_end_line(output);
+    if let Some(run) = output.active_run.as_mut().filter(|run| !run.completed) {
+        run.completed = true;
+        run.output_end_line = Some(end_line);
+    }
+}
+
+fn record_run_error(terminal: &ManagedTerminal, run_id: &str, error: &anyhow::Error) {
+    tracing::error!(terminal_id = %terminal.id, run_id, %error, "RMUX managed run failed");
+    let mut output = lock(&terminal.output);
+    if output
+        .active_run
+        .as_ref()
+        .is_some_and(|run| run.id == run_id)
+    {
+        set_run_error(
+            &mut output,
+            format!("terminal {} managed run failed: {error:#}", terminal.id),
+        );
+    }
+    drop(output);
     terminal.output_notify.notify_waiters();
 }
 
@@ -648,13 +825,9 @@ fn close_terminal_output(terminal: &ManagedTerminal) {
     let mut output = lock(&terminal.output);
     output.closed = true;
     output.last_exit_code = exit_code;
-    let output_end_line = output
-        .screen
-        .screen()
-        .cursor_absolute_y()
-        .saturating_add(1)
-        .min(output.screen.screen().absolute_line_count());
-    if let Some(run) = output.active_run.as_mut() {
+    let output_end_line = capture_end_line(&output);
+    if let Some(run) = output.active_run.as_mut().filter(|run| !run.completed) {
+        run.command_output_end_line.get_or_insert(output_end_line);
         run.output_end_line = Some(output_end_line);
         run.completed = true;
         run.exit_code = exit_code;
@@ -669,6 +842,7 @@ async fn wait_for_run(terminal: &ManagedTerminal, run_id: &str, timeout: Duratio
             let notified = terminal.output_notify.notified();
             {
                 let output = lock(&terminal.output);
+                check_run_error(&output)?;
                 let run = output
                     .active_run
                     .as_ref()
@@ -698,7 +872,8 @@ async fn wait_for_terminal_ready(terminal: &ManagedTerminal, timeout: Duration) 
             let notified = terminal.output_notify.notified();
             {
                 let output = lock(&terminal.output);
-                if output.ready && current_line_has_shell_prompt(output.screen.screen()) {
+                check_run_error(&output)?;
+                if output.ready {
                     return Ok(());
                 }
                 if output.closed {
@@ -716,54 +891,21 @@ async fn wait_for_terminal_ready(terminal: &ManagedTerminal, timeout: Duration) 
         .map_err(|_| anyhow!("terminal {} shell startup timed out", terminal.id))?
 }
 
-fn current_line_has_shell_prompt(screen: &Screen) -> bool {
-    screen
-        .absolute_line_view(screen.cursor_absolute_y())
-        .is_some_and(|line| {
-            line.cells()
-                .iter()
-                .rev()
-                .filter(|cell| !cell.is_padding())
-                .map(|cell| cell.text().trim())
-                .find(|text| !text.is_empty())
-                .is_some_and(|text| text.ends_with('#') || text.ends_with('$'))
-        })
-}
-
 fn response_for_run(
     terminal: &ManagedTerminal,
     run_id: &str,
-    submission_line: usize,
     completed: bool,
     timed_out: bool,
     background: bool,
 ) -> Result<ExecuteCommandResponse> {
     let output = lock(&terminal.output);
+    check_run_error(&output)?;
     let run = output
         .active_run
         .as_ref()
         .filter(|run| run.id == run_id)
         .ok_or_else(|| anyhow!("terminal run {run_id} is unavailable"))?;
-    debug_assert_eq!(run.submission_line, submission_line);
-    let command_output = match run.output_start_line {
-        Some(start_line) => {
-            let end_line = run.output_end_line.unwrap_or_else(|| {
-                output
-                    .screen
-                    .screen()
-                    .cursor_absolute_y()
-                    .saturating_add(1)
-                    .min(output.screen.screen().absolute_line_count())
-            });
-            screen_text(output.screen.screen(), start_line, end_line)?
-                .trim_end_matches('\n')
-                .to_owned()
-        },
-        None if run.completed => {
-            bail!("terminal run {run_id} completed without a command-start boundary")
-        },
-        None => String::new(),
-    };
+    let command_output = run_output(&output, run)?;
     Ok(ExecuteCommandResponse {
         terminal_id: terminal.id.clone(),
         run_id: run_id.to_owned(),
@@ -783,6 +925,27 @@ fn response_for_run(
     })
 }
 
+fn run_output(output: &TerminalOutput, run: &ManagedRun) -> Result<String> {
+    let Some(start_line) = run.output_start_line else {
+        if run.completed {
+            bail!(
+                "terminal run {} completed without a command-start boundary",
+                run.id
+            );
+        }
+        return Ok(String::new());
+    };
+    let (start_line, end_line) = if run.command_started_count > 1 {
+        (run.submission_line, run.output_end_line)
+    } else {
+        (start_line, run.command_output_end_line)
+    };
+    let end_line = end_line.unwrap_or_else(|| capture_end_line(output));
+    Ok(screen_text(output.screen.screen(), start_line, end_line)?
+        .trim_end_matches('\n')
+        .to_owned())
+}
+
 fn build_command_input(request: &ExecuteCommandRequest) -> Result<Vec<u8>> {
     let command = match request.custom_cwd.as_deref() {
         Some(cwd) => {
@@ -794,46 +957,115 @@ fn build_command_input(request: &ExecuteCommandRequest) -> Result<Vec<u8>> {
     Ok(command.into_bytes())
 }
 
-async fn write_command(terminal: &ManagedTerminal, command: &[u8]) -> Result<()> {
-    let mut start = 0;
+fn command_line_end(command: &[u8], start: usize) -> usize {
+    command[start..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(command.len(), |offset| start + offset)
+}
+
+fn spawn_command_feeder(
+    terminal: Arc<ManagedTerminal>,
+    run_id: String,
+    command: Vec<u8>,
+    start: usize,
+) {
+    tokio::spawn(async move {
+        if let Err(error) = write_command(&terminal, &run_id, Arc::from(command), start).await {
+            record_run_error(&terminal, &run_id, &error);
+        }
+    });
+}
+
+async fn write_command(
+    terminal: &Arc<ManagedTerminal>,
+    run_id: &str,
+    command: Arc<[u8]>,
+    mut start: usize,
+) -> Result<()> {
     loop {
-        let line_end = command[start..]
-            .iter()
-            .position(|byte| *byte == b'\n')
-            .map_or(command.len(), |offset| start + offset);
-        let bracketed_paste =
-            lock(&terminal.output).screen.screen().mode() & MODE_BRACKETPASTE != 0;
-        {
-            let writer = lock(&terminal.writer);
-            if bracketed_paste {
-                let line = &command[start..line_end];
-                let mut paste = Vec::with_capacity(line.len().saturating_add(12));
-                paste.extend_from_slice(b"\x1b[200~");
-                paste.extend_from_slice(line);
-                paste.extend_from_slice(b"\x1b[201~");
-                writer
-                    .write_all(&paste)
-                    .context("pasting command line to RMUX terminal")?;
-            } else {
-                writer
-                    .write_all(&command[start..line_end])
-                    .context("pasting command line to RMUX terminal")?;
+        let notified = terminal.output_notify.notified();
+        let ready = {
+            let output = lock(&terminal.output);
+            if !run_accepts_input(&output, run_id) {
+                return Ok(());
             }
-            writer
-                .write_all(b"\r")
-                .context("sending Enter to RMUX terminal")?;
+            output.input_prompt.is_some()
+        };
+        if !ready {
+            notified.await;
+            continue;
         }
-        if line_end == command.len() || line_end + 1 == command.len() {
-            return Ok(());
+        let line_end = command_line_end(&command, start);
+        let input_complete = line_end == command.len() || line_end + 1 == command.len();
+        let written = {
+            let terminal = Arc::clone(terminal);
+            let command = Arc::clone(&command);
+            let run_id = run_id.to_owned();
+            tokio::task::spawn_blocking(move || {
+                let writer = lock(&terminal.writer);
+                let bracketed_paste = {
+                    let mut output = lock(&terminal.output);
+                    if !run_accepts_input(&output, &run_id) || output.input_prompt.take().is_none()
+                    {
+                        return Ok::<_, anyhow::Error>(false);
+                    }
+                    let run = output
+                        .active_run
+                        .as_mut()
+                        .ok_or_else(|| anyhow!("terminal run disappeared before input"))?;
+                    run.input_complete = input_complete;
+                    output.at_prompt = false;
+                    output.screen.screen().mode() & MODE_BRACKETPASTE != 0
+                };
+                write_command_line(&writer, &command[start..line_end], bracketed_paste)?;
+                Ok(true)
+            })
+            .await
+            .context("joining RMUX command input writer")??
+        };
+        if written {
+            if input_complete {
+                return Ok(());
+            }
+            start = line_end + 1;
         }
-        start = line_end + 1;
-        tokio::time::sleep(MULTILINE_COMMAND_LINE_DELAY).await;
     }
+}
+
+fn run_accepts_input(output: &TerminalOutput, run_id: &str) -> bool {
+    !output.closed
+        && output.run_error.is_none()
+        && output
+            .active_run
+            .as_ref()
+            .is_some_and(|run| run.id == run_id && !run.completed)
+}
+
+fn write_command_line(writer: &PtyMaster, line: &[u8], bracketed_paste: bool) -> Result<()> {
+    if bracketed_paste {
+        let mut paste = Vec::with_capacity(line.len().saturating_add(12));
+        paste.extend_from_slice(b"\x1b[200~");
+        paste.extend_from_slice(line);
+        paste.extend_from_slice(b"\x1b[201~");
+        writer
+            .write_all(&paste)
+            .context("pasting command line to RMUX terminal")?;
+    } else {
+        writer
+            .write_all(line)
+            .context("pasting command line to RMUX terminal")?;
+    }
+    writer
+        .write_all(b"\r")
+        .context("sending Enter to RMUX terminal")
 }
 
 fn record_terminal_input(terminal: &ManagedTerminal, bytes: &[u8]) {
     if bytes.iter().any(|byte| matches!(*byte, b'\r' | b'\n')) {
-        lock(&terminal.output).at_prompt = false;
+        let mut output = lock(&terminal.output);
+        output.at_prompt = false;
+        output.input_prompt = None;
     }
 }
 
@@ -869,7 +1101,7 @@ fn ensure_terminal_alive(terminal: &ManagedTerminal) -> Result<()> {
 
 fn terminal_info(terminal: &Arc<ManagedTerminal>) -> ToolsServiceTerminalInfo {
     let output = lock(&terminal.output);
-    let running = !output.closed && !output.at_prompt;
+    let running = terminal_running(&output);
     ToolsServiceTerminalInfo {
         id: terminal.id.clone(),
         session_key: terminal.session_key.clone(),
@@ -924,12 +1156,37 @@ impl ShellEventParser {
                 break;
             };
             let payload = String::from_utf8_lossy(&self.pending[PREFIX.len()..end]);
-            if payload == "C" {
-                items.push(ParsedOutputItem::CommandStarted);
-            } else if let Some(status) = payload.strip_prefix("D;")
-                && let Ok(status) = status.parse::<i32>()
-            {
-                items.push(ParsedOutputItem::CommandFinished(status));
+            let event = match payload.as_ref() {
+                "A" => Some(ParsedOutputItem::PromptStarted(PromptKind::Primary)),
+                "B" => Some(ParsedOutputItem::PromptFinished(PromptKind::Primary)),
+                "F" => Some(ParsedOutputItem::PromptStarted(PromptKind::Continuation)),
+                "G" => Some(ParsedOutputItem::PromptFinished(PromptKind::Continuation)),
+                "C" => Some(ParsedOutputItem::CommandStarted),
+                _ => {
+                    if let Some(id) = payload.strip_prefix("P;ChelixPromptId=") {
+                        Some(match id {
+                            PROMPT_ID_EXPRESSION => ParsedOutputItem::PromptExpansionDisabled,
+                            _ => match id.parse::<u64>() {
+                                Ok(id) => ParsedOutputItem::PromptId(id),
+                                Err(_) => ParsedOutputItem::InvalidMarker(
+                                    "invalid RMUX shell prompt identifier",
+                                ),
+                            },
+                        })
+                    } else {
+                        payload
+                            .strip_prefix("D;")
+                            .map(|status| match status.parse::<i32>() {
+                                Ok(status) => ParsedOutputItem::CommandFinished(status),
+                                Err(_) => ParsedOutputItem::InvalidMarker(
+                                    "invalid RMUX shell exit status",
+                                ),
+                            })
+                    }
+                },
+            };
+            if let Some(event) = event {
+                items.push(event);
             }
             self.pending.drain(..=end);
         }
@@ -1162,6 +1419,10 @@ fn partial_suffix_len(bytes: &[u8], prefix: &[u8]) -> usize {
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|error| error.into_inner())
 }
+
+#[cfg(test)]
+#[path = "terminal_managed_run_tests.rs"]
+mod managed_run_tests;
 
 #[cfg(test)]
 mod tests {
