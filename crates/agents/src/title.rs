@@ -82,7 +82,7 @@ pub async fn generate_title(
         ChatMessage::system(TITLE_SYSTEM_PROMPT),
         ChatMessage::user(&context),
     ];
-    let result = provider.complete(&messages, &[]).await;
+    let result = crate::model::collect_stream(provider.stream(messages)).await;
 
     match result {
         Ok(response) => {

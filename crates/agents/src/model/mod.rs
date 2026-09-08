@@ -26,6 +26,14 @@ pub use options::CompletionOptions;
 mod stream;
 pub use stream::{LlmProvider, StreamEvent};
 
+mod collect;
+pub use collect::collect_stream;
+
+#[cfg(test)]
+mod test_stream;
+#[cfg(test)]
+pub(crate) use test_stream::response_stream;
+
 #[cfg(test)]
 fn document_absolute_path_from_media_ref(media_ref: &str) -> String {
     use std::path::Path;
@@ -920,7 +928,6 @@ mod tests {
     /// Minimal provider to test explicit context metadata behavior.
     struct StubProvider;
 
-    #[async_trait::async_trait]
     impl LlmProvider for StubProvider {
         fn name(&self) -> &str {
             "stub"
@@ -942,19 +949,19 @@ mod tests {
             Some(12_000)
         }
 
-        async fn complete(
+        fn stream_with_tools(
             &self,
-            _: &[ChatMessage],
-            _: &[serde_json::Value],
-        ) -> anyhow::Result<CompletionResponse> {
-            anyhow::bail!("not implemented")
+            _: Vec<ChatMessage>,
+            _: Vec<serde_json::Value>,
+        ) -> std::pin::Pin<Box<dyn tokio_stream::Stream<Item = StreamEvent> + Send + '_>> {
+            response_stream(async move { anyhow::bail!("not implemented") })
         }
 
         fn stream(
             &self,
-            _: Vec<ChatMessage>,
+            messages: Vec<ChatMessage>,
         ) -> std::pin::Pin<Box<dyn tokio_stream::Stream<Item = StreamEvent> + Send + '_>> {
-            Box::pin(tokio_stream::empty())
+            self.stream_with_tools(messages, Vec::new())
         }
     }
 

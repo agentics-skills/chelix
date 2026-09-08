@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-/// Response from an LLM completion call.
-#[derive(Debug)]
+/// Collected provider stream with canonical response segments.
+#[derive(Debug, Default)]
 pub struct CompletionResponse {
     pub text: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub usage: Usage,
+    pub segments: Vec<chelix_common::ProviderSegment>,
+    pub raw_events: Vec<serde_json::Value>,
 }
 
 pub const MAX_CAPTURED_PROVIDER_RAW_EVENTS: usize = 256;

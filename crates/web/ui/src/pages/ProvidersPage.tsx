@@ -108,7 +108,6 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 		["input_modalities", JSON.stringify(model.input_modalities)],
 		["output_modalities", JSON.stringify(model.output_modalities)],
 		["tool_calling", recordValue(model.tool_calling)],
-		["streaming", recordValue(model.streaming)],
 		["zeroDataRetentionEnabled", recordValue(model.zeroDataRetentionEnabled)],
 		["reasoning_supported_efforts", JSON.stringify(model.reasoning_supported_efforts)],
 		["reasoning_summary", recordValue(model.reasoning_summary)],

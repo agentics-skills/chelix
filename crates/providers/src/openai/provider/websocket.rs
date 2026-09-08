@@ -16,7 +16,7 @@ use crate::{
     ws_pool,
 };
 
-use chelix_agents::model::{ChatMessage, StreamEvent, ToolChoice};
+use chelix_agents::model::{ChatMessage, CompletionOptions, StreamEvent};
 
 use {super::OpenAiProvider, crate::openai::ResponsesWebSocketPolicy};
 
@@ -52,7 +52,7 @@ impl OpenAiProvider {
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
         fallback_to_sse: bool,
-        tool_choice: Option<ToolChoice>,
+        options: CompletionOptions,
         fallback_to_responses_sse: bool,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         // Synchronous pre-flight: URL, request, auth header, pool key.
@@ -80,9 +80,9 @@ impl OpenAiProvider {
                 if fallback_to_sse {
                     debug!(error = %err, "websocket setup failed, falling back to sse");
                     return if fallback_to_responses_sse {
-                        self.stream_responses_sse(messages, tools, tool_choice)
+                        self.stream_responses_sse(messages, tools, options)
                     } else {
-                        self.stream_with_tools_sse(messages, tools, tool_choice)
+                        self.stream_with_tools_sse(messages, tools, options)
                     };
                 }
                 return Box::pin(async_stream::stream! {
@@ -102,9 +102,9 @@ impl OpenAiProvider {
                         if fallback_to_sse {
                             debug!(error = %err, "websocket connect failed, falling back to sse");
                             let mut sse = if fallback_to_responses_sse {
-                                self.stream_responses_sse(messages, tools, tool_choice)
+                                self.stream_responses_sse(messages, tools, options)
                             } else {
-                                self.stream_with_tools_sse(messages, tools, tool_choice)
+                                self.stream_with_tools_sse(messages, tools, options)
                             };
                             while let Some(event) = sse.next().await {
                                 yield event;
@@ -138,10 +138,14 @@ impl OpenAiProvider {
             }
             if let Err(error) = super::core::apply_openai_responses_tool_choice(
                 &mut response_payload,
-                tool_choice.as_ref(),
+                options.tool_choice.as_ref(),
             ) {
                 yield StreamEvent::Error(error.to_string());
                 return;
+            }
+
+            if let Some(max_output_tokens) = options.max_output_tokens {
+                response_payload["max_output_tokens"] = serde_json::json!(max_output_tokens);
             }
 
             if let Err(error) = self.apply_reasoning_responses(&mut response_payload) {

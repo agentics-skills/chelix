@@ -204,8 +204,6 @@ pub struct PartialModelMetadata {
     pub output_modalities: Option<Vec<ModelModality>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calling: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub streaming: Option<bool>,
     #[serde(
         default,
         rename = "zeroDataRetentionEnabled",
@@ -259,7 +257,6 @@ impl PartialModelMetadata {
             input_modalities,
             output_modalities,
             tool_calling: required(self.tool_calling, "tool_calling")?,
-            streaming: required(self.streaming, "streaming")?,
             zero_data_retention_enabled: required(
                 self.zero_data_retention_enabled,
                 "zeroDataRetentionEnabled",
@@ -281,7 +278,6 @@ pub struct ModelMetadata {
     pub input_modalities: Vec<ModelModality>,
     pub output_modalities: Vec<ModelModality>,
     pub tool_calling: bool,
-    pub streaming: bool,
     #[serde(rename = "zeroDataRetentionEnabled")]
     pub zero_data_retention_enabled: bool,
     pub reasoning_supported_efforts: Vec<ReasoningEffort>,
@@ -312,7 +308,6 @@ impl From<&ModelMetadata> for PartialModelMetadata {
             input_modalities: Some(metadata.input_modalities.clone()),
             output_modalities: Some(metadata.output_modalities.clone()),
             tool_calling: Some(metadata.tool_calling),
-            streaming: Some(metadata.streaming),
             zero_data_retention_enabled: Some(metadata.zero_data_retention_enabled),
             reasoning_supported_efforts: Some(metadata.reasoning_supported_efforts.clone()),
             reasoning_summary: metadata.reasoning_summary,
@@ -407,7 +402,6 @@ mod tests {
             input_modalities: Some(vec![ModelModality::Text, ModelModality::Image]),
             output_modalities: Some(vec![ModelModality::Text]),
             tool_calling: Some(true),
-            streaming: Some(true),
             zero_data_retention_enabled: Some(true),
             reasoning_supported_efforts: Some(vec!["low".into(), "ultra".into()]),
             reasoning_summary: Some(ReasoningSummary::Detailed),

@@ -30,7 +30,6 @@ below. The record has no other fields.
 - `input_modalities`
 - `output_modalities`
 - `tool_calling`
-- `streaming`
 - `zeroDataRetentionEnabled`
 - `reasoning_supported_efforts`
 
@@ -169,7 +168,6 @@ max_output_tokens = 65536
 input_modalities = ["text", "image", "audio", "file"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = true
 reasoning_supported_efforts = ["low", "medium", "high"]
 reasoning_summary = "detailed"
@@ -186,7 +184,6 @@ max_output_tokens = 65536
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 ```
@@ -225,7 +222,6 @@ max_output_tokens = 128000
 input_modalities = ["text", "image", "audio", "file"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = true
 reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
 reasoning_summary = "detailed"
@@ -287,7 +283,6 @@ max_output_tokens = 65536
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 

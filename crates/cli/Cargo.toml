@@ -12,7 +12,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow             = { workspace = true }
-chelix-agents      = { workspace = true }
 chelix-browser     = { workspace = true }
 chelix-common      = { workspace = true }
 chelix-config      = { workspace = true }

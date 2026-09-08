@@ -755,7 +755,7 @@ pub(crate) fn channel_binding_from_internal_params(
 /// Apply one action already computed atomically for a complete model round:
 /// push the directive user message into `messages`, emit the
 /// `LoopInterventionFired` UI event, and set `strip_tools_next_iter` when
-/// stage 2 fires. Shared by the streaming and non-streaming loops.
+/// stage 2 fires.
 pub(crate) fn apply_loop_detector_intervention(
     loop_detector: &ToolLoopDetector,
     action: LoopDetectorAction,

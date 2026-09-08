@@ -1,7 +1,7 @@
 //! Contract tests for the [`LlmProvider`] trait.
 //!
 //! These functions validate that any `LlmProvider` implementation satisfies
-//! the completion and streaming semantics required by the chat runtime.
+//! the streaming semantics required by the chat runtime.
 //! Run against `MockLlmProvider` in provider tests.
 
 #![allow(clippy::unwrap_used)]
@@ -9,8 +9,7 @@
 use std::pin::Pin;
 
 use {
-    async_trait::async_trait,
-    chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
+    chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage, collect_stream},
     chelix_common::{
         ProviderItemId, ProviderItemPosition, ProviderItemUpdate, ProviderItemUpdatePayload,
         ProviderSegmentId,
@@ -22,8 +21,8 @@ use {
 
 /// A mock LLM provider that returns canned responses for contract testing.
 pub struct MockLlmProvider {
-    /// If set, `complete()` returns this error.
-    pub complete_error: Option<MockError>,
+    /// If set, `stream()` returns this error.
+    pub stream_error: Option<MockError>,
 }
 
 /// Simulated error types for the mock provider.
@@ -36,19 +35,16 @@ pub enum MockError {
 
 impl MockLlmProvider {
     pub fn ok() -> Self {
-        Self {
-            complete_error: None,
-        }
+        Self { stream_error: None }
     }
 
     pub fn with_error(error: MockError) -> Self {
         Self {
-            complete_error: Some(error),
+            stream_error: Some(error),
         }
     }
 }
 
-#[async_trait]
 impl LlmProvider for MockLlmProvider {
     fn name(&self) -> &str {
         "mock"
@@ -58,35 +54,17 @@ impl LlmProvider for MockLlmProvider {
         "mock-model"
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> anyhow::Result<CompletionResponse> {
-        match &self.complete_error {
-            Some(MockError::RateLimit) => {
-                anyhow::bail!("429 Too Many Requests: rate limited")
-            },
-            Some(MockError::AuthFailed) => {
-                anyhow::bail!("401 Unauthorized: invalid API key")
-            },
-            None => Ok(CompletionResponse {
-                text: Some("Hello from mock provider".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
-                    cache_read_tokens: 0,
-                    cache_write_tokens: 0,
-                },
-            }),
-        }
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        if let Some(error) = &self.stream_error {
+            let message = match error {
+                MockError::RateLimit => "429 Too Many Requests: rate limited",
+                MockError::AuthFailed => "401 Unauthorized: invalid API key",
+            };
+            return Box::pin(tokio_stream::once(StreamEvent::Error(message.to_string())));
+        }
         let events = vec![
             StreamEvent::Delta("Hello ".into()),
             StreamEvent::Delta("world".into()),
@@ -103,12 +81,12 @@ impl LlmProvider for MockLlmProvider {
 
 // ── Contract tests ──────────────────────────────────────────────────────────
 
-/// A non-streaming completion must return a response with text and usage data.
-pub async fn non_stream_returns_complete_response(
+/// A collected stream must return a response with text and usage data.
+pub async fn collected_stream_returns_complete_response(
     provider: &dyn LlmProvider,
 ) -> anyhow::Result<()> {
     let messages = vec![ChatMessage::user("Say hello.")];
-    let response = provider.complete(&messages, &[]).await?;
+    let response = collect_stream(provider.stream(messages)).await?;
 
     assert!(
         response.text.is_some(),
@@ -194,7 +172,7 @@ pub async fn stream_surfaces_reasoning_separately(
 /// A 429 rate-limit error message must contain "429" (retryable indicator).
 pub async fn error_classification_maps_429_to_retryable(provider: &dyn LlmProvider) {
     let messages = vec![ChatMessage::user("test")];
-    let result = provider.complete(&messages, &[]).await;
+    let result = collect_stream(provider.stream(messages)).await;
     assert!(result.is_err(), "rate-limited provider must return error");
     let err = result.unwrap_err().to_string();
     assert!(
@@ -206,7 +184,7 @@ pub async fn error_classification_maps_429_to_retryable(provider: &dyn LlmProvid
 /// A 401 auth error message must contain "401" (fatal indicator).
 pub async fn error_classification_maps_401_to_fatal(provider: &dyn LlmProvider) {
     let messages = vec![ChatMessage::user("test")];
-    let result = provider.complete(&messages, &[]).await;
+    let result = collect_stream(provider.stream(messages)).await;
     assert!(result.is_err(), "auth-failed provider must return error");
     let err = result.unwrap_err().to_string();
     assert!(
@@ -221,7 +199,6 @@ mod tests {
 
     struct ReasoningProvider;
 
-    #[async_trait]
     impl LlmProvider for ReasoningProvider {
         fn name(&self) -> &str {
             "reasoning-mock"
@@ -229,18 +206,6 @@ mod tests {
 
         fn id(&self) -> &str {
             "reasoning-model"
-        }
-
-        async fn complete(
-            &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
-        ) -> anyhow::Result<CompletionResponse> {
-            Ok(CompletionResponse {
-                text: Some("final answer".into()),
-                tool_calls: vec![],
-                usage: Usage::default(),
-            })
         }
 
         fn stream(
@@ -273,9 +238,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn contract_non_stream_returns_complete_response() {
+    async fn contract_collected_stream_returns_complete_response() {
         let provider = MockLlmProvider::ok();
-        non_stream_returns_complete_response(&provider)
+        collected_stream_returns_complete_response(&provider)
             .await
             .unwrap();
     }

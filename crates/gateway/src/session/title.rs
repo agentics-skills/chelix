@@ -154,8 +154,7 @@ mod tests {
     };
 
     use {
-        async_trait::async_trait,
-        chelix_agents::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, Usage},
+        chelix_agents::model::{ChatMessage, LlmProvider, StreamEvent, Usage},
         chelix_auth::{AuthMode, ResolvedAuth},
         chelix_common::{ConfigModelOverride, ModelMetadata, ModelModality, ReasoningEffort},
         chelix_providers::{ModelInfo, ProviderRegistry},
@@ -200,7 +199,6 @@ mod tests {
         .unwrap()
     }
 
-    #[async_trait]
     impl LlmProvider for MockTitleProvider {
         fn name(&self) -> &str {
             "mock"
@@ -210,29 +208,20 @@ mod tests {
             "mock-title"
         }
 
-        async fn complete(
-            &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
-        ) -> Result<CompletionResponse> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            assert_eq!(self.applied_effort.as_ref(), Some(&self.expected_effort));
-            let text = match &self.result {
-                Ok(title) => Some((*title).to_string()),
-                Err(e) => anyhow::bail!(e.to_string()),
-            };
-            Ok(CompletionResponse {
-                text,
-                tool_calls: Vec::new(),
-                usage: Usage::default(),
-            })
-        }
-
         fn stream(
             &self,
             _messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-            Box::pin(tokio_stream::empty())
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(self.applied_effort.as_ref(), Some(&self.expected_effort));
+            let events = match &self.result {
+                Ok(title) => vec![
+                    StreamEvent::Delta((*title).to_string()),
+                    StreamEvent::Done(Usage::default()),
+                ],
+                Err(error) => vec![StreamEvent::Error((*error).to_string())],
+            };
+            Box::pin(tokio_stream::iter(events))
         }
 
         fn with_reasoning_effort(
@@ -305,7 +294,6 @@ mod tests {
                     input_modalities: vec![ModelModality::Text],
                     output_modalities: vec![ModelModality::Text],
                     tool_calling: false,
-                    streaming: true,
                     zero_data_retention_enabled: true,
                     reasoning_supported_efforts: vec![supported_effort.into()],
                     reasoning_summary: None,

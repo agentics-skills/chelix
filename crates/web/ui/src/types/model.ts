@@ -11,7 +11,6 @@ export interface ModelMetadata {
 	input_modalities: ModelModality[];
 	output_modalities: ModelModality[];
 	tool_calling: boolean;
-	streaming: boolean;
 	zeroDataRetentionEnabled: boolean;
 	reasoning_supported_efforts: [string, ...string[]];
 	reasoning_summary?: ReasoningSummary;

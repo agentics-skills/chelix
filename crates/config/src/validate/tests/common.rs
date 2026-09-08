@@ -124,7 +124,6 @@ max_output_tokens = 128000
 input_modalities = ["text", "image"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 

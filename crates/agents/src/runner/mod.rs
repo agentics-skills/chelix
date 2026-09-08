@@ -1,7 +1,6 @@
 //! Agent runner: LLM call loop with tool execution, retry, and streaming support.
 
 mod helpers;
-mod non_streaming;
 pub mod retry;
 mod streaming;
 mod tool_execution;
@@ -18,7 +17,6 @@ pub use {
         ContextCompactionRequest, FinalTextSource, OnEvent, OnToolLifecycle, RunnerEvent,
         RunnerToolCall, RunnerToolLifecycleEvent,
     },
-    non_streaming::{run_agent, run_agent_loop_with_context_and_limits},
     streaming::run_agent_loop_streaming_with_limits,
     tool_result::{persist_and_truncate, sanitize_tool_result},
 };
@@ -29,8 +27,7 @@ pub use {
 /// system notice so the LLM sees the guidance on its next call.
 pub type SteerInbox = std::sync::Arc<tokio::sync::Mutex<Vec<String>>>;
 
-// Re-export helpers at the module level so that sibling submodules
-// (`non_streaming`, `streaming`) can continue to import via `super::item_name`.
+// Re-export helpers for sibling runner modules.
 pub(crate) use {
     helpers::{
         AGENT_RUN_CANCELLED_REASON, AUTO_CONTINUE_NUDGE, MALFORMED_TOOL_RETRY_PROMPT,

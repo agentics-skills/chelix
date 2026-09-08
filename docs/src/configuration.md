@@ -156,7 +156,6 @@ max_output_tokens = 65536
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 reasoning_summary = "detailed"

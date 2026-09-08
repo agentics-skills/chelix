@@ -729,7 +729,6 @@ startup.
 | `input_modalities`          | array of modality         | yes      | Accepted input media; must be non-empty and unique.                       |
 | `output_modalities`         | array of modality         | yes      | Produced output media; must be non-empty and unique.                      |
 | `tool_calling`              | bool                      | yes      | Whether native tool calling is supported.                                 |
-| `streaming`                 | bool                      | yes      | Whether streaming is supported.                                           |
 | `zeroDataRetentionEnabled`  | bool                      | yes      | Whether zero-data-retention operation is supported.                       |
 | `reasoning_supported_efforts` | non-empty array of string | yes    | Provider-defined ordered values; empty strings are invalid.               |
 | `reasoning_summary`         | optional enum             | no       | `auto`, `concise`, or `detailed`.                                         |

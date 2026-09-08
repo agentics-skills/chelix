@@ -14,10 +14,7 @@ use {
     super::{super::ToolCallBudget, helpers::*},
     crate::{
         lazy_tools::wrap_registry_lazy,
-        model::{
-            ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
-            UserContent,
-        },
+        model::{ChatMessage, LlmProvider, StreamEvent, ToolCall, Usage, UserContent},
         tool_registry::AgentTool,
     },
 };
@@ -50,7 +47,6 @@ impl ScriptedToolProvider {
     }
 }
 
-#[async_trait]
 impl LlmProvider for ScriptedToolProvider {
     fn name(&self) -> &str {
         "scripted-tool-budget"
@@ -76,25 +72,6 @@ impl LlmProvider for ScriptedToolProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        Ok(match self.next_round() {
-            ScriptedRound::Tools(tool_calls) => CompletionResponse {
-                text: None,
-                tool_calls,
-                usage: Usage::default(),
-            },
-            ScriptedRound::Text(text) => CompletionResponse {
-                text: Some(text.to_string()),
-                tool_calls: Vec::new(),
-                usage: Usage::default(),
-            },
-        })
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -106,7 +83,7 @@ impl LlmProvider for ScriptedToolProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: crate::model::CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(stream_events(self.next_round())))
     }
@@ -221,49 +198,6 @@ fn tool_call_budget_rejects_oversized_batch_without_changing_used() {
     assert_eq!(budget.used(), 2);
     budget.reserve_batch(1).unwrap();
     assert_eq!(budget.used(), 3);
-}
-
-#[tokio::test]
-async fn non_streaming_rejects_oversized_parallel_batch_before_any_sibling_runs() {
-    let executions = Arc::new(AtomicUsize::new(0));
-    let provider = Arc::new(ScriptedToolProvider::new(vec![ScriptedRound::Tools(vec![
-        call("c1", "count_a", serde_json::json!({})),
-        call("c2", "count_b", serde_json::json!({})),
-        call("c3", "unknown_tool", serde_json::json!({})),
-    ])]));
-    let mut tools = ToolRegistry::new();
-    tools.register(Box::new(CountingTool {
-        name: "count_a",
-        executions: Arc::clone(&executions),
-    }));
-    tools.register(Box::new(CountingTool {
-        name: "count_b",
-        executions: Arc::clone(&executions),
-    }));
-    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
-
-    let error = run_agent_loop_with_context_lifecycle_and_limits(
-        provider,
-        &tools,
-        "Test bot",
-        &UserContent::text("Run the batch"),
-        None,
-        Some(&on_tool_lifecycle),
-        None,
-        None,
-        None,
-        None,
-        threshold_limits(2),
-    )
-    .await
-    .unwrap_err();
-
-    assert_threshold_error(error, 2, 0, 3);
-    assert_eq!(executions.load(Ordering::SeqCst), 0);
-    let lifecycle_events = lifecycle_events.lock().unwrap();
-    assert!(lifecycle_events.is_empty());
-    assert_no_execution_stages(&lifecycle_events);
 }
 
 #[tokio::test]

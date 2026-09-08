@@ -55,7 +55,7 @@ pub(super) async fn run_agent_loop(
     history: Option<Vec<ChatMessage>>,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
-    super::super::run_agent_loop_with_context_and_limits(
+    super::super::run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
@@ -68,6 +68,8 @@ pub(super) async fn run_agent_loop(
         None,
         None,
         None,
+        None,
+        &CancellationToken::new(),
         test_agent_loop_limits(),
     )
     .await
@@ -83,7 +85,7 @@ pub(super) async fn run_agent_loop_with_tool_lifecycle(
     history: Option<Vec<ChatMessage>>,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
-    super::super::run_agent_loop_with_context_and_limits(
+    super::super::run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
@@ -96,6 +98,8 @@ pub(super) async fn run_agent_loop_with_tool_lifecycle(
         None,
         None,
         None,
+        None,
+        &CancellationToken::new(),
         test_agent_loop_limits(),
     )
     .await
@@ -123,7 +127,7 @@ pub(super) async fn run_agent_loop_with_context(
     sender_name: Option<String>,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
-    super::super::run_agent_loop_with_context_and_limits(
+    super::super::run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
@@ -136,6 +140,8 @@ pub(super) async fn run_agent_loop_with_context(
         None,
         hook_registry,
         sender_name,
+        None,
+        &CancellationToken::new(),
         test_agent_loop_limits(),
     )
     .await
@@ -154,7 +160,7 @@ pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
     sender_name: Option<String>,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
-    super::super::run_agent_loop_with_context_and_limits(
+    super::super::run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
@@ -167,6 +173,8 @@ pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
         None,
         hook_registry,
         sender_name,
+        None,
+        &CancellationToken::new(),
         test_agent_loop_limits(),
     )
     .await
@@ -186,7 +194,7 @@ pub(super) async fn run_agent_loop_with_context_and_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
-    super::super::run_agent_loop_with_context_and_limits(
+    super::super::run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
@@ -199,6 +207,8 @@ pub(super) async fn run_agent_loop_with_context_and_limits(
         tool_choice,
         hook_registry,
         sender_name,
+        None,
+        &CancellationToken::new(),
         limits,
     )
     .await
@@ -218,7 +228,7 @@ pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
     limits: AgentLoopLimits,
 ) -> Result<AgentRunResult, AgentRunError> {
     let tools_config = chelix_config::schema::ToolsConfig::default();
-    super::super::run_agent_loop_with_context_and_limits(
+    super::super::run_agent_loop_streaming_with_limits(
         provider,
         tools,
         &tools_config,
@@ -231,6 +241,8 @@ pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
         None,
         hook_registry,
         sender_name,
+        None,
+        &CancellationToken::new(),
         limits,
     )
     .await
@@ -453,7 +465,6 @@ pub(super) struct MockProvider {
     pub response_text: String,
 }
 
-#[async_trait]
 impl LlmProvider for MockProvider {
     fn name(&self) -> &str {
         "mock"
@@ -475,27 +486,30 @@ impl LlmProvider for MockProvider {
         Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        Ok(CompletionResponse {
-            text: Some(self.response_text.clone()),
-            tool_calls: vec![],
-            usage: Usage {
-                input_tokens: 10,
-                output_tokens: 5,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            Ok(CompletionResponse {
+                text: Some(self.response_text.clone()),
+                tool_calls: vec![],
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
+            })
         })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -504,7 +518,6 @@ pub(super) struct ToolCallingProvider {
     pub call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for ToolCallingProvider {
     fn name(&self) -> &str {
         "mock"
@@ -530,47 +543,51 @@ impl LlmProvider for ToolCallingProvider {
         true
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: None,
-                tool_calls: vec![ToolCall {
-                    id: "call_1".into(),
-                    name: "echo_tool".into(),
-                    arguments: serde_json::json!({"text": "hi"}),
-                    argument_diagnostic: None,
-                }],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_1".into(),
+                        name: "echo_tool".into(),
+                        arguments: serde_json::json!({"text": "hi"}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        } else {
-            Ok(CompletionResponse {
-                text: Some("Done!".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 20,
-                    output_tokens: 10,
+                })
+            } else {
+                Ok(CompletionResponse {
+                    text: Some("Done!".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 20,
+                        output_tokens: 10,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        }
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -579,7 +596,6 @@ pub(super) struct TextToolCallingProvider {
     pub call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for TextToolCallingProvider {
     fn name(&self) -> &str {
         "mock-no-native"
@@ -605,52 +621,56 @@ impl LlmProvider for TextToolCallingProvider {
         chelix_config::ToolMode::Text
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: Some("```tool_call\n{\"tool\": \"execute_command\", \"arguments\": {\"command\": \"echo hello\"}}\n```".into()),
-                tool_calls: vec![],
-                usage: Usage { input_tokens: 10, output_tokens: 20, ..Default::default() },
-            })
-        } else {
-            let tool_content = messages
-                .iter()
-                .find_map(|m| {
-                    if let ChatMessage::Tool { content, .. } = m {
-                        Some(content.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or("");
-            assert!(
-                tool_content.contains("hello"),
-                "tool result should contain 'hello', got: {tool_content}"
-            );
-            Ok(CompletionResponse {
-                text: Some("The command output: hello".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 30,
-                    output_tokens: 10,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: Some("```tool_call\n{\"tool\": \"execute_command\", \"arguments\": {\"command\": \"echo hello\"}}\n```".into()),
+                    tool_calls: vec![],
+                    usage: Usage { input_tokens: 10, output_tokens: 20, ..Default::default() },
                     ..Default::default()
-                },
-            })
-        }
+                })
+            } else {
+                let tool_content = messages
+                    .iter()
+                    .find_map(|m| {
+                        if let ChatMessage::Tool { content, .. } = m {
+                            Some(content.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("");
+                assert!(
+                    tool_content.contains("hello"),
+                    "tool result should contain 'hello', got: {tool_content}"
+                );
+                Ok(CompletionResponse {
+                    text: Some("The command output: hello".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 30,
+                        output_tokens: 10,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -858,7 +878,6 @@ pub(super) struct MultiToolProvider {
     pub tool_calls: Vec<ToolCall>,
 }
 
-#[async_trait]
 impl LlmProvider for MultiToolProvider {
     fn name(&self) -> &str {
         "mock"
@@ -884,42 +903,46 @@ impl LlmProvider for MultiToolProvider {
         true
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: None,
-                tool_calls: self.tool_calls.clone(),
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: self.tool_calls.clone(),
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        } else {
-            Ok(CompletionResponse {
-                text: Some("All done".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 20,
-                    output_tokens: 10,
+                })
+            } else {
+                Ok(CompletionResponse {
+                    text: Some("All done".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 20,
+                        output_tokens: 10,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        }
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -927,7 +950,6 @@ pub(super) struct PreemptiveOverflowProvider {
     pub call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for PreemptiveOverflowProvider {
     fn name(&self) -> &str {
         "mock-overflow"
@@ -953,35 +975,38 @@ impl LlmProvider for PreemptiveOverflowProvider {
         Some(20)
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: Some("reasoning ".repeat(80)),
-                tool_calls: vec![ToolCall {
-                    id: "overflow_call".into(),
-                    name: "overflow_tool".into(),
-                    arguments: serde_json::json!({}),
-                    argument_diagnostic: None,
-                }],
-                usage: Usage::default(),
-            })
-        } else {
-            bail!("second provider call should not happen")
-        }
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: Some("reasoning ".repeat(80)),
+                    tool_calls: vec![ToolCall {
+                        id: "overflow_call".into(),
+                        name: "overflow_tool".into(),
+                        arguments: serde_json::json!({}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage::default(),
+                    ..Default::default()
+                })
+            } else {
+                bail!("second provider call should not happen")
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -990,7 +1015,6 @@ pub(super) struct VisionEnabledProvider {
     pub call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for VisionEnabledProvider {
     fn name(&self) -> &str {
         "mock-vision"
@@ -1020,65 +1044,69 @@ impl LlmProvider for VisionEnabledProvider {
         true
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: None,
-                tool_calls: vec![ToolCall {
-                    id: "call_screenshot".into(),
-                    name: "screenshot_tool".into(),
-                    arguments: serde_json::json!({}),
-                    argument_diagnostic: None,
-                }],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_screenshot".into(),
+                        name: "screenshot_tool".into(),
+                        arguments: serde_json::json!({}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        } else {
-            let tool_content = messages
-                .iter()
-                .find_map(|m| {
-                    if let ChatMessage::Tool { content, .. } = m {
-                        Some(content.as_str())
-                    } else {
-                        None
-                    }
                 })
-                .unwrap_or("");
-            assert!(
-                tool_content.contains("[screenshot captured and displayed in UI]"),
-                "tool result should have image stripped: {tool_content}"
-            );
-            assert!(
-                !tool_content.contains("AAAA"),
-                "tool result should not contain raw base64: {tool_content}"
-            );
-            Ok(CompletionResponse {
-                text: Some("Screenshot processed successfully".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 20,
-                    output_tokens: 10,
+            } else {
+                let tool_content = messages
+                    .iter()
+                    .find_map(|m| {
+                        if let ChatMessage::Tool { content, .. } = m {
+                            Some(content.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("");
+                assert!(
+                    tool_content.contains("[screenshot captured and displayed in UI]"),
+                    "tool result should have image stripped: {tool_content}"
+                );
+                assert!(
+                    !tool_content.contains("AAAA"),
+                    "tool result should not contain raw base64: {tool_content}"
+                );
+                Ok(CompletionResponse {
+                    text: Some("Screenshot processed successfully".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 20,
+                        output_tokens: 10,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        }
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 

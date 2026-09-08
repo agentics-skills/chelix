@@ -1,7 +1,6 @@
 use std::pin::Pin;
 
 use {
-    async_trait::async_trait,
     chelix_common::{
         ModelMetadata, ReasoningEffort, ReasoningPolicyDecision, ReasoningRequestState,
         resolve_reasoning_policy,
@@ -11,9 +10,7 @@ use {
     tokio_stream::Stream,
 };
 
-use chelix_agents::model::{
-    ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, ToolChoice,
-};
+use chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, ToolChoice};
 
 use super::super::{OpenAiProvider, OpenAiProviderCapabilities, OpenAiReasoningMetadata};
 
@@ -168,8 +165,7 @@ impl OpenAiProvider {
         Ok(resolve_reasoning_policy(state))
     }
 
-    /// Apply `reasoning_effort` for the **Chat Completions** API (used by
-    /// `complete()` and `stream_with_tools_sse()`).
+    /// Apply `reasoning_effort` to the Chat Completions streaming request.
     ///
     /// Format: `"reasoning_effort": "high"` (top-level string field).
     pub(crate) fn apply_reasoning_effort_chat(
@@ -236,7 +232,6 @@ impl OpenAiProvider {
     }
 }
 
-#[async_trait]
 impl LlmProvider for OpenAiProvider {
     fn name(&self) -> &str {
         &self.provider_name
@@ -266,27 +261,6 @@ impl LlmProvider for OpenAiProvider {
         self.tool_mode
     }
 
-    async fn complete(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-    ) -> anyhow::Result<CompletionResponse> {
-        self.complete_with_options(messages, tools, &CompletionOptions::default())
-            .await
-    }
-
-    async fn complete_with_options(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-        options: &CompletionOptions,
-    ) -> anyhow::Result<CompletionResponse> {
-        if matches!(self.wire_api, WireApi::Responses) {
-            return self.complete_responses(messages, tools, options).await;
-        }
-        self.complete_chat(messages, tools, options).await
-    }
-
     #[allow(clippy::collapsible_if)]
     fn stream(
         &self,
@@ -301,18 +275,18 @@ impl LlmProvider for OpenAiProvider {
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        self.stream_with_tools_and_options(messages, tools, None)
+        self.stream_with_tools_and_options(messages, tools, CompletionOptions::default())
     }
 
     fn stream_with_tools_and_options(
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        tool_choice: Option<ToolChoice>,
+        options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         match (self.wire_api, self.stream_transport) {
             (WireApi::Responses, ProviderStreamTransport::Sse) => {
-                self.stream_responses_sse(messages, tools, tool_choice)
+                self.stream_responses_sse(messages, tools, options)
             },
             (WireApi::Responses, _) => {
                 // WebSocket / Auto both go through the WS path which already
@@ -321,20 +295,20 @@ impl LlmProvider for OpenAiProvider {
                     messages,
                     tools,
                     matches!(self.stream_transport, ProviderStreamTransport::Auto),
-                    tool_choice,
+                    options,
                     true,
                 )
             },
             (WireApi::ChatCompletions, ProviderStreamTransport::Sse) => {
-                self.stream_with_tools_sse(messages, tools, tool_choice)
+                self.stream_with_tools_sse(messages, tools, options)
             },
             (WireApi::ChatCompletions, ProviderStreamTransport::Websocket) => {
                 // WebSocket always uses Responses wire format; SSE fallback
                 // uses Chat Completions SSE.
-                self.stream_with_tools_websocket(messages, tools, false, tool_choice, false)
+                self.stream_with_tools_websocket(messages, tools, false, options, false)
             },
             (WireApi::ChatCompletions, ProviderStreamTransport::Auto) => {
-                self.stream_with_tools_websocket(messages, tools, true, tool_choice, false)
+                self.stream_with_tools_websocket(messages, tools, true, options, false)
             },
         }
     }
@@ -444,7 +418,6 @@ pub(super) mod tests {
                 input_modalities: vec![ModelModality::Text],
                 output_modalities: vec![ModelModality::Text],
                 tool_calling: true,
-                streaming: true,
                 zero_data_retention_enabled: false,
                 reasoning_supported_efforts: supported_efforts,
                 reasoning_summary: Some(ReasoningSummary::Detailed),

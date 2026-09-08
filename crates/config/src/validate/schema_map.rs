@@ -38,7 +38,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("input_modalities", Array(Box::new(Leaf))),
             ("output_modalities", Array(Box::new(Leaf))),
             ("tool_calling", Leaf),
-            ("streaming", Leaf),
             ("zeroDataRetentionEnabled", Leaf),
             ("reasoning_supported_efforts", Array(Box::new(Leaf))),
             ("reasoning_summary", Leaf),

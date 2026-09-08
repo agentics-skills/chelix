@@ -993,7 +993,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low", "high"]
 
@@ -1004,7 +1003,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 "#,

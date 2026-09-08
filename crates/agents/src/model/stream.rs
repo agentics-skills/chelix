@@ -1,12 +1,8 @@
 use std::{pin::Pin, sync::Arc};
 
-use {async_trait::async_trait, tokio_stream::Stream};
+use tokio_stream::Stream;
 
-use super::{
-    CompletionOptions, ReasoningEffort, ToolChoice,
-    chat::ChatMessage,
-    types::{CompletionResponse, Usage},
-};
+use super::{CompletionOptions, ReasoningEffort, chat::ChatMessage, types::Usage};
 
 // ── Stream events ───────────────────────────────────────────────────────────
 
@@ -57,38 +53,14 @@ pub enum StreamEvent {
 }
 
 /// LLM provider trait.
-#[async_trait]
 pub trait LlmProvider: Send + Sync {
     fn name(&self) -> &str;
 
     /// Model identifier (e.g. "gpt-5.2").
     fn id(&self) -> &str;
 
-    async fn complete(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-    ) -> anyhow::Result<CompletionResponse>;
-
-    async fn complete_with_options(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-        options: &CompletionOptions,
-    ) -> anyhow::Result<CompletionResponse> {
-        options.reject_forced_tool_choice(self.name())?;
-        if options.max_output_tokens.is_some() {
-            anyhow::bail!(
-                "provider {} does not support a per-request output token limit",
-                self.name()
-            );
-        }
-        self.complete(messages, tools).await
-    }
-
     /// Whether this provider supports tool/function calling.
-    /// Defaults to false; providers that handle the `tools` parameter
-    /// in `complete()` should override this to return true.
+    /// Providers implementing tool streaming override this to return true.
     fn supports_tools(&self) -> bool {
         false
     }
@@ -134,13 +106,18 @@ pub trait LlmProvider: Send + Sync {
     /// `ToolCallArgumentsDelta`, and `ToolCallComplete` events in addition to
     /// text deltas.
     ///
-    /// Default implementation falls back to `stream()` (ignoring tools).
-    /// Providers with native streaming tool support should override this.
+    /// The default implementation rejects tools and streams text-only requests.
     fn stream_with_tools(
         &self,
         messages: Vec<ChatMessage>,
-        _tools: Vec<serde_json::Value>,
+        tools: Vec<serde_json::Value>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        if !tools.is_empty() {
+            return Box::pin(tokio_stream::once(StreamEvent::Error(format!(
+                "provider {} does not support streaming tools",
+                self.name()
+            ))));
+        }
         self.stream(messages)
     }
 
@@ -148,10 +125,16 @@ pub trait LlmProvider: Send + Sync {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        tool_choice: Option<ToolChoice>,
+        options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        if let Err(error) = reject_unsupported_tool_choice(self.name(), tool_choice.as_ref()) {
+        if let Err(error) = options.reject_forced_tool_choice(self.name()) {
             return Box::pin(tokio_stream::once(StreamEvent::Error(error.to_string())));
+        }
+        if options.max_output_tokens.is_some() {
+            return Box::pin(tokio_stream::once(StreamEvent::Error(format!(
+                "provider {} does not support a per-request output token limit",
+                self.name()
+            ))));
         }
         self.stream_with_tools(messages, tools)
     }
@@ -175,14 +158,4 @@ pub trait LlmProvider: Send + Sync {
     ) -> Option<Arc<dyn LlmProvider>> {
         None
     }
-}
-
-fn reject_unsupported_tool_choice(
-    provider_name: &str,
-    tool_choice: Option<&ToolChoice>,
-) -> anyhow::Result<()> {
-    if matches!(tool_choice, Some(ToolChoice::Tool { .. } | ToolChoice::Any)) {
-        anyhow::bail!("provider {provider_name} does not support forced tool_choice");
-    }
-    Ok(())
 }

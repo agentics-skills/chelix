@@ -18,7 +18,7 @@ use chelix_metrics::{counter, histogram, labels, memory as mem_metrics};
 use crate::{
     memory_writer::{MemoryWriteResult, MemoryWriter},
     model::{ChatMessage, LlmProvider},
-    runner::{AgentLoopLimits, run_agent_loop_with_context_and_limits},
+    runner::{AgentLoopLimits, run_agent_loop_streaming_with_limits},
     tool_registry::{AgentTool, ToolRegistry},
 };
 
@@ -268,7 +268,7 @@ pub async fn run_silent_memory_turn_with_prompt(
     let start = Instant::now();
 
     let user_content = crate::model::UserContent::Text(conversation_text);
-    let result = run_agent_loop_with_context_and_limits(
+    let result = run_agent_loop_streaming_with_limits(
         provider,
         &tools,
         tools_config,
@@ -281,6 +281,8 @@ pub async fn run_silent_memory_turn_with_prompt(
         None,
         None,
         None,
+        None,
+        &tokio_util::sync::CancellationToken::new(),
         AgentLoopLimits {
             max_tools_threshold,
             max_tool_result_bytes: None,
@@ -346,7 +348,7 @@ pub async fn run_silent_memory_turn_with_prompt(
 mod tests {
     use {
         super::*,
-        crate::model::{ChatMessage, CompletionResponse, StreamEvent, ToolCall, Usage},
+        crate::model::{ChatMessage, StreamEvent, Usage},
         std::pin::Pin,
         tokio_stream::Stream,
     };
@@ -360,7 +362,6 @@ mod tests {
         call_count: std::sync::atomic::AtomicUsize,
     }
 
-    #[async_trait::async_trait]
     impl LlmProvider for MemoryWritingProvider {
         fn name(&self) -> &str {
             "mock"
@@ -386,50 +387,115 @@ mod tests {
             true
         }
 
-        async fn complete(
+        fn stream_with_tools(
             &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
-        ) -> Result<CompletionResponse> {
+            messages: Vec<ChatMessage>,
+            _tools: Vec<serde_json::Value>,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            use chelix_common::{
+                ProviderItemId, ProviderItemPosition, ProviderItemUpdate,
+                ProviderItemUpdatePayload, ProviderOutputPayload, ProviderSegmentId,
+                ProviderSegmentOutcome,
+            };
+
             let count = self
                 .call_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if count == 0 {
-                Ok(CompletionResponse {
-                    text: None,
-                    tool_calls: vec![ToolCall {
-                        id: "call_1".into(),
-                        name: "write_file".into(),
-                        arguments: serde_json::json!({
-                            "path": "MEMORY.md",
-                            "content": "# Memories\n\nUser prefers Rust over Python."
-                        }),
-                        argument_diagnostic: None,
-                    }],
-                    usage: Usage {
-                        input_tokens: 100,
-                        output_tokens: 50,
-                        ..Default::default()
-                    },
-                })
-            } else {
-                Ok(CompletionResponse {
-                    text: Some("NO_REPLY".into()),
-                    tool_calls: vec![],
-                    usage: Usage {
-                        input_tokens: 50,
-                        output_tokens: 5,
-                        ..Default::default()
-                    },
-                })
+            let segment_id = ProviderSegmentId::new("memory-segment");
+            if count != 0 {
+                let assistant = messages
+                    .iter()
+                    .find_map(|message| match message {
+                        ChatMessage::Assistant {
+                            provider_items,
+                            segment_id: Some(id),
+                            ..
+                        } if id == &segment_id => Some(provider_items),
+                        _ => None,
+                    })
+                    .expect("tool iteration must preserve the provider segment for replay");
+                assert_eq!(assistant.len(), 2);
+                assert_eq!(assistant[0].id.as_str(), "memory-reasoning");
+                assert_eq!(assistant[0].position.as_usize(), 0);
+                assert!(
+                    matches!(&assistant[0].payload, ProviderOutputPayload::Reasoning(item) if item.encrypted_content.as_deref() == Some("encrypted-memory-state"))
+                );
+                assert_eq!(assistant[1].id.as_str(), "call_1");
+                assert_eq!(assistant[1].position.as_usize(), 1);
+                assert!(
+                    matches!(&assistant[1].payload, ProviderOutputPayload::FunctionCall { name, .. } if name == "write_file")
+                );
+                return Box::pin(tokio_stream::iter(vec![
+                    StreamEvent::Delta("NO_REPLY".into()),
+                    StreamEvent::Done(Usage::default()),
+                ]));
             }
+            let arguments = serde_json::json!({"path":"MEMORY.md","content":"# Memories\n\nUser prefers Rust over Python."}).to_string();
+            let update = |id: &str, position, update_seq, payload| {
+                StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+                    segment_id: segment_id.clone(),
+                    item_id: ProviderItemId::new(id),
+                    position: ProviderItemPosition::new(position),
+                    update_seq,
+                    payload,
+                })
+            };
+            Box::pin(tokio_stream::iter(vec![
+                StreamEvent::SegmentStart {
+                    segment_id: segment_id.clone(),
+                },
+                update(
+                    "memory-reasoning",
+                    0,
+                    1,
+                    ProviderItemUpdatePayload::ReasoningItemDone {
+                        encrypted_content: Some("encrypted-memory-state".into()),
+                    },
+                ),
+                update(
+                    "call_1",
+                    1,
+                    1,
+                    ProviderItemUpdatePayload::FunctionCallStart {
+                        name: "write_file".into(),
+                    },
+                ),
+                StreamEvent::ToolCallStart {
+                    id: "call_1".into(),
+                    name: "write_file".into(),
+                    index: 1,
+                },
+                update(
+                    "call_1",
+                    1,
+                    2,
+                    ProviderItemUpdatePayload::FunctionCallDone {
+                        arguments: arguments.clone(),
+                    },
+                ),
+                StreamEvent::ToolCallArgumentsDelta {
+                    index: 1,
+                    delta: arguments,
+                },
+                StreamEvent::ToolCallComplete { index: 1 },
+                StreamEvent::SegmentClose {
+                    segment_id,
+                    outcome: ProviderSegmentOutcome::Completed,
+                    usage: None,
+                },
+                StreamEvent::Done(Usage {
+                    input_tokens: 100,
+                    output_tokens: 50,
+                    ..Default::default()
+                }),
+            ]))
         }
 
         fn stream(
             &self,
-            _messages: Vec<ChatMessage>,
+            messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-            Box::pin(tokio_stream::empty())
+            self.stream_with_tools(messages, Vec::new())
         }
     }
 
@@ -532,7 +598,6 @@ mod tests {
         /// Provider that always returns an error.
         struct FailingProvider;
 
-        #[async_trait::async_trait]
         impl LlmProvider for FailingProvider {
             fn name(&self) -> &str {
                 "failing"
@@ -558,21 +623,23 @@ mod tests {
                 true
             }
 
-            async fn complete(
+            fn stream_with_tools(
                 &self,
-                _messages: &[ChatMessage],
-                _tools: &[serde_json::Value],
-            ) -> Result<CompletionResponse> {
-                Err(anyhow::anyhow!(
-                    "invalid_request_error: simulated LLM failure"
-                ))
+                _messages: Vec<ChatMessage>,
+                _tools: Vec<serde_json::Value>,
+            ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+                crate::model::response_stream(async move {
+                    Err(anyhow::anyhow!(
+                        "invalid_request_error: simulated LLM failure"
+                    ))
+                })
             }
 
             fn stream(
                 &self,
-                _messages: Vec<ChatMessage>,
+                messages: Vec<ChatMessage>,
             ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-                Box::pin(tokio_stream::empty())
+                self.stream_with_tools(messages, Vec::new())
             }
         }
 

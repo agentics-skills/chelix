@@ -58,7 +58,7 @@ fn weather_tool() -> serde_json::Value {
 
 #[tokio::test]
 #[ignore]
-async fn system_prompt_is_received_non_streaming() {
+async fn system_prompt_is_received_collected_stream() {
     let p = make_provider(TEST_MODEL);
     let keyword = "BLUEBERRY";
     let messages = vec![
@@ -68,8 +68,7 @@ async fn system_prompt_is_received_non_streaming() {
         ChatMessage::user("What is 2+2?"),
     ];
 
-    let response = p
-        .complete(&messages, &[])
+    let response = chelix_agents::model::collect_stream(p.stream_with_tools(messages, vec![]))
         .await
         .expect("completion should succeed");
 
@@ -121,16 +120,16 @@ async fn system_prompt_is_received_streaming() {
 
 #[tokio::test]
 #[ignore]
-async fn tool_call_round_trip_non_streaming() {
+async fn tool_call_round_trip_collected_stream() {
     let p = make_provider(TEST_MODEL);
     let messages = vec![ChatMessage::user(
         "What's the weather in Tokyo? Use the get_weather tool.",
     )];
 
-    let response = p
-        .complete(&messages, &[weather_tool()])
-        .await
-        .expect("completion should succeed");
+    let response =
+        chelix_agents::model::collect_stream(p.stream_with_tools(messages, vec![weather_tool()]))
+            .await
+            .expect("completion should succeed");
 
     assert!(
         !response.tool_calls.is_empty(),
@@ -182,7 +181,10 @@ async fn multi_turn_tool_use() {
     let messages = vec![ChatMessage::user(
         "What's the weather in London? Use get_weather.",
     )];
-    let response = p.complete(&messages, &tools).await.expect("first turn");
+    let response =
+        chelix_agents::model::collect_stream(p.stream_with_tools(messages, tools.clone()))
+            .await
+            .expect("first turn");
     assert!(!response.tool_calls.is_empty(), "should call tool");
     let tc = &response.tool_calls[0];
 
@@ -197,7 +199,10 @@ async fn multi_turn_tool_use() {
         ChatMessage::tool(&tc.id, r#"{"temperature": 15, "condition": "cloudy"}"#),
     ];
 
-    let final_response = p.complete(&messages, &tools).await.expect("second turn");
+    let final_response =
+        chelix_agents::model::collect_stream(p.stream_with_tools(messages, tools.clone()))
+            .await
+            .expect("second turn");
     assert!(
         final_response.text.is_some(),
         "should have text after tool result"
