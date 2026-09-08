@@ -160,7 +160,6 @@ port = {port}                           # Port number (auto-generated for this i
 # input_modalities = ["text", "image", "audio", "file"]
 # output_modalities = ["text"]
 # tool_calling = true
-# streaming = true
 # zeroDataRetentionEnabled = true
 # reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "xhigh"]
 # reasoning_summary = "detailed"

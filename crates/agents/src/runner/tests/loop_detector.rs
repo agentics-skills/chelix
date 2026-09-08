@@ -1,13 +1,11 @@
-//! Integration regressions for round-aware tool-loop detection in both runners.
+//! Integration regressions for round-aware tool-loop detection.
 
 use std::{pin::Pin, sync::Arc};
 
 use {
     super::helpers::*,
     crate::{
-        model::{
-            ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
-        },
+        model::{ChatMessage, LlmProvider, StreamEvent, ToolCall, Usage},
         tool_registry::AgentTool,
     },
     anyhow::Result,
@@ -156,7 +154,6 @@ enum ProviderRound {
     Text(String),
 }
 
-#[async_trait]
 impl LlmProvider for RoundAwareLoopProvider {
     fn name(&self) -> &str {
         "round-aware-loop-provider"
@@ -182,25 +179,6 @@ impl LlmProvider for RoundAwareLoopProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        Ok(match self.next_call(messages, tools) {
-            ProviderRound::Tools(tool_calls) => CompletionResponse {
-                text: None,
-                tool_calls,
-                usage: Usage::default(),
-            },
-            ProviderRound::Text(text) => CompletionResponse {
-                text: Some(text),
-                tool_calls: Vec::new(),
-                usage: Usage::default(),
-            },
-        })
-    }
-
     fn stream(
         &self,
         messages: Vec<ChatMessage>,
@@ -214,7 +192,7 @@ impl LlmProvider for RoundAwareLoopProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: crate::model::CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(stream_events(
             self.next_call(&messages, &tools),
@@ -288,38 +266,6 @@ fn intervention_stages(events: &[RunnerEvent]) -> Vec<u8> {
             _ => None,
         })
         .collect()
-}
-
-#[tokio::test]
-async fn non_streaming_runner_counts_incident_batch_as_one_model_round() {
-    let provider = Arc::new(RoundAwareLoopProvider {
-        call_count: std::sync::atomic::AtomicUsize::new(0),
-    });
-    let tools = incident_tools();
-    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let event_sink = Arc::clone(&events);
-    let on_event: OnEvent = Box::new(move |event| event_sink.lock().unwrap().push(event));
-
-    let result = run_agent_loop(
-        provider,
-        &tools,
-        "Test bot",
-        &UserContent::text("Reproduce the tool-loop incident"),
-        Some(&on_event),
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert!(
-        result
-            .output
-            .text
-            .starts_with("Recovered after the forced text turn.")
-    );
-    assert_eq!(result.iterations, 4);
-    assert_eq!(result.tool_calls_made, 5);
-    assert_eq!(intervention_stages(&events.lock().unwrap()), vec![1, 2]);
 }
 
 #[tokio::test]

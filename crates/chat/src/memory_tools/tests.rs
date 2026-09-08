@@ -8,7 +8,7 @@ use std::{
 use {
     super::*,
     chelix_agents::{
-        model::{CompletionResponse, StreamEvent, Usage, UserContent},
+        model::{StreamEvent, Usage, UserContent},
         tool_context::ToolExecutionContext,
     },
     chelix_common::{ModelMetadata, ModelModality, ReasoningEffort, ResolvedModelReasoning},
@@ -114,7 +114,6 @@ struct ForgetPlannerProvider {
     needle: String,
 }
 
-#[async_trait]
 impl LlmProvider for ForgetPlannerProvider {
     fn name(&self) -> &str {
         "mock-memory-forget"
@@ -124,11 +123,11 @@ impl LlmProvider for ForgetPlannerProvider {
         "mock-memory-forget"
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        messages: &[ChatMessage],
-        _tools: &[Value],
-    ) -> anyhow::Result<CompletionResponse> {
+        messages: Vec<ChatMessage>,
+        _tools: Vec<Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         let user_text = messages
             .iter()
             .find_map(|message| match message {
@@ -143,7 +142,13 @@ impl LlmProvider for ForgetPlannerProvider {
             .split("Candidate chunks:\n")
             .nth(1)
             .unwrap_or("[]");
-        let candidates: Vec<ForgetPromptCandidateOwned> = serde_json::from_str(candidate_json)?;
+        let candidates: Vec<ForgetPromptCandidateOwned> = match serde_json::from_str(candidate_json)
+        {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                return Box::pin(tokio_stream::once(StreamEvent::Error(error.to_string())));
+            },
+        };
         let actions: Vec<Value> = candidates
             .iter()
             .filter(|candidate| candidate.text.contains(&self.needle))
@@ -155,8 +160,8 @@ impl LlmProvider for ForgetPlannerProvider {
             })
             .collect();
 
-        Ok(CompletionResponse {
-            text: Some(
+        Box::pin(tokio_stream::iter(vec![
+            StreamEvent::Delta(
                 json!({
                     "needs_confirmation": false,
                     "rationale": format!("selected chunks containing '{}'", self.needle),
@@ -164,16 +169,15 @@ impl LlmProvider for ForgetPlannerProvider {
                 })
                 .to_string(),
             ),
-            tool_calls: vec![],
-            usage: Usage::default(),
-        })
+            StreamEvent::Done(Usage::default()),
+        ]))
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 
     fn with_reasoning_effort(
@@ -190,7 +194,6 @@ struct AppliedEffortProvider {
     applied_efforts: Arc<Mutex<Vec<String>>>,
 }
 
-#[async_trait]
 impl LlmProvider for AppliedEffortProvider {
     fn name(&self) -> &str {
         "applied-effort"
@@ -204,19 +207,21 @@ impl LlmProvider for AppliedEffortProvider {
         false
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[Value],
-    ) -> anyhow::Result<CompletionResponse> {
-        anyhow::bail!("unexpected planner invocation")
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::once(StreamEvent::Error(
+            "unexpected planner invocation".into(),
+        )))
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 
     fn reasoning_effort(&self) -> Option<ReasoningEffort> {
@@ -242,7 +247,6 @@ impl LlmProvider for AppliedEffortProvider {
 
 struct FailingForgetProvider;
 
-#[async_trait]
 impl LlmProvider for FailingForgetProvider {
     fn name(&self) -> &str {
         "failing-memory-forget"
@@ -252,19 +256,21 @@ impl LlmProvider for FailingForgetProvider {
         "failing-memory-forget"
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[Value],
-    ) -> anyhow::Result<CompletionResponse> {
-        anyhow::bail!("simulated memory_forget provider failure")
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::once(StreamEvent::Error(
+            "simulated memory_forget provider failure".into(),
+        )))
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 
     fn with_reasoning_effort(
@@ -283,7 +289,6 @@ fn memory_forget_model_metadata() -> ModelMetadata {
         input_modalities: vec![ModelModality::Text],
         output_modalities: vec![ModelModality::Text],
         tool_calling: false,
-        streaming: true,
         zero_data_retention_enabled: false,
         reasoning_supported_efforts: vec![ReasoningEffort::from("off")],
         reasoning_summary: None,

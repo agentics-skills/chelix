@@ -1,6 +1,6 @@
 use super::ToolChoice;
 
-/// Per-request controls for a non-streaming completion.
+/// Per-request controls for streaming completion.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CompletionOptions {
     pub tool_choice: Option<ToolChoice>,
@@ -16,8 +16,7 @@ impl CompletionOptions {
         }
     }
 
-    /// Preserve the default provider behavior for transports that do not
-    /// implement forced tool selection.
+    /// Validate provider support for forced tool selection.
     pub fn reject_forced_tool_choice(&self, provider_name: &str) -> anyhow::Result<()> {
         if matches!(
             self.tool_choice,

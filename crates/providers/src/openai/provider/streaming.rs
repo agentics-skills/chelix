@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use chelix_agents::model::{ChatMessage, StreamEvent, ToolChoice};
+use chelix_agents::model::{ChatMessage, CompletionOptions, StreamEvent};
 
 use super::OpenAiProvider;
 
@@ -24,7 +24,7 @@ impl OpenAiProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        tool_choice: Option<ToolChoice>,
+        options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(async_stream::stream! {
             let (instructions, input) = split_responses_instructions_and_input(messages);
@@ -48,9 +48,13 @@ impl OpenAiProvider {
                     },
                 }
             }
-            if let Err(error) = super::core::apply_openai_responses_tool_choice(&mut body, tool_choice.as_ref()) {
+            if let Err(error) = super::core::apply_openai_responses_tool_choice(&mut body, options.tool_choice.as_ref()) {
                 yield StreamEvent::Error(error.to_string());
                 return;
+            }
+
+            if let Some(max_output_tokens) = options.max_output_tokens {
+                body["max_output_tokens"] = serde_json::json!(max_output_tokens);
             }
 
             if let Err(error) = self.apply_reasoning_responses(&mut body) {
@@ -199,7 +203,7 @@ impl OpenAiProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        tool_choice: Option<ToolChoice>,
+        options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(async_stream::stream! {
             let mut openai_messages = self.serialize_messages_for_request(&messages);
@@ -221,9 +225,13 @@ impl OpenAiProvider {
                     },
                 }
             }
-            if let Err(error) = super::core::apply_openai_chat_tool_choice(&mut body, tool_choice.as_ref()) {
+            if let Err(error) = super::core::apply_openai_chat_tool_choice(&mut body, options.tool_choice.as_ref()) {
                 yield StreamEvent::Error(error.to_string());
                 return;
+            }
+
+            if let Some(max_output_tokens) = options.max_output_tokens {
+                body["max_completion_tokens"] = serde_json::json!(max_output_tokens);
             }
 
             if let Err(error) = self.apply_reasoning_effort_chat(&mut body) {

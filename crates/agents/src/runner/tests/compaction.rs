@@ -1,8 +1,6 @@
 use {
     super::helpers::*,
     crate::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent},
-    anyhow::Result,
-    async_trait::async_trait,
     std::{
         pin::Pin,
         sync::{
@@ -21,7 +19,6 @@ struct ResumeProvider {
     seen_messages: std::sync::Mutex<Vec<ChatMessage>>,
 }
 
-#[async_trait]
 impl LlmProvider for ThresholdProvider {
     fn name(&self) -> &str {
         "threshold"
@@ -43,28 +40,30 @@ impl LlmProvider for ThresholdProvider {
         Some(1)
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        self.complete_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(CompletionResponse {
-            text: Some("provider must not be called".to_string()),
-            tool_calls: Vec::new(),
-            usage: Default::default(),
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            self.complete_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(CompletionResponse {
+                text: Some("provider must not be called".to_string()),
+                tool_calls: Vec::new(),
+                usage: Default::default(),
+                ..Default::default()
+            })
         })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
-#[async_trait]
 impl LlmProvider for ResumeProvider {
     fn name(&self) -> &str {
         "resume"
@@ -86,27 +85,30 @@ impl LlmProvider for ResumeProvider {
         Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        *self
-            .seen_messages
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = messages.to_vec();
-        Ok(CompletionResponse {
-            text: Some("continued".to_string()),
-            tool_calls: Vec::new(),
-            usage: Default::default(),
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            *self
+                .seen_messages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = messages.to_vec();
+            Ok(CompletionResponse {
+                text: Some("continued".to_string()),
+                tool_calls: Vec::new(),
+                usage: Default::default(),
+                ..Default::default()
+            })
         })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 

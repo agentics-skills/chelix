@@ -37,7 +37,6 @@ fn complete_model_metadata() -> PartialModelMetadata {
         input_modalities: Some(vec![ModelModality::Text, ModelModality::Image]),
         output_modalities: Some(vec![ModelModality::Text]),
         tool_calling: Some(true),
-        streaming: Some(true),
         zero_data_retention_enabled: Some(true),
         reasoning_supported_efforts: Some(vec!["low".into()]),
         reasoning_summary: None,

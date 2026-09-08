@@ -1103,7 +1103,6 @@ name = "chelix"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chelix-agents",
  "chelix-browser",
  "chelix-common",
  "chelix-config",
@@ -1933,7 +1932,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "async-trait",
  "axum",
  "chelix-agents",
  "chelix-common",

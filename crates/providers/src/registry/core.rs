@@ -8,8 +8,7 @@ use std::{
 
 use {
     chelix_agents::model::{
-        ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, ReasoningEffort,
-        StreamEvent, ToolChoice,
+        ChatMessage, CompletionOptions, LlmProvider, ReasoningEffort, StreamEvent,
     },
     chelix_common::{ModelMetadata, ModelModality, ResolvedModelReasoningError},
     tokio_stream::Stream,
@@ -84,7 +83,6 @@ struct RegistryModelProvider {
     inner: Arc<dyn LlmProvider>,
 }
 
-#[async_trait::async_trait]
 impl LlmProvider for RegistryModelProvider {
     fn name(&self) -> &str {
         self.inner.name()
@@ -92,25 +90,6 @@ impl LlmProvider for RegistryModelProvider {
 
     fn id(&self) -> &str {
         &self.model_id
-    }
-
-    async fn complete(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-    ) -> anyhow::Result<CompletionResponse> {
-        self.inner.complete(messages, tools).await
-    }
-
-    async fn complete_with_options(
-        &self,
-        messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-        options: &CompletionOptions,
-    ) -> anyhow::Result<CompletionResponse> {
-        self.inner
-            .complete_with_options(messages, tools, options)
-            .await
     }
 
     fn supports_tools(&self) -> bool {
@@ -156,10 +135,10 @@ impl LlmProvider for RegistryModelProvider {
         &self,
         messages: Vec<ChatMessage>,
         tools: Vec<serde_json::Value>,
-        tool_choice: Option<ToolChoice>,
+        options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         self.inner
-            .stream_with_tools_and_options(messages, tools, tool_choice)
+            .stream_with_tools_and_options(messages, tools, options)
     }
 
     fn reasoning_effort(&self) -> Option<ReasoningEffort> {

@@ -152,17 +152,16 @@ async fn complete_scenario_with_retries(
     scenario: &Scenario,
 ) -> Option<chelix_agents::model::CompletionResponse> {
     for attempt in 0..3 {
-        let result = provider
-            .complete(
-                &[
-                    ChatMessage::system(
-                        "Call the provided tool exactly once. Do not answer with prose.",
-                    ),
-                    ChatMessage::user(scenario.prompt.clone()),
-                ],
-                std::slice::from_ref(&scenario.tool),
-            )
-            .await;
+        let result = chelix_agents::model::collect_stream(provider.stream_with_tools(
+            vec![
+                ChatMessage::system(
+                    "Call the provided tool exactly once. Do not answer with prose.",
+                ),
+                ChatMessage::user(scenario.prompt.clone()),
+            ],
+            vec![scenario.tool.clone()],
+        ))
+        .await;
 
         match result {
             Ok(response) => return Some(response),
@@ -231,7 +230,7 @@ async fn run_provider_scenarios(provider_name: &str, provider: Arc<dyn LlmProvid
 
 #[tokio::test]
 #[ignore]
-async fn zai_serialization_scenarios_non_streaming() {
+async fn zai_serialization_scenarios_collected_stream() {
     let config = ProviderConfig {
         provider_name: "zai",
         api_key_env: "Z_API_KEY",
@@ -249,7 +248,7 @@ async fn zai_serialization_scenarios_non_streaming() {
 
 #[tokio::test]
 #[ignore]
-async fn alibaba_coding_serialization_scenarios_non_streaming() {
+async fn alibaba_coding_serialization_scenarios_collected_stream() {
     let config = ProviderConfig {
         provider_name: "alibaba-coding",
         api_key_env: "ALIBABA_CODING_API_KEY",
@@ -267,7 +266,7 @@ async fn alibaba_coding_serialization_scenarios_non_streaming() {
 
 #[tokio::test]
 #[ignore]
-async fn openrouter_google_serialization_scenarios_non_streaming() {
+async fn openrouter_google_serialization_scenarios_collected_stream() {
     let config = ProviderConfig {
         provider_name: "openrouter-google",
         api_key_env: "OPENROUTER_API_KEY",

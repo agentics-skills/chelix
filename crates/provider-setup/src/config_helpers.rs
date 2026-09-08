@@ -221,7 +221,6 @@ mod tests {
             input_modalities: Some(vec![ModelModality::Text]),
             output_modalities: Some(vec![ModelModality::Text]),
             tool_calling: Some(true),
-            streaming: Some(true),
             zero_data_retention_enabled: Some(false),
             reasoning_supported_efforts: Some(vec!["low".into()]),
             reasoning_summary: None,

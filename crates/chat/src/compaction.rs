@@ -320,10 +320,13 @@ async fn prepare_checkpoint_from_prompt(
         ))
     })?;
     let completion_options = CompletionOptions::with_max_output_tokens(max_output_tokens);
-    let response = provider
-        .complete_with_options(&messages, tools, &completion_options)
-        .await
-        .map_err(|e| Error::message(format!("summarization request failed: {e}")))?;
+    let response = chelix_agents::model::collect_stream(provider.stream_with_tools_and_options(
+        messages,
+        tools.to_vec(),
+        completion_options,
+    ))
+    .await
+    .map_err(|e| Error::message(format!("summarization request failed: {e}")))?;
 
     let summary = response
         .text
@@ -509,9 +512,7 @@ mod tests {
     use std::pin::Pin;
 
     use {
-        chelix_agents::model::{
-            ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, Usage,
-        },
+        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, Usage},
         tokio_stream::Stream,
     };
 
@@ -533,21 +534,8 @@ mod tests {
                 seen_options: std::sync::Mutex::new(Vec::new()),
             }
         }
-
-        fn response(&self) -> CompletionResponse {
-            CompletionResponse {
-                text: self.response_text.clone(),
-                tool_calls: Vec::new(),
-                usage: Usage {
-                    input_tokens: 100,
-                    output_tokens: 50,
-                    ..Usage::default()
-                },
-            }
-        }
     }
 
-    #[async_trait::async_trait]
     impl LlmProvider for MockProvider {
         fn name(&self) -> &str {
             "mock"
@@ -561,36 +549,35 @@ mod tests {
             Some(12_800)
         }
 
-        async fn complete(
+        fn stream_with_tools_and_options(
             &self,
-            messages: &[ChatMessage],
-            tools: &[serde_json::Value],
-        ) -> anyhow::Result<CompletionResponse> {
-            *self.seen_messages.lock().unwrap_or_else(|e| e.into_inner()) = messages.to_vec();
-            *self.seen_tools.lock().unwrap_or_else(|e| e.into_inner()) = tools.to_vec();
-            Ok(self.response())
-        }
-
-        async fn complete_with_options(
-            &self,
-            messages: &[ChatMessage],
-            tools: &[serde_json::Value],
-            options: &CompletionOptions,
-        ) -> anyhow::Result<CompletionResponse> {
-            *self.seen_messages.lock().unwrap_or_else(|e| e.into_inner()) = messages.to_vec();
-            *self.seen_tools.lock().unwrap_or_else(|e| e.into_inner()) = tools.to_vec();
+            messages: Vec<ChatMessage>,
+            tools: Vec<serde_json::Value>,
+            options: CompletionOptions,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            *self.seen_messages.lock().unwrap_or_else(|e| e.into_inner()) = messages;
+            *self.seen_tools.lock().unwrap_or_else(|e| e.into_inner()) = tools;
             self.seen_options
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .push(options.clone());
-            Ok(self.response())
+                .push(options);
+            let mut events = Vec::new();
+            if let Some(text) = &self.response_text {
+                events.push(StreamEvent::Delta(text.clone()));
+            }
+            events.push(StreamEvent::Done(Usage {
+                input_tokens: 100,
+                output_tokens: 50,
+                ..Usage::default()
+            }));
+            Box::pin(tokio_stream::iter(events))
         }
 
         fn stream(
             &self,
-            _messages: Vec<ChatMessage>,
+            messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-            Box::pin(tokio_stream::empty())
+            self.stream_with_tools_and_options(messages, Vec::new(), CompletionOptions::default())
         }
     }
 
@@ -598,7 +585,6 @@ mod tests {
         entered: tokio::sync::Notify,
     }
 
-    #[async_trait::async_trait]
     impl LlmProvider for HangingProvider {
         fn name(&self) -> &str {
             "hanging"
@@ -612,29 +598,21 @@ mod tests {
             Some(12_800)
         }
 
-        async fn complete(
+        fn stream_with_tools_and_options(
             &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
-        ) -> anyhow::Result<CompletionResponse> {
-            std::future::pending().await
-        }
-
-        async fn complete_with_options(
-            &self,
-            _messages: &[ChatMessage],
-            _tools: &[serde_json::Value],
-            _options: &CompletionOptions,
-        ) -> anyhow::Result<CompletionResponse> {
+            _messages: Vec<ChatMessage>,
+            _tools: Vec<serde_json::Value>,
+            _options: CompletionOptions,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
             self.entered.notify_one();
-            std::future::pending().await
+            Box::pin(tokio_stream::pending())
         }
 
         fn stream(
             &self,
-            _messages: Vec<ChatMessage>,
+            messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-            Box::pin(tokio_stream::empty())
+            self.stream_with_tools_and_options(messages, Vec::new(), CompletionOptions::default())
         }
     }
 

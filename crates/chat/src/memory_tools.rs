@@ -315,7 +315,7 @@ async fn plan_memory_forget(
         )),
     ];
 
-    let response = provider.complete(&messages, &[]).await?;
+    let response = chelix_agents::model::collect_stream(provider.stream(messages)).await?;
     let raw = response
         .text
         .ok_or_else(|| anyhow::anyhow!("memory_forget planner returned no text"))?;

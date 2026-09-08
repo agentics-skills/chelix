@@ -61,7 +61,6 @@ fn benchmark_model_metadata() -> chelix_common::ModelMetadata {
         ]),
         output_modalities: Some(vec![chelix_common::ModelModality::Text]),
         tool_calling: Some(true),
-        streaming: Some(true),
         zero_data_retention_enabled: Some(false),
         reasoning_supported_efforts: Some(vec!["low".into()]),
         reasoning_summary: None,

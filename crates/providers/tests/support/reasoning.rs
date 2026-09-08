@@ -18,7 +18,6 @@ pub fn configure(
         input_modalities: vec![ModelModality::Text],
         output_modalities: vec![ModelModality::Text],
         tool_calling: true,
-        streaming: true,
         zero_data_retention_enabled: false,
         reasoning_supported_efforts: supported_efforts,
         reasoning_summary: None,

@@ -95,13 +95,6 @@ struct Cli {
 enum Commands {
     /// Start the gateway server (default when no subcommand is provided).
     Gateway,
-    /// Invoke an agent directly.
-    Agent {
-        #[arg(short, long)]
-        message: String,
-        #[arg(long)]
-        thinking: Option<String>,
-    },
     /// Send a message.
     Send {
         #[arg(long)]
@@ -450,11 +443,6 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
             .map_err(Into::into)
-        },
-        Some(Commands::Agent { message, .. }) => {
-            let result = chelix_agents::runner::run_agent("default", "main", &message).await?;
-            println!("{result}");
-            Ok(())
         },
         Some(Commands::Onboard) => {
             chelix_onboarding::wizard::run_onboarding().await?;

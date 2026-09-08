@@ -1349,9 +1349,7 @@ mod tests {
     };
 
     use {
-        chelix_agents::model::{
-            ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, Usage,
-        },
+        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, Usage},
         chelix_common::{ModelMetadata, ModelModality, ModelOverride},
         chelix_config::ToolMode,
         chelix_providers::{ModelInfo, ProviderRegistry},
@@ -1511,7 +1509,6 @@ mod tests {
         resolved_efforts: Arc<Mutex<Vec<String>>>,
     }
 
-    #[async_trait::async_trait]
     impl LlmProvider for ValidationProvider {
         fn name(&self) -> &str {
             "test"
@@ -1521,32 +1518,23 @@ mod tests {
             "model"
         }
 
-        async fn complete(
+        fn stream_with_tools_and_options(
             &self,
-            _messages: &[ChatMessage],
-            _tools: &[Value],
-        ) -> anyhow::Result<CompletionResponse> {
-            Ok(CompletionResponse {
-                text: Some("summary".to_string()),
-                tool_calls: Vec::new(),
-                usage: Usage::default(),
-            })
-        }
-
-        async fn complete_with_options(
-            &self,
-            messages: &[ChatMessage],
-            tools: &[Value],
-            _options: &CompletionOptions,
-        ) -> anyhow::Result<CompletionResponse> {
-            self.complete(messages, tools).await
+            _messages: Vec<ChatMessage>,
+            _tools: Vec<Value>,
+            _options: CompletionOptions,
+        ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            Box::pin(tokio_stream::iter(vec![
+                StreamEvent::Delta("summary".to_string()),
+                StreamEvent::Done(Usage::default()),
+            ]))
         }
 
         fn stream(
             &self,
-            _messages: Vec<ChatMessage>,
+            messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-            Box::pin(tokio_stream::empty())
+            self.stream_with_tools_and_options(messages, Vec::new(), CompletionOptions::default())
         }
 
         fn tool_mode(&self) -> ToolMode {
@@ -1580,7 +1568,6 @@ mod tests {
             input_modalities: vec![ModelModality::Text],
             output_modalities: vec![ModelModality::Text],
             tool_calling: false,
-            streaming: true,
             zero_data_retention_enabled: false,
             reasoning_supported_efforts: vec![chelix_common::ReasoningEffort::from("off")],
             reasoning_summary: None,

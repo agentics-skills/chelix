@@ -21,7 +21,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 
@@ -32,7 +31,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low", "high"]
 
@@ -43,7 +41,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["none"]
 
@@ -54,7 +51,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 
@@ -69,7 +65,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 "#,
@@ -112,7 +107,6 @@ max_output_tokens = 128000
 input_modalities = ["text", "image", "audio", "file"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = true
 reasoning_supported_efforts = ["none", "minimal", "low", "medium", "high", "max"]
 reasoning_summary = "detailed"
@@ -175,7 +169,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = false
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 
@@ -186,7 +179,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 "#,
@@ -354,7 +346,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 
@@ -368,7 +359,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 "#,
@@ -419,7 +409,6 @@ max_output_tokens = 32000
 input_modalities = ["text"]
 output_modalities = ["text"]
 tool_calling = true
-streaming = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 

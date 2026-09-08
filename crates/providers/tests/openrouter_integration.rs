@@ -62,7 +62,7 @@ fn weather_tool() -> serde_json::Value {
 
 #[tokio::test]
 #[ignore]
-async fn system_prompt_is_received_non_streaming() {
+async fn system_prompt_is_received_collected_stream() {
     let p = make_provider(TEST_MODEL);
     let keyword = "PERSIMMON";
     let messages = vec![
@@ -71,7 +71,9 @@ async fn system_prompt_is_received_non_streaming() {
         )),
         ChatMessage::user("What is 2+2?"),
     ];
-    let response = p.complete(&messages, &[]).await.expect("should succeed");
+    let response = chelix_agents::model::collect_stream(p.stream(messages))
+        .await
+        .expect("should succeed");
     let text = response.text.expect("must have text");
     assert!(
         text.to_lowercase().contains(&keyword.to_lowercase()),
@@ -115,17 +117,16 @@ async fn system_prompt_is_received_streaming() {
 
 #[tokio::test]
 #[ignore]
-async fn tool_call_round_trip_non_streaming() {
+async fn tool_call_round_trip_collected_stream() {
     let p = make_provider(TEST_MODEL);
-    let response = p
-        .complete(
-            &[ChatMessage::user(
-                "What's the weather in Tokyo? Use the get_weather tool.",
-            )],
-            &[weather_tool()],
-        )
-        .await
-        .expect("should succeed");
+    let response = chelix_agents::model::collect_stream(p.stream_with_tools(
+        vec![ChatMessage::user(
+            "What's the weather in Tokyo? Use the get_weather tool.",
+        )],
+        vec![weather_tool()],
+    ))
+    .await
+    .expect("should succeed");
     assert!(
         !response.tool_calls.is_empty(),
         "should call tool, got text: {:?}",
@@ -171,31 +172,29 @@ async fn tool_call_round_trip_streaming() {
 async fn multi_turn_tool_use() {
     let p = make_provider(TEST_MODEL);
     let tools = vec![weather_tool()];
-    let r = p
-        .complete(
-            &[ChatMessage::user("Weather in London? Use get_weather.")],
-            &tools,
-        )
-        .await
-        .expect("first turn");
+    let r = chelix_agents::model::collect_stream(p.stream_with_tools(
+        vec![ChatMessage::user("Weather in London? Use get_weather.")],
+        tools.clone(),
+    ))
+    .await
+    .expect("first turn");
     assert!(!r.tool_calls.is_empty(), "should call tool");
     let tc = &r.tool_calls[0];
-    let r2 = p
-        .complete(
-            &[
-                ChatMessage::user("Weather in London? Use get_weather."),
-                ChatMessage::assistant_with_tools(r.text.clone(), vec![ToolCall {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    arguments: tc.arguments.clone(),
-                    argument_diagnostic: tc.argument_diagnostic.clone(),
-                }]),
-                ChatMessage::tool(&tc.id, r#"{"temperature": 15, "condition": "cloudy"}"#),
-            ],
-            &tools,
-        )
-        .await
-        .expect("second turn");
+    let r2 = chelix_agents::model::collect_stream(p.stream_with_tools(
+        vec![
+            ChatMessage::user("Weather in London? Use get_weather."),
+            ChatMessage::assistant_with_tools(r.text.clone(), vec![ToolCall {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                arguments: tc.arguments.clone(),
+                argument_diagnostic: tc.argument_diagnostic.clone(),
+            }]),
+            ChatMessage::tool(&tc.id, r#"{"temperature": 15, "condition": "cloudy"}"#),
+        ],
+        tools.clone(),
+    ))
+    .await
+    .expect("second turn");
     assert!(r2.text.is_some(), "should have text after tool result");
 }
 

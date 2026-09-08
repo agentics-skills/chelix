@@ -71,14 +71,26 @@ pub enum StreamEvent {
 
 ### 3. LlmProvider Trait (`crates/agents/src/model.rs`)
 
-The `LlmProvider` trait defines two streaming methods:
+The `LlmProvider` trait defines streaming methods accepting `Vec<ChatMessage>`:
 
-- `stream()` — Basic streaming without tool support
-- `stream_with_tools()` — Streaming with tool schemas passed to the API
+- `stream()` — Text streaming.
+- `stream_with_tools()` — Streaming with tool schemas passed to the API.
+- `stream_with_tools_and_options()` — Streaming with tool schemas and
+  `CompletionOptions`, carrying `tool_choice` and a per-request `max_output_tokens`.
 
-Both accept `Vec<ChatMessage>` (not raw JSON). Providers that support streaming
-with tools override `stream_with_tools()`. Others fall back to `stream()` via
-the default implementation, which ignores the tools parameter.
+The default implementations reject unsupported tools, forced tool selection,
+and output limits with `StreamEvent::Error`. OpenAI serializes the output limit
+as `max_completion_tokens` in Chat Completions SSE and `max_output_tokens` in
+Responses SSE and WebSocket requests. The configured transport also applies to
+session titles, memory-forget planning, and compaction.
+
+`collect_stream()` collects a successful stream into `CompletionResponse` for
+session titles, memory-forget planning, and compaction. It retains text, tool
+calls, terminal usage, canonical provider segments, and bounded raw events.
+Canonical segments retain received item identities and positions at the
+collection boundary. Provider errors, unsuccessful segment outcomes, and EOF before `Done` are
+returned as errors. Silent memory turns use the streaming agent runner with
+callbacks omitted; tool execution and canonical item replay use that runner.
 
 The trait also exposes `supports_tools()`, `reasoning_effort()`, and
 `with_reasoning_effort()` for provider capability discovery.

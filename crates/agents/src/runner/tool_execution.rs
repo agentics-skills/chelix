@@ -48,14 +48,6 @@ pub(crate) struct ToolInvocationExecutor<'a> {
 }
 
 impl ToolInvocationExecutor<'_> {
-    pub async fn execute(
-        &self,
-        tool_call: &ToolCall,
-        first_sequence: u64,
-    ) -> Result<ToolExecutionOutcome, AgentRunError> {
-        self.execute_inner(tool_call, first_sequence, None).await
-    }
-
     pub async fn execute_cancellable(
         &self,
         tool_call: &ToolCall,

@@ -148,6 +148,11 @@ The 85% threshold is fixed and has no configuration switch or override. Manual
 `/compact` summarizes the current context regardless of its size (unless the
 session already ends with a checkpoint).
 
+Summary requests use the provider's configured streaming transport and collect
+the final result with the model's output-token limit. Streaming errors, including
+Responses `response.incomplete`, cause the summary request to fail. An automatic
+compaction failure terminates the current agent run with an error.
+
 ## Context-budget metadata
 
 Every tool result records the exact budget calculation used before the LLM
@@ -180,8 +185,7 @@ token usage, and the number of messages checkpointed.
 ## Further reading
 
 - `crates/agents/src/runner/helpers.rs` — exact prompt-budget calculation.
-- `crates/agents/src/runner/non_streaming.rs` and
-  `crates/agents/src/runner/streaming.rs` — pre-provider stop and continuation
+- `crates/agents/src/runner/streaming.rs` — pre-provider stop and continuation
   tracking.
 - `crates/chat/src/run_with_tools.rs` — ordered persistence barrier, checkpoint
   transaction, and resume.

@@ -22,8 +22,8 @@ use chelix_config::ToolMode;
 
 use crate::{
     model::{
-        ChatMessage, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage, UserContent,
-        decode_tool_call_arguments_from_str, push_capped_provider_raw_event,
+        ChatMessage, CompletionOptions, LlmProvider, StreamEvent, ToolCall, ToolChoice, Usage,
+        UserContent, decode_tool_call_arguments_from_str, push_capped_provider_raw_event,
     },
     response_sanitizer::{clean_response, recover_tool_calls_from_content},
     tool_loop_detector::ToolCallFingerprint,
@@ -415,7 +415,10 @@ pub async fn run_agent_loop_streaming_with_limits(
             provider.stream_with_tools_and_options(
                 messages.clone(),
                 schemas_for_api.clone(),
-                tool_choice.clone(),
+                CompletionOptions {
+                    tool_choice: tool_choice.clone(),
+                    max_output_tokens: None,
+                },
             )
         };
 

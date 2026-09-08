@@ -7,7 +7,7 @@ use {
     crate::{
         model::{
             ChatMessage, CompletionOptions, CompletionResponse, LlmProvider, StreamEvent, ToolCall,
-            ToolChoice, Usage,
+            Usage,
         },
         tool_parsing::new_synthetic_tool_call_id,
     },
@@ -107,112 +107,11 @@ async fn test_simple_text_response() {
     assert_eq!(result.tool_calls_made, 0);
 }
 
-struct NoToolsRoutingProvider {
-    complete_calls: std::sync::atomic::AtomicUsize,
-    complete_with_options_calls: std::sync::atomic::AtomicUsize,
-}
-
-#[async_trait]
-impl LlmProvider for NoToolsRoutingProvider {
-    fn name(&self) -> &str {
-        "no-tools-routing"
-    }
-
-    fn id(&self) -> &str {
-        "no-tools-routing-model"
-    }
-
-    fn context_window(&self) -> Option<u32> {
-        Some(TEST_CONTEXT_WINDOW)
-    }
-
-    fn max_input_tokens(&self) -> Option<u32> {
-        Some(TEST_MAX_INPUT_TOKENS)
-    }
-
-    fn max_output_tokens(&self) -> Option<u32> {
-        Some(TEST_MAX_OUTPUT_TOKENS)
-    }
-
-    fn supports_tools(&self) -> bool {
-        true
-    }
-
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        self.complete_calls
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        assert!(tools.is_empty());
-        Ok(CompletionResponse {
-            text: Some("no tools".into()),
-            tool_calls: vec![],
-            usage: Usage::default(),
-        })
-    }
-
-    async fn complete_with_options(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-        _options: &CompletionOptions,
-    ) -> Result<CompletionResponse> {
-        self.complete_with_options_calls
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        anyhow::bail!("with-tools path must not be used for empty schemas")
-    }
-
-    fn stream(
-        &self,
-        _messages: Vec<ChatMessage>,
-    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
-    }
-}
-
-#[tokio::test]
-async fn test_non_streaming_runner_does_not_use_tools_path_for_empty_schema_list() {
-    let provider = Arc::new(NoToolsRoutingProvider {
-        complete_calls: std::sync::atomic::AtomicUsize::new(0),
-        complete_with_options_calls: std::sync::atomic::AtomicUsize::new(0),
-    });
-    let tools = ToolRegistry::new();
-    let uc = UserContent::text("Hi");
-
-    let result = run_agent_loop(
-        provider.clone(),
-        &tools,
-        "You are a test bot.",
-        &uc,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(result.output.text, "no tools");
-    assert_eq!(
-        provider
-            .complete_calls
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
-    assert_eq!(
-        provider
-            .complete_with_options_calls
-            .load(std::sync::atomic::Ordering::SeqCst),
-        0
-    );
-}
-
 struct NoToolsStreamingRoutingProvider {
     stream_calls: std::sync::atomic::AtomicUsize,
     stream_with_options_calls: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for NoToolsStreamingRoutingProvider {
     fn name(&self) -> &str {
         "no-tools-streaming-routing"
@@ -238,18 +137,6 @@ impl LlmProvider for NoToolsStreamingRoutingProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        Ok(CompletionResponse {
-            text: Some("unused".into()),
-            tool_calls: vec![],
-            usage: Usage::default(),
-        })
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -266,7 +153,7 @@ impl LlmProvider for NoToolsStreamingRoutingProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         self.stream_with_options_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -326,7 +213,6 @@ struct IterationOwnedResponsesProvider {
     terminal_output: TerminalResponsesOutput,
 }
 
-#[async_trait]
 impl LlmProvider for IterationOwnedResponsesProvider {
     fn name(&self) -> &str {
         "iteration-owned-responses"
@@ -352,14 +238,6 @@ impl LlmProvider for IterationOwnedResponsesProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        anyhow::bail!("streaming runner must not call complete")
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -371,7 +249,7 @@ impl LlmProvider for IterationOwnedResponsesProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         let call = self
             .stream_calls
@@ -511,7 +389,6 @@ struct ToolCallContextStreamingProvider {
     stream_calls: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for ToolCallContextStreamingProvider {
     fn name(&self) -> &str {
         "tool-call-context-streaming"
@@ -537,14 +414,6 @@ impl LlmProvider for ToolCallContextStreamingProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        anyhow::bail!("streaming runner must not call complete")
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -559,7 +428,7 @@ impl LlmProvider for ToolCallContextStreamingProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         let call = self
             .stream_calls
@@ -739,7 +608,6 @@ async fn test_streaming_runner_injects_tool_call_id_only_into_execution_context(
 
 struct InfiniteToolArgumentsProvider;
 
-#[async_trait]
 impl LlmProvider for InfiniteToolArgumentsProvider {
     fn name(&self) -> &str {
         "infinite-tool-arguments"
@@ -765,14 +633,6 @@ impl LlmProvider for InfiniteToolArgumentsProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        anyhow::bail!("streaming runner must not call complete")
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -784,7 +644,7 @@ impl LlmProvider for InfiniteToolArgumentsProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         use tokio_stream::StreamExt;
 
@@ -924,7 +784,6 @@ impl crate::tool_registry::AgentTool for NeverFinishesTool {
 
 struct ExecutingToolProvider;
 
-#[async_trait]
 impl LlmProvider for ExecutingToolProvider {
     fn name(&self) -> &str {
         "executing-tool"
@@ -950,14 +809,6 @@ impl LlmProvider for ExecutingToolProvider {
         true
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        anyhow::bail!("streaming runner must not call complete")
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -969,7 +820,7 @@ impl LlmProvider for ExecutingToolProvider {
         &self,
         _messages: Vec<ChatMessage>,
         _tools: Vec<serde_json::Value>,
-        _tool_choice: Option<ToolChoice>,
+        _options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(tokio_stream::iter(vec![
             StreamEvent::ToolCallStart {
@@ -1125,42 +976,6 @@ async fn test_waiting_for_execution_receipt_blocks_tool_dispatch() {
     assert!(captured.lock().unwrap().is_some());
 }
 
-#[tokio::test]
-async fn test_non_streaming_runner_dispatches_before_agent_start_hook() {
-    let provider = Arc::new(MockProvider {
-        response_text: "Hello!".into(),
-    });
-    let tools = ToolRegistry::new();
-    let payloads = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut hooks = HookRegistry::new();
-    hooks.register(Arc::new(AgentStartRecordingHook {
-        payloads: Arc::clone(&payloads),
-    }));
-
-    let result = run_agent_loop_with_context(
-        provider,
-        &tools,
-        "You are a test bot.",
-        &UserContent::text("Hi"),
-        None,
-        None,
-        Some(serde_json::json!({"_session_key": "session-123"})),
-        Some(Arc::new(hooks)),
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(result.output.text, "Hello!");
-    let payloads = payloads.lock().unwrap();
-    assert_eq!(payloads.len(), 1);
-    assert!(matches!(
-        &payloads[0],
-        HookPayload::BeforeAgentStart { session_key, model }
-            if session_key == "session-123" && model == "mock-model"
-    ));
-}
-
 struct HangingBeforeLlmHook {
     entered: Arc<tokio::sync::Notify>,
 }
@@ -1268,7 +1083,6 @@ struct RecordingMessagesProvider {
     messages: Arc<std::sync::Mutex<Vec<ChatMessage>>>,
 }
 
-#[async_trait]
 impl LlmProvider for RecordingMessagesProvider {
     fn name(&self) -> &str {
         "recording-messages"
@@ -1290,19 +1104,6 @@ impl LlmProvider for RecordingMessagesProvider {
         Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
-    async fn complete(
-        &self,
-        messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        *self.messages.lock().unwrap() = messages.to_vec();
-        Ok(CompletionResponse {
-            text: Some("ok".into()),
-            tool_calls: vec![],
-            usage: Usage::default(),
-        })
-    }
-
     fn stream(
         &self,
         messages: Vec<ChatMessage>,
@@ -1321,38 +1122,6 @@ impl LlmProvider for RecordingMessagesProvider {
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         self.stream(messages)
     }
-}
-
-#[tokio::test]
-async fn test_before_llm_call_modify_payload_updates_non_streaming_messages() {
-    let recorded_messages = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let provider = Arc::new(RecordingMessagesProvider {
-        messages: Arc::clone(&recorded_messages),
-    });
-    let tools = ToolRegistry::new();
-    let mut hooks = HookRegistry::new();
-    hooks.register(Arc::new(InjectBeforeLlmSystemHook));
-
-    let result = run_agent_loop_with_context(
-        provider,
-        &tools,
-        "original system",
-        &UserContent::text("hello"),
-        None,
-        None,
-        None,
-        Some(Arc::new(hooks)),
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(result.output.text, "ok");
-    let messages = recorded_messages.lock().unwrap();
-    assert!(matches!(
-        messages.first(),
-        Some(ChatMessage::System { content }) if content == "hook-injected system"
-    ));
 }
 
 #[tokio::test]
@@ -1413,7 +1182,6 @@ fn test_before_llm_call_modify_payload_rejects_invalid_messages() {
 
 struct StreamingUsageProvider;
 
-#[async_trait]
 impl LlmProvider for StreamingUsageProvider {
     fn name(&self) -> &str {
         "streaming-usage"
@@ -1433,18 +1201,6 @@ impl LlmProvider for StreamingUsageProvider {
 
     fn max_output_tokens(&self) -> Option<u32> {
         Some(TEST_MAX_OUTPUT_TOKENS)
-    }
-
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        Ok(CompletionResponse {
-            text: Some("unused".into()),
-            tool_calls: vec![],
-            usage: Usage::default(),
-        })
     }
 
     fn stream(
@@ -1473,7 +1229,6 @@ impl LlmProvider for StreamingUsageProvider {
 
 struct StreamingChunksProvider;
 
-#[async_trait]
 impl LlmProvider for StreamingChunksProvider {
     fn name(&self) -> &str {
         "streaming-chunks"
@@ -1493,18 +1248,6 @@ impl LlmProvider for StreamingChunksProvider {
 
     fn max_output_tokens(&self) -> Option<u32> {
         Some(TEST_MAX_OUTPUT_TOKENS)
-    }
-
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        Ok(CompletionResponse {
-            text: Some("unused".into()),
-            tool_calls: vec![],
-            usage: Usage::default(),
-        })
     }
 
     fn stream(
@@ -1638,18 +1381,17 @@ async fn test_streaming_runner_dispatches_before_agent_start_hook() {
     ));
 }
 
-struct NonStreamingUsageProvider {
+struct PerRequestUsageProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
-impl LlmProvider for NonStreamingUsageProvider {
+impl LlmProvider for PerRequestUsageProvider {
     fn name(&self) -> &str {
-        "non-streaming-usage"
+        "per-request-usage"
     }
 
     fn id(&self) -> &str {
-        "non-streaming-usage-model"
+        "per-request-usage-model"
     }
 
     fn context_window(&self) -> Option<u32> {
@@ -1668,56 +1410,60 @@ impl LlmProvider for NonStreamingUsageProvider {
         true
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: None,
-                tool_calls: vec![ToolCall {
-                    id: "call_usage_1".into(),
-                    name: "echo_tool".into(),
-                    arguments: serde_json::json!({"text": "hi"}),
-                    argument_diagnostic: None,
-                }],
-                usage: Usage {
-                    input_tokens: 100,
-                    output_tokens: 10,
-                    cache_read_tokens: 80,
-                    cache_write_tokens: 8,
-                },
-            })
-        } else {
-            Ok(CompletionResponse {
-                text: Some("Done with cache.".into()),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 40,
-                    output_tokens: 5,
-                    cache_read_tokens: 32,
-                    cache_write_tokens: 3,
-                },
-            })
-        }
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_usage_1".into(),
+                        name: "echo_tool".into(),
+                        arguments: serde_json::json!({"text": "hi"}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 100,
+                        output_tokens: 10,
+                        cache_read_tokens: 80,
+                        cache_write_tokens: 8,
+                    },
+                    ..Default::default()
+                })
+            } else {
+                Ok(CompletionResponse {
+                    text: Some("Done with cache.".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 40,
+                        output_tokens: 5,
+                        cache_read_tokens: 32,
+                        cache_write_tokens: 3,
+                    },
+                    ..Default::default()
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
 #[tokio::test]
-async fn test_non_streaming_runner_preserves_total_and_request_cache_usage() {
-    let provider = Arc::new(NonStreamingUsageProvider {
+async fn test_runner_preserves_total_and_request_cache_usage() {
+    let provider = Arc::new(PerRequestUsageProvider {
         call_count: std::sync::atomic::AtomicUsize::new(0),
     });
     let mut tools = ToolRegistry::new();
@@ -1764,7 +1510,6 @@ struct CommandSimulatingProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for CommandSimulatingProvider {
     fn name(&self) -> &str {
         "mock"
@@ -1790,61 +1535,65 @@ impl LlmProvider for CommandSimulatingProvider {
         true
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: None,
-                tool_calls: vec![ToolCall {
-                    id: "call_execute_command_1".into(),
-                    name: "execute_command".into(),
-                    arguments: serde_json::json!({"command": "echo hello"}),
-                    argument_diagnostic: None,
-                }],
-                usage: Usage {
-                    input_tokens: 10,
-                    output_tokens: 5,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_execute_command_1".into(),
+                        name: "execute_command".into(),
+                        arguments: serde_json::json!({"command": "echo hello"}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        } else {
-            let tool_content = messages
-                .iter()
-                .find_map(|m| {
-                    if let ChatMessage::Tool { content, .. } = m {
-                        Some(content.as_str())
-                    } else {
-                        None
-                    }
                 })
-                .unwrap_or("");
-            let parsed: serde_json::Value = serde_json::from_str(tool_content).unwrap();
-            let stdout = parsed["stdout"].as_str().unwrap_or("");
-            assert!(stdout.contains("hello"));
-            assert_eq!(parsed["exit_code"].as_i64().unwrap(), 0);
-            Ok(CompletionResponse {
-                text: Some(format!("The output was: {}", stdout.trim())),
-                tool_calls: vec![],
-                usage: Usage {
-                    input_tokens: 20,
-                    output_tokens: 10,
+            } else {
+                let tool_content = messages
+                    .iter()
+                    .find_map(|m| {
+                        if let ChatMessage::Tool { content, .. } = m {
+                            Some(content.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("");
+                let parsed: serde_json::Value = serde_json::from_str(tool_content).unwrap();
+                let stdout = parsed["stdout"].as_str().unwrap_or("");
+                assert!(stdout.contains("hello"));
+                assert_eq!(parsed["exit_code"].as_i64().unwrap(), 0);
+                Ok(CompletionResponse {
+                    text: Some(format!("The output was: {}", stdout.trim())),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 20,
+                        output_tokens: 10,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-            })
-        }
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -2008,7 +1757,6 @@ struct HookModifiedCommandProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for HookModifiedCommandProvider {
     fn name(&self) -> &str {
         "hook-modified-command"
@@ -2034,57 +1782,61 @@ impl LlmProvider for HookModifiedCommandProvider {
         true
     }
 
-    async fn complete(
+    fn stream_with_tools(
         &self,
-        messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        let count = self
-            .call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if count == 0 {
-            Ok(CompletionResponse {
-                text: None,
-                tool_calls: vec![ToolCall {
-                    id: "call_execute_command_hook_1".into(),
-                    name: "execute_command".into(),
-                    arguments: serde_json::json!({"command": "echo should-not-run"}),
-                    argument_diagnostic: None,
-                }],
-                usage: Usage::default(),
-            })
-        } else {
-            let tool_content = messages
-                .iter()
-                .find_map(|m| {
-                    if let ChatMessage::Tool { content, .. } = m {
-                        Some(content.as_str())
-                    } else {
-                        None
-                    }
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self
+                .call_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if count == 0 {
+                Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_execute_command_hook_1".into(),
+                        name: "execute_command".into(),
+                        arguments: serde_json::json!({"command": "echo should-not-run"}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage::default(),
+                    ..Default::default()
                 })
-                .unwrap_or("");
-            assert!(
-                tool_content.contains("Missing required field(s): `command`"),
-                "tool result should contain validation error, got: {tool_content}"
-            );
-            assert!(
-                !tool_content.contains("should-not-run"),
-                "invalid hook args must be rejected before execute_command runs"
-            );
-            Ok(CompletionResponse {
-                text: Some("Hook rewrite was rejected.".into()),
-                tool_calls: vec![],
-                usage: Usage::default(),
-            })
-        }
+            } else {
+                let tool_content = messages
+                    .iter()
+                    .find_map(|m| {
+                        if let ChatMessage::Tool { content, .. } = m {
+                            Some(content.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("");
+                assert!(
+                    tool_content.contains("Missing required field(s): `command`"),
+                    "tool result should contain validation error, got: {tool_content}"
+                );
+                assert!(
+                    !tool_content.contains("should-not-run"),
+                    "invalid hook args must be rejected before execute_command runs"
+                );
+                Ok(CompletionResponse {
+                    text: Some("Hook rewrite was rejected.".into()),
+                    tool_calls: vec![],
+                    usage: Usage::default(),
+                    ..Default::default()
+                })
+            }
+        })
     }
 
     fn stream(
         &self,
-        _messages: Vec<ChatMessage>,
+        messages: Vec<ChatMessage>,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-        Box::pin(tokio_stream::empty())
+        self.stream_with_tools(messages, Vec::new())
     }
 }
 
@@ -2220,7 +1972,6 @@ struct NativeTextToolCallProvider {
     call_count: std::sync::atomic::AtomicUsize,
 }
 
-#[async_trait]
 impl LlmProvider for NativeTextToolCallProvider {
     fn name(&self) -> &str {
         "mock-native-text-tool-call"
@@ -2242,24 +1993,6 @@ impl LlmProvider for NativeTextToolCallProvider {
         Some(TEST_MAX_OUTPUT_TOKENS)
     }
 
-    async fn complete(
-        &self,
-        _messages: &[ChatMessage],
-        _tools: &[serde_json::Value],
-    ) -> Result<CompletionResponse> {
-        self.call_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(CompletionResponse {
-            text: Some(NATIVE_TEXT_TOOL_CALL.to_string()),
-            tool_calls: vec![],
-            usage: Usage {
-                input_tokens: 10,
-                output_tokens: 20,
-                ..Default::default()
-            },
-        })
-    }
-
     fn stream(
         &self,
         _messages: Vec<ChatMessage>,
@@ -2271,41 +2004,14 @@ impl LlmProvider for NativeTextToolCallProvider {
             StreamEvent::Done(Usage::default()),
         ]))
     }
-}
 
-#[tokio::test]
-async fn test_native_mode_does_not_parse_text_tool_call_non_streaming() {
-    let provider = Arc::new(NativeTextToolCallProvider {
-        call_count: std::sync::atomic::AtomicUsize::new(0),
-    });
-    let mut tools = ToolRegistry::new();
-    tools.register(Box::new(TestProcessTool));
-
-    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
-
-    let result = run_agent_loop_with_tool_lifecycle(
-        Arc::clone(&provider) as Arc<dyn LlmProvider>,
-        &tools,
-        "You are a test bot.",
-        &UserContent::text("show the tool call as text"),
-        None,
-        Some(&on_tool_lifecycle),
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(result.output.text, NATIVE_TEXT_TOOL_CALL);
-    assert_eq!(result.iterations, 1);
-    assert_eq!(result.tool_calls_made, 0);
-    assert_eq!(
-        provider
-            .call_count
-            .load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
-    assert!(lifecycle_events.lock().unwrap().is_empty());
+    fn stream_with_tools(
+        &self,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream(messages)
+    }
 }
 
 #[tokio::test]
