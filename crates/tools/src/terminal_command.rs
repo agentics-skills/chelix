@@ -319,10 +319,11 @@ impl AgentTool for ReadTerminalOutputTool {
         raw_result: &serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
         let mut response: ReadTerminalOutputResponse = serde_json::from_value(raw_result.clone())?;
-        redact_secret_values(
-            &mut response.output,
-            &self.service.current_terminal_secret_values().await?,
-        );
+        let secrets = self.service.current_terminal_secret_values().await?;
+        redact_secret_values(&mut response.output, &secrets);
+        if let Some(error) = &mut response.error {
+            redact_secret_values(error, &secrets);
+        }
         Ok(serde_json::Value::String(format_terminal_output(&response)))
     }
 
@@ -396,6 +397,10 @@ fn format_terminal_output(response: &ReadTerminalOutputResponse) -> String {
         format!("Terminal {} completed.", response.terminal_id)
     } else {
         format!("Terminal {} output read.", response.terminal_id)
+    };
+    let status = match &response.error {
+        Some(error) => format!("{status}\nError: {error}"),
+        None => status,
     };
     format_output(status, &response.output)
 }
@@ -796,6 +801,14 @@ mod tests {
             format_execute_result(&response("", true, false, false)),
             "Command finished in terminal (id: 7) with exit code 0."
         );
+        assert_eq!(
+            format_execute_result(&response("", false, false, true)),
+            "Command started in terminal (id: 7)."
+        );
+        assert_eq!(
+            format_execute_result(&response("", false, true, false)),
+            "Command is still running in terminal (id: 7)."
+        );
     }
 
     #[test]
@@ -828,7 +841,7 @@ mod tests {
                 ],
             }))
             .unwrap_or_else(|error| panic!("environment provider setup failed: {error}"));
-        let tool = ExecuteCommandTool::new(service);
+        let tool = ExecuteCommandTool::new(Arc::clone(&service));
         let raw_result =
             serde_json::to_value(response("secret-value public-value", true, false, false))
                 .unwrap_or_else(|error| panic!("response encoding failed: {error}"));
@@ -842,6 +855,34 @@ mod tests {
             result,
             "Command finished in terminal (id: 7) with exit code 0.\nOutput:\n[REDACTED] public-value"
         );
+
+        let read_tool = ReadTerminalOutputTool::new(service);
+        for (running, completed, status) in [
+            (true, false, "Terminal 7 is running."),
+            (false, true, "Terminal 7 completed."),
+        ] {
+            let failed = ReadTerminalOutputResponse {
+                terminal_id: "7".into(),
+                output: "secret-value public-value".into(),
+                error: Some("writer failed: secret-value".into()),
+                exit_code: None,
+                completed,
+                running,
+                alive: true,
+            };
+            let raw_result = serde_json::to_value(failed)
+                .unwrap_or_else(|error| panic!("read response encoding failed: {error}"));
+            let result = read_tool
+                .agent_result(&serde_json::json!({}), &raw_result)
+                .await
+                .unwrap_or_else(|error| panic!("read agent result failed: {error}"));
+            assert_eq!(
+                result,
+                format!(
+                    "{status}\nError: writer failed: [REDACTED]\nOutput:\n[REDACTED] public-value"
+                )
+            );
+        }
     }
 
     #[test]

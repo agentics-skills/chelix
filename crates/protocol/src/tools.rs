@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 17;
+pub const TOOLS_SERVICE_PROTOCOL_VERSION: u32 = 18;
 pub const TOOLS_SERVICE_CONTAINER_PORT: u16 = 43_271;
 pub const TOOLS_SERVICE_HEALTH_PATH: &str = "/v1/health";
 pub const TOOLS_SERVICE_EDIT_FILE_PATH: &str = "/v1/edit-file";
@@ -721,6 +721,8 @@ pub struct ReadTerminalOutputRequest {
 pub struct ReadTerminalOutputResponse {
     pub terminal_id: String,
     pub output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub exit_code: Option<i32>,
     pub completed: bool,
     pub running: bool,
@@ -1773,6 +1775,7 @@ mod tests {
         let response = ReadTerminalOutputResponse {
             terminal_id: "3".into(),
             output: "hello".into(),
+            error: None,
             exit_code: Some(0),
             completed: true,
             running: false,
@@ -1783,9 +1786,21 @@ mod tests {
         assert_eq!(json["terminalId"], "3");
         assert_eq!(json["exitCode"], 0);
         assert!(json.get("terminal_id").is_none());
+        assert!(json.get("error").is_none());
         let decoded: ReadTerminalOutputResponse = serde_json::from_value(json)
             .unwrap_or_else(|error| panic!("read response decode failed: {error}"));
         assert_eq!(decoded, response);
+
+        let failed = ReadTerminalOutputResponse {
+            error: Some("command input failed".into()),
+            ..response
+        };
+        let json = serde_json::to_value(&failed)
+            .unwrap_or_else(|error| panic!("failed read response encode failed: {error}"));
+        assert_eq!(json["error"], "command input failed");
+        let decoded: ReadTerminalOutputResponse = serde_json::from_value(json)
+            .unwrap_or_else(|error| panic!("failed read response decode failed: {error}"));
+        assert_eq!(decoded, failed);
     }
 
     #[test]
