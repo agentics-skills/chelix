@@ -140,6 +140,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat_with_attachments(
         audio_filename: meta.audio_filename.clone(),
         input_medium: None,
         client_sequence: None,
+        client_message_id: None,
     };
 
     if prepared.created {

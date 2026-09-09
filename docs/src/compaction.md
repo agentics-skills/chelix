@@ -50,6 +50,18 @@ persistence, the append-only session store, and history reconstruction:
   original user message or adding a synthetic continuation prompt. Iteration,
   tool-call, usage, and raw-response accounting is carried across the resume.
 
+### UI checkpoint history
+
+The common `SessionStore` append boundary publishes a checkpoint snapshot through
+`UiHistoryEngine`. Its stable message ID and generation address UI presentation
+updates; its summary, model/provider, usage, and `messagesSummarized` remain part
+of the stored checkpoint (`crates/sessions/src/message.rs`).
+
+The `compact` and `auto_compact` events carry operation status. The browser renders
+the checkpoint from semantic history, using the same keyed path for live updates
+and page reload. `messagesSummarized` continues to identify the physical
+provider-context boundary independently of the UI snapshot position.
+
 ### Continuation boundary
 
 For a normal new turn, the boundary starts at the current user message. That
@@ -127,8 +139,9 @@ All changes to this flow must preserve these properties:
 
 Because the history is append-only:
 
-- **Forking works from any point.** Every message before the checkpoint is still
-  in the session file, byte-identical.
+- **Forking copies a confirmed prefix.** UI positions and canonical bindings
+  must admit the same cut; see [Session Branching](session-branching.md).
+  Messages before the checkpoint remain in the session file, byte-identical.
 - **The web UI shows the full conversation**, with a checkpoint card marking
   where each new context window begins.
 - **Synchronous inter-session sends keep their natural final gate.** Automatic

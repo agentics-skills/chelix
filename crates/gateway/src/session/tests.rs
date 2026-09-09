@@ -7,8 +7,28 @@ mod tests {
     use {
         super::*,
         async_trait::async_trait,
-        chelix_common::hooks::{HookAction, HookEvent, HookHandler, HookPayload},
+        chelix_common::{
+            ReasoningContent,
+            hooks::{HookAction, HookEvent, HookHandler, HookPayload},
+        },
     };
+
+    fn share_snapshot(value: &Value) -> chelix_sessions::ui_history_types::UiSnapshot {
+        use chelix_sessions::ui_history_types::{UiContent, UiMessageId, UiRecord, UiSnapshot};
+        UiSnapshot {
+            id: UiMessageId("shared-message".to_string()),
+            position: 0,
+            revision: 1,
+            canonical_committed: true,
+            content: UiContent::Record(Box::new(
+                UiRecord::try_from(value.clone()).expect("typed share fixture"),
+            )),
+            presentation: Default::default(),
+            accumulated_arguments: None,
+            assistant_id: None,
+            outcome: None,
+        }
+    }
 
     fn completed_tool_lifecycle(
         tool_call_id: &str,
@@ -22,12 +42,31 @@ mod tests {
             "toolName": tool_name,
             "sequence": 1,
             "emittedAtMs": 1,
+            "runId": "fixture-run",
             "stage": "completed",
             "arguments": arguments,
             "success": true,
             "result": result.to_string(),
             "error": null,
         })
+    }
+
+    async fn voice_target(
+        store: &SessionStore,
+        assistant: bool,
+    ) -> chelix_sessions::ui_history_types::UiHistoryTarget {
+        use chelix_sessions::ui_history_types::{UiContent, UiHistoryRange, UiHistoryTarget};
+        let page = store
+            .ui_history
+            .page("main", UiHistoryRange::Latest, 10)
+            .await
+            .unwrap();
+        let snapshot = page.history.iter().find(|snapshot| matches!(&snapshot.content,
+            UiContent::Record(record) if matches!(&record.message, PersistedMessage::Assistant { .. }) == assistant)).unwrap();
+        UiHistoryTarget {
+            message_id: snapshot.id.clone(),
+            generation: page.generation,
+        }
     }
 
     struct RecordingHook {
@@ -53,29 +92,6 @@ mod tests {
             self.payloads.lock().unwrap().push(payload.clone());
             Ok(HookAction::Continue)
         }
-    }
-
-    #[test]
-    fn trim_ui_history_drops_oldest_messages_when_payload_is_too_large() {
-        let payload = "x".repeat(30_000);
-        let history: Vec<Value> = (0..150)
-            .map(|idx| serde_json::json!({ "id": idx, "role": "assistant", "content": payload }))
-            .collect();
-
-        let (trimmed, dropped) = trim_ui_history(history);
-        assert!(dropped > 0, "expected some messages to be dropped");
-        assert_eq!(trimmed.len() + dropped, 150);
-        assert_eq!(trimmed[0]["id"], serde_json::json!(dropped));
-        assert!(
-            trimmed.len() >= UI_HISTORY_MIN_MESSAGES,
-            "must keep at least the configured recent tail",
-        );
-
-        let trimmed_bytes = serde_json::to_vec(&trimmed).expect("serialize trimmed history");
-        assert!(
-            trimmed_bytes.len() <= UI_HISTORY_MAX_BYTES || trimmed.len() == UI_HISTORY_MIN_MESSAGES,
-            "trimmed payload should stay under budget unless minimum tail is reached",
-        );
     }
 
     // --- Preview extraction tests ---
@@ -265,19 +281,19 @@ mod tests {
         });
 
         assert!(
-            to_shared_message(&system_msg, 0, "main", &store)
+            to_shared_message(&share_snapshot(&system_msg), "main", &store)
                 .await
                 .expect("convert system message")
                 .is_none()
         );
         assert!(
-            to_shared_message(&notice_msg, 1, "main", &store)
+            to_shared_message(&share_snapshot(&notice_msg), "main", &store)
                 .await
                 .expect("convert notice message")
                 .is_none()
         );
         assert!(
-            to_shared_message(&assistant_msg, 2, "main", &store)
+            to_shared_message(&share_snapshot(&assistant_msg), "main", &store)
                 .await
                 .expect("convert assistant message")
                 .is_some()
@@ -299,7 +315,7 @@ mod tests {
             "audio": "media/main/voice-input.webm",
         });
 
-        let shared = to_shared_message(&user_audio_msg, 0, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&user_audio_msg), "main", &store)
             .await
             .expect("convert user message")
             .expect("shared message");
@@ -330,7 +346,7 @@ mod tests {
             "audio": "media/main/voice-output.ogg",
         });
 
-        let shared = to_shared_message(&assistant_audio_msg, 0, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&assistant_audio_msg), "main", &store)
             .await
             .expect("convert assistant message")
             .expect("shared message");
@@ -356,7 +372,7 @@ mod tests {
             "reasoning": "step one\nstep two",
         });
 
-        let shared = to_shared_message(&assistant_msg, 0, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&assistant_msg), "main", &store)
             .await
             .expect("convert assistant message")
             .expect("shared message");
@@ -380,7 +396,7 @@ mod tests {
             "reasoning": ["**Analyzing request**", "**Tracing response**"],
         });
 
-        let shared = to_shared_message(&assistant_msg, 7, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&assistant_msg), "main", &store)
             .await
             .expect("convert assistant message")
             .expect("shared message");
@@ -391,27 +407,6 @@ mod tests {
                 "**Analyzing request**".to_string(),
                 "**Tracing response**".to_string(),
             ]))
-        );
-    }
-
-    #[tokio::test]
-    async fn to_shared_message_rejects_invalid_reasoning_with_physical_index() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = SessionStore::new(dir.path().to_path_buf());
-        let assistant_msg = serde_json::json!({
-            "role": "assistant",
-            "content": "answer",
-            "reasoning": ["valid", 42],
-        });
-
-        let error = to_shared_message(&assistant_msg, 9, "main", &store)
-            .await
-            .expect_err("invalid reasoning must fail");
-
-        assert!(
-            error
-                .to_string()
-                .contains("message at index 9 has invalid reasoning")
         );
     }
 
@@ -442,7 +437,7 @@ mod tests {
             }),
         );
 
-        let shared = to_shared_message(&tool_msg, 0, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&tool_msg), "main", &store)
             .await
             .expect("convert tool result")
             .expect("shared tool_result message");
@@ -549,7 +544,7 @@ mod tests {
             }),
         );
 
-        let shared = to_shared_message(&tool_msg, 0, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&tool_msg), "main", &store)
             .await
             .expect("convert tool result")
             .expect("shared execute_command tool result");
@@ -578,7 +573,7 @@ mod tests {
             }),
         );
 
-        let shared = to_shared_message(&tool_msg, 0, "main", &store)
+        let shared = to_shared_message(&share_snapshot(&tool_msg), "main", &store)
             .await
             .expect("convert tool result")
             .expect("shared execute_command tool result");
@@ -699,7 +694,9 @@ mod tests {
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
         let result = service
-            .voice_generate(serde_json::json!({ "key": "main", "messageIndex": 1 }))
+            .voice_generate(
+                serde_json::json!({ "key": "main", "target": voice_target(&store, true).await }),
+            )
             .await
             .expect("voice generate");
 
@@ -748,13 +745,16 @@ mod tests {
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
         let result = service
-            .voice_generate(serde_json::json!({ "key": "main", "messageIndex": 1 }))
+            .voice_generate(
+                serde_json::json!({ "key": "main", "target": voice_target(&store, true).await }),
+            )
             .await
             .expect("voice generate");
 
         assert_eq!(result["reused"], false);
         let audio_path = result["audio"].as_str().unwrap_or_default().to_string();
-        assert_eq!(audio_path, "media/main/voice-msg-1.mp3");
+        assert!(audio_path.starts_with("media/main/voice-"));
+        assert!(audio_path.ends_with(".mp3"));
         assert_eq!(result["ttsProvider"].as_str(), Some("openai"));
         assert_eq!(mock_tts.convert_calls.load(Ordering::SeqCst), 1);
         let convert_params = mock_tts
@@ -817,13 +817,16 @@ mod tests {
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
         let result = service
-            .voice_generate(serde_json::json!({ "key": "main", "messageIndex": 1 }))
+            .voice_generate(
+                serde_json::json!({ "key": "main", "target": voice_target(&store, true).await }),
+            )
             .await
             .expect("voice generate");
 
         assert_eq!(result["reused"], false);
         let audio_path = result["audio"].as_str().unwrap_or_default().to_string();
-        assert_eq!(audio_path, "media/main/voice-msg-1.ogg");
+        assert!(audio_path.starts_with("media/main/voice-"));
+        assert!(audio_path.ends_with(".ogg"));
         assert_eq!(result["ttsProvider"].as_str(), Some("elevenlabs"));
         let convert_params = mock_tts
             .last_convert_params
@@ -832,6 +835,174 @@ mod tests {
             .clone()
             .unwrap_or_default();
         assert_eq!(convert_params["format"].as_str(), Some("opus"));
+    }
+
+    #[tokio::test]
+    async fn voice_generation_does_not_reuse_a_truncated_messages_asset_name() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(directory.path().into()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        create_test_session(&metadata, "main", None).await;
+        let tts = Arc::new(MockTtsService::new(
+            serde_json::json!({"enabled": true, "provider": "openai", "maxTextLength": 8000}),
+            Some(
+                serde_json::json!({"audio": general_purpose::STANDARD.encode(b"ID3voice"), "provider": "openai"}),
+            ),
+        ));
+        let service = LiveSessionService::new(Arc::clone(&store), metadata).with_tts_service(tts);
+        let mut paths = Vec::new();
+        for _ in 0..2 {
+            store
+                .append(
+                    "main",
+                    &serde_json::json!({"role": "user", "content": "question"}),
+                )
+                .await
+                .unwrap();
+            store
+                .append(
+                    "main",
+                    &serde_json::json!({"role": "assistant", "content": "answer"}),
+                )
+                .await
+                .unwrap();
+            let response = service
+                .voice_generate(
+                    serde_json::json!({"key": "main", "target": voice_target(&store, true).await}),
+                )
+                .await
+                .unwrap();
+            paths.push(response["audio"].as_str().unwrap().to_owned());
+            store
+                .truncate_from_user_message(
+                    "main",
+                    chelix_sessions::store::UserMessageTarget::MessageIndex(0),
+                )
+                .await
+                .unwrap();
+        }
+        assert_ne!(paths[0], paths[1]);
+        assert!(paths.iter().all(|path| path.ends_with(".mp3")));
+    }
+
+    #[tokio::test]
+    async fn list_keeps_sessions_without_snapshots_and_backfills_readable_previews() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(directory.path().into()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        for key in ["old", "healthy"] {
+            create_test_session(&metadata, key, None).await;
+            metadata.touch(key, 1).await.unwrap();
+            assert!(metadata.get(key).await.unwrap().unwrap().preview.is_none());
+        }
+        let journal = b"{\"role\":\"user\",\"content\":\"old message\"}\n";
+        tokio::fs::write(directory.path().join("old.jsonl"), journal)
+            .await
+            .unwrap();
+        store
+            .append_typed("healthy", &PersistedMessage::user("healthy message"))
+            .await
+            .unwrap();
+        let service = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
+        let value = service.list().await.unwrap();
+        let entries = value.as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        let old = entries.iter().find(|entry| entry["key"] == "old").unwrap();
+        assert_eq!(old["messageCount"], 1);
+        assert!(old["preview"].is_null());
+        let healthy = entries
+            .iter()
+            .find(|entry| entry["key"] == "healthy")
+            .unwrap();
+        assert_eq!(healthy["preview"], "healthy message");
+        assert!(
+            metadata
+                .get("old")
+                .await
+                .unwrap()
+                .unwrap()
+                .preview
+                .is_none()
+        );
+        assert_eq!(
+            tokio::fs::read(directory.path().join("old.jsonl"))
+                .await
+                .unwrap(),
+            journal
+        );
+        assert!(matches!(
+            store.ui_history.session("old").await,
+            Err(chelix_sessions::Error::MissingUiSnapshots { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn list_propagates_failed_semantic_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(directory.path().into()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        create_test_session(&metadata, "main", None).await;
+        metadata.touch("main", 1).await.unwrap();
+        assert!(
+            metadata
+                .get("main")
+                .await
+                .unwrap()
+                .unwrap()
+                .preview
+                .is_none()
+        );
+        let session = store.ui_history.session("main").await.unwrap();
+        session.fail(&chelix_sessions::Error::message(
+            "snapshot persistence failed",
+        ));
+        assert_eq!(
+            session.flush().await.unwrap_err().to_string(),
+            "snapshot persistence failed"
+        );
+        let service = LiveSessionService::new(store, metadata);
+        assert!(
+            service
+                .list()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("snapshot persistence failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_redacts_opaque_state_and_preserves_the_canonical_journal() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(directory.path().into()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        create_test_session(&metadata, "main", None).await;
+        let message = serde_json::json!({
+            "role": "assistant", "content": "answer",
+            "providerItems": [{"id": "rs-1", "position": 0, "payload": {
+                "type": "reasoning", "id": "rs-1", "outputIndex": 0,
+                "visibleText": "visible", "encryptedContent": "private-replay-state"
+            }}],
+            "llmApiResponse": {"output": [{"type": "reasoning", "encrypted_content": "private-raw-state"}]}
+        });
+        store.append("main", &message).await.unwrap();
+        let service = LiveSessionService::new(Arc::clone(&store), metadata);
+        let result = service
+            .resolve(serde_json::json!({"key": "main", "include_history": true}))
+            .await
+            .unwrap();
+        let record = &result["snapshot"]["history"][0];
+        assert_eq!(
+            record["providerItems"][0]["payload"]["visibleText"],
+            "visible"
+        );
+        assert!(
+            record["providerItems"][0]["payload"]
+                .get("encryptedContent")
+                .is_none()
+        );
+        assert!(record.get("llmApiResponse").is_none());
+        assert_eq!(store.read("main").await.unwrap(), vec![message]);
     }
 
     #[tokio::test]
@@ -857,7 +1028,9 @@ mod tests {
             .with_tts_service(Arc::clone(&mock_tts) as Arc<dyn TtsService>);
 
         let error = service
-            .voice_generate(serde_json::json!({ "key": "main", "messageIndex": 0 }))
+            .voice_generate(
+                serde_json::json!({ "key": "main", "target": voice_target(&store, false).await }),
+            )
             .await
             .expect_err("should reject non-assistant target");
         assert!(error.to_string().contains("not an assistant"));

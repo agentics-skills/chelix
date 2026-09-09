@@ -49,6 +49,13 @@ pub trait AgentTool: Send + Sync {
     fn validate(&self, _params: &serde_json::Value) -> Result<()> {
         Ok(())
     }
+    /// Produce a UI-only representation for a lifecycle stage.
+    fn ui_presentation(
+        &self,
+        _lifecycle: &chelix_common::tool_lifecycle::ToolLifecycleEvent,
+    ) -> Result<Option<chelix_sessions::ui_history_types::UiPresentation>> {
+        Ok(None)
+    }
     /// Opportunistic post-start initialization hook.
     async fn warmup(&self) -> Result<()> {
         Ok(())

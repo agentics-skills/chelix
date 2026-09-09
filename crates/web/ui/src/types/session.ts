@@ -82,8 +82,11 @@ export interface SessionTokens {
 export interface HistoryMessage {
 	role?: string;
 	content?: string;
-	historyIndex?: number;
-	messageIndex?: number;
+	id?: string;
+	generation?: string;
+	position?: number;
+	revision?: number;
+	canonicalCommitted?: boolean;
 	tool_call_id?: string;
 	run_id?: string;
 	[key: string]: unknown;

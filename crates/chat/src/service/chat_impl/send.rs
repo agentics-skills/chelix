@@ -39,7 +39,7 @@ use crate::{
     types::*,
 };
 
-use {super::*, crate::service::persist_active_assistant_draft};
+use super::*;
 
 use {
     crate::memory_tools::{AgentScopedMemoryWriter, MemoryForgetProviderResolver},
@@ -49,7 +49,6 @@ use {
 struct PreparedUserBatchPrefix {
     messages: Vec<ChatMessage>,
     records: Vec<Value>,
-    events: Vec<Value>,
 }
 
 struct SessionTurnOwner {
@@ -199,12 +198,10 @@ impl LiveChatService {
         session_id: &SessionKey,
         prompts: Vec<QueuedPromptContent>,
         run_id: &str,
-        history_len: usize,
     ) -> Result<PreparedUserBatchPrefix, ServiceError> {
         let mut leading = PreparedUserBatchPrefix {
             messages: Vec::with_capacity(prompts.len()),
             records: Vec::with_capacity(prompts.len()),
-            events: Vec::with_capacity(prompts.len()),
         };
 
         for prompt in prompts {
@@ -221,18 +218,15 @@ impl LiveChatService {
                 seq: prompt.client_sequence,
                 run_id: Some(run_id.to_string()),
             };
-            let message_index = history_len + leading.records.len();
-            leading.records.push(user_msg.to_value());
+            let mut record = user_msg.to_value();
+            if let Some(id) = &prompt.client_message_id {
+                record["clientMessageId"] = serde_json::json!(id);
+            }
+            leading.records.push(record);
             leading.messages.push(ChatMessage::User {
                 content: user_content,
                 name: None,
             });
-            leading.events.push(serde_json::json!({
-                "state": "user_message",
-                "text": queued_message_text(&prompt),
-                "sessionKey": session_id,
-                "messageIndex": message_index,
-            }));
         }
 
         Ok(leading)
@@ -432,6 +426,7 @@ impl LiveChatService {
         let desired_reply_medium = queued_reply_medium(&prompt);
         let conn_id = context.connection_id().map(str::to_string);
         let client_seq = prompt.client_sequence;
+        let client_message_id = prompt.client_message_id.clone();
         let stream_only = resolved.stream_only;
         let provider = Arc::clone(resolved.model.provider());
         tracing::debug!(stream_only, queued_batch, "send() mode decision");
@@ -805,37 +800,19 @@ impl LiveChatService {
         let PreparedUserBatchPrefix {
             messages,
             records: leading_records,
-            events,
-        } = self.build_user_batch_prefix(
-            &session_id,
-            queued_leading_prompts,
-            &run_id,
-            history.len(),
-        )?;
+        } = self.build_user_batch_prefix(&session_id, queued_leading_prompts, &run_id)?;
         chat_history.extend(messages);
 
-        let user_message_index = history.len() + leading_records.len();
         let mut records = leading_records;
-        records.push(user_msg.to_value());
+        let mut user_record = user_msg.to_value();
+        if let Some(id) = &client_message_id {
+            user_record["clientMessageId"] = serde_json::json!(id);
+        }
+        records.push(user_record);
         self.session_store
             .append_batch_at_index(&session_key, &records, history.len())
             .await
             .map_err(ServiceError::message)?;
-
-        for event in events {
-            broadcast(&self.state, "chat", event, BroadcastOpts::default()).await;
-        }
-
-        let mut user_event = serde_json::json!({
-            "state": "user_message",
-            "text": text,
-            "sessionKey": session_key,
-            "messageIndex": user_message_index,
-        });
-        if !queued_batch {
-            user_event["seq"] = serde_json::json!(client_seq);
-        }
-        broadcast(&self.state, "chat", user_event, BroadcastOpts::default()).await;
 
         // Set preview from the first user message if not already set.
         if let Some(entry) = self
@@ -866,15 +843,23 @@ impl LiveChatService {
                     .await;
                 let error_obj = parse_chat_error(&error_detail, Some(&provider_name));
                 deliver_channel_error(&self.state, &session_key, &error_obj).await;
-                let error_payload = ChatErrorBroadcast {
+                let ui = self
+                    .session_store
+                    .ui_history
+                    .session(&session_key)
+                    .await
+                    .map_err(ServiceError::message)?;
+                ui.record_error(chelix_sessions::ui_history_types::UiProviderError {
                     run_id: run_id.clone(),
-                    session_key: session_key.clone(),
-                    state: "error",
-                    error: error_obj,
-                    seq: client_seq,
-                };
-                #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                let payload = serde_json::to_value(&error_payload).unwrap();
+                    segment_id: None,
+                    created_at: now_ms(),
+                    raw: error_detail,
+                    details: error_obj,
+                    retry_after_ms: None,
+                })
+                .map_err(ServiceError::message)?;
+                ui.flush().await.map_err(ServiceError::message)?;
+                let payload = serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": "error"});
                 self.terminal_runs.write().await.insert(run_id.clone());
                 broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
                 self.terminal_runs.write().await.remove(&run_id);
@@ -1013,35 +998,53 @@ impl LiveChatService {
                 }
             };
 
+            tokio::pin!(agent_fut);
             let run_outcome = if outer_agent_timeout_secs > 0 {
-                match tokio::time::timeout(Duration::from_secs(outer_agent_timeout_secs), agent_fut)
-                    .await
+                match tokio::time::timeout(
+                    Duration::from_secs(outer_agent_timeout_secs),
+                    &mut agent_fut,
+                )
+                .await
                 {
                     Ok(result) => result,
                     Err(_) => {
+                        let timeout_detail =
+                            format!("Agent run timed out after {outer_agent_timeout_secs}s");
+                        let timeout_ui = session_store.ui_history.session(&session_key_clone).await;
+                        match &timeout_ui {
+                            Ok(ui) => {
+                                if let Err(error) = ui.record_error(chelix_sessions::ui_history_types::UiProviderError {
+                                    run_id: run_id_clone.clone(), segment_id: None, created_at: now_ms(), raw: timeout_detail.clone(),
+                                    details: serde_json::json!({"type": "timeout", "title": "Timed out", "detail": timeout_detail}), retry_after_ms: None,
+                                }) {
+                                    tracing::error!(%error, "failed to retain timeout in UI history");
+                                }
+                            },
+                            Err(error) => tracing::error!(%error, "UI history unavailable for timeout"),
+                        }
+                        cancellation_token.cancel();
+                        let cancellation_outcome = agent_fut.await;
+                        if matches!(cancellation_outcome, ChatRunOutcome::Failed) {
+                            tracing::error!(run_id = %run_id_clone, "timeout cancellation finalization failed");
+                        }
                         warn!(
                             run_id = %run_id_clone,
                             session = %session_key_clone,
                             timeout_secs = outer_agent_timeout_secs,
                             "agent run timed out"
                         );
-                        let timeout_detail =
-                            format!("Agent run timed out after {outer_agent_timeout_secs}s");
-                        let (detail, partial) = match persist_active_assistant_draft(
-                            &session_store,
-                            &active_partial_assistant,
-                            &session_key_clone,
-                        )
-                        .await
+                        let mut detail = timeout_detail;
+                        if matches!(cancellation_outcome, ChatRunOutcome::Failed)
+                            && let Some(error) = state.last_run_error(&run_id_clone).await
                         {
-                            Ok(partial) => (timeout_detail, partial),
-                            Err(error) => (
-                                format!(
-                                    "{timeout_detail}; partial assistant persistence failed: {error}"
-                                ),
-                                None,
-                            ),
-                        };
+                            detail = format!("{detail}; {error}");
+                        }
+                        if let Ok(ui) = timeout_ui
+                            && let Err(error) = ui.flush().await
+                        {
+                            tracing::error!(%error, "timeout UI persistence failed");
+                            detail = format!("{detail}; UI persistence failed: {error}");
+                        }
                         let error_obj = serde_json::json!({
                             "type": "timeout",
                             "title": "Timed out",
@@ -1050,16 +1053,11 @@ impl LiveChatService {
                         state.set_run_error(&run_id_clone, detail.clone()).await;
                         deliver_channel_error(&state, &session_key_clone, &error_obj).await;
                         terminal_runs.write().await.insert(run_id_clone.clone());
-                        let mut payload = serde_json::json!({
+                        let payload = serde_json::json!({
                             "runId": run_id_clone,
                             "sessionKey": session_key_clone,
                             "state": "error",
-                            "error": error_obj,
                         });
-                        if let Some((partial_message, message_index)) = partial {
-                            payload["partialMessage"] = partial_message;
-                            payload["messageIndex"] = serde_json::json!(message_index);
-                        }
                         broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
                         ChatRunOutcome::Failed
                     },

@@ -28,7 +28,7 @@ use {
         ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
         ChatRawPromptRequest, ChatService, ServiceError, ServiceResult,
     },
-    chelix_sessions::{MessageContent, PersistedMessage, filter_ui_history},
+    chelix_sessions::{MessageContent, PersistedMessage},
     chelix_tools::policy::PolicyContext,
 };
 
@@ -289,7 +289,6 @@ impl ChatService for LiveChatService {
         let tool_choice = request.tool_choice;
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
-        let user_message_index = history.len();
 
         self.active_runs
             .write()
@@ -313,19 +312,6 @@ impl ChatService for LiveChatService {
                 None,
             ),
         );
-
-        broadcast(
-            &self.state,
-            "chat",
-            serde_json::json!({
-                "state": "user_message",
-                "text": text,
-                "sessionKey": session_key,
-                "messageIndex": user_message_index,
-            }),
-            BroadcastOpts::default(),
-        )
-        .await;
 
         info!(
             run_id = %run_id,
@@ -451,12 +437,6 @@ impl ChatService for LiveChatService {
                 .await
                 .unwrap_or_else(|| "agent run failed (check server logs)".to_string());
 
-            // Persist the error in the session so it's visible in session history.
-            let error_entry = PersistedMessage::system(format!("[error] {error_msg}"));
-            let _ = self
-                .session_store
-                .append(&session_key, &error_entry.to_value())
-                .await;
             // Update metadata so the session shows in the UI.
             if let Ok(count) = self.session_store.ui_message_count(&session_key).await {
                 self.session_metadata
@@ -530,12 +510,12 @@ impl ChatService for LiveChatService {
 
     async fn history(&self, params: Value) -> ServiceResult {
         let session_key = self.resolve_session_key_from_params(&params).await;
-        let messages = self
+        let history = self
             .session_store
-            .read(&session_key)
+            .ui_history
+            .history(&session_key)
             .await
             .map_err(ServiceError::message)?;
-        let history = filter_ui_history(messages).map_err(ServiceError::message)?;
         Ok(serde_json::json!(history))
     }
 
@@ -633,19 +613,11 @@ impl ChatService for LiveChatService {
             .await
             .map_err(ServiceError::message)?;
 
-        // Broadcast the checkpoint so all connected clients render the
-        // persistent checkpoint card without a reload.
-        let mut compact_payload = serde_json::json!({
+        let compact_payload = serde_json::json!({
             "sessionKey": session_key,
             "state": "compact",
             "phase": "done",
         });
-        if let (Some(obj), Some(meta)) = (
-            compact_payload.as_object_mut(),
-            outcome.broadcast_metadata().as_object().cloned(),
-        ) {
-            obj.extend(meta);
-        }
         broadcast(
             &self.state,
             "chat",

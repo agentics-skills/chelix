@@ -405,6 +405,7 @@ impl Default for Policy {
 // ── Known events ─────────────────────────────────────────────────────────────
 
 pub const KNOWN_EVENTS: &[&str] = &[
+    "ui_history",
     "tick",
     "shutdown",
     "agent",

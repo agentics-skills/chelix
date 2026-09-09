@@ -86,6 +86,24 @@ pub async fn broadcast(
 ) {
     let payload = redact_broadcast_payload(payload);
     let seq = state.broadcaster.next_seq();
+    let chat_status = if event == "chat" {
+        payload
+            .get("sessionKey")
+            .and_then(serde_json::Value::as_str)
+            .map(|key| {
+                let stream = match payload.get("state").and_then(serde_json::Value::as_str) {
+                    Some("prompt_queue") => crate::chat_status_outbox::ChatStatusStream::Queue,
+                    Some("voice_pending") => crate::chat_status_outbox::ChatStatusStream::Voice,
+                    Some("compact" | "auto_compact") => {
+                        crate::chat_status_outbox::ChatStatusStream::Compaction
+                    },
+                    _ => crate::chat_status_outbox::ChatStatusStream::Run,
+                };
+                (key.to_string(), stream)
+            })
+    } else {
+        None
+    };
     let stream = opts.stream.clone();
     let done = opts.done.then_some(true);
     let channel = opts.channel.clone();
@@ -143,6 +161,12 @@ pub async fn broadcast(
                 continue;
             }
 
+            if let Some((key, stream)) = &chat_status {
+                if let Err(error) = client.chat_status.publish(key, *stream, seq, json.clone()) {
+                    tracing::error!(conn_id = client.conn_id, %error, "chat status publication failed");
+                }
+                continue;
+            }
             recipients.push((client.conn_id.clone(), client.sender.clone()));
         }
         recipients

@@ -47,11 +47,29 @@ pub async fn handle_connection(
     let (mut ws_tx, mut ws_rx) = socket.split();
     // Bounded channel prevents unbounded memory growth from slow clients.
     let (client_tx, mut client_rx) = mpsc::channel::<String>(512);
+    let (ui_history_tx, mut ui_history_rx) = mpsc::channel::<String>(1);
+    let chat_status = Arc::new(chelix_gateway::chat_status_outbox::ChatStatusOutbox::default());
+    let writer_status = Arc::clone(&chat_status);
 
-    // Spawn write loop: forwards frames from the client_tx channel to the WebSocket.
+    // Each socket owns its history and coalesced status delivery waits.
     let write_conn_id = conn_id.clone();
     let write_handle = tokio::spawn(async move {
-        while let Some(msg) = client_rx.recv().await {
+        loop {
+            let msg = tokio::select! {
+                message = client_rx.recv() => match message {
+                    Some(message) => message,
+                    None => break,
+                },
+                Some(message) = ui_history_rx.recv() => message,
+                status = writer_status.next() => match status {
+                    Ok(message) => message,
+                    Err(error) => {
+                        warn!(conn_id = %write_conn_id, %error, "chat status delivery failed");
+                        break;
+                    }
+                },
+                else => break,
+            };
             if ws_tx.send(Message::Text(msg.into())).await.is_err() {
                 debug!(conn_id = %write_conn_id, "ws: write loop closed");
                 break;
@@ -363,6 +381,8 @@ pub async fn handle_connection(
         conn_id: conn_id.clone(),
         connect_params: resolved_params,
         sender: client_tx.clone(),
+        ui_history_sender: ui_history_tx,
+        chat_status,
         connected_at: now,
         last_activity_ms: std::sync::atomic::AtomicU64::new(0),
         accept_language,
@@ -542,10 +562,16 @@ struct ConnectResult {
 
 async fn graceful_writer_shutdown(
     client_tx: mpsc::Sender<String>,
-    write_handle: tokio::task::JoinHandle<()>,
+    mut write_handle: tokio::task::JoinHandle<()>,
 ) {
     drop(client_tx);
-    let _ = tokio::time::timeout(std::time::Duration::from_millis(200), write_handle).await;
+    if tokio::time::timeout(std::time::Duration::from_millis(200), &mut write_handle)
+        .await
+        .is_err()
+    {
+        write_handle.abort();
+        let _ = write_handle.await;
+    }
 }
 
 /// Wait for the first `connect` request frame. Tries v4 format first, falls back to v3.
@@ -601,4 +627,24 @@ async fn wait_for_connect(
     Err(crate::Error::Protocol(
         "connection closed before handshake".into(),
     ))
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn graceful_shutdown_cancels_a_stalled_writer() {
+        let (client_tx, _client_rx) = mpsc::channel(1);
+        let (liveness_tx, mut liveness_rx) = mpsc::channel::<()>(1);
+        let writer = tokio::spawn(async move {
+            let _liveness = liveness_tx;
+            std::future::pending::<()>().await;
+        });
+        graceful_writer_shutdown(client_tx, writer).await;
+        assert!(matches!(
+            liveness_rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Disconnected)
+        ));
+    }
 }

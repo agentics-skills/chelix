@@ -68,31 +68,6 @@ struct GatewayAcpPermissionHandler {
     approval_manager: Arc<ApprovalManager>,
 }
 
-async fn broadcast_external_agent_error(
-    state: &Arc<GatewayState>,
-    run_id: &str,
-    session_key: &str,
-    error: &str,
-    seq: Option<u64>,
-    partial: Option<(Value, usize)>,
-) {
-    let mut payload = serde_json::json!({
-        "runId": run_id,
-        "sessionKey": session_key,
-        "state": "error",
-        "error": {
-            "title": "External agent error",
-            "detail": error,
-        },
-        "seq": seq,
-    });
-    if let Some((partial_message, message_index)) = partial {
-        payload["partialMessage"] = partial_message;
-        payload["messageIndex"] = serde_json::json!(message_index);
-    }
-    crate::broadcast::broadcast(state, "chat", payload, BroadcastOpts::default()).await;
-}
-
 impl GatewayAcpPermissionHandler {
     fn new(approval_manager: Arc<ApprovalManager>) -> Self {
         Self { approval_manager }
@@ -599,6 +574,7 @@ impl ExternalAgentChatService {
         &self,
         text: String,
         seq: Option<u64>,
+        client_message_id: Option<String>,
         channel: Option<Value>,
         session_key: String,
         kind: AgentTransportKind,
@@ -623,6 +599,21 @@ impl ExternalAgentChatService {
             },
         };
         let run_id = uuid::Uuid::new_v4().to_string();
+        let ui = self
+            .session_store
+            .ui_history
+            .session(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
+        let ui_run = ui
+            .begin_run(chelix_sessions::ui_history_types::UiRunMetadata {
+                run_id: run_id.clone(),
+                model: kind.as_str().to_string(),
+                provider: "external-agent".to_string(),
+                reasoning_effort: None,
+            })
+            .map_err(ServiceError::message)?;
+        let result: ServiceResult = async {
         let created_at = now_ms();
         let mut history = self
             .session_store
@@ -638,17 +629,27 @@ impl ExternalAgentChatService {
             seq,
             run_id: Some(run_id.clone()),
         };
+        let mut user_value = user_msg.to_value();
+        if let Some(id) = client_message_id {
+            chelix_sessions::ui_history_types::validate_client_message_id(&id).map_err(ServiceError::message)?;
+            user_value["clientMessageId"] = Value::String(id);
+        }
         let user_message_index = self
             .session_store
-            .append_with_index(&session_key, &user_msg.to_value())
+            .append_with_index(&session_key, &user_value)
             .await
             .map_err(|error| error.to_string())?;
         let assistant_message_index = user_message_index
             .checked_add(1)
             .ok_or_else(|| ServiceError::message("assistant message index overflow"))?;
-        history.push(user_msg.to_value());
+        history.push(user_value);
+        let message_count = self
+            .session_store
+            .ui_message_count(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
         self.session_metadata
-            .touch(&session_key, history.len() as u32)
+            .touch(&session_key, message_count)
             .await
             .map_err(ServiceError::message)?;
 
@@ -688,15 +689,6 @@ impl ExternalAgentChatService {
                 let error = error.to_string();
                 drop(session);
                 self.external_agents.shutdown_binding(&session_key).await;
-                broadcast_external_agent_error(
-                    &self.state,
-                    &run_id,
-                    &session_key,
-                    &error,
-                    seq,
-                    None,
-                )
-                .await;
                 return Err(error.into());
             },
         };
@@ -706,6 +698,8 @@ impl ExternalAgentChatService {
         let mut completed = false;
         let segment_id = ProviderSegmentId::new(format!("seg_{run_id}"));
         let mut materializer = ProviderSegmentMaterializer::new(segment_id.clone());
+        ui_run.start_attempt(Some(segment_id.clone())).map_err(ServiceError::message)?;
+        let mut health = ui_run.health();
         let mut update_seq: u64 = 0;
         // The transport reports text and thinking as separate event kinds with
         // no ordering between them, so the position of an item is assigned once
@@ -724,7 +718,22 @@ impl ExternalAgentChatService {
             BroadcastOpts::default(),
         )
         .await;
-        while let Some(event) = events.next().await {
+        loop {
+            let event = tokio::select! {
+                event = events.next() => event,
+                changed = health.changed() => {
+                    if changed.is_err() {
+                        external_error = Some("UI history health subscription closed".to_string());
+                        break;
+                    }
+                    if let Some(error) = health.borrow_and_update().failure.clone() {
+                        external_error = Some(error);
+                        break;
+                    }
+                    continue;
+                },
+            };
+            let Some(event) = event else { break; };
             match event {
                 ExternalAgentEvent::TextDelta(delta) => {
                     assistant_text.push_str(&delta);
@@ -740,36 +749,16 @@ impl ExternalAgentChatService {
                             delta: delta.clone(),
                         },
                     };
-                    materializer
-                        .apply_update(&update)
-                        .map_err(|error| ServiceError::message(error.to_string()))?;
-                    crate::broadcast::broadcast(
-                        &self.state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "provider_update",
-                            "update": update.redacted(),
-                            "seq": seq,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                    crate::broadcast::broadcast(
-                        &self.state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "delta",
-                            "text": delta,
-                            "messageIndex": assistant_message_index,
-                            "seq": seq,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
+                    if let Err(error) = materializer.apply_update(&update) {
+                        external_error = Some(error.to_string());
+                        break;
+                    }
+                    if let Err(error) = ui_run.copy(PersistedMessage::ProviderUpdate {
+                        update, created_at: Some(now_ms()), seq, run_id: Some(run_id.clone()),
+                    }) {
+                        external_error = Some(error.to_string());
+                        break;
+                    }
                 },
                 ExternalAgentEvent::ThinkingDelta(delta) => {
                     update_seq += 1;
@@ -782,40 +771,40 @@ impl ExternalAgentChatService {
                         update_seq,
                         payload: ProviderItemUpdatePayload::ReasoningTextDelta { delta },
                     };
-                    materializer
-                        .apply_update(&update)
-                        .map_err(|error| ServiceError::message(error.to_string()))?;
-                    crate::broadcast::broadcast(
-                        &self.state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "provider_update",
-                            "update": update.redacted(),
-                            "seq": seq,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
+                    if let Err(error) = materializer.apply_update(&update) {
+                        external_error = Some(error.to_string());
+                        break;
+                    }
+                    if let Err(error) = ui_run.copy(PersistedMessage::ProviderUpdate {
+                        update, created_at: Some(now_ms()), seq, run_id: Some(run_id.clone()),
+                    }) {
+                        external_error = Some(error.to_string());
+                        break;
+                    }
                 },
                 ExternalAgentEvent::Error(error) => {
+                    if let Err(retention_error) = ui_run.error(chelix_sessions::ui_history_types::UiProviderError {
+                        run_id: run_id.clone(), segment_id: Some(segment_id.clone()), created_at: now_ms(),
+                        raw: error.clone(), details: serde_json::json!({"title": "External agent error", "detail": error}), retry_after_ms: None,
+                    }) {
+                        tracing::error!(%retention_error, "failed to retain external-agent error");
+                    }
                     external_error = Some(error);
                     break;
                 },
                 ExternalAgentEvent::Done { usage } => {
                     token_usage = usage;
                     completed = true;
+                    break;
                 },
                 ExternalAgentEvent::ToolCallStart { .. }
                 | ExternalAgentEvent::ToolCallEnd { .. } => {},
             }
         }
-        if let Some(external_session_id) = session.external_session_id().map(str::to_string) {
-            self.session_metadata
-                .update_external_session_id(&session_key, Some(&external_session_id))
-                .await
-                .map_err(ServiceError::message)?;
+        if let Some(external_session_id) = session.external_session_id().map(str::to_string)
+            && let Err(error) = self.session_metadata.update_external_session_id(&session_key, Some(&external_session_id)).await
+        {
+            external_error = Some(format!("{}failed to update external session identity: {error}", external_error.as_ref().map(|error| format!("{error}; ")).unwrap_or_default()));
         }
         drop(session);
         if external_error.is_none() && !completed {
@@ -827,23 +816,32 @@ impl ExternalAgentChatService {
         } else {
             ProviderSegmentOutcome::Completed
         };
+        ui_run
+            .copy(PersistedMessage::ProviderSegmentClose {
+                segment_id: segment_id.clone(),
+                outcome: segment_outcome,
+                created_at: Some(now_ms()),
+                seq,
+                run_id: Some(run_id.clone()),
+            })
+            .map_err(ServiceError::message)?;
+        if let Some(error) = &external_error
+            && ui_run.recorded_error(error).map_err(ServiceError::message)?.is_none()
+        {
+            ui_run
+                .error(chelix_sessions::ui_history_types::UiProviderError {
+                    run_id: run_id.clone(),
+                    segment_id: Some(segment_id.clone()),
+                    created_at: now_ms(),
+                    raw: error.clone(),
+                    details: serde_json::json!({ "detail": error }),
+                    retry_after_ms: None,
+                })
+                .map_err(ServiceError::message)?;
+        }
         materializer
             .close(segment_outcome)
             .map_err(|error| ServiceError::message(error.to_string()))?;
-        crate::broadcast::broadcast(
-            &self.state,
-            "chat",
-            serde_json::json!({
-                "runId": run_id,
-                "sessionKey": session_key,
-                "state": "provider_segment_close",
-                "segmentId": segment_id.0,
-                "outcome": segment_outcome,
-                "seq": seq,
-            }),
-            BroadcastOpts::default(),
-        )
-        .await;
         let duration_ms = start.elapsed().as_millis() as u64;
         let provider_items = if materializer.segment.items.is_empty() {
             None
@@ -875,100 +873,73 @@ impl ExternalAgentChatService {
             seq,
             run_id: Some(run_id.clone()),
         };
+        if let Err(error) = self.session_store.append_at_index(
+            &session_key, &assistant_msg.to_value(), assistant_message_index,
+        ).await {
+            return Err(ServiceError::message(format!(
+                "{}failed to persist external-agent response: {error}",
+                external_error.as_ref().map(|error| format!("{error}; ")).unwrap_or_default(),
+            )));
+        }
+        ui_run.merge_metadata(
+            &chelix_sessions::ui_history_types::UiMessageId::segment(&segment_id),
+            std::collections::BTreeMap::from([("replyMedium".to_string(), Value::String("text".to_string()))]),
+        ).map_err(ServiceError::message)?;
         if let Some(error) = external_error {
+            return Err(error.into());
+        }
+        Ok(serde_json::json!({ "ok": true, "runId": run_id }))
+        }.await;
+        let mut result = result;
+        if let Err(error) = &result {
             self.external_agents.shutdown_binding(&session_key).await;
-            let mut terminal_error = error;
-            let partial_message = if assistant_text.trim().is_empty() {
-                None
-            } else {
-                match self
-                    .session_store
-                    .append_at_index(
-                        &session_key,
-                        &assistant_msg.to_value(),
-                        assistant_message_index,
-                    )
-                    .await
-                {
-                    Ok(_) => Some(assistant_msg.to_value()),
-                    Err(error) => {
-                        terminal_error = format!(
-                            "{terminal_error}; partial assistant persistence failed: {error}"
-                        );
-                        None
-                    },
+            let raw = error.to_string();
+            let retained = ui_run.recorded_error(&raw).and_then(|existing| {
+                if existing.is_none() {
+                    ui_run.error(chelix_sessions::ui_history_types::UiProviderError {
+                        run_id: run_id.clone(), segment_id: None, created_at: now_ms(), raw: raw.clone(),
+                        details: serde_json::json!({"title": "External agent error", "detail": raw}), retry_after_ms: None,
+                    })?;
                 }
-            };
-            let message_count = self
+                Ok(())
+            });
+            if let Err(error) = retained {
+                tracing::error!(%error, "failed to retain external-agent failure");
+            }
+        }
+        if let Err(error) = ui_run.finish().await {
+            tracing::error!(%error, "failed to finalize external-agent UI history");
+            result = Err(ServiceError::message(format!(
+                "{}UI history finalization failed: {error}",
+                result
+                    .as_ref()
+                    .err()
+                    .map(|error| format!("{error}; "))
+                    .unwrap_or_default(),
+            )));
+        }
+        let count_result = async {
+            let count = self
                 .session_store
                 .ui_message_count(&session_key)
                 .await
                 .map_err(ServiceError::message)?;
             self.session_metadata
-                .touch(&session_key, message_count)
+                .touch(&session_key, count)
                 .await
-                .map_err(ServiceError::message)?;
-            broadcast_external_agent_error(
-                &self.state,
-                &run_id,
-                &session_key,
-                &terminal_error,
-                seq,
-                partial_message.map(|message| (message, assistant_message_index)),
-            )
-            .await;
-            return Err(terminal_error.into());
+                .map_err(ServiceError::message)
         }
-        if let Err(error) = self
-            .session_store
-            .append_at_index(
-                &session_key,
-                &assistant_msg.to_value(),
-                assistant_message_index,
-            )
-            .await
-        {
-            let error = format!("failed to persist final external-agent response: {error}");
-            broadcast_external_agent_error(&self.state, &run_id, &session_key, &error, seq, None)
-                .await;
-            return Err(error.into());
-        }
-        let message_count = u32::try_from(assistant_message_index)
-            .ok()
-            .and_then(|index| index.checked_add(1))
-            .ok_or_else(|| ServiceError::message("session message count overflow"))?;
-        self.session_metadata
-            .touch(&session_key, message_count)
-            .await
-            .map_err(ServiceError::message)?;
-        crate::broadcast::broadcast(
-            &self.state,
-            "chat",
-            serde_json::json!({
-                "runId": run_id,
-                "sessionKey": session_key,
-                "state": "final",
-                "text": assistant_text,
-                "model": kind.as_str(),
-                "provider": "external-agent",
-                "inputTokens": token_usage.as_ref().map(|usage| usage.input_tokens).unwrap_or(0),
-                "outputTokens": token_usage.as_ref().map(|usage| usage.output_tokens).unwrap_or(0),
-                "durationMs": duration_ms,
-                "messageIndex": assistant_message_index,
-                "replyMedium": "text",
-                "reasoning": reasoning,
-                // A client reopening the chat renders this broadcast, so it
-                // carries the same canonical identity the persisted history
-                // does. Without it the client cannot tell this turn from the
-                // segment records it already applied, and shows it twice.
-                "providerItems": provider_items,
-                "segmentId": segment_id.0,
-                "seq": seq,
-            }),
-            BroadcastOpts::default(),
-        )
         .await;
-        Ok(serde_json::json!({ "ok": true, "runId": run_id }))
+        if let Err(error) = count_result {
+            tracing::error!(%error, "failed to update external-agent message count");
+            result = Err(error);
+        }
+        crate::broadcast::broadcast(
+            &self.state, "chat",
+            serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": if result.is_ok() { "final" } else { "error" }}),
+            BroadcastOpts::default(),
+        ).await;
+        result
     }
 }
 
@@ -988,7 +959,14 @@ impl ChatService for ExternalAgentChatService {
             };
             let channel = external_channel_value(&context)?;
             return self
-                .send_external(text, request.client_sequence, channel, session_key, kind)
+                .send_external(
+                    text,
+                    request.client_sequence,
+                    request.client_message_id,
+                    channel,
+                    session_key,
+                    kind,
+                )
                 .await;
         }
         self.inner.send(request, context).await
@@ -1005,7 +983,14 @@ impl ChatService for ExternalAgentChatService {
         {
             let channel = external_channel_value(&context)?;
             return self
-                .send_external(request.text.clone(), None, channel, session_key, kind?)
+                .send_external(
+                    request.text.clone(),
+                    None,
+                    None,
+                    channel,
+                    session_key,
+                    kind?,
+                )
                 .await;
         }
         self.inner.send_sync(request, context).await

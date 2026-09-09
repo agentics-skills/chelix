@@ -79,6 +79,7 @@ web-ui = ["chelix-gateway/web-ui"]
 
 [dev-dependencies]
 chelix-code-index     = { workspace = true }
+chelix-projects       = { workspace = true }
 chelix-providers      = { workspace = true }
 chelix-service-traits = { workspace = true }
 chelix-web            = { workspace = true }

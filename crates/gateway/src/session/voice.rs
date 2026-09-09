@@ -4,14 +4,25 @@ impl LiveSessionService {
     pub(super) async fn voice_generate_impl(&self, params: Value) -> ServiceResult {
         let p: VoiceGenerateParams = parse_params(params)?;
         let key = &p.key;
-        let target_index = p.message_index;
+        let reservation = self.session_mutations.reserve_mutation(key).await;
+        let _permit = reservation.acquire().await.map_err(ServiceError::message)?;
+        let ui = self
+            .store
+            .ui_history
+            .session(key)
+            .await
+            .map_err(ServiceError::message)?;
+        let target_index = ui
+            .canonical_index(&p.target)
+            .await
+            .map_err(ServiceError::message)?;
 
         let tts = self
             .tts_service
             .as_ref()
             .ok_or_else(|| "session voice generation is not configured".to_string())?;
 
-        let mut history = self.store.read(key).await.map_err(ServiceError::message)?;
+        let history = self.store.read(key).await.map_err(ServiceError::message)?;
         if history.is_empty() {
             return Err(format!("session '{key}' has no messages").into());
         }
@@ -31,7 +42,7 @@ impl LiveSessionService {
             let tts_provider = target_msg.get("tts_provider").and_then(|v| v.as_str());
             return Ok(serde_json::json!({
                 "sessionKey": key,
-                "messageIndex": target_index,
+                "target": p.target,
                 "audio": existing_audio,
                 "ttsProvider": tts_provider,
                 "reused": true,
@@ -100,33 +111,26 @@ impl LiveSessionService {
                 ServiceError::message("invalid base64 audio payload returned by TTS provider")
             })?;
 
-        let filename = format!("voice-msg-{target_index}.{}", format.extension());
+        let filename = format!("voice-{}.{}", uuid::Uuid::new_v4(), format.extension());
         let audio_path = self
             .store
             .save_media(key, &filename, &audio_bytes)
             .await
             .map_err(ServiceError::message)?;
 
-        let target_mut = history
-            .get_mut(target_index)
-            .ok_or_else(|| format!("message index {target_index} is out of range"))?;
-        let target_obj = target_mut
-            .as_object_mut()
-            .ok_or_else(|| "target message is not an object".to_string())?;
-        target_obj.insert("audio".to_string(), Value::String(audio_path.clone()));
-        if let Some(provider) = convert
-            .provider
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            target_obj.insert(
-                "tts_provider".to_string(),
-                Value::String(provider.to_string()),
-            );
-        }
-
+        let updated_audio = audio_path.clone();
+        let tts_provider = convert.provider.clone();
         self.store
-            .replace_history(key, history)
+            .update_value_at(key, target_index, move |mut value| {
+                let target = value.as_object_mut().ok_or_else(|| {
+                    chelix_sessions::Error::message("assistant message is not an object")
+                })?;
+                target.insert("audio".to_string(), Value::String(updated_audio));
+                if let Some(provider) = tts_provider {
+                    target.insert("tts_provider".to_string(), Value::String(provider));
+                }
+                Ok(value)
+            })
             .await
             .map_err(ServiceError::message)?;
         let ui_message_count = self
@@ -141,7 +145,7 @@ impl LiveSessionService {
 
         Ok(serde_json::json!({
             "sessionKey": key,
-            "messageIndex": target_index,
+            "target": p.target,
             "audio": audio_path,
             "ttsProvider": convert.provider,
             "reused": false,

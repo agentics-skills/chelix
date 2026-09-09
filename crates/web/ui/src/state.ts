@@ -10,7 +10,7 @@ export let reqId = 0;
 export let connected = false;
 export let reconnectDelay = 1000;
 export const pending: Record<string, (value: RpcResponse) => void> = {};
-export let activeSessionKey: string = localStorage.getItem("chelix-session") || "main";
+export let activeSessionKey: string = "main";
 export let activeProjectId: string = localStorage.getItem("chelix-project") || "";
 export let sessions: unknown[] = [];
 export let projects: unknown[] = [];
@@ -20,7 +20,7 @@ export let streamEl: HTMLElement | null = null;
 export let streamText = "";
 export let lastToolOutput = "";
 export let voicePending = false;
-export let chatHistory: string[] = JSON.parse(localStorage.getItem("chelix-chat-history") || "[]");
+export let chatHistory: string[] = [];
 export let chatHistoryIdx = -1;
 export let chatHistoryDraft = "";
 // Client-side sequence counter for message ordering diagnostics.
@@ -55,13 +55,12 @@ export let sandboxLabel: HTMLElement | null = null;
 
 // Chat page DOM refs
 export let chatMsgBox: HTMLElement | null = null;
-export let chatInput: HTMLElement | null = null;
+export let chatInput: HTMLTextAreaElement | null = null;
 export let chatSendBtn: HTMLElement | null = null;
 export let chatBatchLoading = false;
 export let autoScrollMode: string = localStorage.getItem("chelix-auto-scroll") || "smart";
 // Highest message index loaded from session history; used to deduplicate
 // real-time events that duplicate already-rendered history entries.
-export let lastHistoryIndex = -1;
 export let sessionContextWindow = 0;
 export let sessionToolsEnabled = true;
 
@@ -209,7 +208,7 @@ export function setSandboxLabel(v: HTMLElement | null): void {
 export function setChatMsgBox(v: HTMLElement | null): void {
 	chatMsgBox = v;
 }
-export function setChatInput(v: HTMLElement | null): void {
+export function setChatInput(v: HTMLTextAreaElement | null): void {
 	chatInput = v;
 }
 export function setChatSendBtn(v: HTMLElement | null): void {
@@ -221,9 +220,6 @@ export function setChatBatchLoading(v: boolean): void {
 export function setAutoScrollMode(v: string): void {
 	autoScrollMode = v;
 	localStorage.setItem("chelix-auto-scroll", v);
-}
-export function setLastHistoryIndex(v: number): void {
-	lastHistoryIndex = v;
 }
 export function setSessionContextWindow(v: number): void {
 	sessionContextWindow = v;

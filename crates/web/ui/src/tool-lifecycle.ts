@@ -1,18 +1,9 @@
-import type {
-	AssistantHistoryMessage,
-	ContextBudgetMetadata,
-	ToolLifecycleEvent,
-	ToolLifecyclePayload,
-	ToolResult,
-} from "./types/ws-events";
+import type { ContextBudgetMetadata, ToolLifecycleEvent, ToolResult } from "./types/ws-events";
 
 export interface ToolInvocationSnapshot {
 	lifecycle: ToolLifecycleEvent;
 	runId?: string;
 	executionMode?: string;
-	messageIndex?: number;
-	assistantMessage?: AssistantHistoryMessage;
-	assistantMessageIndex?: number;
 	contextBudget?: ContextBudgetMetadata;
 	accumulatedArguments?: string;
 }
@@ -20,9 +11,6 @@ export interface ToolInvocationSnapshot {
 export interface ToolInvocationMetadata {
 	runId?: string;
 	executionMode?: string;
-	messageIndex?: number;
-	assistantMessage?: AssistantHistoryMessage;
-	assistantMessageIndex?: number;
 	contextBudget?: ContextBudgetMetadata;
 	accumulatedArguments?: string;
 }
@@ -102,10 +90,6 @@ export function isToolLifecycleEvent(value: unknown): value is ToolLifecycleEven
 		default:
 			return false;
 	}
-}
-
-export function isToolLifecyclePayload(value: unknown): value is ToolLifecyclePayload {
-	return isRecord(value) && value.state === "tool_lifecycle" && isToolLifecycleEvent(value);
 }
 
 export function toToolLifecycleEvent(lifecycle: ToolLifecycleEvent): ToolLifecycleEvent {

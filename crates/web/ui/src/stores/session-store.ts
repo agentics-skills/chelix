@@ -7,6 +7,7 @@ import type { Signal } from "@preact/signals";
 import { computed, signal } from "@preact/signals";
 import type { ChannelBinding } from "../types/channel";
 import type { SessionMeta, SessionTokens } from "../types/session";
+import { getHistoryWindow } from "./session-history-cache";
 
 // ── Session class ────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ function normalizeSessionMeta(
 		reasoningEffort: serverData.reasoningEffort === undefined ? currentReasoningEffort : serverData.reasoningEffort,
 		provider: stringValue(serverData.provider),
 		projectId: stringValue(serverData.projectId),
-		messageCount: numberValue(serverData.messageCount),
+		messageCount: getHistoryWindow(serverData.key)?.totalMessages ?? numberValue(serverData.messageCount),
 		lastSeenMessageCount: numberValue(serverData.lastSeenMessageCount),
 		preview: stringValue(serverData.preview),
 		updatedAt: numberValue(serverData.updatedAt),
@@ -120,7 +121,6 @@ export class Session {
 	streamText: Signal<string>;
 	voicePending: Signal<boolean>;
 	activeRunId: Signal<string | null>;
-	lastHistoryIndex: Signal<number>;
 	sessionTokens: Signal<SessionTokens>;
 	contextWindow: Signal<number>;
 	toolsEnabled: Signal<boolean>;
@@ -138,7 +138,7 @@ export class Session {
 		this.provider = normalized.provider;
 		this.projectId = normalized.projectId;
 		this.messageCount = normalized.messageCount;
-		this.lastSeenMessageCount = normalized.lastSeenMessageCount;
+		this.lastSeenMessageCount = Math.min(normalized.lastSeenMessageCount, this.messageCount);
 		this.preview = normalized.preview;
 		this.updatedAt = normalized.updatedAt;
 		this.createdAt = normalized.createdAt;
@@ -160,7 +160,6 @@ export class Session {
 		this.streamText = signal("");
 		this.voicePending = signal(false);
 		this.activeRunId = signal<string | null>(null);
-		this.lastHistoryIndex = signal(-1);
 		this.sessionTokens = signal<SessionTokens>({ input: 0, output: 0 });
 		this.contextWindow = signal(0);
 		this.toolsEnabled = signal(true);
@@ -181,21 +180,17 @@ export class Session {
 	update(serverData: SessionMeta): boolean {
 		const normalized = normalizeSessionMeta(serverData, this.reasoningEffort);
 		if (isStaleSessionVersion(normalized.version, this.version)) return false;
+		if (getHistoryWindow(this.key)) normalized.lastSeenMessageCount = this.lastSeenMessageCount;
 		this.version = nextSessionVersion(normalized.version, this.version);
 		this.label = normalized.label;
 		this.model = normalized.model;
 		this.reasoningEffort = normalized.reasoningEffort;
 		this.provider = normalized.provider;
 		this.projectId = normalized.projectId;
-		// Only accept server counts when they've caught up with optimistic
-		// client bumps. Authoritative resets (/clear, switchSession) use
-		// syncCounts() which sets messageCount directly before any fetch.
-		if (normalized.messageCount >= this.messageCount) {
-			this.messageCount = normalized.messageCount;
-			this.lastSeenMessageCount = normalized.lastSeenMessageCount;
-			this.preview = normalized.preview;
-			this.updatedAt = normalized.updatedAt;
-		}
+		this.messageCount = normalized.messageCount;
+		this.lastSeenMessageCount = Math.min(normalized.lastSeenMessageCount, this.messageCount);
+		this.preview = normalized.preview;
+		this.updatedAt = normalized.updatedAt;
 		this.createdAt = normalized.createdAt;
 		this.worktree_branch = normalized.worktreeBranch;
 		this.channelBinding = normalized.channelBinding;
@@ -210,15 +205,6 @@ export class Session {
 		this.updateBadge();
 		this.dataVersion.value++;
 		return true;
-	}
-
-	/** Optimistic bump: increment total and mark seen if active. */
-	bumpCount(increment: number): void {
-		this.messageCount = (this.messageCount || 0) + increment;
-		if (this.key === activeSessionKey.value) {
-			this.lastSeenMessageCount = this.messageCount;
-		}
-		this.updateBadge();
 	}
 
 	/** Authoritative set (switchSession history, /clear). */
@@ -268,7 +254,7 @@ export class Session {
 
 // ── Store signals ────────────────────────────────────────────
 export const sessions = signal<Session[]>([]);
-export const activeSessionKey = signal<string>(localStorage.getItem("chelix-session") || "main");
+export const activeSessionKey = signal<string>("main");
 export const switchInProgress = signal<boolean>(false);
 export const refreshInProgressKey = signal<string>("");
 /** Session list tab filter: "all" | "sessions" | "cron" */
@@ -336,10 +322,14 @@ export function setAll(serverSessions: SessionMeta[]): void {
 /**
  * Replace listed sessions while retaining an existing active session omitted by pagination.
  */
-export function setListed(serverSessions: SessionMeta[]): void {
+export function setListed(serverSessions: SessionMeta[], retainOmittedActive = true): void {
 	const currentActiveSession = activeSession.value;
 	const listedSessions = mergeSessions(serverSessions);
-	if (currentActiveSession && !listedSessions.some((session) => session.key === currentActiveSession.key)) {
+	if (
+		retainOmittedActive &&
+		currentActiveSession &&
+		!listedSessions.some((session) => session.key === currentActiveSession.key)
+	) {
 		sessions.value = insertSessionInOrder(listedSessions, currentActiveSession);
 		return;
 	}
@@ -372,7 +362,6 @@ export function remove(key: string): boolean {
 	if (activeSessionKey.value === key) {
 		const fallback = sessions.value.find((session) => session.key === "main")?.key || sessions.value[0]?.key || "main";
 		activeSessionKey.value = fallback;
-		localStorage.setItem("chelix-session", fallback);
 	}
 	return true;
 }
@@ -403,10 +392,9 @@ export function getByKey(key: string): Session | null {
 	return sessions.value.find((s) => s.key === key) || null;
 }
 
-/** Set the active session key. Persists to localStorage. */
+/** Set the active session key in memory. */
 export function setActive(key: string): void {
 	activeSessionKey.value = key;
-	localStorage.setItem("chelix-session", key);
 }
 
 /** Set the session list tab and persist it. */

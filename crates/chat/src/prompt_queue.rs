@@ -78,6 +78,7 @@ pub(crate) fn normalize_queued_prompt_content(
         documents,
         audio,
         client_sequence: request.client_sequence,
+        client_message_id: request.client_message_id.clone(),
         input_medium,
         reply_medium,
         channel,

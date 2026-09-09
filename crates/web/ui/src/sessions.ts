@@ -12,9 +12,9 @@ import {
 } from "./sessions/session-render";
 import {
 	clearActiveSession as clearActiveSessionImpl,
+	prepareNewSessionKey,
 	switchSession as switchSessionImpl,
 } from "./sessions/session-switch";
-import { markSessionTailLocallyTruncated as markSessionTailLocallyTruncatedImpl } from "./sessions/session-tail";
 import * as S from "./state";
 import { projectStore } from "./stores/project-store";
 import { clearSessionHistory } from "./stores/session-history-cache";
@@ -24,17 +24,10 @@ import { confirmDialog } from "./ui";
 
 export type SearchContext = SessionSearchContext;
 export const setSessionAgent = setSessionAgentImpl;
-export const cacheOutgoingUserMessage = sessionHistory.cacheOutgoingUserMessage;
-export const cacheSessionHistoryMessage = sessionHistory.cacheSessionHistoryMessage;
-export const clearHistoryPaginationState = sessionHistory.clearHistoryPaginationState;
 export const clearSessionHistoryCache = sessionHistory.clearSessionHistoryCache;
-export const appendingAddsBubble = sessionHistory.appendingAddsBubble;
-export const bumpSessionCount = sessionList.bumpSessionCount;
 export const fetchSessions = sessionList.fetchSessions;
-export const markSessionLocallyCleared = sessionList.markSessionLocallyCleared;
 export const removeSessionFromClientState = sessionList.removeSessionFromClientState;
 export const renderSessionList = sessionList.renderSessionList;
-export const seedSessionPreviewFromUserText = sessionList.seedSessionPreviewFromUserText;
 export const setSessionActiveRunId = sessionList.setSessionActiveRunId;
 export const setSessionReplying = sessionList.setSessionReplying;
 export const setSessionUnread = sessionList.setSessionUnread;
@@ -42,23 +35,19 @@ export const refreshWelcomeCardIfNeeded = refreshWelcomeCardIfNeededImpl;
 export const updateChatSessionHeader = updateChatSessionHeaderImpl;
 export const clearActiveSession = clearActiveSessionImpl;
 export const switchSession = switchSessionImpl;
-export const markSessionTailLocallyTruncated = markSessionTailLocallyTruncatedImpl;
 
-const newSessionBtn = S.$("newSessionBtn") as HTMLElement;
-newSessionBtn.addEventListener("click", () => {
-	const id = crypto.randomUUID
-		? crypto.randomUUID()
-		: ([1e7].toString() + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (char) =>
-				(Number(char) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(char) / 4)))).toString(16),
-			);
-	const key = `session:${id}`;
+export function newSession(): void {
+	const key = prepareNewSessionKey();
 	const filterId = projectStore.projectFilterId.value;
 	if (currentPrefix === "/chats") {
 		switchSession(key, null, filterId || undefined);
 	} else {
 		navigate(sessionPath(key));
 	}
-});
+}
+
+const newSessionBtn = S.$("newSessionBtn") as HTMLElement;
+newSessionBtn.addEventListener("click", newSession);
 
 export function isArchivableSession(session: SessionMeta): boolean {
 	return (

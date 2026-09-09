@@ -4,6 +4,7 @@ import { navigate, sessionPath } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
 import type { SessionMeta } from "../types/session";
+import { showToast } from "../ui";
 
 import { clearSessionHistoryCache } from "./session-history";
 
@@ -21,7 +22,6 @@ interface SessionListPaging {
 	loading: boolean;
 }
 
-const SESSION_PREVIEW_MAX_CHARS = 200;
 const SESSION_LIST_PAGE_LIMIT = 40;
 const SESSION_LIST_REFRESH_LIMIT_MAX = 200;
 const SESSION_LIST_SCROLL_THRESHOLD = 220;
@@ -34,13 +34,17 @@ const sessionListPaging: SessionListPaging = {
 let sessionListPendingRefresh = false;
 let sessionListScrollEl: HTMLElement | null = null;
 let sessionListScrollRaf = 0;
+let listEpoch = 0;
 
-function truncateSessionPreview(text: string | null | undefined): string {
-	const trimmed = (text || "").trim();
-	if (!trimmed) return "";
-	const chars = Array.from(trimmed);
-	if (chars.length <= SESSION_PREVIEW_MAX_CHARS) return trimmed;
-	return `${chars.slice(0, SESSION_PREVIEW_MAX_CHARS).join("")}\u2026`;
+export function resetSessionList(): void {
+	listEpoch += 1;
+	sessionListPaging.loading = false;
+	sessionListPaging.hasMore = false;
+	sessionListPaging.nextCursor = null;
+	sessionListPaging.total = null;
+	sessionListPendingRefresh = false;
+	sessionStore.setAll([]);
+	S.setSessions([]);
 }
 
 export function fetchSessions(): void {
@@ -51,6 +55,7 @@ export function fetchSessions(): void {
 	}
 
 	sessionListPaging.loading = true;
+	const epoch = listEpoch;
 	const loadedCount = Array.isArray(S.sessions) ? S.sessions.length : 0;
 	const refreshLimit = Math.max(
 		SESSION_LIST_PAGE_LIMIT,
@@ -62,14 +67,17 @@ export function fetchSessions(): void {
 
 	void fetchSessionListPage({ limit: refreshLimit })
 		.then((page) => {
+			if (epoch !== listEpoch) return;
 			const merged = mergeSessionListPage(S.sessions as SessionMeta[], page.sessions, false);
-			applySessionList(merged);
+			applySessionList(merged, page.hasMore);
 			applySessionListPaging(page);
 		})
-		.catch(() => {
-			// Keep the current session list when a refresh fails transiently.
+		.catch((error: unknown) => {
+			if (epoch === listEpoch)
+				showToast(error instanceof Error ? error.message : "Session list refresh failed", "error");
 		})
 		.finally(() => {
+			if (epoch !== listEpoch) return;
 			sessionListPaging.loading = false;
 			if (sessionListPendingRefresh) {
 				sessionListPendingRefresh = false;
@@ -160,9 +168,9 @@ function mergeSessionListPage(
 	return result;
 }
 
-function applySessionList(sessions: SessionMeta[]): void {
-	sessionStore.setListed(sessions);
-	S.setSessions(sessions);
+function applySessionList(sessions: SessionMeta[], retainOmittedActive = true): void {
+	sessionStore.setListed(sessions, retainOmittedActive);
+	S.setSessions(sessionStore.sessions.value.map((session) => session.toMeta()));
 	renderSessionList();
 }
 
@@ -214,11 +222,13 @@ function shouldLoadMoreSessions(): boolean {
 async function loadMoreSessionsPage(): Promise<void> {
 	if (!shouldLoadMoreSessions()) return;
 	sessionListPaging.loading = true;
+	const epoch = listEpoch;
 	try {
 		const page = await fetchSessionListPage({
 			cursor: sessionListPaging.nextCursor as number,
 			limit: SESSION_LIST_PAGE_LIMIT,
 		});
+		if (epoch !== listEpoch) return;
 		const merged = mergeSessionListPage(S.sessions as SessionMeta[], page.sessions, true);
 		applySessionList(merged);
 		if (page.sessions.length === 0) {
@@ -231,15 +241,17 @@ async function loadMoreSessionsPage(): Promise<void> {
 		} else {
 			applySessionListPaging(page);
 		}
-	} catch {
-		// Keep the existing list on transient paging errors.
+	} catch (error: unknown) {
+		if (epoch === listEpoch) showToast(error instanceof Error ? error.message : "Session list paging failed", "error");
 	} finally {
-		sessionListPaging.loading = false;
-		if (sessionListPendingRefresh) {
-			sessionListPendingRefresh = false;
-			fetchSessions();
-		} else {
-			maybeLoadMoreSessionsFromScroll();
+		if (epoch === listEpoch) {
+			sessionListPaging.loading = false;
+			if (sessionListPendingRefresh) {
+				sessionListPendingRefresh = false;
+				fetchSessions();
+			} else {
+				maybeLoadMoreSessionsFromScroll();
+			}
 		}
 	}
 }
@@ -268,36 +280,6 @@ function ensureSessionListScrollBinding(): void {
 	sessionListScrollEl.addEventListener("scroll", handleSessionListScroll, { passive: true });
 }
 
-export function markSessionLocallyCleared(key: string): void {
-	if (!key) return;
-	const now = Date.now();
-
-	const session = sessionStore.getByKey(key);
-	if (session) {
-		session.syncCounts(0, 0);
-		session.preview = "";
-		session.updatedAt = now;
-		session.replying.value = false;
-		session.activeRunId.value = null;
-		session.lastHistoryIndex.value = -1;
-		const localVersion = Number.isInteger(session.version) ? session.version : 0;
-		session.version = localVersion + 1;
-		session.dataVersion.value++;
-	}
-
-	const legacy = (S.sessions as SessionMeta[]).find((sessionEntry) => sessionEntry.key === key);
-	if (legacy) {
-		legacy.messageCount = 0;
-		legacy.lastSeenMessageCount = 0;
-		legacy.preview = "";
-		legacy.updatedAt = now;
-		legacy._localUnread = false;
-		legacy._replying = false;
-		const legacyVersion = Number.isInteger(legacy.version) ? (legacy.version as number) : 0;
-		legacy.version = legacyVersion + 1;
-	}
-}
-
 export function renderSessionList(): void {
 	ensureSessionListScrollBinding();
 	maybeLoadMoreSessionsFromScroll();
@@ -322,40 +304,6 @@ export function setSessionUnread(key: string, unread: boolean): void {
 	if (session) session.localUnread.value = unread;
 	const entry = (S.sessions as SessionMeta[]).find((sessionEntry) => sessionEntry.key === key);
 	if (entry) entry._localUnread = unread;
-}
-
-export function bumpSessionCount(key: string, increment: number): void {
-	const session = sessionStore.getByKey(key);
-	if (session) {
-		session.bumpCount(increment);
-	}
-
-	const entry = (S.sessions as SessionMeta[]).find((sessionEntry) => sessionEntry.key === key);
-	if (entry) {
-		entry.messageCount = (entry.messageCount || 0) + increment;
-		if (key === S.activeSessionKey) {
-			entry.lastSeenMessageCount = entry.messageCount;
-		}
-	}
-}
-
-export function seedSessionPreviewFromUserText(key: string, text: string): void {
-	const preview = truncateSessionPreview(text);
-	if (!preview) return;
-	const now = Date.now();
-
-	const session = sessionStore.getByKey(key);
-	if (session && !session.preview) {
-		session.preview = preview;
-		session.updatedAt = now;
-		session.dataVersion.value++;
-	}
-
-	const entry = (S.sessions as SessionMeta[]).find((sessionEntry) => sessionEntry.key === key);
-	if (entry && !entry.preview) {
-		entry.preview = preview;
-		entry.updatedAt = now;
-	}
 }
 
 export function removeSessionFromClientState(

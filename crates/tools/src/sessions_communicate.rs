@@ -306,12 +306,6 @@ impl AgentTool for SessionsSearchTool {
             None
         };
 
-        let search_limit = limit.saturating_mul(4).max(limit);
-        let hits =
-            self.store.search(query, search_limit).await.map_err(|e| {
-                Error::message(format!("failed to search sessions for '{query}': {e}"))
-            })?;
-
         let entries: HashMap<String, chelix_sessions::metadata::SessionEntry> = self
             .metadata
             .list()
@@ -320,6 +314,24 @@ impl AgentTool for SessionsSearchTool {
             .map(|entry| (entry.key.clone(), entry))
             .collect();
 
+        let keys = entries
+            .values()
+            .filter(|entry| {
+                current_session_key != Some(entry.key.as_str())
+                    && self
+                        .policy
+                        .as_ref()
+                        .is_none_or(|policy| policy.can_access(&entry.key))
+            })
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
+        let hits = self
+            .store
+            .search(&keys, query, limit)
+            .await
+            .map_err(|error| {
+                Error::message(format!("failed to search sessions for '{query}': {error}"))
+            })?;
         let mut results = Vec::with_capacity(limit);
         for hit in hits {
             if results.len() >= limit {
@@ -348,7 +360,9 @@ impl AgentTool for SessionsSearchTool {
                 "messageCount": entry.map(|value| value.message_count),
                 "snippet": hit.snippet,
                 "role": hit.role,
-                "messageIndex": hit.message_index,
+                "messageId": hit.message_id,
+                "generation": hit.generation,
+                "position": hit.position,
             }));
         }
 
@@ -409,16 +423,23 @@ impl AgentTool for SessionsHistoryTool {
             .get(key)
             .await?
             .ok_or_else(|| Error::message(format!("session not found: {key}")))?;
-        let all_messages = self
+        let page = self
             .store
-            .read(key)
+            .ui_history
+            .page(
+                key,
+                chelix_sessions::ui_history_types::UiHistoryRange::Latest,
+                limit.saturating_add(offset).max(1),
+            )
             .await
-            .map_err(|e| Error::message(format!("failed to read session '{key}': {e}")))?;
-        let total = all_messages.len();
-
-        let end = total.saturating_sub(offset);
+            .map_err(|error| Error::message(format!("failed to read session '{key}': {error}")))?;
+        let total = page.total_messages as usize;
+        let end = page.history.len().saturating_sub(offset);
         let start = end.saturating_sub(limit);
-        let messages: Vec<Value> = all_messages[start..end].to_vec();
+        let messages = page.history[start..end]
+            .iter()
+            .map(|snapshot| snapshot.public_value())
+            .collect::<chelix_sessions::Result<Vec<_>>>()?;
 
         Ok(serde_json::json!({
             "key": key,
@@ -427,7 +448,9 @@ impl AgentTool for SessionsHistoryTool {
             "totalMessages": total,
             "offset": offset,
             "count": end.saturating_sub(start),
-            "hasMore": start > 0,
+            "hasMore": total > offset.saturating_add(messages.len()),
+            "generation": page.generation,
+            "revision": page.revision,
         }))
     }
 }
@@ -618,7 +641,11 @@ mod tests {
                 "session:history",
                 &serde_json::json!({
                     "role": "assistant",
-                    "content": "two"
+                    "content": "two",
+                    "model": "provider::model",
+                    "reasoning": "Visible reasoning",
+                    "inputTokens": 100,
+                    "llmApiResponse": [{"type": "response.output_text.delta", "delta": "tw"}]
                 }),
             )
             .await?;
@@ -648,7 +675,17 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("missing messages array"))?;
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0]["content"], "two");
+        assert_eq!(messages[0]["model"], "provider::model");
+        assert_eq!(messages[0]["reasoning"], "Visible reasoning");
+        assert_eq!(messages[0]["inputTokens"], 100);
+        assert!(messages[0].get("llmApiResponse").is_none());
         assert_eq!(messages[1]["content"], "three");
+        let older = tool
+            .execute(serde_json::json!({
+                "key": "session:history", "limit": 1, "offset": 1
+            }))
+            .await?;
+        assert_eq!(older["messages"][0], messages[0]);
         Ok(())
     }
 

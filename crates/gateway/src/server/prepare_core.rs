@@ -521,6 +521,7 @@ pub async fn prepare_gateway_core(
     let project_store: Arc<dyn ProjectStore> =
         Arc::new(chelix_projects::SqliteProjectStore::new(db_pool.clone()));
     let session_store = Arc::new(SessionStore::new(sessions_dir));
+    session_store.ui_history.initialize().await?;
     let event_bus_for_metadata = session_event_bus.clone();
     let session_metadata = Arc::new(SqliteSessionMetadata::with_event_bus(
         db_pool.clone(),

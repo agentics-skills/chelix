@@ -9,7 +9,7 @@ export type ToolCardStatus = "running" | "success" | "error" | "retry";
 export interface ToolCardOptions {
 	id?: string;
 	toolCallId?: string;
-	assistantHistoryIndex?: number;
+	assistantId?: string;
 	toolName?: string;
 	arguments?: unknown;
 	executionMode?: string;
@@ -236,9 +236,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	card.className = "msg command-card tool-call-card";
 	if (options.id) card.id = options.id;
 	if (options.toolCallId) card.dataset.toolCallId = options.toolCallId;
-	if (Number.isInteger(options.assistantHistoryIndex)) {
-		card.dataset.assistantHistoryIndex = String(options.assistantHistoryIndex);
-	}
+	if (options.assistantId) card.dataset.assistantId = options.assistantId;
 	card.setAttribute("data-tool-name", toolName);
 
 	const header = document.createElement("div");
@@ -402,13 +400,13 @@ export function resolveToolBatchEnd(toolCallIdsForBatch: readonly string[]): HTM
 }
 
 export function resolveAssistantTurnEnd(
-	historyIndex: number | undefined,
+	messageId: string | undefined,
 	assistantEl: HTMLElement | null,
 ): HTMLElement | null {
-	if (!Number.isInteger(historyIndex)) return assistantEl;
+	if (!messageId) return assistantEl;
 	let lastToolCard: HTMLElement | null = null;
 	for (const card of document.querySelectorAll<HTMLElement>(
-		`.tool-call-card[data-assistant-history-index="${historyIndex}"]`,
+		`.tool-call-card[data-assistant-id="${CSS.escape(messageId)}"]`,
 	)) {
 		if (!lastToolCard || lastToolCard.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) {
 			lastToolCard = card;

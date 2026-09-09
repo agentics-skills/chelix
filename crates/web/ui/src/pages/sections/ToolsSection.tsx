@@ -2,6 +2,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { sessionStore } from "../../stores/session-store";
 
 interface ToolEntry {
 	name: string;
@@ -282,7 +283,7 @@ export function ToolsSection(): VNode {
 		setLoadingTools(true);
 		setToolData(null);
 		setToolsErr(null);
-		const sessionKey = localStorage.getItem("chelix-session");
+		const sessionKey = sessionStore.activeSessionKey.value;
 		if (!sessionKey) {
 			setLoadingTools(false);
 			setToolsErr("Open a chat session before viewing its tools.");

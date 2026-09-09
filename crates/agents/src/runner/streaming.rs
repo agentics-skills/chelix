@@ -52,6 +52,7 @@ use chelix_sessions::ToolResultStore;
 use crate::tool_loop_detector::ToolLoopDetector;
 
 async fn emit_stream_tool_lifecycle(
+    tools: &ToolRegistry,
     callback: Option<&OnToolLifecycle>,
     tool_call_id: &str,
     tool_name: &str,
@@ -79,10 +80,11 @@ async fn emit_stream_tool_lifecycle(
     event.iteration_tool_calls = iteration_tool_calls;
     event.iteration_usage = iteration_usage;
     event.context_budget = context_budget;
-    deliver_tool_lifecycle(callback, event).await
+    deliver_tool_lifecycle(tools, callback, event).await
 }
 
 async fn cancel_stream_tool_lifecycles(
+    tools: &ToolRegistry,
     callback: Option<&OnToolLifecycle>,
     tool_calls: &[ToolCall],
     sequences: &mut std::collections::HashMap<String, u64>,
@@ -94,6 +96,7 @@ async fn cancel_stream_tool_lifecycles(
             continue;
         };
         emit_stream_tool_lifecycle(
+            tools,
             callback,
             &tool_call.id,
             &tool_call.name,
@@ -441,6 +444,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             std::collections::HashMap::new();
         let mut request_usage = Usage::default();
         let mut stream_error: Option<String> = None;
+        let mut received_done = false;
 
         loop {
             let event = tokio::select! {
@@ -450,6 +454,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                         cb(RunnerEvent::ThinkingDone);
                     }
                     cancel_stream_tool_lifecycles(
+                        tools,
                         on_tool_lifecycle,
                         &tool_calls,
                         &mut tool_lifecycle_sequences,
@@ -515,6 +520,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                     debug!(tool = %name, id = %id, stream_index = index, vec_pos, "tool call started in stream");
                     let mut sequence = 0;
                     emit_stream_tool_lifecycle(
+                        tools,
                         on_tool_lifecycle,
                         &id,
                         &name,
@@ -552,6 +558,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                         continue;
                     };
                     emit_stream_tool_lifecycle(
+                        tools,
                         on_tool_lifecycle,
                         &tool_call.id,
                         &tool_call.name,
@@ -571,6 +578,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                     debug!(index, "tool call arguments complete");
                 },
                 StreamEvent::Done(usage) => {
+                    received_done = true;
                     request_usage = usage.clone();
                     debug!(
                         input_tokens = request_usage.input_tokens,
@@ -630,6 +638,9 @@ pub async fn run_agent_loop_streaming_with_limits(
             }
         }
 
+        if stream_error.is_none() && !received_done {
+            stream_error = Some("The provider stream ended without a terminal event.".to_string());
+        }
         let is_empty_initial_response = stream_error.is_none()
             && tool_call_budget.used() == 0
             && accumulated_text.trim().is_empty()
@@ -644,19 +655,31 @@ pub async fn run_agent_loop_streaming_with_limits(
             cb(RunnerEvent::ThinkingDone);
         }
 
-        if let Some(reason) = stream_error.as_ref() {
+        // Handle stream errors according to the provider retry policy.
+        if let Some(err) = stream_error {
+            let retry_after_ms = next_retry_delay_ms(
+                &err,
+                &mut server_retries_remaining,
+                &mut rate_limit_retries_remaining,
+                &mut rate_limit_backoff_ms,
+                &mut unknown_retries_remaining,
+            );
+            if let Some(callback) = on_event {
+                callback(RunnerEvent::ProviderError {
+                    error: err.clone(),
+                    segment_id: materializer.segment.segment_id.clone(),
+                    retry_after_ms,
+                });
+            }
             cancel_stream_tool_lifecycles(
+                tools,
                 on_tool_lifecycle,
                 &tool_calls,
                 &mut tool_lifecycle_sequences,
-                &format!("provider stream failed: {reason}"),
+                &format!("provider stream failed: {err}"),
                 &context_budget,
             )
             .await?;
-        }
-
-        // Handle stream errors according to the provider retry policy.
-        if let Some(err) = stream_error {
             // The attempt is over either way, so its segment is closed before
             // the loop decides whether to retry or to give up.
             close_active_segment(
@@ -664,13 +687,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 on_event,
                 ProviderSegmentOutcome::TransportError,
             )?;
-            if let Some(delay_ms) = next_retry_delay_ms(
-                &err,
-                &mut server_retries_remaining,
-                &mut rate_limit_retries_remaining,
-                &mut rate_limit_backoff_ms,
-                &mut unknown_retries_remaining,
-            ) {
+            if let Some(delay_ms) = retry_after_ms {
                 // Don't count the failed attempt as an iteration.
                 iterations -= 1;
                 // The retry opens the next segment, but it must not discard the
@@ -710,6 +727,13 @@ pub async fn run_agent_loop_streaming_with_limits(
             return Err(AgentRunError::Other(anyhow::anyhow!(err)));
         }
 
+        if materializer.segment.outcome == ProviderSegmentOutcome::Active {
+            close_active_segment(
+                &mut materializer,
+                on_event,
+                ProviderSegmentOutcome::Completed,
+            )?;
+        }
         server_retries_remaining = SERVER_MAX_RETRIES;
         unknown_retries_remaining = UNKNOWN_MAX_RETRIES;
         usage_accumulator.record_request(request_usage.clone());
@@ -793,6 +817,7 @@ pub async fn run_agent_loop_streaming_with_limits(
 
         if let Err(error) = tool_call_budget.reserve_batch(tool_calls.len()) {
             cancel_stream_tool_lifecycles(
+                tools,
                 on_tool_lifecycle,
                 &tool_calls,
                 &mut tool_lifecycle_sequences,
@@ -825,6 +850,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 );
                 messages.push(ChatMessage::user(empty_tool_name_retry_prompt(tc)));
                 cancel_stream_tool_lifecycles(
+                    tools,
                     on_tool_lifecycle,
                     &tool_calls,
                     &mut tool_lifecycle_sequences,
@@ -854,6 +880,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             .await;
         let Some(after_llm_call) = after_llm_call else {
             cancel_stream_tool_lifecycles(
+                tools,
                 on_tool_lifecycle,
                 &tool_calls,
                 &mut tool_lifecycle_sequences,
@@ -865,6 +892,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         };
         if let Err(error) = after_llm_call {
             cancel_stream_tool_lifecycles(
+                tools,
                 on_tool_lifecycle,
                 &tool_calls,
                 &mut tool_lifecycle_sequences,
@@ -1002,6 +1030,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             let mut sequence = existing_sequence.unwrap_or(0);
             if existing_sequence.is_none() {
                 emit_stream_tool_lifecycle(
+                    tools,
                     on_tool_lifecycle,
                     &tool_call.id,
                     &tool_call.name,
@@ -1016,6 +1045,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                 .await?;
             }
             emit_stream_tool_lifecycle(
+                tools,
                 on_tool_lifecycle,
                 &tool_call.id,
                 &tool_call.name,

@@ -3,7 +3,6 @@
 import { renderMarkdown } from "../helpers";
 import { setSessionActiveRunId } from "../sessions";
 import * as S from "../state";
-import { sessionStore } from "../stores/session-store";
 
 // ── Chat empty-state management ───────────────────────────────
 
@@ -21,18 +20,6 @@ export function clearChatEmptyState(): void {
 export function updateSessionRunId(sessionKey: string, runId: string | undefined): void {
 	if (!runId) return;
 	setSessionActiveRunId(sessionKey, runId);
-}
-
-export function updateSessionHistoryIndex(sessionKey: string, messageIndex: number | undefined): void {
-	const idx = Number(messageIndex);
-	if (!Number.isInteger(idx) || idx < 0) return;
-	const session = sessionStore.getByKey(sessionKey);
-	if (session && idx > session.lastHistoryIndex.value) {
-		session.lastHistoryIndex.value = idx;
-	}
-	if (sessionKey === sessionStore.activeSessionKey.value && idx > S.lastHistoryIndex) {
-		S.setLastHistoryIndex(idx);
-	}
 }
 
 // ── Markdown rendering ────────────────────────────────────────

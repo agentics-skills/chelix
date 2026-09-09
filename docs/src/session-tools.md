@@ -89,7 +89,16 @@ Input:
 
 ### `sessions_history`
 
-Read message history from a target session.
+Read semantic message snapshots from a target session through
+`UiHistoryEngine` (`crates/tools/src/sessions_communicate.rs`). `offset` skips
+newest messages; the returned `messages` are in conversation order. The result
+includes `totalMessages`, `count`, `hasMore`, `generation`, and `revision`.
+Snapshots merge persisted state with active, accumulated provider/tool input and
+carry stable `id`, `position`, and `revision` fields. Assistant snapshots carry
+complete text, visible reasoning, tool calls, provider item identities and usage
+metadata. Raw API debug payloads (`llmApiResponse`) belong to the canonical journal;
+`UiSnapshot` uses a separate typed assistant serialization view for semantic
+history (`crates/sessions/src/ui_history_serialization.rs`).
 
 Input:
 
@@ -103,8 +112,21 @@ Input:
 
 ### `sessions_search`
 
-Search prior session history for relevant snippets. By default the current
-session is excluded when `_session_key` is available in tool context.
+Search the public semantic content of prior sessions, including active
+snapshots and UI presentations. By default the current session is excluded
+when `_session_key` is available in tool context. Session metadata and access
+policy restrict candidate sessions before the result limit is applied.
+
+A session with a nonempty canonical journal but no UI history row is excluded
+from cross-session search; the server logs a warning with its session key. Such
+sessions remain in the session list, with preview backfill skipped. Direct history
+reads and opening that conversation refuse service with the session key in the
+error. Explicit session clearing or deletion remains available. Runtime history
+failures and database/I/O errors still propagate rather than being skipped.
+
+Each result carries `messageId`, `generation`, `position`, `role`, and `snippet`,
+plus its session metadata. UI search navigation loads the exact message ID in
+that generation (`crates/web/ui/src/session-search.ts`).
 
 ```json
 {

@@ -21,7 +21,6 @@ import { routes } from "./routes";
 import { updateSandboxUI } from "./sandbox";
 import {
 	fetchSessions,
-	markSessionTailLocallyTruncated,
 	refreshWelcomeCardIfNeeded,
 	removeSessionFromClientState,
 	renderSessionList,
@@ -95,7 +94,7 @@ type SessionEntry = SessionMeta;
 // ── Helpers ──────────────────────────────────────────────────
 
 function preferredChatPath(): string {
-	const key = localStorage.getItem("chelix-session") || "main";
+	const key = S.activeSessionKey || "main";
 	return sessionPath(key);
 }
 
@@ -183,7 +182,6 @@ interface SessionEventPayload extends Record<string, unknown> {
 	kind?: string;
 	sessionKey?: string;
 	entry?: SessionEntry;
-	keptCount?: number;
 }
 
 function handleDeletedSessionEvent(payload: SessionEventPayload): void {
@@ -194,7 +192,6 @@ function handleTruncatedSessionEvent(payload: SessionEventPayload): void {
 	const sessionKey = payload.sessionKey || "";
 	const entry = payload.entry || null;
 	if (entry) upsertSessionFromEvent(entry);
-	markSessionTailLocallyTruncated(sessionKey, Number(payload.keptCount) || 0, entry || undefined);
 	if (sessionKey === sessionStore.activeSessionKey.value && location.pathname.startsWith("/chats/")) {
 		switchSession(sessionKey);
 	}

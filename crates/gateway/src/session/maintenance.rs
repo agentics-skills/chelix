@@ -71,7 +71,17 @@ impl LiveSessionService {
     pub(super) async fn truncate_tail_impl(&self, params: Value) -> ServiceResult {
         let params: TruncateTailParams = parse_params(params)?;
         let key = params.key().map_err(ServiceError::message)?.to_string();
-        let target = params.target().map_err(ServiceError::message)?;
+        let ui = self
+            .store
+            .ui_history
+            .session(&key)
+            .await
+            .map_err(ServiceError::message)?;
+        let index = ui
+            .canonical_index(&params.target)
+            .await
+            .map_err(ServiceError::message)?;
+        let target = chelix_sessions::store::UserMessageTarget::MessageIndex(index);
 
         self.metadata
             .get(&key)
@@ -84,7 +94,12 @@ impl LiveSessionService {
             .truncate_from_user_message(&key, target)
             .await
             .map_err(ServiceError::message)?;
-        let retained_history = self.store.read(&key).await.map_err(ServiceError::message)?;
+        let retained_history = self
+            .store
+            .ui_history
+            .history(&key)
+            .await
+            .map_err(ServiceError::message)?;
         let preview = extract_preview(&retained_history);
 
         let ui_message_count = self
@@ -111,9 +126,8 @@ impl LiveSessionService {
         Ok(serde_json::json!({
             "ok": true,
             "sessionKey": key,
-            "targetIndex": truncate.target_index,
-            "keptCount": truncate.kept_count,
-            "removedCount": truncate.removed_count,
+            "generation": ui.subscribe().borrow().generation,
+            "totalMessages": ui_message_count,
             "prunedMediaCount": truncate.pruned_media_count,
             "preview": preview,
             "entry": session_entry_value(&entry),
@@ -318,31 +332,47 @@ impl LiveSessionService {
     }
 
     pub(super) async fn fork_impl(&self, params: Value) -> ServiceResult {
-        let parent_key = params
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'key' parameter".to_string())?;
-        let label = params
-            .get("label")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let params: crate::session_types::ForkParams = parse_params(params)?;
+        let parent_key = params.key.trim();
+        if parent_key.is_empty() || (params.target.is_some() && params.fork_point.is_some()) {
+            return Err(ServiceError::message(
+                "fork requires a session key and at most one boundary",
+            ));
+        }
+        let label = params.label;
+        let reservation = self.session_mutations.reserve_mutation(parent_key).await;
+        let _permit = reservation.acquire().await.map_err(ServiceError::message)?;
 
-        let messages = self
+        let source = self
             .store
-            .read(parent_key)
+            .ui_history
+            .session(parent_key)
             .await
             .map_err(ServiceError::message)?;
-        let msg_count = messages.len();
-
-        let fork_point = params
-            .get("forkPoint")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
-            .unwrap_or(msg_count);
-
-        if fork_point > msg_count {
-            return Err(format!("forkPoint {fork_point} exceeds message count {msg_count}").into());
-        }
+        let requested_point = if let Some(target) = params.target {
+            source
+                .canonical_index(&target)
+                .await
+                .map_err(ServiceError::message)?;
+            let page = source
+                .page(
+                    chelix_sessions::ui_history_types::UiHistoryRange::Around {
+                        message_id: target.message_id.clone(),
+                    },
+                    1,
+                )
+                .await
+                .map_err(ServiceError::message)?;
+            Some(
+                page.history
+                    .first()
+                    .ok_or_else(|| ServiceError::message("fork target disappeared"))?
+                    .position
+                    + 1,
+            )
+        } else {
+            params.fork_point
+        };
 
         let parent = self
             .metadata
@@ -358,10 +388,9 @@ impl LiveSessionService {
         })?;
 
         let new_key = format!("session:{}", uuid::Uuid::new_v4());
-        let forked_messages: Vec<Value> = messages[..fork_point].to_vec();
-
-        self.store
-            .replace_history(&new_key, forked_messages)
+        let fork = self
+            .store
+            .fork_history(parent_key, &new_key, requested_point)
             .await
             .map_err(ServiceError::message)?;
 
@@ -399,7 +428,7 @@ impl LiveSessionService {
         }
 
         self.metadata
-            .set_parent(&new_key, Some(parent_key), Some(fork_point as u32))
+            .set_parent(&new_key, Some(parent_key), Some(fork.fork_point))
             .await
             .map_err(ServiceError::message)?;
 
@@ -414,8 +443,11 @@ impl LiveSessionService {
             "sessionKey": new_key,
             "id": final_entry.id,
             "label": final_entry.label,
-            "forkPoint": fork_point,
-            "messageCount": fork_point,
+            "forkPoint": fork.fork_point,
+            "sourceEnd": fork.source_end,
+            "boundaryAdjusted": fork.boundary_adjusted,
+            "boundaryReasons": fork.boundary_reasons,
+            "messageCount": ui_message_count,
             "agent_id": final_entry.agent_id,
             "agentId": final_entry.agent_id,
             "version": final_entry.version,
@@ -465,47 +497,33 @@ impl LiveSessionService {
             .and_then(|v| v.as_bool())
             .or_else(|| params.get("include_archived").and_then(|v| v.as_bool()))
             .unwrap_or(false);
-        let search_limit = if include_archived {
-            max
-        } else {
-            max.saturating_mul(10).min(200)
-        };
-
+        let entries = self.metadata.list().await.map_err(ServiceError::message)?;
+        let keys = entries
+            .iter()
+            .filter(|entry| include_archived || !entry.archived)
+            .map(|entry| entry.key.clone())
+            .collect::<Vec<_>>();
         let results = self
             .store
-            .search(query, search_limit)
+            .search(&keys, query, max)
             .await
             .map_err(ServiceError::message)?;
-
-        let enriched: Vec<Value> = {
-            let mut out = Vec::with_capacity(results.len());
-            for r in results {
-                let (label, archived) = match self
-                    .metadata
-                    .get(&r.session_key)
-                    .await
-                    .map_err(ServiceError::message)?
-                {
-                    Some(entry) => (entry.label, entry.archived),
-                    None => (None, false),
-                };
-                if archived && !include_archived {
-                    continue;
-                }
-                out.push(serde_json::json!({
-                    "sessionKey": r.session_key,
-                    "snippet": r.snippet,
-                    "role": r.role,
-                    "messageIndex": r.message_index,
-                    "label": label,
-                    "archived": archived,
-                }));
-                if out.len() >= max {
-                    break;
-                }
-            }
-            out
-        };
+        let enriched = results
+            .into_iter()
+            .map(|hit| {
+                let entry = entries.iter().find(|entry| entry.key == hit.session_key);
+                serde_json::json!({
+                    "sessionKey": hit.session_key,
+                    "snippet": hit.snippet,
+                    "role": hit.role,
+                    "messageId": hit.message_id,
+                    "generation": hit.generation,
+                    "position": hit.position,
+                    "label": entry.and_then(|entry| entry.label.as_ref()),
+                    "archived": entry.is_some_and(|entry| entry.archived),
+                })
+            })
+            .collect::<Vec<_>>();
 
         Ok(serde_json::json!(enriched))
     }

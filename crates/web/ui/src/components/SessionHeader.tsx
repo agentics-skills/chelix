@@ -18,6 +18,7 @@ import {
 	setSessionReplying,
 	switchSession,
 } from "../sessions";
+import { requestSessionFork } from "../sessions/session-fork";
 import { sessionStore } from "../stores/session-store";
 import type { RpcResponse } from "../types/rpc";
 import { ComboSelect, confirmDialog, shareLinkDialog, shareVisibilityDialog, showToast } from "../ui";
@@ -719,7 +720,7 @@ export function SessionHeader({
 	}, [currentKey]);
 
 	const onFork = useCallback(() => {
-		sendRpc<{ sessionKey?: string }>("sessions.fork", { key: currentKey }).then((res) => {
+		requestSessionFork({ key: currentKey }).then((res) => {
 			if (res?.ok && res.payload?.sessionKey) {
 				fetchSessions();
 				switchSession(res.payload.sessionKey);

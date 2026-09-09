@@ -9,7 +9,11 @@ import { prefetchChannels } from "./pages/ChannelsPage";
 import { fetchProjects } from "./projects";
 import { currentPage, currentPrefix, mount } from "./router";
 import { fetchSessions } from "./sessions";
+import { invalidateHistorySubscription } from "./sessions/history-subscription";
+import { clearPendingSends } from "./sessions/pending-send";
+import { resetSessionList } from "./sessions/session-list";
 import * as S from "./state";
+import { clearSessionHistory } from "./stores/session-history-cache";
 import { sessionStore } from "./stores/session-store";
 import type { ConnectOptions } from "./ws-connect";
 import { connectWs, forceReconnect, subscribeEvents } from "./ws-connect";
@@ -155,6 +159,10 @@ const connectOpts: ConnectOptions = {
 		if (activeS) activeS.resetStreamState();
 		S.setStreamEl(null);
 		S.setStreamText("");
+		invalidateHistorySubscription();
+		clearSessionHistory();
+		clearPendingSends();
+		if (wasConnected) resetSessionList();
 	},
 };
 

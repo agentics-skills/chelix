@@ -76,19 +76,6 @@ export interface ProviderItemUpdate {
 	payload: ProviderItemUpdatePayload;
 }
 
-export interface ProviderUpdatePayload extends ChatPayload {
-	state: "provider_update";
-	update: ProviderItemUpdate;
-	historyIndex?: number;
-}
-
-export interface ProviderSegmentClosePayload extends ChatPayload {
-	state: "provider_segment_close";
-	segmentId: string;
-	outcome: ProviderSegmentOutcome;
-	historyIndex?: number;
-}
-
 export function hasVisibleReasoning(content: ReasoningContent | null | undefined): boolean {
 	return Array.isArray(content)
 		? content.some((part) => part.trim().length > 0)
@@ -213,47 +200,11 @@ export type ToolLifecycleEvent = ToolLifecycleBase &
 		| { stage: "cancelled"; arguments: Record<string, unknown> | null; reason: string }
 	);
 
-export type ToolLifecyclePayload = ChatPayload &
-	ToolLifecycleEvent & {
-		state: "tool_lifecycle";
-		runId: string;
-		sessionKey?: string;
-		executionMode?: string;
-		messageIndex?: number;
-		assistantMessage?: AssistantHistoryMessage;
-		assistantMessageIndex?: number;
-	};
-
 export type ActiveToolInvocation = ToolLifecycleEvent & {
 	runId: string;
 	executionMode?: string;
 	accumulatedArguments?: string;
 };
-
-export interface AssistantHistoryMessage {
-	role: "assistant";
-	content?: string;
-	model?: string;
-	provider?: string;
-	reasoningEffort?: string;
-	inputTokens?: number;
-	outputTokens?: number;
-	cacheReadTokens?: number;
-	cacheWriteTokens?: number;
-	durationMs?: number;
-	requestInputTokens?: number;
-	requestOutputTokens?: number;
-	requestCacheReadTokens?: number;
-	requestCacheWriteTokens?: number;
-	tool_calls?: unknown[];
-	reasoning?: ReasoningContent;
-	providerItems?: ProviderOutputItem[];
-	segmentId?: string;
-	audio?: string;
-	run_id?: string;
-	created_at?: number;
-	seq?: number;
-}
 
 /** Persisted conversation-summarization checkpoint message. */
 export interface CheckpointHistoryMessage {
@@ -265,7 +216,6 @@ export interface CheckpointHistoryMessage {
 	outputTokens?: number;
 	messagesSummarized?: number;
 	created_at?: number;
-	historyIndex?: number;
 	[key: string]: unknown;
 }
 
@@ -333,85 +283,12 @@ export interface QueuedPromptsStatus {
 	prompts: QueuedPrompt[];
 }
 
-export interface ChatError {
-	title?: string;
-	detail?: string;
-	message?: string;
-	type?: string;
-	retryAfterMs?: number;
-	canContinue?: boolean;
-}
-
-export interface ChannelInfo {
-	audio_filename?: string;
-	[key: string]: unknown;
-}
-
-export interface PartialMessage {
-	content?: string;
-	reasoning?: ReasoningContent;
-	reasoningEffort?: string;
-	model?: string;
-	provider?: string;
-	inputTokens?: number;
-	outputTokens?: number;
-	cacheReadTokens?: number;
-	cacheWriteTokens?: number;
-	durationMs?: number;
-	requestInputTokens?: number;
-	requestOutputTokens?: number;
-	requestCacheReadTokens?: number;
-	requestCacheWriteTokens?: number;
-	tool_calls?: unknown[];
-	audio?: string;
-	run_id?: string;
-	created_at?: number;
-}
-
 export interface ChatPayload {
 	state?: string;
 	sessionKey?: string;
 	runId?: string;
-	text?: ReasoningContent;
-	model?: string;
-	reasoningEffort?: string;
-	provider?: string;
-	inputTokens?: number;
-	outputTokens?: number;
-	cacheReadTokens?: number;
-	cacheWriteTokens?: number;
-	durationMs?: number;
-	requestInputTokens?: number;
-	requestOutputTokens?: number;
-	requestCacheReadTokens?: number;
-	requestCacheWriteTokens?: number;
-	reasoning?: ReasoningContent;
-	audio?: string;
-	audioWarning?: string | null;
-	replyMedium?: string;
-	messageIndex?: number;
-	historyIndex?: number;
-	activeToolInvocations?: ActiveToolInvocation[];
-	result?: ToolResult | string | null;
-	error?: ChatError | string | null;
-	message?: string;
-	channel?: ChannelInfo;
-	title?: string;
 	phase?: string;
-	mode?: string;
-	seq?: number;
 	retryAfterMs?: number;
-	partialMessage?: PartialMessage;
-	assistantMessage?: AssistantHistoryMessage;
-	assistantMessageIndex?: number;
-	update?: ProviderItemUpdate;
-	segmentId?: string;
-	/** Canonical items of the segment a finished turn produced. */
-	providerItems?: ProviderOutputItem[];
-	outcome?: ProviderSegmentOutcome;
-	checkpoint?: CheckpointHistoryMessage;
-	contextBudget?: ContextBudgetMetadata;
-	canContinue?: boolean;
 	/** Canonical queue status carried by `prompt_queue` events. */
 	status?: QueuedPromptsStatus;
 }
@@ -478,14 +355,6 @@ export interface StreamMeta {
 	stream: unknown;
 	done: unknown;
 	channel: unknown;
-}
-
-export interface AbortedPartialState {
-	partial: PartialMessage | null;
-	partialText: string;
-	partialReasoning: ReasoningContent;
-	hasVisiblePartial: boolean;
-	hasTerminalToolBatch: boolean;
 }
 
 /** Maps event names to their payload types. */

@@ -36,6 +36,7 @@ pub struct ChatSendRequest {
     pub audio_filename: Option<String>,
     pub input_medium: Option<MessageMedium>,
     pub client_sequence: Option<u64>,
+    pub client_message_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -50,6 +51,7 @@ struct ChatSendRequestWire {
     audio_filename: Option<String>,
     input_medium: Option<MessageMedium>,
     client_sequence: Option<u64>,
+    client_message_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -71,6 +73,8 @@ struct ChatSendRequestRef<'a> {
     input_medium: Option<MessageMedium>,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_sequence: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_message_id: Option<&'a str>,
 }
 
 impl<'de> Deserialize<'de> for ChatSendRequest {
@@ -79,6 +83,10 @@ impl<'de> Deserialize<'de> for ChatSendRequest {
         D: Deserializer<'de>,
     {
         let wire = ChatSendRequestWire::deserialize(deserializer)?;
+        if let Some(id) = wire.client_message_id.as_deref() {
+            chelix_sessions::ui_history_types::validate_client_message_id(id)
+                .map_err(D::Error::custom)?;
+        }
         let message = match (wire.text, wire.content) {
             (Some(text), None) => ChatSendMessage::Text(text),
             (None, Some(content)) => ChatSendMessage::Content(content),
@@ -99,6 +107,7 @@ impl<'de> Deserialize<'de> for ChatSendRequest {
             audio_filename: wire.audio_filename,
             input_medium: wire.input_medium,
             client_sequence: wire.client_sequence,
+            client_message_id: wire.client_message_id,
         })
     }
 }
@@ -121,6 +130,7 @@ impl Serialize for ChatSendRequest {
             audio_filename: self.audio_filename.as_deref(),
             input_medium: self.input_medium,
             client_sequence: self.client_sequence,
+            client_message_id: self.client_message_id.as_deref(),
         }
         .serialize(serializer)
     }
@@ -137,6 +147,7 @@ impl ChatSendRequest {
             audio_filename: None,
             input_medium: None,
             client_sequence: None,
+            client_message_id: None,
         }
     }
 }

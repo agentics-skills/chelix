@@ -61,88 +61,6 @@ impl UsageSnapshot {
     }
 }
 
-/// Typed broadcast payload for the "final" chat event.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChatFinalBroadcast {
-    pub run_id: String,
-    pub session_key: String,
-    pub state: &'static str,
-    pub text: String,
-    pub model: String,
-    pub provider: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
-    pub input_tokens: u32,
-    pub output_tokens: u32,
-    pub cache_read_tokens: u32,
-    pub cache_write_tokens: u32,
-    pub duration_ms: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_input_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_output_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_cache_read_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_cache_write_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_index: Option<usize>,
-    pub reply_medium: ReplyMedium,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iterations: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls_made: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub audio: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub audio_warning: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning: Option<chelix_common::ReasoningContent>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-    /// Canonical items of the segment this turn produced.
-    ///
-    /// The broadcast is what a client reopening the chat renders, so it carries
-    /// the same canonical identity the history does. Without it the client
-    /// cannot tell this turn from the segment records it already applied.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub provider_items: Vec<chelix_common::ProviderOutputItem>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub segment_id: Option<chelix_common::ProviderSegmentId>,
-}
-
-/// Typed broadcast payload for the "error" chat event.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChatErrorBroadcast {
-    pub run_id: String,
-    pub session_key: String,
-    pub state: &'static str,
-    pub error: Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-}
-
-/// Typed broadcast payload for one authoritative tool lifecycle transition.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChatToolLifecycleBroadcast {
-    pub state: &'static str,
-    #[serde(flatten)]
-    pub lifecycle: chelix_common::tool_lifecycle::ToolLifecycleEvent,
-    pub session_key: String,
-    pub seq: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub execution_mode: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_index: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assistant_message_index: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assistant_message: Option<Value>,
-}
-
 #[derive(Clone)]
 pub(crate) struct AssistantTurnOutput {
     pub text: String,
@@ -172,73 +90,6 @@ pub(crate) enum ChatRunOutcome {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build_chat_final_broadcast(
-    run_id: &str,
-    session_key: &str,
-    text: String,
-    model: String,
-    provider: String,
-    reasoning_effort: Option<String>,
-    usage: UsageSnapshot,
-    duration_ms: u64,
-    message_index: Option<usize>,
-    reply_medium: ReplyMedium,
-    iterations: Option<usize>,
-    tool_calls_made: Option<usize>,
-    audio: Option<String>,
-    audio_warning: Option<String>,
-    reasoning: Option<chelix_common::ReasoningContent>,
-    seq: Option<u64>,
-    segment: ChatFinalSegment,
-) -> ChatFinalBroadcast {
-    let total = usage.total_fields();
-    let request = usage.request_fields();
-    ChatFinalBroadcast {
-        run_id: run_id.to_string(),
-        session_key: session_key.to_string(),
-        state: "final",
-        text,
-        model,
-        provider,
-        reasoning_effort,
-        input_tokens: total.input_tokens,
-        output_tokens: total.output_tokens,
-        cache_read_tokens: total.cache_read_tokens,
-        cache_write_tokens: total.cache_write_tokens,
-        duration_ms,
-        request_input_tokens: request.map(|usage| usage.input_tokens),
-        request_output_tokens: request.map(|usage| usage.output_tokens),
-        request_cache_read_tokens: request.map(|usage| usage.cache_read_tokens),
-        request_cache_write_tokens: request.map(|usage| usage.cache_write_tokens),
-        message_index,
-        reply_medium,
-        iterations,
-        tool_calls_made,
-        audio,
-        audio_warning,
-        reasoning,
-        seq,
-        provider_items: segment.provider_items,
-        segment_id: segment.segment_id,
-    }
-}
-
-/// Canonical identity of the segment a finished turn produced.
-#[derive(Clone, Default)]
-pub(crate) struct ChatFinalSegment {
-    pub provider_items: Vec<chelix_common::ProviderOutputItem>,
-    pub segment_id: Option<chelix_common::ProviderSegmentId>,
-}
-
-impl From<&AssistantTurnOutput> for ChatFinalSegment {
-    fn from(output: &AssistantTurnOutput) -> Self {
-        Self {
-            provider_items: output.provider_items.clone(),
-            segment_id: output.segment_id.clone(),
-        }
-    }
-}
-
 pub(crate) fn build_assistant_turn_output(
     text: String,
     persisted_message_index: Option<usize>,
@@ -351,10 +202,7 @@ pub(crate) fn session_token_usage_from_messages(messages: &[Value]) -> SessionTo
 #[cfg(test)]
 mod tests {
     use {
-        super::{
-            ChatFinalSegment, ReplyMedium, UsageSnapshot, build_assistant_turn_output,
-            build_chat_final_broadcast, session_token_usage_from_messages,
-        },
+        super::{UsageSnapshot, build_assistant_turn_output, session_token_usage_from_messages},
         chelix_agents::model::Usage,
         chelix_common::ReasoningContent,
     };
@@ -399,50 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn build_chat_final_broadcast_includes_cache_usage() {
-        let usage = Usage {
-            input_tokens: 1200,
-            output_tokens: 80,
-            cache_read_tokens: 1050,
-            cache_write_tokens: 4,
-        };
-        let request_usage = Usage {
-            input_tokens: 900,
-            output_tokens: 60,
-            cache_read_tokens: 850,
-            cache_write_tokens: 2,
-        };
-
-        let payload = build_chat_final_broadcast(
-            "run-1",
-            "main",
-            "hello".to_string(),
-            "gpt-4.1".to_string(),
-            "openai".to_string(),
-            Some("high".to_string()),
-            UsageSnapshot::new(usage, Some(request_usage)),
-            250,
-            Some(7),
-            ReplyMedium::Text,
-            Some(2),
-            Some(1),
-            None,
-            None,
-            Some(ReasoningContent::Text("thinking".to_string())),
-            Some(42),
-            ChatFinalSegment::default(),
-        );
-
-        assert_eq!(payload.cache_read_tokens, 1050);
-        assert_eq!(payload.cache_write_tokens, 4);
-        assert_eq!(payload.request_cache_read_tokens, Some(850));
-        assert_eq!(payload.request_cache_write_tokens, Some(2));
-        assert_eq!(payload.message_index, Some(7));
-        assert_eq!(payload.seq, Some(42));
-    }
-
-    #[test]
-    fn build_chat_final_broadcast_carries_canonical_segment_identity() {
+    fn assistant_output_carries_canonical_segment_identity() {
         let output = build_assistant_turn_output(
             "hello".to_string(),
             None,
@@ -461,31 +266,11 @@ mod tests {
             None,
         );
 
-        let payload = build_chat_final_broadcast(
-            "run-1",
-            "main",
-            "hello".to_string(),
-            "gpt-4.1".to_string(),
-            "openai".to_string(),
-            None,
-            UsageSnapshot::new(Usage::default(), None),
-            10,
-            None,
-            ReplyMedium::Text,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            (&output).into(),
-        );
-
         assert_eq!(
-            payload.segment_id,
+            output.segment_id,
             Some(chelix_common::ProviderSegmentId("seg_1".to_string()))
         );
-        assert_eq!(payload.provider_items.len(), 1);
+        assert_eq!(output.provider_items.len(), 1);
     }
 
     #[test]

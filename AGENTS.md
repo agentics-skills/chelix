@@ -260,7 +260,7 @@ sqlx migrations, each crate owns its `migrations/` directory. See `docs/sqlite-m
 | Crate | Tables |
 |-------|--------|
 | `chelix-projects` | `projects` |
-| `chelix-sessions` | `sessions`, `channel_sessions` |
+| `chelix-sessions` | `sessions`, `channel_sessions`; `ui_history_sessions`, `ui_history_snapshots` in the separate `ui-history.sqlite` database |
 | `chelix-cron` | `cron_jobs`, `cron_runs` |
 | `chelix-gateway` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels` |
 | `chelix-memory` | `files`, `chunks`, `embedding_cache`, `chunks_fts` |

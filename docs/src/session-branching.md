@@ -24,15 +24,18 @@ There are three ways to fork a session:
 - **`/fork` command** — type `/fork [label]` in the chat input.
 - **Chat header** — click the **Fork** button in the header bar (next to
   Delete). This is visible for every session except cron sessions.
-- **Sidebar** — hover over a session in the sidebar and click the fork icon that
-  appears in the action buttons.
+- **Message action** — fork through the selected assistant message using its
+  stable message ID and session generation.
 
-All three create a new session that copies all messages from the current one and
-immediately switch you to it.
+Header and `/fork` actions select the maximal confirmed history prefix with a
+complete canonical boundary. If active content or an interleaved provider segment
+shortens that prefix, the response reports the adjustment and the UI displays a
+notification. Message actions use the exact selected boundary and reject an
+unfinished or interleaved prefix.
 
 Forked sessions appear **indented** under their parent in the sidebar, with a
 branch icon to distinguish them from top-level sessions. The metadata line shows
-`fork@N` where N is the message index at which the fork occurred.
+`fork@N` where N is the exclusive UI history position at which the fork occurred.
 
 ## Agent Tool
 
@@ -46,11 +49,18 @@ The agent can also fork programmatically using the `branch_session` tool:
 ```
 
 - **`label`** — label for the new session (required).
-- **`fork_point`** — the message index to fork at (0-based). Messages at indices
-  0 through N-1 are copied; the message at index N becomes the first new message
-  in the forked session. If omitted, all messages are copied.
+- **`fork_point`** — an exclusive UI history position (0-based). Snapshots before
+  this position and their canonical prefix are copied. An explicit boundary must
+  be confirmed and must not split an interleaved canonical segment.
+- When `fork_point` is omitted, the maximal confirmed prefix is selected. A
+  nonempty source with no confirmed prefix is rejected. An explicit zero boundary
+  and an empty source are valid.
 
-The tool returns `{ "key": "<session-key>", "forkPoint": N }`.
+The tool returns `sessionKey`, `forkPoint`, `sourceEnd`, `boundaryAdjusted`,
+`boundaryReasons`, and session metadata. `sourceEnd` is the source snapshot's
+exclusive end position. Adjusted defaults report the applied reasons
+`active_content` and/or `interleaved_segment`. Explicit boundaries report
+`boundaryAdjusted: false` and `boundaryReasons: []`.
 
 ## RPC Method
 
@@ -60,8 +70,14 @@ The `sessions.fork` RPC method is the underlying mechanism:
 { "key": "main", "forkPoint": 5, "label": "my-fork" }
 ```
 
-On success the response payload contains
-`{ "sessionKey": "session:<uuid>", "forkPoint": N, "label": "..." }`.
+The RPC accepts either `forkPoint` or `target` containing `messageId` and
+`generation`. A target includes the addressed snapshot in the copied prefix.
+Both explicit forms reject a boundary that cannot be copied exactly.
+
+Success returns the same boundary fields as `branch_session`, including
+`sourceEnd`, `boundaryAdjusted`, and `boundaryReasons` for every request form.
+The selected position is checked against the metadata field's integer range
+before the destination is written.
 
 ## What Gets Inherited
 
@@ -81,7 +97,7 @@ When forking, the new session inherits:
 Fork relationships are stored directly on the `sessions` table:
 
 - **`parent_session_key`** — the key of the session this was forked from.
-- **`fork_point`** — the message index where the fork occurred.
+- **`fork_point`** — the exclusive UI history position where the fork occurred.
 
 These fields drive the tree rendering in the sidebar. Sessions with a parent
 appear indented under it; deeply nested forks indent further.

@@ -119,22 +119,23 @@ fn session_append_runtime() -> &'static tokio::runtime::Runtime {
 
 fn session_append_fixture(new_record_bytes: usize) -> SessionAppendFixture {
     let dir = tempfile::tempdir().unwrap();
-    let history = (0..100_000)
-        .map(|record| format!("{{\"record\":{record}}}\n"))
-        .collect::<String>();
-    std::fs::write(dir.path().join("main.jsonl"), history).unwrap();
     let store = chelix_sessions::store::SessionStore::new(dir.path().to_path_buf());
-    session_append_runtime()
-        .block_on(store.append_with_index("main", &serde_json::json!({"warm": true})))
-        .unwrap();
+    session_append_runtime().block_on(async {
+        for start in (0..100_000).step_by(1_000) {
+            let messages = (start..start + 1_000)
+                .map(|record| serde_json::json!({"role": "user", "content": "fixture", "record": record}))
+                .collect::<Vec<_>>();
+            store.append_batch_at_index("main", &messages, start).await.unwrap();
+        }
+    });
     SessionAppendFixture {
         store,
-        message: serde_json::json!({"content": "x".repeat(new_record_bytes)}),
+        message: serde_json::json!({"role": "user", "content": "x".repeat(new_record_bytes)}),
         _dir: dir,
     }
 }
 
-/// Benchmark the warm indexed append path after the one-time history scan.
+/// Benchmark indexed append after seeding canonical and semantic history through the store.
 #[divan::bench(
     args = [32, 1_024, 16_384],
     min_time = 0,

@@ -109,18 +109,31 @@ npm run build:all      # Vite + Tailwind + service worker
 
 ## Provider Segment and Keyed Rendering
 
-Chat streaming and history reload use a single typed materializer in
-`src/sessions/provider-segment-reducer.ts`.
+`UiHistoryEngine` supplies semantic snapshots to both history pages and live
+subscriptions. The frontend contract is in `src/types/ui-history.ts`.
 
-- **Segment ID**: identifies a provider attempt/response.
-- **Item ID & Position**: assigned once on provider ingress in Rust and carried
-  on every update. The reducer orders items by that position and never assigns
-  one of its own.
-- **Reasoning Parts**: provider part index orders structured summary chunks.
-- **One Disclosure per Bubble**: all reasoning items of a segment render as parts
-  of a single disclosure, in the live view and after a reload alike.
-- **Cache Indexing**: cache updates key on physical `historyIndex` and item identity rather than transient `run_id`.
-- **No DOM Reordering**: DOM insertion time does not determine reasoning position.
+- **Message identity**: `id`, immutable `position`, and `revision` identify each
+  snapshot within a session `generation`.
+- **Provider items**: segment/item IDs and item positions originate in Rust;
+  `provider-segment-reducer.ts` renders reasoning from those ordered items.
+- **One disclosure per segment**: `session-render.ts` keeps a retained
+  assistant's reasoning disclosure while updating its text body.
+- **Keyed DOM**: each history container has `data-message-id`; reconciliation
+  orders containers by snapshot position and updates only newer revisions.
+- **Authoritative counts**: accepted pages and batches supply `totalMessages`.
+  Text and voice pending sends have UUID correlation and separate pending DOM.
+
+`sessions/history-subscription.ts` obtains a subscribed snapshot baseline and
+buffers early `ui_history` events. Generation changes replace the window;
+revision gaps request another baseline. The server isolates slow listeners in
+per-client tasks and can send a replacement snapshot of the selected range.
+
+`stores/session-history-cache.ts` keeps one in-memory session window, bounded
+by 240 messages and 12 MiB of serialized snapshots with a one-message minimum.
+Bidirectional pagination evicts the opposite edge and preserves the reading
+viewport. Session selection, history, composer recall, and search context are
+held in memory; server session lists determine session availability. Search
+loads the exact hit's ID and generation before highlighting it.
 
 ## Type Safety
 
@@ -154,39 +167,35 @@ rejected
 cancelled
 ```
 
-`src/tool-lifecycle.ts` validates that contract and reduces each call to its
-latest snapshot. Events with a lower sequence than the current snapshot cannot
-roll the invocation backward. `input_streaming` events carry one delta; the
-snapshot keeps their accumulated text separately. The snapshot also carries
-transport metadata such as `runId`, a physical history index when replaying a
-persisted snapshot, the assistant message index assigned at `input_ready`,
-execution mode, and context budget.
+`src/tool-lifecycle.ts` validates the lifecycle contract. The server engine
+accumulates input fragments and sends `accumulatedArguments` alongside the
+latest lifecycle stage. Snapshot metadata includes `runId`, `assistantId`,
+execution mode, and received context budget. Reconnecting during argument
+streaming uses this same accumulated snapshot.
 
 One rendering path in `src/ws/tool-helpers.ts` applies those snapshots to tool
 cards:
 
 - `created` creates the live invocation bubble before arguments are complete;
 - `input_streaming` updates the displayed accumulated JSON input;
-- `input_ready` replaces it with decoded arguments and binds the live assistant
-  segment to the separately persisted canonical assistant frame;
+- `input_ready` replaces it with decoded arguments; `assistantId` links the
+  tool snapshot to its owning assistant;
 - waiting, execution, and progress stages update the same card;
 - terminal stages render success, rejection, failure, or cancellation; lifecycle
   results remain strings on the wire and are JSON-decoded only when structured
   presentation needs object fields.
 
-Execution progress is backend-authored. During interactive live rendering, the
-`execute_command` component displays the lifecycle message and attaches its
-terminal only after an `execution_progress` event reports `elapsedMs >= 10000`;
-it does not run a local elapsed-time clock. Persisted history rendering is
-non-interactive and never attaches a terminal.
+Execution progress is backend-authored. `src/ws/tool-helpers.ts` uses the
+snapshot's lifecycle stage for tool rendering and terminal attachment.
 
-Live WebSocket events, append-only session history, and reconnect snapshots all
-reuse this reducer and renderer. The backend history projection keeps only the
-latest `role: "tool_lifecycle"` record for each `(runId, toolCallId)` invocation,
-and the frontend cache uses the same identity so lifecycle transitions replace
-one logical entity and increment the session count only once.
-`src/sessions/session-switch.ts` restores the latest non-terminal snapshots from
-`activeToolInvocations`.
+History loading and live revisions share `session-render.ts`. A tool's
+`presentation.document` can replace its ordinary card with text, Markdown, or
+a diff. The backend lifecycle hook `AgentTool::ui_presentation` supplies this
+representation separately from provider arguments and results. Checkpoint and
+error presentations use the same addressable presentation contract.
+
+`ws/chat-handlers.ts` updates run, queue, voice, and compaction status.
+Conversation content and counts are applied by the semantic history reducer.
 
 ## Shared Component Library
 

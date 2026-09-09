@@ -1000,6 +1000,21 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         false
                     };
 
+                let create = ctx
+                    .params
+                    .get("create")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                if !was_existing_session && !create {
+                    return Err(ErrorShape::new(error_codes::NOT_FOUND, "session not found"));
+                }
+                if was_existing_session && create && key != "main" {
+                    return Err(ErrorShape::new(
+                        error_codes::CONFLICT,
+                        "session already exists",
+                    ));
+                }
+
                 // Store the active session (and project if provided) for this connection.
                 {
                     let mut registry = ctx.state.client_registry.write().await;
@@ -1145,33 +1160,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             },
                         }
                     }
-                }
-
-                // If the client already has a cached history with the same
-                // message count, skip sending the full history to avoid
-                // transferring megabytes of data on every session switch.
-                let cached_count = ctx
-                    .params
-                    .get("cached_message_count")
-                    .and_then(|v| v.as_u64());
-                if !include_history && let Some(obj) = result.as_object_mut() {
-                    obj.insert("history".to_string(), serde_json::Value::Array(Vec::new()));
-                    obj.insert("historyOmitted".to_string(), serde_json::Value::Bool(true));
-                    obj.remove("historyTruncated");
-                    obj.remove("historyDroppedCount");
-                }
-                if let Some(cached) = cached_count
-                    && include_history
-                    && let Some(obj) = result.as_object_mut()
-                    && let Some(entry_obj) = obj.get("entry").and_then(|e| e.as_object())
-                    && let Some(server_count) =
-                        entry_obj.get("messageCount").and_then(|v| v.as_u64())
-                    && cached == server_count
-                {
-                    obj.insert("history".to_string(), serde_json::Value::Array(Vec::new()));
-                    obj.insert("historyCacheHit".to_string(), serde_json::Value::Bool(true));
-                    obj.remove("historyTruncated");
-                    obj.remove("historyDroppedCount");
                 }
 
                 // Inject replying state so frontend restores thinking

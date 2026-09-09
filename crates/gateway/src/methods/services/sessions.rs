@@ -1,6 +1,10 @@
 use super::*;
 
 pub(super) fn register(reg: &mut MethodRegistry) {
+    reg.register(
+        "sessions.history.subscribe",
+        Box::new(|ctx| Box::pin(crate::ui_history_subscription::subscribe(ctx))),
+    );
     // Sessions
     reg.register(
         "sessions.list",
@@ -267,9 +271,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         "kind": "history_truncated",
                         "sessionKey": key,
                         "entry": result.get("entry").cloned(),
-                        "targetIndex": result.get("targetIndex").cloned(),
-                        "keptCount": result.get("keptCount").cloned(),
-                        "removedCount": result.get("removedCount").cloned(),
+                        "generation": result.get("generation").cloned(),
+                        "totalMessages": result.get("totalMessages").cloned(),
                         "prunedMediaCount": result.get("prunedMediaCount").cloned(),
                     }),
                     BroadcastOpts::default(),

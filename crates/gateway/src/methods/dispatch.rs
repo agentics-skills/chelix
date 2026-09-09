@@ -102,6 +102,7 @@ const READ_METHODS: &[&str] = &[
     "voicewake.get",
     "sessions.list",
     "sessions.preview",
+    "sessions.history.subscribe",
     "sessions.search",
     "sessions.branches",
     "sessions.run_detail",
