@@ -98,6 +98,8 @@ pub struct ConnectedClient {
     pub connect_params: ConnectParams,
     /// Bounded channel for sending serialized frames to this client's write loop.
     pub sender: mpsc::Sender<String>,
+    pub ui_history_sender: mpsc::Sender<String>,
+    pub chat_status: Arc<crate::chat_status_outbox::ChatStatusOutbox>,
     pub connected_at: Instant,
     /// Milliseconds since process start. Updated atomically — no write lock needed.
     pub last_activity_ms: std::sync::atomic::AtomicU64,
@@ -240,6 +242,8 @@ pub struct DiscoveredHookInfo {
 /// broadcast() only needs this read lock — no longer contends with node/config/session writes.
 #[derive(Default)]
 pub struct ClientRegistryInner {
+    pub ui_history_subscriptions:
+        HashMap<String, crate::ui_history_subscription::HistorySubscription>,
     pub clients: HashMap<String, ConnectedClient>,
     pub active_sessions: HashMap<String, String>,
     pub active_projects: HashMap<String, String>,
@@ -248,6 +252,7 @@ pub struct ClientRegistryInner {
 impl ClientRegistryInner {
     pub fn new() -> Self {
         Self {
+            ui_history_subscriptions: HashMap::new(),
             clients: HashMap::new(),
             active_sessions: HashMap::new(),
             active_projects: HashMap::new(),
@@ -261,6 +266,9 @@ impl ClientRegistryInner {
     }
 
     pub fn remove_client(&mut self, conn_id: &str) -> (Option<ConnectedClient>, usize) {
+        if let Some(subscription) = self.ui_history_subscriptions.remove(conn_id) {
+            subscription.cancel();
+        }
         self.active_sessions.remove(conn_id);
         self.active_projects.remove(conn_id);
         let removed = self.clients.remove(conn_id);
@@ -945,6 +953,9 @@ impl GatewayState {
             }
 
             // Drain all client state.
+            for (_, subscription) in registry.ui_history_subscriptions.drain() {
+                subscription.cancel();
+            }
             registry.clients.clear();
             registry.active_sessions.clear();
             registry.active_projects.clear();
@@ -1007,6 +1018,8 @@ mod tests {
                 user_agent: None,
                 timezone: None,
             },
+            ui_history_sender: tx.clone(),
+            chat_status: Arc::new(crate::chat_status_outbox::ChatStatusOutbox::default()),
             sender: tx,
             connected_at: Instant::now(),
             last_activity_ms: std::sync::atomic::AtomicU64::new(0),

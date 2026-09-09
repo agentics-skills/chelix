@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use {
     crate::services::ServiceError, chelix_common::ReasoningEffort,
-    chelix_sessions::store::UserMessageTarget,
+    chelix_sessions::ui_history_types::UiHistoryTarget,
 };
 
 /// Params for `sessions.patch`.
@@ -56,20 +56,25 @@ where
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VoiceGenerateParams {
     pub key: String,
-    pub message_index: usize,
+    pub target: UiHistoryTarget,
+}
+
+/// Params for `sessions.fork`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ForkParams {
+    pub key: String,
+    pub label: Option<String>,
+    pub target: Option<UiHistoryTarget>,
+    pub fork_point: Option<u64>,
 }
 
 /// Params for `sessions.truncate_tail`.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TruncateTailParams {
     pub key: String,
-    #[serde(default)]
-    pub message_index: Option<usize>,
-    #[serde(default)]
-    pub history_index: Option<usize>,
-    #[serde(default)]
-    pub seq: Option<u64>,
+    pub target: UiHistoryTarget,
 }
 
 impl TruncateTailParams {
@@ -80,18 +85,6 @@ impl TruncateTailParams {
             return Err("missing 'key' parameter");
         }
         Ok(key)
-    }
-
-    /// Resolve the target user message. Raw history index takes precedence
-    /// over client sequence because it is stable for persisted history renders.
-    pub fn target(&self) -> Result<UserMessageTarget, &'static str> {
-        if let Some(idx) = self.message_index.or(self.history_index) {
-            return Ok(UserMessageTarget::MessageIndex(idx));
-        }
-        if let Some(seq) = self.seq {
-            return Ok(UserMessageTarget::ClientSeq(seq));
-        }
-        Err("missing 'messageIndex' or 'seq' parameter")
     }
 }
 
@@ -152,13 +145,15 @@ mod tests {
     }
 
     #[test]
-    fn voice_generate_requires_message_index() {
-        let p: VoiceGenerateParams = serde_json::from_value(json!({
+    fn history_actions_require_identity_and_generation() {
+        let value = json!({
             "key": "main",
-            "messageIndex": 3,
-        }))
-        .unwrap();
-        assert_eq!(p.message_index, 3);
+            "target": {"messageId": "segment:answer", "generation": "generation-1"},
+        });
+        let voice: VoiceGenerateParams = serde_json::from_value(value.clone()).unwrap();
+        let truncate: TruncateTailParams = serde_json::from_value(value).unwrap();
+        assert_eq!(voice.target.message_id.0, "segment:answer");
+        assert_eq!(truncate.target.generation.0, "generation-1");
     }
 
     #[test]
@@ -178,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn voice_generate_rejects_missing_message_index() {
+    fn voice_generate_rejects_missing_target() {
         let result = serde_json::from_value::<VoiceGenerateParams>(json!({
             "key": "main",
         }));

@@ -1,9 +1,6 @@
 //! Web-UI API handlers (bootstrap, skills, images, containers, media, logs).
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::{collections::HashMap, path::PathBuf};
 
 use {
     axum::{
@@ -13,7 +10,6 @@ use {
         response::{IntoResponse, Response},
     },
     chelix_httpd::AppState,
-    chelix_sessions::{count_rendered_bubbles, filter_ui_history, rendered_bubble_flags},
     chelix_tools::image_cache::ImageBuilder,
     tracing::warn,
 };
@@ -187,145 +183,13 @@ pub async fn api_sessions_handler(
 }
 
 #[derive(serde::Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SessionHistoryQuery {
-    #[serde(default)]
-    cached_message_count: Option<u64>,
-    #[serde(default)]
-    cursor: Option<u64>,
-    #[serde(default)]
+    before: Option<u64>,
+    after: Option<u64>,
+    around: Option<String>,
+    generation: Option<String>,
     limit: Option<usize>,
-}
-
-fn history_index(msg: &serde_json::Value) -> Option<usize> {
-    msg.get("historyIndex")
-        .and_then(|v| v.as_u64())
-        .and_then(|idx| usize::try_from(idx).ok())
-}
-
-/// Provider segment a record belongs to, if any.
-///
-/// Streaming writes one record per provider event, so a single answer spans
-/// many records that all share this identity.
-fn record_segment_id(msg: &serde_json::Value) -> Option<&str> {
-    msg.get("segmentId").and_then(serde_json::Value::as_str)
-}
-
-/// Index of the first record of the segment `scoped[start]` belongs to.
-///
-/// A page must not begin in the middle of a provider segment: the records left
-/// behind would replay an incomplete segment and the client would have to stitch
-/// the halves back together.
-fn segment_start_index(scoped: &[serde_json::Value], start: usize) -> usize {
-    let Some(segment_id) = scoped.get(start).and_then(record_segment_id) else {
-        return start;
-    };
-    let mut boundary = start;
-    while boundary > 0 && scoped.get(boundary - 1).and_then(record_segment_id) == Some(segment_id) {
-        boundary -= 1;
-    }
-    boundary
-}
-
-/// Tool call identifiers an assistant frame declares.
-fn declared_tool_call_ids(msg: &serde_json::Value) -> impl Iterator<Item = &str> {
-    msg.get("tool_calls")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|call| call.get("id").and_then(serde_json::Value::as_str))
-}
-
-/// Tool call a lifecycle record belongs to.
-fn lifecycle_tool_call_id(msg: &serde_json::Value) -> Option<&str> {
-    msg.get("toolCallId").and_then(serde_json::Value::as_str)
-}
-
-/// Index at which every tool lifecycle record in `scoped[start..]` still has the
-/// assistant frame that owns it.
-///
-/// A tool card takes its model, token and duration metadata from that frame. If
-/// the cursor separated them, the card would be rendered by a page that cannot
-/// see the frame, and the frame would later arrive in a page that no longer
-/// knows about the card, so the metadata would never be attached.
-fn tool_frame_start_index(scoped: &[serde_json::Value], start: usize) -> usize {
-    let mut boundary = start;
-    loop {
-        let pending: HashSet<&str> = scoped[boundary..]
-            .iter()
-            .filter_map(lifecycle_tool_call_id)
-            .collect();
-        if pending.is_empty() {
-            return boundary;
-        }
-        let owner = scoped[..boundary]
-            .iter()
-            .position(|msg| declared_tool_call_ids(msg).any(|id| pending.contains(id)));
-        match owner {
-            Some(index) => boundary = index,
-            None => return boundary,
-        }
-    }
-}
-
-/// Move a page boundary back until it splits neither a provider segment nor an
-/// assistant frame from the tool lifecycle records it owns.
-fn page_boundary(scoped: &[serde_json::Value], start: usize) -> usize {
-    let mut boundary = start;
-    loop {
-        let next = segment_start_index(scoped, tool_frame_start_index(scoped, boundary));
-        if next == boundary {
-            return boundary;
-        }
-        boundary = next;
-    }
-}
-
-/// Index at which a page holding `limit` bubbles begins.
-///
-/// Counted with the same definition as `totalMessages`, so a page of `limit`
-/// carries `limit` bubbles instead of an amount that depends on how the answer
-/// happened to be streamed.
-fn page_start_index(scoped: &[serde_json::Value], limit: usize) -> usize {
-    let flags = rendered_bubble_flags(scoped);
-    let mut bubbles = 0usize;
-    for index in (0..scoped.len()).rev() {
-        if !flags[index] {
-            continue;
-        }
-        bubbles += 1;
-        if bubbles > limit {
-            return page_boundary(scoped, index + 1);
-        }
-    }
-    0
-}
-
-fn paginated_history(
-    history: Vec<serde_json::Value>,
-    cursor: Option<usize>,
-    limit: usize,
-) -> (Vec<serde_json::Value>, bool, Option<u64>) {
-    let mut scoped = if let Some(cursor_idx) = cursor {
-        history
-            .into_iter()
-            .filter(|msg| history_index(msg).is_some_and(|idx| idx < cursor_idx))
-            .collect::<Vec<_>>()
-    } else {
-        history
-    };
-
-    let start = page_start_index(&scoped, limit);
-    if start > 0 {
-        scoped.drain(0..start);
-    }
-
-    let next_cursor = scoped
-        .first()
-        .and_then(history_index)
-        .filter(|idx| *idx > 0)
-        .and_then(|idx| u64::try_from(idx).ok());
-
-    (scoped, next_cursor.is_some(), next_cursor)
 }
 
 fn clamp_history_limit(limit: Option<usize>) -> usize {
@@ -389,56 +253,23 @@ pub async fn api_session_history_handler(
         );
     };
 
-    let cursor = query.cursor.and_then(|idx| usize::try_from(idx).ok());
     let limit = clamp_history_limit(query.limit);
-
-    let metadata_entry = if let Some(ref metadata) = state.gateway.services.session_metadata {
-        match metadata.get(&session_key).await {
-            Ok(entry) => entry,
-            Err(error) => {
-                return api_error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    SESSION_HISTORY_FAILED,
-                    error.to_string(),
-                );
-            },
-        }
-    } else {
-        None
+    let Some(metadata) = state.gateway.services.session_metadata.as_ref() else {
+        return api_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            SESSION_HISTORY_FAILED,
+            "session metadata unavailable",
+        );
     };
-    let metadata_count = metadata_entry
-        .as_ref()
-        .map(|entry| u64::from(entry.message_count));
-
-    if cursor.is_none()
-        && let (Some(cached), Some(server_count)) = (query.cached_message_count, metadata_count)
-        && cached == server_count
-    {
-        return Json(serde_json::json!({
-            "history": [],
-            "historyCacheHit": true,
-            "hasMore": false,
-            "nextCursor": null,
-            "totalMessages": server_count,
-            "historyTruncated": false,
-            "historyDroppedCount": 0,
-        }))
-        .into_response();
-    }
-
-    let raw_history = match store.read(&session_key).await {
-        Ok(history) => history,
-        Err(e) => {
+    match metadata.get(&session_key).await {
+        Ok(Some(_)) => {},
+        Ok(None) => {
             return api_error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::NOT_FOUND,
                 SESSION_HISTORY_FAILED,
-                e.to_string(),
+                "session not found",
             );
         },
-    };
-
-    let full_history = match filter_ui_history(raw_history) {
-        Ok(history) => history,
         Err(error) => {
             return api_error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -446,31 +277,50 @@ pub async fn api_session_history_handler(
                 error.to_string(),
             );
         },
-    };
-    // Counted in bubbles: a total that includes provider records would report
-    // several hundred messages for a handful of visible ones.
-    let total_messages = count_rendered_bubbles(&full_history) as u64;
-    let server_count = metadata_count.unwrap_or(total_messages);
-    let (mut history, has_more, next_cursor) = paginated_history(full_history, cursor, limit);
-
-    let history_cache_hit = cursor.is_none()
-        && query
-            .cached_message_count
-            .is_some_and(|cached| cached == server_count);
-    if history_cache_hit {
-        history.clear();
     }
-
-    Json(serde_json::json!({
-        "history": history,
-        "historyCacheHit": history_cache_hit,
-        "hasMore": has_more,
-        "nextCursor": next_cursor,
-        "totalMessages": total_messages,
-        "historyTruncated": false,
-        "historyDroppedCount": 0,
-    }))
-    .into_response()
+    use chelix_sessions::ui_history_types::{UiHistoryRange, UiMessageId};
+    let range = match (query.before, query.after, query.around) {
+        (None, None, None) => UiHistoryRange::Latest,
+        (Some(position), None, None) => UiHistoryRange::Before { position },
+        (None, Some(position), None) => UiHistoryRange::After { position },
+        (None, None, Some(id)) => UiHistoryRange::Around {
+            message_id: UiMessageId(id),
+        },
+        _ => {
+            return api_error_response(
+                StatusCode::BAD_REQUEST,
+                SESSION_HISTORY_FAILED,
+                "history range requires only one boundary",
+            );
+        },
+    };
+    match store.ui_history.page(&session_key, range, limit).await {
+        Ok(page) => {
+            if query
+                .generation
+                .is_some_and(|generation| generation != page.generation.0)
+            {
+                return api_error_response(
+                    StatusCode::CONFLICT,
+                    SESSION_HISTORY_FAILED,
+                    "history generation changed",
+                );
+            }
+            match page.public_value() {
+                Ok(value) => Json(value).into_response(),
+                Err(error) => api_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    SESSION_HISTORY_FAILED,
+                    error.to_string(),
+                ),
+            }
+        },
+        Err(error) => api_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            SESSION_HISTORY_FAILED,
+            error.to_string(),
+        ),
+    }
 }
 
 pub async fn api_session_media_handler(
@@ -1370,136 +1220,6 @@ pub async fn api_restart_daemon_handler() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn indexed(mut msg: serde_json::Value, index: usize) -> serde_json::Value {
-        msg["historyIndex"] = serde_json::json!(index);
-        msg
-    }
-
-    fn user(index: usize) -> serde_json::Value {
-        indexed(serde_json::json!({"role": "user", "content": "hi"}), index)
-    }
-
-    fn provider_update(index: usize, segment: &str) -> serde_json::Value {
-        indexed(
-            serde_json::json!({"role": "provider_update", "segmentId": segment}),
-            index,
-        )
-    }
-
-    fn segment_close(index: usize, segment: &str) -> serde_json::Value {
-        indexed(
-            serde_json::json!({"role": "provider_segment_close", "segmentId": segment}),
-            index,
-        )
-    }
-
-    fn assistant_with_tool_call(index: usize, call_id: &str) -> serde_json::Value {
-        indexed(
-            serde_json::json!({
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [{"id": call_id}]
-            }),
-            index,
-        )
-    }
-
-    fn tool_lifecycle(index: usize, call_id: &str) -> serde_json::Value {
-        indexed(
-            serde_json::json!({"role": "tool_lifecycle", "toolCallId": call_id}),
-            index,
-        )
-    }
-
-    #[test]
-    fn page_keeps_a_tool_lifecycle_with_the_assistant_frame_that_owns_it() {
-        let history = vec![
-            user(0),
-            assistant_with_tool_call(1, "call-1"),
-            tool_lifecycle(2, "call-1"),
-            user(3),
-        ];
-
-        // A boundary drawn purely by message count would start at the lifecycle
-        // record and leave its assistant frame on the previous page.
-        let (page, ..) = paginated_history(history, None, 2);
-
-        assert_eq!(page.first().and_then(history_index), Some(1));
-    }
-
-    #[test]
-    fn page_is_measured_in_bubbles_not_stream_records() {
-        // One answer streamed as many records must not consume the whole page.
-        let mut history = vec![user(0), user(1)];
-        for index in 2..102 {
-            history.push(provider_update(index, "seg-1"));
-        }
-        history.push(segment_close(102, "seg-1"));
-
-        let (page, has_more, next_cursor) = paginated_history(history, None, 2);
-
-        // Exactly the requested number of bubbles: the last user message and the
-        // single bubble the streamed answer renders as.
-        assert_eq!(count_rendered_bubbles(&page), 2);
-        assert_eq!(page.first().and_then(history_index), Some(1));
-        assert_eq!(page.len(), 102, "the whole segment travels with the page");
-        assert!(has_more);
-        assert_eq!(next_cursor, Some(1));
-    }
-
-    #[test]
-    fn page_never_starts_inside_a_provider_segment() {
-        let mut history = vec![user(0)];
-        for index in 1..5 {
-            history.push(provider_update(index, "seg-1"));
-        }
-        history.push(segment_close(5, "seg-1"));
-        history.push(user(6));
-
-        let (page, has_more, next_cursor) = paginated_history(history, None, 1);
-
-        // The boundary fell inside `seg-1`, so the page was extended down to the
-        // first record of that segment instead of splitting it. The page then
-        // holds more records than the limit, which counts messages, not records.
-        assert_eq!(page.first().and_then(history_index), Some(1));
-        assert!(has_more);
-        assert_eq!(next_cursor, Some(1));
-    }
-
-    #[test]
-    fn cursor_walks_back_to_the_first_message() {
-        let history: Vec<_> = (0..5).map(user).collect();
-
-        let (page, has_more, next_cursor) = paginated_history(history.clone(), Some(3), 2);
-
-        assert_eq!(page.first().and_then(history_index), Some(1));
-        assert!(has_more);
-        assert_eq!(next_cursor, Some(1));
-
-        let (page, has_more, next_cursor) = paginated_history(history, Some(1), 2);
-
-        assert_eq!(page.first().and_then(history_index), Some(0));
-        assert!(!has_more);
-        assert_eq!(next_cursor, None);
-    }
-
-    /// The page limit and `totalMessages` must agree on what a message is,
-    /// including records whose rendering is not decided by role alone.
-    #[test]
-    fn page_limit_counts_the_same_bubbles_the_total_reports() {
-        let history = vec![
-            user(0),
-            // Renders no bubble of its own: it only carries the tool call.
-            assistant_with_tool_call(1, "call-1"),
-            tool_lifecycle(2, "call-1"),
-            user(3),
-        ];
-
-        let (page, ..) = paginated_history(history, None, 2);
-
-        assert_eq!(count_rendered_bubbles(&page), 2);
-    }
 
     #[test]
     fn content_disposition_inline_for_pdf() {

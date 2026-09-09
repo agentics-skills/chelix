@@ -368,7 +368,21 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     std::mem::forget(tmp);
 
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    chelix_projects::run_migrations(&pool).await.unwrap();
+    chelix_sessions::run_migrations(&pool).await.unwrap();
     chelix_vault::run_migrations(&pool).await.unwrap();
+    let session_metadata = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(
+        pool.clone(),
+    ));
+    let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+        "test::model".to_string(),
+        chelix_common::ReasoningEffort::from("off"),
+    )
+    .unwrap();
+    session_metadata
+        .create_llm_session("main", None, &model_reasoning, Some("main"))
+        .await
+        .unwrap();
     let auth_config = chelix_config::AuthConfig::default();
     let vault = Arc::new(chelix_vault::Vault::new(pool.clone()).await.unwrap());
     let cred_store = Arc::new(
@@ -385,7 +399,9 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
 
     let resolved_auth = auth::resolve_auth(None, None);
     let services = with_test_web_services(
-        GatewayServices::noop().with_session_store(Arc::clone(&session_store)),
+        GatewayServices::noop()
+            .with_session_store(Arc::clone(&session_store))
+            .with_session_metadata(session_metadata),
     );
     let (config, sandbox_router) = sandbox_off_runtime();
     let state = GatewayState::with_options(

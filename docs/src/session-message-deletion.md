@@ -9,18 +9,27 @@ The UI does not ask for confirmation. The delete action is intentionally compact
 and is placed under the user-message copy button.
 
 The backend operation is exposed as the `sessions.truncate_tail` RPC. It accepts
-a `key` plus either `messageIndex`/`historyIndex` or `seq` identifying the
-target user message. The operation rejects missing sessions, missing targets,
-out-of-range indices, and non-user targets.
+`key` and `target: { messageId, generation }`, identifying a committed user
+snapshot. The server resolves its canonical boundary under the session mutation
+reservation. Missing sessions, removed targets, stale generations, uncommitted
+records, and non-user targets are rejected
+(`crates/gateway/src/session/maintenance.rs`,
+`crates/sessions/src/ui_history_engine.rs`).
+
+Pending browser sends receive their delete action only after the engine confirms
+their `clientMessageId` and canonical binding.
 
 Before truncating a session tail, the gateway cancels queued messages and aborts
 the active chat run for that session. A shared per-session mutation coordinator
 blocks new chat turns while the truncation is reserved, waits for any active
-turn to release the session after abort, and then rewrites the JSONL history.
+turn to release the session after abort, validates the canonical cut, and then
+truncates both the JSONL journal and semantic SQLite snapshots.
 
 After truncation, session metadata is updated: message counts are reduced, the
 active run state is cleared, and the preview is replaced with the
-retained-history preview or cleared if no preview remains.
+retained-history preview or cleared if no preview remains. The engine rotates
+the session generation and subscriptions receive an authoritative baseline.
+Browser pages and action targets are checked against that generation.
 
 ## Media pruning and forks
 

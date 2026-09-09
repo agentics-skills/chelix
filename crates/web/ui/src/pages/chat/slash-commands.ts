@@ -2,7 +2,8 @@
 
 import { chatAddMsg } from "../../chat-ui";
 import { renderMarkdown, sendRpc } from "../../helpers";
-import { clearActiveSession, fetchSessions, switchSession } from "../../sessions";
+import { clearActiveSession, fetchSessions, newSession, switchSession } from "../../sessions";
+import { requestSessionFork } from "../../sessions/session-fork";
 import * as S from "../../state";
 import type { ChatSendSyncRequest } from "../../types/chat";
 import { renderContextCard } from "./context-card";
@@ -23,10 +24,6 @@ type SlashHandler = (args: string) => void;
 export interface ParsedSlash {
 	name: string;
 	args: string;
-}
-
-interface UnknownRecord {
-	[key: string]: unknown;
 }
 
 interface InsightsApiResponse {
@@ -228,6 +225,11 @@ export function shouldHandleSlashLocally(cmdName: string): boolean {
  * Handler map — every `SlashCommandName` must have an entry here.
  * TypeScript will error at `satisfies` if a command is missing.
  */
+function placeholderFailure(key: string, placeholder: HTMLElement | null, error: unknown): void {
+	placeholder?.remove();
+	if (key === S.activeSessionKey) chatAddMsg("error", error instanceof Error ? error.message : "Command failed");
+}
+
 const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 	clear: () => clearActiveSession(),
 
@@ -239,21 +241,25 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 	},
 
 	context: () => {
-		chatAddMsg("system", "Loading context\u2026");
-		sendRpc("chat.context", {}).then((res) => {
-			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-			if (res.ok && res.payload) {
-				try {
-					renderContextCard(res.payload);
-				} catch (err: unknown) {
-					const message = err instanceof Error ? err.message : "Unknown render error";
-					chatAddMsg("error", `Render error: ${message}`);
-				}
-			} else chatAddMsg("error", res.error?.message || "Context failed");
-		});
+		const key = S.activeSessionKey;
+		const placeholder = chatAddMsg("system", "Loading context\u2026");
+		sendRpc("chat.context", {})
+			.then((res) => {
+				placeholder?.remove();
+				if (key !== S.activeSessionKey) return;
+				if (res.ok && res.payload) {
+					try {
+						renderContextCard(res.payload);
+					} catch (err: unknown) {
+						const message = err instanceof Error ? err.message : "Unknown render error";
+						chatAddMsg("error", `Render error: ${message}`);
+					}
+				} else chatAddMsg("error", res.error?.message || "Context failed");
+			})
+			.catch((error: unknown) => placeholderFailure(key, placeholder, error));
 	},
 
-	new: () => switchSession(`session:${crypto.randomUUID()}`),
+	new: () => newSession(),
 
 	reset: () => {
 		sendRpc("sessions.reset", { key: S.activeSessionKey }).then((res) => {
@@ -264,11 +270,13 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 
 	insights: (args) => {
 		const days = args.trim() || "30";
-		chatAddMsg("system", `Loading insights for last ${days} days\u2026`);
+		const key = S.activeSessionKey;
+		const placeholder = chatAddMsg("system", `Loading insights for last ${days} days\u2026`);
 		fetch(`/api/metrics/insights?days=${days}`)
 			.then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error(`HTTP ${resp.status}`))))
 			.then((data: InsightsApiResponse) => {
-				if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
+				placeholder?.remove();
+				if (key !== S.activeSessionKey) return;
 				const lines: string[] = [];
 				lines.push(`**Insights** \u2014 last ${data.days} days\n`);
 				lines.push("| Metric | Value |");
@@ -298,33 +306,41 @@ const slashHandlers: Record<SlashCommandName, SlashHandler> = {
 				lines.push(`\n*${fmtNum(data.data_points)} data points over ${data.span_hours.toFixed(1)} hours*`);
 				chatAddMsg("system", renderMarkdown(lines.join("\n")), true);
 			})
-			.catch((err: Error) => chatAddMsg("error", `Insights failed: ${err.message}`));
+			.catch((err: Error) => {
+				placeholder?.remove();
+				if (key === S.activeSessionKey) chatAddMsg("error", `Insights failed: ${err.message}`);
+			});
 	},
 
 	fast: (args) => {
 		const arg = args.trim().toLowerCase();
-		chatAddMsg("system", `Fast mode: ${arg || "toggle"}\u2026`);
+		const key = S.activeSessionKey;
+		const placeholder = chatAddMsg("system", `Fast mode: ${arg || "toggle"}\u2026`);
 		const request: ChatSendSyncRequest = { text: `/fast ${arg}`.trim() };
-		sendRpc("chat.send_sync", request).then((res) => {
-			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-			if (res.ok && res.payload) {
-				const text = typeof res.payload === "string" ? res.payload : (res.payload as UnknownRecord).text;
-				chatAddMsg("system", String(text || "Done"));
-			} else chatAddMsg("error", res.error?.message || "/fast failed");
-		});
+		sendRpc("chat.send_sync", request)
+			.then((res) => {
+				placeholder?.remove();
+				if (key !== S.activeSessionKey) return;
+				if (!res.ok) chatAddMsg("error", res.error?.message || "/fast failed");
+			})
+			.catch((error: unknown) => placeholderFailure(key, placeholder, error));
 	},
 
 	fork: (args) => {
-		chatAddMsg("system", "Forking session\u2026");
-		sendRpc("sessions.fork", { key: S.activeSessionKey, label: args.trim() || undefined }).then((res) => {
-			if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-			if (res.ok && res.payload) {
-				const key = (res.payload as UnknownRecord).sessionKey as string;
-				const label = (res.payload as UnknownRecord).label as string;
-				chatAddMsg("system", `Forked into: ${label || key}. Use the session list to switch.`);
-				fetchSessions();
-			} else chatAddMsg("error", res.error?.message || "Fork failed");
-		});
+		const key = S.activeSessionKey;
+		const placeholder = chatAddMsg("system", "Forking session\u2026");
+		requestSessionFork({ key, label: args.trim() || undefined })
+			.then((res) => {
+				placeholder?.remove();
+				if (key !== S.activeSessionKey) return;
+				if (res.ok && res.payload) {
+					const forkKey = res.payload.sessionKey;
+					const label = res.payload.label;
+					chatAddMsg("system", `Forked into: ${label || forkKey}. Use the session list to switch.`);
+					fetchSessions();
+				} else chatAddMsg("error", res.error?.message || "Fork failed");
+			})
+			.catch((error: unknown) => placeholderFailure(key, placeholder, error));
 	},
 };
 

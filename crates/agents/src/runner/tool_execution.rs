@@ -544,7 +544,7 @@ impl ToolInvocationExecutor<'_> {
         let mut runner_event = RunnerToolLifecycleEvent::new(lifecycle);
         runner_event.raw_result = raw_result;
         runner_event.context_budget = Some(self.context_budget.clone());
-        deliver_tool_lifecycle(self.on_lifecycle, runner_event).await
+        deliver_tool_lifecycle(self.tools, self.on_lifecycle, runner_event).await
     }
 }
 

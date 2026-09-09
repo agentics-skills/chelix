@@ -8,8 +8,10 @@ mod prompt;
 mod prompt_queue;
 mod run_with_tools;
 mod service;
+mod stream_journal;
 mod streaming;
 mod types;
+mod ui_history_ingress;
 
 #[cfg(test)]
 pub(crate) static DATA_DIR_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

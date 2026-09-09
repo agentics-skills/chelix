@@ -18,8 +18,12 @@ crates/
 │   └── src/lib.rs                     # run_migrations()
 ├── sessions/
 │   ├── migrations/
-│   │   └── 20240205100001_init.sql   # sessions, channel_sessions, session_state
-│   └── src/lib.rs                     # run_migrations()
+│   │   ├── 20240205100001_init.sql   # sessions, channel_sessions, session_state
+│   │   └── ui-history/
+│   │       └── 20260909113752_init.sql # ui_history_sessions, ui_history_snapshots
+│   └── src/
+│       ├── lib.rs                    # run_migrations(), run_ui_history_migrations export
+│       └── ui_history_migrations.rs  # dedicated UI history migrator
 ├── cron/
 │   ├── migrations/
 │   │   └── 20240205100002_init.sql   # cron_jobs, cron_runs
@@ -53,6 +57,7 @@ Each crate is autonomous and owns its schema:
 | ----------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `chelix-projects` | `chelix.db` | `projects`                                                                                                                                                              | `20240205100000_init.sql`                           |
 | `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state`                                                                                                                         | `20240205100001_init.sql` + 9 migrations            |
+| `chelix-sessions` | `ui-history.sqlite` | `ui_history_sessions`, `ui_history_snapshots` | `ui-history/20260909113752_init.sql` |
 | `chelix-cron`     | `chelix.db` | `cron_jobs`, `cron_runs`                                                                                                                                                | `20240205100002_init.sql` + 1 migration             |
 | `chelix-gateway`  | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations           |
 | `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions`                                                                                                            | `20260407000000_initial.sql` + 1 migration          |
@@ -78,6 +83,24 @@ Sessions depends on projects due to a foreign key (`sessions.project_id`
 references `projects.id`), so projects must migrate first. Memory runs
 separately against its own `memory.db` pool.
 
+After creating `SessionStore`, `prepare_core.rs` initializes the separate semantic
+history database:
+
+```rust
+session_store.ui_history.initialize().await?;
+```
+
+`UiHistoryEngine::initialize()` enters the same `UiDatabase::pool()` initializer
+used by history operations. Its `OnceCell` opens the pool and calls
+`chelix_sessions::run_ui_history_migrations()`, which embeds
+`sqlx::migrate!("./migrations/ui-history")`. Initialization errors propagate from
+gateway startup. The sessions migrator for `chelix.db` reads the SQL files directly
+inside `migrations/`; the UI history migrator reads its `ui-history/` subdirectory
+against the dedicated pool.
+
+The UI history migration creates the semantic schema. Existing user JSONL and
+session histories are not converted, replayed or backfilled.
+
 ### Version Tracking
 
 sqlx tracks applied migrations in the `_sqlx_migrations` table:
@@ -95,6 +118,7 @@ which must be globally unique across all crates.
 | ----------- | --------------------- | -------------------------------------------------- |
 | `chelix.db` | `~/.chelix/chelix.db` | projects, sessions, cron, gateway, webhooks, vault |
 | `memory.db` | `~/.chelix/memory.db` | memory (separate, managed internally)              |
+| `ui-history.sqlite` | `<data_dir>/sessions/ui-history.sqlite` | sessions (separate semantic history pool) |
 
 ## Adding New Migrations
 
@@ -239,6 +263,11 @@ async fn test_session_operations() {
 
 The `init()` methods are retained (marked `#[doc(hidden)]`) specifically for
 tests. In production, migrations handle schema creation.
+
+UI history tests use the same `UiDatabase::pool()` migration initializer as gateway
+startup. `schema_migration_is_tracked_and_validated_on_reopen` checks the applied
+version and success in `_sqlx_migrations`, then opens a new engine against the same
+directory to validate the recorded migration on another pool.
 
 ## Troubleshooting
 

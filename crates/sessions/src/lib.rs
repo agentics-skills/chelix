@@ -10,12 +10,19 @@ pub mod key;
 pub mod message;
 pub mod metadata;
 pub mod prompt_queue;
+mod provider_redaction;
 pub mod session_events;
 pub mod state_store;
 pub mod store;
 mod tail_cursor;
 pub mod tool_results;
-pub mod ui_history;
+mod ui_history_database;
+pub mod ui_history_engine;
+mod ui_history_fork;
+mod ui_history_migrations;
+mod ui_history_projection;
+mod ui_history_serialization;
+pub mod ui_history_types;
 
 pub use {
     error::{Error, Result},
@@ -26,12 +33,10 @@ pub use {
         QueuedPromptDocument, QueuedPromptImageUrl, QueuedPromptMessageContent, QueuedPrompts,
         QueuedPromptsDrain, QueuedPromptsStatus,
     },
+    provider_redaction::redact_backend_only_provider_state,
     store::SearchResult,
     tool_results::{PersistedToolResult, ToolResultStore},
-    ui_history::{
-        count_rendered_bubbles, filter_ui_history, redact_backend_only_provider_state,
-        rendered_bubble_flags,
-    },
+    ui_history_migrations::run_migrations as run_ui_history_migrations,
 };
 
 /// Run database migrations for the sessions crate.

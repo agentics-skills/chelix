@@ -24,23 +24,31 @@ impl LiveSessionService {
             .await
             .map_err(ServiceError::message)?
             .ok_or_else(|| format!("session '{key}' not found"))?;
-        let history = self.store.read(key).await.map_err(ServiceError::message)?;
+        let history = self
+            .store
+            .ui_history
+            .page(
+                key,
+                chelix_sessions::ui_history_types::UiHistoryRange::Latest,
+                u32::MAX as usize,
+            )
+            .await
+            .map_err(ServiceError::message)?;
 
-        let snapshot = ShareSnapshot {
+        let mut snapshot = ShareSnapshot {
             session_key: key.to_string(),
             session_label: entry.label.clone(),
-            cutoff_message_count: history.len() as u32,
+            cutoff_message_count: 0,
             created_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as u64,
             messages: {
                 let mut shared_messages = Vec::new();
-                for (message_index, msg) in history.iter().enumerate() {
-                    if let Some(shared) =
-                        to_shared_message(msg, message_index, key, self.store.as_ref())
-                            .await
-                            .map_err(ServiceError::message)?
+                for msg in &history.history {
+                    if let Some(shared) = to_shared_message(msg, key, self.store.as_ref())
+                        .await
+                        .map_err(ServiceError::message)?
                     {
                         shared_messages.push(shared);
                     }
@@ -48,6 +56,8 @@ impl LiveSessionService {
                 shared_messages
             },
         };
+        snapshot.cutoff_message_count =
+            u32::try_from(snapshot.messages.len()).map_err(ServiceError::message)?;
         let snapshot_json = serde_json::to_string(&snapshot)?;
 
         let created = share_store

@@ -455,17 +455,40 @@ impl SessionService for LiveSessionService {
             let active_channel = is_current_channel_session(&self.metadata, &e).await?;
 
             // Backfill preview for sessions that have messages but no preview yet.
-            if e.preview.is_none()
-                && e.message_count > 0
-                && let Ok(history) = self.store.read(&e.key).await
-            {
-                let new_preview = extract_preview(&history);
-                if let Some(ref preview) = new_preview {
-                    self.metadata
-                        .set_preview(&e.key, Some(preview))
-                        .await
-                        .map_err(ServiceError::message)?;
-                    e.preview = new_preview;
+            if e.preview.is_none() && e.message_count > 0 {
+                match self
+                    .store
+                    .ui_history
+                    .page(
+                        &e.key,
+                        chelix_sessions::ui_history_types::UiHistoryRange::Window {
+                            start: 0,
+                            end: Some(i64::MAX as u64),
+                        },
+                        120,
+                    )
+                    .await
+                {
+                    Ok(page) => {
+                        let history = page
+                            .history
+                            .iter()
+                            .map(|snapshot| snapshot.public_value())
+                            .collect::<chelix_sessions::Result<Vec<_>>>()
+                            .map_err(ServiceError::message)?;
+                        let new_preview = extract_preview(&history);
+                        if let Some(ref preview) = new_preview {
+                            self.metadata
+                                .set_preview(&e.key, Some(preview))
+                                .await
+                                .map_err(ServiceError::message)?;
+                            e.preview = new_preview;
+                        }
+                    },
+                    Err(error @ chelix_sessions::Error::MissingUiSnapshots { .. }) => {
+                        warn!(session_key = %e.key, %error, "skipping preview for session without UI snapshots");
+                    },
+                    Err(error) => return Err(ServiceError::message(error)),
                 }
             }
 
@@ -517,13 +540,25 @@ impl SessionService for LiveSessionService {
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
         let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
-        let messages = self.store.read(key).await.map_err(ServiceError::message)?;
-        let mut messages = filter_ui_history(messages).map_err(ServiceError::message)?;
-        if messages.len() > limit {
-            let drop_count = messages.len() - limit;
-            messages.drain(0..drop_count);
-        }
-        Ok(serde_json::json!({ "messages": messages }))
+        let page = self
+            .store
+            .ui_history
+            .page(
+                key,
+                chelix_sessions::ui_history_types::UiHistoryRange::Latest,
+                limit.max(1),
+            )
+            .await
+            .map_err(ServiceError::message)?;
+        let messages = page
+            .history
+            .iter()
+            .map(|snapshot| snapshot.public_value())
+            .collect::<chelix_sessions::Result<Vec<_>>>()
+            .map_err(ServiceError::message)?;
+        Ok(
+            serde_json::json!({ "messages": messages, "generation": page.generation, "revision": page.revision }),
+        )
     }
 
     async fn resolve(&self, params: Value) -> ServiceResult {
@@ -540,7 +575,12 @@ impl SessionService for LiveSessionService {
             .and_then(|v| v.as_str())
             .filter(|value| !value.trim().is_empty());
 
-        let entry = self.ensure_session_entry(key, inherit_from_key).await?;
+        let mut entry = self.ensure_session_entry(key, inherit_from_key).await?;
+        entry.message_count = self
+            .store
+            .ui_message_count(key)
+            .await
+            .map_err(ServiceError::message)?;
         if !include_history {
             if entry.message_count == 0
                 && let Some(ref hooks) = self.hook_registry
@@ -584,13 +624,27 @@ impl SessionService for LiveSessionService {
                     "externalSessionId": external_session_id,
                     "version": entry.version,
                 },
-                "history": [],
-                "historyTruncated": false,
-                "historyDroppedCount": 0,
+                "snapshot": null,
             }));
         }
 
-        let raw_history = self.store.read(key).await.map_err(ServiceError::message)?;
+        let page = self
+            .store
+            .ui_history
+            .page(
+                key,
+                chelix_sessions::ui_history_types::UiHistoryRange::Latest,
+                120,
+            )
+            .await
+            .map_err(ServiceError::message)?;
+        let raw_history = page
+            .history
+            .iter()
+            .map(|snapshot| snapshot.public_value())
+            .collect::<chelix_sessions::Result<Vec<_>>>()
+            .map_err(ServiceError::message)?;
+        entry.message_count = page.total_messages;
 
         // Recompute preview from combined messages every time resolve runs,
         // so sessions get the latest multi-message preview algorithm.
@@ -618,9 +672,6 @@ impl SessionService for LiveSessionService {
             }
         }
 
-        let history = filter_ui_history(raw_history).map_err(ServiceError::message)?;
-        let (history, dropped_count) = trim_ui_history(history);
-
         let model = entry.model().map(str::to_string);
         let reasoning_effort = entry
             .reasoning_effort()
@@ -645,9 +696,7 @@ impl SessionService for LiveSessionService {
                 "agentId": entry.agent_id,
                 "version": entry.version,
             },
-            "history": history,
-            "historyTruncated": dropped_count > 0,
-            "historyDroppedCount": dropped_count,
+            "snapshot": page.public_value().map_err(ServiceError::message)?,
         }))
     }
 

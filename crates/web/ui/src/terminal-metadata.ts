@@ -10,7 +10,7 @@ export interface TerminalMetadataData {
 	durationMs?: number;
 	replyMedium?: string;
 	timestamp?: number;
-	historyIndex?: number;
+	messageId?: string;
 	runId?: string;
 }
 
@@ -22,7 +22,7 @@ export interface TerminalMetadataSource extends TerminalMetadataData {
 export interface TerminalMetadataOverrides {
 	replyMedium?: string;
 	timestamp?: number;
-	historyIndex?: number;
+	messageId?: string;
 	runId?: string;
 }
 
@@ -40,15 +40,13 @@ export function terminalMetadataData(
 		durationMs: source.durationMs,
 		replyMedium: overrides.replyMedium ?? source.replyMedium,
 		timestamp: overrides.timestamp ?? source.created_at ?? source.timestamp,
-		historyIndex: overrides.historyIndex ?? source.historyIndex,
+		messageId: overrides.messageId ?? source.messageId,
 		runId: overrides.runId ?? source.run_id ?? source.runId,
 	};
 }
 
 function metadataRowMatches(row: HTMLElement, data: TerminalMetadataData): boolean {
-	const matchesHistory = Number.isInteger(data.historyIndex) && row.dataset.historyIndex === String(data.historyIndex);
-	const matchesRun = Boolean(data.runId && row.dataset.runId === data.runId);
-	return matchesHistory || matchesRun;
+	return Boolean(data.messageId && row.dataset.assistantId === data.messageId);
 }
 
 function removeExistingMetadata(container: HTMLElement, data: TerminalMetadataData): void {
@@ -108,7 +106,7 @@ function appendTimestamp(metadata: HTMLElement, timestamp: number | undefined): 
 function buildMetadataRow(data: TerminalMetadataData): HTMLElement {
 	const row = document.createElement("div");
 	row.className = "terminal-metadata";
-	if (Number.isInteger(data.historyIndex)) row.dataset.historyIndex = String(data.historyIndex);
+	if (data.messageId) row.dataset.assistantId = data.messageId;
 	if (data.runId) row.dataset.runId = data.runId;
 
 	const metadata = document.createElement("div");

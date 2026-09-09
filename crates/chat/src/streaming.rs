@@ -37,6 +37,7 @@ use crate::{
     service::{
         ActiveAssistantDraft, persist_active_assistant_draft, persist_final_assistant_segment,
     },
+    stream_journal::StreamJournal,
     types::*,
 };
 
@@ -180,49 +181,42 @@ fn failed_stream_attempt_message(
 
 #[allow(clippy::too_many_arguments)]
 async fn close_stream_segment(
-    state: &Arc<dyn ChatRuntime>,
-    session_store: Option<&Arc<SessionStore>>,
+    journal: Option<&StreamJournal>,
+    ui_run: Option<&chelix_sessions::ui_history_engine::UiHistoryRun>,
     materializer: &mut ProviderSegmentMaterializer,
     segment_id: ProviderSegmentId,
     outcome: ProviderSegmentOutcome,
     usage: Option<Usage>,
     run_id: &str,
-    session_key: &str,
     client_seq: Option<u64>,
 ) -> Result<(), String> {
     materializer
         .close(outcome)
         .map_err(|error| format!("provider segment close rejected: {error}"))?;
-
-    let mut history_index = None;
-    if let Some(store) = session_store {
-        let persisted = PersistedMessage::ProviderSegmentClose {
-            segment_id: segment_id.clone(),
-            outcome,
-            created_at: Some(now_ms()),
-            seq: client_seq,
-            run_id: Some(run_id.to_string()),
-        };
-        history_index = Some(
-            store
-                .append_with_index(session_key, &persisted.to_value())
-                .await
-                .map_err(|error| format!("failed to persist provider segment close: {error}"))?,
-        );
+    let persisted = PersistedMessage::ProviderSegmentClose {
+        segment_id,
+        outcome,
+        created_at: Some(now_ms()),
+        seq: client_seq,
+        run_id: Some(run_id.to_string()),
+    };
+    if let Some(run) = ui_run {
+        let id = run
+            .copy(persisted.clone())
+            .map_err(|error| error.to_string())?;
+        if let Some(usage) = usage {
+            let value = serde_json::to_value(usage).map_err(|error| error.to_string())?;
+            run.merge_metadata(
+                &id,
+                std::collections::BTreeMap::from([("segmentUsage".to_string(), value)]),
+            )
+            .map_err(|error| error.to_string())?;
+        }
     }
-
-    let mut payload = serde_json::json!({
-        "runId": run_id,
-        "sessionKey": session_key,
-        "state": "provider_segment_close",
-        "segmentId": segment_id.0,
-        "outcome": outcome,
-        "usage": usage,
-    });
-    if let Some(idx) = history_index {
-        payload["historyIndex"] = serde_json::json!(idx);
+    if let Some(journal) = journal {
+        journal.append(persisted)?;
+        journal.flush().await?;
     }
-    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
     Ok(())
 }
 
@@ -242,19 +236,13 @@ async fn persist_streaming_partial(
     }
 }
 
-fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, usize)>) {
-    if let Some((partial_message, message_index)) = partial {
-        payload["partialMessage"] = partial_message;
-        payload["messageIndex"] = serde_json::json!(message_index);
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn finish_streaming_cancellation(
+    journal: Option<&StreamJournal>,
+    ui_run: Option<&chelix_sessions::ui_history_engine::UiHistoryRun>,
     state: &Arc<dyn ChatRuntime>,
     session_store: Option<&Arc<SessionStore>>,
     active_partial_assistant: Option<&Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
-    terminal_runs: &Arc<RwLock<HashSet<String>>>,
     materializer: &mut ProviderSegmentMaterializer,
     channel_stream_dispatcher: Option<&mut ChannelStreamDispatcher>,
     run_id: &str,
@@ -264,96 +252,42 @@ async fn finish_streaming_cancellation(
     let mut terminal_errors = Vec::new();
     if materializer.segment.outcome == ProviderSegmentOutcome::Active
         && let Some(segment_id) = materializer.segment.segment_id.clone()
+        && let Err(error) = close_stream_segment(
+            journal,
+            ui_run,
+            materializer,
+            segment_id,
+            ProviderSegmentOutcome::Cancelled,
+            None,
+            run_id,
+            client_seq,
+        )
+        .await
     {
-        match materializer.close(ProviderSegmentOutcome::Cancelled) {
-            Ok(()) => {
-                let mut segment_persisted = true;
-                if let Some(store) = session_store {
-                    let persisted = PersistedMessage::ProviderSegmentClose {
-                        segment_id: segment_id.clone(),
-                        outcome: ProviderSegmentOutcome::Cancelled,
-                        created_at: Some(now_ms()),
-                        seq: client_seq,
-                        run_id: Some(run_id.to_owned()),
-                    };
-                    if let Err(error) = store.append(session_key, &persisted.to_value()).await {
-                        terminal_errors.push(format!(
-                            "failed to persist cancelled provider segment for session '{session_key}': {error}"
-                        ));
-                        segment_persisted = false;
-                    }
-                }
-                if segment_persisted {
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "state": "provider_segment_close",
-                            "segmentId": segment_id.0,
-                            "outcome": ProviderSegmentOutcome::Cancelled,
-                            "usage": null,
-                            "seq": client_seq,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
-                }
-            },
-            Err(error) => terminal_errors.push(format!(
-                "failed to close cancelled provider segment for session '{session_key}': {error}"
-            )),
-        }
+        terminal_errors.push(error);
     }
 
     if let Some(dispatcher) = channel_stream_dispatcher {
         dispatcher.finish().await;
     }
-    let partial =
-        match persist_streaming_partial(session_store, active_partial_assistant, session_key).await
-        {
-            Ok(partial) => partial,
-            Err(error) => {
-                terminal_errors.push(error.to_string());
-                None
-            },
-        };
-
-    terminal_runs.write().await.insert(run_id.to_owned());
+    if let Err(error) =
+        persist_streaming_partial(session_store, active_partial_assistant, session_key).await
+    {
+        terminal_errors.push(error.to_string());
+    }
     if terminal_errors.is_empty() {
-        let mut payload = serde_json::json!({
-            "state": "aborted",
-            "runId": run_id,
-            "sessionKey": session_key,
-        });
-        if let Some((partial_message, message_index)) = partial {
-            payload["partialMessage"] = partial_message;
-            payload["messageIndex"] = serde_json::json!(message_index);
-        }
-        broadcast(state, "chat", payload, BroadcastOpts::default()).await;
         return ChatRunOutcome::Cancelled;
     }
 
     let error = terminal_errors.join("; ");
     warn!(run_id, %error, "failed to finalize cancelled streaming run");
-    state.set_run_error(run_id, error.clone()).await;
     let error_obj = serde_json::json!({
         "title": "Failed to stop assistant cleanly",
         "detail": error,
     });
+    crate::ui_history_ingress::fail_run(ui_run, state, run_id, error, "", Some(error_obj.clone()))
+        .await;
     deliver_channel_error(state, session_key, &error_obj).await;
-    let mut payload = serde_json::json!({
-        "state": "error",
-        "runId": run_id,
-        "sessionKey": session_key,
-        "error": error_obj,
-    });
-    if let Some((partial_message, message_index)) = partial {
-        payload["partialMessage"] = partial_message;
-        payload["messageIndex"] = serde_json::json!(message_index);
-    }
-    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
     ChatRunOutcome::Failed
 }
 
@@ -380,6 +314,33 @@ pub(crate) async fn run_streaming(
     active_partial_assistant: Option<Arc<RwLock<HashMap<String, ActiveAssistantDraft>>>>,
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
 ) -> ChatRunOutcome {
+    let ui_run = match crate::ui_history_ingress::begin(
+        session_store,
+        session_key,
+        run_id,
+        provider.id(),
+        provider_name,
+        session_reasoning_effort.clone(),
+    )
+    .await
+    {
+        Ok(run) => run,
+        Err(error) => {
+            tracing::error!(%error, run_id, "UI history refused streaming");
+            state.set_run_error(run_id, error.to_string()).await;
+            return ChatRunOutcome::Failed;
+        },
+    };
+    let journal = session_store.map(|store| {
+        StreamJournal::new(
+            Arc::clone(store),
+            session_key.to_string(),
+            cancellation_token.clone(),
+        )
+    });
+    let health_monitor =
+        crate::ui_history_ingress::monitor(ui_run.as_ref(), cancellation_token.clone());
+    let outcome = async {
     #[cfg(not(feature = "metrics"))]
     let _ = model_id;
     let run_started = Instant::now();
@@ -475,6 +436,15 @@ pub(crate) async fn run_streaming(
         #[cfg(feature = "metrics")]
         let stream_start = Instant::now();
 
+        if let Some(run) = &ui_run && let Err(error) = run.start_attempt(None) {
+            crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error.to_string(), provider_name, None).await;
+            return ChatRunOutcome::Failed;
+        }
+        if let Some(map) = &active_partial_assistant
+            && let Some(draft) = map.write().await.get_mut(session_key)
+        {
+            *draft = draft.next_segment();
+        }
         let mut stream = provider.stream(messages.clone());
         let mut accumulated = String::new();
         // Segment identity is owned by the provider and adopted on ingress.
@@ -488,10 +458,10 @@ pub(crate) async fn run_streaming(
                 biased;
                 () = cancellation_token.cancelled() => {
                     return finish_streaming_cancellation(
+                        journal.as_ref(), ui_run.as_ref(),
                         state,
                         session_store,
                         active_partial_assistant.as_ref(),
-                        terminal_runs,
                         &mut materializer,
                         channel_stream_dispatcher.as_mut(),
                         run_id,
@@ -505,8 +475,22 @@ pub(crate) async fn run_streaming(
             let Some(event) = event else {
                 break;
             };
+            let event = match event {
+                StreamEvent::Done(usage)
+                    if accumulated.trim().is_empty()
+                        && materializer.segment.items.is_empty()
+                        && usage.output_tokens == 0 =>
+                {
+                    StreamEvent::Error("The provider returned an empty response (possible network error). Please try again.".to_string())
+                },
+                event => event,
+            };
             match event {
                 StreamEvent::SegmentStart { segment_id } => {
+                    if let Some(run) = &ui_run && let Err(error) = run.start_attempt(Some(segment_id.clone())) {
+                        stream_failure = Some(error.to_string());
+                        break;
+                    }
                     materializer = ProviderSegmentMaterializer::new(segment_id.clone());
                     if let Some(ref map) = active_partial_assistant
                         && let Some(draft) = map.write().await.get_mut(session_key)
@@ -527,6 +511,14 @@ pub(crate) async fn run_streaming(
                     .await;
                 },
                 StreamEvent::ProviderItemUpdate(update) => {
+                    if let Some(run) = &ui_run
+                        && let Err(error) = run.copy(PersistedMessage::ProviderUpdate {
+                            update: update.clone(), created_at: Some(now_ms()), seq: client_seq, run_id: Some(run_id.to_string()),
+                        })
+                    {
+                        stream_failure = Some(error.to_string());
+                        break;
+                    }
                     if let Err(error) = materializer.apply_update(&update) {
                         stream_failure = Some(format!("provider item update rejected: {error}"));
                         break;
@@ -539,36 +531,15 @@ pub(crate) async fn run_streaming(
                             Some(format!("active assistant draft rejected update: {error}"));
                         break;
                     }
-                    let mut history_index = None;
-                    if let Some(store) = session_store {
+                    if let Some(journal) = &journal {
                         let persisted = PersistedMessage::ProviderUpdate {
-                            update: update.clone(),
-                            created_at: Some(now_ms()),
-                            seq: client_seq,
-                            run_id: Some(run_id.to_string()),
+                            update, created_at: Some(now_ms()), seq: client_seq, run_id: Some(run_id.to_string()),
                         };
-                        match store
-                            .append_with_index(session_key, &persisted.to_value())
-                            .await
-                        {
-                            Ok(idx) => history_index = Some(idx),
-                            Err(error) => {
-                                stream_failure =
-                                    Some(format!("failed to persist provider update: {error}"));
-                                break;
-                            },
+                        if let Err(error) = journal.append(persisted) {
+                            stream_failure = Some(error);
+                            break;
                         }
                     }
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": session_key,
-                        "state": "provider_update",
-                        "update": update.redacted(),
-                    });
-                    if let Some(idx) = history_index {
-                        payload["historyIndex"] = serde_json::json!(idx);
-                    }
-                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
                 },
                 StreamEvent::SegmentClose {
                     segment_id,
@@ -576,14 +547,13 @@ pub(crate) async fn run_streaming(
                     usage,
                 } => {
                     if let Err(error) = close_stream_segment(
-                        state,
-                        session_store,
+                        journal.as_ref(),
+                        ui_run.as_ref(),
                         &mut materializer,
                         segment_id,
                         outcome,
                         usage,
                         run_id,
-                        session_key,
                         client_seq,
                     )
                     .await
@@ -597,18 +567,26 @@ pub(crate) async fn run_streaming(
                     if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
                         dispatcher.send_delta(&delta).await;
                     }
-                    let payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": session_key,
-                        "state": "delta",
-                        "text": delta,
-                    });
-                    broadcast(state, "chat", payload, BroadcastOpts::default()).await;
+
                 },
                 StreamEvent::ProviderRaw(raw) => {
                     push_capped_provider_raw_event(&mut raw_llm_responses, raw);
                 },
                 StreamEvent::Done(usage) => {
+                    if materializer.segment.outcome == ProviderSegmentOutcome::Active
+                        && let Some(segment_id) = materializer.segment.segment_id.clone()
+                        && let Err(error) = close_stream_segment(
+                            journal.as_ref(), ui_run.as_ref(), &mut materializer, segment_id,
+                            ProviderSegmentOutcome::Completed, Some(usage.clone()), run_id, client_seq,
+                        ).await
+                    {
+                        stream_failure = Some(error);
+                        break;
+                    }
+                    if let Some(journal) = &journal && let Err(error) = journal.flush().await {
+                        stream_failure = Some(error);
+                        break;
+                    }
                     // Record streaming completion metrics.
                     #[cfg(feature = "metrics")]
                     {
@@ -656,8 +634,6 @@ pub(crate) async fn run_streaming(
                         .segment
                         .reasoning_content()
                         .filter(|reasoning| !reasoning.is_blank());
-                    let has_provider_output =
-                        !is_silent || reasoning.is_some() || !materializer.segment.items.is_empty();
 
                     info!(
                         run_id,
@@ -667,102 +643,6 @@ pub(crate) async fn run_streaming(
                         silent = is_silent,
                         "chat stream done"
                     );
-
-                    // Detect provider failures: silent stream with zero tokens
-                    // means the LLM never produced output (e.g. network_error).
-                    if !has_provider_output && usage.output_tokens == 0 {
-                        warn!(
-                            run_id,
-                            "empty stream with zero tokens — treating as provider error"
-                        );
-                        let provider_error = "The provider returned an empty response (possible network error). Please try again.";
-                        let provider_error_obj =
-                            parse_chat_error(provider_error, Some(provider_name));
-                        if let Some(delay_ms) = next_stream_retry_delay_ms(
-                            provider_error,
-                            &provider_error_obj,
-                            &mut server_retries_remaining,
-                            &mut rate_limit_retries_remaining,
-                            &mut rate_limit_backoff_ms,
-                            &mut unknown_retries_remaining,
-                        ) {
-                            warn!(
-                                run_id,
-                                delay_ms,
-                                unknown_retries_remaining,
-                                "empty chat stream, retrying after delay"
-                            );
-                            broadcast(
-                                state,
-                                "chat",
-                                serde_json::json!({
-                                    "runId": run_id,
-                                    "sessionKey": session_key,
-                                    "state": "retrying",
-                                    "error": provider_error_obj,
-                                    "retryAfterMs": delay_ms,
-                                    "seq": client_seq,
-                                }),
-                                BroadcastOpts::default(),
-                            )
-                            .await;
-                            if cancellation_token
-                                .run_until_cancelled(tokio::time::sleep(Duration::from_millis(
-                                    delay_ms,
-                                )))
-                                .await
-                                .is_none()
-                            {
-                                return finish_streaming_cancellation(
-                                    state,
-                                    session_store,
-                                    active_partial_assistant.as_ref(),
-                                    terminal_runs,
-                                    &mut materializer,
-                                    channel_stream_dispatcher.as_mut(),
-                                    run_id,
-                                    session_key,
-                                    client_seq,
-                                )
-                                .await;
-                            }
-                            continue 'attempts;
-                        }
-                        let (terminal_error, partial) = match persist_streaming_partial(
-                            session_store,
-                            active_partial_assistant.as_ref(),
-                            session_key,
-                        )
-                        .await
-                        {
-                            Ok(partial) => (provider_error.to_string(), partial),
-                            Err(error) => (
-                                format!(
-                                    "{provider_error} Partial assistant persistence failed: {error}"
-                                ),
-                                None,
-                            ),
-                        };
-                        if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
-                            dispatcher.finish().await;
-                        }
-                        state.set_run_error(run_id, terminal_error.clone()).await;
-                        let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
-                        deliver_channel_error(state, session_key, &error_obj).await;
-                        let error_payload = ChatErrorBroadcast {
-                            run_id: run_id.to_string(),
-                            session_key: session_key.to_string(),
-                            state: "error",
-                            error: error_obj,
-                            seq: client_seq,
-                        };
-                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                        let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-                        attach_partial_to_error_payload(&mut payload_val, partial);
-                        terminal_runs.write().await.insert(run_id.to_string());
-                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-                        return ChatRunOutcome::Failed;
-                    }
 
                     let streamed_target_keys =
                         if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
@@ -842,68 +722,19 @@ pub(crate) async fn run_streaming(
                                 assistant_output.persisted_message_index = Some(message_index);
                             },
                             Err(error) => {
-                                let persistence_error = error.to_string();
-                                let (terminal_error, partial) = match persist_streaming_partial(
-                                    session_store,
-                                    active_partial_assistant.as_ref(),
-                                    session_key,
-                                )
-                                .await
-                                {
-                                    Ok(partial) => (persistence_error, partial),
-                                    Err(error) => (
-                                        format!(
-                                            "{persistence_error}; partial assistant persistence failed: {error}"
-                                        ),
-                                        None,
-                                    ),
-                                };
-                                warn!(run_id, error = %terminal_error, "failed to finalize streaming assistant segment");
-                                state.set_run_error(run_id, terminal_error.clone()).await;
-                                let error_obj =
-                                    parse_chat_error(&terminal_error, Some(provider_name));
-                                deliver_channel_error(state, session_key, &error_obj).await;
-                                let error_payload = ChatErrorBroadcast {
-                                    run_id: run_id.to_string(),
-                                    session_key: session_key.to_string(),
-                                    state: "error",
-                                    error: error_obj,
-                                    seq: client_seq,
-                                };
-                                #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                                let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-                                attach_partial_to_error_payload(&mut payload_val, partial);
-                                terminal_runs.write().await.insert(run_id.to_string());
-                                broadcast(state, "chat", payload_val, BroadcastOpts::default())
-                                    .await;
-                                return ChatRunOutcome::Failed;
+                                stream_failure = Some(error.to_string());
+                                break;
                             },
                         }
                     }
 
-                    let final_payload = build_chat_final_broadcast(
-                        run_id,
-                        session_key,
-                        accumulated.clone(),
-                        provider.id().to_string(),
-                        provider_name.to_string(),
-                        session_reasoning_effort.clone(),
-                        UsageSnapshot::new(usage.clone(), Some(usage.clone())),
-                        duration_ms,
-                        assistant_output.persisted_message_index,
-                        desired_reply_medium,
-                        None,
-                        None,
-                        audio_path.clone(),
-                        audio_warning,
-                        reasoning.clone(),
-                        client_seq,
-                        (&assistant_output).into(),
-                    );
-                    #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                    let payload_val = serde_json::to_value(&final_payload).unwrap();
-                    terminal_runs.write().await.insert(run_id.to_string());
-                    broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
+                    if let Some(drafts) = &active_partial_assistant {
+                        drafts.write().await.remove(session_key);
+                    }
+                    if let Err(error) = crate::ui_history_ingress::finish_output(ui_run.as_ref(), &assistant_output, desired_reply_medium, audio_warning, None).await {
+                        stream_failure = Some(error.to_string());
+                        break;
+                    }
 
                     if !is_silent {
                         // Send push notification when chat response completes
@@ -925,32 +756,31 @@ pub(crate) async fn run_streaming(
                 },
                 StreamEvent::Error(msg) => {
                     let provider_error_obj = parse_chat_error(&msg, Some(provider_name));
-                    if let Some(delay_ms) = next_stream_retry_delay_ms(
+                    let retry_after_ms = next_stream_retry_delay_ms(
                         &msg,
                         &provider_error_obj,
                         &mut server_retries_remaining,
                         &mut rate_limit_retries_remaining,
                         &mut rate_limit_backoff_ms,
                         &mut unknown_retries_remaining,
-                    ) {
-                        if materializer.segment.outcome == ProviderSegmentOutcome::Active
-                            && let Some(segment_id) = materializer.segment.segment_id.clone()
-                            && let Err(error) = close_stream_segment(
-                                state,
-                                session_store,
-                                &mut materializer,
-                                segment_id,
-                                ProviderSegmentOutcome::TransportError,
-                                None,
-                                run_id,
-                                session_key,
-                                client_seq,
-                            )
-                            .await
-                        {
-                            stream_failure = Some(error);
-                            break;
-                        }
+                    );
+                    if let Some(run) = &ui_run
+                        && let Err(error) = crate::ui_history_ingress::record_error(run, run_id, &msg, provider_name, retry_after_ms)
+                    {
+                        stream_failure = Some(format!("{msg}; UI error retention failed: {error}"));
+                        break;
+                    }
+                    if materializer.segment.outcome == ProviderSegmentOutcome::Active
+                        && let Some(segment_id) = materializer.segment.segment_id.clone()
+                        && let Err(error) = close_stream_segment(
+                            journal.as_ref(), ui_run.as_ref(), &mut materializer, segment_id,
+                            ProviderSegmentOutcome::TransportError, None, run_id, client_seq,
+                        ).await
+                    {
+                        stream_failure = Some(format!("{msg}; {error}"));
+                        break;
+                    }
+                    if let Some(delay_ms) = retry_after_ms {
                         if let Some(message) = failed_stream_attempt_message(&materializer) {
                             messages.push(message);
                         }
@@ -981,9 +811,7 @@ pub(crate) async fn run_streaming(
                                 "runId": run_id,
                                 "sessionKey": session_key,
                                 "state": "retrying",
-                                "error": provider_error_obj,
                                 "retryAfterMs": delay_ms,
-                                "seq": client_seq,
                             }),
                             BroadcastOpts::default(),
                         )
@@ -999,10 +827,10 @@ pub(crate) async fn run_streaming(
                             .is_none()
                         {
                             return finish_streaming_cancellation(
+                                journal.as_ref(), ui_run.as_ref(),
                                 state,
                                 session_store,
                                 active_partial_assistant.as_ref(),
-                                terminal_runs,
                                 &mut materializer,
                                 channel_stream_dispatcher.as_mut(),
                                 run_id,
@@ -1016,39 +844,8 @@ pub(crate) async fn run_streaming(
                         continue 'attempts;
                     }
 
-                    let (terminal_error, partial) = match persist_streaming_partial(
-                        session_store,
-                        active_partial_assistant.as_ref(),
-                        session_key,
-                    )
-                    .await
-                    {
-                        Ok(partial) => (msg, partial),
-                        Err(error) => (
-                            format!("{msg}; partial assistant persistence failed: {error}"),
-                            None,
-                        ),
-                    };
-                    warn!(run_id, error = %terminal_error, "chat stream error");
-                    if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
-                        dispatcher.finish().await;
-                    }
-                    state.set_run_error(run_id, terminal_error.clone()).await;
-                    let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
-                    deliver_channel_error(state, session_key, &error_obj).await;
-                    let error_payload = ChatErrorBroadcast {
-                        run_id: run_id.to_string(),
-                        session_key: session_key.to_string(),
-                        state: "error",
-                        error: error_obj,
-                        seq: client_seq,
-                    };
-                    #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                    let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-                    attach_partial_to_error_payload(&mut payload_val, partial);
-                    terminal_runs.write().await.insert(run_id.to_string());
-                    broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
-                    return ChatRunOutcome::Failed;
+                    stream_failure = Some(msg);
+                    break;
                 },
                 // Tool events not expected in stream-only mode.
                 StreamEvent::ToolCallStart { .. }
@@ -1057,44 +854,83 @@ pub(crate) async fn run_streaming(
             }
         }
 
-        // The stream either broke the canonical provider contract or ended
-        // without a terminal event. Both are hard failures.
         let stream_error = stream_failure
             .unwrap_or_else(|| "The provider stream ended without a terminal event.".to_string());
-        let (terminal_error, partial) = match persist_streaming_partial(
-            session_store,
-            active_partial_assistant.as_ref(),
-            session_key,
-        )
-        .await
+        if let Some(run) = &ui_run {
+            let retained = run.recorded_error(&stream_error).and_then(|existing| {
+                if existing.is_none() {
+                    crate::ui_history_ingress::record_error(run, run_id, &stream_error, provider_name, None)?;
+                }
+                Ok(())
+            });
+            if let Err(error) = retained {
+                tracing::error!(run_id, %error, "failed to retain streaming error");
+            }
+        }
+        let mut errors = vec![stream_error];
+        if materializer.segment.outcome == ProviderSegmentOutcome::Active
+            && let Some(segment_id) = materializer.segment.segment_id.clone()
+            && let Err(error) = close_stream_segment(
+                journal.as_ref(), ui_run.as_ref(), &mut materializer, segment_id,
+                ProviderSegmentOutcome::TransportError, None, run_id, client_seq,
+            ).await
         {
-            Ok(partial) => (stream_error.clone(), partial),
-            Err(error) => (
-                format!("{stream_error} Partial assistant persistence failed: {error}"),
-                None,
-            ),
-        };
+            errors.push(error);
+        }
+        if let Some(journal) = &journal && let Err(error) = journal.flush().await {
+            errors.push(error);
+        }
+        if let Err(error) = persist_streaming_partial(
+            session_store, active_partial_assistant.as_ref(), session_key,
+        ).await {
+            errors.push(format!("partial assistant persistence failed: {error}"));
+        }
+        let terminal_error = errors.join("; ");
         warn!(run_id, error = %terminal_error, "chat stream terminated without a successful outcome");
         if let Some(dispatcher) = channel_stream_dispatcher.as_mut() {
             dispatcher.finish().await;
         }
-        state.set_run_error(run_id, terminal_error.clone()).await;
         let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
+        crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, terminal_error, provider_name, Some(error_obj.clone())).await;
         deliver_channel_error(state, session_key, &error_obj).await;
-        let error_payload = ChatErrorBroadcast {
-            run_id: run_id.to_string(),
-            session_key: session_key.to_string(),
-            state: "error",
-            error: error_obj,
-            seq: client_seq,
-        };
-        #[allow(clippy::unwrap_used)] // serializing known-valid struct
-        let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-        attach_partial_to_error_payload(&mut payload_val, partial);
-        terminal_runs.write().await.insert(run_id.to_string());
-        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
         return ChatRunOutcome::Failed;
     }
+    }.await;
+    if let Some(monitor) = health_monitor {
+        monitor.abort();
+    }
+    let outcome = if let Some(journal) = &journal
+        && let Err(error) = journal.flush().await
+    {
+        tracing::error!(run_id, %error, "stream journal terminal flush failed");
+        crate::ui_history_ingress::fail_run(
+            ui_run.as_ref(),
+            state,
+            run_id,
+            error,
+            provider_name,
+            None,
+        )
+        .await;
+        ChatRunOutcome::Failed
+    } else {
+        outcome
+    };
+    let outcome = crate::ui_history_ingress::finish(ui_run.as_ref(), outcome, state, run_id).await;
+    let status = match &outcome {
+        ChatRunOutcome::Completed(_) => "final",
+        ChatRunOutcome::Cancelled => "aborted",
+        ChatRunOutcome::Failed => "error",
+    };
+    terminal_runs.write().await.insert(run_id.to_string());
+    broadcast(
+        state,
+        "chat",
+        serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": status}),
+        BroadcastOpts::default(),
+    )
+    .await;
+    outcome
 }
 
 #[cfg(test)]
@@ -1232,14 +1068,14 @@ mod tests {
         let store = Arc::new(SessionStore::new(directory.path().to_path_buf()));
         let runtime = Arc::new(TestChatRuntime::default());
         let state: Arc<dyn ChatRuntime> = runtime.clone();
-        let terminal_runs = Arc::new(RwLock::new(HashSet::new()));
         let mut materializer = ProviderSegmentMaterializer::pending();
 
         let outcome = finish_streaming_cancellation(
+            None,
+            None,
             &state,
             Some(&store),
             None,
-            &terminal_runs,
             &mut materializer,
             None,
             "run-1",
@@ -1249,7 +1085,6 @@ mod tests {
         .await;
 
         assert!(matches!(outcome, ChatRunOutcome::Failed));
-        assert!(terminal_runs.read().await.contains("run-1"));
         let run_error = runtime
             .run_errors
             .lock()
@@ -1262,12 +1097,6 @@ mod tests {
             "assistant persistence dependencies are inconsistent"
         );
         let broadcasts = runtime.broadcasts.lock().await;
-        assert_eq!(broadcasts.len(), 1);
-        assert_eq!(broadcasts[0]["state"], "error");
-        assert!(
-            broadcasts
-                .iter()
-                .all(|payload| payload["state"] != "aborted")
-        );
+        assert!(broadcasts.is_empty());
     }
 }

@@ -64,15 +64,7 @@ use crate::{
 #[cfg(feature = "push-notifications")]
 use crate::channels::send_chat_push_notification;
 
-fn tool_execution_mode(tool_name: &str, sandbox_enabled: bool) -> Option<String> {
-    (tool_name == "browser").then(|| {
-        if sandbox_enabled {
-            "sandbox".to_string()
-        } else {
-            "host".to_string()
-        }
-    })
-}
+use crate::ui_history_ingress::tool_execution_mode;
 
 async fn persist_tool_segment(
     session_store: Option<&Arc<SessionStore>>,
@@ -196,13 +188,6 @@ async fn persist_aborted_tool_loop(
     Ok(Some((finalized.to_value(), message_index)))
 }
 
-fn attach_partial_to_error_payload(payload: &mut Value, partial: Option<(Value, usize)>) {
-    if let Some((partial_message, message_index)) = partial {
-        payload["partialMessage"] = partial_message;
-        payload["messageIndex"] = serde_json::json!(message_index);
-    }
-}
-
 fn accumulate_persisted_tool_input(
     pending_inputs: &mut HashMap<String, ToolLifecycleEvent>,
     lifecycle: &ToolLifecycleEvent,
@@ -262,14 +247,13 @@ async fn process_tool_lifecycle_event(
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
     session_key: &str,
     run_id: &str,
-    client_seq: Option<u64>,
     sandbox_enabled: bool,
     event: chelix_agents::runner::RunnerToolLifecycleEvent,
     persisted_tool_batches: &mut HashMap<String, (usize, Value)>,
     pending_inputs: &mut HashMap<String, ToolLifecycleEvent>,
-) -> Result<Option<Value>, String> {
+) -> Result<(), String> {
     if terminal_runs.read().await.contains(run_id) {
-        return Ok(None);
+        return Ok(());
     }
 
     let mut lifecycle = event.lifecycle;
@@ -287,7 +271,6 @@ async fn process_tool_lifecycle_event(
         .await?;
     }
 
-    let mut persisted_segment = None;
     if stage == ToolLifecycleStage::InputReady {
         let iteration_tool_calls = event.iteration_tool_calls.as_deref().ok_or_else(|| {
             format!(
@@ -305,7 +288,7 @@ async fn process_tool_lifecycle_event(
             .first()
             .map(|tool_call| tool_call.id.as_str())
             .ok_or_else(|| "input-ready lifecycle batch is empty".to_owned())?;
-        persisted_segment = persist_tool_segment(
+        persist_tool_segment(
             session_store,
             active_partial_assistant,
             session_key,
@@ -403,25 +386,7 @@ async fn process_tool_lifecycle_event(
         .await;
     }
 
-    let (assistant_message_index, assistant_message) = persisted_segment
-        .map_or((None, None), |(index, message)| {
-            (Some(index), Some(message))
-        });
-    let execution_mode = tool_execution_mode(&lifecycle.tool_name, sandbox_enabled);
-    let payload = ChatToolLifecycleBroadcast {
-        state: "tool_lifecycle",
-        lifecycle,
-        session_key: session_key.to_owned(),
-        seq: client_seq,
-        execution_mode,
-        message_index: None,
-        assistant_message_index,
-        assistant_message,
-    };
-
-    serde_json::to_value(payload)
-        .map(Some)
-        .map_err(|error| format!("failed to serialize tool lifecycle event: {error}"))
+    Ok(())
 }
 
 async fn dispatch_completed_tool_side_effects(
@@ -611,23 +576,14 @@ fn auto_compaction_terminal_payload(
             "reason": "agent_loop_threshold",
             "contextBudget": context_budget,
         }),
-        AutoCompactionTerminal::Done(outcome) => {
-            let mut payload = serde_json::json!({
-                "runId": run_id,
-                "sessionKey": session_key,
-                "state": "auto_compact",
-                "phase": "done",
-                "reason": "agent_loop_threshold",
-                "contextBudget": context_budget,
-            });
-            if let (Some(obj), Some(meta)) = (
-                payload.as_object_mut(),
-                outcome.broadcast_metadata().as_object().cloned(),
-            ) {
-                obj.extend(meta);
-            }
-            payload
-        },
+        AutoCompactionTerminal::Done(_) => serde_json::json!({
+            "runId": run_id,
+            "sessionKey": session_key,
+            "state": "auto_compact",
+            "phase": "done",
+            "reason": "agent_loop_threshold",
+            "contextBudget": context_budget,
+        }),
         AutoCompactionTerminal::Error(error) => serde_json::json!({
             "runId": run_id,
             "sessionKey": session_key,
@@ -687,6 +643,26 @@ pub(crate) async fn run_with_tools(
     sender_name: Option<String>,
     tool_choice: Option<ToolChoice>,
 ) -> ChatRunOutcome {
+    let ui_run = match crate::ui_history_ingress::begin(
+        session_store,
+        session_key,
+        run_id,
+        provider.id(),
+        provider_name,
+        session_reasoning_effort.clone(),
+    )
+    .await
+    {
+        Ok(run) => run,
+        Err(error) => {
+            tracing::error!(%error, run_id, "UI history refused the run");
+            state.set_run_error(run_id, error.to_string()).await;
+            return ChatRunOutcome::Failed;
+        },
+    };
+    let health_monitor =
+        crate::ui_history_ingress::monitor(ui_run.as_ref(), cancellation_token.clone());
+    let outcome = async {
     let run_started = Instant::now();
     info!(
         agent_id,
@@ -724,19 +700,9 @@ pub(crate) async fn run_with_tools(
         Ok(registry) => registry,
         Err(error) => {
             warn!(run_id, error = %error, "failed to prepare tool registry for run");
+            crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error.to_string(), provider_name, None).await;
             let error_obj = parse_chat_error(&error.to_string(), Some(provider_name));
             deliver_channel_error(state, session_key, &error_obj).await;
-            let error_payload = ChatErrorBroadcast {
-                run_id: run_id.to_string(),
-                session_key: session_key.to_string(),
-                state: "error",
-                error: error_obj,
-                seq: client_seq,
-            };
-            #[allow(clippy::unwrap_used)] // serializing known-valid struct
-            let payload_val = serde_json::to_value(&error_payload).unwrap();
-            terminal_runs.write().await.insert(run_id.to_string());
-            broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
             return ChatRunOutcome::Failed;
         },
     };
@@ -854,7 +820,7 @@ pub(crate) async fn run_with_tools(
     let active_partial_for_events = active_partial_assistant.as_ref().map(Arc::clone);
     let terminal_runs_for_events = Arc::clone(terminal_runs);
     let (on_event, on_tool_lifecycle, mut event_rx, event_barrier) =
-        ordered_runner_event_callbacks();
+        ordered_runner_event_callbacks(ui_run.clone(), cancellation_token.clone(), sandbox_enabled);
     let event_barrier_for_forwarder = event_barrier.clone();
     let channel_stream_dispatcher = ChannelStreamDispatcher::for_session(state, session_key)
         .await
@@ -882,7 +848,6 @@ pub(crate) async fn run_with_tools(
                         &terminal_runs_for_events,
                         &sk,
                         &run_id,
-                        seq,
                         sandbox_enabled,
                         *event,
                         &mut persisted_tool_batches,
@@ -890,13 +855,7 @@ pub(crate) async fn run_with_tools(
                     )
                     .await
                     {
-                        Ok(Some(payload)) => {
-                            broadcast(&state, "chat", payload, BroadcastOpts::default()).await;
-                            if let Some(receipt) = receipt {
-                                let _ = receipt.send(Ok(()));
-                            }
-                        },
-                        Ok(None) => {
+                        Ok(()) => {
                             if let Some(receipt) = receipt {
                                 let _ = receipt.send(Ok(()));
                             }
@@ -912,6 +871,22 @@ pub(crate) async fn run_with_tools(
                     continue;
                 },
             };
+            let notice = match &event {
+                RunnerEvent::AutoContinue { iteration } => Some(format!(
+                    "Auto-continue: Model paused after iteration {iteration}. Asking it to continue..."
+                )),
+                RunnerEvent::LoopInterventionFired { stage, tool_name } => Some(format!(
+                    "Loop detected: Detected repeated failed calls to `{tool_name}`. Intervening (stage {stage}) to break the loop."
+                )),
+                _ => None,
+            };
+            if let Some(notice) = notice {
+                if let Some(store) = &store && let Err(error) = store.append(&sk, &PersistedMessage::notice(notice).to_value()).await {
+                    forwarder_error = Some(format!("failed to persist runner notice: {error}"));
+                    break;
+                }
+                continue;
+            }
             let payload = match event {
                 RunnerEvent::Thinking => serde_json::json!({
                     "runId": run_id,
@@ -953,7 +928,6 @@ pub(crate) async fn run_with_tools(
                             break;
                         }
                     }
-                    let mut history_index = None;
                     if let Some(ref store) = store {
                         let persisted = PersistedMessage::ProviderUpdate {
                             update: update.clone(),
@@ -962,7 +936,7 @@ pub(crate) async fn run_with_tools(
                             run_id: Some(run_id.clone()),
                         };
                         match store.append_with_index(&sk, &persisted.to_value()).await {
-                            Ok(idx) => history_index = Some(idx),
+                            Ok(_) => {},
                             Err(err) => {
                                 forwarder_error =
                                     Some(format!("failed to persist provider update: {err}"));
@@ -970,24 +944,13 @@ pub(crate) async fn run_with_tools(
                             },
                         }
                     }
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "provider_update",
-                        "update": update.redacted(),
-                        "seq": seq,
-                    });
-                    if let Some(idx) = history_index {
-                        payload["historyIndex"] = serde_json::json!(idx);
-                    }
-                    payload
+                    continue;
                 },
                 RunnerEvent::SegmentClose {
                     segment_id,
                     outcome,
-                    usage,
+                    ..
                 } => {
-                    let mut history_index = None;
                     if let Some(ref store) = store {
                         let persisted = PersistedMessage::ProviderSegmentClose {
                             segment_id: segment_id.clone(),
@@ -997,7 +960,7 @@ pub(crate) async fn run_with_tools(
                             run_id: Some(run_id.clone()),
                         };
                         match store.append_with_index(&sk, &persisted.to_value()).await {
-                            Ok(idx) => history_index = Some(idx),
+                            Ok(_) => {},
                             Err(err) => {
                                 forwarder_error = Some(format!(
                                     "failed to persist provider segment close: {err}"
@@ -1006,29 +969,9 @@ pub(crate) async fn run_with_tools(
                             },
                         }
                     }
-                    let mut payload = serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "provider_segment_close",
-                        "segmentId": segment_id.0,
-                        "outcome": outcome,
-                        "usage": usage,
-                        "seq": seq,
-                    });
-                    if let Some(idx) = history_index {
-                        payload["historyIndex"] = serde_json::json!(idx);
-                    }
-                    payload
+                    continue;
                 },
-                RunnerEvent::TextDelta(text) => {
-                    serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "delta",
-                        "text": text,
-                        "seq": seq,
-                    })
-                },
+                RunnerEvent::TextDelta(_) => continue,
                 RunnerEvent::ProgressText(text) => {
                     if let Some(ref dispatcher) = channel_stream_for_events {
                         dispatcher.lock().await.send_progress_delta(&text).await;
@@ -1048,17 +991,9 @@ pub(crate) async fn run_with_tools(
                     "iteration": n,
                     "seq": seq,
                 }),
-                RunnerEvent::AutoContinue { iteration } => serde_json::json!({
-                    "runId": run_id,
-                    "sessionKey": sk,
-                    "state": "notice",
-                    "title": "Auto-continue",
-                    "message": format!(
-                        "Model paused after iteration {}. Asking it to continue...",
-                        iteration
-                    ),
-                    "seq": seq,
-                }),
+                RunnerEvent::AutoContinue { .. }
+                | RunnerEvent::LoopInterventionFired { .. }
+                | RunnerEvent::ProviderError { .. } => continue,
                 RunnerEvent::RetryingAfterError { error, delay_ms } => {
                     let error_obj =
                         parse_chat_error(&error, Some(provider_name_for_events.as_str()));
@@ -1081,25 +1016,7 @@ pub(crate) async fn run_with_tools(
                         "runId": run_id,
                         "sessionKey": sk,
                         "state": "retrying",
-                        "error": error_obj,
                         "retryAfterMs": delay_ms,
-                        "seq": seq,
-                    })
-                },
-                RunnerEvent::LoopInterventionFired { stage, tool_name } => {
-                    serde_json::json!({
-                        "runId": run_id,
-                        "sessionKey": sk,
-                        "state": "notice",
-                        "title": "Loop detected",
-                        "message": format!(
-                            "Detected repeated failed calls to `{}`. \
-                             Intervening (stage {}) to break the loop.",
-                            tool_name, stage
-                        ),
-                        "loopInterventionStage": stage,
-                        "stuckTool": tool_name,
-                        "seq": seq,
                     })
                 },
             };
@@ -1199,7 +1116,7 @@ pub(crate) async fn run_with_tools(
             },
         );
         let agent_result =
-            await_with_agent_timeout(runtime_limits.timeout_secs, run_started, agent_future).await;
+            await_with_agent_timeout(runtime_limits.timeout_secs, run_started, cancellation_token, agent_future).await;
 
         match agent_result {
             Ok(mut finished) => {
@@ -1397,7 +1314,7 @@ pub(crate) async fn run_with_tools(
 
     match result {
         Err(AgentRunError::Cancelled) => {
-            let partial = match persist_aborted_tool_loop(
+            match persist_aborted_tool_loop(
                 session_store,
                 active_partial_assistant.as_ref(),
                 session_key,
@@ -1405,43 +1322,19 @@ pub(crate) async fn run_with_tools(
             )
             .await
             {
-                Ok(partial) => partial,
+                Ok(_) => {},
                 Err(error) => {
                     let error = error.to_string();
                     warn!(run_id, %error, "failed to persist cancelled agent run");
-                    state.set_run_error(run_id, error.clone()).await;
+                    crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error.clone(), provider_name, None).await;
                     let error_obj = serde_json::json!({
                         "title": "Failed to stop assistant cleanly",
                         "detail": error,
                     });
                     deliver_channel_error(state, session_key, &error_obj).await;
-                    terminal_runs.write().await.insert(run_id.to_string());
-                    broadcast(
-                        state,
-                        "chat",
-                        serde_json::json!({
-                            "state": "error",
-                            "runId": run_id,
-                            "sessionKey": session_key,
-                            "error": error_obj,
-                        }),
-                        BroadcastOpts::default(),
-                    )
-                    .await;
                     return ChatRunOutcome::Failed;
                 },
             };
-            let mut payload = serde_json::json!({
-                "state": "aborted",
-                "runId": run_id,
-                "sessionKey": session_key,
-            });
-            if let Some((partial_message, message_index)) = partial {
-                payload["partialMessage"] = partial_message;
-                payload["messageIndex"] = serde_json::json!(message_index);
-            }
-            terminal_runs.write().await.insert(run_id.to_string());
-            broadcast(state, "chat", payload, BroadcastOpts::default()).await;
             ChatRunOutcome::Cancelled
         },
         Ok(result) => {
@@ -1482,34 +1375,19 @@ pub(crate) async fn run_with_tools(
                     "empty response with zero tokens — treating as provider error"
                 );
                 let provider_error = "The provider returned an empty response (possible network error). Please try again.";
-                let (terminal_error, partial) = match persist_tool_loop_partial(
+                let terminal_error = match persist_tool_loop_partial(
                     session_store,
                     active_partial_assistant.as_ref(),
                     session_key,
                 )
                 .await
                 {
-                    Ok(partial) => (provider_error.to_string(), partial),
-                    Err(error) => (
-                        format!("{provider_error} Partial assistant persistence failed: {error}"),
-                        None,
-                    ),
+                    Ok(_) => provider_error.to_string(),
+                    Err(error) => format!("{provider_error} Partial assistant persistence failed: {error}"),
                 };
-                state.set_run_error(run_id, terminal_error.clone()).await;
+                crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, terminal_error.clone(), provider_name, None).await;
                 let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                 deliver_channel_error(state, session_key, &error_obj).await;
-                let error_payload = ChatErrorBroadcast {
-                    run_id: run_id.to_string(),
-                    session_key: session_key.to_string(),
-                    state: "error",
-                    error: error_obj,
-                    seq: client_seq,
-                };
-                #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-                attach_partial_to_error_payload(&mut payload_val, partial);
-                terminal_runs.write().await.insert(run_id.to_string());
-                broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                 return ChatRunOutcome::Failed;
             }
 
@@ -1520,37 +1398,20 @@ pub(crate) async fn run_with_tools(
                         let canonical_error = format!(
                             "canonical assistant tool segment '{tool_call_id}' is unavailable"
                         );
-                        let (terminal_error, partial) = match persist_tool_loop_partial(
+                        let terminal_error = match persist_tool_loop_partial(
                             session_store,
                             active_partial_assistant.as_ref(),
                             session_key,
                         )
                         .await
                         {
-                            Ok(partial) => (canonical_error, partial),
-                            Err(error) => (
-                                format!(
-                                    "{canonical_error}; partial assistant persistence failed: {error}"
-                                ),
-                                None,
-                            ),
+                            Ok(_) => canonical_error,
+                            Err(error) => format!("{canonical_error}; partial assistant persistence failed: {error}"),
                         };
                         warn!(session = %session_key, error = %terminal_error);
-                        state.set_run_error(run_id, terminal_error.clone()).await;
+                        crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, terminal_error.clone(), provider_name, None).await;
                         let error_obj = parse_chat_error(&terminal_error, Some(provider_name));
                         deliver_channel_error(state, session_key, &error_obj).await;
-                        let error_payload = ChatErrorBroadcast {
-                            run_id: run_id.to_string(),
-                            session_key: session_key.to_string(),
-                            state: "error",
-                            error: error_obj,
-                            seq: client_seq,
-                        };
-                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                        let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-                        attach_partial_to_error_payload(&mut payload_val, partial);
-                        terminal_runs.write().await.insert(run_id.to_string());
-                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                         return ChatRunOutcome::Failed;
                     };
                     Some(message_index)
@@ -1644,48 +1505,22 @@ pub(crate) async fn run_with_tools(
                     Err(error) => {
                         let error = error.to_string();
                         warn!(run_id, %error, "failed to finalize agent assistant segment");
-                        state.set_run_error(run_id, error.clone()).await;
+                        crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error.clone(), provider_name, None).await;
                         let error_obj = parse_chat_error(&error, Some(provider_name));
                         deliver_channel_error(state, session_key, &error_obj).await;
-                        let error_payload = ChatErrorBroadcast {
-                            run_id: run_id.to_string(),
-                            session_key: session_key.to_string(),
-                            state: "error",
-                            error: error_obj,
-                            seq: client_seq,
-                        };
-                        #[allow(clippy::unwrap_used)] // serializing known-valid struct
-                        let payload_val = serde_json::to_value(&error_payload).unwrap();
-                        terminal_runs.write().await.insert(run_id.to_string());
-                        broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
                         return ChatRunOutcome::Failed;
                     },
                 }
             }
 
-            let final_payload = build_chat_final_broadcast(
-                run_id,
-                session_key,
-                display_text.clone(),
-                provider_ref.id().to_string(),
-                provider_name.to_string(),
-                session_reasoning_effort.clone(),
-                UsageSnapshot::new(usage.clone(), Some(request_usage.clone())),
-                run_started.elapsed().as_millis() as u64,
-                assistant_output.persisted_message_index,
-                desired_reply_medium,
-                Some(iterations),
-                Some(tool_calls_made),
-                audio_path.clone(),
-                audio_warning,
-                terminal_reasoning.clone(),
-                client_seq,
-                (&assistant_output).into(),
-            );
-            #[allow(clippy::unwrap_used)] // serializing known-valid struct
-            let payload_val = serde_json::to_value(&final_payload).unwrap();
-            terminal_runs.write().await.insert(run_id.to_string());
-            broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
+            if let Err(error) = crate::ui_history_ingress::finish_output(ui_run.as_ref(), &assistant_output, desired_reply_medium, audio_warning, Some((iterations, tool_calls_made))).await {
+                tracing::error!(run_id, %error, "terminal UI history metadata failed");
+                crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error.to_string(), provider_name, None).await;
+                return ChatRunOutcome::Failed;
+            }
+            if let Some(drafts) = &active_partial_assistant {
+                drafts.write().await.remove(session_key);
+            }
 
             if !is_silent {
                 // Send push notification when chat response completes
@@ -1707,43 +1542,48 @@ pub(crate) async fn run_with_tools(
         },
         Err(e) => {
             let runner_error = e.to_string();
-            let (error_str, partial) = match persist_tool_loop_partial(
+            let error_str = match persist_tool_loop_partial(
                 session_store,
                 active_partial_assistant.as_ref(),
                 session_key,
             )
             .await
             {
-                Ok(partial) => (runner_error, partial),
-                Err(error) => (
-                    format!("{runner_error}; partial assistant persistence failed: {error}"),
-                    None,
-                ),
+                Ok(_) => runner_error,
+                Err(error) => format!("{runner_error}; partial assistant persistence failed: {error}"),
             };
             warn!(run_id, error = %error_str, "agent run error");
-            state.set_run_error(run_id, error_str.clone()).await;
             let error_obj = parse_agent_run_error(&e, &error_str, Some(provider_name));
+            crate::ui_history_ingress::fail_run(ui_run.as_ref(), state, run_id, error_str, provider_name, Some(error_obj.clone())).await;
             deliver_channel_error(state, session_key, &error_obj).await;
-            let error_payload = ChatErrorBroadcast {
-                run_id: run_id.to_string(),
-                session_key: session_key.to_string(),
-                state: "error",
-                error: error_obj,
-                seq: client_seq,
-            };
-            #[allow(clippy::unwrap_used)] // serializing known-valid struct
-            let mut payload_val = serde_json::to_value(&error_payload).unwrap();
-            attach_partial_to_error_payload(&mut payload_val, partial);
-            terminal_runs.write().await.insert(run_id.to_string());
-            broadcast(state, "chat", payload_val, BroadcastOpts::default()).await;
             ChatRunOutcome::Failed
         },
     }
+    }.await;
+    if let Some(monitor) = health_monitor {
+        monitor.abort();
+    }
+    let outcome = crate::ui_history_ingress::finish(ui_run.as_ref(), outcome, state, run_id).await;
+    let status = match &outcome {
+        ChatRunOutcome::Completed(_) => "final",
+        ChatRunOutcome::Cancelled => "aborted",
+        ChatRunOutcome::Failed => "error",
+    };
+    terminal_runs.write().await.insert(run_id.to_string());
+    broadcast(
+        state,
+        "chat",
+        serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": status}),
+        BroadcastOpts::default(),
+    )
+    .await;
+    outcome
 }
 
 async fn await_with_agent_timeout<F>(
     timeout_secs: u64,
     started: Instant,
+    cancellation_token: &CancellationToken,
     future: F,
 ) -> Result<AgentRunResult, AgentRunError>
 where
@@ -1760,11 +1600,22 @@ where
         )));
     };
 
-    match tokio::time::timeout(remaining, future).await {
+    tokio::pin!(future);
+    match tokio::time::timeout(remaining, &mut future).await {
         Ok(result) => result,
-        Err(_) => Err(AgentRunError::Other(anyhow::anyhow!(
-            "agent run timed out after {timeout_secs}s"
-        ))),
+        Err(_) => {
+            cancellation_token.cancel();
+            if let Err(error) = future.await
+                && !matches!(error, AgentRunError::Cancelled)
+            {
+                return Err(AgentRunError::Other(anyhow::anyhow!(
+                    "agent run timed out after {timeout_secs}s; cancellation failed: {error}"
+                )));
+            }
+            Err(AgentRunError::Other(anyhow::anyhow!(
+                "agent run timed out after {timeout_secs}s"
+            )))
+        },
     }
 }
 
@@ -1889,7 +1740,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_compaction_terminal_payload_preserves_checkpoint_visibility() {
+    fn auto_compaction_terminal_payload_contains_only_operation_status() {
         let context_budget = ContextBudgetMetadata::default();
         let cancelled = auto_compaction_terminal_payload(
             "run-1",
@@ -1915,8 +1766,8 @@ mod tests {
             AutoCompactionTerminal::Done(&checkpoint),
         );
         assert_eq!(done["phase"], "done");
-        assert_eq!(done["messageIndex"], 4);
-        assert_eq!(done["checkpoint"], checkpoint.message);
+        assert!(done.get("messageIndex").is_none());
+        assert!(done.get("checkpoint").is_none());
     }
 
     #[test]

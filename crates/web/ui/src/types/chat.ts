@@ -23,6 +23,7 @@ export type ChatSendRequest = ChatSendMessage & {
 	audioFilename?: string;
 	inputMedium?: "text" | "voice";
 	clientSequence?: number;
+	clientMessageId?: string;
 };
 
 export interface ChatSendSyncRequest {

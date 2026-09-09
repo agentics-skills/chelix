@@ -3,6 +3,8 @@
 import { esc, sendRpc } from "./helpers";
 import { currentPrefix, navigate, sessionPath } from "./router";
 import { switchSession } from "./sessions";
+import { setSearchNavigation } from "./sessions/search-navigation";
+import type { SearchContext } from "./sessions/session-render";
 import * as S from "./state";
 import { sessionStore } from "./stores/session-store";
 
@@ -11,12 +13,9 @@ interface SearchHit {
 	sessionKey: string;
 	snippet: string;
 	role: string;
-	messageIndex: number;
-}
-
-interface SearchContext {
-	query: string;
-	messageIndex: number;
+	messageId: string;
+	generation: string;
+	position: number;
 }
 
 const searchInput = S.requireElement<HTMLInputElement>("sessionSearch");
@@ -97,9 +96,9 @@ function renderSearchResults(query: string): void {
 		el.appendChild(role);
 
 		el.addEventListener("click", () => {
-			const ctx: SearchContext = { query, messageIndex: hit.messageIndex };
+			const ctx: SearchContext = { query, messageId: hit.messageId, generation: hit.generation };
 			if (currentPrefix !== "/chats") {
-				sessionStorage.setItem("chelix-search-ctx", JSON.stringify(ctx));
+				setSearchNavigation(hit.sessionKey, ctx);
 				navigate(sessionPath(hit.sessionKey));
 			} else {
 				switchSession(hit.sessionKey, ctx);
@@ -140,10 +139,11 @@ searchInput.addEventListener("keydown", (e: KeyboardEvent) => {
 			const h = searchHits[searchIdx];
 			const ctx: SearchContext = {
 				query: searchInput.value.trim(),
-				messageIndex: h.messageIndex,
+				messageId: h.messageId,
+				generation: h.generation,
 			};
 			if (currentPrefix !== "/chats") {
-				sessionStorage.setItem("chelix-search-ctx", JSON.stringify(ctx));
+				setSearchNavigation(h.sessionKey, ctx);
 				navigate(sessionPath(h.sessionKey));
 			} else {
 				switchSession(h.sessionKey, ctx);

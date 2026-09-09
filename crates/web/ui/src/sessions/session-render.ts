@@ -3,10 +3,9 @@
 import {
 	appendChannelFooter,
 	appendReasoningDisclosure,
+	chatAddErrorCard,
 	chatAddMsg,
 	chatAddMsgWithImages,
-	chatInsertionTarget,
-	chatViewEpoch,
 	highlightAndScroll,
 	pinChatToBottom,
 	preserveChatViewport,
@@ -27,50 +26,37 @@ import { navigate } from "../router";
 import { settingsPath } from "../routes";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
+import { getHistoryWindow } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
-import { toolCallIds } from "../tool-call-card";
-import {
-	isTerminalToolLifecycle,
-	isToolLifecycleEvent,
-	reduceToolInvocation,
-	type ToolInvocationSnapshot,
-	toolInvocationKey,
-} from "../tool-lifecycle";
+import { isToolLifecycleEvent, reduceToolInvocation } from "../tool-lifecycle";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage } from "../types/session";
+import type { UiHistoryTarget, UiSnapshot } from "../types/ui-history";
 import type {
 	CheckpointHistoryMessage,
-	ContextBudgetMetadata,
-	ProviderItemUpdate,
 	ProviderOutputItem,
-	ProviderSegmentOutcome,
 	ReasoningContent,
 	ToolLifecycleEvent,
 } from "../types/ws-events";
 import { hasVisibleReasoning } from "../types/ws-events";
 import { showToast } from "../ui";
-import { renderToolLifecycleSnapshot, toolCallCardId } from "../ws/tool-helpers";
+import { setSafeMarkdownHtml } from "../ws/shared";
+import { renderToolLifecycleSnapshot } from "../ws/tool-helpers";
+import { confirmPendingSend } from "./pending-send";
 
-import {
-	applyProviderItemUpdate,
-	createProviderSegmentViewModel,
-	extractSegmentMessageText,
-	extractSegmentReasoning,
-	type ProviderSegmentViewModel,
-	segmentFromItems,
-} from "./provider-segment-reducer";
+import { extractSegmentReasoning, segmentFromItems } from "./provider-segment-reducer";
 import { setSessionAgent } from "./session-agent";
-import { computeHistoryTailIndex, syncHistoryState } from "./session-history";
+import { syncHistoryState } from "./session-history";
 import { fetchSessions } from "./session-list";
-import { markSessionTailLocallyTruncated } from "./session-tail";
 
 // ── Types ────────────────────────────────────────────────────
 
 export interface SearchContext {
 	query: string;
-	messageIndex: number;
+	messageId: string;
+	generation: string;
 }
 
 type ToolLifecycleHistoryMessage = HistoryMessage &
@@ -92,7 +78,6 @@ interface AssistantMsg extends HistoryMessage {
 	audio?: string;
 	tts_provider?: string;
 	run_id?: string;
-	historyIndex?: number;
 	providerItems?: ProviderOutputItem[];
 	segmentId?: string;
 	requestInputTokens?: number;
@@ -103,15 +88,10 @@ interface AssistantMsg extends HistoryMessage {
 	created_at?: number;
 }
 
-interface PendingTerminalToolMetadata {
-	message: AssistantMsg;
-	remaining: Set<string>;
-	lastToolCard: HTMLElement | null;
-}
+type HistoryMessageIdentity = Pick<HistoryMessage, "canonicalCommitted" | "id" | "generation">;
 
-interface UserMsg extends Omit<HistoryMessage, "content"> {
+interface UserMsg extends HistoryMessageIdentity, Omit<HistoryMessage, "content"> {
 	content?: string | unknown[];
-	historyIndex?: number;
 	documents?: Array<{
 		display_name?: string;
 		stored_filename?: string;
@@ -126,14 +106,6 @@ interface UserMsg extends Omit<HistoryMessage, "content"> {
 		message_kind?: string;
 	};
 	audio?: string;
-}
-
-type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
-
-interface TruncateTailPayload {
-	sessionKey?: string;
-	keptCount?: number;
-	entry?: TruncateTailEntry;
 }
 
 interface AgentInfo {
@@ -169,12 +141,6 @@ function toAgentInfo(value: unknown): AgentInfo | null {
 	)
 		return null;
 	return { id, name, emoji, model, reasoning_effort: reasoningEffort };
-}
-
-/** History message with an optional seq field, used for resuming chat sequence counters. */
-interface SeqHistoryMessage extends HistoryMessage {
-	seq?: number;
-	created_at?: number;
 }
 
 // ── Multimodal parsing ───────────────────────────────────────
@@ -268,35 +234,18 @@ function appendUserDocuments(messageEl: HTMLElement | null, documents: UserMsg["
 
 function renderHistoryUserMessage(msg: UserMsg): HTMLElement | null {
 	const { text, images } = userMessageContent(msg);
-	const messageEl = renderUserMessageBody(msg, text, images);
+	const messageEl =
+		confirmPendingSend(S.activeSessionKey, msg.clientMessageId) || renderUserMessageBody(msg, text, images);
+	if (messageEl && messageEl.parentElement !== currentMessageContainer) currentMessageContainer?.appendChild(messageEl);
 	appendUserDocuments(messageEl, msg.documents);
 	appendUserMessageActions({
 		messageEl,
 		sessionKey: S.activeSessionKey,
-		messageIndex: msg.historyIndex,
+		target: historyTarget(msg),
 		text,
-		onDeleted: (payload) => handleUserMessageDeleted(messageEl, payload),
 	});
 	if (messageEl && msg.channel) appendChannelFooter(messageEl, msg.channel);
 	return messageEl;
-}
-
-function handleUserMessageDeleted(messageEl: HTMLElement | null, payload: unknown): void {
-	const data = payload as TruncateTailPayload | null;
-	const sessionKey = data?.sessionKey || S.activeSessionKey;
-	markSessionTailLocallyTruncated(sessionKey, Number(data?.keptCount) || 0, data?.entry);
-	if (sessionKey !== S.activeSessionKey || !location.pathname.startsWith("/chats/")) return;
-	removeMessageTailFromDom(messageEl);
-}
-
-function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
-	let current = messageEl;
-	while (current) {
-		const next = current.nextElementSibling as HTMLElement | null;
-		unmountExecuteCommandToolBubbles(current);
-		current.remove();
-		current = next;
-	}
 }
 
 function isTerminalAssistantMessage(msg: AssistantMsg): boolean {
@@ -338,18 +287,23 @@ function renderAssistantAudioMessage(msg: AssistantMsg): HTMLElement | null {
 
 function renderAssistantMessageBody(msg: AssistantMsg): HTMLElement | null {
 	if (msg.audio) return renderAssistantAudioMessage(msg);
-	const messageEl = chatAddMsg("assistant", renderMarkdown(msg.content || ""), true);
-	if (messageEl) appendAssistantReasoning(messageEl, msg);
+	const messageEl = chatAddMsg("assistant", "");
+	if (messageEl) {
+		updateAssistantText(messageEl, msg.content || "");
+		appendAssistantReasoning(messageEl, msg);
+	}
 	return messageEl;
 }
 
 /// Render reasoning strictly by canonical provider item position. Falls back to
 /// the persisted reasoning field only when no provider items exist.
 function appendAssistantReasoning(messageEl: HTMLElement, msg: AssistantMsg): void {
+	const expanded = messageEl.querySelector<HTMLDetailsElement>(".msg-reasoning")?.open ?? false;
+	const streaming = msg.outcome === "active";
 	const providerItems = Array.isArray(msg.providerItems) ? msg.providerItems : [];
 	if (providerItems.length === 0) {
 		if (msg.reasoning) {
-			appendReasoningDisclosure(messageEl, msg.reasoning, { expanded: false, streaming: false });
+			appendReasoningDisclosure(messageEl, msg.reasoning, { expanded, streaming });
 		}
 		return;
 	}
@@ -359,7 +313,7 @@ function appendAssistantReasoning(messageEl: HTMLElement, msg: AssistantMsg): vo
 	const segment = segmentFromItems(msg.segmentId ?? "", providerItems);
 	const reasoning = extractSegmentReasoning(segment);
 	if (hasVisibleReasoning(reasoning)) {
-		appendReasoningDisclosure(messageEl, reasoning, { expanded: false, streaming: false });
+		appendReasoningDisclosure(messageEl, reasoning, { expanded, streaming });
 	}
 }
 
@@ -369,11 +323,10 @@ function decorateAssistantMessage(messageEl: HTMLElement | null, msg: AssistantM
 	appendMessageActions({
 		messageEl,
 		sessionKey: S.activeSessionKey,
-		messageIndex: msg.historyIndex,
+		target: historyTarget(msg),
 		text: msg.content || "",
 		hasAudio: Boolean(msg.audio),
 	});
-	if (Number.isInteger(msg.historyIndex)) messageEl.dataset.historyIndex = String(msg.historyIndex);
 }
 
 function renderHistoryAssistantMessage(msg: AssistantMsg, applySessionUsage: boolean): HTMLElement | null {
@@ -426,7 +379,7 @@ function scrollAfterHistoryLoad(
 		// A search jump is not follow mode: late decoration must not drag the
 		// viewport away from the highlighted match.
 		syncChatFollowStateFromPosition();
-		highlightAndScroll(msgEls, searchContext.messageIndex, searchContext.query);
+		highlightAndScroll(msgEls, searchContext.messageId, searchContext.query);
 		return;
 	}
 	if (skipAutoScroll) {
@@ -439,24 +392,6 @@ function scrollAfterHistoryLoad(
 	pinChatToBottom(true);
 }
 
-function restoreActiveAssistantSegment(key: string, skipAutoScroll: boolean): void {
-	const session = sessionStore.getByKey(key);
-	if (!(session?.replying.value && S.chatMsgBox)) return;
-	const activeText = session.streamText.value;
-	let segment = S.streamEl;
-	if (!(segment && segment.parentNode === S.chatMsgBox) && activeText) {
-		segment = document.createElement("div");
-		segment.className = "msg assistant reasoning-stream";
-		const text = document.createElement("span");
-		text.insertAdjacentHTML("afterbegin", renderMarkdown(activeText));
-		while (text.firstChild) segment.appendChild(text.firstChild);
-		S.chatMsgBox.appendChild(segment);
-		S.setStreamEl(segment);
-	}
-	S.setStreamText(activeText);
-	if (!skipAutoScroll) pinChatToBottom(true);
-}
-
 export function postHistoryLoadActions(
 	key: string,
 	searchContext: SearchContext | null,
@@ -465,7 +400,7 @@ export function postHistoryLoadActions(
 ): void {
 	refreshHistoryContext();
 	scrollAfterHistoryLoad(searchContext, msgEls, skipAutoScroll);
-	restoreActiveAssistantSegment(key, skipAutoScroll);
+	if (key !== S.activeSessionKey) return;
 }
 
 /** No-op -- the Preact SessionHeader component auto-updates from signals. */
@@ -656,377 +591,258 @@ export function hideSessionLoadIndicator(): void {
 	if (loading) loading.remove();
 }
 
-interface HistoryRenderState {
-	sessionKey: string;
-	messageElements: (HTMLElement | null)[];
-	pendingTerminalMetadata: Map<string, PendingTerminalToolMetadata>;
-	assistantHistoryIndexByToolCall: Map<string, number>;
-	toolInvocations: Map<string, ToolInvocationSnapshot>;
-	latestToolContextBudget: ContextBudgetMetadata | null;
-	/// Provider segments rebuilt from append-only `provider_update` records, so
-	/// a reload during an active response restores the same canonical items the
-	/// live path had materialized.
-	providerSegments: Map<string, ProviderSegmentViewModel>;
-	/// Segments already rendered as a persisted assistant message.
-	assistantSegmentIds: Set<string>;
-	/// Whether the rendered messages describe the session tail.
-	///
-	/// Token counters and the latest context describe the end of the history. An
-	/// older page replayed above the viewport describes turns that already
-	/// contributed to them, so it must not add its usage a second time.
-	applySessionUsage: boolean;
+let renderedKey = "";
+let renderedGeneration = "";
+let currentMessageContainer: HTMLElement | null = null;
+
+function historyTarget(message: HistoryMessageIdentity): UiHistoryTarget | undefined {
+	return message.canonicalCommitted && message.id && message.generation
+		? { messageId: message.id, generation: message.generation }
+		: undefined;
 }
 
-function registerAssistantTerminalMetadata(
-	message: AssistantMsg,
-	messageEl: HTMLElement | null,
-	pendingMetadata: Map<string, PendingTerminalToolMetadata>,
-): void {
-	if (!isTerminalAssistantMessage(message)) return;
-	const toolIds = toolCallIds(message.tool_calls);
-	if (toolIds.length === 0) {
-		appendTerminalMetadata(
-			chatInsertionTarget(),
-			messageEl,
-			terminalMetadataData(message, { historyIndex: message.historyIndex }),
-		);
-		return;
-	}
-	const pending: PendingTerminalToolMetadata = {
-		message,
-		remaining: new Set(toolIds),
-		lastToolCard: null,
-	};
-	for (const toolCallId of toolIds) pendingMetadata.set(toolCallId, pending);
-}
-
-function resolvePendingToolMetadata(
-	toolCallId: string,
-	toolCard: HTMLElement,
-	pendingMetadata: Map<string, PendingTerminalToolMetadata>,
-): void {
-	const pending = pendingMetadata.get(toolCallId);
-	if (!pending) return;
-	pending.remaining.delete(toolCallId);
-	pending.lastToolCard = toolCard;
-	if (pending.remaining.size > 0) return;
-	for (const completedToolCallId of toolCallIds(pending.message.tool_calls)) {
-		pendingMetadata.delete(completedToolCallId);
-	}
-	appendTerminalMetadata(
-		chatInsertionTarget(),
-		toolCard,
-		terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
-	);
-}
-
-function renderAssistantHistoryEntry(message: AssistantMsg, state: HistoryRenderState): void {
-	const messageEl = renderHistoryAssistantMessage(message, state.applySessionUsage);
-	state.messageElements.push(messageEl);
-	for (const toolCallId of toolCallIds(message.tool_calls)) {
-		if (Number.isInteger(message.historyIndex)) {
-			state.assistantHistoryIndexByToolCall.set(toolCallId, message.historyIndex as number);
-		}
-	}
-	registerAssistantTerminalMetadata(message, messageEl, state.pendingTerminalMetadata);
-}
-
-function renderToolLifecycleHistoryEntry(message: HistoryMessage, state: HistoryRenderState): void {
-	if (!isToolLifecycleEvent(message)) {
-		state.messageElements.push(null);
-		return;
-	}
-	const lifecycleMessage = message as ToolLifecycleHistoryMessage;
-	const key = toolInvocationKey(state.sessionKey, lifecycleMessage.runId, lifecycleMessage.toolCallId);
-	const snapshot = reduceToolInvocation(state.toolInvocations.get(key), lifecycleMessage, {
-		runId: lifecycleMessage.runId,
-		contextBudget: lifecycleMessage.contextBudget,
-		accumulatedArguments: lifecycleMessage.accumulatedArguments,
+function renderToolSnapshot(message: UiSnapshot): void {
+	if (!isToolLifecycleEvent(message)) throw new Error("Invalid UI tool snapshot");
+	const lifecycle = message as ToolLifecycleHistoryMessage;
+	const snapshot = reduceToolInvocation(undefined, lifecycle, {
+		runId: lifecycle.runId,
+		contextBudget: lifecycle.contextBudget,
+		accumulatedArguments: lifecycle.accumulatedArguments,
+		executionMode:
+			typeof message.presentation.metadata?.executionMode === "string"
+				? message.presentation.metadata.executionMode
+				: undefined,
 	});
-	state.toolInvocations.set(key, snapshot);
-	const existingCard = document.getElementById(toolCallCardId(snapshot));
-	const toolCard = renderToolLifecycleSnapshot(snapshot, state.sessionKey, {
-		renderEarly: false,
-		interactive: false,
+	renderToolLifecycleSnapshot(snapshot, S.activeSessionKey, {
+		interactive: true,
 		screenshotMode: "media",
-		assistantHistoryIndex: state.assistantHistoryIndexByToolCall.get(lifecycleMessage.toolCallId),
+		assistantId: message.assistantId,
 	});
-	state.messageElements.push(!existingCard && toolCard ? toolCard : null);
-	if (isTerminalToolLifecycle(lifecycleMessage)) {
-		state.latestToolContextBudget = lifecycleMessage.contextBudget || null;
-		if (toolCard) {
-			resolvePendingToolMetadata(lifecycleMessage.toolCallId, toolCard, state.pendingTerminalMetadata);
-		}
-	}
 }
 
-function renderHistoryMessage(message: HistoryMessage, state: HistoryRenderState): void {
+function updateAssistantText(element: HTMLElement, text: string): void {
+	let body = element.querySelector<HTMLElement>(":scope > .assistant-text");
+	if (!body) {
+		body = document.createElement("div");
+		body.className = "assistant-text";
+		element.appendChild(body);
+	}
+	setSafeMarkdownHtml(body, text);
+}
+
+function renderAssistantSnapshot(message: UiSnapshot, container: HTMLElement): void {
+	const assistant = message as AssistantMsg;
+	let element = container.querySelector<HTMLElement>(":scope > .msg.assistant");
+	if (element && !assistant.audio) {
+		updateAssistantText(element, assistant.content || "");
+		appendAssistantReasoning(element, assistant);
+		decorateAssistantMessage(element, assistant);
+	} else if (!element || element.dataset.audio !== assistant.audio) {
+		container.replaceChildren();
+		element = renderHistoryAssistantMessage(assistant, false);
+		if (element && assistant.audio) element.dataset.audio = assistant.audio;
+	}
+	const medium = message.presentation.metadata?.replyMedium;
+	appendTerminalMetadata(
+		container,
+		element,
+		terminalMetadataData(assistant, {
+			messageId: message.id,
+			replyMedium: typeof medium === "string" ? medium : undefined,
+		}),
+	);
+	let warning = container.querySelector<HTMLElement>(":scope > .audio-warning");
+	const audioWarning = message.presentation.metadata?.audioWarning;
+	if (typeof audioWarning === "string") {
+		if (!warning) {
+			warning = document.createElement("div");
+			warning.className = "audio-warning text-sm text-amber-400";
+			container.appendChild(warning);
+		}
+		warning.textContent = audioWarning;
+	} else warning?.remove();
+}
+
+function renderUserSnapshot(message: UiSnapshot, container: HTMLElement): void {
+	const element = container.querySelector<HTMLElement>(":scope > .msg.user");
+	if (!element) {
+		renderHistoryUserMessage(message as UserMsg);
+		return;
+	}
+	appendUserMessageActions({
+		messageEl: element,
+		sessionKey: S.activeSessionKey,
+		text: userMessageContent(message as UserMsg).text,
+		target: historyTarget(message),
+	});
+}
+
+function renderSnapshotBody(message: UiSnapshot, container: HTMLElement): void {
 	switch (message.role) {
-		case "user":
-			state.messageElements.push(renderHistoryUserMessage(message as UserMsg));
+		case "tool_lifecycle":
+			renderToolSnapshot(message);
 			return;
 		case "assistant":
-			renderAssistantHistoryEntry(message as AssistantMsg, state);
+			renderAssistantSnapshot(message, container);
 			return;
-		case "provider_update":
-			applyProviderUpdateHistoryEntry(message, state);
+		case "user":
+			renderUserSnapshot(message, container);
 			return;
-		case "provider_segment_close":
-			applyProviderSegmentCloseHistoryEntry(message, state);
+		case "checkpoint":
+			container.replaceChildren();
+			renderCheckpointCard(message as unknown as CheckpointHistoryMessage);
 			return;
-		case "notice":
-			state.messageElements.push(
-				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
-			);
-			return;
-		// Persisted failures. Dropping them would hide, on every reload, an error
-		// the service explicitly recorded.
-		case "system":
-			state.messageElements.push(
-				chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true),
-			);
-			return;
-		case "checkpoint": {
-			const card = renderCheckpointCard(message as unknown as CheckpointHistoryMessage);
-			if (card && typeof message.historyIndex === "number") card.dataset.historyIndex = String(message.historyIndex);
-			state.messageElements.push(card);
-			return;
-		}
-		case "tool_lifecycle":
-			renderToolLifecycleHistoryEntry(message, state);
+		case "error":
+			renderProviderError(message, container);
 			return;
 		default:
-			state.messageElements.push(null);
+			container.replaceChildren();
+			chatAddMsg("system", renderMarkdown(typeof message.content === "string" ? message.content : ""), true);
 	}
 }
 
-/// Rebuild one canonical provider item update recorded in history.
-///
-/// These records carry no DOM of their own: they feed the segment reducer, and
-/// the resulting segment is rendered once the replay is complete.
-function applyProviderUpdateHistoryEntry(message: HistoryMessage, state: HistoryRenderState): void {
-	state.messageElements.push(null);
-	const update = providerItemUpdateOf(message);
-	if (!update) return;
-	const segment = historySegmentFor(state, update.segmentId);
-	applyProviderItemUpdate(segment, update);
-}
-
-/// Apply the terminal outcome of a provider segment recorded in history.
-///
-/// The segment ends here, so it is rendered here. Rendering it after the whole
-/// history would move a failed attempt below every turn that followed it.
-function applyProviderSegmentCloseHistoryEntry(message: HistoryMessage, state: HistoryRenderState): void {
-	state.messageElements.push(null);
-	const segmentId = typeof message.segmentId === "string" ? message.segmentId : "";
-	if (!segmentId) return;
-	const outcome = message.outcome;
-	if (!isProviderSegmentOutcome(outcome)) return;
-	const segment = historySegmentFor(state, segmentId);
-	segment.outcome = outcome;
-	renderReplayedProviderSegment(segment, state);
-	state.providerSegments.delete(segmentId);
-}
-
-function historySegmentFor(state: HistoryRenderState, segmentId: string): ProviderSegmentViewModel {
-	const existing = state.providerSegments.get(segmentId);
-	if (existing) return existing;
-	const created = createProviderSegmentViewModel(segmentId);
-	state.providerSegments.set(segmentId, created);
-	return created;
-}
-
-const PROVIDER_SEGMENT_OUTCOMES: readonly ProviderSegmentOutcome[] = [
-	"active",
-	"completed",
-	"incomplete",
-	"failed",
-	"cancelled",
-	"transport_error",
-];
-
-function isProviderSegmentOutcome(value: unknown): value is ProviderSegmentOutcome {
-	return typeof value === "string" && (PROVIDER_SEGMENT_OUTCOMES as readonly string[]).includes(value);
-}
-
-/// Read the canonical update out of a persisted `provider_update` record.
-///
-/// The record flattens the update, so the identity fields sit next to the
-/// record metadata. A record without them is malformed and is skipped rather
-/// than materialized into a guessed item.
-function providerItemUpdateOf(message: HistoryMessage): ProviderItemUpdate | null {
-	const candidate = (message.update ?? message) as Partial<ProviderItemUpdate>;
-	if (typeof candidate.segmentId !== "string" || !candidate.segmentId) return null;
-	if (typeof candidate.itemId !== "string" || !candidate.itemId) return null;
-	if (!Number.isSafeInteger(candidate.position)) return null;
-	if (!Number.isSafeInteger(candidate.updateSeq)) return null;
-	if (!candidate.payload || typeof candidate.payload !== "object") return null;
-	return candidate as ProviderItemUpdate;
-}
-
-/// Render the provider segments rebuilt from append-only history.
-///
-/// Every recorded segment is shown, whatever its outcome: a retry or an
-/// interrupted run closes a segment but never deletes what the provider already
-/// produced. A segment already carried by a persisted assistant message is
-/// skipped, because that message is the same segment in its final form.
-function renderReplayedProviderSegments(state: HistoryRenderState): void {
-	for (const segment of state.providerSegments.values()) {
-		renderReplayedProviderSegment(segment, state);
+function renderProviderError(message: UiSnapshot, container: HTMLElement): void {
+	const error = message.error as {
+		raw: string;
+		retryAfterMs?: number | null;
+		details: { title?: string; detail?: string; provider?: string; icon?: string };
+	};
+	if (!error || typeof error.raw !== "string") throw new Error("Invalid provider error snapshot");
+	container.replaceChildren();
+	chatAddErrorCard({ ...error.details, title: error.details.title || error.raw });
+	const raw = document.createElement("details");
+	const label = document.createElement("summary");
+	label.textContent = "Provider error";
+	const text = document.createElement("pre");
+	text.className = "whitespace-pre-wrap break-words";
+	text.textContent = error.raw;
+	raw.append(label, text);
+	container.appendChild(raw);
+	if (typeof error.retryAfterMs === "number") {
+		const retry = document.createElement("div");
+		retry.textContent = `Retry delay: ${error.retryAfterMs} ms`;
+		container.appendChild(retry);
 	}
 }
 
-/// Render one rebuilt provider segment as an assistant message.
-function renderReplayedProviderSegment(segment: ProviderSegmentViewModel, state: HistoryRenderState): void {
-	if (segment.items.length === 0) return;
-	if (state.assistantSegmentIds.has(segment.segmentId)) return;
-	const text = extractSegmentMessageText(segment);
-	const messageEl = chatAddMsg("assistant", renderMarkdown(text), true);
-	if (!messageEl) return;
-	const reasoning = extractSegmentReasoning(segment);
-	if (hasVisibleReasoning(reasoning)) {
-		appendReasoningDisclosure(messageEl, reasoning, { expanded: false, streaming: false });
+function renderDiff(presentation: HTMLElement, content: string): void {
+	const pre = document.createElement("pre");
+	pre.className = "whitespace-pre-wrap break-words";
+	for (const line of content.split("\n")) {
+		const row = document.createElement("div");
+		if (line.startsWith("+")) row.className = "text-emerald-400";
+		else if (line.startsWith("-")) row.className = "text-red-400";
+		row.textContent = line || " ";
+		pre.appendChild(row);
+	}
+	presentation.replaceChildren(pre);
+}
+
+function renderPresentation(message: UiSnapshot, container: HTMLElement): void {
+	const presentationDocument = message.presentation.document;
+	for (const child of Array.from(container.children)) {
+		if (
+			!(child instanceof HTMLElement) ||
+			child.classList.contains("ui-presentation") ||
+			child.classList.contains("terminal-metadata")
+		)
+			continue;
+		child.classList.toggle("hidden", !!presentationDocument);
+	}
+	let presentation = container.querySelector<HTMLElement>(":scope > .ui-presentation");
+	if (!presentationDocument) {
+		presentation?.remove();
+		return;
+	}
+	if (!presentation) {
+		presentation = document.createElement("div");
+		presentation.className = "ui-presentation";
+		container.appendChild(presentation);
+	}
+	if (presentationDocument.format === "markdown") setSafeMarkdownHtml(presentation, presentationDocument.content);
+	else if (presentationDocument.format === "diff") renderDiff(presentation, presentationDocument.content);
+	else presentation.textContent = presentationDocument.content;
+}
+
+function renderSnapshot(message: UiSnapshot, container: HTMLElement): void {
+	currentMessageContainer = container;
+	try {
+		withChatInsertionTarget(container, () => {
+			renderSnapshotBody(message, container);
+			renderPresentation(message, container);
+		});
+	} finally {
+		currentMessageContainer = null;
+	}
+	container.dataset.revision = String(message.revision);
+}
+
+function retainedMessageNodes(box: HTMLElement, history: UiSnapshot[]): Map<string, HTMLElement> {
+	const nodes = new Map<string, HTMLElement>();
+	const retained = new Set(history.map((message) => message.id));
+	for (const child of Array.from(box.children)) {
+		if (!(child instanceof HTMLElement && child.dataset.messageId)) continue;
+		if (retained.has(child.dataset.messageId)) nodes.set(child.dataset.messageId, child);
+		else {
+			unmountExecuteCommandToolBubbles(child);
+			child.remove();
+		}
+	}
+	return nodes;
+}
+
+function reconcileNodes(box: HTMLElement, history: UiSnapshot[]): void {
+	box.querySelector("#welcomeCard")?.remove();
+	box.querySelector("#noProvidersCard")?.remove();
+	box.classList.remove("chat-messages-empty");
+	const nodes = retainedMessageNodes(box, history);
+	S.setChatBatchLoading(true);
+	try {
+		let previous: HTMLElement | null = null;
+		for (const message of history) {
+			let node = nodes.get(message.id);
+			if (!node) {
+				node = document.createElement("div");
+				node.className = "flex flex-col gap-2";
+				node.dataset.messageId = message.id;
+			}
+			const before: ChildNode | null = previous ? previous.nextSibling : box.firstChild;
+			if (before !== node) box.insertBefore(node, before);
+			if (node.dataset.revision !== String(message.revision)) renderSnapshot(message, node);
+			previous = node;
+		}
+	} finally {
+		S.setChatBatchLoading(false);
 	}
 }
 
-function appendRemainingTerminalMetadata(pendingMetadata: Map<string, PendingTerminalToolMetadata>): void {
-	for (const pending of new Set(pendingMetadata.values())) {
-		if (!pending.lastToolCard) continue;
-		appendTerminalMetadata(
-			chatInsertionTarget(),
-			pending.lastToolCard,
-			terminalMetadataData(pending.message, { historyIndex: pending.message.historyIndex }),
-		);
+export function reconcileSessionHistory(key: string): void {
+	const box = S.chatMsgBox;
+	const historyWindow = getHistoryWindow(key);
+	if (!(box && historyWindow && key === S.activeSessionKey)) return;
+	hideSessionLoadIndicator();
+	if (renderedKey !== key || renderedGeneration !== historyWindow.generation) {
+		resetChatView(box);
+		renderedKey = key;
+		renderedGeneration = historyWindow.generation;
 	}
-}
-
-/// Segment identifiers already carried by a persisted assistant message.
-///
-/// Such a message is the final form of its segment, so the append-only records
-/// of that segment must not be rendered a second time. The set is built over the
-/// whole history up front: a segment closes before its assistant message is
-/// written, so collecting the ids while rendering would render it twice.
-function assistantSegmentIds(history: HistoryMessage[]): Set<string> {
-	const ids = new Set<string>();
-	for (const message of history) {
-		if (message.role !== "assistant") continue;
-		const segmentId = (message as AssistantMsg).segmentId;
-		if (typeof segmentId === "string" && segmentId) ids.add(segmentId);
-	}
-	return ids;
-}
-
-function latestUserSequence(history: HistoryMessage[]): number {
-	let maxSequence = 0;
-	for (const message of history) {
-		const sequence = (message as SeqHistoryMessage).seq;
-		if (message.role === "user" && typeof sequence === "number" && sequence > maxSequence) maxSequence = sequence;
-	}
-	return maxSequence;
+	preserveChatViewport(box, () => reconcileNodes(box, historyWindow.history));
+	syncHistoryState(key);
+	if (historyWindow.history.length === 0) showWelcomeCard();
+	pinChatToBottom();
 }
 
 export function renderHistory(
 	key: string,
-	history: HistoryMessage[],
+	history: UiSnapshot[],
 	searchContext: SearchContext | null,
-	totalCountHint: number | null,
+	_totalCountHint: number | null,
 	skipAutoScroll: boolean,
 ): void {
-	hideSessionLoadIndicator();
-	if (S.chatMsgBox) {
-		S.chatMsgBox.classList.remove("chat-messages-empty");
-		resetChatView(S.chatMsgBox);
-	}
-	S.setSessionTokens({ input: 0, output: 0 });
-	S.setSessionCurrentInputTokens(0);
-	S.setSessionCurrentContextTokens(0);
-	const state = renderHistoryMessages(key, history);
-	updateTokenBar(state.latestToolContextBudget);
-	const historyTailIndex = computeHistoryTailIndex(history);
-	syncHistoryState(key, history, historyTailIndex, totalCountHint);
-	S.setChatSeq(latestUserSequence(history));
-	if (history.length === 0) showWelcomeCard();
-	postHistoryLoadActions(key, searchContext, state.messageElements, skipAutoScroll === true);
-	void settleHistoryDecorations();
-}
-
-/// Re-pin the chat after syntax highlighting settles.
-///
-/// Highlighting resizes code blocks after the render has already established
-/// its scroll position. While the chat is following the bottom, the bottom must
-/// remain the bottom once those resizes land; a user who scrolled away keeps
-/// their position, and a view replaced mid-highlight is left alone.
-async function settleHistoryDecorations(): Promise<void> {
-	const box = S.chatMsgBox;
-	if (!box) return;
-	const epoch = chatViewEpoch();
-	await highlightCodeBlocks(box);
-	if (S.chatMsgBox !== box || chatViewEpoch() !== epoch) return;
-	pinChatToBottom();
-}
-
-/// Render `history` into whatever container is currently the insertion target.
-///
-/// This is the single materialization path: a full render and an older page
-/// differ only in where the nodes go and what happens around them, never in how
-/// a message becomes DOM.
-function renderHistoryMessages(
-	key: string,
-	history: HistoryMessage[],
-	options: { applySessionUsage: boolean } = { applySessionUsage: true },
-): HistoryRenderState {
-	S.setChatBatchLoading(true);
-	const state: HistoryRenderState = {
-		sessionKey: key,
-		messageElements: [],
-		pendingTerminalMetadata: new Map(),
-		assistantHistoryIndexByToolCall: new Map(),
-		toolInvocations: new Map(),
-		latestToolContextBudget: null,
-		providerSegments: new Map(),
-		assistantSegmentIds: assistantSegmentIds(history),
-		applySessionUsage: options.applySessionUsage,
-	};
-	try {
-		for (const message of history) renderHistoryMessage(message, state);
-		// Whatever is left was never closed: the run was interrupted mid-response.
-		renderReplayedProviderSegments(state);
-		appendRemainingTerminalMetadata(state.pendingTerminalMetadata);
-	} finally {
-		S.setChatBatchLoading(false);
-	}
-	return state;
-}
-
-/// Insert an older history page above what is already rendered.
-///
-/// Only the new page is materialized: the messages already on screen keep their
-/// DOM nodes, so live terminal bubbles stay mounted, and the viewport stays on
-/// the message the user was reading. Session-wide state is untouched — the tail
-/// of the history did not change, so token counters, the tail index and the
-/// client sequence still describe it correctly.
-export async function prependHistoryPage(key: string, page: HistoryMessage[]): Promise<void> {
-	const box = S.chatMsgBox;
-	if (!(box && page.length > 0)) return;
-	const epoch = chatViewEpoch();
-	const fragment = document.createDocumentFragment();
-	const container = document.createElement("div");
-	withChatInsertionTarget(container, () => {
-		renderHistoryMessages(key, page, { applySessionUsage: false });
-	});
-	// Highlighting resizes code blocks. Doing it while the page is still detached
-	// keeps every height change out of the scroll container, so the correction
-	// below is the final position instead of one more jump a few frames later.
-	await highlightCodeBlocks(container);
-	// Highlighting yields to the event loop, so the chat may have moved on: the
-	// user switched sessions, or `chat.clear` emptied this one. Either way these
-	// nodes describe a history that is no longer on screen and must be dropped
-	// rather than inserted into a view they do not belong to.
-	if (S.chatMsgBox !== box) return;
-	if (sessionStore.activeSessionKey.value !== key) return;
-	if (chatViewEpoch() !== epoch) return;
-	while (container.firstChild) fragment.appendChild(container.firstChild);
-	preserveChatViewport(box, () => {
-		box.insertBefore(fragment, box.firstChild);
-	});
+	reconcileSessionHistory(key);
+	const elements = history.map(
+		(message) => S.chatMsgBox?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(message.id)}"]`) || null,
+	);
+	postHistoryLoadActions(key, searchContext, elements, skipAutoScroll);
+	if (S.chatMsgBox) void highlightCodeBlocks(S.chatMsgBox);
 }

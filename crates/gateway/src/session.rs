@@ -15,15 +15,14 @@ use {
 
 use {
     chelix_common::{
-        ReasoningContent,
         hooks::HookRegistry,
         tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
     },
     chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
-        QueuedPrompts, SessionKey, filter_ui_history, message::PersistedMessage,
-        metadata::SqliteSessionMetadata, state_store::SessionStateStore, store::SessionStore,
+        QueuedPrompts, SessionKey, message::PersistedMessage, metadata::SqliteSessionMetadata,
+        state_store::SessionStateStore, store::SessionStore,
     },
     chelix_tools::sandbox::SandboxRouter,
     chelix_voice::{AudioFormat, TtsProviderId},
@@ -45,9 +44,6 @@ const SHARE_PREVIEW_MAX_IMAGE_WIDTH: u32 = 430;
 const SHARE_PREVIEW_MAX_IMAGE_HEIGHT: u32 = 430;
 const SHARE_REDACTED_VALUE: &str = "[REDACTED]";
 const SESSION_PREVIEW_MAX_CHARS: usize = 200;
-const UI_HISTORY_MAX_BYTES: usize = 2 * 1024 * 1024;
-const UI_HISTORY_MIN_MESSAGES: usize = 120;
-const UI_HISTORY_TRIM_STEP: usize = 50;
 
 fn resolve_hook_channel_binding(
     session_key: &str,
@@ -224,31 +220,6 @@ fn extract_preview(history: &[Value]) -> Option<String> {
     Some(truncate_preview(&combined, SESSION_PREVIEW_MAX_CHARS))
 }
 
-fn trim_ui_history(mut history: Vec<Value>) -> (Vec<Value>, usize) {
-    if history.is_empty() {
-        return (history, 0);
-    }
-
-    let mut dropped = 0usize;
-    loop {
-        let size = serde_json::to_vec(&history).map_or(0, |buf| buf.len());
-        if size <= UI_HISTORY_MAX_BYTES || history.len() <= UI_HISTORY_MIN_MESSAGES {
-            break;
-        }
-
-        let removable = history.len().saturating_sub(UI_HISTORY_MIN_MESSAGES);
-        if removable == 0 {
-            break;
-        }
-
-        let trim_count = removable.min(UI_HISTORY_TRIM_STEP);
-        history.drain(0..trim_count);
-        dropped += trim_count;
-    }
-
-    (history, dropped)
-}
-
 fn value_u64(msg: &Value, key: &str) -> Option<u64> {
     msg.get(key).and_then(|v| {
         v.as_u64()
@@ -276,20 +247,6 @@ fn message_text_for_share(msg: &Value) -> Option<String> {
         .join("\n");
     let trimmed = joined.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_string())
-}
-
-fn message_reasoning_for_share(
-    msg: &Value,
-    message_index: usize,
-) -> anyhow::Result<Option<ReasoningContent>> {
-    let Some(value) = msg.get("reasoning").filter(|value| !value.is_null()) else {
-        return Ok(None);
-    };
-    let reasoning =
-        serde_json::from_value::<ReasoningContent>(value.clone()).map_err(|source| {
-            anyhow::anyhow!("message at index {message_index} has invalid reasoning: {source}")
-        })?;
-    Ok((!reasoning.is_blank()).then_some(reasoning))
 }
 
 fn media_filename(path: &str) -> Option<&str> {
@@ -761,23 +718,23 @@ fn tool_result_text_for_share(msg: &Value) -> Option<String> {
 }
 
 async fn to_shared_message(
-    msg: &Value,
-    message_index: usize,
+    snapshot: &chelix_sessions::ui_history_types::UiSnapshot,
     session_key: &str,
     store: &SessionStore,
 ) -> anyhow::Result<Option<SharedMessage>> {
-    let (role, tool_lifecycle) = match msg.get("role").and_then(|v| v.as_str()) {
-        Some("user") => (SharedMessageRole::User, None),
-        Some("assistant") => (SharedMessageRole::Assistant, None),
-        Some("tool_lifecycle") => {
-            let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(msg.clone())?;
-            if !lifecycle.stage().is_terminal() {
-                return Ok(None);
-            }
+    let chelix_sessions::ui_history_types::UiContent::Record(record) = &snapshot.content else {
+        return Ok(None);
+    };
+    let (role, tool_lifecycle) = match &record.message {
+        PersistedMessage::User { .. } => (SharedMessageRole::User, None),
+        PersistedMessage::Assistant { .. } => (SharedMessageRole::Assistant, None),
+        PersistedMessage::ToolLifecycle { lifecycle } if lifecycle.stage().is_terminal() => {
             (SharedMessageRole::ToolResult, Some(lifecycle))
         },
         _ => return Ok(None),
     };
+    let public = snapshot.public_value()?;
+    let msg = &public;
 
     let content = match role {
         SharedMessageRole::ToolResult => tool_result_text_for_share(msg).unwrap_or_default(),
@@ -786,12 +743,11 @@ async fn to_shared_message(
         },
         SharedMessageRole::System | SharedMessageRole::Notice => String::new(),
     };
-    let reasoning = match role {
-        SharedMessageRole::Assistant => message_reasoning_for_share(msg, message_index)?,
-        SharedMessageRole::User
-        | SharedMessageRole::ToolResult
-        | SharedMessageRole::System
-        | SharedMessageRole::Notice => None,
+    let reasoning = match &record.message {
+        PersistedMessage::Assistant { reasoning, .. } => {
+            reasoning.clone().filter(|reasoning| !reasoning.is_blank())
+        },
+        _ => None,
     };
     let audio_data_url = match role {
         SharedMessageRole::User | SharedMessageRole::Assistant => {

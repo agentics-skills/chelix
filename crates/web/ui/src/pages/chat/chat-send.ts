@@ -1,8 +1,5 @@
-// ── Chat send logic ──────────────────────────────────────────
-
-import { chatAddMsg, chatAddMsgWithAttachments, setComposerStopButton } from "../../chat-ui";
+import { chatAddMsg, chatAddMsgWithAttachments } from "../../chat-ui";
 import { highlightCodeBlocks } from "../../code-highlight";
-import { unmountExecuteCommandToolBubbles } from "../../components/ExecuteCommandToolBubble";
 import { renderMarkdown, sendRpc, warmAudioPlayback } from "../../helpers";
 import {
 	clearPendingAttachments,
@@ -11,383 +8,140 @@ import {
 	type PendingAttachment,
 	uploadDocumentAttachment,
 } from "../../media-drop";
-import { appendUserMessageActions } from "../../message-actions";
+import { appendUserMessageCopyAction } from "../../message-actions";
 import { selectedModelSelection } from "../../models";
-import {
-	bumpSessionCount,
-	cacheOutgoingUserMessage,
-	clearSessionHistoryCache,
-	markSessionTailLocallyTruncated,
-	seedSessionPreviewFromUserText,
-	setSessionActiveRunId,
-	setSessionReplying,
-} from "../../sessions";
+import { handlePendingSendResponse, registerPendingSend, rejectPendingSend } from "../../sessions/pending-send";
 import * as S from "../../state";
-import { sessionStore } from "../../stores/session-store";
 import type { ChatContentPart, ChatSendPayload, ChatSendRequest } from "../../types/chat";
-import type { RpcResponse } from "../../types/rpc";
-import type { SessionMeta } from "../../types/session";
-import { replaceQueuedPromptsDock } from "./prompt-queue";
 import { handleSlashCommand, parseSlashCommand, shouldHandleSlashLocally, slashHideMenu } from "./slash-commands";
-
-// ── Types ────────────────────────────────────────────────────
-
-type ChatSendParams = ChatSendRequest & { clientSequence: number };
 
 interface PendingImageAttachment extends PendingAttachment {
 	dataUrl: string;
 }
 
-type TruncateTailEntry = Parameters<typeof markSessionTailLocallyTruncated>[2];
-
-interface TruncateTailPayload {
-	sessionKey?: string;
-	keptCount?: number;
-	entry?: TruncateTailEntry;
-}
-
-interface SessionOptimisticSnapshot {
-	messageCount: number;
-	lastSeenMessageCount: number;
-	preview: string;
-	updatedAt: number;
-	lastHistoryIndex: number;
-	version: number;
-}
-
-interface LegacySessionOptimisticSnapshot {
-	messageCount?: number;
-	lastSeenMessageCount?: number;
-	preview?: string | null;
-	updatedAt?: number;
-	version?: number;
-	_localUnread?: boolean;
-	_replying?: boolean;
-}
-
-interface OptimisticSendSnapshot {
-	sessionKey: string;
-	previousChatSeq: number;
-	session?: SessionOptimisticSnapshot;
-	legacy?: LegacySessionOptimisticSnapshot;
-}
-
-// ── Auto-resize ─────────────────────────────────────────────
-
-function chatAutoResize(): void {
+export function chatAutoResize(): void {
 	if (!S.chatInput) return;
 	S.chatInput.style.height = "auto";
 	S.chatInput.style.height = `${Math.min(S.chatInput.scrollHeight, 120)}px`;
 }
 
-// ── Slash command integration ───────────────────────────────
-
 export function tryHandleLocalSlashCommand(text: string, hasAttachments: boolean): boolean {
 	if (text.charAt(0) !== "/" || hasAttachments) return false;
 	const slash = parseSlashCommand(text);
 	if (!(slash && shouldHandleSlashLocally(slash.name))) return false;
-	(S.chatInput as HTMLTextAreaElement).value = "";
+	if (S.chatInput) S.chatInput.value = "";
 	chatAutoResize();
 	slashHideMenu();
 	handleSlashCommand(slash.name, slash.args);
 	return true;
 }
 
-// ── History navigation ──────────────────────────────────────
-
 export function handleHistoryUp(): void {
-	if (S.chatHistory.length === 0) return;
+	if (S.chatHistory.length === 0 || !S.chatInput) return;
 	if (S.chatHistoryIdx === -1) {
-		S.setChatHistoryDraft((S.chatInput as HTMLTextAreaElement).value);
+		S.setChatHistoryDraft(S.chatInput.value);
 		S.setChatHistoryIdx(S.chatHistory.length - 1);
 	} else if (S.chatHistoryIdx > 0) S.setChatHistoryIdx(S.chatHistoryIdx - 1);
-	(S.chatInput as HTMLTextAreaElement).value = S.chatHistory[S.chatHistoryIdx];
+	S.chatInput.value = S.chatHistory[S.chatHistoryIdx];
 	chatAutoResize();
 }
 
 export function handleHistoryDown(): void {
-	if (S.chatHistoryIdx === -1) return;
+	if (S.chatHistoryIdx === -1 || !S.chatInput) return;
 	if (S.chatHistoryIdx < S.chatHistory.length - 1) {
 		S.setChatHistoryIdx(S.chatHistoryIdx + 1);
-		(S.chatInput as HTMLTextAreaElement).value = S.chatHistory[S.chatHistoryIdx];
+		S.chatInput.value = S.chatHistory[S.chatHistoryIdx];
 	} else {
 		S.setChatHistoryIdx(-1);
-		(S.chatInput as HTMLTextAreaElement).value = S.chatHistoryDraft;
+		S.chatInput.value = S.chatHistoryDraft;
 	}
 	chatAutoResize();
 }
-
-// ── Send helpers ────────────────────────────────────────────
 
 export function rememberChatHistory(text: string): void {
 	if (!text) return;
 	S.chatHistory.push(text);
 	if (S.chatHistory.length > 200) S.setChatHistory(S.chatHistory.slice(-200));
-	localStorage.setItem("chelix-chat-history", JSON.stringify(S.chatHistory));
 }
 
 export function resetComposerAfterSend(): void {
 	S.setChatHistoryIdx(-1);
 	S.setChatHistoryDraft("");
-	(S.chatInput as HTMLTextAreaElement).value = "";
+	if (S.chatInput) S.chatInput.value = "";
 	chatAutoResize();
 	if (window.innerWidth < 768) S.chatInput?.blur();
 }
 
-export function handleChatSendRpcResponse(res: RpcResponse<ChatSendPayload>, userEl: HTMLElement | null): boolean {
-	if (res.ok && res.payload?.runId) setSessionActiveRunId(S.activeSessionKey, res.payload.runId);
-	if (res.payload?.queued) {
-		// The prompt is now server state; the optimistic bubble is replaced by
-		// the queue tray, which every client renders from the same snapshot.
-		userEl?.remove();
-		replaceQueuedPromptsDock(res.payload.status);
-		return true;
-	}
-	if (!res.ok) {
-		setComposerStopButton(false);
-		chatAddMsg("error", res.error?.message || "Request failed");
-		return false;
-	}
-	return res.ok;
-}
-
-export async function buildChatMessage(
-	text: string,
-	seq: number,
-): Promise<{ params: ChatSendParams; el: HTMLElement | null; enableDeleteAction: () => void }> {
+async function buildChatMessage(text: string, sessionKey: string): Promise<{ params: ChatSendRequest; id: string }> {
 	const attachments = hasPendingAttachments() ? getPendingAttachments() : [];
 	const images = attachments.filter((attachment): attachment is PendingImageAttachment => Boolean(attachment.dataUrl));
-	const documents = attachments.filter((attachment) => !attachment.dataUrl);
-	if (attachments.length > 0) {
-		const uploadedDocuments = await Promise.all(
-			documents.map((attachment) => uploadDocumentAttachment(attachment, S.activeSessionKey)),
-		);
-		const content: ChatContentPart[] = [];
-		if (text) content.push({ type: "text", text });
-		for (const img of images) if (img.dataUrl) content.push({ type: "image_url", image_url: { url: img.dataUrl } });
-		const params: ChatSendParams =
-			content.length > 0 ? { content, clientSequence: seq } : { text, clientSequence: seq };
-		if (uploadedDocuments.length > 0) {
-			params.documents = uploadedDocuments.map((document) => ({
-				displayName: document.display_name,
-				storedFilename: document.stored_filename,
-				mimeType: document.mime_type,
-				sizeBytes: document.size_bytes,
-			}));
-		}
-		const el = chatAddMsgWithAttachments("user", text ? renderMarkdown(text) : "", images, uploadedDocuments);
-		appendUserMessageActions({
-			messageEl: el,
-			sessionKey: S.activeSessionKey,
-			text,
-			seq,
-			deleteEnabled: false,
-			onDeleted: (payload) => handleUserMessageDeleted(el, payload),
-		});
-		clearPendingAttachments();
-		return {
-			params,
-			el,
-			enableDeleteAction: () =>
-				appendUserMessageActions({
-					messageEl: el,
-					sessionKey: S.activeSessionKey,
-					text,
-					seq,
-					onDeleted: (payload) => handleUserMessageDeleted(el, payload),
-				}),
-		};
-	}
-	const el = chatAddMsg("user", renderMarkdown(text), true);
-	appendUserMessageActions({
-		messageEl: el,
-		sessionKey: S.activeSessionKey,
-		text,
-		seq,
-		deleteEnabled: false,
-		onDeleted: (payload) => handleUserMessageDeleted(el, payload),
-	});
-	return {
-		params: { text, clientSequence: seq },
-		el,
-		enableDeleteAction: () =>
-			appendUserMessageActions({
-				messageEl: el,
-				sessionKey: S.activeSessionKey,
-				text,
-				seq,
-				onDeleted: (payload) => handleUserMessageDeleted(el, payload),
-			}),
-	};
+	const documents = await Promise.all(
+		attachments
+			.filter((attachment) => !attachment.dataUrl)
+			.map((attachment) => uploadDocumentAttachment(attachment, sessionKey)),
+	);
+	if (S.activeSessionKey !== sessionKey) throw new Error("Session changed while uploading attachments");
+	const content: ChatContentPart[] = [];
+	if (text) content.push({ type: "text", text });
+	for (const image of images) content.push({ type: "image_url", image_url: { url: image.dataUrl } });
+	const element =
+		attachments.length > 0
+			? chatAddMsgWithAttachments("user", renderMarkdown(text), images, documents)
+			: chatAddMsg("user", renderMarkdown(text), true);
+	appendUserMessageCopyAction(element, text);
+	clearPendingAttachments();
+	const id = registerPendingSend(sessionKey, element);
+	const params: ChatSendRequest = content.length > 0 ? { content, clientMessageId: id } : { text, clientMessageId: id };
+	if (documents.length > 0)
+		params.documents = documents.map((document) => ({
+			displayName: document.display_name,
+			storedFilename: document.stored_filename,
+			mimeType: document.mime_type,
+			sizeBytes: document.size_bytes,
+		}));
+	if (element) void highlightCodeBlocks(element);
+	return { params, id };
 }
-
-function handleUserMessageDeleted(messageEl: HTMLElement | null, payload: unknown): void {
-	const data = payload as TruncateTailPayload | null;
-	const sessionKey = data?.sessionKey || S.activeSessionKey;
-	markSessionTailLocallyTruncated(sessionKey, Number(data?.keptCount) || 0, data?.entry);
-	if (sessionKey !== S.activeSessionKey || !location.pathname.startsWith("/chats/")) return;
-	removeMessageTailFromDom(messageEl);
-}
-
-function removeMessageTailFromDom(messageEl: HTMLElement | null): void {
-	let current = messageEl;
-	while (current) {
-		const next = current.nextElementSibling as HTMLElement | null;
-		unmountExecuteCommandToolBubbles(current);
-		current.remove();
-		current = next;
-	}
-}
-
-function captureOptimisticSendSnapshot(sessionKey: string, previousChatSeq: number): OptimisticSendSnapshot {
-	const session = sessionStore.getByKey(sessionKey);
-	const legacy = (S.sessions as SessionMeta[]).find((entry) => entry.key === sessionKey);
-	return {
-		sessionKey,
-		previousChatSeq,
-		session: session
-			? {
-					messageCount: session.messageCount,
-					lastSeenMessageCount: session.lastSeenMessageCount,
-					preview: session.preview,
-					updatedAt: session.updatedAt,
-					lastHistoryIndex: session.lastHistoryIndex.value,
-					version: session.version,
-				}
-			: undefined,
-		legacy: legacy
-			? {
-					messageCount: legacy.messageCount,
-					lastSeenMessageCount: legacy.lastSeenMessageCount,
-					preview: legacy.preview,
-					updatedAt: legacy.updatedAt,
-					version: legacy.version,
-					_localUnread: legacy._localUnread,
-					_replying: legacy._replying,
-				}
-			: undefined,
-	};
-}
-
-/** Undo the optimistic session bookkeeping applied before `chat.send`. */
-function restoreOptimisticSessionState(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
-	if (userEl?.isConnected) userEl.remove();
-
-	const session = sessionStore.getByKey(snapshot.sessionKey);
-	if (session && snapshot.session) {
-		session.messageCount = snapshot.session.messageCount;
-		session.lastSeenMessageCount = snapshot.session.lastSeenMessageCount;
-		session.preview = snapshot.session.preview;
-		session.updatedAt = snapshot.session.updatedAt;
-		session.lastHistoryIndex.value = snapshot.session.lastHistoryIndex;
-		session.version = snapshot.session.version;
-		session.updateBadge();
-		session.dataVersion.value++;
-	}
-
-	const legacy = (S.sessions as SessionMeta[]).find((entry) => entry.key === snapshot.sessionKey);
-	if (legacy && snapshot.legacy) {
-		legacy.messageCount = snapshot.legacy.messageCount;
-		legacy.lastSeenMessageCount = snapshot.legacy.lastSeenMessageCount;
-		legacy.preview = snapshot.legacy.preview;
-		legacy.updatedAt = snapshot.legacy.updatedAt;
-		legacy.version = snapshot.legacy.version;
-		legacy._localUnread = snapshot.legacy._localUnread;
-		legacy._replying = snapshot.legacy._replying;
-	}
-
-	clearSessionHistoryCache(snapshot.sessionKey);
-}
-
-/** Roll back a send the server rejected: the session is idle again. */
-function rollbackOptimisticSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
-	restoreOptimisticSessionState(snapshot, userEl);
-	// The server stored nothing, so this seq is free again.
-	S.setChatSeq(snapshot.previousChatSeq);
-	setSessionReplying(snapshot.sessionKey, false);
-	setComposerStopButton(false);
-}
-
-/**
- * Roll back a send the server queued. The prompt is not part of the
- * conversation yet — it is rendered from the server queue snapshot — but the
- * active run keeps the session busy.
- *
- * `chatSeq` is deliberately kept because the accepted queued content retains
- * this client sequence. Reusing it for the next message would persist two user
- * messages with the same sequence.
- */
-function rollbackQueuedSend(snapshot: OptimisticSendSnapshot, userEl: HTMLElement | null): void {
-	restoreOptimisticSessionState(snapshot, userEl);
-}
-
-// ── Main sendChat function ──────────────────────────────────
-// Exposed so ChatPage and slash-commands can call it.
 
 let maybeRefreshFullContextFn: (() => void) | null = null;
-
-/** Called by ChatPage to register the refresh callback. */
 export function setMaybeRefreshFullContextFn(fn: () => void): void {
 	maybeRefreshFullContextFn = fn;
 }
-
 let sendInProgress = false;
-
 export function sendChat(): void {
 	void sendChatAsync();
 }
 
+async function submitPending(sessionKey: string, id: string, params: ChatSendRequest): Promise<void> {
+	try {
+		const response = await sendRpc<ChatSendPayload>("chat.send", params);
+		handlePendingSendResponse(sessionKey, id, response);
+	} catch (error) {
+		rejectPendingSend(sessionKey, id, error instanceof Error ? error.message : "Request failed");
+	}
+}
+
 async function sendChatAsync(): Promise<void> {
 	if (sendInProgress) return;
-	const text = (S.chatInput as HTMLTextAreaElement).value.trim();
+	const text = S.chatInput?.value.trim() || "";
 	const hasAttachments = hasPendingAttachments();
 	if (!((text || hasAttachments) && S.connected)) return;
+	const sessionKey = S.activeSessionKey;
 	sendInProgress = true;
 	warmAudioPlayback();
 	try {
 		if (tryHandleLocalSlashCommand(text, hasAttachments)) return;
-		const previousChatSeq = S.chatSeq;
-		const modelSelection = selectedModelSelection();
-		if (!modelSelection) {
-			chatAddMsg("error", "Select a model before sending a message");
-			return;
-		}
-		const msg = await buildChatMessage(text, previousChatSeq + 1);
-		S.setChatSeq(msg.params.clientSequence);
+		const modelOverride = selectedModelSelection();
+		if (!modelOverride) throw new Error("Select a model before sending a message");
+		const message = await buildChatMessage(text, sessionKey);
 		rememberChatHistory(text);
 		resetComposerAfterSend();
-		const chatParams: ChatSendParams = {
-			...msg.params,
-			modelOverride: modelSelection,
-		};
-		const userEl = msg.el;
-		if (userEl) highlightCodeBlocks(userEl);
-		const rollbackSnapshot = captureOptimisticSendSnapshot(S.activeSessionKey, previousChatSeq);
-		bumpSessionCount(S.activeSessionKey, 1);
-		cacheOutgoingUserMessage(S.activeSessionKey, chatParams);
-		seedSessionPreviewFromUserText(S.activeSessionKey, text);
-		setSessionReplying(S.activeSessionKey, true);
-		setComposerStopButton(true, S.activeSessionKey);
-		try {
-			const res = await sendRpc<ChatSendPayload>("chat.send", chatParams);
-			const accepted = handleChatSendRpcResponse(res, userEl);
-			if (!accepted) {
-				rollbackOptimisticSend(rollbackSnapshot, userEl);
-			} else if (res.payload?.queued) {
-				rollbackQueuedSend(rollbackSnapshot, userEl);
-			} else {
-				msg.enableDeleteAction();
-			}
-		} catch {
-			rollbackOptimisticSend(rollbackSnapshot, userEl);
-			chatAddMsg("error", "Request failed");
-		}
-		maybeRefreshFullContextFn?.();
-	} catch (err) {
-		chatAddMsg("error", err instanceof Error ? err.message : "File upload failed");
+		await submitPending(sessionKey, message.id, { ...message.params, modelOverride });
+		if (sessionKey === S.activeSessionKey) maybeRefreshFullContextFn?.();
+	} catch (error) {
+		if (sessionKey === S.activeSessionKey)
+			chatAddMsg("error", error instanceof Error ? error.message : "Request failed");
 	} finally {
 		sendInProgress = false;
 	}
 }
-
-export { chatAutoResize };

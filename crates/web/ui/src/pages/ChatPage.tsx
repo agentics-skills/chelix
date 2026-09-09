@@ -747,7 +747,7 @@ function syncModelComboLabel(): void {
 
 function resolveInitialSessionKey(sessionKeyFromUrl: string | null): string {
 	if (sessionKeyFromUrl) return sessionKeyFromUrl;
-	const sk = localStorage.getItem("chelix-session") || "main";
+	const sk = S.activeSessionKey || "main";
 	history.replaceState(null, "", sessionPath(sk));
 	return sk;
 }
@@ -800,7 +800,7 @@ registerPrefix(
 		container.innerHTML = chatPageHTML;
 
 		S.setChatMsgBox(S.$("messages"));
-		S.setChatInput(S.$("chatInput"));
+		S.setChatInput(S.$<HTMLTextAreaElement>("chatInput"));
 		S.setChatSendBtn(S.$("sendBtn"));
 		S.$("attachInput")?.removeAttribute("accept");
 		S.$("attachBtn")?.setAttribute("title", "Attach files");

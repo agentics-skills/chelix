@@ -71,6 +71,8 @@ pub struct QueuedPromptContent {
     pub audio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_sequence: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_message_id: Option<String>,
     pub input_medium: MessageMedium,
     pub reply_medium: MessageMedium,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -407,6 +409,7 @@ mod tests {
             documents: Vec::new(),
             audio: None,
             client_sequence: None,
+            client_message_id: None,
             input_medium: MessageMedium::Text,
             reply_medium: MessageMedium::Text,
             channel: None,

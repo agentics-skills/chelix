@@ -10,8 +10,10 @@ import * as gon from "./gon";
 import { sendRpc } from "./helpers";
 import { renderPersistedAudio } from "./message-voice";
 import { selectedModelSelection } from "./models";
+import { requestSessionFork } from "./sessions/session-fork";
 import * as S from "./state";
 import type { ChatSendRequest } from "./types/chat";
+import type { UiHistoryTarget } from "./types/ui-history";
 import { copyToClipboard, showToast } from "./ui";
 
 // ── Icon helper ──────────────────────────────────────────────
@@ -45,7 +47,7 @@ function onDocClick(e: MouseEvent): void {
 export interface MessageActionContext {
 	messageEl: HTMLElement;
 	sessionKey: string;
-	messageIndex?: number;
+	target?: UiHistoryTarget;
 	text: string;
 	hasAudio?: boolean;
 	audioWarning?: string;
@@ -53,7 +55,7 @@ export interface MessageActionContext {
 
 interface MessageActionState {
 	sessionKey: string;
-	messageIndex?: number;
+	target?: UiHistoryTarget;
 	text: string;
 	hasAudio: boolean;
 }
@@ -64,8 +66,7 @@ export interface UserMessageActionContext {
 	messageEl: HTMLElement | null;
 	sessionKey: string;
 	text: string;
-	messageIndex?: number;
-	seq?: number;
+	target?: UiHistoryTarget;
 	deleteEnabled?: boolean;
 	onDeleted?: (payload: unknown) => void;
 }
@@ -84,7 +85,7 @@ export function appendUserMessageActions(ctx: UserMessageActionContext): void {
 		stack.appendChild(buildUserCopyButton(text));
 	}
 
-	const canDelete = ctx.deleteEnabled !== false && (Number.isInteger(ctx.messageIndex) || Number.isInteger(ctx.seq));
+	const canDelete = ctx.deleteEnabled !== false && ctx.target !== undefined;
 	if (canDelete && !stack.querySelector(".msg-user-delete-btn")) {
 		stack.appendChild(buildUserDeleteButton(ctx));
 	}
@@ -113,13 +114,7 @@ function buildUserDeleteButton(ctx: UserMessageActionContext): HTMLButtonElement
 		e.stopPropagation();
 		deleteBtn.classList.add("msg-action-btn-active");
 		deleteBtn.disabled = true;
-		const params: Record<string, unknown> = { key: ctx.sessionKey };
-		if (Number.isInteger(ctx.messageIndex)) {
-			params.messageIndex = ctx.messageIndex;
-		} else if (Number.isInteger(ctx.seq)) {
-			params.seq = ctx.seq;
-		}
-		const result = await sendRpc("sessions.truncate_tail", params);
+		const result = await sendRpc("sessions.truncate_tail", { key: ctx.sessionKey, target: ctx.target });
 		if (result.ok) {
 			ctx.onDeleted?.(result.payload);
 			showToast("Message deleted", "success");
@@ -139,12 +134,12 @@ export function appendMessageActions(ctx: MessageActionContext): void {
 	if (state) {
 		state.sessionKey = sessionKey;
 		state.text = ctx.text;
-		if (ctx.messageIndex !== undefined) state.messageIndex = ctx.messageIndex;
+		state.target = ctx.target;
 		if (ctx.hasAudio !== undefined) state.hasAudio = ctx.hasAudio;
 	} else {
 		state = {
 			sessionKey,
-			messageIndex: ctx.messageIndex,
+			target: ctx.target,
 			text: ctx.text,
 			hasAudio: ctx.hasAudio === true,
 		};
@@ -211,13 +206,13 @@ function buildMessageActionBar(state: MessageActionState): HTMLDivElement {
 	const forkBtn = actionButton("icon-git-fork", "Fork into new session");
 	forkBtn.classList.add("msg-fork-btn");
 	forkBtn.addEventListener("click", () => {
-		if (!(Number.isInteger(state.messageIndex) && (state.messageIndex as number) >= 0)) {
+		if (!state.target) {
 			showToast("Cannot fork from an unpersisted message", "error");
 			return;
 		}
-		sendRpc("sessions.fork", {
+		requestSessionFork({
 			key: state.sessionKey,
-			forkPoint: (state.messageIndex as number) + 1,
+			target: state.target,
 		}).then((res) => {
 			if (res.ok) {
 				showToast("Forked into new session", "success");
@@ -248,7 +243,7 @@ function buildVoiceButton(messageEl: HTMLElement, state: MessageActionState): HT
 	const voiceBtn = actionButton("icon-microphone", "Voice it");
 	voiceBtn.classList.add("msg-voice-btn");
 	voiceBtn.addEventListener("click", async () => {
-		if (!(Number.isInteger(state.messageIndex) && (state.messageIndex as number) >= 0)) {
+		if (!state.target) {
 			showToast("Cannot generate voice for an unpersisted message", "error");
 			return;
 		}
@@ -256,7 +251,7 @@ function buildVoiceButton(messageEl: HTMLElement, state: MessageActionState): HT
 		voiceBtn.title = "Generating voice...";
 		const result = await sendRpc("sessions.voice.generate", {
 			key: state.sessionKey,
-			messageIndex: state.messageIndex,
+			target: state.target,
 		});
 		voiceBtn.classList.remove("msg-action-btn-active");
 		const payload = result?.payload as Record<string, unknown> | undefined;

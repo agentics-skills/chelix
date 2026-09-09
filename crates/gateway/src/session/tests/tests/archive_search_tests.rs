@@ -122,7 +122,7 @@ async fn search_excludes_archived_sessions_unless_requested() {
 }
 
 #[tokio::test]
-async fn search_includes_results_without_metadata_rows() {
+async fn search_excludes_results_without_metadata_rows() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let pool = sqlite_pool().await;
@@ -144,8 +144,5 @@ async fn search_includes_results_without_metadata_rows() {
         .as_array()
         .cloned()
         .unwrap();
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["sessionKey"], "session:orphaned");
-    assert!(results[0]["label"].is_null());
-    assert_eq!(results[0]["archived"], false);
+    assert!(results.is_empty());
 }

@@ -267,6 +267,8 @@ pub struct RunnerToolLifecycleEvent {
     pub raw_result: Option<serde_json::Value>,
     /// Current budget retained for active snapshots and cancellation metadata.
     pub context_budget: Option<ContextBudgetMetadata>,
+    /// UI-only representation supplied by the tool at this lifecycle stage.
+    pub ui_presentation: Option<chelix_sessions::ui_history_types::UiPresentation>,
 }
 
 impl RunnerToolLifecycleEvent {
@@ -278,15 +280,22 @@ impl RunnerToolLifecycleEvent {
             iteration_usage: None,
             raw_result: None,
             context_budget: None,
+            ui_presentation: None,
         }
     }
 }
 
 pub(crate) async fn deliver_tool_lifecycle(
+    tools: &crate::tool_registry::ToolRegistry,
     callback: Option<&OnToolLifecycle>,
-    event: RunnerToolLifecycleEvent,
+    mut event: RunnerToolLifecycleEvent,
 ) -> Result<(), AgentRunError> {
     if let Some(callback) = callback {
+        let name = sanitize_tool_name(&event.lifecycle.tool_name);
+        let (tool, _) = resolve_tool_lookup(tools, &name);
+        if let Some(tool) = tool {
+            event.ui_presentation = tool.ui_presentation(&event.lifecycle)?;
+        }
         callback(event).await?;
     }
     Ok(())
@@ -317,6 +326,12 @@ pub enum RunnerEvent {
     /// Text from the final iteration of the run.
     FinalText(String),
     Iteration(usize),
+    /// A provider attempt failed; metadata is copied before lifecycle persistence waits.
+    ProviderError {
+        error: String,
+        segment_id: Option<chelix_common::ProviderSegmentId>,
+        retry_after_ms: Option<u64>,
+    },
     /// An LLM error occurred and the runner will retry.
     RetryingAfterError {
         error: String,

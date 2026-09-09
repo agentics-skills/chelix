@@ -12,10 +12,10 @@ import * as gon from "./gon";
 import { renderAudioPlayer, renderMarkdown, sendRpc, warmAudioPlayback } from "./helpers";
 import { t } from "./i18n";
 import { selectedModelSelection } from "./models";
-import { bumpSessionCount, seedSessionPreviewFromUserText, setSessionReplying } from "./sessions";
+import { handlePendingSendResponse, registerPendingSend, rejectPendingSend } from "./sessions/pending-send";
 import * as S from "./state";
 import { sessionStore } from "./stores/session-store";
-import type { ChatSendRequest } from "./types/chat";
+import type { ChatSendPayload, ChatSendRequest } from "./types/chat";
 
 // ── Shared state ─────────────────────────────────────────────
 let micBtn: HTMLButtonElement | null = null;
@@ -444,22 +444,22 @@ function sendTranscribedMessage(
 	}
 	if (userEl) appendSttProviderFooter(userEl, providerInfo);
 
+	const sessionKey = S.activeSessionKey;
+	const clientMessageId = registerPendingSend(sessionKey, userEl);
 	const modelOverride = selectedModelSelection();
 	const chatParams: ChatSendRequest = {
+		clientMessageId,
 		text,
 		inputMedium: "voice",
 		...(audioFilename ? { audioFilename } : {}),
 		...(modelOverride ? { modelOverride } : {}),
 	};
 
-	bumpSessionCount(S.activeSessionKey, 1);
-	seedSessionPreviewFromUserText(S.activeSessionKey, text);
-	setSessionReplying(S.activeSessionKey, true);
-	sendRpc("chat.send", chatParams).then((sendRes) => {
-		if (sendRes && !sendRes.ok && sendRes.error) {
-			chatAddMsg("error", sendRes.error?.message || "Request failed");
-		}
-	});
+	void sendRpc<ChatSendPayload>("chat.send", chatParams)
+		.then((response) => handlePendingSendResponse(sessionKey, clientMessageId, response))
+		.catch((error: unknown) =>
+			rejectPendingSend(sessionKey, clientMessageId, error instanceof Error ? error.message : "Request failed"),
+		);
 }
 
 // ── Transcription ────────────────────────────────────────────

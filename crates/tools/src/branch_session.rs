@@ -11,7 +11,7 @@ use {
 
 use crate::error::Error;
 
-/// Agent tool that forks the current session at a given message index.
+/// Agent tool that copies a confirmed semantic prefix of the current session.
 pub struct BranchSessionTool {
     store: Arc<SessionStore>,
     metadata: Arc<SqliteSessionMetadata>,
@@ -30,8 +30,8 @@ impl AgentTool for BranchSessionTool {
     }
 
     fn description(&self) -> &str {
-        "Fork the current session into a new branch at a given message index. \
-         Messages up to fork_point are copied to the new session. \
+        "Fork the current session into a new branch at an exclusive UI history position. \
+         Confirmed messages before fork_point are copied to the new session. Without fork_point, the maximal confirmed prefix is selected and any boundary adjustment is reported. \
          The new session inherits the parent's model, reasoning effort, agent, and project."
     }
 
@@ -46,7 +46,7 @@ impl AgentTool for BranchSessionTool {
                 },
                 "fork_point": {
                     "type": "integer",
-                    "description": "Message index to fork at (0-based, exclusive). Defaults to all messages."
+                    "description": "Exclusive UI history position to fork at (0-based). When omitted, selects the maximal confirmed prefix and reports boundary adjustments."
                 }
             }
         })
@@ -72,23 +72,18 @@ impl AgentTool for BranchSessionTool {
                 "session '{parent_key}' has no LLM model/reasoning pair"
             ))
         })?;
-        let messages = self.store.read(parent_key).await?;
-        let message_count = messages.len();
-        let fork_point = params
+        let requested_point = params
             .get("fork_point")
-            .and_then(Value::as_u64)
-            .map(|value| value as usize)
-            .unwrap_or(message_count);
-        if fork_point > message_count {
-            return Err(Error::message(format!(
-                "fork_point {fork_point} exceeds message count {message_count}"
-            ))
-            .into());
-        }
-
+            .map(|value| {
+                value
+                    .as_u64()
+                    .ok_or_else(|| Error::message("fork_point must be an unsigned UI position"))
+            })
+            .transpose()?;
         let new_key = format!("session:{}", uuid::Uuid::new_v4());
-        self.store
-            .replace_history(&new_key, messages[..fork_point].to_vec())
+        let fork = self
+            .store
+            .fork_history(parent_key, &new_key, requested_point)
             .await?;
         self.metadata
             .create_llm_session(
@@ -106,7 +101,7 @@ impl AgentTool for BranchSessionTool {
                 .await?;
         }
         self.metadata
-            .set_parent(&new_key, Some(parent_key), Some(fork_point as u32))
+            .set_parent(&new_key, Some(parent_key), Some(fork.fork_point))
             .await?;
         let entry = self
             .metadata
@@ -118,8 +113,11 @@ impl AgentTool for BranchSessionTool {
             "sessionKey": new_key,
             "id": entry.id,
             "label": label,
-            "forkPoint": fork_point,
-            "messageCount": fork_point,
+            "forkPoint": fork.fork_point,
+            "sourceEnd": fork.source_end,
+            "boundaryAdjusted": fork.boundary_adjusted,
+            "boundaryReasons": fork.boundary_reasons,
+            "messageCount": ui_message_count,
         }))
     }
 }

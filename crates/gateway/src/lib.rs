@@ -21,6 +21,7 @@ pub mod channel_events;
 pub mod channel_store;
 pub mod chat;
 pub mod chat_error;
+pub mod chat_status_outbox;
 pub mod cron;
 pub mod external_agents;
 pub mod logs;
@@ -47,6 +48,7 @@ pub mod session_types;
 pub mod share_store;
 pub mod ssh_probe;
 pub mod state;
+pub mod ui_history_subscription;
 pub mod update_check;
 pub mod updater;
 #[cfg(feature = "vault")]

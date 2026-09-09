@@ -170,17 +170,6 @@ pub(crate) struct CheckpointOutcome {
     pub messages_summarized: u32,
 }
 
-impl CheckpointOutcome {
-    /// Broadcast payload fields describing this checkpoint.
-    #[must_use]
-    pub fn broadcast_metadata(&self) -> serde_json::Value {
-        serde_json::json!({
-            "messageIndex": self.index,
-            "checkpoint": self.message,
-        })
-    }
-}
-
 #[derive(Debug)]
 pub(crate) enum CancellableCompactionOutcome {
     Completed(CheckpointOutcome),
@@ -1044,6 +1033,7 @@ mod tests {
                 "toolName": "read_file",
                 "sequence": 5,
                 "emittedAtMs": 1,
+                "runId": "run-1",
                 "stage": "completed",
                 "arguments": {},
                 "success": false,
@@ -1103,6 +1093,7 @@ mod tests {
                 "toolName": "read_file",
                 "sequence": 5,
                 "emittedAtMs": 1,
+                "runId": "run-1",
                 "stage": "completed",
                 "arguments": {},
                 "success": true,

@@ -438,7 +438,8 @@ function syncReasoningParts(body: HTMLElement, parts: string[]): void {
 }
 
 export function chatAddErrorCard(err: ErrorCardData): void {
-	if (!S.chatMsgBox) return;
+	const target = chatInsertionTarget();
+	if (!target) return;
 	clearChatEmptyState();
 	const el = document.createElement("div");
 	el.className = "msg error-card";
@@ -474,7 +475,7 @@ export function chatAddErrorCard(err: ErrorCardData): void {
 
 	el.appendChild(body);
 
-	S.chatMsgBox.appendChild(el);
+	target.appendChild(el);
 	smartScrollToBottom();
 }
 
@@ -531,21 +532,9 @@ export function resolveApproval(requestId: string, decision: string, card: HTMLE
 	});
 }
 
-export function highlightAndScroll(msgEls: (HTMLElement | null)[], messageIndex: number, query: string): void {
-	let target: HTMLElement | null = null;
-	if (messageIndex >= 0 && messageIndex < msgEls.length && msgEls[messageIndex]) {
-		target = msgEls[messageIndex];
-	}
-	const lowerQ = query.toLowerCase();
-	if (!target || (target.textContent || "").toLowerCase().indexOf(lowerQ) === -1) {
-		for (const candidate of msgEls) {
-			if (candidate && (candidate.textContent || "").toLowerCase().indexOf(lowerQ) !== -1) {
-				target = candidate;
-				break;
-			}
-		}
-	}
-	if (!target) return;
+export function highlightAndScroll(msgEls: (HTMLElement | null)[], messageId: string, query: string): void {
+	const target = msgEls.find((element) => element?.dataset.messageId === messageId);
+	if (!target) throw new Error("Search message is not in the loaded history range");
 	msgEls.forEach((el) => {
 		if (el) highlightTermInElement(el, query);
 	});
