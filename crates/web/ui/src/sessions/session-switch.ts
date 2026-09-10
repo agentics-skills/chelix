@@ -80,7 +80,7 @@ function resetSwitchViewState(): void {
 	S.setSessionCurrentContextTokens(0);
 	S.setSessionContextWindow(0);
 	setComposerStopButton(false);
-	updateTokenBar();
+	updateTokenBar(null);
 }
 
 export function clearActiveSession(): Promise<RpcResponse> {

@@ -617,7 +617,7 @@ function contextBudgetPercent(contextBudget: ContextBudgetMetadata): number | nu
 	) {
 		return null;
 	}
-	return Math.floor((promptTokens * 100) / compactionBudget);
+	return (promptTokens * 100) / compactionBudget;
 }
 
 function tokenBarUsageText(total: number): string {
@@ -641,7 +641,7 @@ function tokenBarBudgetText(bar: HTMLElement, contextBudget?: ContextBudgetMetad
 		return bar.querySelector<HTMLElement>("[data-context-budget-percent]")?.textContent || "";
 	}
 	const percent = contextBudgetPercent(contextBudget);
-	return percent === null ? "" : `[${percent}%]`;
+	return percent === null ? "" : `[${percent.toFixed(2)}%]`;
 }
 
 function appendTokenBarBudget(bar: HTMLElement, budgetText: string): void {

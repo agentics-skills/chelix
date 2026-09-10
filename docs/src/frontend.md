@@ -128,6 +128,16 @@ buffers early `ui_history` events. Generation changes replace the window;
 revision gaps request another baseline. The server isolates slow listeners in
 per-client tasks and can send a replacement snapshot of the selected range.
 
+The status-line context-budget percentage is driven directly by received tool
+lifecycle snapshots. An accepted live batch applies the newest budget source by
+`(position, revision)` before history reconciliation. A page baseline contributes
+a budget source only when it reaches the session tail (`hasNewer === false`), so
+an older pagination or search range cannot replace a newer value. Budget metadata
+from an early delta remains in memory across baseline buffering and a replacement
+subscription caused by buffer overflow. Switching sessions clears the previous
+percentage. Percentage calculation follows
+[Context-budget metadata](compaction.md#context-budget-metadata).
+
 `stores/session-history-cache.ts` keeps one in-memory session window, bounded
 by 240 messages and 12 MiB of serialized snapshots with a one-message minimum.
 Bidirectional pagination evicts the opposite edge and preserves the reading
