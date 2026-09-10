@@ -279,7 +279,13 @@ The TypeScript frontend receives semantic history through
    new baseline; the server recovers a lagged subscriber with a snapshot of its
    selected range.
 4. `sessions/session-render.ts` reconciles keyed DOM nodes in server position
-   order, preserving the reasoning disclosure of a retained assistant node.
+   order, preserving one reasoning disclosure for each retained assistant node.
+   Every `active` revision renders it open as `Thinking`; manually closing it
+   while active lasts only until the next revision. The first non-active render
+   closes it as `Reasoning`, while later non-active revisions preserve the user's
+   open state on the retained keyed node. A subscribed baseline uses the same
+   rules, so a late client opens an active segment and starts a terminal segment
+   with closed `Reasoning`.
 5. `ws/chat-handlers.ts` handles run, queue, voice, and compaction status.
 
 Provider items within a snapshot retain their canonical positions. Tool cards
