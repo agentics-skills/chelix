@@ -485,6 +485,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
             "agents": [],
             "defaults": {
                 "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+                "compaction_reminder": chelix_config::schema::DEFAULT_COMPACTION_REMINDER,
             },
         }),
         chelix_config::schema::AgentsConfigState::Configured { default_id, .. } => {
@@ -518,6 +519,7 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
                 "agents": entries,
                 "defaults": {
                     "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+                    "compaction_reminder": chelix_config::schema::DEFAULT_COMPACTION_REMINDER,
                 },
             })
         },

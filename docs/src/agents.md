@@ -28,6 +28,7 @@ description = "General-purpose assistant"
 model = "openai::gpt-5.2"
 reasoning_effort = "high"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [agents.main.tools]
 allow = []
@@ -106,6 +107,7 @@ Each `[agents.<id>]` table supports:
 - `model`;
 - `tools.allow`, `tools.deny`, and `tools.preload`;
 - `max_tools_threshold`;
+- `compaction_reminder`;
 - `timeout_secs`;
 - `max_tool_result_bytes`;
 - `sessions.key_prefix`, `sessions.allowed_keys`, `sessions.can_send`, and
@@ -114,9 +116,9 @@ Each `[agents.<id>]` table supports:
 - `mcp.allow_servers` or `mcp.deny_servers`;
 - `skills.allow` and `skills.deny`.
 
-`name`, `model`, `reasoning_effort`, and `max_tools_threshold` are required.
-The model must use its canonical registry ID, and the effort must be supported
-by that model. Unknown fields are rejected.
+`name`, `model`, `reasoning_effort`, `max_tools_threshold`, and
+`compaction_reminder` are required. The model must use its canonical registry
+ID, and the effort must be supported by that model. Unknown fields are rejected.
 
 ## Tool Policy
 

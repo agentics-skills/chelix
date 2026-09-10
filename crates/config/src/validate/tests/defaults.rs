@@ -50,6 +50,7 @@ name = "Rex"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#;
     let mut diagnostics = Vec::new();
     check_shadowed_defaults(user_toml, &mut diagnostics);

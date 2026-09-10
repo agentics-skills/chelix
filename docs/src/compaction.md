@@ -49,6 +49,9 @@ persistence, the append-only session store, and history reconstruction:
   `auto_compact/done` emitted and the same run resumed, without repeating the
   original user message or adding a synthetic continuation prompt. Iteration,
   tool-call, usage, and raw-response accounting is carried across the resume.
+11. If the agent has `compaction_reminder = true`, successful checkpoint
+  verification activates the first persisted user message as a `<REMINDER>`
+  suffix on the system prompt used by the resumed run.
 
 ### UI checkpoint history
 
@@ -100,6 +103,40 @@ the preserved round without an immediate compaction loop while retaining the
 hard input limit. Later iterations use the normal 85% trigger. A preserved tail
 at or above the hard limit triggers compaction again instead of being sent.
 
+### Compaction reminder
+
+`agents.<id>.compaction_reminder` is a required boolean. Chelix-created agents
+set it to `true` explicitly. When enabled, checkpoint verification activates the
+following system-prompt suffix:
+
+```text
+<REMINDER>
+<first persisted user message text>
+</REMINDER>
+```
+
+The body uses the exact stored string value of the first physical persisted
+`user` message. For block content, the body concatenates the values of every
+`text` block in source order. An explicitly empty string produces an empty body.
+Invalid first-user content stops the operation with an explicit error.
+
+The runtime applies the reminder to subsequent ordinary tool-loop and
+stream-only requests. A manual compaction summary uses it in the prompt-cache
+prefix for a checkpointed session. `chat.raw_prompt` and `chat.full_context`
+expose the same post-checkpoint prompt.
+
+For reminder-enabled resumed runs, hard-limit evaluation calculates the exact
+reminder token contribution after the normal `BeforeLLMCall` hook. The estimator
+locates one unchanged REMINDER segment in the actual post-hook system prompt and
+preserves surrounding hook text in both token totals. The run terminates when
+the reminder contribution makes the smallest prompt containing the exact
+continuation and a non-empty summary reach the hard input limit.
+
+A checkpoint-only reminder-overflow retry sequence tracks exact post-hook
+`promptTokens`. Each consecutive retry must strictly decrease that value. An
+equal or larger value terminates the run as no progress. A provider call starts
+a new comparison sequence.
+
 ### Failure behavior
 
 Compaction stops the run with an error if required model metadata is missing,
@@ -136,6 +173,11 @@ All changes to this flow must preserve these properties:
 - Apply the summary output limit only to the summary request.
 - Allow the post-checkpoint threshold bypass for one iteration only, and never
   at or above the hard available-input limit.
+- Build the compaction reminder body from the exact stored string or ordered
+  text-block values of the first physical persisted user message.
+- Activate the reminder after successful checkpoint verification. Enforce the
+  reminder minimum fit and strictly decreasing prompt size across consecutive
+  checkpoint-only reminder-overflow retries.
 
 Because the history is append-only:
 

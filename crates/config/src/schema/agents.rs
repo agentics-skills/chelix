@@ -4,6 +4,7 @@ use {
     std::collections::HashMap,
 };
 
+pub const DEFAULT_COMPACTION_REMINDER: bool = true;
 pub const DEFAULT_MAX_TOOLS_THRESHOLD: usize = 128;
 
 const RESERVED_AGENT_IDS: &[&str] = &["default"];
@@ -351,6 +352,8 @@ pub struct AgentConfig {
     pub tools: AgentToolPolicy,
     /// Maximum LLM-initiated tool calls per agent loop segment.
     pub max_tools_threshold: usize,
+    /// Include the first persisted user message in the system prompt after compaction.
+    pub compaction_reminder: bool,
     /// Timeout in seconds for sessions using this agent.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
@@ -397,6 +400,7 @@ impl AgentConfig {
             model: model.into(),
             tools: AgentToolPolicy::default(),
             max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
+            compaction_reminder: DEFAULT_COMPACTION_REMINDER,
             timeout_secs: None,
             max_tool_result_bytes: None,
             sessions: None,
@@ -420,6 +424,13 @@ mod tests {
         );
         assert_eq!(validate_agent_id("QA"), Err(INVALID_AGENT_ID_MESSAGE));
         assert_eq!(validate_agent_id("-qa"), Err(INVALID_AGENT_ID_MESSAGE));
+    }
+
+    #[test]
+    fn new_agents_enable_compaction_reminder_explicitly() {
+        let agent = AgentConfig::new("Main", "test::model", ReasoningEffort::from("off"));
+
+        assert!(agent.compaction_reminder);
     }
 
     #[test]

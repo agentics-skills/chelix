@@ -302,6 +302,7 @@ emoji = "🔍"
 model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 10
+compaction_reminder = true
 timeout_secs = 120
 
 [agents.research.tools]
@@ -335,6 +336,7 @@ name = "Custom"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#,
     )
     .unwrap();
@@ -1009,6 +1011,7 @@ name = "Test"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let agent = config.agents.get("test").unwrap();
@@ -1024,6 +1027,7 @@ name = "Test"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [agents.test.mcp]
 allow_servers = []
@@ -1042,6 +1046,7 @@ name = "Test"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [agents.test.mcp]
 allow_servers = ["github"]

@@ -109,6 +109,7 @@ name = "Chelix"
 model = "openai::gpt-5.2"
 reasoning_effort = "low"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [server]
 bind = "127.0.0.1"

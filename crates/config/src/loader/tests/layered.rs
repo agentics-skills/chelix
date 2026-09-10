@@ -135,6 +135,7 @@ name = "Rex"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [tools.web.firecrawl]
 api_key = "${{{var}}}"
@@ -274,6 +275,7 @@ name = "Rex"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#;
     let path = PathBuf::from("test.toml");
     let config =
@@ -808,12 +810,14 @@ name = "Main"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [agents.research]
 name = "Research"
 model = "test::research"
 reasoning_effort = "off"
 max_tools_threshold = 7
+compaction_reminder = true
 "#,
     )
     .expect("write seed");
@@ -893,6 +897,7 @@ name = "Rex"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#;
     let shadowed = crate::defaults::find_shadowed_defaults(user);
     assert!(

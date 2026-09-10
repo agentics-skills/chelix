@@ -74,6 +74,7 @@ export interface GonAgentEntry {
 	name: string;
 	is_default: boolean;
 	max_tools_threshold: number;
+	compaction_reminder: boolean;
 	emoji?: string | null;
 	description?: string | null;
 	model: string;
@@ -88,6 +89,7 @@ export interface GonAgentsData {
 	agents: GonAgentEntry[];
 	defaults: {
 		max_tools_threshold: number;
+		compaction_reminder: boolean;
 	};
 }
 

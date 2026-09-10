@@ -14,8 +14,8 @@ mod tests;
 pub use {
     helpers::{
         AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
-        ContextCompactionRequest, FinalTextSource, OnEvent, OnToolLifecycle, RunnerEvent,
-        RunnerToolCall, RunnerToolLifecycleEvent,
+        CompactedPromptTokenFloor, ContextCompactionRequest, FinalTextSource, OnEvent,
+        OnToolLifecycle, RunnerEvent, RunnerToolCall, RunnerToolLifecycleEvent,
     },
     streaming::run_agent_loop_streaming_with_limits,
     tool_result::{persist_and_truncate, sanitize_tool_result},

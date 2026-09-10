@@ -535,6 +535,7 @@ emoji = "🐶"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#,
     )
     .expect("write seed config");

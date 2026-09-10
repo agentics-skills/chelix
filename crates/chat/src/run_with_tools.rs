@@ -608,8 +608,60 @@ async fn finish_auto_compaction(
     }
 }
 
+fn compaction_reminder_token_floor(
+    request: &chelix_agents::runner::ContextCompactionRequest,
+    resume_from_history: bool,
+    compaction_reminder: &crate::compaction_reminder::CompactionReminder,
+) -> Option<chelix_agents::runner::CompactedPromptTokenFloor> {
+    if !resume_from_history || !compaction_reminder.is_active() {
+        return None;
+    }
+    let reminder_segment = compaction_reminder.active_segment()?;
+    request.compacted_prompt_token_floor(&reminder_segment)
+}
+
+fn compaction_reminder_minimum_overflow(
+    request: &chelix_agents::runner::ContextCompactionRequest,
+    floor: chelix_agents::runner::CompactedPromptTokenFloor,
+) -> bool {
+    floor.alternate_system < request.metadata.available_input_tokens
+        && floor.expected_system >= request.metadata.available_input_tokens
+}
+
+fn compaction_reminder_retry_prompt_tokens(
+    request: &chelix_agents::runner::ContextCompactionRequest,
+    floor: chelix_agents::runner::CompactedPromptTokenFloor,
+) -> Option<usize> {
+    if request.provider_calls_started != 0
+        || floor.expected_system >= request.metadata.available_input_tokens
+    {
+        return None;
+    }
+    let reminder_tokens = floor.expected_system.checked_sub(floor.alternate_system)?;
+    let prompt_without_reminder = request
+        .metadata
+        .prompt_tokens
+        .checked_sub(reminder_tokens)?;
+    (prompt_without_reminder < request.metadata.available_input_tokens
+        && request.metadata.prompt_tokens >= request.metadata.available_input_tokens)
+        .then_some(request.metadata.prompt_tokens)
+}
+
+fn compaction_reminder_stalled(
+    previous_prompt_tokens: &mut Option<usize>,
+    current_prompt_tokens: Option<usize>,
+) -> Option<(usize, usize)> {
+    let Some(current_prompt_tokens) = current_prompt_tokens else {
+        *previous_prompt_tokens = None;
+        return None;
+    };
+    let previous = previous_prompt_tokens.replace(current_prompt_tokens)?;
+    (current_prompt_tokens >= previous).then_some((previous, current_prompt_tokens))
+}
+
 pub(crate) async fn run_with_tools(
     persona: PromptPersona,
+    mut compaction_reminder: crate::compaction_reminder::CompactionReminder,
     runtime_limits: AgentRuntimeLimits,
     cancellation_token: &CancellationToken,
     state: &Arc<dyn ChatRuntime>,
@@ -806,7 +858,8 @@ pub(crate) async fn run_with_tools(
     };
 
     // Layer 1: instruct the LLM to write speech-friendly output when voice is active.
-    let system_prompt = apply_voice_reply_suffix(system_prompt, desired_reply_medium);
+    let base_system_prompt = apply_voice_reply_suffix(system_prompt, desired_reply_medium);
+    let mut system_prompt = compaction_reminder.render(&base_system_prompt);
 
     // Sandbox policy is global and cannot be changed by an agent or session.
     let sandbox_enabled = state.sandbox_router().enabled();
@@ -1088,6 +1141,7 @@ pub(crate) async fn run_with_tools(
     let mut completed_tool_calls = 0usize;
     let mut completed_usage = chelix_agents::model::Usage::default();
     let mut completed_raw_responses = Vec::new();
+    let mut previous_reminder_compaction_prompt_tokens = None;
 
     // The runner is the only automatic compaction trigger. It evaluates the
     // exact next provider request before every LLM call and pauses at 85%.
@@ -1134,6 +1188,33 @@ pub(crate) async fn run_with_tools(
                 let Some(store) = session_store else {
                     break Err(AgentRunError::ContextCompactionRequired(request));
                 };
+                let reminder_floor = compaction_reminder_token_floor(
+                    &request,
+                    resume_from_history,
+                    &compaction_reminder,
+                );
+                if let Some(floor) = reminder_floor
+                    && compaction_reminder_minimum_overflow(&request, floor)
+                {
+                    break Err(AgentRunError::Other(anyhow::anyhow!(
+                        "compaction reminder and preserved continuation cannot fit within the model input limit after compaction (minimum_with_reminder={}, minimum_without_reminder={}, available_input_tokens={})",
+                        floor.expected_system,
+                        floor.alternate_system,
+                        request.metadata.available_input_tokens,
+                    )));
+                }
+                let retry_prompt_tokens = reminder_floor.and_then(|floor| {
+                    compaction_reminder_retry_prompt_tokens(&request, floor)
+                });
+                if let Some((previous, current)) = compaction_reminder_stalled(
+                    &mut previous_reminder_compaction_prompt_tokens,
+                    retry_prompt_tokens,
+                ) {
+                    break Err(AgentRunError::Other(anyhow::anyhow!(
+                        "compaction reminder made no prompt-size progress between consecutive checkpoints (previous_prompt_tokens={previous}, current_prompt_tokens={current}, available_input_tokens={})",
+                        request.metadata.available_input_tokens,
+                    )));
+                }
                 completed_iterations =
                     completed_iterations.saturating_add(request.completed_iterations);
                 completed_tool_calls = completed_tool_calls.saturating_add(request.tool_calls_made);
@@ -1272,6 +1353,8 @@ pub(crate) async fn run_with_tools(
                 };
                 next_history = Some(compacted_chat);
                 resume_from_history = true;
+                compaction_reminder.activate();
+                system_prompt = compaction_reminder.render(&base_system_prompt);
 
                 finish_auto_compaction(
                     state,
@@ -1768,6 +1851,88 @@ mod tests {
         assert_eq!(done["phase"], "done");
         assert!(done.get("messageIndex").is_none());
         assert!(done.get("checkpoint").is_none());
+    }
+
+    fn compaction_request(
+        system_prompt: &str,
+        completed_iterations: usize,
+    ) -> chelix_agents::runner::ContextCompactionRequest {
+        chelix_agents::runner::ContextCompactionRequest {
+            metadata: ContextBudgetMetadata::default(),
+            summary_messages: vec![
+                ChatMessage::system(system_prompt),
+                ChatMessage::user(
+                    "<conversation-summary>\ncurrent summary\n</conversation-summary>",
+                ),
+            ],
+            continuation_messages: vec![ChatMessage::user("preserved continuation")],
+            tool_schemas: Vec::new(),
+            provider_calls_started: 0,
+            completed_iterations,
+            tool_calls_made: 0,
+            usage: chelix_agents::model::Usage::default(),
+            raw_llm_responses: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn compaction_reminder_guards_impossible_and_stalled_retries() {
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "task"}),
+            serde_json::json!({"role": "checkpoint", "summary": "summary"}),
+        ];
+        let reminder = crate::compaction_reminder::CompactionReminder::from_history(true, &history)
+            .unwrap_or_else(|error| panic!("valid reminder: {error}"));
+        let system_with_reminder = reminder.render("system");
+        let post_hook_system = format!("safety prefix\n{system_with_reminder}\nsafety suffix");
+        let mut request = compaction_request(&post_hook_system, 0);
+        let floor = compaction_reminder_token_floor(&request, true, &reminder)
+            .unwrap_or_else(|| panic!("exact resumed prefix has a token floor"));
+        assert!(floor.alternate_system < floor.expected_system);
+
+        request.provider_calls_started = 1;
+        request.metadata.available_input_tokens = floor.expected_system;
+        assert!(compaction_reminder_minimum_overflow(&request, floor));
+
+        let reminder_tokens = floor.expected_system - floor.alternate_system;
+        request.provider_calls_started = 0;
+        request.metadata.available_input_tokens = floor.expected_system + 100;
+        request.metadata.prompt_tokens =
+            request.metadata.available_input_tokens + reminder_tokens - 1;
+        assert!(!compaction_reminder_minimum_overflow(&request, floor));
+        let current = compaction_reminder_retry_prompt_tokens(&request, floor)
+            .unwrap_or_else(|| panic!("actual overflow is caused only by the reminder"));
+        let mut previous = None;
+        assert_eq!(
+            compaction_reminder_stalled(&mut previous, Some(current)),
+            None
+        );
+        assert_eq!(
+            compaction_reminder_stalled(&mut previous, Some(current - 1)),
+            None
+        );
+        assert_eq!(
+            compaction_reminder_stalled(&mut previous, Some(current - 1)),
+            Some((current - 1, current - 1))
+        );
+
+        request.provider_calls_started = 1;
+        assert_eq!(
+            compaction_reminder_retry_prompt_tokens(&request, floor),
+            None
+        );
+        assert_eq!(compaction_reminder_stalled(&mut previous, None), None);
+        assert_eq!(previous, None);
+
+        request.provider_calls_started = 0;
+        assert_eq!(
+            compaction_reminder_stalled(&mut previous, Some(current - 1)),
+            None
+        );
+        assert_eq!(
+            compaction_reminder_stalled(&mut previous, Some(current)),
+            Some((current - 1, current))
+        );
     }
 
     #[test]

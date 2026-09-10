@@ -24,6 +24,26 @@ The prompt is built in `crates/agents/src/prompt.rs` by
 11. **Tool-calling format** — JSON block instructions (fallback providers only)
 12. **Guidelines** — tool usage guidance, silent reply protocol
 
+### Post-compaction reminder
+
+When the active agent has `compaction_reminder = true` and the session has a
+context checkpoint, the chat runtime appends this suffix to the completed system
+prompt:
+
+```text
+<REMINDER>
+<first persisted user message text>
+</REMINDER>
+```
+
+The body uses the exact stored string value of the first physical persisted
+`user` message. For block content, the body concatenates the values of every
+`text` block in source order. An explicitly empty string produces an empty body.
+
+The runtime applies the suffix to post-checkpoint tool-loop and stream-only
+requests, manual-compaction prompt-cache prefixes for checkpointed sessions, and
+the `chat.raw_prompt` and `chat.full_context` debug surfaces.
+
 ## Components in Detail
 
 ### Base Introduction

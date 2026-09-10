@@ -93,6 +93,7 @@ name = "Researcher"
 model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
+compaction_reminder = true
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```
@@ -208,6 +209,7 @@ name = "Researcher"
 model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
+compaction_reminder = true
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command"]
 ```

@@ -22,6 +22,7 @@ interface AgentEntry extends UnknownRecord {
 	model: string;
 	reasoning_effort: string;
 	max_tools_threshold: number;
+	compaction_reminder: boolean;
 	soul?: string | null;
 	subagent_prompt?: string | null;
 }
@@ -44,6 +45,7 @@ interface IdentityLoadData {
 	user: UserProfile;
 	models: ModelInfo[];
 	defaultMaxToolsThreshold: number;
+	defaultCompactionReminder: boolean;
 }
 
 type IdentityLoadResult = { ok: true; data: IdentityLoadData } | { ok: false; message: string };
@@ -60,7 +62,18 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 	const model = typeof value.model === "string" ? value.model : "";
 	const reasoningEffort = typeof value.reasoning_effort === "string" ? value.reasoning_effort : "";
 	const maxToolsThreshold = value.max_tools_threshold;
-	if (!(id && name && model && reasoningEffort && typeof maxToolsThreshold === "number")) return null;
+	const compactionReminder = value.compaction_reminder;
+	if (
+		!(
+			id &&
+			name &&
+			model &&
+			reasoningEffort &&
+			typeof maxToolsThreshold === "number" &&
+			typeof compactionReminder === "boolean"
+		)
+	)
+		return null;
 	return {
 		...value,
 		id,
@@ -68,6 +81,7 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 		model,
 		reasoning_effort: reasoningEffort,
 		max_tools_threshold: maxToolsThreshold,
+		compaction_reminder: compactionReminder,
 	};
 }
 
@@ -93,6 +107,19 @@ function parseDefaultMaxToolsThreshold(value: unknown): number | null {
 	return typeof threshold === "number" && Number.isSafeInteger(threshold) && threshold >= 1 ? threshold : null;
 }
 
+function parseDefaultCompactionReminder(value: unknown): boolean | null {
+	if (!(isRecord(value) && isRecord(value.defaults))) return null;
+	const reminder = value.defaults.compaction_reminder;
+	return typeof reminder === "boolean" ? reminder : null;
+}
+
+function parseAgentDefaults(value: unknown): { maxToolsThreshold: number; compactionReminder: boolean } | null {
+	const maxToolsThreshold = parseDefaultMaxToolsThreshold(value);
+	const compactionReminder = parseDefaultCompactionReminder(value);
+	if (maxToolsThreshold === null || compactionReminder === null) return null;
+	return { maxToolsThreshold, compactionReminder };
+}
+
 function parseIdentityLoadResult(
 	agentsResponse: RpcResponse<unknown>,
 	userResponse: RpcResponse<unknown>,
@@ -116,10 +143,8 @@ function parseIdentityLoadResult(
 		};
 	}
 
-	const defaultMaxToolsThreshold = parseDefaultMaxToolsThreshold(agentsResponse.payload);
-	if (defaultMaxToolsThreshold === null) {
-		return { ok: false, message: "Agent defaults returned an invalid max_tools_threshold." };
-	}
+	const defaults = parseAgentDefaults(agentsResponse.payload);
+	if (!defaults) return { ok: false, message: "Agent defaults returned invalid configuration data." };
 
 	const parsed = parseAgentsListPayload(agentsResponse.payload as Parameters<typeof parseAgentsListPayload>[0]);
 	let defaultAgent: AgentEntry | null = null;
@@ -139,7 +164,8 @@ function parseIdentityLoadResult(
 			agent: defaultAgent,
 			user: (userResponse.payload || {}) as UserProfile,
 			models,
-			defaultMaxToolsThreshold,
+			defaultMaxToolsThreshold: defaults.maxToolsThreshold,
+			defaultCompactionReminder: defaults.compactionReminder,
 		},
 	};
 }
@@ -151,6 +177,7 @@ function agentConfigForSave(
 	model: string,
 	reasoningEffort: string,
 	defaultMaxToolsThreshold: number,
+	defaultCompactionReminder: boolean,
 ): UnknownRecord {
 	const source = agent || ({} as AgentEntry);
 	const { id: _id, is_default: _isDefault, soul: _soul, subagent_prompt: _subagentPrompt, ...config } = source;
@@ -161,6 +188,7 @@ function agentConfigForSave(
 		model,
 		reasoning_effort: reasoningEffort,
 		max_tools_threshold: agent?.max_tools_threshold ?? defaultMaxToolsThreshold,
+		compaction_reminder: agent?.compaction_reminder ?? defaultCompactionReminder,
 	};
 }
 
@@ -232,6 +260,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [user, setUser] = useState<UserProfile | null>(null);
 	const [models, setModels] = useState<ModelInfo[]>([]);
 	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState<number | null>(null);
+	const [defaultCompactionReminder, setDefaultCompactionReminder] = useState<boolean | null>(null);
 	const [userName, setUserName] = useState("");
 	const [name, setName] = useState("");
 	const [emoji, setEmoji] = useState("");
@@ -259,6 +288,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				setUser(result.data.user);
 				setModels(result.data.models);
 				setDefaultMaxToolsThreshold(result.data.defaultMaxToolsThreshold);
+				setDefaultCompactionReminder(result.data.defaultCompactionReminder);
 				setName(result.data.agent?.name || "");
 				setEmoji(typeof result.data.agent?.emoji === "string" ? result.data.agent.emoji : "");
 				setModel(result.data.agent?.model || "");
@@ -290,7 +320,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			setError("User profile is not loaded.");
 			return;
 		}
-		if (defaultMaxToolsThreshold === null) {
+		if (defaultMaxToolsThreshold === null || defaultCompactionReminder === null) {
 			setError("Agent defaults are not loaded.");
 			return;
 		}
@@ -298,7 +328,15 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setError(null);
 		setSaving(true);
 		const timezone = user.timezone || detectBrowserTimezone() || null;
-		const agentConfig = agentConfigForSave(agent, name, emoji, model, reasoningEffort, defaultMaxToolsThreshold);
+		const agentConfig = agentConfigForSave(
+			agent,
+			name,
+			emoji,
+			model,
+			reasoningEffort,
+			defaultMaxToolsThreshold,
+			defaultCompactionReminder,
+		);
 		const agentResult = await saveDefaultAgent(agent, agentConfig);
 		if (!agentResult.ok) {
 			setSaving(false);
