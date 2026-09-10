@@ -203,19 +203,23 @@ export function resetChatView(box: HTMLElement): void {
 	chatViewGeneration += 1;
 }
 
-/// Run `mutate`, which grows `box` above the viewport, keeping what the user
-/// currently sees in place.
+/// Run `mutate`, preserving a retained message anchor visible in `box`.
 ///
 /// The resulting scroll correction is our own, not user intent: it is recorded
 /// as programmatic so it cannot flip the chat out of follow mode.
-export function preserveChatViewport(box: HTMLElement, mutate: () => void): void {
-	const previousHeight = box.scrollHeight;
-	const previousTop = box.scrollTop;
+export function preserveChatViewport(box: HTMLElement, anchor: HTMLElement | null, mutate: () => void): void {
+	if (!anchor) {
+		mutate();
+		return;
+	}
+	const previousTop = anchor.getBoundingClientRect().top - box.getBoundingClientRect().top;
 	mutate();
-	const nextTop = previousTop + (box.scrollHeight - previousHeight);
-	if (nextTop === box.scrollTop) return;
-	box.scrollTop = nextTop;
-	programmaticScrollTop = box.scrollTop;
+	if (!box.contains(anchor)) return;
+	const displacement = anchor.getBoundingClientRect().top - box.getBoundingClientRect().top - previousTop;
+	if (displacement === 0) return;
+	const currentTop = box.scrollTop;
+	box.scrollTop += displacement;
+	if (box.scrollTop !== currentTop) programmaticScrollTop = box.scrollTop;
 }
 
 /** Show the "new content" floating indicator on the chat area. */

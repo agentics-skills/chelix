@@ -816,6 +816,17 @@ function reconcileNodes(box: HTMLElement, history: UiSnapshot[]): void {
 	}
 }
 
+function retainedViewportAnchor(box: HTMLElement, history: UiSnapshot[]): HTMLElement | null {
+	const retained = new Set(history.map((message) => message.id));
+	const viewport = box.getBoundingClientRect();
+	for (const child of box.children) {
+		if (!(child instanceof HTMLElement && child.dataset.messageId && retained.has(child.dataset.messageId))) continue;
+		const bounds = child.getBoundingClientRect();
+		if (bounds.bottom > viewport.top && bounds.top < viewport.bottom) return child;
+	}
+	return null;
+}
+
 export function reconcileSessionHistory(key: string): void {
 	const box = S.chatMsgBox;
 	const historyWindow = getHistoryWindow(key);
@@ -826,7 +837,8 @@ export function reconcileSessionHistory(key: string): void {
 		renderedKey = key;
 		renderedGeneration = historyWindow.generation;
 	}
-	preserveChatViewport(box, () => reconcileNodes(box, historyWindow.history));
+	const anchor = retainedViewportAnchor(box, historyWindow.history);
+	preserveChatViewport(box, anchor, () => reconcileNodes(box, historyWindow.history));
 	syncHistoryState(key);
 	if (historyWindow.history.length === 0) showWelcomeCard();
 	pinChatToBottom();
