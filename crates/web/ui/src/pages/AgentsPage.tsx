@@ -7,7 +7,7 @@ import { Loading } from "../components/forms/ListItem";
 import { refresh as refreshGon } from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import { fetchSessions } from "../sessions";
-import { targetValue } from "../typed-events";
+import { targetChecked, targetValue } from "../typed-events";
 import type { ModelInfo } from "../types/model";
 import { confirmDialog } from "../ui";
 
@@ -23,6 +23,7 @@ interface AgentEntry extends UnknownRecord {
 	model: string;
 	reasoning_effort: string;
 	max_tools_threshold: number;
+	compaction_reminder: boolean;
 	is_default?: boolean;
 	soul?: string;
 	subagent_prompt?: string;
@@ -36,6 +37,7 @@ interface AgentFormValues {
 	model: string;
 	reasoningEffort: string;
 	maxToolsThreshold: string;
+	compactionReminder: boolean;
 	soul: string;
 	subagentPrompt: string;
 }
@@ -43,6 +45,7 @@ interface AgentFormValues {
 interface AgentFormProps {
 	agent: AgentEntry | null;
 	defaultMaxToolsThreshold: number;
+	defaultCompactionReminder: boolean;
 	onCancel: () => void;
 	onSaved: () => void;
 }
@@ -71,12 +74,19 @@ function parseDefaultMaxToolsThreshold(value: unknown): number | null {
 	return typeof threshold === "number" && Number.isSafeInteger(threshold) && threshold >= 1 ? threshold : null;
 }
 
+function parseDefaultCompactionReminder(value: unknown): boolean | null {
+	if (!(isRecord(value) && isRecord(value.defaults))) return null;
+	const reminder = value.defaults.compaction_reminder;
+	return typeof reminder === "boolean" ? reminder : null;
+}
+
 function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 	const id = typeof value.id === "string" ? value.id : "";
 	const name = typeof value.name === "string" ? value.name : "";
 	const model = typeof value.model === "string" ? value.model : "";
 	const reasoningEffort = typeof value.reasoning_effort === "string" ? value.reasoning_effort : "";
 	const maxToolsThreshold = value.max_tools_threshold;
+	const compactionReminder = value.compaction_reminder;
 	if (
 		!(
 			id &&
@@ -85,7 +95,8 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 			reasoningEffort &&
 			typeof maxToolsThreshold === "number" &&
 			Number.isSafeInteger(maxToolsThreshold) &&
-			maxToolsThreshold >= 1
+			maxToolsThreshold >= 1 &&
+			typeof compactionReminder === "boolean"
 		)
 	)
 		return null;
@@ -96,6 +107,7 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 		model,
 		reasoning_effort: reasoningEffort,
 		max_tools_threshold: maxToolsThreshold,
+		compaction_reminder: compactionReminder,
 	};
 }
 
@@ -130,6 +142,7 @@ function agentConfigForSave(agent: AgentEntry | null, values: AgentFormValues): 
 		model: values.model,
 		reasoning_effort: values.reasoningEffort,
 		max_tools_threshold: Number(values.maxToolsThreshold),
+		compaction_reminder: values.compactionReminder,
 	};
 }
 
@@ -143,7 +156,11 @@ export function teardownAgents(): void {
 	containerRef = null;
 }
 
-function initialAgentFormValues(agent: AgentEntry | null, defaultMaxToolsThreshold: number): AgentFormValues {
+function initialAgentFormValues(
+	agent: AgentEntry | null,
+	defaultMaxToolsThreshold: number,
+	defaultCompactionReminder: boolean,
+): AgentFormValues {
 	return {
 		id: agent?.id || "",
 		name: agent?.name || "",
@@ -151,7 +168,8 @@ function initialAgentFormValues(agent: AgentEntry | null, defaultMaxToolsThresho
 		description: agent?.description || "",
 		model: agent?.model || "",
 		reasoningEffort: agent?.reasoning_effort || "",
-		maxToolsThreshold: String(agent?.max_tools_threshold || defaultMaxToolsThreshold),
+		maxToolsThreshold: String(agent?.max_tools_threshold ?? defaultMaxToolsThreshold),
+		compactionReminder: agent?.compaction_reminder ?? defaultCompactionReminder,
 		soul: agent?.soul || "",
 		subagentPrompt: agent?.subagent_prompt || "",
 	};
@@ -176,8 +194,16 @@ function validateAgentForm(
 	return null;
 }
 
-function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: AgentFormProps): VNode {
-	const [values, setValues] = useState<AgentFormValues>(initialAgentFormValues(agent, defaultMaxToolsThreshold));
+function AgentForm({
+	agent,
+	defaultMaxToolsThreshold,
+	defaultCompactionReminder,
+	onCancel,
+	onSaved,
+}: AgentFormProps): VNode {
+	const [values, setValues] = useState<AgentFormValues>(
+		initialAgentFormValues(agent, defaultMaxToolsThreshold, defaultCompactionReminder),
+	);
 	const [models, setModels] = useState<ModelInfo[]>([]);
 	const [loadingModels, setLoadingModels] = useState(true);
 	const [modelsError, setModelsError] = useState<string | null>(null);
@@ -333,6 +359,15 @@ function AgentForm({ agent, defaultMaxToolsThreshold, onCancel, onSaved }: Agent
 					/>
 				</label>
 
+				<label className="flex items-start gap-2 text-sm text-[var(--text)]">
+					<input
+						type="checkbox"
+						checked={values.compactionReminder}
+						onChange={(event) => setField("compactionReminder", targetChecked(event))}
+					/>
+					<span>Include the first user message in the system prompt after context compaction.</span>
+				</label>
+
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
 					<label className="flex flex-col gap-1">
 						<span className="text-xs text-[var(--muted)]">Soul</span>
@@ -440,7 +475,13 @@ function AgentCard({
 }
 
 type AgentsLoadResult =
-	| { ok: true; agents: AgentEntry[]; defaultId: string; defaultMaxToolsThreshold: number }
+	| {
+			ok: true;
+			agents: AgentEntry[];
+			defaultId: string;
+			defaultMaxToolsThreshold: number;
+			defaultCompactionReminder: boolean;
+	  }
 	| { ok: false; message: string };
 
 function parseAgentsLoadResult(payload: unknown): AgentsLoadResult {
@@ -449,7 +490,8 @@ function parseAgentsLoadResult(payload: unknown): AgentsLoadResult {
 	}
 	const parsed = parseAgentsListPayload(payload);
 	const defaultThreshold = parseDefaultMaxToolsThreshold(payload);
-	if (defaultThreshold === null) {
+	const defaultCompactionReminder = parseDefaultCompactionReminder(payload);
+	if (defaultThreshold === null || defaultCompactionReminder === null) {
 		return { ok: false, message: "Agent list returned invalid defaults data." };
 	}
 	const validAgents: AgentEntry[] = [];
@@ -460,13 +502,20 @@ function parseAgentsLoadResult(payload: unknown): AgentsLoadResult {
 		}
 		validAgents.push(agent);
 	}
-	return { ok: true, agents: validAgents, defaultId: parsed.defaultId, defaultMaxToolsThreshold: defaultThreshold };
+	return {
+		ok: true,
+		agents: validAgents,
+		defaultId: parsed.defaultId,
+		defaultMaxToolsThreshold: defaultThreshold,
+		defaultCompactionReminder,
+	};
 }
 
 function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	const [agents, setAgents] = useState<AgentEntry[]>([]);
 	const [defaultId, setDefaultId] = useState("");
 	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState<number | null>(null);
+	const [defaultCompactionReminder, setDefaultCompactionReminder] = useState<boolean | null>(null);
 	const [editing, setEditing] = useState<"new" | AgentEntry | null>(subPath === "new" ? "new" : null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -476,6 +525,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		setAgents([]);
 		setDefaultId("");
 		setDefaultMaxToolsThreshold(null);
+		setDefaultCompactionReminder(null);
 		let attempts = 0;
 		function load(): void {
 			sendRpc("agents.list", {}).then((response) => {
@@ -499,6 +549,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 				}
 				setDefaultId(result.defaultId);
 				setDefaultMaxToolsThreshold(result.defaultMaxToolsThreshold);
+				setDefaultCompactionReminder(result.defaultCompactionReminder);
 				setAgents(result.agents);
 				setError(null);
 			});
@@ -536,11 +587,12 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		});
 	}
 
-	if (editing && defaultMaxToolsThreshold !== null) {
+	if (editing && defaultMaxToolsThreshold !== null && defaultCompactionReminder !== null) {
 		return (
 			<AgentForm
 				agent={editing === "new" ? null : editing}
 				defaultMaxToolsThreshold={defaultMaxToolsThreshold}
+				defaultCompactionReminder={defaultCompactionReminder}
 				onCancel={() => setEditing(null)}
 				onSaved={afterMutation}
 			/>
@@ -555,7 +607,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					type="button"
 					className="provider-btn provider-btn-sm"
 					onClick={() => setEditing("new")}
-					disabled={defaultMaxToolsThreshold === null}
+					disabled={defaultMaxToolsThreshold === null || defaultCompactionReminder === null}
 				>
 					New Agent
 				</button>

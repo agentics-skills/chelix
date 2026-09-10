@@ -16,7 +16,7 @@ use chelix_common::{
 use crate::{
     model::{
         ChatMessage, ToolCall, ToolCallArgumentDiagnostic, ToolCallArgumentSource, Usage,
-        provider_values_to_chat_messages,
+        UserContent, provider_values_to_chat_messages,
     },
     response_sanitizer::clean_response,
     tool_loop_detector::{
@@ -85,10 +85,65 @@ pub struct ContextCompactionRequest {
     /// the checkpoint, matching the reference continuation boundary.
     pub continuation_messages: Vec<ChatMessage>,
     pub tool_schemas: Vec<serde_json::Value>,
+    pub provider_calls_started: usize,
     pub completed_iterations: usize,
     pub tool_calls_made: usize,
     pub usage: Usage,
     pub raw_llm_responses: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompactedPromptTokenFloor {
+    pub expected_system: usize,
+    pub alternate_system: usize,
+}
+
+impl ContextCompactionRequest {
+    /// Estimate minimum post-checkpoint prompt token totals for calculating
+    /// the contribution of one uniquely matched system segment.
+    #[must_use]
+    pub fn compacted_prompt_token_floor(
+        &self,
+        system_segment: &str,
+    ) -> Option<CompactedPromptTokenFloor> {
+        if system_segment.is_empty() {
+            return None;
+        }
+        let [
+            ChatMessage::System { content: system },
+            ChatMessage::User {
+                content: UserContent::Text(checkpoint),
+                name: None,
+            },
+        ] = self.summary_messages.as_slice()
+        else {
+            return None;
+        };
+        if !checkpoint.starts_with("<conversation-summary>\n")
+            || !checkpoint.ends_with("\n</conversation-summary>")
+        {
+            return None;
+        }
+        let segment_start = system.find(system_segment)?;
+        if system.rfind(system_segment) != Some(segment_start) {
+            return None;
+        }
+        let mut alternate_system = String::with_capacity(system.len() - system_segment.len());
+        alternate_system.push_str(&system[..segment_start]);
+        alternate_system.push_str(&system[segment_start + system_segment.len()..]);
+
+        let checkpoint_tokens = estimate_message_tokens(&ChatMessage::user(
+            "<conversation-summary>\nx\n</conversation-summary>",
+        ));
+        let continuation_tokens = estimate_prompt_tokens(&self.continuation_messages);
+        let fixed_tokens = checkpoint_tokens.saturating_add(continuation_tokens);
+        Some(CompactedPromptTokenFloor {
+            expected_system: estimate_message_tokens(&ChatMessage::system(system))
+                .saturating_add(fixed_tokens),
+            alternate_system: estimate_message_tokens(&ChatMessage::system(alternate_system))
+                .saturating_add(fixed_tokens),
+        })
+    }
 }
 
 pub(crate) fn split_context_for_compaction(

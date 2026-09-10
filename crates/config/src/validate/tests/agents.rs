@@ -12,6 +12,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 11
+compaction_reminder = true
 "#,
     )
     .unwrap();
@@ -35,6 +36,7 @@ model = "test::model"
 reasoning_effort = "off"
 timeout_secs = 5
 max_tools_threshold = 11
+compaction_reminder = true
 "#,
     )
     .unwrap();
@@ -60,6 +62,7 @@ fn agent_rejects_missing_name() {
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 11
+compaction_reminder = true
 "#,
     );
     assert!(result.is_err());
@@ -86,6 +89,22 @@ reasoning_effort = "off"
 }
 
 #[test]
+fn agent_rejects_missing_compaction_reminder() {
+    let result = toml::from_str::<ChelixConfig>(
+        r#"
+[agents.quick]
+name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
+max_tools_threshold = 128
+"#,
+    );
+
+    let error = result.expect_err("compaction_reminder must be explicit");
+    assert!(error.to_string().contains("compaction_reminder"));
+}
+
+#[test]
 fn agent_requires_model_and_reasoning_effort() {
     let cases = [
         (
@@ -94,6 +113,7 @@ fn agent_requires_model_and_reasoning_effort() {
 name = "Quick"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#,
             "model",
         ),
@@ -103,6 +123,7 @@ max_tools_threshold = 128
 name = "Quick"
 model = "test::model"
 max_tools_threshold = 128
+compaction_reminder = true
 "#,
             "reasoning_effort",
         ),
@@ -133,7 +154,7 @@ fn agent_rejects_empty_model_and_reasoning_effort() {
 
     for (selection, expected_path) in cases {
         let result = validate_toml_str(&format!(
-            "[agents]\ndefault = \"quick\"\n\n[agents.quick]\nname = \"Quick\"\n{selection}\nmax_tools_threshold = 128\n"
+            "[agents]\ndefault = \"quick\"\n\n[agents.quick]\nname = \"Quick\"\n{selection}\nmax_tools_threshold = 128\ncompaction_reminder = true\n"
         ));
         assert!(
             result.diagnostics.iter().any(|diagnostic| {
@@ -157,6 +178,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 arbitrary_extra_key = true
 "#,
     );
@@ -180,6 +202,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#,
     )
     .unwrap();
@@ -204,6 +227,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 max_tool_result_bytes = 999
 "#,
     )
@@ -229,6 +253,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 max_tool_result_bytes = 100000
 "#,
     );
@@ -254,6 +279,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 
 [agents.quick.tools]
 preload = ["read_file", "ripgrep"]
@@ -278,6 +304,7 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 0
+compaction_reminder = true
 "#,
     );
     assert!(result.diagnostics.iter().any(|diagnostic| {
@@ -322,6 +349,7 @@ name = "Main"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+compaction_reminder = true
 "#,
     );
     assert!(result.diagnostics.iter().any(|diagnostic| {
@@ -339,6 +367,7 @@ fn reasoning_effort_accepts_provider_defined_value() {
 name = "Thinker"
 model = "anthropic::claude-opus-4-5-20251101"
 max_tools_threshold = 128
+compaction_reminder = true
 reasoning_effort = "ultra"
 "#,
     );
@@ -363,6 +392,7 @@ fn reasoning_effort_is_recognized_in_schema() {
 name = "Thinker"
 model = "test::model"
 max_tools_threshold = 128
+compaction_reminder = true
 reasoning_effort = "high"
 "#,
     );

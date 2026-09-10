@@ -277,6 +277,7 @@ pub async fn run_agent_loop_streaming_with_limits(
     };
 
     let mut iterations = 0;
+    let mut provider_calls_started = 0usize;
     let mut tool_call_budget = ToolCallBudget::new(limits.max_tools_threshold);
     let mut usage_accumulator = UsageAccumulator::default();
     let mut server_retries_remaining: u8 = SERVER_MAX_RETRIES;
@@ -397,6 +398,7 @@ pub async fn run_agent_loop_streaming_with_limits(
                     summary_messages,
                     continuation_messages,
                     tool_schemas: schemas_for_api,
+                    provider_calls_started,
                     completed_iterations: iterations.saturating_sub(1),
                     tool_calls_made: tool_call_budget.used(),
                     usage: usage_accumulator.total(),
@@ -410,6 +412,7 @@ pub async fn run_agent_loop_streaming_with_limits(
         }
 
         // Use streaming API.
+        provider_calls_started = provider_calls_started.saturating_add(1);
         #[cfg(feature = "metrics")]
         let iter_start = std::time::Instant::now();
         let mut stream = if schemas_for_api.is_empty() {

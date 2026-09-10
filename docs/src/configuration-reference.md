@@ -242,6 +242,7 @@ must reference a configured agent.
 | `tools.deny`            | array                                                                     | `[]`     | Tool deny list, applied after `allow`.                                                                                                                                                                                        |
 | `tools.preload`         | array                                                                     | `[]`     | Tool schemas exposed immediately in lazy registry mode. Names are resolved after effective policy filtering and do not grant access.                                                                                         |
 | `max_tools_threshold`   | integer                                                                   | required | Maximum LLM-emitted tool calls in one agent-loop budget segment. Must be at least `1`.                                                                                                                                        |
+| `compaction_reminder`   | boolean                                                                   | required | When `true`, appends a `<REMINDER>` section containing the textual content of the first persisted user message to the system prompt after a context checkpoint.                                                                |
 | `timeout_secs`          | optional integer                                                          | `null`   | Timeout in seconds for sessions using this agent. `0` disables the agent-specific timeout.                                                                                                                                    |
 | `max_tool_result_bytes` | optional integer                                                          | `null`   | Maximum in-context bytes per tool result for this agent. Falls back to `tools.max_tool_result_bytes`.                                                                                                                         |
 | `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`   | Session access policy for inter-agent communication.                                                                                                                                                                         |
@@ -251,8 +252,9 @@ must reference a configured agent.
 
 At startup, every configured model/reasoning pair is resolved through the live
 model registry. Unknown models and efforts unsupported by the selected model
-are rejected. Unknown fields in an agent table are rejected. Sessions with the `chat` prompt
-profile load `<data_dir>/agents/<id>/SOUL.md`; sessions with the `subagent`
+are rejected. Unknown fields in an agent table are rejected. New agents created
+by Chelix set `compaction_reminder = true` explicitly. Sessions with the `chat`
+prompt profile load `<data_dir>/agents/<id>/SOUL.md`; sessions with the `subagent`
 prompt profile load `<data_dir>/agents/<id>/SUBAGENT.md`.
 
 ### `agents.<id>.sessions` (`SessionAccessPolicyConfig`)

@@ -788,7 +788,11 @@ impl LiveChatService {
         } else {
             Vec::new()
         };
-        Ok((prompt_build.prompt, tools))
+        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+            persona.agent.compaction_reminder,
+            history,
+        )?;
+        Ok((compaction_reminder.render(&prompt_build.prompt), tools))
     }
 }
 

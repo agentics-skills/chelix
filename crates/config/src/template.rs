@@ -201,6 +201,10 @@ port = {port}                           # Port number (auto-generated for this i
 # does not fit is rejected atomically. The budget resets for each user message
 # and after automatic context compaction.
 #
+# `compaction_reminder` is required. When true, every provider request after a
+# context checkpoint receives a REMINDER system-prompt section containing the
+# textual content of the first persisted user message.
+#
 # [agents]
 # default = "main"
 #
@@ -211,6 +215,7 @@ port = {port}                           # Port number (auto-generated for this i
 # model = "openai::gpt-5.2"
 # reasoning_effort = "medium"
 # max_tools_threshold = {max_tools_threshold}
+# compaction_reminder = {compaction_reminder}
 #
 # [agents.main.tools]
 # allow = []
@@ -551,6 +556,7 @@ port = {port}                           # Port number (auto-generated for this i
 # OPENROUTER_API_KEY = "sk-or-..."
 "##,
         max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
+        compaction_reminder = crate::schema::DEFAULT_COMPACTION_REMINDER,
     )
 }
 

@@ -809,6 +809,13 @@ impl LiveChatService {
             user_record["clientMessageId"] = serde_json::json!(id);
         }
         records.push(user_record);
+        let mut reminder_history = history.clone();
+        reminder_history.extend(records.iter().cloned());
+        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+            persona.agent.compaction_reminder,
+            &reminder_history,
+        )
+        .map_err(ServiceError::message)?;
         self.session_store
             .append_batch_at_index(&session_key, &records, history.len())
             .await
@@ -938,6 +945,7 @@ impl LiveChatService {
                 if stream_only {
                     run_streaming(
                         persona,
+                        compaction_reminder,
                         &cancellation_token,
                         &state,
                         &run_id_clone,
@@ -963,6 +971,7 @@ impl LiveChatService {
                 } else {
                     run_with_tools(
                         persona,
+                        compaction_reminder,
                         runtime_limits,
                         &cancellation_token,
                         &state,

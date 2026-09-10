@@ -293,6 +293,7 @@ async fn finish_streaming_cancellation(
 
 pub(crate) async fn run_streaming(
     persona: PromptPersona,
+    compaction_reminder: crate::compaction_reminder::CompactionReminder,
     cancellation_token: &CancellationToken,
     state: &Arc<dyn ChatRuntime>,
     run_id: &str,
@@ -408,6 +409,7 @@ pub(crate) async fn run_streaming(
 
     // Layer 1: instruct the LLM to write speech-friendly output when voice is active.
     let system_prompt = apply_voice_reply_suffix(system_prompt, desired_reply_medium);
+    let system_prompt = compaction_reminder.render(&system_prompt);
 
     // Fold datetime into the user message content so the message array before
     // it stays positionally stable, preserving KV cache prefix matching for

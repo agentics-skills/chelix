@@ -18,11 +18,12 @@ use {
 // Re-export commonly used items for test submodules.
 pub(super) use {
     super::super::{
-        AUTO_COMPACTION_RATIO, AgentLoopLimits, AgentRunError, AgentRunResult, OnEvent,
-        OnToolLifecycle, RunnerEvent, RunnerToolLifecycleEvent,
-        apply_before_llm_call_modify_payload, estimate_prompt_tokens, estimate_tool_schema_tokens,
-        evaluate_context_budget, is_substantive_answer_text, resolve_tool_lookup, retry::*,
-        sanitize_tool_name, sanitize_tool_result, tool_result::persist_and_truncate,
+        AUTO_COMPACTION_RATIO, AgentLoopLimits, AgentRunError, AgentRunResult,
+        CompactedPromptTokenFloor, ContextCompactionRequest, OnEvent, OnToolLifecycle, RunnerEvent,
+        RunnerToolLifecycleEvent, apply_before_llm_call_modify_payload, estimate_prompt_tokens,
+        estimate_tool_schema_tokens, evaluate_context_budget, helpers::estimate_message_tokens,
+        is_substantive_answer_text, resolve_tool_lookup, retry::*, sanitize_tool_name,
+        sanitize_tool_result, tool_result::persist_and_truncate,
     },
     crate::{
         model::UserContent,

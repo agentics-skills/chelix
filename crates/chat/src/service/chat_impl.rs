@@ -257,6 +257,11 @@ impl ChatService for LiveChatService {
             .read(&session_key)
             .await
             .map_err(ServiceError::message)?;
+        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+            persona.agent.compaction_reminder,
+            &history,
+        )
+        .map_err(ServiceError::message)?;
         if !history.is_empty() {
             history.pop();
         }
@@ -344,6 +349,7 @@ impl ChatService for LiveChatService {
         let result = if stream_only {
             run_streaming(
                 persona,
+                compaction_reminder,
                 &cancellation_token,
                 &state,
                 &run_id,
@@ -369,6 +375,7 @@ impl ChatService for LiveChatService {
         } else {
             run_with_tools(
                 persona,
+                compaction_reminder,
                 runtime_limits,
                 &cancellation_token,
                 &state,
@@ -1014,7 +1021,12 @@ impl ChatService for LiveChatService {
 
         let truncated = prompt_build.metadata.truncated();
         let workspace_files = prompt_build.metadata.workspace_files.clone();
-        let system_prompt = prompt_build.prompt;
+        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+            persona.agent.compaction_reminder,
+            &history,
+        )
+        .map_err(ServiceError::message)?;
+        let system_prompt = compaction_reminder.render(&prompt_build.prompt);
         let char_count = system_prompt.len();
 
         Ok(serde_json::json!({
@@ -1163,7 +1175,12 @@ impl ChatService for LiveChatService {
 
         let truncated = prompt_build.metadata.truncated();
         let workspace_files = prompt_build.metadata.workspace_files.clone();
-        let system_prompt = prompt_build.prompt;
+        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+            persona.agent.compaction_reminder,
+            &history,
+        )
+        .map_err(ServiceError::message)?;
+        let system_prompt = compaction_reminder.render(&prompt_build.prompt);
         let system_prompt_chars = system_prompt.len();
 
         // Keep raw assistant outputs (including provider/model/token metadata)
