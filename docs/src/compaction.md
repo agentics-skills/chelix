@@ -186,8 +186,8 @@ budget**:
 The same metadata is included in the `auto_compact` lifecycle event when the 85%
 trigger fires. These values come from the authoritative agent-loop check. The UI
 derives its displayed threshold percentage as
-`floor(promptTokens * 100 / compactionBudget)`, matching the backend trigger;
-values above the threshold may exceed 100%.
+`promptTokens * 100 / compactionBudget`, rounded to two decimal places for
+display; values above the threshold may exceed 100%.
 
 ## Channel notifications
 
