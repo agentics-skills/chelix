@@ -298,8 +298,9 @@ function renderAssistantMessageBody(msg: AssistantMsg): HTMLElement | null {
 /// Render reasoning strictly by canonical provider item position. Falls back to
 /// the persisted reasoning field only when no provider items exist.
 function appendAssistantReasoning(messageEl: HTMLElement, msg: AssistantMsg): void {
-	const expanded = messageEl.querySelector<HTMLDetailsElement>(".msg-reasoning")?.open ?? false;
+	const disclosure = messageEl.querySelector<HTMLDetailsElement>(".msg-reasoning");
 	const streaming = msg.outcome === "active";
+	const expanded = streaming || (disclosure?.open === true && !disclosure.classList.contains("is-streaming"));
 	const providerItems = Array.isArray(msg.providerItems) ? msg.providerItems : [];
 	if (providerItems.length === 0) {
 		if (msg.reasoning) {

@@ -117,7 +117,15 @@ subscriptions. The frontend contract is in `src/types/ui-history.ts`.
 - **Provider items**: segment/item IDs and item positions originate in Rust;
   `provider-segment-reducer.ts` renders reasoning from those ordered items.
 - **One disclosure per segment**: `session-render.ts` keeps a retained
-  assistant's reasoning disclosure while updating its text body.
+  assistant's reasoning disclosure while updating its text body. Every `active`
+  revision renders it open with the `Thinking` summary; manually closing it while
+  active lasts only until the next revision. The first non-active render, whether
+  it follows an active revision or creates a node from a terminal baseline,
+  renders it closed with the `Reasoning` summary. Later non-active revisions
+  preserve the user's current open state while the keyed DOM node is retained. A
+  session or generation reset creates a new node and reapplies the baseline rule.
+  Non-active covers every terminal segment outcome: `completed`, `incomplete`,
+  `failed`, `cancelled`, and `transport_error`.
 - **Keyed DOM**: each history container has `data-message-id`; reconciliation
   orders containers by snapshot position and updates only newer revisions.
 - **Authoritative counts**: accepted pages and batches supply `totalMessages`.
