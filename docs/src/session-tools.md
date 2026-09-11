@@ -146,23 +146,38 @@ Send a message to another session, optionally waiting for reply.
   "message": "Please implement JWT middleware",
   "wait_for_reply": true,
   "context": "coordinator",
-  "model_override": {
-    "model": "openai::gpt-5.2",
-    "reasoning_effort": "high"
+  "model": {
+    "session": {}
+  }
+}
+```
+
+```json
+{
+  "key": "agent:coder:main",
+  "message": "Please implement JWT middleware",
+  "wait_for_reply": true,
+  "context": "coordinator",
+  "model": {
+    "override": {
+      "model": "openai::gpt-5.2",
+      "reasoning_effort": "high"
+    }
   }
 }
 ```
 
 `key` and `message` are required non-empty strings. Accepted input fields are
-`key`, `message`, `wait_for_reply`, `context`, and `model_override`. Additional
+`key`, `message`, `wait_for_reply`, `context`, and `model`. Additional
 fields are rejected before reading session state or sending a message.
 `wait_for_reply` is a boolean and defaults to `false` when omitted. Optional
 `context` must be a non-empty string when supplied. Omit unused optional fields;
 explicit `null` is rejected.
 
-Omit `model_override` in `sessions_send` to use the target session's persisted
-model/reasoning pair. A supplied override accepts only the required non-empty
-`model` and `reasoning_effort` fields and is validated against the model registry.
+`model` is required and selects exactly one form. `model.session` is an empty
+object and uses the target session's persisted model/reasoning pair.
+`model.override` accepts only the required non-empty `model` and
+`reasoning_effort` fields and is validated against the model registry.
 
 When the sender agent has `prepend_sender_badge = true`, the delivered message
 starts with `[From the "<name>" agent]` followed by a blank line, using the

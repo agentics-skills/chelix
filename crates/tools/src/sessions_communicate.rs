@@ -8,7 +8,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use {async_trait::async_trait, futures::future::BoxFuture, serde::Deserialize, serde_json::Value};
+use {
+    async_trait::async_trait,
+    futures::future::BoxFuture,
+    serde::{Deserialize, Deserializer, de::Error as _},
+    serde_json::Value,
+};
 
 use {
     chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
@@ -18,7 +23,7 @@ use {
 use crate::{
     Error,
     params::{require_str, str_param, u64_param},
-    session_model_override::{ModelOverride, deserialize_model_override, model_override_schema},
+    session_model_override::{ModelOverride, deserialize_model_override},
     session_tool_params::{nonempty_string, optional_nonempty_string},
 };
 
@@ -33,8 +38,82 @@ struct SessionsSendParams {
     wait_for_reply: bool,
     #[serde(default, deserialize_with = "optional_nonempty_string")]
     context: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_model_override")]
-    model_override: Option<ModelOverride>,
+    model: SessionsSendModel,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SessionsSendModel {
+    Session(SessionsSendSessionForm),
+    Override(SessionsSendOverrideForm),
+}
+
+impl SessionsSendModel {
+    fn into_override(self) -> Option<ModelOverride> {
+        match self {
+            Self::Session(SessionsSendSessionForm {
+                session: SessionsSendSessionBody {},
+            }) => None,
+            Self::Override(form) => Some(form.model_override),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsSendSessionForm {
+    session: SessionsSendSessionBody,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsSendSessionBody {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsSendOverrideForm {
+    #[serde(
+        rename = "override",
+        deserialize_with = "deserialize_present_model_override"
+    )]
+    model_override: ModelOverride,
+}
+
+fn deserialize_present_model_override<'de, D>(deserializer: D) -> Result<ModelOverride, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_model_override(deserializer)?
+        .ok_or_else(|| D::Error::custom("model.override requires model and reasoning_effort"))
+}
+
+fn require_json_object(value: &Value, path: &str) -> Result<(), serde_json::Error> {
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(serde_json::Error::custom(format!(
+            "{path} must be an object"
+        )))
+    }
+}
+
+fn reject_non_object_model_payloads(params: &Value) -> Result<(), serde_json::Error> {
+    let Some(model) = params.get("model") else {
+        return Ok(());
+    };
+    require_json_object(model, "model")?;
+    if let Some(session) = model.get("session") {
+        require_json_object(session, "model.session")?;
+    }
+    if let Some(override_value) = model.get("override") {
+        require_json_object(override_value, "model.override")?;
+    }
+    Ok(())
+}
+
+fn parse_sessions_send_params(params: Value) -> Result<SessionsSendParams, serde_json::Error> {
+    reject_non_object_model_payloads(&params)?;
+    serde_json::from_value(params)
 }
 
 /// Format the sender identity badge placed at the top of cross-session text.
@@ -508,14 +587,57 @@ impl AgentTool for SessionsSendTool {
                     "minLength": 1,
                     "description": "Optional sender context prepended to the message."
                 },
-                "model_override": model_override_schema()
+                "model": {
+                    "description": "Required model form. Use session to keep the target session's persisted model/reasoning pair. Use override only for an intentional complete model/reasoning pair. Do not copy preset model values returned by sessions_explore.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["session"],
+                            "properties": {
+                                "session": {
+                                    "type": "object",
+                                    "description": "Empty object. Uses the target session's persisted model/reasoning pair.",
+                                    "additionalProperties": false,
+                                    "properties": {},
+                                    "required": []
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["override"],
+                            "properties": {
+                                "override": {
+                                    "description": "Complete model/reasoning override for this send. Provide this only when intentionally overriding the target session's persisted pair. Do not copy preset model values returned by sessions_explore.",
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["model", "reasoning_effort"],
+                                    "properties": {
+                                        "model": {
+                                            "description": "Base model id override from the chat model registry. Must be different from the target session's persisted model. Do not pass null or empty strings.",
+                                            "minLength": 1,
+                                            "type": "string"
+                                        },
+                                        "reasoning_effort": {
+                                            "description": "Exact reasoning effort advertised by the selected model's reasoning_supported_efforts metadata. Do not pass null or empty strings.",
+                                            "minLength": 1,
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
             },
-            "required": ["key", "message"]
+            "required": ["key", "message", "model"]
         })
     }
 
     fn validate(&self, params: &Value) -> anyhow::Result<()> {
-        serde_json::from_value::<SessionsSendParams>(params.clone())?;
+        parse_sessions_send_params(params.clone())?;
         Ok(())
     }
 
@@ -562,8 +684,9 @@ impl SessionsSendTool {
             message,
             wait_for_reply,
             context,
-            model_override,
-        } = serde_json::from_value(params)?;
+            model,
+        } = parse_sessions_send_params(params)?;
+        let model_override = model.into_override();
 
         // Enforce session access policy.
         if let Some(ref policy) = self.policy {
@@ -848,6 +971,7 @@ mod tests {
                 assert_eq!(req.key, "session:target");
                 assert!(req.message.starts_with("[From: coordinator]"));
                 assert!(req.wait_for_reply);
+                assert!(req.model_override.is_none());
                 Ok(serde_json::json!({
                     "text": "ok",
                     "inputTokens": 1,
@@ -862,7 +986,8 @@ mod tests {
                 "key": "session:target",
                 "message": "Do work",
                 "context": "coordinator",
-                "wait_for_reply": true
+                "wait_for_reply": true,
+                "model": { "session": {} }
             }))
             .await?;
 
@@ -893,9 +1018,11 @@ mod tests {
         tool.execute(serde_json::json!({
             "key": "session:target",
             "message": "Do work",
-            "model_override": {
-                "model": "openai::gpt-5.2",
-                "reasoning_effort": "high"
+            "model": {
+                "override": {
+                    "model": "openai::gpt-5.2",
+                    "reasoning_effort": "high"
+                }
             }
         }))
         .await?;
@@ -913,16 +1040,27 @@ mod tests {
             }),
         );
         for params in [
-            serde_json::json!({"message": "hello"}),
-            serde_json::json!({"key": "session:target"}),
-            serde_json::json!({"key": "", "message": "hello"}),
-            serde_json::json!({"key": "session:target", "message": ""}),
-            serde_json::json!({"key": "session:target", "message": "hello", "context": null}),
-            serde_json::json!({"key": "session:target", "message": "hello", "wait_for_reply": null}),
-            serde_json::json!({"key": "session:target", "message": "hello", "wait_for_reply": "true"}),
-            serde_json::json!({"key": "session:target", "message": "hello", "model_override": null}),
-            serde_json::json!({"key": "session:target", "message": "hello", "model_override": {"reasoning_effort": "low"}}),
-            serde_json::json!({"key": "session:target", "message": "hello", "model_override": {"model": "", "reasoning_effort": "low"}}),
+            serde_json::json!({"message": "hello", "model": {"session": {}}}),
+            serde_json::json!({"key": "session:target", "model": {"session": {}}}),
+            serde_json::json!({"key": "", "message": "hello", "model": {"session": {}}}),
+            serde_json::json!({"key": "session:target", "message": "", "model": {"session": {}}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": {}}, "context": null}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": {}}, "wait_for_reply": null}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": {}}, "wait_for_reply": "true"}),
+            serde_json::json!({"key": "session:target", "message": "hello"}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": null}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": []}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": {}, "override": {"model": "openai::gpt-5.2", "reasoning_effort": "high"}}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": []}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": null}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"session": {"extra_field": true}}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"override": null}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"override": []}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"override": {"reasoning_effort": "low"}}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"override": {"model": "", "reasoning_effort": "low"}}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"override": {"model": "openai::gpt-5.2", "reasoning_effort": "high", "extra_field": true}}}),
+            serde_json::json!({"key": "session:target", "message": "hello", "model": {"extra_field": true}}),
         ] {
             assert!(tool.validate(&params).is_err(), "{params}");
             let result = tool.execute(params).await;
@@ -941,9 +1079,39 @@ mod tests {
                 Box::pin(async { panic!("additional fields must not reach the callback") })
             }),
         );
-        assert_eq!(tool.parameters_schema()["additionalProperties"], false);
+        let schema = tool.parameters_schema();
+        assert_eq!(schema["additionalProperties"], false);
+        assert!(schema.get("oneOf").is_none());
+        assert_eq!(
+            schema["required"],
+            serde_json::json!(["key", "message", "model"])
+        );
+        assert!(schema["properties"].get("model_override").is_none());
+        let variants = schema["properties"]["model"]["oneOf"]
+            .as_array()
+            .ok_or_else(|| std::io::Error::other("model.oneOf must be an array"))?;
+        assert_eq!(variants.len(), 2);
+        assert_eq!(variants[0]["required"], serde_json::json!(["session"]));
+        assert!(
+            variants[0]["properties"]["session"]["properties"]
+                .get("model")
+                .is_none()
+        );
+        assert!(
+            variants[0]["properties"]["session"]["properties"]
+                .get("reasoning_effort")
+                .is_none()
+        );
+        assert_eq!(variants[1]["required"], serde_json::json!(["override"]));
+        assert_eq!(
+            variants[1]["properties"]["override"]["required"],
+            serde_json::json!(["model", "reasoning_effort"])
+        );
         let params = serde_json::json!({
-            "key": "session:target", "message": "hello", "extra_field": true,
+            "key": "session:target",
+            "message": "hello",
+            "model": { "session": {} },
+            "extra_field": true,
         });
         assert!(tool.validate(&params).is_err());
         let result = tool.execute(params).await;
@@ -966,7 +1134,8 @@ mod tests {
         let result = tool
             .execute(serde_json::json!({
                 "key": "session:missing",
-                "message": "hello"
+                "message": "hello",
+                "model": { "session": {} }
             }))
             .await;
         let err = result
@@ -1043,7 +1212,8 @@ mod tests {
         let result = tool
             .execute(serde_json::json!({
                 "key": "session:target",
-                "message": "hello"
+                "message": "hello",
+                "model": { "session": {} }
             }))
             .await;
 
@@ -1110,7 +1280,11 @@ mod tests {
             "coder",
         );
         tool.execute_with_context(
-            serde_json::json!({ "key": "session:target", "message": "Do work" }),
+            serde_json::json!({
+                "key": "session:target",
+                "message": "Do work",
+                "model": { "session": {} }
+            }),
             &context,
         )
         .await?;
@@ -1134,7 +1308,11 @@ mod tests {
             "quiet",
         );
         tool.execute_with_context(
-            serde_json::json!({ "key": "session:target", "message": "Do work" }),
+            serde_json::json!({
+                "key": "session:target",
+                "message": "Do work",
+                "model": { "session": {} }
+            }),
             &context,
         )
         .await?;
@@ -1164,7 +1342,8 @@ mod tests {
             serde_json::json!({
                 "key": "session:target",
                 "message": "Do work",
-                "context": "coordinator"
+                "context": "coordinator",
+                "model": { "session": {} }
             }),
             &context,
         )
@@ -1187,7 +1366,11 @@ mod tests {
         );
         let result = tool
             .execute_with_context(
-                serde_json::json!({ "key": "session:target", "message": "hi" }),
+                serde_json::json!({
+                    "key": "session:target",
+                    "message": "hi",
+                    "model": { "session": {} }
+                }),
                 &context,
             )
             .await;
@@ -1211,8 +1394,12 @@ mod tests {
         });
         let tool =
             SessionsSendTool::new(metadata, send_fn).with_agents_config(badge_agents_config());
-        tool.execute(serde_json::json!({ "key": "session:target", "message": "Do work" }))
-            .await?;
+        tool.execute(serde_json::json!({
+            "key": "session:target",
+            "message": "Do work",
+            "model": { "session": {} }
+        }))
+        .await?;
         Ok(())
     }
 }
