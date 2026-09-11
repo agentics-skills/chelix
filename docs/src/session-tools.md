@@ -30,38 +30,39 @@ Input:
   "agent_id": "required agent id from sessions_explore",
   "label": "optional label",
   "project_id": "optional project id",
-  "model_override": {
-    "model": "advanced base model id override from models.list",
-    "reasoning_effort": "none|minimal|low|medium|high|xhigh|max"
+  "model": {
+    "agent": {}
+  }
+}
+```
+
+```json
+{
+  "agent_id": "researcher",
+  "model": {
+    "override": {
+      "model": "openai::gpt-5.2",
+      "reasoning_effort": "high"
+    }
   }
 }
 ```
 
 `agent_id` is mandatory. Accepted input fields are `agent_id`, `label`,
-`project_id`, and `model_override`. Additional fields are rejected before session
+`project_id`, and `model`. Additional fields are rejected before session
 creation. String fields must be non-empty; omit unused optional fields rather
 than passing `null`.
 
-Omit `model_override` to use the selected agent's configured model. `model_override`
-is for advanced intentional overrides only. When it is provided, both
-`model_override.model` and `model_override.reasoning_effort` are mandatory. The
-model must be the base ID shown in the chat model registry (`models.list`) and
-must support the selected effort. The override accepts only `model` and
-`reasoning_effort`. The tool stores the validated pair atomically, for example:
+`model` is required and selects exactly one form. `model.agent` is an empty
+object and uses the selected agent's configured model/reasoning pair.
+`model.override` is for advanced intentional overrides only. When it is provided,
+both `model.override.model` and `model.override.reasoning_effort` are mandatory.
+The model must be the base ID shown in the chat model registry (`models.list`)
+and must support the selected effort. The override accepts only `model` and
+`reasoning_effort`. The tool stores the validated pair atomically.
 
-```json
-{
-  "agent_id": "researcher",
-  "model_override": {
-    "model": "openai::gpt-5.2",
-    "reasoning_effort": "high"
-  }
-}
-```
-
-When `model_override` is omitted, the tool uses the selected agent's required
-model/reasoning pair. Agent pairs are validated against the live model registry
-at startup and whenever an agent is created or updated.
+Agent pairs are validated against the live model registry at startup and whenever
+an agent is created or updated.
 
 Sessions created by an agent receive the calling session from the typed execution
 context and are automatically linked to it as children (`parentSessionKey`), so
