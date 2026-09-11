@@ -24,6 +24,7 @@ interface AgentEntry extends UnknownRecord {
 	reasoning_effort: string;
 	max_tools_threshold: number;
 	compaction_reminder: boolean;
+	prepend_sender_badge: boolean;
 	is_default?: boolean;
 	soul?: string;
 	subagent_prompt?: string;
@@ -38,6 +39,7 @@ interface AgentFormValues {
 	reasoningEffort: string;
 	maxToolsThreshold: string;
 	compactionReminder: boolean;
+	prependSenderBadge: boolean;
 	soul: string;
 	subagentPrompt: string;
 }
@@ -46,6 +48,7 @@ interface AgentFormProps {
 	agent: AgentEntry | null;
 	defaultMaxToolsThreshold: number;
 	defaultCompactionReminder: boolean;
+	defaultPrependSenderBadge: boolean;
 	onCancel: () => void;
 	onSaved: () => void;
 }
@@ -80,6 +83,12 @@ function parseDefaultCompactionReminder(value: unknown): boolean | null {
 	return typeof reminder === "boolean" ? reminder : null;
 }
 
+function parseDefaultPrependSenderBadge(value: unknown): boolean | null {
+	if (!(isRecord(value) && isRecord(value.defaults))) return null;
+	const badge = value.defaults.prepend_sender_badge;
+	return typeof badge === "boolean" ? badge : null;
+}
+
 function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 	const id = typeof value.id === "string" ? value.id : "";
 	const name = typeof value.name === "string" ? value.name : "";
@@ -87,6 +96,7 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 	const reasoningEffort = typeof value.reasoning_effort === "string" ? value.reasoning_effort : "";
 	const maxToolsThreshold = value.max_tools_threshold;
 	const compactionReminder = value.compaction_reminder;
+	const prependSenderBadge = value.prepend_sender_badge;
 	if (
 		!(
 			id &&
@@ -96,7 +106,8 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 			typeof maxToolsThreshold === "number" &&
 			Number.isSafeInteger(maxToolsThreshold) &&
 			maxToolsThreshold >= 1 &&
-			typeof compactionReminder === "boolean"
+			typeof compactionReminder === "boolean" &&
+			typeof prependSenderBadge === "boolean"
 		)
 	)
 		return null;
@@ -108,6 +119,7 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 		reasoning_effort: reasoningEffort,
 		max_tools_threshold: maxToolsThreshold,
 		compaction_reminder: compactionReminder,
+		prepend_sender_badge: prependSenderBadge,
 	};
 }
 
@@ -143,6 +155,7 @@ function agentConfigForSave(agent: AgentEntry | null, values: AgentFormValues): 
 		reasoning_effort: values.reasoningEffort,
 		max_tools_threshold: Number(values.maxToolsThreshold),
 		compaction_reminder: values.compactionReminder,
+		prepend_sender_badge: values.prependSenderBadge,
 	};
 }
 
@@ -160,6 +173,7 @@ function initialAgentFormValues(
 	agent: AgentEntry | null,
 	defaultMaxToolsThreshold: number,
 	defaultCompactionReminder: boolean,
+	defaultPrependSenderBadge: boolean,
 ): AgentFormValues {
 	return {
 		id: agent?.id || "",
@@ -170,6 +184,7 @@ function initialAgentFormValues(
 		reasoningEffort: agent?.reasoning_effort || "",
 		maxToolsThreshold: String(agent?.max_tools_threshold ?? defaultMaxToolsThreshold),
 		compactionReminder: agent?.compaction_reminder ?? defaultCompactionReminder,
+		prependSenderBadge: agent?.prepend_sender_badge ?? defaultPrependSenderBadge,
 		soul: agent?.soul || "",
 		subagentPrompt: agent?.subagent_prompt || "",
 	};
@@ -198,11 +213,12 @@ function AgentForm({
 	agent,
 	defaultMaxToolsThreshold,
 	defaultCompactionReminder,
+	defaultPrependSenderBadge,
 	onCancel,
 	onSaved,
 }: AgentFormProps): VNode {
 	const [values, setValues] = useState<AgentFormValues>(
-		initialAgentFormValues(agent, defaultMaxToolsThreshold, defaultCompactionReminder),
+		initialAgentFormValues(agent, defaultMaxToolsThreshold, defaultCompactionReminder, defaultPrependSenderBadge),
 	);
 	const [models, setModels] = useState<ModelInfo[]>([]);
 	const [loadingModels, setLoadingModels] = useState(true);
@@ -368,6 +384,15 @@ function AgentForm({
 					<span>Include the first user message in the system prompt after context compaction.</span>
 				</label>
 
+				<label className="flex items-start gap-2 text-sm text-[var(--text)]">
+					<input
+						type="checkbox"
+						checked={values.prependSenderBadge}
+						onChange={(event) => setField("prependSenderBadge", targetChecked(event))}
+					/>
+					<span>Prepend sender badge to sessions_send and sub_agent messages.</span>
+				</label>
+
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
 					<label className="flex flex-col gap-1">
 						<span className="text-xs text-[var(--muted)]">Soul</span>
@@ -481,6 +506,7 @@ type AgentsLoadResult =
 			defaultId: string;
 			defaultMaxToolsThreshold: number;
 			defaultCompactionReminder: boolean;
+			defaultPrependSenderBadge: boolean;
 	  }
 	| { ok: false; message: string };
 
@@ -491,7 +517,8 @@ function parseAgentsLoadResult(payload: unknown): AgentsLoadResult {
 	const parsed = parseAgentsListPayload(payload);
 	const defaultThreshold = parseDefaultMaxToolsThreshold(payload);
 	const defaultCompactionReminder = parseDefaultCompactionReminder(payload);
-	if (defaultThreshold === null || defaultCompactionReminder === null) {
+	const defaultPrependSenderBadge = parseDefaultPrependSenderBadge(payload);
+	if (defaultThreshold === null || defaultCompactionReminder === null || defaultPrependSenderBadge === null) {
 		return { ok: false, message: "Agent list returned invalid defaults data." };
 	}
 	const validAgents: AgentEntry[] = [];
@@ -508,6 +535,7 @@ function parseAgentsLoadResult(payload: unknown): AgentsLoadResult {
 		defaultId: parsed.defaultId,
 		defaultMaxToolsThreshold: defaultThreshold,
 		defaultCompactionReminder,
+		defaultPrependSenderBadge,
 	};
 }
 
@@ -516,6 +544,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 	const [defaultId, setDefaultId] = useState("");
 	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState<number | null>(null);
 	const [defaultCompactionReminder, setDefaultCompactionReminder] = useState<boolean | null>(null);
+	const [defaultPrependSenderBadge, setDefaultPrependSenderBadge] = useState<boolean | null>(null);
 	const [editing, setEditing] = useState<"new" | AgentEntry | null>(subPath === "new" ? "new" : null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -526,6 +555,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		setDefaultId("");
 		setDefaultMaxToolsThreshold(null);
 		setDefaultCompactionReminder(null);
+		setDefaultPrependSenderBadge(null);
 		let attempts = 0;
 		function load(): void {
 			sendRpc("agents.list", {}).then((response) => {
@@ -550,6 +580,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 				setDefaultId(result.defaultId);
 				setDefaultMaxToolsThreshold(result.defaultMaxToolsThreshold);
 				setDefaultCompactionReminder(result.defaultCompactionReminder);
+				setDefaultPrependSenderBadge(result.defaultPrependSenderBadge);
 				setAgents(result.agents);
 				setError(null);
 			});
@@ -587,12 +618,18 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 		});
 	}
 
-	if (editing && defaultMaxToolsThreshold !== null && defaultCompactionReminder !== null) {
+	if (
+		editing &&
+		defaultMaxToolsThreshold !== null &&
+		defaultCompactionReminder !== null &&
+		defaultPrependSenderBadge !== null
+	) {
 		return (
 			<AgentForm
 				agent={editing === "new" ? null : editing}
 				defaultMaxToolsThreshold={defaultMaxToolsThreshold}
 				defaultCompactionReminder={defaultCompactionReminder}
+				defaultPrependSenderBadge={defaultPrependSenderBadge}
 				onCancel={() => setEditing(null)}
 				onSaved={afterMutation}
 			/>
@@ -607,7 +644,11 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					type="button"
 					className="provider-btn provider-btn-sm"
 					onClick={() => setEditing("new")}
-					disabled={defaultMaxToolsThreshold === null || defaultCompactionReminder === null}
+					disabled={
+						defaultMaxToolsThreshold === null ||
+						defaultCompactionReminder === null ||
+						defaultPrependSenderBadge === null
+					}
 				>
 					New Agent
 				</button>

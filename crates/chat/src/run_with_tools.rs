@@ -1116,6 +1116,7 @@ pub(crate) async fn run_with_tools(
         runtime_context,
     );
     tool_context["_run_id"] = serde_json::json!(run_id);
+    tool_context["_agent_id"] = serde_json::json!(agent_id);
 
     // Create a shared steer inbox that the gateway can push steering text into.
     // A background task polls the ChatRuntime and forwards any `/steer` text.

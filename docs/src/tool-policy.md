@@ -94,6 +94,7 @@ model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command", "write_file"]
 ```
@@ -210,6 +211,7 @@ model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 tools.allow = ["read_file", "glob", "ripgrep"]
 tools.deny  = ["execute_command"]
 ```

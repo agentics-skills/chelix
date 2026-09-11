@@ -205,6 +205,10 @@ port = {port}                           # Port number (auto-generated for this i
 # context checkpoint receives a REMINDER system-prompt section containing the
 # textual content of the first persisted user message.
 #
+# `prepend_sender_badge` is required. When true, messages sent via
+# `sessions_send` and `sub_agent` run start with `[From the "<name>" agent]`
+# followed by a blank line, using the sender agent name.
+#
 # [agents]
 # default = "main"
 #
@@ -216,6 +220,7 @@ port = {port}                           # Port number (auto-generated for this i
 # reasoning_effort = "medium"
 # max_tools_threshold = {max_tools_threshold}
 # compaction_reminder = {compaction_reminder}
+# prepend_sender_badge = true
 #
 # [agents.main.tools]
 # allow = []

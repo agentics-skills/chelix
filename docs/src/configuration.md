@@ -127,6 +127,7 @@ model = "openai::gpt-5.2"       # Required canonical registry model ID
 reasoning_effort = "medium"     # Required effort supported by this model
 max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 compaction_reminder = true
+prepend_sender_badge = true
 
 [tools]
 agent_timeout_secs = 600        # Agent run timeout (seconds, 0 = no timeout)
@@ -490,6 +491,7 @@ model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [tools]
 agent_timeout_secs = 600

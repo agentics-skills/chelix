@@ -37,6 +37,14 @@ struct SessionsSendParams {
     model_override: Option<ModelOverride>,
 }
 
+/// Format the sender identity badge placed at the top of cross-session text.
+///
+/// The badge uses the sender agent display name and is followed by a blank line.
+#[must_use]
+pub fn sender_badge(name: &str) -> String {
+    format!("[From the \"{name}\" agent]\n\n")
+}
+
 /// Request payload for cross-session message delivery.
 #[derive(Debug, Clone)]
 pub struct SendToSessionRequest {
@@ -164,6 +172,7 @@ pub struct SessionsSendTool {
     metadata: Arc<SqliteSessionMetadata>,
     send_fn: SendToSessionFn,
     policy: Option<SessionAccessPolicy>,
+    agents_config: Option<Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>>,
 }
 
 impl SessionsSendTool {
@@ -172,12 +181,22 @@ impl SessionsSendTool {
             metadata,
             send_fn,
             policy: None,
+            agents_config: None,
         }
     }
 
     /// Attach a session access policy for filtering.
     pub fn with_policy(mut self, policy: SessionAccessPolicy) -> Self {
         self.policy = Some(policy);
+        self
+    }
+
+    /// Attach the agent registry used to resolve the trusted sender badge.
+    pub fn with_agents_config(
+        mut self,
+        agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
+    ) -> Self {
+        self.agents_config = Some(agents_config);
         self
     }
 }
@@ -503,12 +522,41 @@ impl AgentTool for SessionsSendTool {
     async fn execute_with_context(
         &self,
         params: Value,
-        _context: &ToolExecutionContext,
+        context: &ToolExecutionContext,
     ) -> anyhow::Result<Value> {
-        self.execute(params).await
+        let sender = context.sender_agent_id().map(str::to_string);
+        self.execute_inner(params, sender).await
     }
 
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
+        self.execute_inner(params, None).await
+    }
+}
+
+impl SessionsSendTool {
+    async fn sender_badge_prefix(&self, sender_agent_id: Option<String>) -> anyhow::Result<String> {
+        let Some(sender_agent_id) = sender_agent_id else {
+            return Ok(String::new());
+        };
+        let Some(ref agents_config) = self.agents_config else {
+            return Ok(String::new());
+        };
+        let guard = agents_config.read().await;
+        let agent = guard
+            .get(&sender_agent_id)
+            .ok_or_else(|| Error::message(format!("unknown sender agent '{sender_agent_id}'")))?;
+        if agent.prepend_sender_badge {
+            Ok(sender_badge(&agent.name))
+        } else {
+            Ok(String::new())
+        }
+    }
+
+    async fn execute_inner(
+        &self,
+        params: Value,
+        sender_agent_id: Option<String>,
+    ) -> anyhow::Result<Value> {
         let SessionsSendParams {
             key,
             message,
@@ -535,10 +583,13 @@ impl AgentTool for SessionsSendTool {
             .await?
             .ok_or_else(|| Error::message(format!("session not found: {key}")))?;
 
+        let badge = self.sender_badge_prefix(sender_agent_id).await?;
         let message = if let Some(ctx) = context {
-            format!("[From: {ctx}]\n\n{message}")
-        } else {
+            format!("{badge}[From: {ctx}]\n\n{message}")
+        } else if badge.is_empty() {
             message
+        } else {
+            format!("{badge}{message}")
         };
 
         let result = (self.send_fn)(SendToSessionRequest {
@@ -1012,6 +1063,156 @@ mod tests {
         let result = tool.execute(serde_json::json!({})).await?;
 
         assert_eq!(result["count"], 2);
+        Ok(())
+    }
+
+    #[test]
+    fn sender_badge_formats_with_blank_line() {
+        assert_eq!(sender_badge("Coder"), "[From the \"Coder\" agent]\n\n");
+    }
+
+    fn badge_agents_config() -> Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>> {
+        let mut agents = chelix_config::AgentsConfig {
+            default: "coder".to_string(),
+            ..Default::default()
+        };
+        let mut coder = chelix_config::AgentConfig::new(
+            "Coder",
+            "test::model",
+            chelix_common::ReasoningEffort::from("off"),
+        );
+        coder.prepend_sender_badge = true;
+        let mut quiet = chelix_config::AgentConfig::new(
+            "Quiet",
+            "test::model",
+            chelix_common::ReasoningEffort::from("off"),
+        );
+        quiet.prepend_sender_badge = false;
+        agents.entries.insert("coder".to_string(), coder);
+        agents.entries.insert("quiet".to_string(), quiet);
+        Arc::new(tokio::sync::RwLock::new(agents))
+    }
+
+    #[tokio::test]
+    async fn sessions_send_prepends_badge_when_enabled() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        create_test_session(&metadata, "session:target", "Target").await?;
+        let send_fn: SendToSessionFn = Arc::new(move |req| {
+            Box::pin(async move {
+                assert_eq!(req.message, "[From the \"Coder\" agent]\n\nDo work");
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool =
+            SessionsSendTool::new(metadata, send_fn).with_agents_config(badge_agents_config());
+        let context = ToolExecutionContext::for_session_with_agent(
+            chelix_sessions::SessionKey::new("session:sender"),
+            "coder",
+        );
+        tool.execute_with_context(
+            serde_json::json!({ "key": "session:target", "message": "Do work" }),
+            &context,
+        )
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_send_omits_badge_when_disabled() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        create_test_session(&metadata, "session:target", "Target").await?;
+        let send_fn: SendToSessionFn = Arc::new(move |req| {
+            Box::pin(async move {
+                assert_eq!(req.message, "Do work");
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool =
+            SessionsSendTool::new(metadata, send_fn).with_agents_config(badge_agents_config());
+        let context = ToolExecutionContext::for_session_with_agent(
+            chelix_sessions::SessionKey::new("session:sender"),
+            "quiet",
+        );
+        tool.execute_with_context(
+            serde_json::json!({ "key": "session:target", "message": "Do work" }),
+            &context,
+        )
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_send_places_badge_above_context() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        create_test_session(&metadata, "session:target", "Target").await?;
+        let send_fn: SendToSessionFn = Arc::new(move |req| {
+            Box::pin(async move {
+                assert_eq!(
+                    req.message,
+                    "[From the \"Coder\" agent]\n\n[From: coordinator]\n\nDo work"
+                );
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool =
+            SessionsSendTool::new(metadata, send_fn).with_agents_config(badge_agents_config());
+        let context = ToolExecutionContext::for_session_with_agent(
+            chelix_sessions::SessionKey::new("session:sender"),
+            "coder",
+        );
+        tool.execute_with_context(
+            serde_json::json!({
+                "key": "session:target",
+                "message": "Do work",
+                "context": "coordinator"
+            }),
+            &context,
+        )
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_send_rejects_unknown_sender() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        create_test_session(&metadata, "session:target", "Target").await?;
+        let send_fn: SendToSessionFn = Arc::new(move |_| {
+            Box::pin(async move { panic!("unknown sender must not reach callback") })
+        });
+        let tool =
+            SessionsSendTool::new(metadata, send_fn).with_agents_config(badge_agents_config());
+        let context = ToolExecutionContext::for_session_with_agent(
+            chelix_sessions::SessionKey::new("session:sender"),
+            "missing",
+        );
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "key": "session:target", "message": "hi" }),
+                &context,
+            )
+            .await;
+        assert!(
+            result
+                .err()
+                .is_some_and(|error| error.to_string().contains("unknown sender agent"))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sessions_send_without_sender_context_sends_plain() -> TestResult<()> {
+        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
+        create_test_session(&metadata, "session:target", "Target").await?;
+        let send_fn: SendToSessionFn = Arc::new(move |req| {
+            Box::pin(async move {
+                assert_eq!(req.message, "Do work");
+                Ok(serde_json::json!({ "ok": true }))
+            })
+        });
+        let tool =
+            SessionsSendTool::new(metadata, send_fn).with_agents_config(badge_agents_config());
+        tool.execute(serde_json::json!({ "key": "session:target", "message": "Do work" }))
+            .await?;
         Ok(())
     }
 }

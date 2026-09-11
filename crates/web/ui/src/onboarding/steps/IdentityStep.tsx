@@ -23,6 +23,7 @@ interface AgentEntry extends UnknownRecord {
 	reasoning_effort: string;
 	max_tools_threshold: number;
 	compaction_reminder: boolean;
+	prepend_sender_badge: boolean;
 	soul?: string | null;
 	subagent_prompt?: string | null;
 }
@@ -46,6 +47,7 @@ interface IdentityLoadData {
 	models: ModelInfo[];
 	defaultMaxToolsThreshold: number;
 	defaultCompactionReminder: boolean;
+	defaultPrependSenderBadge: boolean;
 }
 
 type IdentityLoadResult = { ok: true; data: IdentityLoadData } | { ok: false; message: string };
@@ -63,6 +65,7 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 	const reasoningEffort = typeof value.reasoning_effort === "string" ? value.reasoning_effort : "";
 	const maxToolsThreshold = value.max_tools_threshold;
 	const compactionReminder = value.compaction_reminder;
+	const prependSenderBadge = value.prepend_sender_badge;
 	if (
 		!(
 			id &&
@@ -70,7 +73,8 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 			model &&
 			reasoningEffort &&
 			typeof maxToolsThreshold === "number" &&
-			typeof compactionReminder === "boolean"
+			typeof compactionReminder === "boolean" &&
+			typeof prependSenderBadge === "boolean"
 		)
 	)
 		return null;
@@ -82,6 +86,7 @@ function toAgentEntry(value: UnknownRecord): AgentEntry | null {
 		reasoning_effort: reasoningEffort,
 		max_tools_threshold: maxToolsThreshold,
 		compaction_reminder: compactionReminder,
+		prepend_sender_badge: prependSenderBadge,
 	};
 }
 
@@ -113,11 +118,22 @@ function parseDefaultCompactionReminder(value: unknown): boolean | null {
 	return typeof reminder === "boolean" ? reminder : null;
 }
 
-function parseAgentDefaults(value: unknown): { maxToolsThreshold: number; compactionReminder: boolean } | null {
+function parseDefaultPrependSenderBadge(value: unknown): boolean | null {
+	if (!(isRecord(value) && isRecord(value.defaults))) return null;
+	const badge = value.defaults.prepend_sender_badge;
+	return typeof badge === "boolean" ? badge : null;
+}
+
+function parseAgentDefaults(value: unknown): {
+	maxToolsThreshold: number;
+	compactionReminder: boolean;
+	prependSenderBadge: boolean;
+} | null {
 	const maxToolsThreshold = parseDefaultMaxToolsThreshold(value);
 	const compactionReminder = parseDefaultCompactionReminder(value);
-	if (maxToolsThreshold === null || compactionReminder === null) return null;
-	return { maxToolsThreshold, compactionReminder };
+	const prependSenderBadge = parseDefaultPrependSenderBadge(value);
+	if (maxToolsThreshold === null || compactionReminder === null || prependSenderBadge === null) return null;
+	return { maxToolsThreshold, compactionReminder, prependSenderBadge };
 }
 
 function parseIdentityLoadResult(
@@ -166,6 +182,7 @@ function parseIdentityLoadResult(
 			models,
 			defaultMaxToolsThreshold: defaults.maxToolsThreshold,
 			defaultCompactionReminder: defaults.compactionReminder,
+			defaultPrependSenderBadge: defaults.prependSenderBadge,
 		},
 	};
 }
@@ -178,6 +195,7 @@ function agentConfigForSave(
 	reasoningEffort: string,
 	defaultMaxToolsThreshold: number,
 	defaultCompactionReminder: boolean,
+	defaultPrependSenderBadge: boolean,
 ): UnknownRecord {
 	const source = agent || ({} as AgentEntry);
 	const { id: _id, is_default: _isDefault, soul: _soul, subagent_prompt: _subagentPrompt, ...config } = source;
@@ -189,6 +207,7 @@ function agentConfigForSave(
 		reasoning_effort: reasoningEffort,
 		max_tools_threshold: agent?.max_tools_threshold ?? defaultMaxToolsThreshold,
 		compaction_reminder: agent?.compaction_reminder ?? defaultCompactionReminder,
+		prepend_sender_badge: agent?.prepend_sender_badge ?? defaultPrependSenderBadge,
 	};
 }
 
@@ -261,6 +280,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [models, setModels] = useState<ModelInfo[]>([]);
 	const [defaultMaxToolsThreshold, setDefaultMaxToolsThreshold] = useState<number | null>(null);
 	const [defaultCompactionReminder, setDefaultCompactionReminder] = useState<boolean | null>(null);
+	const [defaultPrependSenderBadge, setDefaultPrependSenderBadge] = useState<boolean | null>(null);
 	const [userName, setUserName] = useState("");
 	const [name, setName] = useState("");
 	const [emoji, setEmoji] = useState("");
@@ -289,6 +309,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				setModels(result.data.models);
 				setDefaultMaxToolsThreshold(result.data.defaultMaxToolsThreshold);
 				setDefaultCompactionReminder(result.data.defaultCompactionReminder);
+				setDefaultPrependSenderBadge(result.data.defaultPrependSenderBadge);
 				setName(result.data.agent?.name || "");
 				setEmoji(typeof result.data.agent?.emoji === "string" ? result.data.agent.emoji : "");
 				setModel(result.data.agent?.model || "");
@@ -320,7 +341,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			setError("User profile is not loaded.");
 			return;
 		}
-		if (defaultMaxToolsThreshold === null || defaultCompactionReminder === null) {
+		if (defaultMaxToolsThreshold === null || defaultCompactionReminder === null || defaultPrependSenderBadge === null) {
 			setError("Agent defaults are not loaded.");
 			return;
 		}
@@ -336,6 +357,7 @@ export function IdentityStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 			reasoningEffort,
 			defaultMaxToolsThreshold,
 			defaultCompactionReminder,
+			defaultPrependSenderBadge,
 		);
 		const agentResult = await saveDefaultAgent(agent, agentConfig);
 		if (!agentResult.ok) {

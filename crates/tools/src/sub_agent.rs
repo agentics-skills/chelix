@@ -32,6 +32,7 @@ pub enum SubAgentRequest {
     Explore,
     Run {
         parent_session_key: String,
+        sender_agent_id: Option<String>,
         agent_id: String,
         task: String,
         mode: SubAgentMode,
@@ -207,6 +208,12 @@ fn parent_session_key(context: Option<&ToolExecutionContext>) -> crate::Result<S
         .map_err(|error| Error::message(error.to_string()))
 }
 
+fn sender_agent_id(context: Option<&ToolExecutionContext>) -> Option<String> {
+    context
+        .and_then(|context| context.sender_agent_id())
+        .map(str::to_string)
+}
+
 fn parse_request(
     params: &Value,
     context: Option<&ToolExecutionContext>,
@@ -228,6 +235,7 @@ fn parse_request(
             };
             Ok(SubAgentRequest::Run {
                 parent_session_key: parent_session_key(context)?,
+                sender_agent_id: sender_agent_id(context),
                 agent_id: required_string(payload, "agent_id")?.to_string(),
                 task: required_string(payload, "task")?.to_string(),
                 mode,
@@ -439,6 +447,7 @@ mod tests {
                 }}}),
                 SubAgentRequest::Run {
                     parent_session_key: "session:parent".into(),
+                    sender_agent_id: None,
                     agent_id: "reviewer".into(),
                     task: "Do work".into(),
                     mode: SubAgentMode::Blocking,
@@ -560,5 +569,40 @@ mod tests {
             }
         }));
         assert!(invalid.to_string().contains("mode"));
+    }
+
+    #[tokio::test]
+    async fn run_forwards_trusted_sender_agent() -> anyhow::Result<()> {
+        use chelix_sessions::SessionKey;
+
+        let params = serde_json::json!({"action": {"run": {
+            "agent_id": "reviewer", "task": "Do work", "mode": "blocking"
+        }}});
+        let expected_sender = Some("coder".to_string());
+        let tool = SubAgentTool::new(Arc::new(move |request| {
+            assert!(matches!(
+                request,
+                SubAgentRequest::Run {
+                    parent_session_key,
+                    sender_agent_id,
+                    agent_id,
+                    task,
+                    mode: SubAgentMode::Blocking,
+                } if parent_session_key == "session:parent"
+                    && sender_agent_id == expected_sender
+                    && agent_id == "reviewer"
+                    && task == "Do work"
+            ));
+            async { Ok(serde_json::json!({"accepted": true})) }.boxed()
+        }));
+        let context = ToolExecutionContext::for_session_with_agent(
+            SessionKey::new("session:parent"),
+            "coder",
+        );
+        assert_eq!(
+            tool.execute_with_context(params, &context).await?,
+            serde_json::json!({"accepted": true}),
+        );
+        Ok(())
     }
 }

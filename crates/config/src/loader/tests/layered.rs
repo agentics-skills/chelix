@@ -136,6 +136,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [tools.web.firecrawl]
 api_key = "${{{var}}}"
@@ -276,6 +277,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#;
     let path = PathBuf::from("test.toml");
     let config =
@@ -811,6 +813,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [agents.research]
 name = "Research"
@@ -818,6 +821,7 @@ model = "test::research"
 reasoning_effort = "off"
 max_tools_threshold = 7
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     )
     .expect("write seed");
@@ -898,6 +902,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#;
     let shadowed = crate::defaults::find_shadowed_defaults(user);
     assert!(
