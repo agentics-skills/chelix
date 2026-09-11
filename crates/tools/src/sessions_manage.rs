@@ -7,7 +7,12 @@
 
 use std::sync::Arc;
 
-use {async_trait::async_trait, futures::future::BoxFuture, serde::Deserialize, serde_json::Value};
+use {
+    async_trait::async_trait,
+    futures::future::BoxFuture,
+    serde::{Deserialize, Deserializer, de::Error as _},
+    serde_json::Value,
+};
 
 use {
     chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
@@ -17,7 +22,7 @@ use {
 use crate::{
     Error,
     params::{bool_param, require_str},
-    session_model_override::{ModelOverride, deserialize_model_override, model_override_schema},
+    session_model_override::{ModelOverride, deserialize_model_override},
     session_tool_params::{nonempty_string, optional_nonempty_string},
 };
 
@@ -30,8 +35,82 @@ struct SessionsCreateParams {
     label: Option<String>,
     #[serde(default, deserialize_with = "optional_nonempty_string")]
     project_id: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_model_override")]
-    model_override: Option<ModelOverride>,
+    model: SessionsCreateModel,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SessionsCreateModel {
+    Agent(SessionsCreateAgentForm),
+    Override(SessionsCreateOverrideForm),
+}
+
+impl SessionsCreateModel {
+    fn into_override(self) -> Option<ModelOverride> {
+        match self {
+            Self::Agent(SessionsCreateAgentForm {
+                agent: SessionsCreateAgentBody {},
+            }) => None,
+            Self::Override(form) => Some(form.model_override),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsCreateAgentForm {
+    agent: SessionsCreateAgentBody,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsCreateAgentBody {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SessionsCreateOverrideForm {
+    #[serde(
+        rename = "override",
+        deserialize_with = "deserialize_present_model_override"
+    )]
+    model_override: ModelOverride,
+}
+
+fn deserialize_present_model_override<'de, D>(deserializer: D) -> Result<ModelOverride, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_model_override(deserializer)?
+        .ok_or_else(|| D::Error::custom("model.override requires model and reasoning_effort"))
+}
+
+fn require_json_object(value: &Value, path: &str) -> Result<(), serde_json::Error> {
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(serde_json::Error::custom(format!(
+            "{path} must be an object"
+        )))
+    }
+}
+
+fn reject_non_object_model_payloads(params: &Value) -> Result<(), serde_json::Error> {
+    let Some(model) = params.get("model") else {
+        return Ok(());
+    };
+    require_json_object(model, "model")?;
+    if let Some(agent) = model.get("agent") {
+        require_json_object(agent, "model.agent")?;
+    }
+    if let Some(override_value) = model.get("override") {
+        require_json_object(override_value, "model.override")?;
+    }
+    Ok(())
+}
+
+fn parse_sessions_create_params(params: Value) -> Result<SessionsCreateParams, serde_json::Error> {
+    reject_non_object_model_payloads(&params)?;
+    serde_json::from_value(params)
 }
 
 /// Request payload for session creation.
@@ -98,7 +177,7 @@ impl SessionsCreateTool {
             key: key.clone(),
             agent_id: params.agent_id,
             label: params.label,
-            model_override: params.model_override,
+            model_override: params.model.into_override(),
             project_id: params.project_id,
             parent_session_key,
         };
@@ -161,8 +240,8 @@ impl AgentTool for SessionsCreateTool {
     fn description(&self) -> &str {
         "Create a new chat session with a generated session:<uuid> key for an explicit agent. \
          The agent_id parameter is required; call sessions_explore first to discover valid agents. \
-            The generated key is returned in the result and should be used for later session tools. \
-         Omit model_override to use the selected agent's preset model; provide model_override only for intentional advanced overrides."
+         The generated key is returned in the result and should be used for later session tools. \
+         The model parameter is required; use agent to keep the selected agent's preset model, and provide override only for an intentional advanced override."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -185,19 +264,63 @@ impl AgentTool for SessionsCreateTool {
                     "minLength": 1,
                     "type": "string"
                 },
-                "model_override": model_override_schema()
+                "model": {
+                    "description": "Required model form. Use agent to keep the selected agent's preset model/reasoning pair. Use override only for an intentional complete model/reasoning pair. Do not copy preset model values returned by sessions_explore.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["agent"],
+                            "properties": {
+                                "agent": {
+                                    "type": "object",
+                                    "description": "Empty object. Uses the selected agent's preset model/reasoning pair.",
+                                    "additionalProperties": false,
+                                    "properties": {},
+                                    "required": []
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["override"],
+                            "properties": {
+                                "override": {
+                                    "description": "Complete model/reasoning override for this session. Provide this only when intentionally overriding the agent's preset with a different model configuration. Do not copy preset model values returned by sessions_explore.",
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["model", "reasoning_effort"],
+                                    "properties": {
+                                        "model": {
+                                            "description": "Base model id override from the chat model registry. Must be different from the selected agent's preset model. Do not pass null or empty strings.",
+                                            "minLength": 1,
+                                            "type": "string"
+                                        },
+                                        "reasoning_effort": {
+                                            "description": "Exact reasoning effort advertised by the selected model's reasoning_supported_efforts metadata. Do not pass null or empty strings.",
+                                            "minLength": 1,
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
             },
-            "required": ["agent_id"]
+            "required": ["agent_id", "model"]
         })
     }
 
     fn validate(&self, params: &Value) -> anyhow::Result<()> {
-        serde_json::from_value::<SessionsCreateParams>(params.clone())?;
+        parse_sessions_create_params(params.clone())?;
         Ok(())
     }
 
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
-        self.create(serde_json::from_value(params)?, None).await
+        self.create(parse_sessions_create_params(params)?, None)
+            .await
     }
 
     async fn execute_with_context(
@@ -205,7 +328,7 @@ impl AgentTool for SessionsCreateTool {
         params: Value,
         context: &ToolExecutionContext,
     ) -> anyhow::Result<Value> {
-        let params = serde_json::from_value(params)?;
+        let params = parse_sessions_create_params(params)?;
         let parent = context.session_key().map(|key| key.as_str().to_owned());
         self.create(params, parent).await
     }
@@ -309,6 +432,7 @@ mod tests {
             let called_ref = Arc::clone(&called_ref);
             Box::pin(async move {
                 called_ref.store(true, Ordering::SeqCst);
+                assert!(req.model_override.is_none());
                 Ok(serde_json::json!({
                     "entry": { "key": req.key }
                 }))
@@ -320,7 +444,8 @@ mod tests {
         let result = tool
             .execute(serde_json::json!({
                 "agent_id": "main",
-                "label": "Worker session"
+                "label": "Worker session",
+                "model": { "agent": {} }
             }))
             .await?;
 
@@ -358,6 +483,7 @@ mod tests {
                 serde_json::json!({
                     "agent_id": "main",
                     "label": "Child session",
+                    "model": { "agent": {} },
                 }),
                 &ToolExecutionContext::for_session(chelix_sessions::SessionKey::new(
                     "session:parent",
@@ -391,7 +517,7 @@ mod tests {
         let tool = SessionsCreateTool::new(create_fn);
         let result = tool
             .execute_with_context(
-                serde_json::json!({ "agent_id": "main" }),
+                serde_json::json!({ "agent_id": "main", "model": { "agent": {} } }),
                 &ToolExecutionContext::for_session(chelix_sessions::SessionKey::new(
                     "session:caller",
                 )),
@@ -431,14 +557,27 @@ mod tests {
         }));
         for params in [
             serde_json::json!({}),
-            serde_json::json!({"agent_id": ""}),
-            serde_json::json!({"agent_id": 1}),
-            serde_json::json!({"agent_id": "main", "label": ""}),
-            serde_json::json!({"agent_id": "main", "label": null}),
-            serde_json::json!({"agent_id": "main", "project_id": null}),
-            serde_json::json!({"agent_id": "main", "model_override": null}),
-            serde_json::json!({"agent_id": "main", "model_override": {"model": "test::model"}}),
-            serde_json::json!({"agent_id": "main", "model_override": {"model": "test::model", "reasoning_effort": ""}}),
+            serde_json::json!({"agent_id": "", "model": {"agent": {}}}),
+            serde_json::json!({"agent_id": 1, "model": {"agent": {}}}),
+            serde_json::json!({"agent_id": "main"}),
+            serde_json::json!({"agent_id": "main", "label": "", "model": {"agent": {}}}),
+            serde_json::json!({"agent_id": "main", "label": null, "model": {"agent": {}}}),
+            serde_json::json!({"agent_id": "main", "project_id": null, "model": {"agent": {}}}),
+            serde_json::json!({"agent_id": "main", "model_override": {"model": "test::model", "reasoning_effort": "low"}}),
+            serde_json::json!({"agent_id": "main", "model": null}),
+            serde_json::json!({"agent_id": "main", "model": []}),
+            serde_json::json!({"agent_id": "main", "model": {}}),
+            serde_json::json!({"agent_id": "main", "model": {"agent": {}, "override": {"model": "test::model", "reasoning_effort": "low"}}}),
+            serde_json::json!({"agent_id": "main", "model": {"agent": []}}),
+            serde_json::json!({"agent_id": "main", "model": {"agent": null}}),
+            serde_json::json!({"agent_id": "main", "model": {"agent": {"extra_field": true}}}),
+            serde_json::json!({"agent_id": "main", "model": {"override": null}}),
+            serde_json::json!({"agent_id": "main", "model": {"override": []}}),
+            serde_json::json!({"agent_id": "main", "model": {"override": {"reasoning_effort": "low"}}}),
+            serde_json::json!({"agent_id": "main", "model": {"override": {"model": "", "reasoning_effort": "low"}}}),
+            serde_json::json!({"agent_id": "main", "model": {"override": {"model": "test::model", "reasoning_effort": ""}}}),
+            serde_json::json!({"agent_id": "main", "model": {"override": {"model": "test::model", "reasoning_effort": "low", "extra_field": true}}}),
+            serde_json::json!({"agent_id": "main", "model": {"extra_field": true}}),
         ] {
             assert!(tool.validate(&params).is_err(), "{params}");
             assert!(tool.execute(params).await.is_err());
@@ -446,20 +585,47 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sessions_create_rejects_additional_field() {
+    async fn sessions_create_rejects_additional_field() -> TestResult<()> {
         let tool = SessionsCreateTool::new(Arc::new(|_| {
             Box::pin(async { panic!("additional fields must not reach the callback") })
         }));
-        assert_eq!(tool.parameters_schema()["additionalProperties"], false);
+        let schema = tool.parameters_schema();
+        assert_eq!(schema["additionalProperties"], false);
+        assert!(schema.get("oneOf").is_none());
+        assert_eq!(schema["required"], serde_json::json!(["agent_id", "model"]));
+        assert!(schema["properties"].get("model_override").is_none());
+        let variants = schema["properties"]["model"]["oneOf"]
+            .as_array()
+            .ok_or_else(|| std::io::Error::other("model.oneOf must be an array"))?;
+        assert_eq!(variants.len(), 2);
+        assert_eq!(variants[0]["required"], serde_json::json!(["agent"]));
+        assert!(
+            variants[0]["properties"]["agent"]["properties"]
+                .get("model")
+                .is_none()
+        );
+        assert!(
+            variants[0]["properties"]["agent"]["properties"]
+                .get("reasoning_effort")
+                .is_none()
+        );
+        assert_eq!(variants[1]["required"], serde_json::json!(["override"]));
+        assert_eq!(
+            variants[1]["properties"]["override"]["required"],
+            serde_json::json!(["model", "reasoning_effort"])
+        );
         for params in [
-            serde_json::json!({"agent_id": "main", "extra_field": true}),
-            serde_json::json!({"agent_id": "main", "model_override": {
-                "model": "test::model", "reasoning_effort": "low", "extra_field": true,
+            serde_json::json!({"agent_id": "main", "model": { "agent": {} }, "extra_field": true}),
+            serde_json::json!({"agent_id": "main", "model": {
+                "override": {
+                    "model": "test::model", "reasoning_effort": "low", "extra_field": true,
+                }
             }}),
         ] {
             assert!(tool.validate(&params).is_err());
             assert!(tool.execute(params).await.is_err());
         }
+        Ok(())
     }
 
     #[tokio::test]
@@ -477,9 +643,11 @@ mod tests {
 
         tool.execute(serde_json::json!({
             "agent_id": "main",
-            "model_override": {
-                "model": "openai::gpt-5.2",
-                "reasoning_effort": "ultra"
+            "model": {
+                "override": {
+                    "model": "openai::gpt-5.2",
+                    "reasoning_effort": "ultra"
+                }
             }
         }))
         .await?;
