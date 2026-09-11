@@ -52,7 +52,9 @@ timeout, or depth overrides.
 The child receives a generated `session:<uuid>` key, the caller as its direct
 parent, the selected agent, the agent's model and reasoning effort,
 `prompt_profile = "subagent"`, and the parent's resolved sandbox owner. Its
-first user message is the exact `task` value. Normal tool-policy layers control
+first user message is the exact `task` value, prefixed with
+`[From the "<name>" agent]` followed by a blank line when the sender agent has
+`prepend_sender_badge = true`. Normal tool-policy layers control
 its access to the shared tool registry.
 
 A blocking response contains:

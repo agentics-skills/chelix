@@ -6,6 +6,7 @@ use {
 
 pub const DEFAULT_COMPACTION_REMINDER: bool = true;
 pub const DEFAULT_MAX_TOOLS_THRESHOLD: usize = 128;
+pub const DEFAULT_PREPEND_SENDER_BADGE: bool = true;
 
 const RESERVED_AGENT_IDS: &[&str] = &["default"];
 const INVALID_AGENT_ID_MESSAGE: &str = "agent id must use lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen";
@@ -354,6 +355,11 @@ pub struct AgentConfig {
     pub max_tools_threshold: usize,
     /// Include the first persisted user message in the system prompt after compaction.
     pub compaction_reminder: bool,
+    /// Prepend sender identity badge to cross-session messages.
+    ///
+    /// When true, messages sent via `sessions_send` and `sub_agent` run
+    /// start with `[From the "<name>" agent]` followed by a blank line.
+    pub prepend_sender_badge: bool,
     /// Timeout in seconds for sessions using this agent.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
@@ -401,6 +407,7 @@ impl AgentConfig {
             tools: AgentToolPolicy::default(),
             max_tools_threshold: DEFAULT_MAX_TOOLS_THRESHOLD,
             compaction_reminder: DEFAULT_COMPACTION_REMINDER,
+            prepend_sender_badge: DEFAULT_PREPEND_SENDER_BADGE,
             timeout_secs: None,
             max_tool_result_bytes: None,
             sessions: None,

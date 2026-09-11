@@ -13,6 +13,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 11
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     )
     .unwrap();
@@ -37,6 +38,7 @@ reasoning_effort = "off"
 timeout_secs = 5
 max_tools_threshold = 11
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     )
     .unwrap();
@@ -63,6 +65,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 11
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     );
     assert!(result.is_err());
@@ -77,6 +80,8 @@ fn agent_rejects_missing_max_tools_threshold() {
 name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
+compaction_reminder = true
+prepend_sender_badge = true
 "#,
     );
     assert!(result.is_err());
@@ -97,11 +102,29 @@ name = "Quick"
 model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
+prepend_sender_badge = true
 "#,
     );
 
     let error = result.expect_err("compaction_reminder must be explicit");
     assert!(error.to_string().contains("compaction_reminder"));
+}
+
+#[test]
+fn agent_rejects_missing_prepend_sender_badge() {
+    let result = toml::from_str::<ChelixConfig>(
+        r#"
+[agents.quick]
+name = "Quick"
+model = "test::model"
+reasoning_effort = "off"
+max_tools_threshold = 128
+compaction_reminder = true
+"#,
+    );
+
+    let error = result.expect_err("prepend_sender_badge must be explicit");
+    assert!(error.to_string().contains("prepend_sender_badge"));
 }
 
 #[test]
@@ -114,6 +137,7 @@ name = "Quick"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
             "model",
         ),
@@ -124,6 +148,7 @@ name = "Quick"
 model = "test::model"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
             "reasoning_effort",
         ),
@@ -154,7 +179,7 @@ fn agent_rejects_empty_model_and_reasoning_effort() {
 
     for (selection, expected_path) in cases {
         let result = validate_toml_str(&format!(
-            "[agents]\ndefault = \"quick\"\n\n[agents.quick]\nname = \"Quick\"\n{selection}\nmax_tools_threshold = 128\ncompaction_reminder = true\n"
+            "[agents]\ndefault = \"quick\"\n\n[agents.quick]\nname = \"Quick\"\n{selection}\nmax_tools_threshold = 128\ncompaction_reminder = true\nprepend_sender_badge = true\n"
         ));
         assert!(
             result.diagnostics.iter().any(|diagnostic| {
@@ -179,6 +204,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 arbitrary_extra_key = true
 "#,
     );
@@ -203,6 +229,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     )
     .unwrap();
@@ -228,6 +255,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 max_tool_result_bytes = 999
 "#,
     )
@@ -254,6 +282,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 max_tool_result_bytes = 100000
 "#,
     );
@@ -280,6 +309,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [agents.quick.tools]
 preload = ["read_file", "ripgrep"]
@@ -305,6 +335,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 0
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     );
     assert!(result.diagnostics.iter().any(|diagnostic| {
@@ -350,6 +381,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     );
     assert!(result.diagnostics.iter().any(|diagnostic| {
@@ -368,6 +400,7 @@ name = "Thinker"
 model = "anthropic::claude-opus-4-5-20251101"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 reasoning_effort = "ultra"
 "#,
     );
@@ -393,6 +426,7 @@ name = "Thinker"
 model = "test::model"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 reasoning_effort = "high"
 "#,
     );

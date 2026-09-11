@@ -273,6 +273,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ),
             ("max_tools_threshold", Leaf),
             ("compaction_reminder", Leaf),
+            ("prepend_sender_badge", Leaf),
             ("timeout_secs", Leaf),
             ("max_tool_result_bytes", Leaf),
             (

@@ -303,6 +303,7 @@ model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 10
 compaction_reminder = true
+prepend_sender_badge = true
 timeout_secs = 120
 
 [agents.research.tools]
@@ -337,6 +338,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#,
     )
     .unwrap();
@@ -1012,6 +1014,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
     let agent = config.agents.get("test").unwrap();
@@ -1028,6 +1031,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [agents.test.mcp]
 allow_servers = []
@@ -1047,6 +1051,7 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 
 [agents.test.mcp]
 allow_servers = ["github"]

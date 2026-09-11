@@ -61,10 +61,20 @@ impl SubAgentRuntime {
             SubAgentRequest::Explore => self.explore().await,
             SubAgentRequest::Run {
                 parent_session_key,
+                sender_agent_id,
                 agent_id,
                 task,
                 mode,
-            } => self.run(&parent_session_key, &agent_id, &task, mode).await,
+            } => {
+                self.run(
+                    &parent_session_key,
+                    sender_agent_id.as_deref(),
+                    &agent_id,
+                    &task,
+                    mode,
+                )
+                .await
+            },
             SubAgentRequest::Status {
                 parent_session_key,
                 session_key,
@@ -120,12 +130,14 @@ impl SubAgentRuntime {
     async fn run(
         &self,
         parent_session_key: &str,
+        sender_agent_id: Option<&str>,
         agent_id: &str,
         task: &str,
         mode: SubAgentMode,
     ) -> chelix_tools::Result<Value> {
         let started = Instant::now();
         let agent = self.discoverable_agent(agent_id).await?;
+        let sender_badge = self.sender_badge_prefix(sender_agent_id).await?;
         let model_reasoning = crate::model_reasoning::resolve_model_reasoning(
             self.state.services.model.as_ref(),
             &agent.model,
@@ -181,11 +193,16 @@ impl SubAgentRuntime {
         );
 
         let chat = self.state.chat();
+        let effective_task = if sender_badge.is_empty() {
+            task.to_string()
+        } else {
+            format!("{sender_badge}{task}")
+        };
         match mode {
             SubAgentMode::Blocking => {
                 let response = match chat
                     .send_sync(
-                        ChatSendSyncRequest::text(task),
+                        ChatSendSyncRequest::text(effective_task),
                         ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
                     )
                     .await
@@ -217,7 +234,7 @@ impl SubAgentRuntime {
             SubAgentMode::Background => {
                 let response = match chat
                     .send(
-                        ChatSendRequest::text(task),
+                        ChatSendRequest::text(effective_task),
                         ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
                     )
                     .await
@@ -341,6 +358,27 @@ impl SubAgentRuntime {
             agent,
             chelix_config::load_subagent_prompt_for_agent(agent_id),
         )
+    }
+
+    async fn sender_badge_prefix(
+        &self,
+        sender_agent_id: Option<&str>,
+    ) -> chelix_tools::Result<String> {
+        let Some(sender_agent_id) = sender_agent_id else {
+            return Ok(String::new());
+        };
+        let agents_config = self.agents_config()?;
+        let guard = agents_config.read().await;
+        let agent = guard.get(sender_agent_id).ok_or_else(|| {
+            chelix_tools::Error::message(format!("unknown sender agent '{sender_agent_id}'"))
+        })?;
+        if agent.prepend_sender_badge {
+            Ok(chelix_tools::sessions_communicate::sender_badge(
+                &agent.name,
+            ))
+        } else {
+            Ok(String::new())
+        }
     }
 }
 
@@ -943,5 +981,354 @@ mod tests {
             })
         );
         assert_eq!(completed.abort_calls.load(Ordering::SeqCst), 1);
+    }
+
+    fn badge_test_agents() -> Arc<RwLock<chelix_config::AgentsConfig>> {
+        let mut agents = chelix_config::AgentsConfig {
+            default: "reviewer".to_string(),
+            ..Default::default()
+        };
+        let mut coder = chelix_config::AgentConfig::new(
+            "Coder",
+            "provider::model",
+            ReasoningEffort::from("high"),
+        );
+        coder.prepend_sender_badge = true;
+        let mut quiet = chelix_config::AgentConfig::new(
+            "Quiet",
+            "provider::model",
+            ReasoningEffort::from("high"),
+        );
+        quiet.prepend_sender_badge = false;
+        let reviewer = configured_agent();
+        agents.entries.insert("coder".to_string(), coder);
+        agents.entries.insert("quiet".to_string(), quiet);
+        agents.entries.insert("reviewer".to_string(), reviewer);
+        Arc::new(RwLock::new(agents))
+    }
+
+    async fn build_badge_runtime(
+        agents: Arc<RwLock<chelix_config::AgentsConfig>>,
+        metadata: Arc<SqliteSessionMetadata>,
+        store: Arc<SessionStore>,
+    ) -> SubAgentRuntime {
+        let services = crate::services::GatewayServices::noop().with_agents_config(agents);
+        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        SubAgentRuntime {
+            state,
+            session_store: store,
+            session_metadata: metadata,
+            background_runs: RwLock::new(HashMap::new()),
+        }
+    }
+
+    #[tokio::test]
+    async fn sender_badge_uses_sender_name_when_enabled() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let runtime = build_badge_runtime(badge_test_agents(), metadata, store).await;
+        assert_eq!(
+            runtime.sender_badge_prefix(Some("coder")).await.unwrap(),
+            "[From the \"Coder\" agent]\n\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn sender_badge_empty_when_disabled_or_absent() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let runtime = build_badge_runtime(badge_test_agents(), metadata, store).await;
+        assert_eq!(
+            runtime.sender_badge_prefix(Some("quiet")).await.unwrap(),
+            ""
+        );
+        assert_eq!(runtime.sender_badge_prefix(None).await.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn sender_badge_rejects_unknown_sender() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let runtime = build_badge_runtime(badge_test_agents(), metadata, store).await;
+        let error = runtime
+            .sender_badge_prefix(Some("missing"))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("unknown sender agent"));
+    }
+
+    #[test]
+    fn effective_task_places_badge_first() {
+        let badge = chelix_tools::sessions_communicate::sender_badge("Coder");
+        let task = "Do work";
+        let effective = if badge.is_empty() {
+            task.to_string()
+        } else {
+            format!("{badge}{task}")
+        };
+        assert_eq!(effective, "[From the \"Coder\" agent]\n\nDo work");
+    }
+
+    struct CapturingChat {
+        sync_text: Arc<tokio::sync::Mutex<Option<String>>>,
+        async_text: Arc<tokio::sync::Mutex<Option<String>>>,
+        sync_called: Arc<std::sync::atomic::AtomicBool>,
+        async_called: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait]
+    impl ChatService for CapturingChat {
+        async fn send(
+            &self,
+            request: ChatSendRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            self.async_called.store(true, Ordering::SeqCst);
+            let text = match request.message {
+                chelix_service_traits::ChatSendMessage::Text(text) => text,
+                chelix_service_traits::ChatSendMessage::Content(_) => {
+                    return Err("content messages are not used by this test".into());
+                },
+            };
+            *self.async_text.lock().await = Some(text);
+            Ok(serde_json::json!({ "runId": "run-test" }))
+        }
+
+        async fn send_sync(
+            &self,
+            request: ChatSendSyncRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            self.sync_called.store(true, Ordering::SeqCst);
+            *self.sync_text.lock().await = Some(request.text);
+            Ok(serde_json::json!({
+                "text": "done",
+                "inputTokens": 1,
+                "outputTokens": 1,
+                "durationMs": 1,
+            }))
+        }
+
+        async fn abort(&self, _params: Value) -> ServiceResult {
+            Err("abort is not used by this test".into())
+        }
+
+        async fn history(&self, _params: Value) -> ServiceResult {
+            Err("history is not used by this test".into())
+        }
+
+        async fn inject(&self, _params: Value) -> ServiceResult {
+            Err("inject is not used by this test".into())
+        }
+
+        async fn clear(&self, _params: Value) -> ServiceResult {
+            Err("clear is not used by this test".into())
+        }
+
+        async fn compact(
+            &self,
+            _request: ChatCompactRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("compact is not used by this test".into())
+        }
+
+        async fn context(
+            &self,
+            _request: ChatContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("context is not used by this test".into())
+        }
+
+        async fn raw_prompt(
+            &self,
+            _request: ChatRawPromptRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("raw_prompt is not used by this test".into())
+        }
+
+        async fn full_context(
+            &self,
+            _request: ChatFullContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("full_context is not used by this test".into())
+        }
+
+        async fn active(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "active": false }))
+        }
+    }
+
+    struct AcceptProviderModel;
+
+    #[async_trait]
+    impl chelix_service_traits::ModelService for AcceptProviderModel {
+        async fn list(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn list_all(&self) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn resolve_model_reasoning(
+            &self,
+            model: &str,
+            reasoning_effort: Option<&ReasoningEffort>,
+        ) -> Result<
+            chelix_service_traits::ResolvedModelReasoning,
+            chelix_service_traits::ServiceError,
+        > {
+            let effort = reasoning_effort.ok_or_else(|| {
+                chelix_service_traits::ServiceError::message("reasoning effort is required")
+            })?;
+            chelix_common::ResolvedModelReasoning::try_new(model.to_string(), effort.clone())
+                .map_err(|error| chelix_service_traits::ServiceError::message(error.to_string()))
+        }
+
+        async fn disable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn enable(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    struct DataDirTestGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl DataDirTestGuard {
+        fn with_reviewer_prompt() -> (Self, tempfile::TempDir) {
+            let guard = Self {
+                _lock: crate::config_override_test_lock(),
+            };
+            let data_dir = tempfile::tempdir().unwrap();
+            let agent_dir = data_dir.path().join("agents").join("reviewer");
+            std::fs::create_dir_all(&agent_dir).unwrap();
+            std::fs::write(agent_dir.join("SUBAGENT.md"), "Review").unwrap();
+            chelix_config::set_data_dir(data_dir.path().to_path_buf());
+            (guard, data_dir)
+        }
+    }
+
+    impl Drop for DataDirTestGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_data_dir();
+        }
+    }
+
+    #[tokio::test]
+    async fn sub_agent_run_sends_badged_task_in_both_modes() {
+        let (_guard, _data_dir) = DataDirTestGuard::with_reviewer_prompt();
+        let metadata = Arc::new(sqlite_metadata().await);
+        create_parent(&metadata, "session:parent").await;
+        let store_dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(store_dir.path().to_path_buf()));
+        let agents = badge_test_agents();
+        let model: Arc<dyn chelix_service_traits::ModelService> = Arc::new(AcceptProviderModel);
+        let chat = Arc::new(CapturingChat {
+            sync_text: Arc::new(tokio::sync::Mutex::new(None)),
+            async_text: Arc::new(tokio::sync::Mutex::new(None)),
+            sync_called: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            async_called: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        });
+        let services = crate::services::GatewayServices::noop()
+            .with_agents_config(Arc::clone(&agents))
+            .with_model(model)
+            .with_chat(chat.clone());
+        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        let runtime = SubAgentRuntime {
+            state,
+            session_store: Arc::clone(&store),
+            session_metadata: Arc::clone(&metadata),
+            background_runs: RwLock::new(HashMap::new()),
+        };
+        // Blocking with badge enabled uses the sender name, not the target name.
+        runtime
+            .run(
+                "session:parent",
+                Some("coder"),
+                "reviewer",
+                "Do work",
+                SubAgentMode::Blocking,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            chat.sync_text.lock().await.as_deref(),
+            Some("[From the \"Coder\" agent]\n\nDo work")
+        );
+        // Background with badge enabled.
+        runtime
+            .run(
+                "session:parent",
+                Some("coder"),
+                "reviewer",
+                "Do work",
+                SubAgentMode::Background,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            chat.async_text.lock().await.as_deref(),
+            Some("[From the \"Coder\" agent]\n\nDo work")
+        );
+        // Badge disabled sends the raw task even though the target enables it.
+        runtime
+            .run(
+                "session:parent",
+                Some("quiet"),
+                "reviewer",
+                "Do work",
+                SubAgentMode::Blocking,
+            )
+            .await
+            .unwrap();
+        assert_eq!(chat.sync_text.lock().await.as_deref(), Some("Do work"));
+        // No sender sends the raw task.
+        runtime
+            .run(
+                "session:parent",
+                None,
+                "reviewer",
+                "Do work",
+                SubAgentMode::Blocking,
+            )
+            .await
+            .unwrap();
+        assert_eq!(chat.sync_text.lock().await.as_deref(), Some("Do work"));
+        // Unknown sender fails before chat and before creating a child.
+        let children_before = metadata
+            .list_children_result("session:parent")
+            .await
+            .unwrap()
+            .len();
+        chat.sync_called.store(false, Ordering::SeqCst);
+        let error = runtime
+            .run(
+                "session:parent",
+                Some("missing"),
+                "reviewer",
+                "Do work",
+                SubAgentMode::Blocking,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("unknown sender agent"));
+        assert!(!chat.sync_called.load(Ordering::SeqCst));
+        let children_after = metadata
+            .list_children_result("session:parent")
+            .await
+            .unwrap()
+            .len();
+        assert_eq!(children_before, children_after);
     }
 }

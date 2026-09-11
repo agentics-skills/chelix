@@ -164,6 +164,10 @@ Omit `model_override` in `sessions_send` to use the target session's persisted
 model/reasoning pair. A supplied override accepts only the required non-empty
 `model` and `reasoning_effort` fields and is validated against the model registry.
 
+When the sender agent has `prepend_sender_badge = true`, the delivered message
+starts with `[From the "<name>" agent]` followed by a blank line, using the
+sender agent name. The badge is placed above the optional `context` prefix.
+
 ## Session Access Policy
 
 Configure policy on an agent to control which sessions it can access:
@@ -175,6 +179,7 @@ model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 tools.allow = ["sessions_list", "sessions_history", "sessions_search", "sessions_send", "task_list", "sub_agent"]
 sessions.can_send = true
 
@@ -184,6 +189,7 @@ model = "openai::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
 compaction_reminder = true
+prepend_sender_badge = true
 tools.allow = ["sessions_list", "sessions_history", "sessions_search"]
 sessions.key_prefix = "agent:research:"
 sessions.can_send = false

@@ -92,6 +92,7 @@ fn register_agent_config_methods(reg: &mut MethodRegistry) {
                     "defaults": {
                         "max_tools_threshold": chelix_config::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
                         "compaction_reminder": chelix_config::schema::DEFAULT_COMPACTION_REMINDER,
+                        "prepend_sender_badge": chelix_config::schema::DEFAULT_PREPEND_SENDER_BADGE,
                     },
                 }))
             })

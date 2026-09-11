@@ -51,12 +51,14 @@ pub(super) fn register_session_tools(
             Arc::clone(session_metadata),
         ),
     ));
-    tool_registry.register(Box::new(
-        chelix_tools::sessions_communicate::SessionsSendTool::new(
-            Arc::clone(session_metadata),
-            send_to_session,
-        ),
-    ));
+    let mut send_tool = chelix_tools::sessions_communicate::SessionsSendTool::new(
+        Arc::clone(session_metadata),
+        send_to_session,
+    );
+    if let Some(ref agents_config) = state.services.agents_config {
+        send_tool = send_tool.with_agents_config(Arc::clone(agents_config));
+    }
+    tool_registry.register(Box::new(send_tool));
 }
 
 fn build_explore_sessions(
