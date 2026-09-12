@@ -727,8 +727,8 @@ startup.
 | Key                         | Type                      | Required | Description                                                               |
 | --------------------------- | ------------------------- | -------- | ------------------------------------------------------------------------- |
 | `context_length`            | positive integer          | yes      | Must be greater than zero.                                                |
-| `max_input_tokens`          | positive integer          | yes      | Input plus output must not exceed `context_length`.                       |
-| `max_output_tokens`         | positive integer          | yes      | Input plus output must not exceed `context_length`.                       |
+| `max_input_tokens`          | positive integer          | yes      | Must be greater than zero.                                                |
+| `max_output_tokens`         | positive integer          | yes      | Must be greater than zero.                                                |
 | `input_modalities`          | array of modality         | yes      | Accepted input media; must be non-empty and unique.                       |
 | `output_modalities`         | array of modality         | yes      | Produced output media; must be non-empty and unique.                      |
 | `tool_calling`              | bool                      | yes      | Whether native tool calling is supported.                                 |
