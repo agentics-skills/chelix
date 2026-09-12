@@ -55,6 +55,21 @@ fn mapping_owner_resolver(
     }))
 }
 
+struct FailingSandboxOwnerResolver;
+
+#[async_trait::async_trait]
+impl SandboxOwnerResolver for FailingSandboxOwnerResolver {
+    async fn resolve_owner_key(&self, session_key: &str) -> Result<String> {
+        Err(Error::message(format!(
+            "sandbox owner resolver must not be consulted for {session_key:?}"
+        )))
+    }
+}
+
+fn failing_owner_resolver() -> Option<Arc<dyn SandboxOwnerResolver>> {
+    Some(Arc::new(FailingSandboxOwnerResolver))
+}
+
 struct TestSandbox {
     backend: SandboxBackendId,
     ensure_ready_error: Option<String>,

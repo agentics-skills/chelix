@@ -646,11 +646,6 @@ impl SandboxRouter {
         self.prepared_sessions.write().await.remove(owner_key);
     }
 
-    /// Clear per-owner lifecycle markers after its global-backend runtime is removed.
-    pub async fn clear_runtime_state(&self, owner_key: &str) {
-        self.clear_prepared_session(owner_key).await;
-    }
-
     /// Return whether the global sandbox policy is enabled.
     pub fn enabled(&self) -> bool {
         self.config.mode == SandboxMode::On
@@ -715,11 +710,16 @@ impl SandboxRouter {
             );
             return Ok(());
         }
-        let id = self.sandbox_id_for(&owner_key);
+        self.cleanup_owner_sandbox(&owner_key).await
+    }
+
+    /// Clean up sandbox resources for a session that owns them.
+    pub async fn cleanup_owner_sandbox(&self, owner_key: &str) -> Result<()> {
+        let id = self.sandbox_id_for(owner_key);
         let backend = Arc::clone(&self.backend);
 
         backend.cleanup(&id).await?;
-        self.clear_prepared_session(&owner_key).await;
+        self.clear_prepared_session(owner_key).await;
         Ok(())
     }
 

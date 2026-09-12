@@ -2246,4 +2246,174 @@ reasoning_supported_efforts = ["off"]
         assert!(removed_paths.contains(&transcript_export));
         assert!(!removed_paths.contains(&unrelated_export));
     }
+
+    struct RecordingSandbox {
+        cleanup_keys: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl RecordingSandbox {
+        fn new() -> Self {
+            Self {
+                cleanup_keys: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn cleanup_keys(&self) -> Vec<String> {
+            self.cleanup_keys.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl chelix_tools::sandbox::Sandbox for RecordingSandbox {
+        fn backend_id(&self) -> chelix_tools::sandbox::SandboxBackendId {
+            chelix_tools::sandbox::SandboxBackendId::Docker
+        }
+
+        fn provides_fs_isolation(&self) -> bool {
+            true
+        }
+
+        async fn ensure_ready(
+            &self,
+            _id: &chelix_tools::sandbox::SandboxId,
+        ) -> chelix_tools::error::Result<()> {
+            Ok(())
+        }
+
+        async fn run_command(
+            &self,
+            _id: &chelix_tools::sandbox::SandboxId,
+            _command: &str,
+            _opts: &chelix_tools::command::CommandOptions,
+        ) -> chelix_tools::error::Result<chelix_tools::command::CommandOutput> {
+            Err(chelix_tools::error::Error::message(
+                "run_command is not used by this test",
+            ))
+        }
+
+        async fn cleanup(
+            &self,
+            id: &chelix_tools::sandbox::SandboxId,
+        ) -> chelix_tools::error::Result<()> {
+            self.cleanup_keys.lock().unwrap().push(id.key.clone());
+            Ok(())
+        }
+    }
+
+    struct FailingSandboxOwnerResolver;
+
+    #[async_trait]
+    impl chelix_tools::sandbox::SandboxOwnerResolver for FailingSandboxOwnerResolver {
+        async fn resolve_owner_key(
+            &self,
+            session_key: &str,
+        ) -> chelix_tools::error::Result<String> {
+            Err(chelix_tools::error::Error::message(format!(
+                "sandbox owner resolver must not be consulted for {session_key:?}"
+            )))
+        }
+    }
+
+    fn session_service_with_recording_sandbox(
+        store: Arc<SessionStore>,
+        metadata: Arc<SqliteSessionMetadata>,
+        backend: Arc<RecordingSandbox>,
+    ) -> LiveSessionService {
+        let router = SandboxRouter::with_backend(
+            chelix_tools::sandbox::SandboxConfig::default(),
+            backend,
+            Some(Arc::new(FailingSandboxOwnerResolver)),
+        )
+        .unwrap();
+        LiveSessionService::new(store, metadata).with_sandbox_router(Arc::new(router))
+    }
+
+    #[tokio::test]
+    async fn delete_cleans_owner_sandbox_without_resolving_deleted_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "session:owner", Some("Owner")).await;
+
+        let backend = Arc::new(RecordingSandbox::new());
+        let svc = session_service_with_recording_sandbox(
+            Arc::clone(&store),
+            Arc::clone(&metadata),
+            Arc::clone(&backend),
+        );
+
+        svc.delete(serde_json::json!({ "key": "session:owner" }))
+            .await
+            .unwrap();
+
+        assert!(metadata.get("session:owner").await.unwrap().is_none());
+        assert_eq!(backend.cleanup_keys(), vec!["session-owner".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn delete_skips_sandbox_cleanup_for_non_owner_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "session:parent", Some("Parent")).await;
+        create_test_session(&metadata, "session:child", Some("Child")).await;
+        metadata
+            .set_parent("session:child", Some("session:parent"), Some(1))
+            .await
+            .unwrap();
+        metadata
+            .set_sandbox_owner_key("session:child", Some("session:parent"))
+            .await
+            .unwrap();
+
+        let backend = Arc::new(RecordingSandbox::new());
+        let svc = session_service_with_recording_sandbox(
+            Arc::clone(&store),
+            Arc::clone(&metadata),
+            Arc::clone(&backend),
+        );
+
+        svc.delete(serde_json::json!({ "key": "session:child" }))
+            .await
+            .unwrap();
+
+        assert!(metadata.get("session:child").await.unwrap().is_none());
+        assert!(metadata.get("session:parent").await.unwrap().is_some());
+        assert!(backend.cleanup_keys().is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_cascades_sandbox_cleanup_only_for_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, "session:parent", Some("Parent")).await;
+        create_test_session(&metadata, "session:child", Some("Child")).await;
+        metadata
+            .set_parent("session:child", Some("session:parent"), Some(1))
+            .await
+            .unwrap();
+        metadata
+            .set_sandbox_owner_key("session:child", Some("session:parent"))
+            .await
+            .unwrap();
+
+        let backend = Arc::new(RecordingSandbox::new());
+        let svc = session_service_with_recording_sandbox(
+            Arc::clone(&store),
+            Arc::clone(&metadata),
+            Arc::clone(&backend),
+        );
+
+        svc.delete(serde_json::json!({ "key": "session:parent" }))
+            .await
+            .unwrap();
+
+        assert!(metadata.get("session:parent").await.unwrap().is_none());
+        assert!(metadata.get("session:child").await.unwrap().is_none());
+        assert_eq!(backend.cleanup_keys(), vec!["session-parent".to_string()]);
+    }
 }
