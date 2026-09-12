@@ -1,9 +1,7 @@
 ---
-description: "Chelix engineering guide for Claude/Codex agents: Rust architecture, testing, security, and release workflows"
+description: "Chelix engineering guide for agents: Rust architecture, testing, security, and release workflows"
 alwaysApply: true
 ---
-
-EVERY RECEIVED PROVIDER ITEM HAS ONE CANONICAL IDENTITY AND POSITION. IT PASSES WITHOUT LOSS THROUGH LIVE STREAM, BROADCAST, PERSISTENCE, RELOAD, AND THE FORMATION OF THE NEXT PROVIDER REQUEST IN ACCORDANCE WITH THE API FORMAT. A RETRY OR TOOL BOUNDARY CLOSES THE CURRENT SEGMENT AND OPENS THE NEXT ONE, BUT DOES NOT DELETE ANYTHING, DOES NOT OVERWRITE ANYTHING, AND DOES NOT MERGE IT WITH AN ADJACENT SEGMENT.
 
 # CLAUDE.md
 
@@ -36,11 +34,62 @@ All code must have tests with high coverage. Always check for security.
 - **Pre-approved data migrations when there is an explicit business need. An extra unknown configuration parameter must never create migration garbage — it must unambiguously cause refusal.**
 
 ## Anti-fluff policy.
+
 **In documentation/comments, it is forbidden to mention what does not exist in any form and for any purpose**
+
+## Code Quality
+
+Running `cargo check` is completely prohibited as it does not meet the verification quality requirements.
+During development inside the sandbox, running cargo ... clippy/test locally is prohibited without special wrappers that transfer the resource load to dedicated hosts.
+
+Narrowing stated broad paths to a specific scope is forbidden.
+
+Running verification without applying autoformatting is forbidden. Reproduce the stated commands byte for byte.
+
+It is forbidden to create tests that test things that do not exist.
+
+Create only focused, non-duplicative tests that are necessary for verification and long-term maintenance, keep each test within the responsibility boundaries of the unit under test without exercising unrelated functionality, and never add throwaway tests solely to validate a theory.
+
+Explicitly commands exactly from the list:
+
+```bash
+cargo +nightly-2026-07-30 fmt --all                                                 # Format Rust
+cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features # Lint
+cargo +nightly-2026-07-30 test --workspace                                          # The only allowed way to run tests
+taplo fmt                                   # Format TOML files
+npx biome check --write crates/web/ui/src/  # Lint/format
+npx tsc --noEmit
+```
+
+## Code Quality Checklist
+
+**Run before every commit:**
+
+- [ ] No secrets, private tokens, or mentions of local environment specifics, disclosures of infrastructure details, addresses, hosts, or entities not intended for public use (CRITICAL)
+- [ ] Running autoformatters pass
+- [ ] Running linters pass
+- [ ] Running tests pass
+- [ ] Conventional commit message
+- [ ] No debug code or temp files
+
+### Lockfile
+
+- `cargo fetch` to sync (not `cargo update`). Verify with `cargo fetch --locked`. `local-validate.sh` auto-handles.
+- `cargo update --workspace` only for intentional upgrades.
+
+### PR Descriptions
+
+Required sections: `## Summary`, `## Validation` (checkboxes, split into `### Completed` / `### Remaining`
+with exact commands), `## Manual QA`. Include concrete test steps.
+
+- Do not prefix GitHub PR titles with `[codex]`.
+- Prefer normal human-readable PR titles, ideally aligned with the conventional-commit summary.
+- **Never post in PR titles/summaries** any mentions of local environment specifics, disclosures of infrastructure details, addresses, hosts, and entities not intended for public use.
 
 ## Cargo Features
 
 Enable new feature flags **by default** in `crates/cli/Cargo.toml` (opt-out, not opt-in):
+
 ```toml
 [features]
 default = ["foo", ...]
@@ -108,6 +157,7 @@ npx tsc --noEmit       # Type check (strict, must be 0 errors)
 ```
 
 **After changing TS/TSX files**, always:
+
 1. `npx biome check --write crates/web/ui/src/`
 2. `cd crates/web/ui && npm run build`
 3. `cd crates/web/ui && npx tsc --noEmit`
@@ -182,6 +232,7 @@ allowlist/OTP flow.
 When adding a new channel or extending one, follow `docs/channel-integration-checklist.md`.
 
 Minimum bar before shipping:
+
 - Settings reachable from the web UI, with onboarding coverage if the channel is offered there
 - Advanced JSON config escape hatch for settings without dedicated HTML fields yet
 - Prefer declarative channel field definitions that can drive both HTML forms and advanced JSON guidance
@@ -197,30 +248,6 @@ middleware in `auth_middleware.rs`. Setup code printed to terminal on first run.
 `CredentialStore` persists argon2-hashed passwords, passkeys, API keys, sessions to JSON.
 
 CLI: `chelix auth reset-password`, `chelix auth reset-identity`.
-
-## Code Quality
-
-Narrowing stated broad paths to a specific scope is forbidden.
-
-Running verification without applying autoformatting is forbidden. Reproduce the stated commands byte for byte.
-
-It is forbidden to create tests that test things that do not exist.
-
-Create only focused, non-duplicative tests that are necessary for verification and long-term maintenance, keep each test within the responsibility boundaries of the unit under test without exercising unrelated functionality, and never add throwaway tests solely to validate a theory.
-
-Explicitly commands exactly from the list:
-
-```bash
-cargo +nightly-2026-07-30 fmt --all                                                 # Format Rust
-cargo +nightly-2026-07-30 clippy --release --workspace --all-targets --all-features # Lint
-cargo +nightly-2026-07-30 test --workspace                                          # The only allowed way to run tests
-taplo fmt                                   # Format TOML files
-npx biome check --write crates/web/ui/src/  # Lint/format
-npx tsc --noEmit
-```
-
-Running `cargo check` is completely prohibited as it does not meet the verification quality requirements.
-During development inside the sandbox, running cargo ... clippy/test locally is prohibited without special wrappers that transfer the resource load to dedicated hosts.
 
 ## Sandbox Architecture
 
@@ -257,13 +284,13 @@ in `default_sandbox_packages()`. CLI: `chelix sandbox {list,build,remove,clean}`
 
 sqlx migrations, each crate owns its `migrations/` directory. See `docs/sqlite-migration.md`.
 
-| Crate | Tables |
-|-------|--------|
-| `chelix-projects` | `projects` |
+| Crate             | Tables                                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `chelix-projects` | `projects`                                                                                                                 |
 | `chelix-sessions` | `sessions`, `channel_sessions`; `ui_history_sessions`, `ui_history_snapshots` in the separate `ui-history.sqlite` database |
-| `chelix-cron` | `cron_jobs`, `cron_runs` |
-| `chelix-gateway` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels` |
-| `chelix-memory` | `files`, `chunks`, `embedding_cache`, `chunks_fts` |
+| `chelix-cron`     | `cron_jobs`, `cron_runs`                                                                                                   |
+| `chelix-gateway`  | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`                                               |
+| `chelix-memory`   | `files`, `chunks`, `embedding_cache`, `chunks_fts`                                                                         |
 
 New migration: `crates/<crate>/migrations/YYYYMMDDHHMMSS_description.sql` (use `IF NOT EXISTS`).
 New crate: add `run_migrations()` to `lib.rs`, call from `server.rs` in dependency order.
@@ -271,6 +298,7 @@ New crate: add `run_migrations()` to `lib.rs`, call from `server.rs` in dependen
 ## Provider Implementation
 
 - **Async all the way down** — never `block_on` in async context. All HTTP/IO must be async.
+
 ## Changelog
 
 - Do **not** add manual `CHANGELOG.md` entries in normal PRs.
@@ -281,10 +309,11 @@ New crate: add `run_migrations()` to `lib.rs`, call from `server.rs` in dependen
 ## Git Workflow
 
 Conventional commits: `feat|fix|docs|style|refactor|test|chore(scope): description`
+
 - Prefer descriptive commit subjects over terse "change stuff" summaries.
 - For bug fixes, behavioral changes, and non-obvious refactors, include a commit body that explains the concrete problem, the root cause, and why the chosen fix is correct.
 - Write commit messages so `git log` is useful without opening the diff first.
-**No `Co-Authored-By` trailers.** Update `README.md` features list with `feat` commits.
+  **No `Co-Authored-By` trailers.** Update `README.md` features list with `feat` commits.
 
 ### Releases
 
@@ -292,30 +321,6 @@ Conventional commits: `feat|fix|docs|style|refactor|test|chore(scope): descripti
 - Never overwrite tags — always create new version.
 - Use `./scripts/prepare-release.sh [YYYYMMDD.NN]` for release prep (auto-computes next version if omitted).
 - Deploy template tags updated automatically by CI — don't manually update.
-
-
-### Lockfile
-
-- `cargo fetch` to sync (not `cargo update`). Verify with `cargo fetch --locked`. `local-validate.sh` auto-handles.
-- `cargo update --workspace` only for intentional upgrades.
-
-### PR Descriptions
-
-Required sections: `## Summary`, `## Validation` (checkboxes, split into `### Completed` / `### Remaining`
-with exact commands), `## Manual QA`. Include concrete test steps.
-- Do not prefix GitHub PR titles with `[codex]`.
-- Prefer normal human-readable PR titles, ideally aligned with the conventional-commit summary.
-- **Never post in PR titles/summaries** any mentions of local environment specifics, disclosures of infrastructure details, addresses, hosts, and entities not intended for public use.
-
-## Code Quality Checklist
-
-**Run before every commit:**
-- [ ] No secrets, private tokens, or mentions of local environment specifics, disclosures of infrastructure details, addresses, hosts, or entities not intended for public use (CRITICAL)
-- [ ] Running autoformatters pass
-- [ ] Running linters pass
-- [ ] Running tests pass
-- [ ] Conventional commit message
-- [ ] No debug code or temp files
 
 ## Documentation
 
