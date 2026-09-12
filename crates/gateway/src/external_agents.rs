@@ -18,7 +18,7 @@ use {
         ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
         ChatRawPromptRequest, ChatSendMessage, ChatSendRequest, ChatSendSyncRequest, ChatService,
         ExternalAgentService, ModelService, ServiceError, ServiceResult, SessionBusyReason,
-        SessionService,
+        SessionService, SessionTerminal,
     },
     chelix_sessions::{MessageContent, PersistedMessage, QueuedPromptChannelMetadata},
     futures::StreamExt,
@@ -1088,6 +1088,20 @@ impl ChatService for ExternalAgentChatService {
     async fn peek(&self, params: Value) -> ServiceResult {
         self.inner.peek(params).await
     }
+
+    async fn wait_for_session_gate(
+        &self,
+        session_key: &str,
+    ) -> Result<Option<SessionTerminal>, ServiceError> {
+        self.inner.wait_for_session_gate(session_key).await
+    }
+
+    async fn session_terminal(
+        &self,
+        session_key: &str,
+    ) -> Result<Option<SessionTerminal>, ServiceError> {
+        self.inner.session_terminal(session_key).await
+    }
 }
 
 fn external_channel_value(context: &ChatExecutionContext) -> Result<Option<Value>, ServiceError> {
@@ -1524,6 +1538,28 @@ mod tests {
         ) -> ServiceResult {
             Ok(serde_json::json!({}))
         }
+
+        async fn wait_for_session_gate(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, ServiceError> {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push("wait_for_session_gate");
+            Ok(Some(SessionTerminal::Completed))
+        }
+
+        async fn session_terminal(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, ServiceError> {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push("session_terminal");
+            Ok(Some(SessionTerminal::Cancelled))
+        }
     }
 
     fn test_chat_context() -> ChatExecutionContext {
@@ -1691,6 +1727,45 @@ mod tests {
         assert_eq!(
             select_rejected_acp_option(&request),
             Some("reject".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn session_gate_methods_delegate_to_inner() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        create_test_session(&metadata, "main").await;
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
+        let inner = Arc::new(SyncTrackingChatService::default());
+        let inner_chat: Arc<dyn ChatService> = inner.clone();
+        let chat = ExternalAgentChatService::new(
+            inner_chat,
+            external_agents,
+            test_gateway_state(),
+            session_store,
+            metadata,
+        );
+
+        assert_eq!(
+            chat.wait_for_session_gate("main")
+                .await
+                .expect("wait_for_session_gate delegates to inner chat"),
+            Some(SessionTerminal::Completed)
+        );
+        assert_eq!(
+            chat.session_terminal("main")
+                .await
+                .expect("session_terminal delegates to inner chat"),
+            Some(SessionTerminal::Cancelled)
+        );
+        assert_eq!(
+            *inner
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec!["wait_for_session_gate", "session_terminal"]
         );
     }
 

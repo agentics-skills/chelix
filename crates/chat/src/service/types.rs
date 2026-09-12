@@ -373,6 +373,8 @@ pub struct LiveChatService {
     pub(in crate::service) agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
     /// Source used to reload `[tools]` before each new agent run.
     pub(in crate::service) tools_config_source: chelix_config::ToolsConfigSource,
+    /// Minimal wait signal for the current session execution. Never stores answers.
+    pub(in crate::service) session_gates: Arc<super::session_gate::SessionGateRegistry>,
 }
 
 async fn runtime_config_for_agent_run(
@@ -422,6 +424,7 @@ impl LiveChatService {
             config,
             agents_config,
             tools_config_source,
+            session_gates: super::session_gate::SessionGateRegistry::new(),
         }
     }
 
@@ -494,6 +497,12 @@ impl LiveChatService {
                 has
             })
             .unwrap_or(true)
+    }
+
+    pub(in crate::service) async fn activate_session_turn(&self, session_key: &str, run_id: &str) {
+        let mut runs_by_session = self.active_runs_by_session.write().await;
+        self.session_gates.begin_turn(session_key).await;
+        runs_by_session.insert(session_key.to_string(), run_id.to_string());
     }
 
     pub(in crate::service) async fn cancel_run(

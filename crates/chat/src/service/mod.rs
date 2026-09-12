@@ -1,6 +1,7 @@
 //! `LiveChatService` struct, constructors, and helper methods.
 
 mod chat_impl;
+mod session_gate;
 mod types;
 
 pub(crate) use types::{

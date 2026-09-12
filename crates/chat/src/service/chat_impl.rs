@@ -26,7 +26,7 @@ use {
     chelix_config::ToolMode,
     chelix_service_traits::{
         ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
-        ChatRawPromptRequest, ChatService, ServiceError, ServiceResult,
+        ChatRawPromptRequest, ChatService, ServiceError, ServiceResult, SessionTerminal,
     },
     chelix_sessions::{MessageContent, PersistedMessage},
     chelix_tools::policy::PolicyContext,
@@ -47,7 +47,7 @@ use crate::{
     types::*,
 };
 
-use super::*;
+use super::{session_gate::terminal_from_outcome, *};
 
 async fn ensure_send_sync_session_agent(
     metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
@@ -224,48 +224,59 @@ impl ChatService for LiveChatService {
             .append(&session_key, &user_msg.to_value())
             .await
             .map_err(ServiceError::message)?;
-        let ui_message_count = self
-            .session_store
-            .ui_message_count(&session_key)
-            .await
-            .map_err(ServiceError::message)?;
-        self.session_metadata
-            .touch(&session_key, ui_message_count)
-            .await
-            .map_err(ServiceError::message)?;
-        let mut runtime_context = build_prompt_runtime_context(
-            &self.state,
-            &persona.config,
-            &provider,
-            &session_key,
-            session_entry.as_ref(),
-        )
-        .await;
-        apply_chat_execution_context(
-            &mut runtime_context.host,
-            &context,
-            persona
-                .user
-                .timezone
-                .as_ref()
-                .map(|timezone| timezone.name()),
-        );
+        let (runtime_context, compaction_reminder, chat_history, history) = match async {
+            let ui_message_count = self
+                .session_store
+                .ui_message_count(&session_key)
+                .await
+                .map_err(ServiceError::message)?;
+            self.session_metadata
+                .touch(&session_key, ui_message_count)
+                .await
+                .map_err(ServiceError::message)?;
+            let mut runtime_context = build_prompt_runtime_context(
+                &self.state,
+                &persona.config,
+                &provider,
+                &session_key,
+                session_entry.as_ref(),
+            )
+            .await;
+            apply_chat_execution_context(
+                &mut runtime_context.host,
+                &context,
+                persona
+                    .user
+                    .timezone
+                    .as_ref()
+                    .map(|timezone| timezone.name()),
+            );
 
-        // Load conversation history (excluding the message we just appended).
-        let mut history = self
-            .session_store
-            .read(&session_key)
-            .await
+            // Load conversation history (excluding the message we just appended).
+            let mut history = self
+                .session_store
+                .read(&session_key)
+                .await
+                .map_err(ServiceError::message)?;
+            let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+                persona.agent.compaction_reminder,
+                &history,
+            )
             .map_err(ServiceError::message)?;
-        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
-            persona.agent.compaction_reminder,
-            &history,
-        )
-        .map_err(ServiceError::message)?;
-        if !history.is_empty() {
-            history.pop();
+            if !history.is_empty() {
+                history.pop();
+            }
+            let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
+            Ok((runtime_context, compaction_reminder, chat_history, history))
         }
-        let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
+        .await
+        {
+            Ok(value) => value,
+            Err(error) => {
+                self.session_gates.begin_turn(&session_key).await;
+                return Err(error);
+            },
+        };
 
         let run_id = uuid::Uuid::new_v4().to_string();
         let cancellation_token = CancellationToken::new();
@@ -299,10 +310,7 @@ impl ChatService for LiveChatService {
             .write()
             .await
             .insert(run_id.clone(), cancellation_token.clone());
-        self.active_runs_by_session
-            .write()
-            .await
-            .insert(session_key.clone(), run_id.clone());
+        self.activate_session_turn(&session_key, &run_id).await;
         self.active_reply_medium
             .write()
             .await
@@ -413,6 +421,9 @@ impl ChatService for LiveChatService {
             .await
         };
 
+        self.session_gates
+            .finish_turn(&session_key, terminal_from_outcome(&result))
+            .await;
         self.active_runs.write().await.remove(&run_id);
         let mut runs_by_session = self.active_runs_by_session.write().await;
         if runs_by_session.get(&session_key) == Some(&run_id) {
@@ -537,6 +548,7 @@ impl ChatService for LiveChatService {
             .clear(&session_key)
             .await
             .map_err(ServiceError::message)?;
+        self.session_gates.forget(&session_key).await;
 
         // Reset client sequence tracking for this session. A cleared chat starts
         // a fresh sequence from the web UI.
@@ -1324,6 +1336,34 @@ impl ChatService for LiveChatService {
             "toolInvocations": tool_invocations,
         }))
     }
+
+    async fn wait_for_session_gate(
+        &self,
+        session_key: &str,
+    ) -> Result<Option<SessionTerminal>, ServiceError> {
+        let session_key = session_key.to_string();
+        let active_runs_by_session = Arc::clone(&self.active_runs_by_session);
+        Ok(self
+            .session_gates
+            .wait_for_gate(&session_key, || {
+                let active_runs_by_session = Arc::clone(&active_runs_by_session);
+                let session_key = session_key.clone();
+                async move {
+                    active_runs_by_session
+                        .read()
+                        .await
+                        .contains_key(&session_key)
+                }
+            })
+            .await)
+    }
+
+    async fn session_terminal(
+        &self,
+        session_key: &str,
+    ) -> Result<Option<SessionTerminal>, ServiceError> {
+        Ok(self.session_gates.last_terminal(session_key).await)
+    }
 }
 
 #[cfg(test)]
@@ -1346,7 +1386,7 @@ mod tests {
             ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
             ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ChatService, McpService,
             NoopMcpService, NoopProjectService, NoopTtsService, ProjectService, ServiceError,
-            TtsService,
+            SessionTerminal, TtsService,
         },
         chelix_sessions::{
             PersistedMessage, QueuedPrompts, SessionKey,
@@ -2260,5 +2300,111 @@ mod tests {
         assert_eq!(resolved_run_id.as_deref(), Some("run-1"));
         assert!(!cancelled);
         assert!(!cancellation_token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn wait_for_session_gate_returns_immediately_when_inactive() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let terminal = service
+            .wait_for_session_gate("session:idle")
+            .await
+            .unwrap_or_else(|error| panic!("inactive wait should succeed: {error}"));
+        assert_eq!(terminal, None);
+        assert_eq!(
+            service
+                .session_terminal("session:idle")
+                .await
+                .unwrap_or_else(|error| panic!("session terminal should succeed: {error}")),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_for_session_gate_wakes_on_finish_without_a_run_id() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let session_key = "session:child";
+        service.session_gates.begin_turn(session_key).await;
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .insert(session_key.to_string(), "run-internal".to_string());
+        let waiter = {
+            let service = service.clone();
+            tokio::spawn(async move { service.wait_for_session_gate(session_key).await })
+        };
+        tokio::task::yield_now().await;
+        service
+            .session_gates
+            .finish_turn(session_key, SessionTerminal::Cancelled)
+            .await;
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .remove(session_key);
+        let terminal = waiter
+            .await
+            .unwrap_or_else(|error| panic!("wait task: {error}"))
+            .unwrap_or_else(|error| panic!("session gate wait should succeed: {error}"));
+        assert_eq!(terminal, Some(SessionTerminal::Cancelled));
+        assert_eq!(
+            service
+                .session_terminal(session_key)
+                .await
+                .unwrap_or_else(|error| panic!("session terminal should succeed: {error}")),
+            Some(SessionTerminal::Cancelled)
+        );
+    }
+
+    #[tokio::test]
+    async fn begin_turn_clears_last_terminal_for_the_next_send_sync_insert() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let session_key = "session:child";
+        service
+            .session_gates
+            .finish_turn(session_key, SessionTerminal::Completed)
+            .await;
+        service.session_gates.begin_turn(session_key).await;
+        assert_eq!(
+            service
+                .session_terminal(session_key)
+                .await
+                .unwrap_or_else(|error| panic!("session terminal should succeed: {error}")),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn activate_session_turn_clears_terminal_before_session_is_active() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let session_key = "session:child";
+        service
+            .session_gates
+            .finish_turn(session_key, SessionTerminal::Completed)
+            .await;
+        service
+            .activate_session_turn(session_key, "run-internal")
+            .await;
+        assert_eq!(
+            service
+                .session_terminal(session_key)
+                .await
+                .unwrap_or_else(|error| panic!("session terminal should succeed: {error}")),
+            None
+        );
+        assert_eq!(
+            service
+                .active_runs_by_session
+                .read()
+                .await
+                .get(session_key)
+                .map(String::as_str),
+            Some("run-internal")
+        );
     }
 }
