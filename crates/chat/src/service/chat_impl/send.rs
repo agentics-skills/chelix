@@ -39,7 +39,7 @@ use crate::{
     types::*,
 };
 
-use super::*;
+use super::{super::session_gate::terminal_from_outcome, *};
 
 use {
     crate::memory_tools::{AgentScopedMemoryWriter, MemoryForgetProviderResolver},
@@ -764,6 +764,7 @@ impl LiveChatService {
         let state = Arc::clone(&self.state);
         let active_runs = Arc::clone(&self.active_runs);
         let active_runs_by_session = Arc::clone(&self.active_runs_by_session);
+        let session_gates = Arc::clone(&self.session_gates);
         let active_tool_invocations = Arc::clone(&self.active_tool_invocations);
         let active_partial_assistant = Arc::clone(&self.active_partial_assistant);
         let active_reply_medium = Arc::clone(&self.active_reply_medium);
@@ -822,58 +823,71 @@ impl LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Set preview from the first user message if not already set.
-        if let Some(entry) = self
-            .session_metadata
-            .get(&session_key)
-            .await
-            .map_err(ServiceError::message)?
-            && entry.preview.is_none()
-        {
-            let preview_text = extract_preview_from_value(&user_msg.to_value());
-            if let Some(preview) = preview_text {
-                self.session_metadata
-                    .set_preview(&session_key, Some(&preview))
-                    .await
-                    .map_err(ServiceError::message)?;
+        if let Err(error) = async {
+            if let Some(entry) = self
+                .session_metadata
+                .get(&session_key)
+                .await
+                .map_err(ServiceError::message)?
+                && entry.preview.is_none()
+            {
+                let preview_text = extract_preview_from_value(&user_msg.to_value());
+                if let Some(preview) = preview_text {
+                    self.session_metadata
+                        .set_preview(&session_key, Some(&preview))
+                        .await
+                        .map_err(ServiceError::message)?;
+                }
             }
+            Ok(())
+        }
+        .await
+        {
+            self.session_gates.begin_turn(&session_key).await;
+            return Err(error);
         }
 
         let runtime_limits = match runtime_limits {
             Ok(limits) => limits,
             Err(error) => {
-                if let Some(target) = deferred_channel_target.clone() {
-                    self.state.push_channel_reply(&session_key, target).await;
-                }
-                let error_detail = error.to_string();
-                self.state
-                    .set_run_error(&run_id, error_detail.clone())
-                    .await;
-                let error_obj = parse_chat_error(&error_detail, Some(&provider_name));
-                deliver_channel_error(&self.state, &session_key, &error_obj).await;
-                let ui = self
-                    .session_store
-                    .ui_history
-                    .session(&session_key)
-                    .await
+                let payload = async {
+                    if let Some(target) = deferred_channel_target.clone() {
+                        self.state.push_channel_reply(&session_key, target).await;
+                    }
+                    let error_detail = error.to_string();
+                    self.state
+                        .set_run_error(&run_id, error_detail.clone())
+                        .await;
+                    let error_obj = parse_chat_error(&error_detail, Some(&provider_name));
+                    deliver_channel_error(&self.state, &session_key, &error_obj).await;
+                    let ui = self
+                        .session_store
+                        .ui_history
+                        .session(&session_key)
+                        .await
+                        .map_err(ServiceError::message)?;
+                    ui.record_error(chelix_sessions::ui_history_types::UiProviderError {
+                        run_id: run_id.clone(),
+                        segment_id: None,
+                        created_at: now_ms(),
+                        raw: error_detail,
+                        details: error_obj,
+                        retry_after_ms: None,
+                    })
                     .map_err(ServiceError::message)?;
-                ui.record_error(chelix_sessions::ui_history_types::UiProviderError {
-                    run_id: run_id.clone(),
-                    segment_id: None,
-                    created_at: now_ms(),
-                    raw: error_detail,
-                    details: error_obj,
-                    retry_after_ms: None,
-                })
-                .map_err(ServiceError::message)?;
-                ui.flush().await.map_err(ServiceError::message)?;
-                let payload = serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": "error"});
-                self.terminal_runs.write().await.insert(run_id.clone());
-                broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
-                self.terminal_runs.write().await.remove(&run_id);
-                return Ok(serde_json::json!({
-                    "ok": true,
-                    "runId": run_id,
-                }));
+                    ui.flush().await.map_err(ServiceError::message)?;
+                    let payload = serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": "error"});
+                    self.terminal_runs.write().await.insert(run_id.clone());
+                    broadcast(&self.state, "chat", payload, BroadcastOpts::default()).await;
+                    self.terminal_runs.write().await.remove(&run_id);
+                    Ok(serde_json::json!({
+                        "ok": true,
+                        "runId": run_id,
+                    }))
+                }
+                .await;
+                self.session_gates.begin_turn(&session_key).await;
+                return payload;
             },
         };
 
@@ -896,10 +910,7 @@ impl LiveChatService {
             .write()
             .await
             .insert(run_id.clone(), cancellation_token.clone());
-        self.active_runs_by_session
-            .write()
-            .await
-            .insert(session_key.clone(), run_id.clone());
+        self.activate_session_turn(&session_key, &run_id).await;
 
         let _run_task = tokio::spawn(async move {
             let ctx_ref = project_context.as_deref();
@@ -1192,6 +1203,9 @@ impl LiveChatService {
             )
             .await;
 
+            session_gates
+                .finish_turn(&session_key_clone, terminal_from_outcome(&run_outcome))
+                .await;
             active_runs.write().await.remove(&run_id_clone);
             let mut runs_by_session = active_runs_by_session.write().await;
             if runs_by_session.get(&session_key_clone) == Some(&run_id_clone) {

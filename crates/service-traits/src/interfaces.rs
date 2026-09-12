@@ -339,6 +339,14 @@ impl WebhooksService for NoopWebhooksService {
     }
 }
 
+/// Last finished agent-loop outcome for a session. This is a status signal, not a stored answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionTerminal {
+    Completed,
+    Cancelled,
+    Failed,
+}
+
 #[async_trait]
 pub trait ChatService: Send + Sync {
     async fn send(&self, request: ChatSendRequest, context: ChatExecutionContext) -> ServiceResult;
@@ -413,6 +421,36 @@ pub trait ChatService: Send + Sync {
 
     async fn peek(&self, _params: Value) -> ServiceResult {
         Ok(serde_json::json!({ "active": false }))
+    }
+
+    /// Wait until the session's current execution reaches a final gate.
+    ///
+    /// Returns immediately when the session is not executing. The optional
+    /// terminal is a status signal only; callers read answer text from history.
+    async fn wait_for_session_gate(
+        &self,
+        session_key: &str,
+    ) -> Result<Option<SessionTerminal>, ServiceError> {
+        loop {
+            let response = self
+                .active(serde_json::json!({ "sessionKey": session_key }))
+                .await?;
+            let active = response
+                .get("active")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| ServiceError::message("chat.active response is missing active"))?;
+            if !active {
+                return self.session_terminal(session_key).await;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    async fn session_terminal(
+        &self,
+        _session_key: &str,
+    ) -> Result<Option<SessionTerminal>, ServiceError> {
+        Ok(None)
     }
 }
 

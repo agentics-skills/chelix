@@ -1,11 +1,9 @@
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use {
     chelix_agents::tool_registry::ToolRegistry,
-    chelix_common::ReasoningEffort,
-    chelix_service_traits::{
-        ChatExecutionContext, ChatSendRequest, ChatSendSyncRequest, ChatService,
-    },
+    chelix_common::{ProviderSegmentOutcome, ReasoningEffort},
+    chelix_service_traits::{ChatExecutionContext, ChatSendRequest, ChatService, SessionTerminal},
     chelix_sessions::{
         SessionKey,
         message::PersistedMessage,
@@ -31,7 +29,6 @@ struct SubAgentRuntime {
     state: Arc<GatewayState>,
     session_store: Arc<SessionStore>,
     session_metadata: Arc<SqliteSessionMetadata>,
-    background_runs: RwLock<HashMap<String, String>>,
 }
 
 pub(super) fn register_sub_agent_tool(
@@ -44,7 +41,6 @@ pub(super) fn register_sub_agent_tool(
         state: Arc::clone(state),
         session_store: Arc::clone(session_store),
         session_metadata: Arc::clone(session_metadata),
-        background_runs: RwLock::new(HashMap::new()),
     });
     let execute = Arc::new(move |request| {
         let runtime = Arc::clone(&runtime);
@@ -84,6 +80,10 @@ impl SubAgentRuntime {
                 parent_session_key,
                 session_key,
             } => self.result(&parent_session_key, &session_key).await,
+            SubAgentRequest::Attach {
+                parent_session_key,
+                session_key,
+            } => self.attach(&parent_session_key, &session_key).await,
             SubAgentRequest::Cancel {
                 parent_session_key,
                 session_key,
@@ -198,72 +198,58 @@ impl SubAgentRuntime {
         } else {
             format!("{sender_badge}{task}")
         };
-        match mode {
-            SubAgentMode::Blocking => {
-                let response = match chat
-                    .send_sync(
-                        ChatSendSyncRequest::text(effective_task),
-                        ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
-                    )
-                    .await
-                {
-                    Ok(response) => response,
-                    Err(error) => {
-                        record_run_metric(mode, "failed", started.elapsed());
-                        return Err(chelix_tools::Error::message(error.to_string()));
-                    },
-                };
-                let output = serde_json::json!({
-                    "sessionKey": session_key,
-                    "agentId": agent.id,
-                    "mode": mode.as_str(),
-                    "text": response_field(&response, "text")?,
-                    "inputTokens": response_field(&response, "inputTokens")?,
-                    "outputTokens": response_field(&response, "outputTokens")?,
-                    "durationMs": response_field(&response, "durationMs")?,
-                });
-                record_run_metric(mode, "completed", started.elapsed());
-                info!(
-                    session_key,
-                    agent_id,
-                    duration_ms = started.elapsed().as_millis(),
-                    "blocking sub-agent run completed"
-                );
-                Ok(output)
+        let response = match chat
+            .send(
+                ChatSendRequest::text(effective_task),
+                ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
+            )
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                record_run_metric(mode, "failed", started.elapsed());
+                return Err(chelix_tools::Error::message(error.to_string()));
             },
-            SubAgentMode::Background => {
-                let response = match chat
-                    .send(
-                        ChatSendRequest::text(effective_task),
-                        ChatExecutionContext::internal(SessionKey::new(session_key.clone())),
-                    )
-                    .await
-                {
-                    Ok(response) => response,
+        };
+        if let Err(error) = inspect_started_send(&response) {
+            record_run_metric(mode, "failed", started.elapsed());
+            return Err(error);
+        }
+        if let Err(error) = ensure_child_started(chat.as_ref(), &session_key).await {
+            record_run_metric(mode, "failed", started.elapsed());
+            return Err(error);
+        }
+        record_run_started(mode);
+
+        match mode {
+            SubAgentMode::Background => Ok(serde_json::json!({
+                "sessionKey": session_key,
+                "agentId": agent.id,
+                "mode": mode.as_str(),
+                "status": "running",
+            })),
+            SubAgentMode::Blocking => {
+                let last_terminal = wait_for_child(chat.as_ref(), &session_key).await?;
+                let snapshot =
+                    snapshot_from_store(self.session_store.as_ref(), &session_key, last_terminal)
+                        .await?;
+                let status = snapshot.status;
+                match blocking_run_output(&session_key, &agent.id, snapshot) {
+                    Ok(output) => {
+                        record_run_metric(mode, status.metric_status(), started.elapsed());
+                        info!(
+                            session_key,
+                            agent_id,
+                            duration_ms = started.elapsed().as_millis(),
+                            "blocking sub-agent run reached a final gate"
+                        );
+                        Ok(output)
+                    },
                     Err(error) => {
                         record_run_metric(mode, "failed", started.elapsed());
-                        return Err(chelix_tools::Error::message(error.to_string()));
+                        Err(error)
                     },
-                };
-                let run_id = response
-                    .get("runId")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        chelix_tools::Error::message("chat.send response is missing runId")
-                    })?
-                    .to_string();
-                self.background_runs
-                    .write()
-                    .await
-                    .insert(session_key.clone(), run_id.clone());
-                record_background_started_metric();
-                Ok(serde_json::json!({
-                    "sessionKey": session_key,
-                    "agentId": agent.id,
-                    "mode": mode.as_str(),
-                    "runId": run_id,
-                    "status": "running",
-                }))
+                }
             },
         }
     }
@@ -281,6 +267,7 @@ impl SubAgentRuntime {
         sub_agent_status(
             &self.session_metadata,
             self.state.chat().as_ref(),
+            self.session_store.as_ref(),
             parent_session_key,
             session_key,
         )
@@ -292,6 +279,7 @@ impl SubAgentRuntime {
         sub_agent_list(
             &self.session_metadata,
             self.state.chat().as_ref(),
+            self.session_store.as_ref(),
             parent_session_key,
         )
         .await
@@ -310,8 +298,27 @@ impl SubAgentRuntime {
         sub_agent_result(
             &self.session_metadata,
             self.state.chat().as_ref(),
-            &self.session_store,
-            &self.background_runs,
+            self.session_store.as_ref(),
+            parent_session_key,
+            session_key,
+        )
+        .await
+    }
+
+    #[tracing::instrument(
+        name = "sub_agent.attach",
+        skip_all,
+        fields(parent_session_key, session_key)
+    )]
+    async fn attach(
+        &self,
+        parent_session_key: &str,
+        session_key: &str,
+    ) -> chelix_tools::Result<Value> {
+        sub_agent_attach(
+            &self.session_metadata,
+            self.state.chat().as_ref(),
+            self.session_store.as_ref(),
             parent_session_key,
             session_key,
         )
@@ -399,19 +406,64 @@ fn discoverable_agent_from_config(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildStatus {
+    Running,
+    Cancelled,
+    Completed,
+    Idle,
+}
+
+impl ChildStatus {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Cancelled => "cancelled",
+            Self::Completed => "completed",
+            Self::Idle => "idle",
+        }
+    }
+
+    const fn metric_status(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Cancelled => "cancelled",
+            Self::Completed => "completed",
+            Self::Idle => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChildSnapshot {
+    status: ChildStatus,
+    text: Option<String>,
+    last_terminal: Option<SessionTerminal>,
+}
+
+fn status_from_runtime_terminal(terminal: SessionTerminal) -> ChildStatus {
+    match terminal {
+        SessionTerminal::Cancelled => ChildStatus::Cancelled,
+        SessionTerminal::Completed => ChildStatus::Completed,
+        SessionTerminal::Failed => ChildStatus::Idle,
+    }
+}
+
 async fn sub_agent_status(
     metadata: &SqliteSessionMetadata,
     chat: &dyn ChatService,
+    session_store: &SessionStore,
     parent_session_key: &str,
     session_key: &str,
 ) -> chelix_tools::Result<Value> {
     let entry = owned_child_entry(metadata, parent_session_key, session_key).await?;
-    status_payload(chat, entry).await
+    status_payload(chat, session_store, entry).await
 }
 
 async fn sub_agent_list(
     metadata: &SqliteSessionMetadata,
     chat: &dyn ChatService,
+    session_store: &SessionStore,
     parent_session_key: &str,
 ) -> chelix_tools::Result<Value> {
     let entries = metadata
@@ -420,7 +472,7 @@ async fn sub_agent_list(
         .map_err(tool_error)?;
     let mut sessions = Vec::with_capacity(entries.len());
     for entry in entries {
-        sessions.push(status_payload(chat, entry).await?);
+        sessions.push(status_payload(chat, session_store, entry).await?);
     }
     Ok(serde_json::json!({ "sessions": sessions }))
 }
@@ -429,35 +481,39 @@ async fn sub_agent_result(
     metadata: &SqliteSessionMetadata,
     chat: &dyn ChatService,
     session_store: &SessionStore,
-    background_runs: &RwLock<HashMap<String, String>>,
     parent_session_key: &str,
     session_key: &str,
 ) -> chelix_tools::Result<Value> {
     let entry = owned_child_entry(metadata, parent_session_key, session_key).await?;
-    require_completed(chat, session_key).await?;
-    let run_id = background_runs
-        .read()
-        .await
-        .get(session_key)
-        .cloned()
-        .ok_or_else(|| {
-            chelix_tools::Error::message(format!(
-                "no background run is tracked for session {session_key:?}"
-            ))
-        })?;
-    let messages = session_store
-        .read_by_run_id(session_key, &run_id)
-        .await
-        .map_err(tool_error)?;
-    let (text, duration_ms) = last_assistant_result(messages)?.ok_or_else(|| {
-        chelix_tools::Error::message(format!("background run {run_id:?} has no assistant result"))
-    })?;
-    record_background_completion_metric(duration_ms);
-    Ok(serde_json::json!({
-        "sessionKey": session_key,
-        "agentId": entry.agent_id,
-        "text": text,
-    }))
+    let snapshot = child_snapshot(chat, session_store, session_key).await?;
+    Ok(result_output(
+        session_key,
+        entry.agent_id.as_deref(),
+        snapshot,
+    ))
+}
+
+async fn sub_agent_attach(
+    metadata: &SqliteSessionMetadata,
+    chat: &dyn ChatService,
+    session_store: &SessionStore,
+    parent_session_key: &str,
+    session_key: &str,
+) -> chelix_tools::Result<Value> {
+    let entry = owned_child_entry(metadata, parent_session_key, session_key).await?;
+    let last_terminal = if chat_active(chat, session_key).await? {
+        wait_for_child(chat, session_key).await?
+    } else {
+        chat.session_terminal(session_key)
+            .await
+            .map_err(|error| chelix_tools::Error::message(error.to_string()))?
+    };
+    let snapshot = snapshot_from_store(session_store, session_key, last_terminal).await?;
+    Ok(result_output(
+        session_key,
+        entry.agent_id.as_deref(),
+        snapshot,
+    ))
 }
 
 async fn sub_agent_cancel(
@@ -472,14 +528,15 @@ async fn sub_agent_cancel(
 
 async fn status_payload(
     chat: &dyn ChatService,
+    session_store: &SessionStore,
     entry: SessionEntry,
 ) -> chelix_tools::Result<Value> {
-    let active = chat_active(chat, &entry.key).await?;
+    let status = child_status(chat, session_store, &entry.key).await?;
     Ok(serde_json::json!({
         "sessionKey": entry.key,
         "agentId": entry.agent_id,
         "label": entry.label,
-        "status": if active { "running" } else { "idle" },
+        "status": status.as_str(),
         "messageCount": entry.message_count,
         "createdAt": entry.created_at,
         "updatedAt": entry.updated_at,
@@ -519,12 +576,259 @@ async fn chat_active(chat: &dyn ChatService, session_key: &str) -> chelix_tools:
         .ok_or_else(|| chelix_tools::Error::message("chat.active response is missing active"))
 }
 
+fn child_turn_started(active: bool, last_terminal: Option<SessionTerminal>) -> bool {
+    active || last_terminal.is_some()
+}
+
 #[tracing::instrument(skip_all, fields(session_key))]
-async fn require_completed(chat: &dyn ChatService, session_key: &str) -> chelix_tools::Result<()> {
+async fn ensure_child_started(
+    chat: &dyn ChatService,
+    session_key: &str,
+) -> chelix_tools::Result<()> {
+    let active = chat_active(chat, session_key).await?;
+    let last_terminal = chat
+        .session_terminal(session_key)
+        .await
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
+    if child_turn_started(active, last_terminal) {
+        return Ok(());
+    }
+    Err(chelix_tools::Error::message(format!(
+        "chat.send did not start the sub-agent turn for session {session_key:?}"
+    )))
+}
+
+#[tracing::instrument(skip_all, fields(session_key))]
+async fn wait_for_child(
+    chat: &dyn ChatService,
+    session_key: &str,
+) -> chelix_tools::Result<Option<SessionTerminal>> {
+    chat.wait_for_session_gate(session_key)
+        .await
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))
+}
+
+async fn snapshot_from_store(
+    session_store: &SessionStore,
+    session_key: &str,
+    last_terminal: Option<SessionTerminal>,
+) -> chelix_tools::Result<ChildSnapshot> {
+    let messages = session_store
+        .read_typed(session_key)
+        .await
+        .map_err(tool_error)?;
+    Ok(snapshot_from_messages(&messages, last_terminal))
+}
+
+async fn child_status(
+    chat: &dyn ChatService,
+    session_store: &SessionStore,
+    session_key: &str,
+) -> chelix_tools::Result<ChildStatus> {
     if chat_active(chat, session_key).await? {
-        return Err(chelix_tools::Error::message(format!(
-            "sub-agent run for session {session_key:?} is still running"
-        )));
+        return Ok(ChildStatus::Running);
+    }
+    let last_terminal = chat
+        .session_terminal(session_key)
+        .await
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
+    if let Some(terminal) = last_terminal {
+        return Ok(status_from_runtime_terminal(terminal));
+    }
+    let messages = session_store
+        .read_typed(session_key)
+        .await
+        .map_err(tool_error)?;
+    Ok(snapshot_from_messages(&messages, None).status)
+}
+
+async fn child_snapshot(
+    chat: &dyn ChatService,
+    session_store: &SessionStore,
+    session_key: &str,
+) -> chelix_tools::Result<ChildSnapshot> {
+    if chat_active(chat, session_key).await? {
+        return Ok(ChildSnapshot {
+            status: ChildStatus::Running,
+            text: None,
+            last_terminal: None,
+        });
+    }
+    let last_terminal = chat
+        .session_terminal(session_key)
+        .await
+        .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
+    match last_terminal {
+        Some(SessionTerminal::Cancelled) => {
+            return Ok(ChildSnapshot {
+                status: ChildStatus::Cancelled,
+                text: None,
+                last_terminal,
+            });
+        },
+        Some(SessionTerminal::Failed) => {
+            return Ok(ChildSnapshot {
+                status: ChildStatus::Idle,
+                text: None,
+                last_terminal,
+            });
+        },
+        Some(SessionTerminal::Completed) | None => {},
+    }
+    let messages = session_store
+        .read_typed(session_key)
+        .await
+        .map_err(tool_error)?;
+    Ok(snapshot_from_messages(&messages, last_terminal))
+}
+
+fn snapshot_from_messages(
+    messages: &[PersistedMessage],
+    last_terminal: Option<SessionTerminal>,
+) -> ChildSnapshot {
+    if let Some(terminal) = last_terminal {
+        let status = status_from_runtime_terminal(terminal);
+        let text = (status == ChildStatus::Completed).then(|| completed_gate_text(messages));
+        return ChildSnapshot {
+            status,
+            text,
+            last_terminal,
+        };
+    }
+    let after_last_user = messages_after_last_user(messages);
+    if after_last_user.iter().any(|message| match message {
+        PersistedMessage::ToolLifecycle { lifecycle } => lifecycle.update.is_user_stop(),
+        _ => false,
+    }) {
+        return ChildSnapshot {
+            status: ChildStatus::Cancelled,
+            text: None,
+            last_terminal,
+        };
+    }
+    let last_close = after_last_user
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, message)| match message {
+            PersistedMessage::ProviderSegmentClose { outcome, .. } => Some((index, *outcome)),
+            _ => None,
+        });
+    match last_close {
+        Some((_, ProviderSegmentOutcome::Cancelled)) => ChildSnapshot {
+            status: ChildStatus::Cancelled,
+            text: None,
+            last_terminal,
+        },
+        Some((index, ProviderSegmentOutcome::Completed)) => {
+            if after_last_user[index + 1..]
+                .iter()
+                .any(|message| matches!(message, PersistedMessage::ToolLifecycle { .. }))
+            {
+                ChildSnapshot {
+                    status: ChildStatus::Idle,
+                    text: None,
+                    last_terminal,
+                }
+            } else {
+                ChildSnapshot {
+                    status: ChildStatus::Completed,
+                    text: Some(completed_gate_text(messages)),
+                    last_terminal,
+                }
+            }
+        },
+        _ => ChildSnapshot {
+            status: ChildStatus::Idle,
+            text: None,
+            last_terminal,
+        },
+    }
+}
+
+fn messages_after_last_user(messages: &[PersistedMessage]) -> &[PersistedMessage] {
+    match messages
+        .iter()
+        .rposition(|message| matches!(message, PersistedMessage::User { .. }))
+    {
+        Some(index) => &messages[index + 1..],
+        None => &[],
+    }
+}
+
+fn messages_before_trailing_users(messages: &[PersistedMessage]) -> &[PersistedMessage] {
+    match messages
+        .iter()
+        .rposition(|message| !matches!(message, PersistedMessage::User { .. }))
+    {
+        Some(index) => &messages[..=index],
+        None => &[],
+    }
+}
+
+fn completed_gate_text(messages: &[PersistedMessage]) -> String {
+    last_assistant_text(messages_after_last_user(messages))
+        .or_else(|| last_assistant_text(messages_before_trailing_users(messages)))
+        .unwrap_or_default()
+}
+
+fn last_assistant_text(messages: &[PersistedMessage]) -> Option<String> {
+    messages.iter().rev().find_map(|message| match message {
+        PersistedMessage::Assistant { content, .. } => Some(content.clone()),
+        _ => None,
+    })
+}
+
+fn result_output(session_key: &str, agent_id: Option<&str>, snapshot: ChildSnapshot) -> Value {
+    let mut output = serde_json::json!({
+        "sessionKey": session_key,
+        "agentId": agent_id,
+        "status": snapshot.status.as_str(),
+    });
+    if snapshot.status == ChildStatus::Completed {
+        output["text"] = Value::String(snapshot.text.unwrap_or_default());
+    }
+    output
+}
+
+fn blocking_run_output(
+    session_key: &str,
+    agent_id: &str,
+    snapshot: ChildSnapshot,
+) -> chelix_tools::Result<Value> {
+    match snapshot.status {
+        ChildStatus::Completed | ChildStatus::Cancelled => {
+            let mut output = result_output(session_key, Some(agent_id), snapshot);
+            output["mode"] = Value::String(SubAgentMode::Blocking.as_str().to_string());
+            Ok(output)
+        },
+        ChildStatus::Idle if snapshot.last_terminal == Some(SessionTerminal::Failed) => Err(
+            chelix_tools::Error::message(format!("sub-agent session {session_key:?} failed")),
+        ),
+        ChildStatus::Idle => Err(chelix_tools::Error::message(format!(
+            "sub-agent session {session_key:?} finished without a final gate"
+        ))),
+        ChildStatus::Running => Err(chelix_tools::Error::message(format!(
+            "sub-agent session {session_key:?} is still running after wait"
+        ))),
+    }
+}
+
+fn inspect_started_send(response: &Value) -> chelix_tools::Result<()> {
+    if response.get("queued").and_then(Value::as_bool) == Some(true) {
+        return Err(chelix_tools::Error::message(
+            "chat.send queued the sub-agent turn instead of starting it",
+        ));
+    }
+    if response.get("rejected").and_then(Value::as_bool) == Some(true) {
+        return Err(chelix_tools::Error::message(
+            "chat.send rejected the sub-agent turn",
+        ));
+    }
+    if response.get("ok").and_then(Value::as_bool) == Some(false) {
+        return Err(chelix_tools::Error::message(
+            "chat.send did not start the sub-agent turn",
+        ));
     }
     Ok(())
 }
@@ -536,30 +840,10 @@ async fn abort_sub_agent(chat: &dyn ChatService, session_key: &str) -> chelix_to
         .await
         .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
     let aborted = response_field(&response, "aborted")?;
-    let run_id = response_field(&response, "runId")?;
     Ok(serde_json::json!({
         "sessionKey": session_key,
         "aborted": aborted,
-        "runId": run_id,
     }))
-}
-
-fn last_assistant_result(
-    messages: Vec<Value>,
-) -> chelix_tools::Result<Option<(String, Option<u64>)>> {
-    for message in messages.into_iter().rev() {
-        let persisted = serde_json::from_value::<PersistedMessage>(message)
-            .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
-        if let PersistedMessage::Assistant {
-            content,
-            duration_ms,
-            ..
-        } = persisted
-        {
-            return Ok(Some((content, duration_ms)));
-        }
-    }
-    Ok(None)
 }
 
 fn response_field<'a>(response: &'a Value, name: &str) -> chelix_tools::Result<&'a Value> {
@@ -597,41 +881,19 @@ fn record_run_metric(mode: SubAgentMode, status: &'static str, duration: std::ti
 fn record_run_metric(_mode: SubAgentMode, _status: &'static str, _duration: std::time::Duration) {}
 
 #[cfg(feature = "metrics")]
-fn record_background_started_metric() {
+fn record_run_started(mode: SubAgentMode) {
     use chelix_metrics::{counter, labels};
 
     counter!(
         chelix_metrics::sub_agent::RUNS_TOTAL,
-        labels::MODE => SubAgentMode::Background.as_str(),
+        labels::MODE => mode.as_str(),
         labels::STATUS => "running"
     )
     .increment(1);
 }
 
 #[cfg(not(feature = "metrics"))]
-fn record_background_started_metric() {}
-
-#[cfg(feature = "metrics")]
-fn record_background_completion_metric(duration_ms: Option<u64>) {
-    use chelix_metrics::{counter, histogram, labels};
-
-    counter!(
-        chelix_metrics::sub_agent::RUNS_TOTAL,
-        labels::MODE => SubAgentMode::Background.as_str(),
-        labels::STATUS => "completed"
-    )
-    .increment(1);
-    if let Some(duration_ms) = duration_ms {
-        histogram!(
-            chelix_metrics::sub_agent::RUN_DURATION_SECONDS,
-            labels::MODE => SubAgentMode::Background.as_str()
-        )
-        .record(std::time::Duration::from_millis(duration_ms).as_secs_f64());
-    }
-}
-
-#[cfg(not(feature = "metrics"))]
-fn record_background_completion_metric(_duration_ms: Option<u64>) {}
+fn record_run_started(_mode: SubAgentMode) {}
 
 #[cfg(test)]
 mod tests {
@@ -643,14 +905,17 @@ mod tests {
         chelix_service_traits::{
             ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
             ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ServiceResult,
+            SessionTerminal,
         },
-        std::sync::atomic::{AtomicUsize, Ordering},
+        std::sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+        tokio::sync::RwLock,
     };
 
     struct LifecycleChatService {
         active: bool,
         abort_response: Value,
         abort_calls: AtomicUsize,
+        last_terminal: Option<SessionTerminal>,
     }
 
     impl LifecycleChatService {
@@ -659,7 +924,13 @@ mod tests {
                 active,
                 abort_response,
                 abort_calls: AtomicUsize::new(0),
+                last_terminal: None,
             }
+        }
+
+        fn with_terminal(mut self, terminal: SessionTerminal) -> Self {
+            self.last_terminal = Some(terminal);
+            self
         }
     }
 
@@ -733,6 +1004,13 @@ mod tests {
         async fn active(&self, _params: Value) -> ServiceResult {
             Ok(serde_json::json!({ "active": self.active }))
         }
+
+        async fn session_terminal(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
+            Ok(self.last_terminal)
+        }
     }
 
     fn configured_agent() -> chelix_config::AgentConfig {
@@ -800,6 +1078,316 @@ mod tests {
         assert!(error.to_string().contains("no non-empty SUBAGENT.md"));
     }
 
+    fn persisted(value: Value) -> PersistedMessage {
+        serde_json::from_value(value)
+            .unwrap_or_else(|error| panic!("valid persisted message: {error}"))
+    }
+
+    fn user_stop_lifecycle() -> Value {
+        // SessionStore.append projects UI history and requires runId on tool_lifecycle.
+        serde_json::json!({
+            "role": "tool_lifecycle",
+            "toolCallId": "call-1",
+            "toolName": "execute_command",
+            "sequence": 1,
+            "emittedAtMs": 1,
+            "runId": "run-1",
+            "stage": "cancelled",
+            "reason": chelix_common::tool_lifecycle::AGENT_RUN_CANCELLED_REASON,
+        })
+    }
+
+    async fn append_completed_turn(
+        store: &SessionStore,
+        session_key: &str,
+        user: &str,
+        assistant: &str,
+    ) {
+        store
+            .append(
+                session_key,
+                &serde_json::json!({ "role": "user", "content": user }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                session_key,
+                &serde_json::json!({ "role": "assistant", "content": assistant }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                session_key,
+                &serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-final",
+                    "outcome": "completed",
+                }),
+            )
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn snapshot_user_stop_after_completed_close_is_cancelled() {
+        let snapshot = snapshot_from_messages(
+            &[
+                persisted(serde_json::json!({ "role": "user", "content": "go" })),
+                persisted(serde_json::json!({
+                    "role": "assistant",
+                    "content": "partial",
+                })),
+                persisted(serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-1",
+                    "outcome": "completed",
+                })),
+                persisted(user_stop_lifecycle()),
+            ],
+            None,
+        );
+        assert_eq!(snapshot.status, ChildStatus::Cancelled);
+    }
+
+    #[test]
+    fn snapshot_retry_cancelled_then_completed_is_completed() {
+        let snapshot = snapshot_from_messages(
+            &[
+                persisted(serde_json::json!({ "role": "user", "content": "go" })),
+                persisted(serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-retry",
+                    "outcome": "cancelled",
+                })),
+                persisted(serde_json::json!({
+                    "role": "assistant",
+                    "content": "final answer",
+                })),
+                persisted(serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-final",
+                    "outcome": "completed",
+                })),
+            ],
+            None,
+        );
+        assert_eq!(snapshot.status, ChildStatus::Completed);
+        assert_eq!(snapshot.text.as_deref(), Some("final answer"));
+    }
+
+    #[test]
+    fn snapshot_empty_history_is_idle() {
+        let snapshot = snapshot_from_messages(&[], None);
+        assert_eq!(snapshot.status, ChildStatus::Idle);
+        assert_eq!(snapshot.text, None);
+    }
+
+    fn executing_lifecycle() -> Value {
+        serde_json::json!({
+            "role": "tool_lifecycle",
+            "toolCallId": "call-1",
+            "toolName": "execute_command",
+            "sequence": 1,
+            "emittedAtMs": 1,
+            "stage": "executing",
+            "arguments": {},
+            "startedAtMs": 1,
+        })
+    }
+
+    fn assistant_with_tool_calls(content: &str) -> Value {
+        serde_json::json!({
+            "role": "assistant",
+            "content": content,
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": { "name": "execute_command", "arguments": "{}" }
+            }],
+        })
+    }
+
+    #[test]
+    fn snapshot_tool_lifecycle_after_completed_close_is_idle() {
+        let snapshot = snapshot_from_messages(
+            &[
+                persisted(serde_json::json!({ "role": "user", "content": "go" })),
+                persisted(assistant_with_tool_calls("checking")),
+                persisted(serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-1",
+                    "outcome": "completed",
+                })),
+                persisted(executing_lifecycle()),
+            ],
+            None,
+        );
+        assert_eq!(snapshot.status, ChildStatus::Idle);
+        assert_eq!(snapshot.text, None);
+    }
+
+    #[test]
+    fn snapshot_finalized_tool_call_segment_without_later_lifecycle_is_completed() {
+        let snapshot = snapshot_from_messages(
+            &[
+                persisted(serde_json::json!({ "role": "user", "content": "go" })),
+                persisted(assistant_with_tool_calls("final from tool segment")),
+                persisted(serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-final",
+                    "outcome": "completed",
+                })),
+            ],
+            None,
+        );
+        assert_eq!(snapshot.status, ChildStatus::Completed);
+        assert_eq!(snapshot.text.as_deref(), Some("final from tool segment"));
+    }
+
+    #[test]
+    fn snapshot_completed_text_skips_trailing_user_batch() {
+        let snapshot = snapshot_from_messages(
+            &[
+                persisted(serde_json::json!({ "role": "user", "content": "first" })),
+                persisted(serde_json::json!({
+                    "role": "assistant",
+                    "content": "gate text",
+                })),
+                persisted(serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-final",
+                    "outcome": "completed",
+                })),
+                persisted(serde_json::json!({ "role": "user", "content": "queued-1" })),
+                persisted(serde_json::json!({ "role": "user", "content": "queued-2" })),
+            ],
+            Some(SessionTerminal::Completed),
+        );
+        assert_eq!(snapshot.status, ChildStatus::Completed);
+        assert_eq!(snapshot.text.as_deref(), Some("gate text"));
+    }
+
+    #[test]
+    fn snapshot_failed_terminal_is_idle() {
+        let snapshot = snapshot_from_messages(
+            &[persisted(
+                serde_json::json!({ "role": "user", "content": "go" }),
+            )],
+            Some(SessionTerminal::Failed),
+        );
+        assert_eq!(snapshot.status, ChildStatus::Idle);
+    }
+
+    fn completed_close_after_user(assistant: &str) -> Vec<PersistedMessage> {
+        vec![
+            persisted(serde_json::json!({ "role": "user", "content": "go" })),
+            persisted(serde_json::json!({
+                "role": "assistant",
+                "content": assistant,
+            })),
+            persisted(serde_json::json!({
+                "role": "provider_segment_close",
+                "segmentId": "seg-1",
+                "outcome": "completed",
+            })),
+        ]
+    }
+
+    #[test]
+    fn snapshot_runtime_cancelled_wins_over_completed_close() {
+        let snapshot = snapshot_from_messages(
+            &completed_close_after_user("partial"),
+            Some(SessionTerminal::Cancelled),
+        );
+        assert_eq!(snapshot.status, ChildStatus::Cancelled);
+        assert_eq!(snapshot.text, None);
+    }
+
+    #[test]
+    fn snapshot_runtime_failed_wins_over_completed_close() {
+        let snapshot = snapshot_from_messages(
+            &completed_close_after_user("partial"),
+            Some(SessionTerminal::Failed),
+        );
+        assert_eq!(snapshot.status, ChildStatus::Idle);
+        assert_eq!(snapshot.text, None);
+    }
+
+    #[test]
+    fn blocking_run_output_distinguishes_failed_from_missing_gate() {
+        let failed = blocking_run_output("session:child", "reviewer", ChildSnapshot {
+            status: ChildStatus::Idle,
+            text: None,
+            last_terminal: Some(SessionTerminal::Failed),
+        })
+        .unwrap_err();
+        assert!(failed.to_string().contains("failed"));
+        assert!(!failed.to_string().contains("without a final gate"));
+
+        let missing = blocking_run_output("session:child", "reviewer", ChildSnapshot {
+            status: ChildStatus::Idle,
+            text: None,
+            last_terminal: None,
+        })
+        .unwrap_err();
+        assert!(missing.to_string().contains("without a final gate"));
+    }
+
+    #[test]
+    fn inspect_started_send_rejects_queued_and_rejected_turns() {
+        inspect_started_send(&serde_json::json!({ "ok": true, "queued": true })).unwrap_err();
+        inspect_started_send(&serde_json::json!({ "ok": false, "rejected": true })).unwrap_err();
+        inspect_started_send(&serde_json::json!({ "ok": false })).unwrap_err();
+        inspect_started_send(&serde_json::json!({ "ok": true })).unwrap();
+    }
+
+    #[test]
+    fn child_turn_started_requires_active_or_terminal() {
+        assert!(!child_turn_started(false, None));
+        assert!(child_turn_started(true, None));
+        assert!(child_turn_started(false, Some(SessionTerminal::Completed)));
+        assert!(child_turn_started(false, Some(SessionTerminal::Failed)));
+    }
+
+    #[test]
+    fn blocking_run_output_returns_completed_text() {
+        let output = blocking_run_output("session:child", "reviewer", ChildSnapshot {
+            status: ChildStatus::Completed,
+            text: Some("final answer".to_string()),
+            last_terminal: Some(SessionTerminal::Completed),
+        })
+        .unwrap();
+        assert_eq!(
+            output,
+            serde_json::json!({
+                "sessionKey": "session:child",
+                "agentId": "reviewer",
+                "status": "completed",
+                "text": "final answer",
+                "mode": "blocking",
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_child_started_rejects_unstarted_send() {
+        let chat = LifecycleChatService::new(false, Value::Null);
+        let error = ensure_child_started(&chat, "session:child")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("did not start"));
+        assert!(error.to_string().contains("session:child"));
+    }
+
+    #[tokio::test]
+    async fn ensure_child_started_accepts_finished_terminal() {
+        let chat =
+            LifecycleChatService::new(false, Value::Null).with_terminal(SessionTerminal::Completed);
+        ensure_child_started(&chat, "session:child").await.unwrap();
+    }
+
     #[tokio::test]
     async fn lifecycle_actions_do_not_access_foreign_children() {
         let metadata = sqlite_metadata().await;
@@ -807,24 +1395,22 @@ mod tests {
         create_parent(&metadata, "session:other").await;
         configure_child(&metadata, "session:own-child", "session:parent").await;
         configure_child(&metadata, "session:foreign-child", "session:other").await;
-        let chat = LifecycleChatService::new(
-            false,
-            serde_json::json!({ "aborted": true, "runId": "run-foreign" }),
-        );
+        let chat = LifecycleChatService::new(false, serde_json::json!({ "aborted": true }));
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
-        let runs = RwLock::new(HashMap::from([(
-            "session:foreign-child".to_string(),
-            "run-foreign".to_string(),
-        )]));
 
-        let status_error =
-            sub_agent_status(&metadata, &chat, "session:parent", "session:foreign-child")
-                .await
-                .unwrap_err();
+        let status_error = sub_agent_status(
+            &metadata,
+            &chat,
+            &store,
+            "session:parent",
+            "session:foreign-child",
+        )
+        .await
+        .unwrap_err();
         assert!(status_error.to_string().contains("access denied"));
 
-        let listed = sub_agent_list(&metadata, &chat, "session:parent")
+        let listed = sub_agent_list(&metadata, &chat, &store, "session:parent")
             .await
             .unwrap();
         let sessions = listed["sessions"].as_array().unwrap();
@@ -835,13 +1421,23 @@ mod tests {
             &metadata,
             &chat,
             &store,
-            &runs,
             "session:parent",
             "session:foreign-child",
         )
         .await
         .unwrap_err();
         assert!(result_error.to_string().contains("access denied"));
+
+        let attach_error = sub_agent_attach(
+            &metadata,
+            &chat,
+            &store,
+            "session:parent",
+            "session:foreign-child",
+        )
+        .await
+        .unwrap_err();
+        assert!(attach_error.to_string().contains("access denied"));
 
         let cancel_error =
             sub_agent_cancel(&metadata, &chat, "session:parent", "session:foreign-child")
@@ -851,57 +1447,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn background_result_is_extracted_only_from_the_tracked_run() {
+    async fn result_returns_last_assistant_after_last_user_for_any_mode() {
         let metadata = sqlite_metadata().await;
         create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
-        store
-            .append(
-                "session:child",
-                &serde_json::json!({
-                    "role": "assistant",
-                    "content": "other run",
-                    "run_id": "run-2",
-                }),
-            )
-            .await
-            .unwrap();
-        store
-            .append(
-                "session:child",
-                &serde_json::json!({
-                    "role": "assistant",
-                    "content": "tracked draft",
-                    "run_id": "run-1",
-                }),
-            )
-            .await
-            .unwrap();
-        store
-            .append(
-                "session:child",
-                &serde_json::json!({
-                    "role": "assistant",
-                    "content": "tracked final",
-                    "durationMs": 42,
-                    "run_id": "run-1",
-                }),
-            )
-            .await
-            .unwrap();
-        let runs = RwLock::new(HashMap::from([(
-            "session:child".to_string(),
-            "run-1".to_string(),
-        )]));
+        append_completed_turn(&store, "session:child", "previous", "stale").await;
+        append_completed_turn(&store, "session:child", "current", "latest final").await;
         let chat = LifecycleChatService::new(false, Value::Null);
+
+        let result = sub_agent_result(&metadata, &chat, &store, "session:parent", "session:child")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result,
+            serde_json::json!({
+                "sessionKey": "session:child",
+                "agentId": "reviewer",
+                "status": "completed",
+                "text": "latest final",
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn result_reports_running_instead_of_error() {
+        let metadata = sqlite_metadata().await;
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        let active = LifecycleChatService::new(true, Value::Null);
 
         let result = sub_agent_result(
             &metadata,
-            &chat,
+            &active,
             &store,
-            &runs,
             "session:parent",
             "session:child",
         )
@@ -913,36 +1496,103 @@ mod tests {
             serde_json::json!({
                 "sessionKey": "session:child",
                 "agentId": "reviewer",
-                "text": "tracked final",
+                "status": "running",
             })
         );
     }
 
     #[tokio::test]
-    async fn result_requires_an_inactive_chat_run() {
+    async fn result_reports_cancelled_on_user_stop() {
         let metadata = sqlite_metadata().await;
         create_parent(&metadata, "session:parent").await;
         configure_child(&metadata, "session:child", "session:parent").await;
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
-        let runs = RwLock::new(HashMap::from([(
-            "session:child".to_string(),
-            "run-1".to_string(),
-        )]));
-        let active = LifecycleChatService::new(true, Value::Null);
+        store
+            .append(
+                "session:child",
+                &serde_json::json!({ "role": "user", "content": "go" }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "session:child",
+                &serde_json::json!({
+                    "role": "provider_segment_close",
+                    "segmentId": "seg-1",
+                    "outcome": "completed",
+                }),
+            )
+            .await
+            .unwrap();
+        store
+            .append("session:child", &user_stop_lifecycle())
+            .await
+            .unwrap();
+        let chat = LifecycleChatService::new(false, Value::Null);
 
-        let error = sub_agent_result(
-            &metadata,
-            &active,
-            &store,
-            &runs,
-            "session:parent",
-            "session:child",
-        )
-        .await
-        .unwrap_err();
+        let result = sub_agent_result(&metadata, &chat, &store, "session:parent", "session:child")
+            .await
+            .unwrap();
+        assert_eq!(result["status"], "cancelled");
+    }
 
-        assert!(error.to_string().contains("still running"));
+    #[tokio::test]
+    async fn result_runtime_failed_is_idle_despite_completed_close() {
+        let metadata = sqlite_metadata().await;
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        append_completed_turn(&store, "session:child", "task", "partial").await;
+        let chat =
+            LifecycleChatService::new(false, Value::Null).with_terminal(SessionTerminal::Failed);
+
+        let result = sub_agent_result(&metadata, &chat, &store, "session:parent", "session:child")
+            .await
+            .unwrap();
+        assert_eq!(
+            result,
+            serde_json::json!({
+                "sessionKey": "session:child",
+                "agentId": "reviewer",
+                "status": "idle",
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn status_uses_runtime_terminal_without_history() {
+        let metadata = sqlite_metadata().await;
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        let chat =
+            LifecycleChatService::new(false, Value::Null).with_terminal(SessionTerminal::Completed);
+
+        let status = sub_agent_status(&metadata, &chat, &store, "session:parent", "session:child")
+            .await
+            .unwrap();
+        assert_eq!(status["status"], "completed");
+    }
+
+    #[tokio::test]
+    async fn attach_returns_last_gate_when_idle() {
+        let metadata = sqlite_metadata().await;
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        append_completed_turn(&store, "session:child", "task", "done").await;
+        let chat = LifecycleChatService::new(false, Value::Null);
+
+        let result = sub_agent_attach(&metadata, &chat, &store, "session:parent", "session:child")
+            .await
+            .unwrap();
+        assert_eq!(result["status"], "completed");
+        assert_eq!(result["text"], "done");
     }
 
     #[tokio::test]
@@ -961,15 +1611,11 @@ mod tests {
             serde_json::json!({
                 "sessionKey": "session:child",
                 "aborted": true,
-                "runId": "run-1",
             })
         );
         assert_eq!(active.abort_calls.load(Ordering::SeqCst), 1);
 
-        let completed = LifecycleChatService::new(
-            false,
-            serde_json::json!({ "aborted": false, "runId": null }),
-        );
+        let completed = LifecycleChatService::new(false, serde_json::json!({ "aborted": false }));
         assert_eq!(
             sub_agent_cancel(&metadata, &completed, "session:parent", "session:child",)
                 .await
@@ -977,7 +1623,6 @@ mod tests {
             serde_json::json!({
                 "sessionKey": "session:child",
                 "aborted": false,
-                "runId": null,
             })
         );
         assert_eq!(completed.abort_calls.load(Ordering::SeqCst), 1);
@@ -1018,7 +1663,6 @@ mod tests {
             state,
             session_store: store,
             session_metadata: metadata,
-            background_runs: RwLock::new(HashMap::new()),
         }
     }
 
@@ -1073,10 +1717,9 @@ mod tests {
     }
 
     struct CapturingChat {
-        sync_text: Arc<tokio::sync::Mutex<Option<String>>>,
-        async_text: Arc<tokio::sync::Mutex<Option<String>>>,
-        sync_called: Arc<std::sync::atomic::AtomicBool>,
-        async_called: Arc<std::sync::atomic::AtomicBool>,
+        sent_text: Arc<tokio::sync::Mutex<Option<String>>>,
+        send_called: Arc<AtomicBool>,
+        send_sync_called: Arc<AtomicBool>,
     }
 
     #[async_trait]
@@ -1086,30 +1729,24 @@ mod tests {
             request: ChatSendRequest,
             _context: ChatExecutionContext,
         ) -> ServiceResult {
-            self.async_called.store(true, Ordering::SeqCst);
+            self.send_called.store(true, Ordering::SeqCst);
             let text = match request.message {
                 chelix_service_traits::ChatSendMessage::Text(text) => text,
                 chelix_service_traits::ChatSendMessage::Content(_) => {
                     return Err("content messages are not used by this test".into());
                 },
             };
-            *self.async_text.lock().await = Some(text);
-            Ok(serde_json::json!({ "runId": "run-test" }))
+            *self.sent_text.lock().await = Some(text);
+            Ok(serde_json::json!({ "ok": true }))
         }
 
         async fn send_sync(
             &self,
-            request: ChatSendSyncRequest,
+            _request: ChatSendSyncRequest,
             _context: ChatExecutionContext,
         ) -> ServiceResult {
-            self.sync_called.store(true, Ordering::SeqCst);
-            *self.sync_text.lock().await = Some(request.text);
-            Ok(serde_json::json!({
-                "text": "done",
-                "inputTokens": 1,
-                "outputTokens": 1,
-                "durationMs": 1,
-            }))
+            self.send_sync_called.store(true, Ordering::SeqCst);
+            Err("send_sync must not be used by sub_agent run".into())
         }
 
         async fn abort(&self, _params: Value) -> ServiceResult {
@@ -1162,6 +1799,20 @@ mod tests {
 
         async fn active(&self, _params: Value) -> ServiceResult {
             Ok(serde_json::json!({ "active": false }))
+        }
+
+        async fn wait_for_session_gate(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
+            Ok(Some(SessionTerminal::Completed))
+        }
+
+        async fn session_terminal(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
+            Ok(Some(SessionTerminal::Completed))
         }
     }
 
@@ -1235,10 +1886,9 @@ mod tests {
         let agents = badge_test_agents();
         let model: Arc<dyn chelix_service_traits::ModelService> = Arc::new(AcceptProviderModel);
         let chat = Arc::new(CapturingChat {
-            sync_text: Arc::new(tokio::sync::Mutex::new(None)),
-            async_text: Arc::new(tokio::sync::Mutex::new(None)),
-            sync_called: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            async_called: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            sent_text: Arc::new(tokio::sync::Mutex::new(None)),
+            send_called: Arc::new(AtomicBool::new(false)),
+            send_sync_called: Arc::new(AtomicBool::new(false)),
         });
         let services = crate::services::GatewayServices::noop()
             .with_agents_config(Arc::clone(&agents))
@@ -1249,9 +1899,7 @@ mod tests {
             state,
             session_store: Arc::clone(&store),
             session_metadata: Arc::clone(&metadata),
-            background_runs: RwLock::new(HashMap::new()),
         };
-        // Blocking with badge enabled uses the sender name, not the target name.
         runtime
             .run(
                 "session:parent",
@@ -1263,10 +1911,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            chat.sync_text.lock().await.as_deref(),
+            chat.sent_text.lock().await.as_deref(),
             Some("[From the \"Coder\" agent]\n\nDo work")
         );
-        // Background with badge enabled.
+        assert!(chat.send_called.load(Ordering::SeqCst));
+        assert!(!chat.send_sync_called.load(Ordering::SeqCst));
         runtime
             .run(
                 "session:parent",
@@ -1278,10 +1927,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            chat.async_text.lock().await.as_deref(),
+            chat.sent_text.lock().await.as_deref(),
             Some("[From the \"Coder\" agent]\n\nDo work")
         );
-        // Badge disabled sends the raw task even though the target enables it.
         runtime
             .run(
                 "session:parent",
@@ -1292,8 +1940,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(chat.sync_text.lock().await.as_deref(), Some("Do work"));
-        // No sender sends the raw task.
+        assert_eq!(chat.sent_text.lock().await.as_deref(), Some("Do work"));
         runtime
             .run(
                 "session:parent",
@@ -1304,14 +1951,13 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(chat.sync_text.lock().await.as_deref(), Some("Do work"));
-        // Unknown sender fails before chat and before creating a child.
+        assert_eq!(chat.sent_text.lock().await.as_deref(), Some("Do work"));
         let children_before = metadata
             .list_children_result("session:parent")
             .await
             .unwrap()
             .len();
-        chat.sync_called.store(false, Ordering::SeqCst);
+        chat.send_called.store(false, Ordering::SeqCst);
         let error = runtime
             .run(
                 "session:parent",
@@ -1323,12 +1969,139 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("unknown sender agent"));
-        assert!(!chat.sync_called.load(Ordering::SeqCst));
+        assert!(!chat.send_called.load(Ordering::SeqCst));
         let children_after = metadata
             .list_children_result("session:parent")
             .await
             .unwrap()
             .len();
         assert_eq!(children_before, children_after);
+        assert!(!chat.send_sync_called.load(Ordering::SeqCst));
+    }
+
+    struct WaitingChat {
+        active: AtomicBool,
+        release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    }
+
+    #[async_trait]
+    impl ChatService for WaitingChat {
+        async fn send(
+            &self,
+            _request: ChatSendRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("send is not used by this test service".into())
+        }
+
+        async fn send_sync(
+            &self,
+            _request: ChatSendSyncRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("send_sync is not used by this test service".into())
+        }
+
+        async fn abort(&self, _params: Value) -> ServiceResult {
+            Err("abort is not used by this test".into())
+        }
+
+        async fn history(&self, _params: Value) -> ServiceResult {
+            Err("history is not used by this test".into())
+        }
+
+        async fn inject(&self, _params: Value) -> ServiceResult {
+            Err("inject is not used by this test".into())
+        }
+
+        async fn clear(&self, _params: Value) -> ServiceResult {
+            Err("clear is not used by this test".into())
+        }
+
+        async fn compact(
+            &self,
+            _request: ChatCompactRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("compact is not used by this test".into())
+        }
+
+        async fn context(
+            &self,
+            _request: ChatContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("context is not used by this test".into())
+        }
+
+        async fn raw_prompt(
+            &self,
+            _request: ChatRawPromptRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("raw_prompt is not used by this test".into())
+        }
+
+        async fn full_context(
+            &self,
+            _request: ChatFullContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("full_context is not used by this test".into())
+        }
+
+        async fn active(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "active": self.active.load(Ordering::SeqCst) }))
+        }
+
+        async fn wait_for_session_gate(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
+            if let Some(release) = self.release.lock().await.take() {
+                let _ = release.await;
+            }
+            self.active.store(false, Ordering::SeqCst);
+            Ok(Some(SessionTerminal::Completed))
+        }
+
+        async fn session_terminal(
+            &self,
+            _session_key: &str,
+        ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
+            if self.active.load(Ordering::SeqCst) {
+                Ok(None)
+            } else {
+                Ok(Some(SessionTerminal::Completed))
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn attach_waits_for_the_current_execution() {
+        let metadata = sqlite_metadata().await;
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(dir.path().to_path_buf());
+        append_completed_turn(&store, "session:child", "task", "attached final").await;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let chat = WaitingChat {
+            active: AtomicBool::new(true),
+            release: tokio::sync::Mutex::new(Some(rx)),
+        };
+        let attach = sub_agent_attach(&metadata, &chat, &store, "session:parent", "session:child");
+        tokio::pin!(attach);
+        tokio::select! {
+            biased;
+            result = &mut attach => {
+                panic!("attach returned before the current execution finished: {result:?}");
+            },
+            () = tokio::task::yield_now() => {}
+        }
+        tx.send(()).expect("attach wait is subscribed");
+        let result = attach.await.unwrap();
+        assert_eq!(result["status"], "completed");
+        assert_eq!(result["text"], "attached final");
     }
 }

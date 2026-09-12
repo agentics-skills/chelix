@@ -48,6 +48,10 @@ pub enum SubAgentRequest {
         parent_session_key: String,
         session_key: String,
     },
+    Attach {
+        parent_session_key: String,
+        session_key: String,
+    },
     Cancel {
         parent_session_key: String,
         session_key: String,
@@ -63,6 +67,7 @@ impl SubAgentRequest {
             Self::Status { .. } => "status",
             Self::List { .. } => "list",
             Self::Result { .. } => "result",
+            Self::Attach { .. } => "attach",
             Self::Cancel { .. } => "cancel",
         }
     }
@@ -89,6 +94,7 @@ enum SubAgentAction {
     Status,
     List,
     Result,
+    Attach,
     Cancel,
 }
 
@@ -100,6 +106,7 @@ impl SubAgentAction {
             "status" => Ok(Self::Status),
             "list" => Ok(Self::List),
             "result" => Ok(Self::Result),
+            "attach" => Ok(Self::Attach),
             "cancel" => Ok(Self::Cancel),
             _ => Err(Error::message(format!(
                 "unsupported sub_agent action: {value}"
@@ -111,7 +118,7 @@ impl SubAgentAction {
         match self {
             Self::Explore | Self::List => &[],
             Self::Run => &["agent_id", "task", "mode"],
-            Self::Status | Self::Result | Self::Cancel => &["session_key"],
+            Self::Status | Self::Result | Self::Attach | Self::Cancel => &["session_key"],
         }
     }
 }
@@ -193,7 +200,10 @@ fn validate_parameters(params: &Value) -> crate::Result<SubAgentAction> {
                 )));
             }
         },
-        SubAgentAction::Status | SubAgentAction::Result | SubAgentAction::Cancel => {
+        SubAgentAction::Status
+        | SubAgentAction::Result
+        | SubAgentAction::Attach
+        | SubAgentAction::Cancel => {
             required_string(payload, "session_key")?;
         },
     }
@@ -249,6 +259,10 @@ fn parse_request(
             parent_session_key: parent_session_key(context)?,
         }),
         SubAgentAction::Result => Ok(SubAgentRequest::Result {
+            parent_session_key: parent_session_key(context)?,
+            session_key: required_string(payload, "session_key")?.to_string(),
+        }),
+        SubAgentAction::Attach => Ok(SubAgentRequest::Attach {
             parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
         }),
@@ -349,7 +363,7 @@ impl AgentTool for SubAgentTool {
                             "properties": {
                                 "result": {
                                     "type": "object",
-                                    "description": "Read a completed background result.",
+                                    "description": "Read the current session result.",
                                     "additionalProperties": false,
                                     "properties": {
                                         "session_key": { "type": "string", "minLength": 1 }
@@ -358,6 +372,22 @@ impl AgentTool for SubAgentTool {
                                 }
                             },
                             "required": ["result"]
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "attach": {
+                                    "type": "object",
+                                    "description": "Join the current session execution and wait for the next final gate.",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "session_key": { "type": "string", "minLength": 1 }
+                                    },
+                                    "required": ["session_key"]
+                                }
+                            },
+                            "required": ["attach"]
                         },
                         {
                             "type": "object",
@@ -469,6 +499,13 @@ mod tests {
             (
                 serde_json::json!({"action": {"result": {"session_key": "session:child"}}}),
                 SubAgentRequest::Result {
+                    parent_session_key: "session:parent".into(),
+                    session_key: "session:child".into(),
+                },
+            ),
+            (
+                serde_json::json!({"action": {"attach": {"session_key": "session:child"}}}),
+                SubAgentRequest::Attach {
                     parent_session_key: "session:parent".into(),
                     session_key: "session:child".into(),
                 },

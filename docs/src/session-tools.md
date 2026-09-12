@@ -223,14 +223,15 @@ When no policy is configured, all sessions are visible and sendable.
 
 ## Coordination Patterns
 
-Use `sub_agent` for delegated work. `run` with `mode = "blocking"` returns the
-child response directly. `mode = "background"` returns a child session key for
-`status`, `result`, or `cancel`; `list` returns every direct child of the calling
-session. The parent session for `run`, `status`, `list`, `result`, and `cancel`
-comes from the typed execution context; these actions require that context.
-`explore` can execute independently. The public input accepts exactly one
-`action` with its closed parameter object, checked before invoking the action.
-See [Sub-Agent Delegation](sub-agent.md) for the action schemas.
+Use `sub_agent` for delegated work. `run` with `mode = "blocking"` waits for the
+child's next final gate. `mode = "background"` returns a child session key for
+`status`, `result`, `attach`, or `cancel`; `list` returns every direct child of
+the calling session. The parent session for `run`, `status`, `list`, `result`,
+`attach`, and `cancel` comes from the typed execution context; these actions
+require that context. `explore` can execute independently. The public input
+accepts exactly one `action` with its closed parameter object, checked before
+invoking the action. See [Sub-Agent Delegation](sub-agent.md) for the action
+schemas.
 
 Use `toolChoice` as a top-level request parameter for `chat.send` and
 `chat.send_sync`, or in a `cron` `agentTurn` payload, to control provider-level
@@ -282,10 +283,10 @@ Common coordinator flow:
 ### Delegated Child Sessions
 
 Use [`sub_agent`](sub-agent.md) to delegate a bounded task to a persisted direct
-child session. Blocking mode returns the child response from the `run` call.
-Background mode returns a child session key and run ID; use `status`, `result`,
-or `cancel` only from the direct parent session. `list` returns that parent's
-direct children.
+child session. Blocking mode waits for the child's next final gate. Background
+mode returns a child session key; use `status`, `result`, `attach`, or `cancel`
+only from the direct parent session. `list` returns that parent's direct
+children.
 
 The child stores its direct parent, selected agent, prompt profile, and resolved
 sandbox owner. General session visibility and messaging remain controlled by the

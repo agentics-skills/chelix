@@ -99,6 +99,9 @@ pub enum ToolLifecycleUpdate {
     },
 }
 
+/// Canonical tool-lifecycle reason emitted when the owner stops the agent run.
+pub const AGENT_RUN_CANCELLED_REASON: &str = "Stopped by user.";
+
 impl ToolLifecycleUpdate {
     #[must_use]
     pub const fn stage(&self) -> ToolLifecycleStage {
@@ -114,6 +117,14 @@ impl ToolLifecycleUpdate {
             Self::Rejected { .. } => ToolLifecycleStage::Rejected,
             Self::Cancelled { .. } => ToolLifecycleStage::Cancelled,
         }
+    }
+
+    #[must_use]
+    pub fn is_user_stop(&self) -> bool {
+        matches!(
+            self,
+            Self::Cancelled { reason, .. } if reason == AGENT_RUN_CANCELLED_REASON
+        )
     }
 }
 
@@ -257,5 +268,19 @@ mod tests {
             Some(&serde_json::json!({"command": "sleep 10"}))
         );
         Ok(())
+    }
+
+    #[test]
+    fn cancelled_update_detects_only_user_stop_reason() {
+        let user_stop = ToolLifecycleUpdate::Cancelled {
+            arguments: None,
+            reason: AGENT_RUN_CANCELLED_REASON.to_owned(),
+        };
+        let provider_retry = ToolLifecycleUpdate::Cancelled {
+            arguments: None,
+            reason: "provider stream failed: rate limited".to_owned(),
+        };
+        assert!(user_stop.is_user_stop());
+        assert!(!provider_retry.is_user_stop());
     }
 }

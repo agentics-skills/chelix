@@ -1,11 +1,15 @@
 # Sub-Agent Delegation
 
-`sub_agent` delegates work to persisted direct-child sessions. It has six
-actions: `explore`, `run`, `status`, `list`, `result`, and `cancel`.
+`sub_agent` delegates work to persisted direct-child sessions. It has seven
+actions: `explore`, `run`, `status`, `list`, `result`, `attach`, and `cancel`.
 
 The root object requires `action`. `action` must contain exactly one action name
 and its parameter object. Unknown fields are rejected. No parameter has a
 default value.
+
+The public identifier for a child is only `sessionKey`. `status` is the current
+session state. A new prompt makes the session `running`; the next final gate
+becomes the current result.
 
 ## Explore
 
@@ -57,22 +61,22 @@ first user message is the exact `task` value, prefixed with
 `prepend_sender_badge = true`. Normal tool-policy layers control
 its access to the shared tool registry.
 
-A blocking response contains:
+Both modes start the child the same way. A queued or rejected start is an
+error. Stopping the parent session does not stop the child.
+
+A blocking response waits for the child's next final gate and contains:
 
 - `sessionKey`;
 - `agentId`;
 - `mode`;
-- `text`;
-- `inputTokens`;
-- `outputTokens`;
-- `durationMs`.
+- `status`: `completed` or `cancelled`;
+- `text` when `status` is `completed`.
 
-A background response contains:
+A background response returns immediately and contains:
 
 - `sessionKey`;
 - `agentId`;
 - `mode`;
-- `runId`;
 - `status: "running"`.
 
 ## Status
@@ -89,8 +93,7 @@ A background response contains:
 
 The target must be a direct child of the calling session. The response contains
 `sessionKey`, `agentId`, `label`, `status`, `messageCount`, `createdAt`, and
-`updatedAt`. `status` is `running` while the chat service reports an active run;
-otherwise it is `idle`.
+`updatedAt`. `status` is `running`, `cancelled`, `completed`, or `idle`.
 
 ## List
 
@@ -117,10 +120,33 @@ session. Each entry has the status response fields.
 }
 ```
 
-`result` accepts only a completed background run owned by the calling session.
-It returns `sessionKey`, `agentId`, and the final assistant `text` from the
-tracked run. A running child is an error. Blocking output is returned directly
-by `run`.
+`result` accepts a direct child of the calling session in any mode. It reads
+the current session state:
+
+- `running` while the child is executing;
+- `cancelled` after a user stop or `cancel`;
+- `completed` with the last final-gate assistant `text`;
+- `idle` when the child has no current final gate.
+
+A new prompt makes the previous final gate no longer current because the
+session is `running` again.
+
+## Attach
+
+```json
+{
+  "action": {
+    "attach": {
+      "session_key": "session:<uuid>"
+    }
+  }
+}
+```
+
+`attach` accepts a direct child of the calling session. It joins the current
+execution of that session. If the child is already finished, it returns the
+last final gate immediately. If the child is executing, it waits for the next
+final gate and returns that result. The response shape matches `result`.
 
 ## Cancel
 
@@ -134,9 +160,10 @@ by `run`.
 }
 ```
 
-`cancel` accepts only a direct child of the calling session. It aborts the
-child's background chat run without deleting the session or its messages. The
-response contains `sessionKey`, `aborted`, and `runId`.
+`cancel` accepts only a direct child of the calling session. It stops the
+child's current execution without deleting the session or its messages. The
+response contains `sessionKey` and `aborted`. UI Stop on that session does the
+same thing.
 
 ## Prompt Profile
 
@@ -153,7 +180,6 @@ shared container.
 
 ## Metrics
 
-Delegated runs emit:
-
-- `chelix_sub_agent_runs_total{mode,status}`;
-- `chelix_sub_agent_run_duration_seconds{mode}`.
+Delegated runs emit `chelix_sub_agent_runs_total{mode,status}` when a run
+starts. Blocking waits also emit that counter for the terminal status and
+`chelix_sub_agent_run_duration_seconds{mode}` for the wait.

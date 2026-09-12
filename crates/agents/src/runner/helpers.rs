@@ -28,7 +28,7 @@ use crate::{
 // ── Constants ───────────────────────────────────────────────────────────
 
 pub(crate) const AUTO_COMPACTION_RATIO: usize = 85;
-pub(crate) const AGENT_RUN_CANCELLED_REASON: &str = "Stopped by user.";
+pub(crate) use chelix_common::tool_lifecycle::AGENT_RUN_CANCELLED_REASON;
 
 pub(crate) const MALFORMED_TOOL_RETRY_PROMPT: &str = "Your tool call was malformed. Retry with exact format:\n\
      ```tool_call\n{\"tool\": \"name\", \"arguments\": {...}}\n```";
