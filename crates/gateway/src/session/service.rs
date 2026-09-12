@@ -153,6 +153,12 @@ impl LiveSessionService {
         self
     }
 
+    #[cfg(test)]
+    pub fn with_sandbox_router(mut self, sandbox_router: Arc<SandboxRouter>) -> Self {
+        self.sandbox_router = sandbox_router;
+        self
+    }
+
     pub fn with_voice_persona_store(
         mut self,
         store: Arc<crate::voice_persona::VoicePersonaStore>,

@@ -273,6 +273,21 @@ async fn cleanup_for_non_owner_does_not_call_backend_cleanup() {
 }
 
 #[tokio::test]
+async fn cleanup_owner_sandbox_does_not_consult_resolver() {
+    let backend = Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
+    let routed_backend: Arc<dyn Sandbox> = backend.clone();
+    let router = SandboxRouter::with_backend(
+        SandboxConfig::default(),
+        routed_backend,
+        failing_owner_resolver(),
+    )
+    .unwrap();
+
+    router.cleanup_owner_sandbox("session:owner").await.unwrap();
+    assert_eq!(backend.cleanup_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn test_resolve_image_default() {
     let config = SandboxConfig::default();
     let router = router_with_real_backend(config);

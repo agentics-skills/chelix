@@ -237,7 +237,10 @@ impl LiveSessionService {
         if let Err(error) = self.store.clear(key).await {
             errors.push(format!("session '{key}' history cleanup: {error}"));
         }
-        if let Err(error) = self.sandbox_router.cleanup_session(key).await {
+        let owner_key = entry.sandbox_owner_key.as_deref().unwrap_or(key);
+        if key == owner_key
+            && let Err(error) = self.sandbox_router.cleanup_owner_sandbox(owner_key).await
+        {
             errors.push(format!("session '{key}' sandbox cleanup: {error}"));
         }
         if let Some(state_store) = self.state_store.as_ref()
