@@ -228,14 +228,6 @@ impl PartialModelMetadata {
         ensure_positive(max_input_tokens, "max_input_tokens")?;
         ensure_positive(max_output_tokens, "max_output_tokens")?;
 
-        if max_input_tokens.saturating_add(max_output_tokens) > context_length {
-            return Err(ModelMetadataError::TokenLimitsExceedContext {
-                context_length,
-                max_input_tokens,
-                max_output_tokens,
-            });
-        }
-
         let input_modalities = required(self.input_modalities, "input_modalities")?;
         let output_modalities = required(self.output_modalities, "output_modalities")?;
         ensure_non_empty_unique(&input_modalities, "input_modalities")?;
@@ -328,14 +320,6 @@ pub enum ModelMetadataError {
     MissingField(&'static str),
     #[error("model metadata field `{0}` must be greater than zero")]
     ZeroValue(&'static str),
-    #[error(
-        "max_input_tokens ({max_input_tokens}) + max_output_tokens ({max_output_tokens}) exceeds context_length ({context_length})"
-    )]
-    TokenLimitsExceedContext {
-        context_length: u32,
-        max_input_tokens: u32,
-        max_output_tokens: u32,
-    },
     #[error("model metadata field `{0}` must not be empty")]
     EmptyList(&'static str),
     #[error("model metadata field `{0}` contains duplicate values")]
@@ -467,6 +451,18 @@ mod tests {
     }
 
     #[test]
+    fn resolve_accepts_independent_token_limits() {
+        let mut metadata = complete_partial();
+        metadata.context_length = Some(1_000_000);
+        metadata.max_input_tokens = Some(1_000_000);
+        metadata.max_output_tokens = Some(100_000_000);
+        let resolved = metadata.resolve().unwrap();
+        assert_eq!(resolved.context_length, 1_000_000);
+        assert_eq!(resolved.max_input_tokens, 1_000_000);
+        assert_eq!(resolved.max_output_tokens, 100_000_000);
+    }
+
+    #[test]
     fn resolve_rejects_invalid_metadata() {
         let cases = [
             (
@@ -480,18 +476,6 @@ mod tests {
                     metadata
                 },
                 ModelMetadataError::EmptyList("input_modalities"),
-            ),
-            (
-                {
-                    let mut metadata = complete_partial();
-                    metadata.context_length = Some(399_999);
-                    metadata
-                },
-                ModelMetadataError::TokenLimitsExceedContext {
-                    context_length: 399_999,
-                    max_input_tokens: 272_000,
-                    max_output_tokens: 128_000,
-                },
             ),
             (
                 {

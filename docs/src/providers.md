@@ -44,7 +44,6 @@ is sent as `reasoning.encrypted_content`.
 ### Value Validity Criteria
 
 - `context_length`, `max_input_tokens`, `max_output_tokens` — greater than zero
-- `max_input_tokens + max_output_tokens` does not exceed `context_length`
 - `input_modalities`, `output_modalities` — non-empty, without duplicates
 - `reasoning_supported_efforts` — a non-empty array without empty strings
 - `reasoning_include` — without duplicates
