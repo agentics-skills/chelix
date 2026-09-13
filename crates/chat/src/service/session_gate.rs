@@ -45,6 +45,14 @@ impl SessionGateRegistry {
         self.last_terminal.read().await.get(session_key).copied()
     }
 
+    pub(crate) fn subscribe(&self) -> watch::Receiver<u64> {
+        self.version.subscribe()
+    }
+
+    pub(crate) fn notify(&self) {
+        self.version.send_modify(|version| *version += 1);
+    }
+
     pub(crate) async fn wait_for_gate<F, Fut>(
         &self,
         session_key: &str,

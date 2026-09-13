@@ -1212,6 +1212,7 @@ impl LiveChatService {
                 runs_by_session.remove(&session_key_clone);
             }
             drop(runs_by_session);
+            session_gates.notify();
             active_tool_invocations
                 .write()
                 .await

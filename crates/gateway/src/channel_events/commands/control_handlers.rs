@@ -4,6 +4,7 @@ use {
     chelix_channels::{ChannelReplyTarget, Error as ChannelError, Result as ChannelResult},
     chelix_common::{ModelOverride, ReasoningEffort},
     chelix_sessions::metadata::SqliteSessionMetadata,
+    tracing::{error, info},
 };
 
 use crate::{
@@ -414,20 +415,28 @@ pub(in crate::channel_events) async fn handle_stop(
     session_key: &str,
 ) -> ChannelResult<String> {
     let chat = state.chat();
-    let params = serde_json::json!({ "sessionKey": session_key });
-    match chat.abort(params).await {
-        Ok(res) => {
-            let aborted = res
-                .get("aborted")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if aborted {
-                Ok("Stopped.".to_string())
-            } else {
-                Ok("Nothing to stop.".to_string())
-            }
-        },
-        Err(e) => Err(ChannelError::external("abort", e)),
+    let active = chat
+        .active(serde_json::json!({ "sessionKey": session_key }))
+        .await
+        .map_err(|error| ChannelError::external("active", error))?;
+    let is_active = active
+        .get("active")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let session_key = session_key.to_string();
+    info!(session_key, "channel stop: aborting session in background");
+    tokio::spawn(async move {
+        if let Err(error) = chat
+            .abort(serde_json::json!({ "sessionKey": session_key }))
+            .await
+        {
+            error!(session_key, %error, "chat.abort after channel stop failed");
+        }
+    });
+    if is_active {
+        Ok("Stopped.".to_string())
+    } else {
+        Ok("Nothing to stop.".to_string())
     }
 }
 
