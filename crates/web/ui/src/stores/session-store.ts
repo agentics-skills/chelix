@@ -30,7 +30,6 @@ interface NormalizedSessionMeta {
 	agentId: string;
 	externalAgentKind: string | null;
 	externalSessionId: string | null;
-	mcpDisabled: boolean | undefined;
 	archived: boolean | undefined;
 	activeChannel: string | undefined;
 	version: number;
@@ -75,7 +74,6 @@ function normalizeSessionMeta(
 		agentId: stringValue(serverData.agent_id),
 		externalAgentKind: firstNonEmptyString([serverData.external_agent_kind, serverData.externalAgentKind]),
 		externalSessionId: firstNonEmptyString([serverData.externalSessionId]),
-		mcpDisabled: serverData.mcpDisabled,
 		archived: serverData.archived,
 		activeChannel: serverData.activeChannel,
 		version: numberValue(serverData.version),
@@ -110,7 +108,6 @@ export class Session {
 	agent_id: string;
 	external_agent_kind: string | null;
 	externalSessionId: string | null;
-	mcpDisabled: boolean | undefined;
 	archived: boolean | undefined;
 	activeChannel: string | undefined;
 	version: number;
@@ -149,7 +146,6 @@ export class Session {
 		this.agent_id = normalized.agentId;
 		this.external_agent_kind = normalized.externalAgentKind;
 		this.externalSessionId = normalized.externalSessionId;
-		this.mcpDisabled = normalized.mcpDisabled;
 		this.archived = normalized.archived;
 		this.activeChannel = normalized.activeChannel;
 		this.version = normalized.version;
@@ -199,7 +195,6 @@ export class Session {
 		this.agent_id = normalized.agentId;
 		this.external_agent_kind = normalized.externalAgentKind;
 		this.externalSessionId = normalized.externalSessionId;
-		this.mcpDisabled = normalized.mcpDisabled;
 		this.archived = normalized.archived;
 		this.activeChannel = normalized.activeChannel;
 		this.updateBadge();
@@ -241,7 +236,6 @@ export class Session {
 			activeChannel: this.activeChannel,
 			parentSessionKey: this.parentSessionKey,
 			forkPoint: this.forkPoint,
-			mcpDisabled: this.mcpDisabled,
 			preview: this.preview,
 			archived: this.archived,
 			agent_id: this.agent_id,

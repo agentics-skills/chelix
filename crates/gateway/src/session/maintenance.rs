@@ -423,12 +423,6 @@ impl LiveSessionService {
                 .await
                 .map_err(ServiceError::message)?;
         }
-        if parent.mcp_disabled.is_some() {
-            self.metadata
-                .set_mcp_disabled(&new_key, parent.mcp_disabled)
-                .await
-                .map_err(ServiceError::message)?;
-        }
 
         self.metadata
             .set_parent(&new_key, Some(parent_key), Some(fork.fork_point))

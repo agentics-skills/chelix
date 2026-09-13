@@ -726,10 +726,6 @@ impl LiveChatService {
                 "chat.send: failed to resolve agent runtime limits"
             ),
         }
-        let mcp_disabled = session_entry
-            .as_ref()
-            .and_then(|entry| entry.mcp_disabled)
-            .unwrap_or(false);
         info!(
             session = %session_key,
             client_seq = ?client_seq,
@@ -755,7 +751,6 @@ impl LiveChatService {
         info!(
             session = %session_key,
             agent_id = %session_agent_id,
-            mcp_disabled,
             has_project_context = project_context.is_some(),
             client_seq = ?client_seq,
             "chat.send: runtime context built"
@@ -1005,7 +1000,6 @@ impl LiveChatService {
                         accept_language.clone(),
                         conn_id.clone(),
                         Some(&session_store),
-                        mcp_disabled,
                         client_seq,
                         Some(Arc::clone(&active_tool_invocations)),
                         Some(Arc::clone(&active_partial_assistant)),

@@ -36,7 +36,6 @@ pub struct SessionEntry {
     pub parent_session_key: Option<String>,
     pub sandbox_owner_key: Option<String>,
     pub fork_point: Option<u32>,
-    pub mcp_disabled: Option<bool>,
     pub preview: Option<String>,
     pub agent_id: Option<String>,
     pub prompt_profile: PromptProfile,
@@ -127,7 +126,6 @@ pub struct SessionMetadataPatch {
     pub archived: Option<bool>,
     pub project_id: Option<Option<String>>,
     pub worktree_branch: Option<Option<String>>,
-    pub mcp_disabled: Option<Option<bool>>,
     pub parent_session_key: Option<Option<String>>,
 }
 
@@ -139,7 +137,6 @@ impl SessionMetadataPatch {
             && self.archived.is_none()
             && self.project_id.is_none()
             && self.worktree_branch.is_none()
-            && self.mcp_disabled.is_none()
             && self.parent_session_key.is_none()
     }
 }
@@ -204,7 +201,6 @@ struct SessionRow {
     parent_session_key: Option<String>,
     sandbox_owner_key: Option<String>,
     fork_point: Option<i32>,
-    mcp_disabled: Option<i32>,
     preview: Option<String>,
     agent_id: Option<String>,
     prompt_profile: PromptProfile,
@@ -238,7 +234,6 @@ impl TryFrom<SessionRow> for SessionEntry {
             parent_session_key: row.parent_session_key,
             sandbox_owner_key: row.sandbox_owner_key,
             fork_point: row.fork_point.map(|value| value as u32),
-            mcp_disabled: row.mcp_disabled.map(|value| value != 0),
             preview: row.preview,
             agent_id: row.agent_id,
             prompt_profile: row.prompt_profile,
@@ -309,7 +304,6 @@ impl SqliteSessionMetadata {
                 parent_session_key      TEXT,
                 sandbox_owner_key       TEXT,
                 fork_point              INTEGER,
-                mcp_disabled            INTEGER,
                 preview                 TEXT,
                 agent_id                TEXT,
                 prompt_profile          TEXT NOT NULL DEFAULT 'chat',
@@ -736,7 +730,6 @@ impl SqliteSessionMetadata {
         let archived_changed = patch.archived.is_some();
         let project_changed = patch.project_id.is_some();
         let worktree_changed = patch.worktree_branch.is_some();
-        let mcp_changed = patch.mcp_disabled.is_some();
         let parent_changed = patch.parent_session_key.is_some();
         let model = patch
             .model_reasoning
@@ -752,10 +745,6 @@ impl SqliteSessionMetadata {
             .worktree_branch
             .as_ref()
             .and_then(|value| value.as_deref());
-        let mcp_disabled = patch
-            .mcp_disabled
-            .as_ref()
-            .and_then(|value| value.map(i32::from));
         let parent_session_key = patch
             .parent_session_key
             .as_ref()
@@ -768,7 +757,6 @@ impl SqliteSessionMetadata {
                    archived = CASE WHEN ? THEN ? ELSE archived END,
                    project_id = CASE WHEN ? THEN ? ELSE project_id END,
                    worktree_branch = CASE WHEN ? THEN ? ELSE worktree_branch END,
-                   mcp_disabled = CASE WHEN ? THEN ? ELSE mcp_disabled END,
                    parent_session_key = CASE WHEN ? THEN ? ELSE parent_session_key END,
                    fork_point = CASE WHEN ? THEN NULL ELSE fork_point END,
                    updated_at = ?,
@@ -787,8 +775,6 @@ impl SqliteSessionMetadata {
         .bind(project_id)
         .bind(worktree_changed)
         .bind(worktree_branch)
-        .bind(mcp_changed)
-        .bind(mcp_disabled)
         .bind(parent_changed)
         .bind(parent_session_key)
         .bind(parent_changed)
@@ -1250,23 +1236,6 @@ impl SqliteSessionMetadata {
         } else {
             0_i32
         })
-        .bind(now)
-        .bind(key)
-        .execute(&self.pool)
-        .await?;
-        require_existing_row(key, result.rows_affected())?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(())
-    }
-
-    pub async fn set_mcp_disabled(&self, key: &str, disabled: Option<bool>) -> Result<()> {
-        let now = now_ms();
-        let result = sqlx::query(
-            "UPDATE sessions SET mcp_disabled = ?, updated_at = ?, version = version + 1 WHERE key = ?",
-        )
-        .bind(disabled.map(|value| if value { 1_i32 } else { 0_i32 }))
         .bind(now)
         .bind(key)
         .execute(&self.pool)

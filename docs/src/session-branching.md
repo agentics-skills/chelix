@@ -89,7 +89,6 @@ When forking, the new session inherits:
 | Model selection             | Sandbox settings |
 | Project assignment          | Channel binding  |
 | Agent ID                    |                  |
-| MCP disabled flag           |                  |
 | Node assignment             |                  |
 
 ## Parent-Child Relationships

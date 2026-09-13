@@ -489,33 +489,6 @@ export function maybeRefreshFullContext(): void {
 	if (modal && !modal.classList.contains("hidden")) refreshFullContextPanel();
 }
 
-// ── MCP toggle ───────────────────────────────────────────────
-export function updateMcpToggleUI(enabled: boolean): void {
-	const btn = S.$("mcpToggleBtn") as HTMLElement | null;
-	const label = S.$("mcpToggleLabel") as HTMLElement | null;
-	if (!btn) return;
-	if (enabled) {
-		btn.style.color = "var(--ok)";
-		btn.style.borderColor = "var(--ok)";
-		if (label) label.textContent = "MCP";
-		btn.title = "MCP tools enabled \u2014 click to disable for this session";
-	} else {
-		btn.style.color = "var(--muted)";
-		btn.style.borderColor = "var(--border)";
-		if (label) label.textContent = "MCP off";
-		btn.title = "MCP tools disabled \u2014 click to enable for this session";
-	}
-}
-
-function toggleMcp(): void {
-	const label = S.$("mcpToggleLabel") as HTMLElement | null;
-	const isEnabled = label && label.textContent === "MCP";
-	const newDisabled = isEnabled;
-	sendRpc("sessions.patch", { key: S.activeSessionKey, mcpDisabled: newDisabled }).then((res) => {
-		if (res?.ok) updateMcpToggleUI(!newDisabled);
-	});
-}
-
 interface ModelNotice {
 	id: string;
 	provider?: string;
@@ -796,7 +769,6 @@ const chatPageHTML =
 	'<div id="sessionNameMount" class="ml-auto flex items-center min-w-0"></div>' +
 	'<div id="sessionHeaderToolbarMount" class="flex items-center gap-1.5"></div>' +
 	'<span id="sandboxIndicator" class="text-xs border border-[var(--border)] px-2 py-1 rounded-md bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" role="status" aria-live="polite"><span class="icon icon-md icon-lock shrink-0"></span><span id="sandboxLabel">Sandbox</span></span>' +
-	'<button id="mcpToggleBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1" title="Toggle MCP tools for this session"><span class="icon icon-md icon-link shrink-0"></span><span id="mcpToggleLabel">MCP</span></button>' +
 	'<button id="chatTerminalBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Open terminal for this chat"><span class="icon icon-md icon-terminal shrink-0"></span><span>Terminal</span></button>' +
 	'<button id="debugPanelBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Show context debug info"><span class="icon icon-md icon-wrench shrink-0"></span><span id="debugPanelLabel">Debug</span></button>' +
 	'<button id="fullContextBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Show full LLM context (system prompt + history)"><span class="icon icon-md icon-document shrink-0"></span><span id="fullContextLabel">Context</span></button>' +
@@ -833,9 +805,6 @@ registerPrefix(
 
 		mountSessionHeaderControls();
 
-		const mcpToggle = S.$("mcpToggleBtn");
-		if (mcpToggle) mcpToggle.addEventListener("click", toggleMcp);
-		updateMcpToggleUI(true);
 		const terminalBtn = S.$("chatTerminalBtn");
 		terminalBtn?.classList.toggle("hidden", gon.get("terminal_enabled") !== true);
 		terminalBtn?.addEventListener("click", toggleTerminalModal);

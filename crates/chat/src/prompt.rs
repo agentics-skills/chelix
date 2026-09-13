@@ -551,15 +551,8 @@ pub(crate) fn apply_runtime_tool_filters(
     base: &chelix_agents::tool_registry::ToolRegistry,
     config: &chelix_config::ChelixConfig,
     _skills: &[chelix_skills::types::SkillMetadata],
-    mcp_disabled: bool,
     policy_context: &PolicyContext,
 ) -> chelix_agents::tool_registry::ToolRegistry {
-    let base_registry = if mcp_disabled {
-        base.clone_without_mcp()
-    } else {
-        base.clone_without(&[])
-    };
-
     let policy = resolve_effective_policy(config, policy_context);
 
     // Resolve MCP allow-list: if the agent uses Allow mode, only
@@ -574,7 +567,7 @@ pub(crate) fn apply_runtime_tool_filters(
             _ => None,
         });
 
-    base_registry.clone_allowed_entries(|name, source| {
+    base.clone_allowed_entries(|name, source| {
         if !policy.is_allowed(name) {
             return false;
         }
@@ -602,7 +595,6 @@ pub(crate) fn prepare_run_registry(
     base: &chelix_agents::tool_registry::ToolRegistry,
     config: &chelix_config::ChelixConfig,
     skills: &[chelix_skills::types::SkillMetadata],
-    mcp_disabled: bool,
     policy_context: &PolicyContext,
     tools_enabled: bool,
     agent_id: &str,
@@ -613,7 +605,7 @@ pub(crate) fn prepare_run_registry(
     history_raw: &[Value],
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
     let mut registry = if tools_enabled {
-        apply_runtime_tool_filters(base, config, skills, mcp_disabled, policy_context)
+        apply_runtime_tool_filters(base, config, skills, policy_context)
     } else {
         base.clone_without(&[])
     };
@@ -768,7 +760,6 @@ mod tests {
             &registry_with_mcp_tools(),
             &config,
             &[],
-            false,
             &unrestricted_policy_context("locked"),
         );
 
@@ -802,7 +793,6 @@ mod tests {
             &registry_with_mcp_tools(),
             &config,
             &[],
-            false,
             &unrestricted_policy_context("github-only"),
         );
 
@@ -855,7 +845,6 @@ mod tests {
             &registry_with_mcp_tools(),
             &config,
             &[],
-            false,
             &unrestricted_policy_context("preloaded"),
             true,
             "preloaded",

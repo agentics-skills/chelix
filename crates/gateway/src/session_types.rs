@@ -36,8 +36,6 @@ pub struct PatchParams {
     #[serde(default, deserialize_with = "double_option")]
     pub worktree_branch: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
-    pub mcp_disabled: Option<Option<bool>>,
-    #[serde(default, deserialize_with = "double_option")]
     pub parent_session_key: Option<Option<String>>,
 }
 
@@ -111,7 +109,6 @@ mod tests {
             "archived": true,
             "projectId": null,
             "worktreeBranch": "feature/abc",
-            "mcpDisabled": false,
             "parentSessionKey": null,
         }))
         .unwrap();
@@ -131,7 +128,6 @@ mod tests {
         assert_eq!(p.archived, Some(true));
         assert!(matches!(p.project_id, Some(None)));
         assert_eq!(p.worktree_branch, Some(Some("feature/abc".to_string())));
-        assert_eq!(p.mcp_disabled, Some(Some(false)));
         assert!(matches!(p.parent_session_key, Some(None)));
     }
 

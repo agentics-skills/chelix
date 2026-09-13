@@ -525,7 +525,6 @@ impl SessionService for LiveSessionService {
                 "activeChannel": active_channel,
                 "parentSessionKey": e.parent_session_key,
                 "forkPoint": e.fork_point,
-                "mcpDisabled": e.mcp_disabled,
                 "preview": preview,
                 "archived": e.archived,
                 "agent_id": agent_id,
@@ -620,7 +619,6 @@ impl SessionService for LiveSessionService {
                     "projectId": entry.project_id,
                     "archived": entry.archived,
                     "worktree_branch": entry.worktree_branch,
-                    "mcpDisabled": entry.mcp_disabled,
                     "parentSessionKey": entry.parent_session_key,
                     "forkPoint": entry.fork_point,
                     "agent_id": entry.agent_id,
@@ -695,7 +693,6 @@ impl SessionService for LiveSessionService {
                 "projectId": entry.project_id,
                 "archived": entry.archived,
                 "worktree_branch": entry.worktree_branch,
-                "mcpDisabled": entry.mcp_disabled,
                 "parentSessionKey": entry.parent_session_key,
                 "forkPoint": entry.fork_point,
                 "agent_id": entry.agent_id,
@@ -772,7 +769,6 @@ impl SessionService for LiveSessionService {
             worktree_branch: p
                 .worktree_branch
                 .map(|value| value.filter(|branch| !branch.is_empty())),
-            mcp_disabled: p.mcp_disabled,
             parent_session_key: p
                 .parent_session_key
                 .map(|value| value.filter(|parent| !parent.is_empty())),
@@ -794,7 +790,6 @@ impl SessionService for LiveSessionService {
             "reasoningEffort": reasoning_effort,
             "archived": entry.archived,
             "worktree_branch": entry.worktree_branch,
-            "mcpDisabled": entry.mcp_disabled,
             "parentSessionKey": entry.parent_session_key,
             "forkPoint": entry.fork_point,
             "agent_id": entry.agent_id,

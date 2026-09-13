@@ -30,7 +30,6 @@ export interface SessionMeta {
 	activeChannel?: string;
 	parentSessionKey?: string | null;
 	forkPoint?: number | null;
-	mcpDisabled?: boolean;
 	preview?: string | null;
 	archived?: boolean;
 	/** Snake_case form emitted by the server. */

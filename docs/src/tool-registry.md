@@ -28,13 +28,9 @@ registry.register_mcp(Box::new(adapter), "github".to_string());
 
 ## Filtering
 
-When MCP tools are disabled for a session, the registry can produce a filtered
-copy:
+MCP tools are removed in-place when an MCP server is resynchronized:
 
 ```rust
-// Type-safe: filters by ToolSource::Mcp variant
-let no_mcp = registry.clone_without_mcp();
-
 // Remove all MCP tools in-place (used during sync)
 let removed_count = registry.unregister_mcp();
 ```

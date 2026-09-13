@@ -124,7 +124,6 @@ fn session_entry_value(entry: &chelix_sessions::metadata::SessionEntry) -> Value
         "channelBinding": &entry.channel_binding,
         "parentSessionKey": &entry.parent_session_key,
         "forkPoint": entry.fork_point,
-        "mcpDisabled": entry.mcp_disabled,
         "preview": &entry.preview,
         "archived": entry.archived,
         "agent_id": &entry.agent_id,
