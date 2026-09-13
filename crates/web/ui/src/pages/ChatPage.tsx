@@ -28,11 +28,11 @@ import { bindReasoningToggle, unbindReasoningToggle } from "../reasoning-toggle"
 import { registerPrefix, sessionPath } from "../router";
 import { routes } from "../routes";
 import { updateSandboxUI } from "../sandbox";
-import { switchSession } from "../sessions";
+import { setSessionActiveRunId, setSessionReplying, switchSession } from "../sessions";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
 import type { ChatContextMessage, ChatFullContextPayload, PromptMemoryData } from "../types/chat";
-import { copyToClipboard } from "../ui";
+import { copyToClipboard, showToast } from "../ui";
 import { initVadButton, initVoiceInput, teardownVoiceInput } from "../voice-input";
 import {
 	chatAutoResize,
@@ -639,6 +639,12 @@ function bindChatComposer(): void {
 	S.chatSendBtn?.addEventListener("click", handleComposerSendClick);
 }
 
+const composerAbortInFlight = new Set<string>();
+
+function composerBoundToSession(btn: HTMLButtonElement, sessionKey: string): boolean {
+	return btn.dataset.mode === "stop" && btn.dataset.stopSessionKey === sessionKey;
+}
+
 function handleComposerSendClick(e: MouseEvent): void {
 	const btn = e.currentTarget as HTMLButtonElement;
 	if (btn.dataset.mode !== "stop") {
@@ -646,11 +652,26 @@ function handleComposerSendClick(e: MouseEvent): void {
 		return;
 	}
 	const sessionKey = btn.dataset.stopSessionKey || S.activeSessionKey;
+	if (!sessionKey || composerAbortInFlight.has(sessionKey)) return;
+	composerAbortInFlight.add(sessionKey);
 	btn.disabled = true;
 	btn.classList.add("is-stopping");
 	btn.title = "Stopping generation";
 	btn.setAttribute("aria-label", "Stopping generation");
-	sendRpc("chat.abort", { sessionKey }).catch(() => setComposerStopButton(true, sessionKey));
+	sendRpc("chat.abort", { sessionKey })
+		.then((res) => {
+			if (!res?.ok) {
+				showToast((res?.error as { message?: string })?.message || "Failed to stop response", "error");
+				if (composerBoundToSession(btn, sessionKey)) setComposerStopButton(true, sessionKey);
+				return;
+			}
+			setSessionActiveRunId(sessionKey, null);
+			setSessionReplying(sessionKey, false);
+			if (composerBoundToSession(btn, sessionKey)) setComposerStopButton(false);
+		})
+		.finally(() => {
+			composerAbortInFlight.delete(sessionKey);
+		});
 }
 
 function initializeChatControls(): void {

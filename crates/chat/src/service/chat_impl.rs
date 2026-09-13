@@ -7,11 +7,15 @@ use std::{
     future::Future,
     path::Path,
     sync::Arc,
+    time::Duration,
 };
 
 use {
-    async_trait::async_trait, serde_json::Value, tokio::sync::RwLock,
-    tokio_util::sync::CancellationToken, tracing::info,
+    async_trait::async_trait,
+    serde_json::Value,
+    tokio::sync::RwLock,
+    tokio_util::sync::CancellationToken,
+    tracing::{info, warn},
 };
 
 use {
@@ -134,6 +138,45 @@ where
         })),
         ChatRunOutcome::Cancelled => Err("agent run cancelled".into()),
         ChatRunOutcome::Failed => on_failed().await,
+    }
+}
+
+async fn wait_until_session_run_unmapped(
+    service: &LiveChatService,
+    session_key: &str,
+    run_id: &str,
+) {
+    let mut version = service.session_gates.subscribe();
+    let mut warned = false;
+    loop {
+        {
+            let runs_by_session = service.active_runs_by_session.read().await;
+            if runs_by_session.get(session_key).map(String::as_str) != Some(run_id) {
+                return;
+            }
+        }
+        if warned {
+            if version.changed().await.is_err() {
+                return;
+            }
+            continue;
+        }
+        tokio::select! {
+            biased;
+            result = version.changed() => {
+                if result.is_err() {
+                    return;
+                }
+            },
+            () = tokio::time::sleep(Duration::from_secs(5)) => {
+                warn!(
+                    session_key,
+                    run_id,
+                    "chat.abort still waiting for the run to unmap"
+                );
+                warned = true;
+            },
+        }
     }
 }
 
@@ -430,6 +473,7 @@ impl ChatService for LiveChatService {
             runs_by_session.remove(&session_key);
         }
         drop(runs_by_session);
+        self.session_gates.notify();
         self.active_tool_invocations
             .write()
             .await
@@ -493,6 +537,12 @@ impl ChatService for LiveChatService {
             aborted,
             "chat.abort"
         );
+
+        if let (Some(session_key), Some(run_id)) =
+            (resolved_session_key.as_deref(), resolved_run_id.as_deref())
+        {
+            wait_until_session_run_unmapped(self, session_key, run_id).await;
+        }
 
         Ok(serde_json::json!({
             "aborted": aborted,
@@ -1375,6 +1425,7 @@ mod tests {
             Arc, Mutex,
             atomic::{AtomicBool, Ordering},
         },
+        time::Duration,
     };
 
     use {
@@ -2300,6 +2351,158 @@ mod tests {
         assert_eq!(resolved_run_id.as_deref(), Some("run-1"));
         assert!(!cancelled);
         assert!(!cancellation_token.is_cancelled());
+    }
+
+    async fn unmap_session_run(service: &LiveChatService, session_key: &str, run_id: &str) {
+        service.active_runs.write().await.remove(run_id);
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .remove(session_key);
+        service.session_gates.notify();
+    }
+
+    #[tokio::test]
+    async fn abort_waits_until_the_session_run_is_unmapped() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let session_key = "session:child";
+        let run_id = "run-1";
+        let cancellation_token = CancellationToken::new();
+        service
+            .active_runs
+            .write()
+            .await
+            .insert(run_id.to_owned(), cancellation_token.clone());
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .insert(session_key.to_owned(), run_id.to_owned());
+
+        let unmap_service = service.clone();
+        let unmap_token = cancellation_token.clone();
+        let unmap = tokio::spawn(async move {
+            unmap_token.cancelled().await;
+            unmap_session_run(&unmap_service, session_key, run_id).await;
+        });
+
+        let response = service
+            .abort(serde_json::json!({ "sessionKey": session_key }))
+            .await
+            .unwrap_or_else(|error| panic!("abort should succeed: {error}"));
+        unmap
+            .await
+            .unwrap_or_else(|error| panic!("unmap task: {error}"));
+        assert_eq!(response["aborted"], serde_json::json!(true));
+        assert!(cancellation_token.is_cancelled());
+
+        let active = service
+            .active(serde_json::json!({ "sessionKey": session_key }))
+            .await
+            .unwrap_or_else(|error| panic!("chat.active should succeed: {error}"));
+        assert_eq!(active["active"], serde_json::json!(false));
+        assert!(!service.active_runs.read().await.contains_key(run_id));
+    }
+
+    #[tokio::test]
+    async fn abort_does_not_overwrite_a_terminal_run_outcome() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let session_key = "session:child";
+        let run_id = "run-1";
+        let cancellation_token = CancellationToken::new();
+        service
+            .session_gates
+            .finish_turn(session_key, SessionTerminal::Completed)
+            .await;
+        service
+            .terminal_runs
+            .write()
+            .await
+            .insert(run_id.to_owned());
+        service
+            .active_runs
+            .write()
+            .await
+            .insert(run_id.to_owned(), cancellation_token.clone());
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .insert(session_key.to_owned(), run_id.to_owned());
+
+        let abort_service = service.clone();
+        let abort = tokio::spawn(async move {
+            abort_service
+                .abort(serde_json::json!({ "sessionKey": session_key }))
+                .await
+        });
+        tokio::task::yield_now().await;
+        unmap_session_run(&service, session_key, run_id).await;
+        let response = abort
+            .await
+            .unwrap_or_else(|error| panic!("abort task: {error}"))
+            .unwrap_or_else(|error| panic!("abort should succeed: {error}"));
+        assert_eq!(response["aborted"], serde_json::json!(false));
+        assert!(!cancellation_token.is_cancelled());
+        let active = service
+            .active(serde_json::json!({ "sessionKey": session_key }))
+            .await
+            .unwrap_or_else(|error| panic!("chat.active should succeed: {error}"));
+        assert_eq!(active["active"], serde_json::json!(false));
+        assert_eq!(
+            service
+                .session_terminal(session_key)
+                .await
+                .unwrap_or_else(|error| panic!("session terminal should succeed: {error}")),
+            Some(SessionTerminal::Completed)
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_stays_pending_when_version_bumps_without_unmapping() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+            validation_test_service().await;
+        let session_key = "session:child";
+        let run_id = "run-1";
+        let cancellation_token = CancellationToken::new();
+        service
+            .active_runs
+            .write()
+            .await
+            .insert(run_id.to_owned(), cancellation_token.clone());
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .insert(session_key.to_owned(), run_id.to_owned());
+
+        let abort_service = service.clone();
+        let abort = tokio::spawn(async move {
+            abort_service
+                .abort(serde_json::json!({ "sessionKey": session_key }))
+                .await
+        });
+        cancellation_token.cancelled().await;
+        service.session_gates.notify();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(
+            !abort.is_finished(),
+            "abort must keep waiting while the session run is still mapped"
+        );
+        unmap_session_run(&service, session_key, run_id).await;
+        let response = abort
+            .await
+            .unwrap_or_else(|error| panic!("abort task: {error}"))
+            .unwrap_or_else(|error| panic!("abort should succeed: {error}"));
+        assert_eq!(response["aborted"], serde_json::json!(true));
+        let active = service
+            .active(serde_json::json!({ "sessionKey": session_key }))
+            .await
+            .unwrap_or_else(|error| panic!("chat.active should succeed: {error}"));
+        assert_eq!(active["active"], serde_json::json!(false));
     }
 
     #[tokio::test]
