@@ -1,7 +1,8 @@
 # Sub-Agent Delegation
 
-`sub_agent` delegates work to persisted direct-child sessions. It has seven
-actions: `explore`, `run`, `status`, `list`, `result`, `attach`, and `cancel`.
+`sub_agent` delegates work to persisted direct-child sessions. It has eight
+actions: `explore`, `run`, `status`, `list`, `result`, `send`, `attach`, and
+`cancel`.
 
 The root object requires `action`. `action` must contain exactly one action name
 and its parameter object. Unknown fields are rejected. No parameter has a
@@ -130,6 +131,44 @@ the current session state:
 
 A new prompt makes the previous final gate no longer current because the
 session is `running` again.
+
+## Send
+
+```json
+{
+  "action": {
+    "send": {
+      "session_key": "session:<uuid>",
+      "mode": "blocking",
+      "message": "Continue with the next step."
+    }
+  }
+}
+```
+
+`send` accepts a direct child of the calling session. It uses the same session
+status as `list`. `running` is an error:
+`sub-agent session "..." is still running; request result for the current task and wait for it to finish`.
+
+`cancelled`, `completed`, and `idle` send `message` as the next user prompt.
+`mode` is `blocking` or `background` and matches `run`. The user message
+is the exact `message` value, prefixed with `[From the "<name>" agent]`
+followed by a blank line when the sender agent has `prepend_sender_badge = true`.
+
+A blocking response waits for the child's next final gate and contains:
+
+- `sessionKey`;
+- `agentId`;
+- `mode`;
+- `status`: `completed` or `cancelled`;
+- `text` when `status` is `completed`.
+
+A background response returns immediately and contains:
+
+- `sessionKey`;
+- `agentId`;
+- `mode`;
+- `status: "running"`.
 
 ## Attach
 

@@ -84,6 +84,22 @@ impl SubAgentRuntime {
                 parent_session_key,
                 session_key,
             } => self.attach(&parent_session_key, &session_key).await,
+            SubAgentRequest::Send {
+                parent_session_key,
+                sender_agent_id,
+                session_key,
+                message,
+                mode,
+            } => {
+                self.send(
+                    &parent_session_key,
+                    sender_agent_id.as_deref(),
+                    &session_key,
+                    &message,
+                    mode,
+                )
+                .await
+            },
             SubAgentRequest::Cancel {
                 parent_session_key,
                 session_key,
@@ -234,7 +250,7 @@ impl SubAgentRuntime {
                     snapshot_from_store(self.session_store.as_ref(), &session_key, last_terminal)
                         .await?;
                 let status = snapshot.status;
-                match blocking_run_output(&session_key, &agent.id, snapshot) {
+                match blocking_run_output(&session_key, Some(agent.id.as_str()), snapshot) {
                     Ok(output) => {
                         record_run_metric(mode, status.metric_status(), started.elapsed());
                         info!(
@@ -323,6 +339,62 @@ impl SubAgentRuntime {
             session_key,
         )
         .await
+    }
+
+    #[tracing::instrument(
+        name = "sub_agent.send",
+        skip_all,
+        fields(parent_session_key, session_key, mode = mode.as_str())
+    )]
+    async fn send(
+        &self,
+        parent_session_key: &str,
+        sender_agent_id: Option<&str>,
+        session_key: &str,
+        message: &str,
+        mode: SubAgentMode,
+    ) -> chelix_tools::Result<Value> {
+        let entry =
+            owned_child_entry(&self.session_metadata, parent_session_key, session_key).await?;
+        let chat = self.state.chat();
+        let status = child_status(chat.as_ref(), self.session_store.as_ref(), session_key).await?;
+        if status == ChildStatus::Running {
+            return Err(chelix_tools::Error::message(format!(
+                "sub-agent session {session_key:?} is still running; request result for the current task and wait for it to finish"
+            )));
+        }
+
+        let sender_badge = self.sender_badge_prefix(sender_agent_id).await?;
+        let effective_message = if sender_badge.is_empty() {
+            message.to_string()
+        } else {
+            format!("{sender_badge}{message}")
+        };
+        let response = chat
+            .send(
+                ChatSendRequest::text(effective_message),
+                ChatExecutionContext::internal(SessionKey::new(session_key.to_string())),
+            )
+            .await
+            .map_err(|error| chelix_tools::Error::message(error.to_string()))?;
+        inspect_started_send(&response)?;
+        ensure_child_started(chat.as_ref(), session_key).await?;
+
+        match mode {
+            SubAgentMode::Background => Ok(serde_json::json!({
+                "sessionKey": session_key,
+                "agentId": entry.agent_id,
+                "mode": mode.as_str(),
+                "status": "running",
+            })),
+            SubAgentMode::Blocking => {
+                let last_terminal = wait_for_child(chat.as_ref(), session_key).await?;
+                let snapshot =
+                    snapshot_from_store(self.session_store.as_ref(), session_key, last_terminal)
+                        .await?;
+                blocking_run_output(session_key, entry.agent_id.as_deref(), snapshot)
+            },
+        }
     }
 
     #[tracing::instrument(
@@ -793,12 +865,12 @@ fn result_output(session_key: &str, agent_id: Option<&str>, snapshot: ChildSnaps
 
 fn blocking_run_output(
     session_key: &str,
-    agent_id: &str,
+    agent_id: Option<&str>,
     snapshot: ChildSnapshot,
 ) -> chelix_tools::Result<Value> {
     match snapshot.status {
         ChildStatus::Completed | ChildStatus::Cancelled => {
-            let mut output = result_output(session_key, Some(agent_id), snapshot);
+            let mut output = result_output(session_key, agent_id, snapshot);
             output["mode"] = Value::String(SubAgentMode::Blocking.as_str().to_string());
             Ok(output)
         },
@@ -1317,7 +1389,7 @@ mod tests {
 
     #[test]
     fn blocking_run_output_distinguishes_failed_from_missing_gate() {
-        let failed = blocking_run_output("session:child", "reviewer", ChildSnapshot {
+        let failed = blocking_run_output("session:child", Some("reviewer"), ChildSnapshot {
             status: ChildStatus::Idle,
             text: None,
             last_terminal: Some(SessionTerminal::Failed),
@@ -1326,7 +1398,7 @@ mod tests {
         assert!(failed.to_string().contains("failed"));
         assert!(!failed.to_string().contains("without a final gate"));
 
-        let missing = blocking_run_output("session:child", "reviewer", ChildSnapshot {
+        let missing = blocking_run_output("session:child", Some("reviewer"), ChildSnapshot {
             status: ChildStatus::Idle,
             text: None,
             last_terminal: None,
@@ -1353,7 +1425,7 @@ mod tests {
 
     #[test]
     fn blocking_run_output_returns_completed_text() {
-        let output = blocking_run_output("session:child", "reviewer", ChildSnapshot {
+        let output = blocking_run_output("session:child", Some("reviewer"), ChildSnapshot {
             status: ChildStatus::Completed,
             text: Some("final answer".to_string()),
             last_terminal: Some(SessionTerminal::Completed),
@@ -1666,6 +1738,22 @@ mod tests {
         }
     }
 
+    async fn build_chat_runtime(
+        chat: Arc<CapturingChat>,
+        metadata: Arc<SqliteSessionMetadata>,
+        store: Arc<SessionStore>,
+    ) -> SubAgentRuntime {
+        let services = crate::services::GatewayServices::noop()
+            .with_agents_config(badge_test_agents())
+            .with_chat(chat);
+        let state = GatewayState::new(crate::auth::resolve_auth(None, None), services);
+        SubAgentRuntime {
+            state,
+            session_store: store,
+            session_metadata: metadata,
+        }
+    }
+
     #[tokio::test]
     async fn sender_badge_uses_sender_name_when_enabled() {
         let metadata = Arc::new(sqlite_metadata().await);
@@ -1720,6 +1808,20 @@ mod tests {
         sent_text: Arc<tokio::sync::Mutex<Option<String>>>,
         send_called: Arc<AtomicBool>,
         send_sync_called: Arc<AtomicBool>,
+        active: AtomicBool,
+        last_terminal: tokio::sync::Mutex<Option<SessionTerminal>>,
+    }
+
+    impl CapturingChat {
+        fn new(active: bool, last_terminal: Option<SessionTerminal>) -> Arc<Self> {
+            Arc::new(Self {
+                sent_text: Arc::new(tokio::sync::Mutex::new(None)),
+                send_called: Arc::new(AtomicBool::new(false)),
+                send_sync_called: Arc::new(AtomicBool::new(false)),
+                active: AtomicBool::new(active),
+                last_terminal: tokio::sync::Mutex::new(last_terminal),
+            })
+        }
     }
 
     #[async_trait]
@@ -1737,6 +1839,10 @@ mod tests {
                 },
             };
             *self.sent_text.lock().await = Some(text);
+            let mut last_terminal = self.last_terminal.lock().await;
+            if last_terminal.is_none() {
+                *last_terminal = Some(SessionTerminal::Completed);
+            }
             Ok(serde_json::json!({ "ok": true }))
         }
 
@@ -1798,13 +1904,14 @@ mod tests {
         }
 
         async fn active(&self, _params: Value) -> ServiceResult {
-            Ok(serde_json::json!({ "active": false }))
+            Ok(serde_json::json!({ "active": self.active.load(Ordering::SeqCst) }))
         }
 
         async fn wait_for_session_gate(
             &self,
             _session_key: &str,
         ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
+            self.active.store(false, Ordering::SeqCst);
             Ok(Some(SessionTerminal::Completed))
         }
 
@@ -1812,7 +1919,7 @@ mod tests {
             &self,
             _session_key: &str,
         ) -> Result<Option<SessionTerminal>, chelix_service_traits::ServiceError> {
-            Ok(Some(SessionTerminal::Completed))
+            Ok(*self.last_terminal.lock().await)
         }
     }
 
@@ -1885,11 +1992,7 @@ mod tests {
         let store = Arc::new(SessionStore::new(store_dir.path().to_path_buf()));
         let agents = badge_test_agents();
         let model: Arc<dyn chelix_service_traits::ModelService> = Arc::new(AcceptProviderModel);
-        let chat = Arc::new(CapturingChat {
-            sent_text: Arc::new(tokio::sync::Mutex::new(None)),
-            send_called: Arc::new(AtomicBool::new(false)),
-            send_sync_called: Arc::new(AtomicBool::new(false)),
-        });
+        let chat = CapturingChat::new(false, Some(SessionTerminal::Completed));
         let services = crate::services::GatewayServices::noop()
             .with_agents_config(Arc::clone(&agents))
             .with_model(model)
@@ -1977,6 +2080,150 @@ mod tests {
             .len();
         assert_eq!(children_before, children_after);
         assert!(!chat.send_sync_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn send_rejects_foreign_child() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        create_parent(&metadata, "session:parent").await;
+        create_parent(&metadata, "session:other").await;
+        configure_child(&metadata, "session:foreign-child", "session:other").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let chat = CapturingChat::new(false, Some(SessionTerminal::Completed));
+        let runtime = build_chat_runtime(Arc::clone(&chat), metadata, store).await;
+        let error = runtime
+            .send(
+                "session:parent",
+                None,
+                "session:foreign-child",
+                "Next",
+                SubAgentMode::Background,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("access denied"));
+        assert!(!chat.send_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn send_rejects_running_without_chat_send() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let chat = CapturingChat::new(true, None);
+        let runtime = build_chat_runtime(Arc::clone(&chat), metadata, store).await;
+        let error = runtime
+            .send(
+                "session:parent",
+                None,
+                "session:child",
+                "Next",
+                SubAgentMode::Background,
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("still running"));
+        assert!(error.to_string().contains("request result"));
+        assert!(!chat.send_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn send_starts_turn_when_not_running() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        for last_terminal in [
+            None,
+            Some(SessionTerminal::Completed),
+            Some(SessionTerminal::Cancelled),
+        ] {
+            let chat = CapturingChat::new(false, last_terminal);
+            let runtime =
+                build_chat_runtime(Arc::clone(&chat), Arc::clone(&metadata), Arc::clone(&store))
+                    .await;
+            chat.send_called.store(false, Ordering::SeqCst);
+            runtime
+                .send(
+                    "session:parent",
+                    None,
+                    "session:child",
+                    "Next",
+                    SubAgentMode::Background,
+                )
+                .await
+                .unwrap();
+            assert!(chat.send_called.load(Ordering::SeqCst));
+            assert_eq!(chat.sent_text.lock().await.as_deref(), Some("Next"));
+        }
+    }
+
+    #[tokio::test]
+    async fn send_applies_sender_badge_and_mode_shapes() {
+        let metadata = Arc::new(sqlite_metadata().await);
+        create_parent(&metadata, "session:parent").await;
+        configure_child(&metadata, "session:child", "session:parent").await;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        append_completed_turn(&store, "session:child", "task", "done").await;
+        let chat = CapturingChat::new(false, Some(SessionTerminal::Completed));
+        let runtime = build_chat_runtime(Arc::clone(&chat), metadata, store).await;
+
+        let background = runtime
+            .send(
+                "session:parent",
+                Some("coder"),
+                "session:child",
+                "Next",
+                SubAgentMode::Background,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            chat.sent_text.lock().await.as_deref(),
+            Some("[From the \"Coder\" agent]\n\nNext")
+        );
+        assert_eq!(
+            background,
+            serde_json::json!({
+                "sessionKey": "session:child",
+                "agentId": "reviewer",
+                "mode": "background",
+                "status": "running",
+            })
+        );
+
+        runtime
+            .send(
+                "session:parent",
+                Some("quiet"),
+                "session:child",
+                "Next",
+                SubAgentMode::Background,
+            )
+            .await
+            .unwrap();
+        assert_eq!(chat.sent_text.lock().await.as_deref(), Some("Next"));
+
+        let blocking = runtime
+            .send(
+                "session:parent",
+                None,
+                "session:child",
+                "Next",
+                SubAgentMode::Blocking,
+            )
+            .await
+            .unwrap();
+        assert_eq!(blocking["mode"], "blocking");
+        assert_eq!(blocking["status"], "completed");
+        assert_eq!(blocking["sessionKey"], "session:child");
+        assert_eq!(blocking["agentId"], "reviewer");
+        assert_eq!(blocking["text"], "done");
     }
 
     struct WaitingChat {

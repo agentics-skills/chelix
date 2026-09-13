@@ -357,7 +357,7 @@ pub struct AgentConfig {
     pub compaction_reminder: bool,
     /// Prepend sender identity badge to cross-session messages.
     ///
-    /// When true, messages sent via `sessions_send` and `sub_agent` run
+    /// When true, messages sent via `sessions_send` and `sub_agent` run or send
     /// start with `[From the "<name>" agent]` followed by a blank line.
     pub prepend_sender_badge: bool,
     /// Timeout in seconds for sessions using this agent.

@@ -123,7 +123,7 @@ Each `[agents.<id>]` table supports:
 ID, and the effort must be supported by that model. Unknown fields are rejected.
 
 When `prepend_sender_badge` is true, messages sent via `sessions_send` and
-`sub_agent` run start with `[From the "<name>" agent]` followed by a blank
+`sub_agent` run or send start with `[From the "<name>" agent]` followed by a blank
 line, using the sender agent name.
 
 ## Tool Policy

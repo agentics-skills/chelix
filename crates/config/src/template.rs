@@ -206,7 +206,7 @@ port = {port}                           # Port number (auto-generated for this i
 # textual content of the first persisted user message.
 #
 # `prepend_sender_badge` is required. When true, messages sent via
-# `sessions_send` and `sub_agent` run start with `[From the "<name>" agent]`
+# `sessions_send` and `sub_agent` run or send start with `[From the "<name>" agent]`
 # followed by a blank line, using the sender agent name.
 #
 # [agents]
