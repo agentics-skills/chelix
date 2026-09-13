@@ -52,6 +52,13 @@ pub enum SubAgentRequest {
         parent_session_key: String,
         session_key: String,
     },
+    Send {
+        parent_session_key: String,
+        sender_agent_id: Option<String>,
+        session_key: String,
+        message: String,
+        mode: SubAgentMode,
+    },
     Cancel {
         parent_session_key: String,
         session_key: String,
@@ -68,6 +75,7 @@ impl SubAgentRequest {
             Self::List { .. } => "list",
             Self::Result { .. } => "result",
             Self::Attach { .. } => "attach",
+            Self::Send { .. } => "send",
             Self::Cancel { .. } => "cancel",
         }
     }
@@ -95,6 +103,7 @@ enum SubAgentAction {
     List,
     Result,
     Attach,
+    Send,
     Cancel,
 }
 
@@ -107,6 +116,7 @@ impl SubAgentAction {
             "list" => Ok(Self::List),
             "result" => Ok(Self::Result),
             "attach" => Ok(Self::Attach),
+            "send" => Ok(Self::Send),
             "cancel" => Ok(Self::Cancel),
             _ => Err(Error::message(format!(
                 "unsupported sub_agent action: {value}"
@@ -118,6 +128,7 @@ impl SubAgentAction {
         match self {
             Self::Explore | Self::List => &[],
             Self::Run => &["agent_id", "task", "mode"],
+            Self::Send => &["session_key", "mode", "message"],
             Self::Status | Self::Result | Self::Attach | Self::Cancel => &["session_key"],
         }
     }
@@ -153,6 +164,16 @@ fn action_payload(
         .as_object()
         .ok_or_else(|| Error::message(format!("parameter action.{name} must be an object")))?;
     Ok((action, payload))
+}
+
+fn parse_mode(value: &str) -> crate::Result<SubAgentMode> {
+    match value {
+        "blocking" => Ok(SubAgentMode::Blocking),
+        "background" => Ok(SubAgentMode::Background),
+        value => Err(Error::message(format!(
+            "parameter mode must be either 'blocking' or 'background', got {value:?}"
+        ))),
+    }
 }
 
 fn required_string<'a>(
@@ -193,12 +214,12 @@ fn validate_parameters(params: &Value) -> crate::Result<SubAgentAction> {
         SubAgentAction::Run => {
             required_string(payload, "agent_id")?;
             required_string(payload, "task")?;
-            let mode = required_string(payload, "mode")?;
-            if !matches!(mode, "blocking" | "background") {
-                return Err(Error::message(format!(
-                    "parameter mode must be either 'blocking' or 'background', got {mode:?}"
-                )));
-            }
+            parse_mode(required_string(payload, "mode")?)?;
+        },
+        SubAgentAction::Send => {
+            required_string(payload, "session_key")?;
+            required_string(payload, "message")?;
+            parse_mode(required_string(payload, "mode")?)?;
         },
         SubAgentAction::Status
         | SubAgentAction::Result
@@ -233,24 +254,13 @@ fn parse_request(
     let (_, payload) = action_payload(params)?;
     match action {
         SubAgentAction::Explore => Ok(SubAgentRequest::Explore),
-        SubAgentAction::Run => {
-            let mode = match required_string(payload, "mode")? {
-                "blocking" => SubAgentMode::Blocking,
-                "background" => SubAgentMode::Background,
-                value => {
-                    return Err(Error::message(format!(
-                        "parameter mode must be either 'blocking' or 'background', got {value:?}"
-                    )));
-                },
-            };
-            Ok(SubAgentRequest::Run {
-                parent_session_key: parent_session_key(context)?,
-                sender_agent_id: sender_agent_id(context),
-                agent_id: required_string(payload, "agent_id")?.to_string(),
-                task: required_string(payload, "task")?.to_string(),
-                mode,
-            })
-        },
+        SubAgentAction::Run => Ok(SubAgentRequest::Run {
+            parent_session_key: parent_session_key(context)?,
+            sender_agent_id: sender_agent_id(context),
+            agent_id: required_string(payload, "agent_id")?.to_string(),
+            task: required_string(payload, "task")?.to_string(),
+            mode: parse_mode(required_string(payload, "mode")?)?,
+        }),
         SubAgentAction::Status => Ok(SubAgentRequest::Status {
             parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
@@ -266,6 +276,13 @@ fn parse_request(
             parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
         }),
+        SubAgentAction::Send => Ok(SubAgentRequest::Send {
+            parent_session_key: parent_session_key(context)?,
+            sender_agent_id: sender_agent_id(context),
+            session_key: required_string(payload, "session_key")?.to_string(),
+            message: required_string(payload, "message")?.to_string(),
+            mode: parse_mode(required_string(payload, "mode")?)?,
+        }),
         SubAgentAction::Cancel => Ok(SubAgentRequest::Cancel {
             parent_session_key: parent_session_key(context)?,
             session_key: required_string(payload, "session_key")?.to_string(),
@@ -280,7 +297,7 @@ impl AgentTool for SubAgentTool {
     }
 
     fn description(&self) -> &str {
-        "Explore configured sub-agents, run one in a child session, and inspect or control direct child runs."
+        "Explore configured sub-agents, run one in a child session, send a follow-up to a direct child, and inspect or control direct child runs."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -372,6 +389,27 @@ impl AgentTool for SubAgentTool {
                                 }
                             },
                             "required": ["result"]
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "send": {
+                                    "type": "object",
+                                    "description": "Send a follow-up message to a direct child session.",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "session_key": { "type": "string", "minLength": 1 },
+                                        "mode": {
+                                            "type": "string",
+                                            "pattern": "^(blocking|background)$"
+                                        },
+                                        "message": { "type": "string", "minLength": 1 }
+                                    },
+                                    "required": ["session_key", "mode", "message"]
+                                }
+                            },
+                            "required": ["send"]
                         },
                         {
                             "type": "object",
@@ -511,6 +549,18 @@ mod tests {
                 },
             ),
             (
+                serde_json::json!({"action": {"send": {
+                    "session_key": "session:child", "mode": "background", "message": "Next"
+                }}}),
+                SubAgentRequest::Send {
+                    parent_session_key: "session:parent".into(),
+                    sender_agent_id: None,
+                    session_key: "session:child".into(),
+                    message: "Next".into(),
+                    mode: SubAgentMode::Background,
+                },
+            ),
+            (
                 serde_json::json!({"action": {"cancel": {"session_key": "session:child"}}}),
                 SubAgentRequest::Cancel {
                     parent_session_key: "session:parent".into(),
@@ -606,6 +656,51 @@ mod tests {
             }
         }));
         assert!(invalid.to_string().contains("mode"));
+    }
+
+    #[test]
+    fn send_validation_rejects_missing_and_empty_fields() {
+        let missing_session = validation_error(serde_json::json!({
+            "action": {
+                "send": {
+                    "mode": "blocking",
+                    "message": "Next"
+                }
+            }
+        }));
+        assert!(missing_session.contains("session_key"));
+
+        let missing_message = validation_error(serde_json::json!({
+            "action": {
+                "send": {
+                    "session_key": "session:child",
+                    "mode": "blocking"
+                }
+            }
+        }));
+        assert!(missing_message.contains("message"));
+
+        let empty_message = validation_error(serde_json::json!({
+            "action": {
+                "send": {
+                    "session_key": "session:child",
+                    "mode": "blocking",
+                    "message": "   "
+                }
+            }
+        }));
+        assert!(empty_message.contains("message"));
+
+        let invalid_mode = validation_error(serde_json::json!({
+            "action": {
+                "send": {
+                    "session_key": "session:child",
+                    "mode": "async",
+                    "message": "Next"
+                }
+            }
+        }));
+        assert!(invalid_mode.contains("mode"));
     }
 
     #[tokio::test]

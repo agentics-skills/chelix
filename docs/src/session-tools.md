@@ -225,8 +225,8 @@ When no policy is configured, all sessions are visible and sendable.
 
 Use `sub_agent` for delegated work. `run` with `mode = "blocking"` waits for the
 child's next final gate. `mode = "background"` returns a child session key for
-`status`, `result`, `attach`, or `cancel`; `list` returns every direct child of
-the calling session. The parent session for `run`, `status`, `list`, `result`,
+`status`, `result`, `send`, `attach`, or `cancel`; `list` returns every direct child of
+the calling session. The parent session for `run`, `status`, `list`, `result`, `send`,
 `attach`, and `cancel` comes from the typed execution context; these actions
 require that context. `explore` can execute independently. The public input
 accepts exactly one `action` with its closed parameter object, checked before
@@ -284,7 +284,7 @@ Common coordinator flow:
 
 Use [`sub_agent`](sub-agent.md) to delegate a bounded task to a persisted direct
 child session. Blocking mode waits for the child's next final gate. Background
-mode returns a child session key; use `status`, `result`, `attach`, or `cancel`
+mode returns a child session key; use `status`, `result`, `send`, `attach`, or `cancel`
 only from the direct parent session. `list` returns that parent's direct
 children.
 
