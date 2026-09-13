@@ -312,8 +312,8 @@ export function ToolsSection(): VNode {
 				<div className="min-w-0">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Tools</h2>
 					<p className="text-xs text-[var(--muted)] mt-1 max-w-[900px] leading-relaxed">
-						This page shows the effective tool inventory for the active session and model. Change the current LLM, or
-						disable MCP for a session, and the inventory here will change with it.
+						This page shows the effective tool inventory for the active session and model. Change the current LLM, and
+						the inventory here will change with it.
 					</p>
 				</div>
 				<button

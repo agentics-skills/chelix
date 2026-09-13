@@ -205,8 +205,7 @@ and pins are persisted in Chelix storage rather than `chelix.toml`.
 
 `Settings -> Tools` shows the effective tool inventory for the active session
 and model, including tool-calling support, MCP server state, skills/plugins, and
-the execution runtime. It is session-aware by design: switching the model or
-disabling MCP for a session changes what appears there.
+the execution runtime. It is session-aware by design: switching the model changes what appears there.
 
 ## Sandbox Configuration
 

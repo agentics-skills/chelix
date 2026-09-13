@@ -105,7 +105,6 @@ export interface ChatContextPayload {
 	toolSchemaCount?: number;
 	skills?: Array<{ name: string; description?: string; source?: string }>;
 	mcpServers?: Array<{ name: string; state?: string; tool_count?: number }>;
-	mcpDisabled?: boolean;
 	sandbox?: ChatContextSandbox;
 	tokenUsage?: ChatContextTokenUsage;
 	promptMemory?: PromptMemoryData | null;

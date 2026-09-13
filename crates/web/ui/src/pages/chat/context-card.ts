@@ -217,8 +217,6 @@ export function renderContextMcpSection(card: HTMLElement, data: ChatContextPayl
 	const sec = ctxSection("MCP Tools");
 	if (data.supportsTools === false) {
 		sec.appendChild(ctxEl("div", "ctx-disabled", "MCP tools disabled \u2014 configured tool mode is off"));
-	} else if (data.mcpDisabled) {
-		sec.appendChild(ctxEl("div", "ctx-disabled", "MCP tools disabled for this session"));
 	} else {
 		const running = servers.filter((s) => s.state === "running");
 		if (running.length > 0) {

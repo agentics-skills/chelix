@@ -29,13 +29,6 @@ export default {
 	expired: "expired",
 	queued: "Queued",
 
-	// ── MCP labels ───────────────────────────────────────────
-	mcpEnabled: "MCP",
-	mcpEnabledTooltip: "MCP tools enabled \u2014 click to disable for this session",
-	mcpDisabled: "MCP off",
-	mcpDisabledTooltip: "MCP tools disabled \u2014 click to enable for this session",
-	mcpToggleTooltip: "Toggle MCP tools for this session",
-
 	// ── Reasoning toggle ─────────────────────────────────────
 	reasoningTooltip: "Reasoning effort",
 	sessionStateUnavailable: "Session state is not available.",
@@ -83,7 +76,6 @@ export default {
 		noSkillsOrPlugins: "No skills or plugins enabled",
 		mcpTools: "MCP Tools",
 		mcpToolsDisabledNoSupport: "MCP tools disabled \u2014 model doesn't support tool calling",
-		mcpToolsDisabledSession: "MCP tools disabled for this session",
 		toolCount: "{{count}} tool",
 		toolCount_plural: "{{count}} tools",
 		noMcpTools: "No MCP tools running",

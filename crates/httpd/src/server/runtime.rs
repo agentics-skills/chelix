@@ -260,7 +260,6 @@ pub(super) async fn finalize_prepared_gateway(
                                 "activeChannel": active_channel,
                                 "parentSessionKey": entry.parent_session_key,
                                 "forkPoint": entry.fork_point,
-                                "mcpDisabled": entry.mcp_disabled,
                                 "preview": preview,
                                 "archived": entry.archived,
                                 "agent_id": agent_id.clone(),

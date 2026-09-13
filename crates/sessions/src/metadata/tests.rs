@@ -342,7 +342,6 @@ async fn atomic_patch_rolls_back_every_field_on_late_storage_error() {
             archived: Some(true),
             project_id: Some(Some("missing".to_string())),
             worktree_branch: Some(Some("changed".to_string())),
-            mcp_disabled: Some(Some(true)),
             parent_session_key: None,
         })
         .await;
@@ -366,7 +365,6 @@ async fn atomic_patch_rolls_back_every_field_on_late_storage_error() {
     assert_eq!(after.parent_session_key, before.parent_session_key);
     assert_eq!(after.sandbox_owner_key, before.sandbox_owner_key);
     assert_eq!(after.fork_point, before.fork_point);
-    assert_eq!(after.mcp_disabled, before.mcp_disabled);
     assert_eq!(after.preview, before.preview);
     assert_eq!(after.agent_id, before.agent_id);
     assert_eq!(after.prompt_profile, before.prompt_profile);

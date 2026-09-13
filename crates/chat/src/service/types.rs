@@ -725,10 +725,6 @@ impl LiveChatService {
             .await?;
 
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
-        let mcp_disabled = session_entry
-            .as_ref()
-            .and_then(|entry| entry.mcp_disabled)
-            .unwrap_or(false);
         let agent_id = persona.agent_id.clone();
         let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
 
@@ -748,7 +744,6 @@ impl LiveChatService {
                 &registry_guard,
                 &persona.config,
                 &discovered_skills,
-                mcp_disabled,
                 &policy_ctx,
                 tools_enabled,
                 &agent_id,

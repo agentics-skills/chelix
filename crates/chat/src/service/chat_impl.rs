@@ -341,10 +341,6 @@ impl ChatService for LiveChatService {
                 .clone()
                 .or_else(|| channel.username.clone())
         });
-        let mcp_disabled = session_entry
-            .as_ref()
-            .and_then(|entry| entry.mcp_disabled)
-            .unwrap_or(false);
         let tool_choice = request.tool_choice;
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
@@ -452,7 +448,6 @@ impl ChatService for LiveChatService {
                 accept_language,
                 conn_id,
                 Some(&self.session_store),
-                mcp_disabled,
                 None, // send_sync: no client seq
                 Some(Arc::clone(&self.active_tool_invocations)),
                 Some(Arc::clone(&self.active_partial_assistant)),
@@ -794,10 +789,6 @@ impl ChatService for LiveChatService {
         };
 
         // Tools (only include when the configured tool mode enables them)
-        let mcp_disabled = session_entry
-            .as_ref()
-            .and_then(|e| e.mcp_disabled)
-            .unwrap_or(false);
         // `messages` is reused for token usage and lazy schema visibility.
         // `tools` is the UI discovery catalog (name + description of every
         // allowed public tool, plus `get_tool` in lazy mode). `toolSchemaCount`
@@ -822,7 +813,6 @@ impl ChatService for LiveChatService {
                 &registry_guard,
                 &prompt_persona.config,
                 &[],
-                mcp_disabled,
                 &list_ctx,
                 true,
                 &list_agent_id,
@@ -928,7 +918,6 @@ impl ChatService for LiveChatService {
             "toolSchemaCount": tool_schema_count,
             "skills": skills_list,
             "mcpServers": mcp_servers,
-            "mcpDisabled": mcp_disabled,
             "sandbox": sandbox_info,
             "promptMemory": prompt_persona.memory_status,
             "supportsTools": tools_enabled,
@@ -1004,12 +993,6 @@ impl ChatService for LiveChatService {
         // Discover skills (gated on `[skills] enabled` — see #655).
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
 
-        // Check MCP disabled.
-        let mcp_disabled = session_entry
-            .as_ref()
-            .and_then(|entry| entry.mcp_disabled)
-            .unwrap_or(false);
-
         let raw_prompt_agent_id = persona.agent_id.clone();
 
         // Apply per-agent skill policy.
@@ -1033,7 +1016,6 @@ impl ChatService for LiveChatService {
                 &registry_guard,
                 &persona.config,
                 &discovered_skills,
-                mcp_disabled,
                 &policy_ctx,
                 tools_enabled,
                 &raw_prompt_agent_id,
@@ -1161,12 +1143,6 @@ impl ChatService for LiveChatService {
         // Discover skills (gated on `[skills] enabled` — see #655).
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
 
-        // Check MCP disabled.
-        let mcp_disabled = session_entry
-            .as_ref()
-            .and_then(|entry| entry.mcp_disabled)
-            .unwrap_or(false);
-
         // Build filtered tool registry.
         let full_ctx_agent_id = persona.agent_id.clone();
 
@@ -1190,7 +1166,6 @@ impl ChatService for LiveChatService {
                 &registry_guard,
                 &persona.config,
                 &discovered_skills,
-                mcp_disabled,
                 &policy_ctx,
                 tools_enabled,
                 &full_ctx_agent_id,

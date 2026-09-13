@@ -157,7 +157,6 @@ fn session_entry(
         parent_session_key: None,
         sandbox_owner_key: None,
         fork_point: None,
-        mcp_disabled: None,
         preview: None,
         agent_id: None,
         prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,

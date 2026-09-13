@@ -317,25 +317,6 @@ impl ToolRegistry {
         }
     }
 
-    /// Clone the registry, excluding all MCP-sourced tools.
-    pub fn clone_without_mcp(&self) -> ToolRegistry {
-        let tools = self
-            .tools
-            .iter()
-            .filter(|(_, entry)| !matches!(entry.source, ToolSource::Mcp { .. }))
-            .map(|(name, entry)| {
-                (name.clone(), ToolEntry {
-                    tool: Arc::clone(&entry.tool),
-                    source: entry.source.clone(),
-                })
-            })
-            .collect();
-        ToolRegistry {
-            tools,
-            lazy_visible: self.lazy_visible.clone(),
-        }
-    }
-
     /// Clone the registry, excluding tools whose names are in `exclude`.
     pub fn clone_without(&self, exclude: &[&str]) -> ToolRegistry {
         let tools = self
@@ -468,32 +449,6 @@ mod tests {
 
         let filtered = registry.clone_without_prefix("mcp__");
         assert_eq!(filtered.list_schemas().len(), 2);
-    }
-
-    #[test]
-    fn test_clone_without_mcp() {
-        let mut registry = ToolRegistry::new();
-        registry.register(Box::new(DummyTool {
-            name: "execute_command".to_string(),
-        }));
-        registry.register_mcp(
-            Box::new(DummyTool {
-                name: "mcp__github__search".to_string(),
-            }),
-            McpServerId::from("github"),
-        );
-        registry.register_mcp(
-            Box::new(DummyTool {
-                name: "mcp__memory__store".to_string(),
-            }),
-            McpServerId::from("memory"),
-        );
-
-        let filtered = registry.clone_without_mcp();
-        assert_eq!(filtered.list_schemas().len(), 1);
-        assert!(filtered.get("execute_command").is_some());
-        assert!(filtered.get("mcp__github__search").is_none());
-        assert!(filtered.get("mcp__memory__store").is_none());
     }
 
     #[test]

@@ -47,14 +47,6 @@ export function restoreSessionState(entry: SessionMeta, projectId?: string): voi
 	localStorage.setItem("chelix-project", effectiveProjectId);
 	updateSessionProjectSelect(effectiveProjectId);
 	restoreSessionModelSettings(entry);
-	const enabled = !entry.mcpDisabled;
-	const button = S.$("mcpToggleBtn");
-	const label = S.$("mcpToggleLabel");
-	if (button) {
-		button.style.color = enabled ? "var(--ok)" : "var(--muted)";
-		button.style.borderColor = enabled ? "var(--ok)" : "var(--border)";
-	}
-	if (label) label.textContent = enabled ? "MCP" : "MCP off";
 	updateChatSessionHeader();
 }
 
