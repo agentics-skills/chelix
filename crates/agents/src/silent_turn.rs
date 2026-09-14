@@ -276,6 +276,7 @@ pub async fn run_silent_memory_turn_with_prompt(
         &user_content,
         None, // no streaming event callbacks — silent
         None, // no tool lifecycle transport — silent
+        None, // no tool permission gate — silent
         None, // no history
         None,
         None,

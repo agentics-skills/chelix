@@ -375,6 +375,8 @@ pub struct LiveChatService {
     pub(in crate::service) tools_config_source: chelix_config::ToolsConfigSource,
     /// Minimal wait signal for the current session execution. Never stores answers.
     pub(in crate::service) session_gates: Arc<super::session_gate::SessionGateRegistry>,
+    /// Ephemeral operator permission waits for moderated tool calls.
+    pub(in crate::service) tool_permissions: Arc<crate::tool_permission::ToolPermissionManager>,
 }
 
 async fn runtime_config_for_agent_run(
@@ -425,6 +427,7 @@ impl LiveChatService {
             agents_config,
             tools_config_source,
             session_gates: super::session_gate::SessionGateRegistry::new(),
+            tool_permissions: Arc::new(crate::tool_permission::ToolPermissionManager::new()),
         }
     }
 

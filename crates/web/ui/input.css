@@ -624,6 +624,25 @@
     font-style: normal;
     line-height: 1.2;
   }
+  .tool-call-permission-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .tool-call-permission-btn {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 4px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.62rem;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .tool-call-permission-btn:hover {
+    background: var(--bg-hover);
+  }
   .tool-call-card.running .tool-call-status {
     color: var(--accent);
     border-color: var(--accent-dim);

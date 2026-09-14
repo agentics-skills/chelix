@@ -4,6 +4,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use {
     futures::future::BoxFuture,
+    serde::{Deserialize, Serialize},
     tracing::{info, warn},
 };
 
@@ -309,6 +310,52 @@ pub type OnEvent = Box<dyn Fn(RunnerEvent) + Send + Sync>;
 /// Awaitable delivery boundary for persisted tool lifecycle events.
 pub type OnToolLifecycle =
     Arc<dyn Fn(RunnerToolLifecycleEvent) -> BoxFuture<'static, anyhow::Result<()>> + Send + Sync>;
+
+/// Error returned when the operator skips a tool call.
+pub const TOOL_PERMISSION_SKIP_ERROR: &str =
+    "Tool call was skipped by the user as unnecessary/erroneous";
+
+/// Build the deny error returned to the agent as a normal tool failure.
+#[must_use]
+pub fn tool_permission_deny_error(feedback: &str) -> String {
+    format!("Tool execution was declined by the user. Feedback: {feedback}")
+}
+
+/// Permission sub-step of the standard tool lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPermissionPhase {
+    BeforeExecution,
+    AfterResult,
+}
+
+/// Operator decision for a permission sub-step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPermissionDecision {
+    Approve,
+    Skip,
+    Deny { feedback: String },
+}
+
+/// Request handed to [`OnToolPermission`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolPermissionRequest {
+    pub session_key: String,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub phase: ToolPermissionPhase,
+}
+
+/// Optional gate invoked at the reserved permission sub-steps.
+#[allow(clippy::type_complexity)]
+pub type OnToolPermission = Arc<
+    dyn Fn(
+            ToolPermissionRequest,
+        ) -> BoxFuture<'static, Result<ToolPermissionDecision, AgentRunError>>
+        + Send
+        + Sync,
+>;
 
 /// Runner metadata carried alongside the shared persisted lifecycle contract.
 #[derive(Debug, Clone)]

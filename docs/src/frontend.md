@@ -11,6 +11,7 @@ crates/web/
 │   ├── src/                     # Application source
 │   │   ├── app.tsx              # Main entry point
 │   │   ├── tool-lifecycle.ts    # Tool invocation reducer and wire guards
+│   │   ├── tool-permission.ts   # Session auto/moderated toolbar and tool-card gates
 │   │   ├── a2ui-renderer.ts     # Official A2UI Lit chat renderer
 │   │   ├── login-app.tsx        # Login page entry
 │   │   ├── onboarding-app.tsx   # Onboarding wizard entry

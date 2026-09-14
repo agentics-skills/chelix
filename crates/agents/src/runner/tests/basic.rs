@@ -715,6 +715,7 @@ async fn streaming_tool_arguments_are_cancelled_without_waiting_for_stream_compl
         None,
         None,
         None,
+        None,
         &cancellation_token,
         test_agent_loop_limits(),
     );
@@ -876,6 +877,7 @@ async fn executing_tool_is_cancelled_by_agent_run_token() {
         None,
         None,
         None,
+        None,
         &cancellation_token,
         test_agent_loop_limits(),
     );
@@ -1022,6 +1024,7 @@ async fn hanging_before_llm_hook_is_cancelled_by_agent_run_token() {
         &tools_config,
         "You are a test bot.",
         &user_content,
+        None,
         None,
         None,
         None,

@@ -11,6 +11,7 @@ mod run_with_tools;
 mod service;
 mod stream_journal;
 mod streaming;
+mod tool_permission;
 mod types;
 mod ui_history_ingress;
 

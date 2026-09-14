@@ -414,6 +414,8 @@ pub const KNOWN_EVENTS: &[&str] = &[
     "health",
     "command.approval.requested",
     "command.approval.resolved",
+    "tool.permission.requested",
+    "tool.permission.resolved",
 ];
 
 // ── Roles and scopes ─────────────────────────────────────────────────────────

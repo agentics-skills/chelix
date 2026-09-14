@@ -8,5 +8,6 @@ mod loop_detector;
 mod parallel;
 mod tool_budget;
 mod tool_choice;
+mod tool_permission;
 mod tool_result_persistence;
 mod ui_presentation;

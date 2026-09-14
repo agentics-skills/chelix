@@ -160,6 +160,8 @@ fn session_entry(
         preview: None,
         agent_id: None,
         prompt_profile: chelix_sessions::metadata::PromptProfile::Chat,
+        tool_permission_mode: chelix_sessions::metadata::ToolPermissionMode::Auto,
+        tool_permission_type: chelix_sessions::metadata::ToolPermissionType::Manual,
         version: 0,
     }
 }

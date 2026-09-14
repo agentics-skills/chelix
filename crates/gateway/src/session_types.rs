@@ -7,8 +7,12 @@
 use serde::Deserialize;
 
 use {
-    crate::services::ServiceError, chelix_common::ReasoningEffort,
-    chelix_sessions::ui_history_types::UiHistoryTarget,
+    crate::services::ServiceError,
+    chelix_common::ReasoningEffort,
+    chelix_sessions::{
+        metadata::{ToolPermissionMode, ToolPermissionType},
+        ui_history_types::UiHistoryTarget,
+    },
 };
 
 /// Params for `sessions.patch`.
@@ -37,6 +41,25 @@ pub struct PatchParams {
     pub worktree_branch: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     pub parent_session_key: Option<Option<String>>,
+    #[serde(default)]
+    pub tool_permission_mode: Option<ToolPermissionMode>,
+    #[serde(default)]
+    pub tool_permission_type: Option<ToolPermissionType>,
+}
+
+impl PatchParams {
+    /// Live tool-permission flags must patch during an active turn.
+    #[must_use]
+    pub(crate) fn is_tool_permission_only(&self) -> bool {
+        (self.tool_permission_mode.is_some() || self.tool_permission_type.is_some())
+            && self.label.is_none()
+            && self.model.is_none()
+            && self.reasoning_effort.is_none()
+            && self.archived.is_none()
+            && self.project_id.is_none()
+            && self.worktree_branch.is_none()
+            && self.parent_session_key.is_none()
+    }
 }
 
 /// Deserialize a field as `Some(inner)` when present (even if null),
@@ -129,6 +152,62 @@ mod tests {
         assert!(matches!(p.project_id, Some(None)));
         assert_eq!(p.worktree_branch, Some(Some("feature/abc".to_string())));
         assert!(matches!(p.parent_session_key, Some(None)));
+        assert_eq!(p.tool_permission_mode, None);
+        assert_eq!(p.tool_permission_type, None);
+    }
+
+    #[test]
+    fn patch_params_accepts_tool_permission_fields() {
+        let p: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "toolPermissionMode": "moderated",
+            "toolPermissionType": "manual",
+        }))
+        .unwrap();
+        assert_eq!(p.tool_permission_mode, Some(ToolPermissionMode::Moderated));
+        assert_eq!(p.tool_permission_type, Some(ToolPermissionType::Manual));
+        assert!(p.is_tool_permission_only());
+    }
+
+    #[test]
+    fn patch_params_tool_permission_only_requires_no_other_fields() {
+        let mode_only: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "toolPermissionMode": "moderated",
+        }))
+        .unwrap();
+        assert!(mode_only.is_tool_permission_only());
+
+        let type_only: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "toolPermissionType": "manual",
+        }))
+        .unwrap();
+        assert!(type_only.is_tool_permission_only());
+
+        let with_archive: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "toolPermissionMode": "moderated",
+            "archived": true,
+        }))
+        .unwrap();
+        assert!(!with_archive.is_tool_permission_only());
+
+        let label_only: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "label": "My Chat",
+        }))
+        .unwrap();
+        assert!(!label_only.is_tool_permission_only());
+    }
+
+    #[test]
+    fn patch_params_rejects_unknown_tool_permission_mode() {
+        let result: Result<PatchParams, _> = serde_json::from_value(json!({
+            "key": "main",
+            "toolPermissionMode": "unknown",
+        }));
+        assert!(result.is_err());
     }
 
     #[test]

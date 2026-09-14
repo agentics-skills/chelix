@@ -2,7 +2,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    future::Future,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -23,7 +22,7 @@ use {
             build_system_prompt_with_session_runtime_details,
         },
         runner::{
-            AgentLoopLimits, AgentRunResult, RunnerEvent, run_agent_loop_streaming_with_limits,
+            AgentLoopLimits, OnToolPermission, RunnerEvent, run_agent_loop_streaming_with_limits,
         },
         tool_registry::ToolRegistry,
     },
@@ -693,6 +692,7 @@ pub(crate) async fn run_with_tools(
     terminal_runs: &Arc<RwLock<HashSet<String>>>,
     sender_name: Option<String>,
     tool_choice: Option<ToolChoice>,
+    tool_permission: Option<crate::tool_permission::ToolPermissionRuntime>,
 ) -> ChatRunOutcome {
     let ui_run = match crate::ui_history_ingress::begin(
         session_store,
@@ -715,6 +715,16 @@ pub(crate) async fn run_with_tools(
         crate::ui_history_ingress::monitor(ui_run.as_ref(), cancellation_token.clone());
     let outcome = async {
     let run_started = Instant::now();
+    let timeout_clock = Arc::new(crate::tool_permission::AgentTimeoutClock::new());
+    let on_tool_permission: Option<OnToolPermission> = tool_permission.map(|runtime| {
+        crate::tool_permission::permission_callback(
+            runtime,
+            run_id.to_owned(),
+            Arc::clone(state),
+            Arc::clone(&timeout_clock),
+            cancellation_token.clone(),
+        )
+    });
     info!(
         agent_id,
         timeout_secs = runtime_limits.timeout_secs,
@@ -1153,6 +1163,7 @@ pub(crate) async fn run_with_tools(
             &effective_user_content,
             Some(&on_event),
             Some(&on_tool_lifecycle),
+            on_tool_permission.as_ref(),
             next_history.take(),
             Some(tool_context.clone()),
             tool_choice.clone(),
@@ -1168,8 +1179,14 @@ pub(crate) async fn run_with_tools(
                 resume_after_checkpoint: resume_from_history,
             },
         );
-        let agent_result =
-            await_with_agent_timeout(runtime_limits.timeout_secs, run_started, cancellation_token, agent_future).await;
+        let agent_result = crate::tool_permission::await_with_paused_timeout(
+            runtime_limits.timeout_secs,
+            run_started,
+            timeout_clock.as_ref(),
+            cancellation_token,
+            agent_future,
+        )
+        .await;
 
         match agent_result {
             Ok(mut finished) => {
@@ -1660,45 +1677,6 @@ pub(crate) async fn run_with_tools(
     )
     .await;
     outcome
-}
-
-async fn await_with_agent_timeout<F>(
-    timeout_secs: u64,
-    started: Instant,
-    cancellation_token: &CancellationToken,
-    future: F,
-) -> Result<AgentRunResult, AgentRunError>
-where
-    F: Future<Output = Result<AgentRunResult, AgentRunError>>,
-{
-    if timeout_secs == 0 {
-        return future.await;
-    }
-
-    let timeout = Duration::from_secs(timeout_secs);
-    let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
-        return Err(AgentRunError::Other(anyhow::anyhow!(
-            "agent run timed out after {timeout_secs}s"
-        )));
-    };
-
-    tokio::pin!(future);
-    match tokio::time::timeout(remaining, &mut future).await {
-        Ok(result) => result,
-        Err(_) => {
-            cancellation_token.cancel();
-            if let Err(error) = future.await
-                && !matches!(error, AgentRunError::Cancelled)
-            {
-                return Err(AgentRunError::Other(anyhow::anyhow!(
-                    "agent run timed out after {timeout_secs}s; cancellation failed: {error}"
-                )));
-            }
-            Err(AgentRunError::Other(anyhow::anyhow!(
-                "agent run timed out after {timeout_secs}s"
-            )))
-        },
-    }
 }
 
 /// Format memory search results into a `<recalled_context>` XML block

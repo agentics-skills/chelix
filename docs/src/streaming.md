@@ -122,9 +122,12 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 │  4. Execute calls concurrently through ToolInvocationExecutor    │
 │     ├─ Validate → Rejected on pre-dispatch refusal               │
 │     ├─ Emit WaitingForExecution                                  │
+│     ├─ Optional moderated/manual permission wait (ephemeral)     │
 │     ├─ Run BeforeToolCall, then emit Executing                   │
 │     ├─ Emit backend ExecutionProgress while useful work runs     │
-│     └─ Emit ResultReady, then Completed                          │
+│     ├─ Emit ResultReady                                          │
+│     ├─ Optional moderated/manual permission wait (ephemeral)     │
+│     └─ Emit Completed                                            │
 │                                                                  │
 │  5. Append terminal tool outputs to provider messages            │
 │                                                                  │
@@ -184,6 +187,12 @@ Tool invocation updates use the shared `ToolLifecycleEvent` contract:
 | `completed` | Terminal success or execution failure with result/error fields. |
 | `rejected` | Terminal pre-execution refusal with the original arguments and reason. |
 | `cancelled` | Terminal cancellation with an optional argument snapshot and reason. |
+
+When a session is in `moderated` / `manual` mode, the executor waits for an
+operator decision after `waiting_for_execution` and after `result_ready`.
+Those waits are ephemeral in-memory events (`tool.permission.requested` /
+`tool.permission.resolved`) and are not persisted as lifecycle stages. Skip and
+deny complete the invocation as a normal failed `completed` result.
 
 Persisted lifecycle records use `role: "tool_lifecycle"` and retain `runId`,
 per-call `sequence`, `emittedAtMs`, and received `contextBudget`. The semantic

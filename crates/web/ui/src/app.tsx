@@ -32,6 +32,7 @@ import * as modelStore from "./stores/model-store";
 import * as projectStore from "./stores/project-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
+import { syncToolPermissionToolbar } from "./tool-permission";
 import type { SandboxGonInfo, VaultStatus } from "./types/gon";
 import type { ModelInfo } from "./types/model";
 import type { SessionMeta } from "./types/session";
@@ -171,6 +172,7 @@ function upsertSessionFromEvent(entry: SessionEntry | null): boolean {
 	}
 	S.setSessions(insertSessionInOrder(legacy as never[], nextEntry as never));
 	renderSessionList();
+	syncToolPermissionToolbar();
 	return true;
 }
 

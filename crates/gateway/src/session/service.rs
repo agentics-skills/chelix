@@ -529,6 +529,8 @@ impl SessionService for LiveSessionService {
                 "archived": e.archived,
                 "agent_id": agent_id,
                 "agentId": agent_id,
+                "toolPermissionMode": e.tool_permission_mode,
+                "toolPermissionType": e.tool_permission_type,
                 "external_agent_kind": external_agent_kind,
                 "externalAgentKind": external_agent_kind,
                 "externalSessionId": external_session_id,
@@ -623,6 +625,8 @@ impl SessionService for LiveSessionService {
                     "forkPoint": entry.fork_point,
                     "agent_id": entry.agent_id,
                     "agentId": entry.agent_id,
+                    "toolPermissionMode": entry.tool_permission_mode,
+                    "toolPermissionType": entry.tool_permission_type,
                     "external_agent_kind": external_agent_kind,
                     "externalAgentKind": external_agent_kind,
                     "externalSessionId": external_session_id,
@@ -697,6 +701,8 @@ impl SessionService for LiveSessionService {
                 "forkPoint": entry.fork_point,
                 "agent_id": entry.agent_id,
                 "agentId": entry.agent_id,
+                "toolPermissionMode": entry.tool_permission_mode,
+                "toolPermissionType": entry.tool_permission_type,
                 "version": entry.version,
             },
             "snapshot": page.public_value().map_err(ServiceError::message)?,
@@ -706,11 +712,17 @@ impl SessionService for LiveSessionService {
     async fn patch(&self, params: Value) -> ServiceResult {
         let p: PatchParams = parse_params(params)?;
         let key = p.key.clone();
-        let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
-        let _mutation_permit = mutation_reservation
-            .acquire()
-            .await
-            .map_err(ServiceError::message)?;
+        let _mutation_permit = if p.is_tool_permission_only() {
+            None
+        } else {
+            let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
+            Some(
+                mutation_reservation
+                    .acquire()
+                    .await
+                    .map_err(ServiceError::message)?,
+            )
+        };
 
         let entry = self
             .metadata
@@ -772,6 +784,8 @@ impl SessionService for LiveSessionService {
             parent_session_key: p
                 .parent_session_key
                 .map(|value| value.filter(|parent| !parent.is_empty())),
+            tool_permission_mode: p.tool_permission_mode,
+            tool_permission_type: p.tool_permission_type,
         };
         let entry = self
             .metadata
@@ -794,6 +808,8 @@ impl SessionService for LiveSessionService {
             "forkPoint": entry.fork_point,
             "agent_id": entry.agent_id,
             "agentId": entry.agent_id,
+            "toolPermissionMode": entry.tool_permission_mode,
+            "toolPermissionType": entry.tool_permission_type,
             "version": entry.version,
         }))
     }

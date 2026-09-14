@@ -711,6 +711,37 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             })
         }),
     );
+    reg.register(
+        "tool.permission.pending",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let session_key = ctx
+                    .params
+                    .get("sessionKey")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        ErrorShape::from(ServiceError::message("missing 'sessionKey'"))
+                    })?;
+                ctx.state
+                    .chat()
+                    .tool_permission_pending(session_key)
+                    .await
+                    .map_err(ErrorShape::from)
+            })
+        }),
+    );
+    reg.register(
+        "tool.permission.resolve",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                ctx.state
+                    .chat()
+                    .tool_permission_resolve(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)
+            })
+        }),
+    );
 
     // Models
     reg.register(

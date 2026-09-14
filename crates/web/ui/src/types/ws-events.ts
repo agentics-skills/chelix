@@ -6,6 +6,8 @@ export enum WsEventName {
 	Error = "error",
 	AuthCredentialsChanged = "auth.credentials_changed",
 	CommandApprovalRequested = "command.approval.requested",
+	ToolPermissionRequested = "tool.permission.requested",
+	ToolPermissionResolved = "tool.permission.resolved",
 	LogsEntry = "logs.entry",
 	SandboxPrepare = "sandbox.prepare",
 	SandboxImageBuild = "sandbox.image.build",
@@ -363,6 +365,8 @@ export interface WsEventPayloadMap {
 	[WsEventName.Error]: WsErrorPayload;
 	[WsEventName.AuthCredentialsChanged]: AuthCredentialsPayload;
 	[WsEventName.CommandApprovalRequested]: ApprovalPayload;
+	[WsEventName.ToolPermissionRequested]: Record<string, unknown>;
+	[WsEventName.ToolPermissionResolved]: Record<string, unknown>;
 	[WsEventName.LogsEntry]: LogEntryPayload;
 	[WsEventName.SandboxPrepare]: SandboxPhasePayload;
 	[WsEventName.SandboxImageBuild]: SandboxPhasePayload;

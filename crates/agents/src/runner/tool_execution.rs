@@ -20,10 +20,11 @@ use crate::{
 };
 
 use super::{
-    AGENT_RUN_CANCELLED_REASON, AgentRunError, OnToolLifecycle, RunnerToolLifecycleEvent,
-    deliver_tool_lifecycle, enrich_tool_arguments, log_tool_argument_diagnostic,
-    public_tool_arguments, resolve_tool_lookup, sanitize_tool_name,
-    tool_result::persist_and_truncate,
+    AGENT_RUN_CANCELLED_REASON, AgentRunError, OnToolLifecycle, OnToolPermission,
+    RunnerToolLifecycleEvent, TOOL_PERMISSION_SKIP_ERROR, ToolPermissionDecision,
+    ToolPermissionPhase, ToolPermissionRequest, deliver_tool_lifecycle, enrich_tool_arguments,
+    log_tool_argument_diagnostic, public_tool_arguments, resolve_tool_lookup, sanitize_tool_name,
+    tool_permission_deny_error, tool_result::persist_and_truncate,
 };
 
 #[derive(Debug)]
@@ -44,6 +45,7 @@ pub(crate) struct ToolInvocationExecutor<'a> {
     pub channel: Option<&'a ChannelBinding>,
     pub tool_choice: Option<&'a ToolChoice>,
     pub on_lifecycle: Option<&'a OnToolLifecycle>,
+    pub on_permission: Option<&'a OnToolPermission>,
     pub context_budget: &'a ContextBudgetMetadata,
 }
 
@@ -126,6 +128,33 @@ impl ToolInvocationExecutor<'_> {
             .await?;
             return Err(AgentRunError::Cancelled);
         }
+
+        self.emit(
+            tool_call,
+            &mut sequence,
+            ToolLifecycleUpdate::WaitingForExecution {
+                arguments: public_arguments.clone(),
+            },
+            None,
+        )
+        .await?;
+
+        if let Some(outcome) = self
+            .finish_permission(
+                tool_call,
+                tool.as_ref(),
+                public_arguments.clone(),
+                &execution_arguments,
+                ToolPermissionPhase::BeforeExecution,
+                cancellation_token,
+                &mut sequence,
+                true,
+            )
+            .await?
+        {
+            return Ok(outcome);
+        }
+
         if let Some(error) = validation_error {
             let raw_result = serde_json::json!({ "error": error.clone() });
             let result = self
@@ -156,16 +185,6 @@ impl ToolInvocationExecutor<'_> {
             });
         }
 
-        self.emit(
-            tool_call,
-            &mut sequence,
-            ToolLifecycleUpdate::WaitingForExecution {
-                arguments: public_arguments.clone(),
-            },
-            None,
-        )
-        .await?;
-
         let execution = self.run_before_hook_and_execute(
             tool_call,
             &execution_name,
@@ -179,16 +198,8 @@ impl ToolInvocationExecutor<'_> {
                 match cancellation_token.run_until_cancelled(execution).await {
                     Some(result) => result?,
                     None => {
-                        self.emit(
-                            tool_call,
-                            &mut sequence,
-                            ToolLifecycleUpdate::Cancelled {
-                                arguments: Some(public_arguments),
-                                reason: AGENT_RUN_CANCELLED_REASON.to_owned(),
-                            },
-                            None,
-                        )
-                        .await?;
+                        self.emit_cancelled(tool_call, &mut sequence, Some(public_arguments))
+                            .await?;
                         return Err(AgentRunError::Cancelled);
                     },
                 }
@@ -227,6 +238,22 @@ impl ToolInvocationExecutor<'_> {
         )
         .await?;
 
+        if let Some(outcome) = self
+            .finish_permission(
+                tool_call,
+                tool.as_ref(),
+                public_arguments.clone(),
+                &effective_arguments,
+                ToolPermissionPhase::AfterResult,
+                cancellation_token,
+                &mut sequence,
+                false,
+            )
+            .await?
+        {
+            return Ok(outcome);
+        }
+
         self.emit(
             tool_call,
             &mut sequence,
@@ -243,6 +270,148 @@ impl ToolInvocationExecutor<'_> {
         Ok(ToolExecutionOutcome {
             success,
             error,
+            rejected: false,
+            result,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn finish_permission(
+        &self,
+        tool_call: &ToolCall,
+        tool: Option<&Arc<dyn crate::tool_registry::AgentTool>>,
+        public_arguments: serde_json::Value,
+        execution_arguments: &serde_json::Value,
+        phase: ToolPermissionPhase,
+        cancellation_token: Option<&CancellationToken>,
+        sequence: &mut u64,
+        emit_result_ready: bool,
+    ) -> Result<Option<ToolExecutionOutcome>, AgentRunError> {
+        match self
+            .await_permission(tool_call, phase, cancellation_token)
+            .await
+        {
+            Ok(ToolPermissionDecision::Approve) => Ok(None),
+            Ok(ToolPermissionDecision::Skip) => self
+                .complete_as_error(
+                    tool_call,
+                    tool,
+                    public_arguments,
+                    execution_arguments,
+                    TOOL_PERMISSION_SKIP_ERROR.to_owned(),
+                    sequence,
+                    emit_result_ready,
+                )
+                .await
+                .map(Some),
+            Ok(ToolPermissionDecision::Deny { feedback }) => self
+                .complete_as_error(
+                    tool_call,
+                    tool,
+                    public_arguments,
+                    execution_arguments,
+                    tool_permission_deny_error(&feedback),
+                    sequence,
+                    emit_result_ready,
+                )
+                .await
+                .map(Some),
+            Err(AgentRunError::Cancelled) => {
+                self.emit_cancelled(tool_call, sequence, Some(public_arguments))
+                    .await?;
+                Err(AgentRunError::Cancelled)
+            },
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn await_permission(
+        &self,
+        tool_call: &ToolCall,
+        phase: ToolPermissionPhase,
+        cancellation_token: Option<&CancellationToken>,
+    ) -> Result<ToolPermissionDecision, AgentRunError> {
+        let Some(callback) = self.on_permission else {
+            return Ok(ToolPermissionDecision::Approve);
+        };
+        let request = ToolPermissionRequest {
+            session_key: self.session_key.to_owned(),
+            tool_call_id: tool_call.id.clone(),
+            tool_name: tool_call.name.clone(),
+            phase,
+        };
+        let wait = callback(request);
+        match cancellation_token {
+            Some(token) => match token.run_until_cancelled(wait).await {
+                Some(result) => result,
+                None => Err(AgentRunError::Cancelled),
+            },
+            None => wait.await,
+        }
+    }
+
+    async fn emit_cancelled(
+        &self,
+        tool_call: &ToolCall,
+        sequence: &mut u64,
+        arguments: Option<serde_json::Value>,
+    ) -> Result<(), AgentRunError> {
+        self.emit(
+            tool_call,
+            sequence,
+            ToolLifecycleUpdate::Cancelled {
+                arguments,
+                reason: AGENT_RUN_CANCELLED_REASON.to_owned(),
+            },
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn complete_as_error(
+        &self,
+        tool_call: &ToolCall,
+        tool: Option<&Arc<dyn crate::tool_registry::AgentTool>>,
+        public_arguments: serde_json::Value,
+        execution_arguments: &serde_json::Value,
+        error: String,
+        sequence: &mut u64,
+        emit_result_ready: bool,
+    ) -> Result<ToolExecutionOutcome, AgentRunError> {
+        let raw_result = serde_json::json!({ "error": error.clone() });
+        let result = self
+            .prepare_agent_result(tool_call, tool, execution_arguments, &raw_result, false)
+            .await?;
+        if emit_result_ready {
+            self.emit(
+                tool_call,
+                sequence,
+                ToolLifecycleUpdate::ResultReady {
+                    arguments: public_arguments.clone(),
+                    success: false,
+                    result: Some(result.clone()),
+                    error: Some(error.clone()),
+                },
+                None,
+            )
+            .await?;
+        }
+        self.emit(
+            tool_call,
+            sequence,
+            ToolLifecycleUpdate::Completed {
+                arguments: public_arguments,
+                success: false,
+                result: Some(result.clone()),
+                error: Some(error.clone()),
+            },
+            None,
+        )
+        .await?;
+        Ok(ToolExecutionOutcome {
+            success: false,
+            error: Some(error),
             rejected: false,
             result,
         })
