@@ -27,6 +27,7 @@ import {
 	terminalToolPresentation,
 	toolLifecycleArguments,
 } from "../tool-lifecycle";
+import { applyToolPermissionOverlay, rememberToolLifecycle } from "../tool-permission";
 import type { ToolResult } from "../types/ws-events";
 import { clearChatEmptyState } from "./shared";
 
@@ -233,6 +234,8 @@ export function renderToolLifecycleSnapshot(
 		updateToolOutput(card, snapshot, eventSession, options.interactive !== false);
 	}
 	updateA2uiSurface(card, snapshot, options.interactive !== false);
+	rememberToolLifecycle(eventSession, snapshot.lifecycle, options.screenshotMode);
+	applyToolPermissionOverlay(card, snapshot.lifecycle, options.screenshotMode);
 	smartScrollToBottom();
 	return card;
 }

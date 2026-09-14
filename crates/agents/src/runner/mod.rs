@@ -15,7 +15,9 @@ pub use {
     helpers::{
         AgentLoopLimits, AgentRunError, AgentRunResult, AssistantIterationOutput,
         CompactedPromptTokenFloor, ContextCompactionRequest, FinalTextSource, OnEvent,
-        OnToolLifecycle, RunnerEvent, RunnerToolCall, RunnerToolLifecycleEvent,
+        OnToolLifecycle, OnToolPermission, RunnerEvent, RunnerToolCall, RunnerToolLifecycleEvent,
+        TOOL_PERMISSION_SKIP_ERROR, ToolPermissionDecision, ToolPermissionPhase,
+        ToolPermissionRequest, tool_permission_deny_error,
     },
     streaming::run_agent_loop_streaming_with_limits,
     tool_result::{persist_and_truncate, sanitize_tool_result},

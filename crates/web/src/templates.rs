@@ -260,6 +260,8 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             "archived": entry.archived,
             "agent_id": agent_id,
             "agentId": agent_id_camel,
+            "toolPermissionMode": entry.tool_permission_mode,
+            "toolPermissionType": entry.tool_permission_type,
             "version": entry.version,
         }));
     }

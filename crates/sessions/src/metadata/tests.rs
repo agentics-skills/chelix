@@ -343,6 +343,8 @@ async fn atomic_patch_rolls_back_every_field_on_late_storage_error() {
             project_id: Some(Some("missing".to_string())),
             worktree_branch: Some(Some("changed".to_string())),
             parent_session_key: None,
+            tool_permission_mode: None,
+            tool_permission_type: None,
         })
         .await;
     assert!(result.is_err());
@@ -597,4 +599,47 @@ async fn migration_copies_valid_rows_unchanged_and_rejects_invalid_rows() {
         .await
         .unwrap();
     assert_eq!(unchanged, 1);
+}
+
+#[tokio::test]
+async fn new_session_defaults_tool_permission_to_auto_manual() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    let entry = metadata
+        .create_llm_session(
+            "session:perm",
+            None,
+            &pair("test::model", "low"),
+            Some("main"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(entry.tool_permission_mode, ToolPermissionMode::Auto);
+    assert_eq!(entry.tool_permission_type, ToolPermissionType::Manual);
+}
+
+#[tokio::test]
+async fn patch_updates_tool_permission_mode_and_type() {
+    let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
+    metadata
+        .create_llm_session(
+            "session:perm",
+            None,
+            &pair("test::model", "low"),
+            Some("main"),
+        )
+        .await
+        .unwrap();
+    let entry = metadata
+        .patch_session("session:perm", SessionMetadataPatch {
+            tool_permission_mode: Some(ToolPermissionMode::Moderated),
+            tool_permission_type: Some(ToolPermissionType::Manual),
+            ..SessionMetadataPatch::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(entry.tool_permission_mode, ToolPermissionMode::Moderated);
+    assert_eq!(entry.tool_permission_type, ToolPermissionType::Manual);
+    let loaded = metadata.get("session:perm").await.unwrap().unwrap();
+    assert_eq!(loaded.tool_permission_mode, ToolPermissionMode::Moderated);
+    assert_eq!(loaded.tool_permission_type, ToolPermissionType::Manual);
 }

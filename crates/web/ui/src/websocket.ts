@@ -20,6 +20,7 @@ import { connectWs, forceReconnect, subscribeEvents } from "./ws-connect";
 
 // ── Handler imports from ws/ sub-modules ─────────────────────
 
+import { handleToolPermissionRequested, handleToolPermissionResolved } from "./tool-permission";
 import { handleChatEvent } from "./ws/chat-handlers";
 import { handleOperationProgress } from "./ws/operation-progress";
 import {
@@ -59,6 +60,8 @@ const eventHandlers: Record<string, (payload: Record<string, unknown>, streamMet
 	error: handleWsError as (payload: Record<string, unknown>) => void,
 	"auth.credentials_changed": handleAuthCredentialsChanged as (payload: Record<string, unknown>) => void,
 	"command.approval.requested": handleApprovalEvent as unknown as (payload: Record<string, unknown>) => void,
+	"tool.permission.requested": handleToolPermissionRequested,
+	"tool.permission.resolved": handleToolPermissionResolved,
 	"logs.entry": handleLogEntry as (payload: Record<string, unknown>) => void,
 	"sandbox.prepare": handleSandboxPrepare as (payload: Record<string, unknown>) => void,
 	"sandbox.image.build": handleSandboxImageBuild as (payload: Record<string, unknown>) => void,
@@ -111,6 +114,8 @@ const connectOpts: ConnectOptions = {
 				"auth.credentials_changed",
 				"command.approval.requested",
 				"command.approval.resolved",
+				"tool.permission.requested",
+				"tool.permission.resolved",
 				"device.pair.requested",
 				"device.pair.resolved",
 				"node.pair.requested",

@@ -788,6 +788,7 @@ impl LiveChatService {
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
         let session_store = Arc::clone(&self.session_store);
+        let tool_permissions = Arc::clone(&self.tool_permissions);
         let session_metadata = Arc::clone(&self.session_metadata);
         let session_agent_id_clone = session_agent_id.clone();
         let session_key_clone = session_key.clone();
@@ -1007,6 +1008,10 @@ impl LiveChatService {
                         &terminal_runs,
                         sender_name,
                         tool_choice,
+                        Some(crate::tool_permission::ToolPermissionRuntime {
+                            manager: Arc::clone(&tool_permissions),
+                            metadata: Arc::clone(&session_metadata),
+                        }),
                     )
                     .await
                 }
@@ -1207,6 +1212,7 @@ impl LiveChatService {
             }
             drop(runs_by_session);
             session_gates.notify();
+            let _ = tool_permissions.drop_session(&session_key_clone).await;
             active_tool_invocations
                 .write()
                 .await

@@ -18,6 +18,25 @@ pub enum PromptProfile {
     Subagent,
 }
 
+/// Operator moderation mode for tool-call lifecycle gates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum ToolPermissionMode {
+    #[default]
+    Auto,
+    Moderated,
+}
+
+/// Operator moderation type used when [`ToolPermissionMode::Moderated`] is set.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum ToolPermissionType {
+    #[default]
+    Manual,
+}
+
 /// A single valid session entry in the metadata index.
 #[derive(Debug, Clone)]
 pub struct SessionEntry {
@@ -39,6 +58,8 @@ pub struct SessionEntry {
     pub preview: Option<String>,
     pub agent_id: Option<String>,
     pub prompt_profile: PromptProfile,
+    pub tool_permission_mode: ToolPermissionMode,
+    pub tool_permission_type: ToolPermissionType,
     pub version: u64,
 }
 
@@ -127,6 +148,8 @@ pub struct SessionMetadataPatch {
     pub project_id: Option<Option<String>>,
     pub worktree_branch: Option<Option<String>>,
     pub parent_session_key: Option<Option<String>>,
+    pub tool_permission_mode: Option<ToolPermissionMode>,
+    pub tool_permission_type: Option<ToolPermissionType>,
 }
 
 impl SessionMetadataPatch {
@@ -138,6 +161,8 @@ impl SessionMetadataPatch {
             && self.project_id.is_none()
             && self.worktree_branch.is_none()
             && self.parent_session_key.is_none()
+            && self.tool_permission_mode.is_none()
+            && self.tool_permission_type.is_none()
     }
 }
 
@@ -204,6 +229,8 @@ struct SessionRow {
     preview: Option<String>,
     agent_id: Option<String>,
     prompt_profile: PromptProfile,
+    tool_permission_mode: ToolPermissionMode,
+    tool_permission_type: ToolPermissionType,
     external_agent_kind: Option<String>,
     external_session_id: Option<String>,
     version: i64,
@@ -237,6 +264,8 @@ impl TryFrom<SessionRow> for SessionEntry {
             preview: row.preview,
             agent_id: row.agent_id,
             prompt_profile: row.prompt_profile,
+            tool_permission_mode: row.tool_permission_mode,
+            tool_permission_type: row.tool_permission_type,
             version: row.version as u64,
         })
     }
@@ -307,6 +336,8 @@ impl SqliteSessionMetadata {
                 preview                 TEXT,
                 agent_id                TEXT,
                 prompt_profile          TEXT NOT NULL DEFAULT 'chat',
+                tool_permission_mode    TEXT NOT NULL DEFAULT 'auto',
+                tool_permission_type    TEXT NOT NULL DEFAULT 'manual',
                 external_agent_kind     TEXT,
                 external_session_id     TEXT,
                 version                 INTEGER NOT NULL DEFAULT 0,
@@ -731,6 +762,8 @@ impl SqliteSessionMetadata {
         let project_changed = patch.project_id.is_some();
         let worktree_changed = patch.worktree_branch.is_some();
         let parent_changed = patch.parent_session_key.is_some();
+        let tool_permission_mode_changed = patch.tool_permission_mode.is_some();
+        let tool_permission_type_changed = patch.tool_permission_type.is_some();
         let model = patch
             .model_reasoning
             .as_ref()
@@ -759,6 +792,8 @@ impl SqliteSessionMetadata {
                    worktree_branch = CASE WHEN ? THEN ? ELSE worktree_branch END,
                    parent_session_key = CASE WHEN ? THEN ? ELSE parent_session_key END,
                    fork_point = CASE WHEN ? THEN NULL ELSE fork_point END,
+                   tool_permission_mode = CASE WHEN ? THEN ? ELSE tool_permission_mode END,
+                   tool_permission_type = CASE WHEN ? THEN ? ELSE tool_permission_type END,
                    updated_at = ?,
                    version = version + 1
                WHERE key = ?"#,
@@ -778,6 +813,10 @@ impl SqliteSessionMetadata {
         .bind(parent_changed)
         .bind(parent_session_key)
         .bind(parent_changed)
+        .bind(tool_permission_mode_changed)
+        .bind(patch.tool_permission_mode)
+        .bind(tool_permission_type_changed)
+        .bind(patch.tool_permission_type)
         .bind(now)
         .bind(key)
         .execute(&mut *transaction)

@@ -39,6 +39,8 @@ export interface SessionMeta {
 	external_agent_kind?: string | null;
 	externalAgentKind?: string | null;
 	externalSessionId?: string | null;
+	toolPermissionMode?: "auto" | "moderated";
+	toolPermissionType?: "manual";
 	version?: number;
 	/** Client-side flag: set transiently during setAll merges. */
 	_localUnread?: boolean;

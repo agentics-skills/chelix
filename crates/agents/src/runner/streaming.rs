@@ -34,12 +34,13 @@ use crate::{
 use super::{
     AGENT_RUN_CANCELLED_REASON, AUTO_CONTINUE_NUDGE, AgentLoopLimits, AgentRunError,
     AgentRunResult, AssistantIterationOutput, FinalTextSource, MALFORMED_TOOL_RETRY_PROMPT,
-    OnEvent, OnToolLifecycle, RunnerEvent, RunnerToolCall, RunnerToolLifecycleEvent,
-    ToolCallBudget, ToolInvocationExecutor, UsageAccumulator, apply_before_llm_call_modify_payload,
-    apply_loop_detector_intervention, channel_binding_from_internal_params, deliver_tool_lifecycle,
-    dispatch_after_llm_call_hook, dispatch_before_agent_start_hook, empty_tool_name_retry_prompt,
-    fallback_final_text_source, find_empty_tool_name_call, finish_agent_run, has_named_tool_call,
-    is_substantive_answer_text, lifecycle_now_ms, record_answer_text,
+    OnEvent, OnToolLifecycle, OnToolPermission, RunnerEvent, RunnerToolCall,
+    RunnerToolLifecycleEvent, ToolCallBudget, ToolInvocationExecutor, UsageAccumulator,
+    apply_before_llm_call_modify_payload, apply_loop_detector_intervention,
+    channel_binding_from_internal_params, deliver_tool_lifecycle, dispatch_after_llm_call_hook,
+    dispatch_before_agent_start_hook, empty_tool_name_retry_prompt, fallback_final_text_source,
+    find_empty_tool_name_call, finish_agent_run, has_named_tool_call, is_substantive_answer_text,
+    lifecycle_now_ms, record_answer_text,
     retry::{
         EMPTY_PROVIDER_RESPONSE_ERROR, RATE_LIMIT_MAX_RETRIES, SERVER_MAX_RETRIES,
         UNKNOWN_MAX_RETRIES, next_retry_delay_ms,
@@ -175,6 +176,7 @@ pub async fn run_agent_loop_streaming_with_limits(
     user_content: &UserContent,
     on_event: Option<&OnEvent>,
     on_tool_lifecycle: Option<&OnToolLifecycle>,
+    on_tool_permission: Option<&OnToolPermission>,
     history: Option<Vec<ChatMessage>>,
     tool_context: Option<serde_json::Value>,
     tool_choice: Option<ToolChoice>,
@@ -1075,6 +1077,7 @@ pub async fn run_agent_loop_streaming_with_limits(
             channel: channel_for_hooks.as_ref(),
             tool_choice: tool_choice.as_ref(),
             on_lifecycle: on_tool_lifecycle,
+            on_permission: on_tool_permission,
             context_budget: &context_budget,
         };
         let mut tool_futures = Vec::with_capacity(tool_calls.len());

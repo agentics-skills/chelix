@@ -264,6 +264,8 @@ pub(super) async fn finalize_prepared_gateway(
                                 "archived": entry.archived,
                                 "agent_id": agent_id.clone(),
                                 "agentId": agent_id,
+                                "toolPermissionMode": entry.tool_permission_mode,
+                                "toolPermissionType": entry.tool_permission_type,
                                 "version": entry.version,
                             });
                         }

@@ -30,6 +30,8 @@ interface NormalizedSessionMeta {
 	agentId: string;
 	externalAgentKind: string | null;
 	externalSessionId: string | null;
+	toolPermissionMode: "auto" | "moderated";
+	toolPermissionType: "manual";
 	archived: boolean | undefined;
 	activeChannel: string | undefined;
 	version: number;
@@ -54,6 +56,7 @@ function firstNonEmptyString(values: Array<string | null | undefined>): string |
 function normalizeSessionMeta(
 	serverData: SessionMeta,
 	currentReasoningEffort: string | null = null,
+	currentToolPermissionMode: "auto" | "moderated" = "auto",
 ): NormalizedSessionMeta {
 	return {
 		key: serverData.key,
@@ -74,6 +77,13 @@ function normalizeSessionMeta(
 		agentId: stringValue(serverData.agent_id),
 		externalAgentKind: firstNonEmptyString([serverData.external_agent_kind, serverData.externalAgentKind]),
 		externalSessionId: firstNonEmptyString([serverData.externalSessionId]),
+		toolPermissionMode:
+			serverData.toolPermissionMode === "moderated"
+				? "moderated"
+				: serverData.toolPermissionMode === "auto"
+					? "auto"
+					: currentToolPermissionMode,
+		toolPermissionType: "manual",
 		archived: serverData.archived,
 		activeChannel: serverData.activeChannel,
 		version: numberValue(serverData.version),
@@ -108,6 +118,8 @@ export class Session {
 	agent_id: string;
 	external_agent_kind: string | null;
 	externalSessionId: string | null;
+	toolPermissionMode: "auto" | "moderated";
+	toolPermissionType: "manual";
 	archived: boolean | undefined;
 	activeChannel: string | undefined;
 	version: number;
@@ -146,6 +158,8 @@ export class Session {
 		this.agent_id = normalized.agentId;
 		this.external_agent_kind = normalized.externalAgentKind;
 		this.externalSessionId = normalized.externalSessionId;
+		this.toolPermissionMode = normalized.toolPermissionMode;
+		this.toolPermissionType = normalized.toolPermissionType;
 		this.archived = normalized.archived;
 		this.activeChannel = normalized.activeChannel;
 		this.version = normalized.version;
@@ -174,7 +188,7 @@ export class Session {
 
 	/** Merge server fields, preserving client signals. Returns false if stale. */
 	update(serverData: SessionMeta): boolean {
-		const normalized = normalizeSessionMeta(serverData, this.reasoningEffort);
+		const normalized = normalizeSessionMeta(serverData, this.reasoningEffort, this.toolPermissionMode);
 		if (isStaleSessionVersion(normalized.version, this.version)) return false;
 		if (getHistoryWindow(this.key)) normalized.lastSeenMessageCount = this.lastSeenMessageCount;
 		this.version = nextSessionVersion(normalized.version, this.version);
@@ -195,6 +209,8 @@ export class Session {
 		this.agent_id = normalized.agentId;
 		this.external_agent_kind = normalized.externalAgentKind;
 		this.externalSessionId = normalized.externalSessionId;
+		this.toolPermissionMode = normalized.toolPermissionMode;
+		this.toolPermissionType = normalized.toolPermissionType;
 		this.archived = normalized.archived;
 		this.activeChannel = normalized.activeChannel;
 		this.updateBadge();
@@ -241,6 +257,8 @@ export class Session {
 			agent_id: this.agent_id,
 			external_agent_kind: this.external_agent_kind,
 			externalSessionId: this.externalSessionId,
+			toolPermissionMode: this.toolPermissionMode,
+			toolPermissionType: this.toolPermissionType,
 			version: this.version,
 		};
 	}

@@ -118,6 +118,31 @@ fn tool_mode_enables_tools(tool_mode: ToolMode) -> bool {
     !matches!(tool_mode, ToolMode::Off)
 }
 
+fn parse_tool_permission_decision(
+    params: &Value,
+) -> Result<chelix_agents::runner::ToolPermissionDecision, ServiceError> {
+    let decision = params
+        .get("decision")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ServiceError::message("missing 'decision'"))?;
+    match decision {
+        "approve" => Ok(chelix_agents::runner::ToolPermissionDecision::Approve),
+        "skip" => Ok(chelix_agents::runner::ToolPermissionDecision::Skip),
+        "deny" => {
+            let feedback = params
+                .get("feedback")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ServiceError::message("missing 'feedback'"))?;
+            Ok(chelix_agents::runner::ToolPermissionDecision::Deny {
+                feedback: feedback.to_owned(),
+            })
+        },
+        _ => Err(ServiceError::message(format!(
+            "invalid decision: {decision}"
+        ))),
+    }
+}
+
 async fn resolve_send_sync_outcome<F, Fut>(result: ChatRunOutcome, on_failed: F) -> ServiceResult
 where
     F: FnOnce() -> Fut,
@@ -455,6 +480,10 @@ impl ChatService for LiveChatService {
                 &terminal_runs,
                 sender_name,
                 tool_choice,
+                Some(crate::tool_permission::ToolPermissionRuntime {
+                    manager: Arc::clone(&self.tool_permissions),
+                    metadata: Arc::clone(&self.session_metadata),
+                }),
             )
             .await
         };
@@ -469,6 +498,7 @@ impl ChatService for LiveChatService {
         }
         drop(runs_by_session);
         self.session_gates.notify();
+        let _ = self.tool_permissions.drop_session(&session_key).await;
         self.active_tool_invocations
             .write()
             .await
@@ -533,6 +563,24 @@ impl ChatService for LiveChatService {
             "chat.abort"
         );
 
+        if let Some(session_key) = resolved_session_key.as_deref() {
+            let dropped = self.tool_permissions.drop_session(session_key).await;
+            for view in dropped {
+                self.state
+                    .broadcast(
+                        "tool.permission.resolved",
+                        serde_json::json!({
+                            "sessionKey": view.session_key,
+                            "runId": view.run_id,
+                            "toolCallId": view.tool_call_id,
+                            "toolName": view.tool_name,
+                            "phase": view.phase,
+                            "decision": "cancelled",
+                        }),
+                    )
+                    .await;
+            }
+        }
         if let (Some(session_key), Some(run_id)) =
             (resolved_session_key.as_deref(), resolved_run_id.as_deref())
         {
@@ -1329,6 +1377,39 @@ impl ChatService for LiveChatService {
             .get(session_key)
             .cloned()
             .unwrap_or_default()
+    }
+
+    async fn tool_permission_pending(&self, session_key: &str) -> ServiceResult {
+        let requests = self.tool_permissions.pending_for_session(session_key).await;
+        serde_json::to_value(serde_json::json!({ "requests": requests }))
+            .map_err(|error| ServiceError::message(error.to_string()))
+    }
+
+    async fn tool_permission_resolve(&self, params: Value) -> ServiceResult {
+        let session_key = params
+            .get("sessionKey")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ServiceError::message("missing 'sessionKey'"))?;
+        let tool_call_id = params
+            .get("toolCallId")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ServiceError::message("missing 'toolCallId'"))?;
+        let phase: chelix_agents::runner::ToolPermissionPhase =
+            serde_json::from_value(params.get("phase").cloned().unwrap_or(Value::Null))
+                .map_err(|error| ServiceError::message(format!("invalid phase: {error}")))?;
+        let decision = parse_tool_permission_decision(&params)?;
+        let view = self
+            .tool_permissions
+            .resolve(session_key, tool_call_id, phase, decision)
+            .await
+            .map_err(ServiceError::message)?;
+        Ok(serde_json::json!({
+            "ok": true,
+            "sessionKey": view.session_key,
+            "runId": view.run_id,
+            "toolCallId": view.tool_call_id,
+            "phase": view.phase,
+        }))
     }
 
     async fn peek(&self, params: Value) -> ServiceResult {

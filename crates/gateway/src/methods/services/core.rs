@@ -1173,6 +1173,10 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     Vec::new()
                 };
                 let voice_pending = replying && chat.active_voice_pending(key).await;
+                let pending_permissions = chat
+                    .tool_permission_pending(key)
+                    .await
+                    .map_err(ErrorShape::from)?;
                 let queued_prompts = chat
                     .queued_prompts_status(chelix_sessions::SessionKey::new(key))
                     .await
@@ -1185,6 +1189,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         tool_invocations,
                         voice_pending,
                     );
+                    if let Some(requests) = pending_permissions.get("requests").cloned()
+                        && requests.as_array().is_some_and(|items| !items.is_empty())
+                    {
+                        obj.insert("pendingToolPermissions".to_string(), requests);
+                    }
                     obj.insert("queuedPrompts".to_string(), queued_prompts);
                 }
 

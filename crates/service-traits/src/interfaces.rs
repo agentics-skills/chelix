@@ -419,6 +419,14 @@ pub trait ChatService: Send + Sync {
         Vec::new()
     }
 
+    async fn tool_permission_pending(&self, _session_key: &str) -> ServiceResult {
+        Ok(serde_json::json!({ "requests": [] }))
+    }
+
+    async fn tool_permission_resolve(&self, _params: Value) -> ServiceResult {
+        Err("chat not configured".into())
+    }
+
     async fn peek(&self, _params: Value) -> ServiceResult {
         Ok(serde_json::json!({ "active": false }))
     }

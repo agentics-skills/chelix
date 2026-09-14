@@ -7,6 +7,11 @@ import * as S from "../state";
 import { projectStore } from "../stores/project-store";
 import { clearSessionHistory, getSessionHistory } from "../stores/session-history-cache";
 import { insertSessionInOrder, type Session, sessionStore } from "../stores/session-store";
+import {
+	type PendingToolPermission,
+	rememberPendingToolPermissions,
+	syncToolPermissionToolbar,
+} from "../tool-permission";
 import type { RpcResponse } from "../types/rpc";
 import type { SessionMeta } from "../types/session";
 import type { QueuedPromptsStatus } from "../types/ws-events";
@@ -55,6 +60,7 @@ interface SwitchPayload {
 	replying: boolean;
 	voicePending: boolean;
 	queuedPrompts: QueuedPromptsStatus;
+	pendingToolPermissions?: PendingToolPermission[];
 }
 
 let switchRequest = 0;
@@ -94,6 +100,8 @@ function applySwitchMetadata(key: string, payload: SwitchPayload, projectId?: st
 	S.setVoicePending(payload.voicePending);
 	setComposerStopButton(payload.replying, key);
 	replaceQueuedPromptsDock(payload.queuedPrompts);
+	rememberPendingToolPermissions(payload.pendingToolPermissions);
+	syncToolPermissionToolbar();
 }
 
 function validateSearchGeneration(context: SearchContext | null | undefined, generation: string): void {

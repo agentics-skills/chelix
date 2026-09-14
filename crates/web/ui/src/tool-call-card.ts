@@ -242,28 +242,33 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 	const header = document.createElement("div");
 	header.className = "tool-call-header";
 
+	const metaRow = document.createElement("div");
+	metaRow.className = "tool-call-meta-row";
+
 	const toggle = document.createElement("button");
 	toggle.type = "button";
 	toggle.className = "tool-call-toggle";
 	toggle.setAttribute("aria-expanded", String(expanded));
 
-	const metaRow = document.createElement("span");
-	metaRow.className = "tool-call-meta-row";
-
 	const chevron = document.createElement("span");
 	chevron.className = "tool-call-chevron";
 	chevron.setAttribute("aria-hidden", "true");
 	chevron.textContent = expanded ? "⌄" : "›";
-	metaRow.appendChild(chevron);
+	toggle.appendChild(chevron);
 
 	const nameEl = document.createElement("span");
 	nameEl.className = "tool-call-name";
 	nameEl.textContent = toolName;
-	metaRow.appendChild(nameEl);
+	toggle.appendChild(nameEl);
+	metaRow.appendChild(toggle);
 
 	const statusEl = document.createElement("span");
 	statusEl.className = "command-status tool-call-status";
 	metaRow.appendChild(statusEl);
+
+	const actionsEl = document.createElement("span");
+	actionsEl.className = "tool-call-permission-actions";
+	metaRow.appendChild(actionsEl);
 
 	if (options.executionMode) {
 		const modeEl = document.createElement("span");
@@ -272,8 +277,7 @@ export function createToolCallCard(options: ToolCardOptions): HTMLElement {
 		metaRow.appendChild(modeEl);
 	}
 
-	toggle.appendChild(metaRow);
-	header.appendChild(toggle);
+	header.appendChild(metaRow);
 
 	const summaryEl = document.createElement("span");
 	summaryEl.className = "command-prompt tool-call-summary";

@@ -31,6 +31,7 @@ import { updateSandboxUI } from "../sandbox";
 import { setSessionActiveRunId, setSessionReplying, switchSession } from "../sessions";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
+import { mountToolPermissionToolbar } from "../tool-permission";
 import type { ChatContextMessage, ChatFullContextPayload, PromptMemoryData } from "../types/chat";
 import { copyToClipboard, showToast } from "../ui";
 import { initVadButton, initVoiceInput, teardownVoiceInput } from "../voice-input";
@@ -769,6 +770,8 @@ const chatPageHTML =
 	'<div id="sessionNameMount" class="ml-auto flex items-center min-w-0"></div>' +
 	'<div id="sessionHeaderToolbarMount" class="flex items-center gap-1.5"></div>' +
 	'<span id="sandboxIndicator" class="text-xs border border-[var(--border)] px-2 py-1 rounded-md bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" role="status" aria-live="polite"><span class="icon icon-md icon-lock shrink-0"></span><span id="sandboxLabel">Sandbox</span></span>' +
+	'<button id="toolPermissionModeBtn" type="button" class="text-xs border border-[var(--border)] px-2 py-1 rounded-md cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Tool permission mode">auto</button>' +
+	'<div id="toolPermissionTypeWrap" class="hidden"><select id="toolPermissionTypeSelect" class="channel-select" aria-label="Tool permission type"><option value="manual" selected>manual</option></select></div>' +
 	'<button id="chatTerminalBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Open terminal for this chat"><span class="icon icon-md icon-terminal shrink-0"></span><span>Terminal</span></button>' +
 	'<button id="debugPanelBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Show context debug info"><span class="icon icon-md icon-wrench shrink-0"></span><span id="debugPanelLabel">Debug</span></button>' +
 	'<button id="fullContextBtn" class="chat-badge-desktop-only text-xs border border-[var(--border)] px-2 py-1 rounded-md transition-colors cursor-pointer bg-transparent font-[var(--font-body)] inline-flex items-center gap-1 text-[var(--muted)]" title="Show full LLM context (system prompt + history)"><span class="icon icon-md icon-document shrink-0"></span><span id="fullContextLabel">Context</span></button>' +
@@ -804,6 +807,7 @@ registerPrefix(
 		setMaybeRefreshFullContextFn(maybeRefreshFullContext);
 
 		mountSessionHeaderControls();
+		mountToolPermissionToolbar();
 
 		const terminalBtn = S.$("chatTerminalBtn");
 		terminalBtn?.classList.toggle("hidden", gon.get("terminal_enabled") !== true);

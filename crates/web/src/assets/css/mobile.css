@@ -744,6 +744,8 @@ html {
 
 @media (max-width: 767px) {
   .chat-toolbar #sandboxIndicator,
+  .chat-toolbar #toolPermissionModeBtn,
+  .chat-toolbar #toolPermissionTypeSelect,
   .chat-toolbar button.chat-badge-desktop-only,
   .chat-toolbar .chat-badge-desktop-only > button,
   .chat-toolbar #sessionHeaderToolbarMount button,

@@ -1085,6 +1085,14 @@ impl ChatService for ExternalAgentChatService {
         self.inner.active_tool_invocations(session_key).await
     }
 
+    async fn tool_permission_pending(&self, session_key: &str) -> ServiceResult {
+        self.inner.tool_permission_pending(session_key).await
+    }
+
+    async fn tool_permission_resolve(&self, params: Value) -> ServiceResult {
+        self.inner.tool_permission_resolve(params).await
+    }
+
     async fn peek(&self, params: Value) -> ServiceResult {
         self.inner.peek(params).await
     }
@@ -1560,6 +1568,22 @@ mod tests {
                 .push("session_terminal");
             Ok(Some(SessionTerminal::Cancelled))
         }
+
+        async fn tool_permission_pending(&self, _session_key: &str) -> ServiceResult {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push("tool_permission_pending");
+            Ok(serde_json::json!({ "requests": ["inner"] }))
+        }
+
+        async fn tool_permission_resolve(&self, _params: Value) -> ServiceResult {
+            self.calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push("tool_permission_resolve");
+            Ok(serde_json::json!({ "ok": true, "source": "inner" }))
+        }
     }
 
     fn test_chat_context() -> ChatExecutionContext {
@@ -1766,6 +1790,49 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|error| error.into_inner()),
             vec!["wait_for_session_gate", "session_terminal"]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_permission_methods_delegate_to_inner() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        create_test_session(&metadata, "main").await;
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
+        let inner = Arc::new(SyncTrackingChatService::default());
+        let inner_chat: Arc<dyn ChatService> = inner.clone();
+        let chat = ExternalAgentChatService::new(
+            inner_chat,
+            external_agents,
+            test_gateway_state(),
+            session_store,
+            metadata,
+        );
+
+        let pending = chat
+            .tool_permission_pending("main")
+            .await
+            .expect("tool_permission_pending delegates to inner chat");
+        let resolved = chat
+            .tool_permission_resolve(serde_json::json!({
+                "sessionKey": "main",
+                "toolCallId": "call-1",
+                "phase": "before_execution",
+                "decision": "approve",
+            }))
+            .await
+            .expect("tool_permission_resolve delegates to inner chat");
+
+        assert_eq!(pending["requests"], serde_json::json!(["inner"]));
+        assert_eq!(resolved["source"], "inner");
+        assert_eq!(
+            *inner
+                .calls
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec!["tool_permission_pending", "tool_permission_resolve"]
         );
     }
 
