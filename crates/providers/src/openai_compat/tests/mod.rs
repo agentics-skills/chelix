@@ -392,6 +392,300 @@ fn responses_error_event_is_terminal_error() {
     ));
 }
 
+#[test]
+fn responses_non_json_first_line_fails_without_closing_an_unopened_segment() {
+    let mut state = ResponsesStreamState::default();
+
+    let result = process_responses_sse_line("not json", &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesEventResult::Failed(events)
+            if matches!(
+                events.as_slice(),
+                [StreamEvent::Error(message)] if message.contains("non-JSON Responses SSE line")
+            )
+    ));
+}
+
+#[test]
+fn responses_non_json_line_after_segment_start_closes_segment_as_failed() {
+    let mut state = ResponsesStreamState::default();
+    let created = serde_json::json!({"type": "response.created", "response": {"id": "resp_1"}});
+    assert!(matches!(
+        process_responses_sse_line(&created.to_string(), &mut state),
+        ResponsesEventResult::Events(_)
+    ));
+
+    let result = process_responses_sse_line("not json", &mut state);
+
+    assert!(matches!(
+        result,
+        ResponsesEventResult::Failed(events)
+            if matches!(
+                events.as_slice(),
+                [
+                    StreamEvent::SegmentClose {
+                        outcome: ProviderSegmentOutcome::Failed,
+                        ..
+                    },
+                    StreamEvent::Error(message),
+                ] if message.contains("non-JSON Responses SSE line")
+            )
+    ));
+}
+
+#[test]
+fn chat_completions_non_json_first_line_fails_without_closing_an_unopened_segment() {
+    let mut state = StreamingToolState::default();
+
+    let result = process_openai_sse_line("not json", &mut state);
+
+    assert!(matches!(
+        result,
+        SseLineResult::Events(events)
+            if matches!(
+                events.as_slice(),
+                [StreamEvent::Error(message)]
+                    if message.contains("non-JSON Chat Completions SSE line")
+            )
+    ));
+}
+
+#[test]
+fn chat_completions_non_json_line_after_segment_start_closes_segment_as_failed() {
+    let mut state = StreamingToolState::default();
+    let chunk = serde_json::json!({
+        "id": "chatcmpl-err",
+        "choices": [{"delta": {"content": "partial"}}]
+    });
+    assert!(matches!(
+        process_openai_sse_line(&chunk.to_string(), &mut state),
+        SseLineResult::Events(_)
+    ));
+
+    let result = process_openai_sse_line("not json", &mut state);
+
+    assert!(matches!(
+        result,
+        SseLineResult::Events(events)
+            if matches!(
+                events.as_slice(),
+                [
+                    StreamEvent::SegmentClose {
+                        outcome: ProviderSegmentOutcome::Failed,
+                        ..
+                    },
+                    StreamEvent::Error(message),
+                ] if message.contains("non-JSON Chat Completions SSE line")
+            )
+    ));
+}
+
+#[test]
+fn chat_completions_error_object_fails_the_stream_with_its_message() {
+    let event = serde_json::json!({"error": {"message": "boom"}});
+    let mut state = StreamingToolState::default();
+
+    let result = process_openai_sse_line(&event.to_string(), &mut state);
+
+    assert!(matches!(
+        result,
+        SseLineResult::Events(events)
+            if matches!(
+                events.as_slice(),
+                [
+                    StreamEvent::ProviderRaw(raw),
+                    StreamEvent::SegmentStart { .. },
+                    StreamEvent::SegmentClose {
+                        outcome: ProviderSegmentOutcome::Failed,
+                        ..
+                    },
+                    StreamEvent::Error(message),
+                ] if raw == &event && message == "boom"
+            )
+    ));
+}
+
+#[test]
+fn chat_completions_error_object_keeps_error_code_for_retry_classification() {
+    let event = serde_json::json!({
+        "error": {"message": "Rate limit", "code": "rate_limit_exceeded"}
+    });
+    let mut state = StreamingToolState::default();
+
+    let result = process_openai_sse_line(&event.to_string(), &mut state);
+
+    let SseLineResult::Events(events) = result else {
+        panic!("error object must produce events");
+    };
+    let Some(StreamEvent::Error(message)) = events.last() else {
+        panic!("error object must end the stream with an error");
+    };
+    assert!(message.contains("rate_limit_exceeded"));
+    assert!(message.contains("Rate limit"));
+}
+
+/// Every function-call announcement produced by a Responses event sequence.
+fn responses_function_call_events(events: &[serde_json::Value]) -> Vec<StreamEvent> {
+    let mut state = ResponsesStreamState::default();
+    let mut produced = Vec::new();
+    for event in events {
+        let batch = match process_responses_event(event.clone(), &mut state) {
+            ResponsesEventResult::Events(events)
+            | ResponsesEventResult::Completed(events)
+            | ResponsesEventResult::Failed(events) => events,
+        };
+        produced.extend(batch.into_iter().filter(|event| {
+            matches!(
+                event,
+                StreamEvent::ToolCallStart { .. }
+                    | StreamEvent::ToolCallComplete { .. }
+                    | StreamEvent::SegmentClose { .. }
+            ) || matches!(
+                event,
+                StreamEvent::ProviderItemUpdate(update)
+                    if matches!(update.payload, ProviderItemUpdatePayload::FunctionCallDone { .. })
+            )
+        }));
+    }
+    produced
+}
+
+fn final_function_call_arguments(events: &[StreamEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::ProviderItemUpdate(update) => match &update.payload {
+                ProviderItemUpdatePayload::FunctionCallDone { arguments } => {
+                    Some(arguments.clone())
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+fn tool_call_complete_count(events: &[StreamEvent]) -> usize {
+    events
+        .iter()
+        .filter(|event| matches!(event, StreamEvent::ToolCallComplete { .. }))
+        .count()
+}
+
+fn function_call_added(call_id: &str, name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "response.output_item.added",
+        "output_index": 0,
+        "item": {"type": "function_call", "call_id": call_id, "name": name, "arguments": ""}
+    })
+}
+
+fn function_call_item_done(call_id: &str, name: &str, arguments: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {"type": "function_call", "call_id": call_id, "name": name, "arguments": arguments}
+    })
+}
+
+#[test]
+fn responses_output_item_done_supplies_final_function_call_arguments() {
+    let events = responses_function_call_events(&[
+        function_call_added("call_1", "lookup"),
+        serde_json::json!({
+            "type": "response.function_call_arguments.delta",
+            "output_index": 0,
+            "delta": "{\"q\":"
+        }),
+        function_call_item_done("call_1", "lookup", "{\"q\":\"full\"}"),
+        serde_json::json!({"type": "response.completed", "response": {}}),
+    ]);
+
+    assert_eq!(tool_call_complete_count(&events), 1);
+    assert_eq!(final_function_call_arguments(&events), vec![
+        "{\"q\":\"full\"}".to_string()
+    ]);
+}
+
+#[test]
+fn responses_output_item_done_without_added_opens_and_finishes_the_call() {
+    let events = responses_function_call_events(&[function_call_item_done(
+        "call_1",
+        "lookup",
+        "{\"q\":\"full\"}",
+    )]);
+
+    assert!(matches!(
+        events.as_slice(),
+        [
+            StreamEvent::ToolCallStart { id, name, index: 0 },
+            StreamEvent::ProviderItemUpdate(update),
+            StreamEvent::ToolCallComplete { index: 0 },
+        ] if id == "call_1"
+            && name == "lookup"
+            && update.item_id.as_str() == "call_1"
+            && matches!(
+                &update.payload,
+                ProviderItemUpdatePayload::FunctionCallDone { arguments }
+                    if arguments == "{\"q\":\"full\"}"
+            )
+    ));
+}
+
+#[test]
+fn responses_later_final_arguments_replace_earlier_ones_with_a_single_completion() {
+    let events = responses_function_call_events(&[
+        function_call_added("call_1", "lookup"),
+        serde_json::json!({
+            "type": "response.function_call_arguments.done",
+            "output_index": 0,
+            "arguments": "{\"q\":\"first\"}"
+        }),
+        function_call_item_done("call_1", "lookup", "{\"q\":\"final\"}"),
+    ]);
+
+    assert_eq!(tool_call_complete_count(&events), 1);
+    assert_eq!(final_function_call_arguments(&events), vec![
+        "{\"q\":\"first\"}".to_string(),
+        "{\"q\":\"final\"}".to_string(),
+    ]);
+}
+
+#[test]
+fn responses_completed_output_announces_function_calls_before_segment_close() {
+    let events = responses_function_call_events(&[serde_json::json!({
+        "type": "response.completed",
+        "response": {
+            "id": "resp_final",
+            "output": [
+                {"type": "message", "role": "assistant", "content": []},
+                {"type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": "{\"q\":\"full\"}"}
+            ]
+        }
+    })]);
+
+    assert!(matches!(
+        events.as_slice(),
+        [
+            StreamEvent::ToolCallStart { id, name, index: 0 },
+            StreamEvent::ProviderItemUpdate(update),
+            StreamEvent::ToolCallComplete { index: 0 },
+            StreamEvent::SegmentClose {
+                outcome: ProviderSegmentOutcome::Completed,
+                ..
+            },
+        ] if id == "call_1"
+            && name == "lookup"
+            && matches!(
+                &update.payload,
+                ProviderItemUpdatePayload::FunctionCallDone { arguments }
+                    if arguments == "{\"q\":\"full\"}"
+            )
+    ));
+}
+
 /// Collect every provider item update produced by a Chat Completions stream.
 fn chat_provider_updates(lines: &[serde_json::Value]) -> Vec<(String, usize)> {
     let mut state = StreamingToolState::default();
@@ -571,7 +865,6 @@ fn responses_provider_updates(events: &[serde_json::Value]) -> Vec<(String, usiz
             ResponsesEventResult::Events(events)
             | ResponsesEventResult::Completed(events)
             | ResponsesEventResult::Failed(events) => events,
-            ResponsesEventResult::Skip => Vec::new(),
         };
         for event in produced {
             if let StreamEvent::ProviderItemUpdate(update) = event {

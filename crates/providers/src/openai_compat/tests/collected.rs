@@ -51,3 +51,75 @@ async fn collected_tool_arguments_preserve_native_falsy_values() {
     assert_eq!(responses.usage.input_tokens, 20);
     assert_eq!(responses.usage.output_tokens, 10);
 }
+
+/// Run a Responses event sequence through the adapter and the collector.
+async fn collect_responses(
+    events: Vec<serde_json::Value>,
+) -> anyhow::Result<chelix_agents::model::CompletionResponse> {
+    let mut state = ResponsesStreamState::default();
+    let mut produced = Vec::<StreamEvent>::new();
+    for event in events {
+        match process_responses_event(event, &mut state) {
+            ResponsesEventResult::Events(batch)
+            | ResponsesEventResult::Completed(batch)
+            | ResponsesEventResult::Failed(batch) => produced.extend(batch),
+        }
+    }
+    produced.extend(finalize_responses_stream(&mut state));
+    collect_stream(Box::pin(tokio_stream::iter(produced))).await
+}
+
+#[tokio::test]
+async fn collected_responses_call_uses_final_item_arguments_over_partial_deltas() {
+    let collected = collect_responses(vec![
+        serde_json::json!({"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"lookup","arguments":""}}),
+        serde_json::json!({"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"q\":"}),
+        serde_json::json!({"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"full\"}"}}),
+        serde_json::json!({"type":"response.completed","response":{"id":"resp_1"}}),
+    ])
+    .await
+    .unwrap();
+
+    assert_eq!(collected.tool_calls.len(), 1);
+    assert_eq!(
+        collected.tool_calls[0].arguments,
+        serde_json::json!({"q": "full"})
+    );
+    assert!(collected.tool_calls[0].argument_diagnostic.is_none());
+}
+
+#[tokio::test]
+async fn collected_responses_call_present_only_in_final_output_is_executed() {
+    let collected = collect_responses(vec![serde_json::json!({
+        "type":"response.completed",
+        "response":{
+            "id":"resp_1",
+            "output":[{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{\"q\":\"full\"}"}]
+        }
+    })])
+    .await
+    .unwrap();
+
+    assert_eq!(collected.tool_calls.len(), 1);
+    assert_eq!(collected.tool_calls[0].name, "lookup");
+    assert_eq!(
+        collected.tool_calls[0].arguments,
+        serde_json::json!({"q": "full"})
+    );
+}
+
+#[tokio::test]
+async fn collected_responses_non_json_first_frame_surfaces_the_parse_error() {
+    let mut state = ResponsesStreamState::default();
+    let ResponsesEventResult::Failed(events) =
+        crate::openai_compat::process_responses_sse_line("not json", &mut state)
+    else {
+        panic!("non-JSON line must fail the stream")
+    };
+
+    let error = collect_stream(Box::pin(tokio_stream::iter(events)))
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("non-JSON Responses SSE line"));
+}

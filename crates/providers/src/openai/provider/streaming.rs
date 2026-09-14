@@ -7,8 +7,8 @@ use tracing::{debug, trace};
 use crate::{
     http::{retry_after_ms_from_headers, with_retry_after_marker},
     openai_compat::{
-        ResponsesEventResult, ResponsesStreamState, SseLineResult, StreamingToolState,
-        finalize_responses_stream, finalize_stream, process_openai_sse_line,
+        ResponsesEventResult, ResponsesStreamState, SseLineBuffer, SseLineResult,
+        StreamingToolState, finalize_responses_stream, finalize_stream, process_openai_sse_line,
         process_responses_sse_line, split_responses_instructions_and_input, to_responses_api_tools,
     },
 };
@@ -99,7 +99,7 @@ impl OpenAiProvider {
             };
 
             let mut byte_stream = resp.bytes_stream();
-            let mut buf = String::new();
+            let mut buf = SseLineBuffer::default();
             let mut state = ResponsesStreamState::default();
             let mut stream_done = false;
 
@@ -116,21 +116,23 @@ impl OpenAiProvider {
                         return;
                     }
                 };
-                buf.push_str(&String::from_utf8_lossy(&chunk));
+                buf.push(&chunk);
 
-                while let Some(pos) = buf.find('\n') {
-                    let line = buf[..pos].trim().to_string();
-                    buf = buf[pos + 1..].to_string();
+                loop {
+                    let line = match buf.next_line() {
+                        Ok(Some(line)) => line,
+                        Ok(None) => break,
+                        Err(error) => {
+                            for event in state.close_on_transport_error() {
+                                yield event;
+                            }
+                            yield StreamEvent::Error(format!("provider stream sent invalid UTF-8: {error}"));
+                            return;
+                        }
+                    };
 
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    let Some(data) = line
-                        .strip_prefix("data: ")
-                        .or_else(|| line.strip_prefix("data:"))
-                    else {
-                        // Handle bare event types (e.g. "event: response.completed")
+                    // Non-data lines carry event names or comments.
+                    let Some(data) = sse_data(&line) else {
                         continue;
                     };
 
@@ -153,7 +155,6 @@ impl OpenAiProvider {
                                 yield event;
                             }
                         }
-                        ResponsesEventResult::Skip => {}
                     }
                 }
                 if stream_done {
@@ -163,12 +164,17 @@ impl OpenAiProvider {
 
             // Process any residual buffered line on EOF.
             if !stream_done {
-                let line = buf.trim().to_string();
-                if !line.is_empty()
-                    && let Some(data) = line
-                        .strip_prefix("data: ")
-                        .or_else(|| line.strip_prefix("data:"))
-                {
+                let residual = match buf.finish() {
+                    Ok(residual) => residual,
+                    Err(error) => {
+                        for event in state.close_on_transport_error() {
+                            yield event;
+                        }
+                        yield StreamEvent::Error(format!("provider stream sent invalid UTF-8: {error}"));
+                        return;
+                    }
+                };
+                if let Some(data) = residual.as_deref().and_then(sse_data) {
                     match process_responses_sse_line(data, &mut state) {
                         ResponsesEventResult::Completed(events) => {
                             for event in events {
@@ -186,7 +192,6 @@ impl OpenAiProvider {
                                 yield event;
                             }
                         }
-                        ResponsesEventResult::Skip => {}
                     }
                 }
             }
@@ -269,7 +274,7 @@ impl OpenAiProvider {
             };
 
             let mut byte_stream = resp.bytes_stream();
-            let mut buf = String::new();
+            let mut buf = SseLineBuffer::default();
             let mut state = StreamingToolState::default();
 
             while let Some(chunk) = byte_stream.next().await {
@@ -285,20 +290,22 @@ impl OpenAiProvider {
                         return;
                     }
                 };
-                buf.push_str(&String::from_utf8_lossy(&chunk));
+                buf.push(&chunk);
 
-                while let Some(pos) = buf.find('\n') {
-                    let line = buf[..pos].trim().to_string();
-                    buf = buf[pos + 1..].to_string();
+                loop {
+                    let line = match buf.next_line() {
+                        Ok(Some(line)) => line,
+                        Ok(None) => break,
+                        Err(error) => {
+                            for event in state.close_on_transport_error() {
+                                yield event;
+                            }
+                            yield StreamEvent::Error(format!("provider stream sent invalid UTF-8: {error}"));
+                            return;
+                        }
+                    };
 
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    let Some(data) = line
-                        .strip_prefix("data: ")
-                        .or_else(|| line.strip_prefix("data:"))
-                    else {
+                    let Some(data) = sse_data(&line) else {
                         continue;
                     };
 
@@ -314,7 +321,6 @@ impl OpenAiProvider {
                                 yield event;
                             }
                         }
-                        SseLineResult::Skip => {}
                     }
                 }
             }
@@ -323,12 +329,17 @@ impl OpenAiProvider {
             // an explicit [DONE] frame or trailing newline. Process any
             // residual buffered line and always finalize on EOF so usage
             // metadata still propagates.
-            let line = buf.trim().to_string();
-            if !line.is_empty()
-                && let Some(data) = line
-                    .strip_prefix("data: ")
-                    .or_else(|| line.strip_prefix("data:"))
-            {
+            let residual = match buf.finish() {
+                Ok(residual) => residual,
+                Err(error) => {
+                    for event in state.close_on_transport_error() {
+                        yield event;
+                    }
+                    yield StreamEvent::Error(format!("provider stream sent invalid UTF-8: {error}"));
+                    return;
+                }
+            };
+            if let Some(data) = residual.as_deref().and_then(sse_data) {
                 match process_openai_sse_line(data, &mut state) {
                     SseLineResult::Done => {
                         for event in finalize_stream(&mut state) {
@@ -341,7 +352,6 @@ impl OpenAiProvider {
                             yield event;
                         }
                     }
-                    SseLineResult::Skip => {}
                 }
             }
 
@@ -350,6 +360,15 @@ impl OpenAiProvider {
             }
         })
     }
+}
+
+/// Payload of an SSE `data:` line; `None` for empty and non-data lines.
+fn sse_data(line: &str) -> Option<&str> {
+    if line.is_empty() {
+        return None;
+    }
+    line.strip_prefix("data: ")
+        .or_else(|| line.strip_prefix("data:"))
 }
 
 #[cfg(test)]
@@ -480,6 +499,71 @@ mod tests {
                     && usage.output_tokens == 7
                     && usage.cache_read_tokens == 3
         ));
+    }
+
+    #[tokio::test]
+    async fn responses_sse_reassembles_multibyte_text_split_across_http_chunks() {
+        let delta = serde_json::json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "delta": "й"
+        });
+        let completed = serde_json::json!({"type": "response.completed", "response": {}});
+        let body = format!("data: {delta}\n\ndata: {completed}\n\n").into_bytes();
+        // `й` is two bytes; cut the body between them.
+        let split_at = body
+            .windows(2)
+            .position(|window| window == "й".as_bytes())
+            .unwrap()
+            + 1;
+        let (head, tail) = body.split_at(split_at);
+        let chunks = vec![head.to_vec(), tail.to_vec()];
+
+        let app = Router::new().route(
+            "/v1/responses",
+            post(move || {
+                let chunks = chunks.clone();
+                async move {
+                    let stream = futures::stream::iter(
+                        chunks.into_iter().map(Ok::<_, std::convert::Infallible>),
+                    );
+                    Response::builder()
+                        .header(CONTENT_TYPE, "text/event-stream")
+                        .body(Body::from_stream(stream))
+                        .unwrap()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let provider = configure_reasoning(
+            OpenAiProvider::new(
+                Secret::new("test-key".to_string()),
+                "gpt-5.4".to_string(),
+                format!("http://{addr}"),
+            )
+            .with_wire_api(chelix_config::schema::WireApi::Responses),
+            vec!["off".into()],
+            "off".into(),
+        );
+
+        let events: Vec<_> = provider
+            .stream(vec![ChatMessage::user("hello")])
+            .collect()
+            .await;
+
+        let text: String = events
+            .iter()
+            .filter_map(|event| match event {
+                StreamEvent::Delta(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "й");
+        assert!(matches!(events.last(), Some(StreamEvent::Done(_))));
     }
 
     #[tokio::test]

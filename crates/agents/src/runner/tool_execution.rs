@@ -13,7 +13,7 @@ use {
 };
 
 use crate::{
-    model::{ToolCall, ToolChoice},
+    model::{ToolCall, ToolCallArgumentSource, ToolChoice},
     tool_arg_validator::validate_tool_args,
     tool_context::ToolExecutionContext,
     tool_registry::ToolRegistry,
@@ -81,9 +81,28 @@ impl ToolInvocationExecutor<'_> {
         let mut execution_arguments = raw_arguments.clone();
         enrich_tool_arguments(&mut execution_arguments, self.tool_context, &tool_call.id);
         log_tool_argument_diagnostic(&execution_name, tool_call.argument_diagnostic.as_ref());
+        let malformed_arguments = tool_call
+            .argument_diagnostic
+            .as_ref()
+            .filter(|diagnostic| diagnostic.source == ToolCallArgumentSource::MalformedString);
         let validation_error = if matches!(self.tool_choice, Some(ToolChoice::None)) {
             Some(format!(
                 "tool `{execution_name}` cannot be called: tool use is disabled for this turn"
+            ))
+        } else if let Some(diagnostic) = malformed_arguments {
+            // The provider's argument text is not a JSON object. The call is
+            // refused with the exact parser error instead of executing a
+            // guessed substitute, mirroring the strict decode boundary.
+            warn!(
+                tool = %execution_name,
+                summary = %diagnostic.short_summary(),
+                "tool call rejected: arguments are not valid JSON"
+            );
+            Some(format!(
+                "Tool call rejected before execution by `{execution_name}`: failed to parse \
+                 function arguments: {}. {}",
+                diagnostic.parse_error.as_deref().unwrap_or("invalid JSON"),
+                diagnostic.llm_detail()
             ))
         } else if let Some(ref tool) = tool {
             let schema = tool.parameters_schema();

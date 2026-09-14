@@ -579,13 +579,6 @@ pub(crate) fn log_tool_argument_diagnostic(
         return;
     };
     match diagnostic.source {
-        ToolCallArgumentSource::RepairedString => tracing::debug!(
-            tool = %tool_name,
-            raw_len = diagnostic.raw_len,
-            raw_preview = diagnostic.raw_preview.as_deref().unwrap_or(""),
-            parse_error = diagnostic.parse_error.as_deref().unwrap_or(""),
-            "tool call arguments repaired before dispatch"
-        ),
         ToolCallArgumentSource::NullOrMissing => tracing::debug!(
             tool = %tool_name,
             summary = %diagnostic.short_summary(),
