@@ -439,6 +439,11 @@ pub async fn run_agent_loop_streaming_with_limits(
         // Map streaming index -> accumulated JSON args string.
         let mut tool_call_args: std::collections::HashMap<usize, String> =
             std::collections::HashMap::new();
+        // Map tool call id -> final argument text announced by the provider.
+        // The latest announcement wins; it takes precedence over the
+        // concatenated deltas when the call is finalized.
+        let mut final_tool_call_args: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         // Map streaming index -> position in the `tool_calls` vec.
         // The streaming index may not start at 0. Some providers use the
         // content-block index, so a text block at index 0 pushes the tool_use
@@ -490,6 +495,13 @@ pub async fn run_agent_loop_streaming_with_limits(
                     materializer.apply_update(&update).map_err(|error| {
                         anyhow::anyhow!("provider item update rejected: {error}")
                     })?;
+                    if let chelix_common::ProviderItemUpdatePayload::FunctionCallDone {
+                        arguments,
+                    } = &update.payload
+                    {
+                        final_tool_call_args
+                            .insert(update.item_id.as_str().to_owned(), arguments.clone());
+                    }
                     if let Some(cb) = on_event {
                         cb(RunnerEvent::ProviderItemUpdate(update));
                     }
@@ -743,25 +755,32 @@ pub async fn run_agent_loop_streaming_with_limits(
         unknown_retries_remaining = UNKNOWN_MAX_RETRIES;
         usage_accumulator.record_request(request_usage.clone());
 
-        // Finalize tool call arguments from accumulated strings.
+        // Finalize tool call arguments. The provider's final argument text
+        // wins over the concatenated deltas; the whole string is decoded
+        // strictly exactly once here.
         // Use stream_idx_to_vec_pos to map streaming indices (which may not
         // start at 0) to the actual position in the tool_calls vec.
-        for (stream_idx, args_str) in &tool_call_args {
-            // Emit raw accumulated string at debug level so future variants of
-            // "default to {} because no deltas arrived" can be diagnosed
-            // without a repro (issue #658).
+        for (stream_idx, delta_args) in &tool_call_args {
+            let Some(&vec_pos) = stream_idx_to_vec_pos.get(stream_idx) else {
+                continue;
+            };
+            let Some(tool_call) = tool_calls.get_mut(vec_pos) else {
+                continue;
+            };
+            let (source, args_str) = match final_tool_call_args.get(&tool_call.id) {
+                Some(final_args) => ("final", final_args),
+                None => ("deltas", delta_args),
+            };
             debug!(
                 stream_idx,
+                tool_call_id = %tool_call.id,
+                source,
                 args_str = %args_str,
                 "finalizing tool call args"
             );
-            if let Some(&vec_pos) = stream_idx_to_vec_pos.get(stream_idx)
-                && vec_pos < tool_calls.len()
-            {
-                let decoded = decode_tool_call_arguments_from_str(args_str);
-                tool_calls[vec_pos].arguments = decoded.arguments;
-                tool_calls[vec_pos].argument_diagnostic = decoded.diagnostic;
-            }
+            let decoded = decode_tool_call_arguments_from_str(args_str);
+            tool_call.arguments = decoded.arguments;
+            tool_call.argument_diagnostic = decoded.diagnostic;
         }
 
         info!(

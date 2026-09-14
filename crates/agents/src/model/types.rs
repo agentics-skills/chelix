@@ -22,7 +22,6 @@ pub struct ToolCall {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ToolCallArgumentSource {
-    RepairedString,
     EmptyString,
     NullOrMissing,
     MalformedString,
@@ -40,7 +39,6 @@ impl ToolCallArgumentDiagnostic {
     #[must_use]
     pub fn short_summary(&self) -> String {
         let source = match self.source {
-            ToolCallArgumentSource::RepairedString => "repaired-string",
             ToolCallArgumentSource::EmptyString => "empty-string",
             ToolCallArgumentSource::NullOrMissing => "null-or-missing",
             ToolCallArgumentSource::MalformedString => "malformed-string",

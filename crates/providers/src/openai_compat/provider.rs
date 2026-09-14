@@ -605,8 +605,6 @@ impl StreamingToolState {
 /// Result of processing a single SSE line.
 #[derive(Debug)]
 pub enum SseLineResult {
-    /// No actionable event (empty line, non-data prefix)
-    Skip,
     /// Stream is done
     Done,
     /// Events to yield
@@ -628,7 +626,13 @@ fn chat_protocol_error(
         detail = %detail,
         "provider sent a malformed Chat Completions event"
     );
-    if !state.segment_closed {
+    fail_chat_stream(state, &mut events, detail);
+    SseLineResult::Events(events)
+}
+
+/// Close the segment as failed (only if it was opened) and report `error`.
+fn fail_chat_stream(state: &mut StreamingToolState, events: &mut Vec<StreamEvent>, error: String) {
+    if state.segment_started && !state.segment_closed {
         state.segment_closed = true;
         events.push(StreamEvent::SegmentClose {
             segment_id: state.segment_id.clone(),
@@ -636,8 +640,46 @@ fn chat_protocol_error(
             usage: None,
         });
     }
-    events.push(StreamEvent::Error(detail));
-    SseLineResult::Events(events)
+    events.push(StreamEvent::Error(error));
+}
+
+/// Extract the error text of a provider error event.
+///
+/// The error object is looked up at `error` and `response.error`; an event
+/// whose own `type` is `error` is the error object itself. When the object
+/// carries an error class (`code` or `type`) the whole object is rendered so
+/// retry classification keeps it; otherwise only `message` is returned.
+fn provider_error_text(evt: &serde_json::Value) -> String {
+    let nested_error = evt
+        .get("error")
+        .filter(|error| error.is_object())
+        .or_else(|| {
+            evt.get("response")
+                .and_then(|response| response.get("error"))
+                .filter(|error| error.is_object())
+        });
+    let error = nested_error.or_else(|| (evt["type"].as_str() == Some("error")).then_some(evt));
+    let msg = error
+        .and_then(|error| error.get("message"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| evt["message"].as_str())
+        .unwrap_or("unknown error");
+    let has_error_class = nested_error.is_some_and(|error| {
+        ["code", "type"].into_iter().any(|field| {
+            error
+                .get(field)
+                .and_then(serde_json::Value::as_str)
+                .is_some()
+        })
+    }) || evt
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .is_some();
+    if has_error_class {
+        error.map_or_else(|| msg.to_string(), ToString::to_string)
+    } else {
+        msg.to_string()
+    }
 }
 
 /// Result of processing a single Responses API SSE line.
@@ -647,8 +689,6 @@ fn chat_protocol_error(
 /// with [`StreamEvent::Done`].
 #[derive(Debug)]
 pub enum ResponsesEventResult {
-    /// No actionable event (invalid JSON or an unrecognized event type).
-    Skip,
     /// Non-terminal events to yield.
     Events(Vec<StreamEvent>),
     /// The stream completed successfully; yield events before finalizing.
@@ -835,8 +875,15 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
         return SseLineResult::Done;
     }
 
-    let Ok(evt) = serde_json::from_str::<serde_json::Value>(data) else {
-        return SseLineResult::Skip;
+    let evt = match serde_json::from_str::<serde_json::Value>(data) {
+        Ok(evt) => evt,
+        Err(error) => {
+            return chat_protocol_error(
+                state,
+                Vec::new(),
+                format!("provider sent a non-JSON Chat Completions SSE line: {error}"),
+            );
+        },
     };
 
     let mut events = vec![StreamEvent::ProviderRaw(evt.clone())];
@@ -848,6 +895,19 @@ pub fn process_openai_sse_line(data: &str, state: &mut StreamingToolState) -> Ss
         events.push(StreamEvent::SegmentStart {
             segment_id: state.segment_id.clone(),
         });
+    }
+
+    // A mid-stream error is delivered as a data line carrying an `error`
+    // object. It ends the response; the stream must not continue silently.
+    if evt.get("error").is_some_and(serde_json::Value::is_object) {
+        let error = provider_error_text(&evt);
+        tracing::error!(
+            segment_id = %state.segment_id,
+            error = %error,
+            "provider reported a Chat Completions stream error"
+        );
+        fail_chat_stream(state, &mut events, error);
+        return SseLineResult::Events(events);
     }
 
     if let Some(usage) = parse_openai_compat_usage_from_payload(&evt) {
@@ -1212,7 +1272,7 @@ fn responses_tool_slot(event: &serde_json::Value) -> Option<usize> {
 /// A missing identity or slot cannot be recovered from: any substitute value
 /// silently merges or splits provider items. The segment is closed as failed so
 /// the defect surfaces instead of corrupting the transcript.
-fn responses_protocol_error(
+pub(crate) fn responses_protocol_error(
     state: &mut ResponsesStreamState,
     mut events: Vec<StreamEvent>,
     detail: String,
@@ -1222,7 +1282,7 @@ fn responses_protocol_error(
         detail = %detail,
         "provider sent a malformed Responses event"
     );
-    if !state.segment_closed {
+    if state.segment_started && !state.segment_closed {
         state.segment_closed = true;
         events.push(StreamEvent::SegmentClose {
             segment_id: state.segment_id.clone(),
@@ -1232,6 +1292,95 @@ fn responses_protocol_error(
     }
     events.push(StreamEvent::Error(detail));
     ResponsesEventResult::Failed(events)
+}
+
+/// Open a function-call slot and announce the call.
+///
+/// `slot` is the provider's own index when it sent one; otherwise the slot is
+/// assigned in arrival order. Returns the slot the call occupies.
+fn open_function_call_slot(
+    state: &mut ResponsesStreamState,
+    events: &mut Vec<StreamEvent>,
+    id: String,
+    name: String,
+    slot: Option<usize>,
+) -> usize {
+    let index = slot.unwrap_or(state.current_tool_index);
+    state.current_tool_index = state.current_tool_index.max(index + 1);
+    state.tool_calls.insert(index, (id.clone(), name.clone()));
+    let item_id = ProviderItemId::new(id.clone());
+    let position = state.position_for(&item_id);
+    let seq = state.next_seq();
+    events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+        segment_id: state.segment_id.clone(),
+        item_id,
+        position,
+        update_seq: seq,
+        payload: ProviderItemUpdatePayload::FunctionCallStart { name: name.clone() },
+    }));
+    events.push(StreamEvent::ToolCallStart { id, name, index });
+    index
+}
+
+/// Announce the final argument text of a function call.
+///
+/// The snapshot is always emitted: a later announcement replaces an earlier
+/// one in every consumer. `ToolCallComplete` is emitted once per slot.
+fn announce_function_call_arguments(
+    state: &mut ResponsesStreamState,
+    events: &mut Vec<StreamEvent>,
+    index: usize,
+    call_id: String,
+    arguments: String,
+) {
+    let item_id = ProviderItemId::new(call_id);
+    let position = state.position_for(&item_id);
+    let seq = state.next_seq();
+    events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
+        segment_id: state.segment_id.clone(),
+        item_id,
+        position,
+        update_seq: seq,
+        payload: ProviderItemUpdatePayload::FunctionCallDone { arguments },
+    }));
+    if state.completed_tool_calls.insert(index) {
+        events.push(StreamEvent::ToolCallComplete { index });
+    }
+}
+
+/// Process a completed `function_call` output item.
+///
+/// The item carries the provider's final argument text. A call that was never
+/// opened by `output_item.added` is opened here, so a call that only appears in
+/// the final output still reaches the runner.
+fn finish_function_call_item(
+    state: &mut ResponsesStreamState,
+    events: &mut Vec<StreamEvent>,
+    item: &serde_json::Value,
+) -> Result<(), String> {
+    let call_id = item["call_id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| "completed function_call item has no call_id".to_string())?;
+    let name = item["name"]
+        .as_str()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| format!("completed function_call `{call_id}` has no name"))?;
+    let arguments = item["arguments"]
+        .as_str()
+        .ok_or_else(|| format!("function_call `{call_id}` finished without an arguments field"))?
+        .to_string();
+    let index = match state
+        .tool_calls
+        .iter()
+        .find(|(_, (id, _))| id == call_id)
+        .map(|(index, _)| *index)
+    {
+        Some(index) => index,
+        None => open_function_call_slot(state, events, call_id.to_string(), name.to_string(), None),
+    };
+    announce_function_call_arguments(state, events, index, call_id.to_string(), arguments);
+    Ok(())
 }
 
 /// Both SSE and WebSocket transports call this function so Responses event
@@ -1371,24 +1520,11 @@ pub fn process_responses_event(
                         format!("function_call `{id}` has no name"),
                     );
                 };
-                let index = responses_tool_slot(&evt).unwrap_or(state.current_tool_index);
                 // `output_item.added` opens a slot rather than referencing one,
                 // so an absent index is assigned in arrival order. Events that
                 // reference an existing slot must carry it and are rejected
                 // otherwise.
-                state.current_tool_index = state.current_tool_index.max(index + 1);
-                state.tool_calls.insert(index, (id.clone(), name.clone()));
-                let item_id = ProviderItemId::new(id.clone());
-                let position = state.position_for(&item_id);
-                let seq = state.next_seq();
-                events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
-                    segment_id: state.segment_id.clone(),
-                    item_id,
-                    position,
-                    update_seq: seq,
-                    payload: ProviderItemUpdatePayload::FunctionCallStart { name: name.clone() },
-                }));
-                events.push(StreamEvent::ToolCallStart { id, name, index });
+                open_function_call_slot(state, &mut events, id, name, responses_tool_slot(&evt));
             }
             ResponsesEventResult::Events(events)
         },
@@ -1422,6 +1558,11 @@ pub fn process_responses_event(
                     update_seq: seq,
                     payload: ProviderItemUpdatePayload::ReasoningItemDone { encrypted_content },
                 }));
+            }
+            if evt["item"]["type"].as_str() == Some("function_call")
+                && let Err(detail) = finish_function_call_item(state, &mut events, &evt["item"])
+            {
+                return responses_protocol_error(state, events, detail);
             }
             ResponsesEventResult::Events(events)
         },
@@ -1492,24 +1633,25 @@ pub fn process_responses_event(
                     format!("function_call `{call_id}` completed without an arguments field"),
                 );
             };
-            let item_id = ProviderItemId::new(call_id);
-            let position = state.position_for(&item_id);
-            let seq = state.next_seq();
-            events.push(StreamEvent::ProviderItemUpdate(ProviderItemUpdate {
-                segment_id: state.segment_id.clone(),
-                item_id,
-                position,
-                update_seq: seq,
-                payload: ProviderItemUpdatePayload::FunctionCallDone { arguments },
-            }));
-            if state.completed_tool_calls.insert(index) {
-                events.push(StreamEvent::ToolCallComplete { index });
-            }
+            announce_function_call_arguments(state, &mut events, index, call_id, arguments);
             ResponsesEventResult::Events(events)
         },
         "response.completed" => {
             let mut events = init_events;
             events.push(raw);
+            // The final response carries every output item. Function calls
+            // are announced from it before the segment closes so their final
+            // argument text is what the runner decodes.
+            let output_items = evt["response"]["output"].as_array();
+            for item in output_items
+                .into_iter()
+                .flatten()
+                .filter(|item| item["type"].as_str() == Some("function_call"))
+            {
+                if let Err(detail) = finish_function_call_item(state, &mut events, item) {
+                    return responses_protocol_error(state, events, detail);
+                }
+            }
             let usage = evt
                 .get("response")
                 .and_then(|response| response.get("usage"))
@@ -1531,37 +1673,7 @@ pub fn process_responses_event(
         "error" | "response.failed" => {
             let mut events = init_events;
             events.push(raw);
-            let nested_error = evt
-                .get("error")
-                .filter(|error| error.is_object())
-                .or_else(|| {
-                    evt.get("response")
-                        .and_then(|response| response.get("error"))
-                        .filter(|error| error.is_object())
-                });
-            let error =
-                nested_error.or_else(|| (evt["type"].as_str() == Some("error")).then_some(&evt));
-            let msg = error
-                .and_then(|error| error.get("message"))
-                .and_then(serde_json::Value::as_str)
-                .or_else(|| evt["message"].as_str())
-                .unwrap_or("unknown error");
-            let has_error_class = nested_error.is_some_and(|error| {
-                ["code", "type"].into_iter().any(|field| {
-                    error
-                        .get(field)
-                        .and_then(serde_json::Value::as_str)
-                        .is_some()
-                })
-            }) || evt
-                .get("code")
-                .and_then(serde_json::Value::as_str)
-                .is_some();
-            let error = if has_error_class {
-                error.map_or_else(|| msg.to_string(), ToString::to_string)
-            } else {
-                msg.to_string()
-            };
+            let error = provider_error_text(&evt);
             state.segment_closed = true;
             events.push(StreamEvent::SegmentClose {
                 segment_id: state.segment_id.clone(),
@@ -1609,10 +1721,14 @@ pub fn process_responses_sse_line(
     if data == "[DONE]" {
         return ResponsesEventResult::Completed(Vec::new());
     }
-    let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
-        return ResponsesEventResult::Skip;
-    };
-    process_responses_event(event, state)
+    match serde_json::from_str::<serde_json::Value>(data) {
+        Ok(event) => process_responses_event(event, state),
+        Err(error) => responses_protocol_error(
+            state,
+            Vec::new(),
+            format!("provider sent a non-JSON Responses SSE line: {error}"),
+        ),
+    }
 }
 
 /// Generate the final events when a Responses API stream ends.

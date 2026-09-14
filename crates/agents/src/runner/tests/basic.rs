@@ -2164,3 +2164,263 @@ async fn completed_lifecycle_separates_context_from_raw_result() {
     assert!(result_str.contains("screenshot"));
     assert!(result_str.contains("data:image/png;base64,"));
 }
+
+// ── Strict tool-call argument decoding ──────────────────────────────
+
+/// Streams one scripted tool call on the first request and a plain text
+/// answer on the second, recording every request's messages.
+struct ScriptedArgumentsProvider {
+    stream_calls: std::sync::atomic::AtomicUsize,
+    events: Vec<StreamEvent>,
+    requests: std::sync::Mutex<Vec<Vec<ChatMessage>>>,
+}
+
+impl ScriptedArgumentsProvider {
+    fn new(events: Vec<StreamEvent>) -> Self {
+        Self {
+            stream_calls: std::sync::atomic::AtomicUsize::new(0),
+            events,
+            requests: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl LlmProvider for ScriptedArgumentsProvider {
+    fn name(&self) -> &str {
+        "scripted-arguments"
+    }
+
+    fn id(&self) -> &str {
+        "scripted-arguments-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    fn stream(
+        &self,
+        _messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        Box::pin(tokio_stream::empty())
+    }
+
+    fn stream_with_tools_and_options(
+        &self,
+        messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+        _options: CompletionOptions,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.requests.lock().unwrap().push(messages);
+        let call = self
+            .stream_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            return Box::pin(tokio_stream::iter(self.events.clone()));
+        }
+        Box::pin(tokio_stream::iter(vec![
+            StreamEvent::Delta("Done.".into()),
+            StreamEvent::Done(Usage::default()),
+        ]))
+    }
+}
+
+fn scripted_tool_call_events(arguments_text: &str) -> Vec<StreamEvent> {
+    vec![
+        StreamEvent::ToolCallStart {
+            id: "call_args".into(),
+            name: "echo_tool".into(),
+            index: 0,
+        },
+        StreamEvent::ToolCallArgumentsDelta {
+            index: 0,
+            delta: arguments_text.to_string(),
+        },
+        StreamEvent::ToolCallComplete { index: 0 },
+        StreamEvent::Done(Usage::default()),
+    ]
+}
+
+#[tokio::test]
+async fn malformed_tool_arguments_are_rejected_and_reported_to_the_model() {
+    let provider = Arc::new(ScriptedArgumentsProvider::new(scripted_tool_call_events(
+        r#"{"text":"a\.b"}"#,
+    )));
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(EchoTool));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
+
+    let result = run_agent_loop_with_tool_lifecycle(
+        Arc::clone(&provider) as Arc<dyn LlmProvider>,
+        &tools,
+        "You are a test bot.",
+        &UserContent::text("call the tool"),
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.output.text, "Done.");
+
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let stages: Vec<_> = lifecycle_events
+        .iter()
+        .filter(|event| event.lifecycle.tool_call_id == "call_args")
+        .map(|event| event.lifecycle.stage())
+        .collect();
+    assert!(!stages.contains(&chelix_common::tool_lifecycle::ToolLifecycleStage::Executing));
+    assert!(!stages.contains(&chelix_common::tool_lifecycle::ToolLifecycleStage::Completed));
+    let rejection = lifecycle_events
+        .iter()
+        .find_map(|event| match &event.lifecycle.update {
+            chelix_common::tool_lifecycle::ToolLifecycleUpdate::Rejected { reason, .. } => {
+                Some(reason.clone())
+            },
+            _ => None,
+        })
+        .expect("malformed arguments must reject the call");
+    assert!(rejection.contains("failed to parse function arguments"));
+
+    let requests = provider.requests.lock().unwrap();
+    let feedback = requests[1]
+        .iter()
+        .find_map(|message| match message {
+            ChatMessage::Tool {
+                tool_call_id,
+                content,
+            } if tool_call_id == "call_args" => Some(content.clone()),
+            _ => None,
+        })
+        .expect("the parse error must be returned to the model as the tool result");
+    assert!(feedback.contains("failed to parse function arguments"));
+}
+
+#[tokio::test]
+async fn serializer_escaped_tool_arguments_reach_the_tool_unchanged() {
+    let text = "say \"hi\"\\n\\path\nline2";
+    let provider = Arc::new(ScriptedArgumentsProvider::new(scripted_tool_call_events(
+        &serde_json::json!({"text": text}).to_string(),
+    )));
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(EchoTool));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
+
+    let result = run_agent_loop_with_tool_lifecycle(
+        provider,
+        &tools,
+        "You are a test bot.",
+        &UserContent::text("call the tool"),
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.tool_calls_made, 1);
+
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let echoed = lifecycle_events
+        .iter()
+        .find_map(|event| match &event.lifecycle.update {
+            chelix_common::tool_lifecycle::ToolLifecycleUpdate::Completed {
+                success: true,
+                result: Some(result),
+                ..
+            } => Some(result.clone()),
+            _ => None,
+        })
+        .expect("the tool must complete successfully");
+    let echoed: serde_json::Value = serde_json::from_str(&echoed).unwrap();
+    assert_eq!(echoed["text"], text);
+}
+
+#[tokio::test]
+async fn provider_final_arguments_take_precedence_over_streamed_deltas() {
+    let segment_id = chelix_common::ProviderSegmentId::new("resp_final_args");
+    let update = |seq: u64, payload: chelix_common::ProviderItemUpdatePayload| {
+        StreamEvent::ProviderItemUpdate(chelix_common::ProviderItemUpdate {
+            segment_id: chelix_common::ProviderSegmentId::new("resp_final_args"),
+            item_id: chelix_common::ProviderItemId::new("call_args"),
+            position: chelix_common::ProviderItemPosition::new(0),
+            update_seq: seq,
+            payload,
+        })
+    };
+    let provider = Arc::new(ScriptedArgumentsProvider::new(vec![
+        StreamEvent::SegmentStart {
+            segment_id: segment_id.clone(),
+        },
+        update(
+            1,
+            chelix_common::ProviderItemUpdatePayload::FunctionCallStart {
+                name: "echo_tool".into(),
+            },
+        ),
+        StreamEvent::ToolCallStart {
+            id: "call_args".into(),
+            name: "echo_tool".into(),
+            index: 0,
+        },
+        StreamEvent::ToolCallArgumentsDelta {
+            index: 0,
+            delta: "{\"text\":\"par".into(),
+        },
+        update(
+            2,
+            chelix_common::ProviderItemUpdatePayload::FunctionCallDone {
+                arguments: "{\"text\":\"full\"}".into(),
+            },
+        ),
+        StreamEvent::ToolCallComplete { index: 0 },
+        StreamEvent::SegmentClose {
+            segment_id,
+            outcome: chelix_common::ProviderSegmentOutcome::Completed,
+            usage: None,
+        },
+        StreamEvent::Done(Usage::default()),
+    ]));
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(EchoTool));
+    let lifecycle_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let on_tool_lifecycle = recording_tool_lifecycle(&lifecycle_events);
+
+    let result = run_agent_loop_with_tool_lifecycle(
+        provider,
+        &tools,
+        "You are a test bot.",
+        &UserContent::text("call the tool"),
+        None,
+        Some(&on_tool_lifecycle),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.tool_calls_made, 1);
+
+    let lifecycle_events = lifecycle_events.lock().unwrap();
+    let input_ready = lifecycle_events
+        .iter()
+        .find_map(|event| match &event.lifecycle.update {
+            chelix_common::tool_lifecycle::ToolLifecycleUpdate::InputReady { arguments } => {
+                Some(arguments.clone())
+            },
+            _ => None,
+        })
+        .expect("input_ready must be emitted");
+    assert_eq!(input_ready, serde_json::json!({"text": "full"}));
+}

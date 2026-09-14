@@ -108,6 +108,7 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 │  2. While the provider stream has events:                        │
 │     ├─ SegmentStart → initialize ProviderSegmentMaterializer     │
 │     ├─ ProviderItemUpdate → apply to materializer and emit       │
+│     │   └─ FunctionCallDone → remember final argument text       │
 │     ├─ Delta(text) → emit RunnerEvent::TextDelta                 │
 │     ├─ ToolCallStart → emit Created and accumulate the call      │
 │     ├─ ToolCallArgumentsDelta → emit InputStreaming              │
@@ -117,6 +118,9 @@ The `run_agent_loop_streaming()` function orchestrates the streaming agent loop:
 │     └─ Error → emit Cancelled for started calls, then retry/fail  │
 │                                                                  │
 │  3. Finalize arguments and emit InputReady                       │
+│     ├─ Final text wins over concatenated deltas                  │
+│     ├─ The whole string is parsed once, strictly, as a JSON      │
+│     │   object; nothing is repaired                              │
 │     └─ The canonical assistant tool-call frame is published here │
 │                                                                  │
 │  4. Execute calls concurrently through ToolInvocationExecutor    │
@@ -179,13 +183,13 @@ Tool invocation updates use the shared `ToolLifecycleEvent` contract:
 | --- | --- |
 | `created` | The provider announced the invocation; the UI can create its bubble immediately. |
 | `input_streaming` | One JSON argument fragment is emitted; accumulated argument text lives in the active invocation and UI snapshots rather than the event. |
-| `input_ready` | Arguments decoded successfully; the canonical assistant tool-call frame is persisted before execution. |
+| `input_ready` | Argument text is complete and the canonical assistant tool-call frame is persisted before execution. |
 | `waiting_for_execution` | Pre-dispatch validation passed and the shared executor reached the execution boundary. |
 | `executing` | The implementation is about to run with the effective public arguments. |
 | `execution_progress` | Backend-authored elapsed time and progress text while the implementation future is pending. |
 | `result_ready` | The agent-facing result has been prepared, before terminal completion. |
 | `completed` | Terminal success or execution failure with result/error fields. |
-| `rejected` | Terminal pre-execution refusal with the original arguments and reason. |
+| `rejected` | Terminal pre-execution refusal with the original arguments and reason. Argument text that is not a JSON object is rejected here with the parser error, and that error is the tool result the model receives. |
 | `cancelled` | Terminal cancellation with an optional argument snapshot and reason. |
 
 When a session is in `moderated` / `manual` mode, the executor waits for an
@@ -267,6 +271,20 @@ A Responses reasoning item can deliver its summary twice: as
 in full inside the final `output_item.done`. Parts already received from the
 stream are not emitted a second time, so a provider that streams the summary and
 one that sends it only at the end both end up with the same segment.
+
+A Responses function call can announce its final argument text up to three
+times: in `function_call_arguments.done`, in the `output_item.done` item, and in
+`response.completed.response.output`. Each announcement is emitted as
+`FunctionCallDone` and the latest one replaces the previous text in every
+consumer; `ToolCallComplete` is emitted once per call. A call that only appears
+in the final output is opened and completed from there, so it still reaches the
+runner.
+
+SSE bytes are accumulated as bytes and decoded only once a whole line is
+available, so an HTTP chunk boundary inside a multi-byte character never
+corrupts the text. Invalid UTF-8, a non-JSON data line, and a Chat Completions
+data line carrying an `error` object all fail the stream with an explicit error
+instead of being skipped.
 
 ### 8. Web Crate (`crates/web/`)
 
