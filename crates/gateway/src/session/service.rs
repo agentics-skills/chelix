@@ -712,7 +712,7 @@ impl SessionService for LiveSessionService {
     async fn patch(&self, params: Value) -> ServiceResult {
         let p: PatchParams = parse_params(params)?;
         let key = p.key.clone();
-        let _mutation_permit = if p.is_tool_permission_only() {
+        let _mutation_permit = if p.is_tool_permission_only() || p.is_label_only() {
             None
         } else {
             let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;

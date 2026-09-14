@@ -1675,6 +1675,51 @@ reasoning_supported_efforts = ["off"]
     }
 
     #[tokio::test]
+    async fn patch_label_only_completes_during_active_turn() {
+        const KEY: &str = "session:rename-during-turn";
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let pool = sqlite_pool().await;
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
+        create_test_session(&metadata, KEY, Some("Original")).await;
+
+        let mutations = Arc::new(chelix_service_traits::SessionMutationCoordinator::default());
+        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata))
+            .with_session_mutations(Arc::clone(&mutations));
+        let turn = mutations
+            .try_acquire_turn(KEY)
+            .await
+            .expect("active turn should acquire");
+
+        let renamed = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            svc.patch(serde_json::json!({ "key": KEY, "label": "Renamed" })),
+        )
+        .await
+        .expect("label-only patch must not wait for the active turn")
+        .unwrap();
+        assert_eq!(renamed["label"], "Renamed");
+        assert_eq!(
+            metadata.get(KEY).await.unwrap().unwrap().label.as_deref(),
+            Some("Renamed")
+        );
+
+        let archive_fut = svc.patch(serde_json::json!({ "key": KEY, "archived": true }));
+        tokio::pin!(archive_fut);
+        match tokio::time::timeout(std::time::Duration::from_millis(300), &mut archive_fut).await {
+            Err(_) => {},
+            Ok(result) => panic!("archived patch completed during active turn: {result:?}"),
+        }
+        drop(turn);
+        let archived = tokio::time::timeout(std::time::Duration::from_secs(2), archive_fut)
+            .await
+            .expect("archived patch must complete after turn release")
+            .unwrap();
+        assert_eq!(archived["archived"], true);
+        assert!(metadata.get(KEY).await.unwrap().unwrap().archived);
+    }
+
+    #[tokio::test]
     async fn patch_parent_sets_and_clears_parent() {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));

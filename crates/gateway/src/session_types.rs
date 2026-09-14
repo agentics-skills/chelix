@@ -60,6 +60,20 @@ impl PatchParams {
             && self.worktree_branch.is_none()
             && self.parent_session_key.is_none()
     }
+
+    /// Display label is independent of the active turn.
+    #[must_use]
+    pub(crate) fn is_label_only(&self) -> bool {
+        self.label.is_some()
+            && self.model.is_none()
+            && self.reasoning_effort.is_none()
+            && self.archived.is_none()
+            && self.project_id.is_none()
+            && self.worktree_branch.is_none()
+            && self.parent_session_key.is_none()
+            && self.tool_permission_mode.is_none()
+            && self.tool_permission_type.is_none()
+    }
 }
 
 /// Deserialize a field as `Some(inner)` when present (even if null),
@@ -199,6 +213,42 @@ mod tests {
         }))
         .unwrap();
         assert!(!label_only.is_tool_permission_only());
+    }
+
+    #[test]
+    fn patch_params_label_only_requires_no_other_fields() {
+        let label_only: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "label": "My Chat",
+        }))
+        .unwrap();
+        assert!(label_only.is_label_only());
+        assert!(!label_only.is_tool_permission_only());
+
+        let with_archive: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "label": "My Chat",
+            "archived": true,
+        }))
+        .unwrap();
+        assert!(!with_archive.is_label_only());
+
+        let with_null_model: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "label": "My Chat",
+            "model": null,
+        }))
+        .unwrap();
+        assert_eq!(with_null_model.model, Some(None));
+        assert!(!with_null_model.is_label_only());
+
+        let tool_only: PatchParams = serde_json::from_value(json!({
+            "key": "main",
+            "toolPermissionMode": "moderated",
+        }))
+        .unwrap();
+        assert!(!tool_only.is_label_only());
+        assert!(tool_only.is_tool_permission_only());
     }
 
     #[test]
