@@ -114,6 +114,54 @@ impl ExecuteCommandTool {
         self
     }
 
+    fn execute_parameters_schema(&self, max_tool_result_bytes: Option<usize>) -> serde_json::Value {
+        let timeout_default = self.default_timeout.as_millis();
+        let quick_result_default = match max_tool_result_bytes {
+            Some(max_tool_result_bytes) => max_tool_result_bytes.to_string(),
+            None => "max_tool_result_bytes".to_string(),
+        };
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Shell command to execute"
+                },
+                "customCwd": {
+                    "type": "string",
+                    "description": "Working directory for the command"
+                },
+                "newTerminal": {
+                    "type": "boolean",
+                    "description": "If true, create a new persistent terminal"
+                },
+                "destructiveFlag": {
+                    "type": "boolean",
+                    "description": "Approval UI hint for potentially destructive commands"
+                },
+                "background": {
+                    "type": "boolean",
+                    "description": "If true, start the command and return immediately"
+                },
+                "responseTimeoutMs": {
+                    "type": "integer",
+                    "description": format!("Blocking wait, in milliseconds, for capturing command output; when it expires, the tool detaches from the still-running command. Set this value to several times the command's expected completion time to prevent the wait from ending and detaching prematurely (default {timeout_default})")
+                },
+                "terminalId": {
+                    "type": "string",
+                    "description": "Managed terminal id returned by a previous execute_command call"
+                },
+                "quickResultBytes": {
+                    "type": "integer",
+                    "minimum": 200,
+                    "description": format!("Return immediately in the result output; the rest will be written to a dump file and will be available for reading later or careful study due to large volume (default {quick_result_default})")
+                }
+            },
+            "required": ["command"],
+            "additionalProperties": false
+        })
+    }
+
     async fn approval_check(&self, command: &str, session_key: &str) -> Result<()> {
         let Some(manager) = self.approval_manager.as_ref() else {
             return Ok(());
@@ -194,6 +242,46 @@ fn duration_millis(duration: Duration, name: &str) -> Result<u64> {
         .map_err(|_| Error::message(format!("{name} exceeds the supported millisecond range")))
 }
 
+fn parse_quick_result_bytes(
+    params: &serde_json::Value,
+    schema: &serde_json::Value,
+) -> anyhow::Result<Option<usize>> {
+    match params.get("quickResultBytes") {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(value) => {
+            let n = json_non_negative_usize(value).ok_or_else(|| {
+                anyhow::anyhow!("quickResultBytes must be a non-negative integer")
+            })?;
+            let minimum = schema
+                .pointer("/properties/quickResultBytes/minimum")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|minimum| usize::try_from(minimum).ok())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("execute_command schema is missing quickResultBytes.minimum")
+                })?;
+            if n < minimum {
+                anyhow::bail!("quickResultBytes must be >= {minimum}");
+            }
+            Ok(Some(n))
+        },
+    }
+}
+
+fn json_non_negative_usize(value: &serde_json::Value) -> Option<usize> {
+    if let Some(n) = value.as_u64() {
+        return usize::try_from(n).ok();
+    }
+    if let Some(n) = value.as_i64() {
+        return usize::try_from(n).ok();
+    }
+    let n = value.as_f64()?;
+    if !n.is_finite() || n < 0.0 || n.fract() != 0.0 {
+        return None;
+    }
+    let n = u64::try_from(n.round() as i128).ok()?;
+    usize::try_from(n).ok()
+}
+
 #[async_trait]
 impl AgentTool for ExecuteCommandTool {
     fn name(&self) -> &str {
@@ -218,42 +306,22 @@ impl AgentTool for ExecuteCommandTool {
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
-        let timeout_default = self.default_timeout.as_millis();
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "Shell command to execute"
-                },
-                "customCwd": {
-                    "type": "string",
-                    "description": "Working directory for the command"
-                },
-                "newTerminal": {
-                    "type": "boolean",
-                    "description": "If true, create a new persistent terminal"
-                },
-                "destructiveFlag": {
-                    "type": "boolean",
-                    "description": "Approval UI hint for potentially destructive commands"
-                },
-                "background": {
-                    "type": "boolean",
-                    "description": "If true, start the command and return immediately"
-                },
-                "responseTimeoutMs": {
-                    "type": "integer",
-                    "description": format!("Blocking wait, in milliseconds, for capturing command output; when it expires, the tool detaches from the still-running command. Set this value to several times the command's expected completion time to prevent the wait from ending and detaching prematurely (default {timeout_default})")
-                },
-                "terminalId": {
-                    "type": "string",
-                    "description": "Managed terminal id returned by a previous execute_command call"
-                }
-            },
-            "required": ["command"],
-            "additionalProperties": false
-        })
+        self.execute_parameters_schema(None)
+    }
+
+    fn parameters_schema_with_max_tool_result_bytes(
+        &self,
+        max_tool_result_bytes: usize,
+    ) -> serde_json::Value {
+        self.execute_parameters_schema(Some(max_tool_result_bytes))
+    }
+
+    fn validate(&self, params: &serde_json::Value) -> anyhow::Result<()> {
+        parse_quick_result_bytes(params, &self.parameters_schema()).map(|_| ())
+    }
+
+    fn in_context_result_bytes(&self, params: &serde_json::Value) -> Option<usize> {
+        parse_quick_result_bytes(params, &self.parameters_schema()).ok()?
     }
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
@@ -893,6 +961,79 @@ mod tests {
         assert_eq!(schema["required"], serde_json::json!(["command"]));
         assert!(schema["properties"].get("node").is_none());
         assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["properties"]["quickResultBytes"]["type"], "integer");
+        assert_eq!(schema["properties"]["quickResultBytes"]["minimum"], 200);
+        assert_eq!(
+            schema["properties"]["quickResultBytes"]["description"],
+            "Return immediately in the result output; the rest will be written to a dump file and will be available for reading later or careful study due to large volume (default max_tool_result_bytes)"
+        );
+    }
+
+    #[test]
+    fn execute_schema_interpolates_current_max_tool_result_bytes() {
+        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"));
+        let schema_999 = tool.parameters_schema_with_max_tool_result_bytes(999);
+        let description_999 = schema_999["properties"]["quickResultBytes"]["description"]
+            .as_str()
+            .unwrap_or_else(|| panic!("quickResultBytes description missing"));
+        assert!(
+            description_999.ends_with("(default 999)"),
+            "{description_999}"
+        );
+        let schema_12345 = tool.parameters_schema_with_max_tool_result_bytes(12345);
+        let description_12345 = schema_12345["properties"]["quickResultBytes"]["description"]
+            .as_str()
+            .unwrap_or_else(|| panic!("quickResultBytes description missing"));
+        assert!(
+            description_12345.ends_with("(default 12345)"),
+            "{description_12345}"
+        );
+    }
+
+    #[test]
+    fn quick_result_bytes_parses_and_rejects_invalid_values() {
+        let tool = ExecuteCommandTool::new(client("http://127.0.0.1:1".into(), "unused"));
+
+        assert_eq!(tool.in_context_result_bytes(&serde_json::json!({})), None);
+        assert_eq!(
+            tool.in_context_result_bytes(
+                &serde_json::json!({"quickResultBytes": serde_json::Value::Null})
+            ),
+            None
+        );
+        assert_eq!(
+            tool.in_context_result_bytes(&serde_json::json!({"quickResultBytes": 200})),
+            Some(200)
+        );
+        assert_eq!(
+            tool.in_context_result_bytes(&serde_json::json!({"quickResultBytes": 200.0})),
+            Some(200)
+        );
+        assert_eq!(
+            tool.in_context_result_bytes(&serde_json::json!({"quickResultBytes": 50})),
+            None
+        );
+        assert!(tool.validate(&serde_json::json!({})).is_ok());
+        assert!(
+            tool.validate(&serde_json::json!({"quickResultBytes": 50}))
+                .is_err()
+        );
+        assert!(
+            tool.validate(&serde_json::json!({"quickResultBytes": 199}))
+                .is_err()
+        );
+        assert!(
+            tool.validate(&serde_json::json!({"quickResultBytes": 200}))
+                .is_ok()
+        );
+        assert!(
+            tool.validate(&serde_json::json!({"quickResultBytes": -1}))
+                .is_err()
+        );
+        assert!(
+            tool.validate(&serde_json::json!({"quickResultBytes": "20"}))
+                .is_err()
+        );
     }
 
     #[test]

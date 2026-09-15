@@ -1,7 +1,20 @@
 //! Tests for full tool-output persistence and in-context truncation with
 //! a pointer to the persisted file.
 
-use chelix_sessions::ToolResultStore;
+use std::{
+    pin::Pin,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
+
+use {
+    async_trait::async_trait, chelix_common::tool_lifecycle::ToolLifecycleUpdate,
+    chelix_sessions::ToolResultStore, tokio_stream::Stream, tokio_util::sync::CancellationToken,
+};
+
+use crate::model::{ChatMessage, CompletionResponse, LlmProvider, StreamEvent, ToolCall, Usage};
 
 use super::helpers::*;
 
@@ -304,4 +317,216 @@ fn tool_can_opt_out_of_truncation() {
         NoTruncationTool.truncation(&serde_json::json!({})),
         Truncation::Off
     );
+}
+
+#[test]
+fn default_in_context_result_bytes_is_none() {
+    let tool = EchoTool;
+    use crate::tool_registry::AgentTool as _;
+    assert_eq!(tool.in_context_result_bytes(&serde_json::json!({})), None);
+}
+
+struct QuickBudgetTool {
+    payload: String,
+}
+
+#[async_trait]
+impl crate::tool_registry::AgentTool for QuickBudgetTool {
+    fn name(&self) -> &str {
+        "quick_budget_tool"
+    }
+
+    fn description(&self) -> &str {
+        "Returns a large payload and honors quickResultBytes"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "quickResultBytes": { "type": "integer" }
+            }
+        })
+    }
+
+    fn in_context_result_bytes(&self, params: &serde_json::Value) -> Option<usize> {
+        params
+            .get("quickResultBytes")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|n| usize::try_from(n).ok())
+    }
+
+    async fn execute(&self, _params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::Value::String(self.payload.clone()))
+    }
+}
+
+struct QuickBudgetProvider {
+    call_count: AtomicUsize,
+}
+
+impl LlmProvider for QuickBudgetProvider {
+    fn name(&self) -> &str {
+        "quick-budget"
+    }
+
+    fn id(&self) -> &str {
+        "quick-budget-model"
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        Some(TEST_CONTEXT_WINDOW)
+    }
+
+    fn max_input_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_INPUT_TOKENS)
+    }
+
+    fn max_output_tokens(&self) -> Option<u32> {
+        Some(TEST_MAX_OUTPUT_TOKENS)
+    }
+
+    fn supports_tools(&self) -> bool {
+        true
+    }
+
+    fn stream_with_tools(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<serde_json::Value>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        crate::model::response_stream(async move {
+            let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+            match count {
+                0 => Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_quick_override".into(),
+                        name: "quick_budget_tool".into(),
+                        arguments: serde_json::json!({ "quickResultBytes": 20 }),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+                1 => Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: "call_quick_omit".into(),
+                        name: "quick_budget_tool".into(),
+                        arguments: serde_json::json!({}),
+                        argument_diagnostic: None,
+                    }],
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+                _ => Ok(CompletionResponse {
+                    text: Some("Done!".into()),
+                    tool_calls: vec![],
+                    usage: Usage {
+                        input_tokens: 20,
+                        output_tokens: 10,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+            }
+        })
+    }
+
+    fn stream(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        self.stream_with_tools(messages, Vec::new())
+    }
+}
+
+fn completed_tool_result<'a>(events: &'a [RunnerToolLifecycleEvent], call_id: &str) -> &'a str {
+    events
+        .iter()
+        .rev()
+        .find_map(|event| match &event.lifecycle.update {
+            ToolLifecycleUpdate::Completed {
+                result: Some(result),
+                ..
+            } if event.lifecycle.tool_call_id == call_id => Some(result.as_str()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("completed result missing for {call_id}"))
+}
+
+fn truncated_prefix(result: &str) -> &str {
+    result.split("\n\n[Truncated").next().unwrap_or(result)
+}
+
+fn dump_contents(result: &str) -> String {
+    let marker = "the content at: ";
+    let start = result
+        .find(marker)
+        .map(|index| index + marker.len())
+        .unwrap_or_else(|| panic!("dump path missing from truncated result"));
+    let end = result[start..]
+        .find(['\n', ']'])
+        .map(|index| start + index)
+        .unwrap_or(result.len());
+    std::fs::read_to_string(result[start..end].trim())
+        .unwrap_or_else(|error| panic!("failed to read dump: {error}"))
+}
+
+#[tokio::test]
+async fn quick_result_bytes_overrides_runtime_limit_for_one_call() {
+    let payload = "x".repeat(1000);
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(QuickBudgetTool {
+        payload: payload.clone(),
+    }));
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let on_lifecycle = recording_tool_lifecycle(&events);
+    let mut limits = test_agent_loop_limits();
+    limits.max_tool_result_bytes = Some(100);
+    let tools_config = chelix_config::schema::ToolsConfig::default();
+    let user_content = UserContent::text("run");
+
+    super::super::run_agent_loop_streaming_with_limits(
+        Arc::new(QuickBudgetProvider {
+            call_count: AtomicUsize::new(0),
+        }),
+        &tools,
+        &tools_config,
+        "You are a test bot.",
+        &user_content,
+        None,
+        Some(&on_lifecycle),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &CancellationToken::new(),
+        limits,
+    )
+    .await
+    .unwrap();
+
+    let events = events.lock().unwrap();
+    let override_result = completed_tool_result(&events, "call_quick_override");
+    assert_eq!(truncated_prefix(override_result), "x".repeat(20));
+    assert!(override_result.contains("[Truncated — full tool result"));
+    assert_eq!(dump_contents(override_result), payload);
+
+    let omit_result = completed_tool_result(&events, "call_quick_omit");
+    assert_eq!(truncated_prefix(omit_result), "x".repeat(100));
+    assert!(omit_result.contains("[Truncated — full tool result"));
+    assert_eq!(dump_contents(omit_result), payload);
 }

@@ -621,6 +621,16 @@ pub(crate) fn prepare_run_registry(
         );
     }
 
+    let max_tool_result_bytes =
+        config
+            .agents
+            .get(agent_id)
+            .map_or(config.tools.max_tool_result_bytes, |agent| {
+                chelix_config::AgentRuntimeLimits::resolve(&config.tools, agent)
+                    .max_tool_result_bytes
+            });
+    registry.set_max_tool_result_bytes(max_tool_result_bytes);
+
     if tools_enabled
         && matches!(
             config.tools.registry_mode,
