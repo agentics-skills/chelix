@@ -42,6 +42,15 @@ pub trait AgentTool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> serde_json::Value;
+    /// Parameter schema with the current in-context tool-result budget interpolated.
+    /// Default keeps `parameters_schema()` unchanged.
+    fn parameters_schema_with_max_tool_result_bytes(
+        &self,
+        max_tool_result_bytes: usize,
+    ) -> serde_json::Value {
+        let _ = max_tool_result_bytes;
+        self.parameters_schema()
+    }
     /// Validate fully enriched parameters before the runner emits a
     /// caller-visible start event. Implementations should use this for
     /// constraints that cannot be expressed by the runner's lightweight
@@ -69,6 +78,11 @@ pub trait AgentTool: Send + Sync {
     /// Whether to persist this call's complete agent-facing result.
     fn result_persistence(&self, _params: &serde_json::Value) -> ToolResultPersistence {
         ToolResultPersistence::On
+    }
+    /// Optional per-call in-context byte budget. When `Some`, used instead of
+    /// `max_tool_result_bytes` for this result.
+    fn in_context_result_bytes(&self, _params: &serde_json::Value) -> Option<usize> {
+        None
     }
     /// Convert the raw implementation/protocol result into the value exposed
     /// to the LLM and persisted as tool context. The default contract exposes
@@ -139,6 +153,8 @@ pub struct ToolRegistry {
     /// In lazy mode, only these tool schemas are exposed through `list_schemas()`.
     /// Execution still uses the full `tools` map.
     lazy_visible: Option<LazyVisibleTools>,
+    /// Resolved in-context tool-result budget for this run, used when building schemas.
+    max_tool_result_bytes: Option<usize>,
 }
 
 impl Default for ToolRegistry {
@@ -152,11 +168,24 @@ impl ToolRegistry {
         Self {
             tools: HashMap::new(),
             lazy_visible: None,
+            max_tool_result_bytes: None,
         }
     }
 
     pub(crate) fn set_lazy_visible(&mut self, visible: LazyVisibleTools) {
         self.lazy_visible = Some(visible);
+    }
+
+    pub fn set_max_tool_result_bytes(&mut self, max_tool_result_bytes: usize) {
+        self.max_tool_result_bytes = Some(max_tool_result_bytes);
+    }
+
+    fn with_tools(&self, tools: HashMap<String, ToolEntry>) -> Self {
+        Self {
+            tools,
+            lazy_visible: self.lazy_visible.clone(),
+            max_tool_result_bytes: self.max_tool_result_bytes,
+        }
     }
 
     /// Register a built-in tool. Warns (and overwrites) on name collision.
@@ -242,7 +271,7 @@ impl ToolRegistry {
                     .as_ref()
                     .is_none_or(|visible| visible.contains(name.as_str()))
             })
-            .map(|(_, entry)| entry_to_schema(entry))
+            .map(|(_, entry)| entry_to_schema(entry, self.max_tool_result_bytes))
             .collect();
         schemas.sort_by(|left, right| {
             let left_name = left
@@ -311,10 +340,7 @@ impl ToolRegistry {
                 })
             })
             .collect();
-        ToolRegistry {
-            tools,
-            lazy_visible: self.lazy_visible.clone(),
-        }
+        self.with_tools(tools)
     }
 
     /// Clone the registry, excluding tools whose names are in `exclude`.
@@ -330,10 +356,7 @@ impl ToolRegistry {
                 })
             })
             .collect();
-        ToolRegistry {
-            tools,
-            lazy_visible: self.lazy_visible.clone(),
-        }
+        self.with_tools(tools)
     }
 
     /// Clone the registry keeping only tools that match `predicate`.
@@ -360,18 +383,21 @@ impl ToolRegistry {
                 })
             })
             .collect();
-        ToolRegistry {
-            tools,
-            lazy_visible: self.lazy_visible.clone(),
-        }
+        self.with_tools(tools)
     }
 }
 
-fn entry_to_schema(e: &ToolEntry) -> serde_json::Value {
+fn entry_to_schema(e: &ToolEntry, max_tool_result_bytes: Option<usize>) -> serde_json::Value {
+    let parameters = match max_tool_result_bytes {
+        Some(max_tool_result_bytes) => e
+            .tool
+            .parameters_schema_with_max_tool_result_bytes(max_tool_result_bytes),
+        None => e.tool.parameters_schema(),
+    };
     let mut schema = serde_json::json!({
         "name": e.tool.name(),
         "description": e.tool.description(),
-        "parameters": e.tool.parameters_schema(),
+        "parameters": parameters,
     });
     match &e.source {
         ToolSource::Builtin => {
@@ -671,5 +697,51 @@ mod tests {
             "execute_command".to_string(),
             "read_file".to_string()
         ]);
+    }
+
+    struct BudgetSchemaTool;
+
+    #[async_trait]
+    impl AgentTool for BudgetSchemaTool {
+        fn name(&self) -> &str {
+            "budget_schema_tool"
+        }
+
+        fn description(&self) -> &str {
+            "test"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "source": "plain" })
+        }
+
+        fn parameters_schema_with_max_tool_result_bytes(
+            &self,
+            max_tool_result_bytes: usize,
+        ) -> serde_json::Value {
+            serde_json::json!({ "source": "budget", "maxToolResultBytes": max_tool_result_bytes })
+        }
+
+        async fn execute(&self, _params: serde_json::Value) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    #[test]
+    fn list_schemas_interpolates_max_tool_result_bytes_when_set() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(BudgetSchemaTool));
+        assert_eq!(registry.list_schemas()[0]["parameters"]["source"], "plain");
+
+        registry.set_max_tool_result_bytes(999);
+        let schema = registry.list_schemas();
+        assert_eq!(schema[0]["parameters"]["source"], "budget");
+        assert_eq!(schema[0]["parameters"]["maxToolResultBytes"], 999);
+
+        let cloned = registry.clone_without(&[]);
+        assert_eq!(
+            cloned.list_schemas()[0]["parameters"]["maxToolResultBytes"],
+            999
+        );
     }
 }

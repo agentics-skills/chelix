@@ -695,12 +695,15 @@ impl ToolInvocationExecutor<'_> {
         let persistence = tool
             .map(|tool| tool.result_persistence(arguments))
             .unwrap_or_default();
+        let max_bytes = tool
+            .and_then(|tool| tool.in_context_result_bytes(arguments))
+            .unwrap_or(self.max_tool_result_bytes);
         persist_and_truncate(
             self.tool_result_store,
             self.session_key,
             &tool_call.id,
             &agent_result,
-            self.max_tool_result_bytes,
+            max_bytes,
             truncation,
             persistence,
         )
