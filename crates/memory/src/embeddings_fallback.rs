@@ -142,6 +142,56 @@ impl EmbeddingProvider for FallbackEmbeddingProvider {
         )))
     }
 
+    async fn embed_with_priority(
+        &self,
+        text: &str,
+        priority: u32,
+    ) -> crate::error::Result<Vec<f32>> {
+        let mut errors = Vec::new();
+        let start_idx = self.active.load(Ordering::SeqCst);
+
+        for offset in 0..self.chain.len() {
+            let idx = (start_idx + offset) % self.chain.len();
+            let entry = &self.chain[idx];
+
+            if entry.state.is_tripped() {
+                continue;
+            }
+
+            match entry.provider.embed_with_priority(text, priority).await {
+                Ok(result) => {
+                    entry.state.record_success();
+                    if idx != start_idx {
+                        info!(
+                            from = self.chain[start_idx].name,
+                            to = entry.name,
+                            "embedding fallback: switched active provider"
+                        );
+                        self.active.store(idx, Ordering::SeqCst);
+                    }
+                    return Ok(result);
+                },
+                Err(e) => {
+                    warn!(provider = entry.name, error = %e, "embedding provider failed");
+                    entry.state.record_failure();
+                    errors.push(format!("{}: {e}", entry.name));
+                },
+            }
+        }
+
+        Err(crate::error::Error::Embedding(format!(
+            "all embedding providers failed: {}",
+            errors.join("; ")
+        )))
+    }
+
+    fn max_embed_payload_bytes(&self) -> Option<usize> {
+        self.chain
+            .iter()
+            .filter_map(|entry| entry.provider.max_embed_payload_bytes())
+            .min()
+    }
+
     async fn embed_batch(&self, texts: &[String]) -> crate::error::Result<Vec<Vec<f32>>> {
         let mut errors = Vec::new();
         let start_idx = self.active.load(Ordering::SeqCst);
@@ -282,5 +332,68 @@ mod tests {
 
         let err = fb.embed("test").await.unwrap_err();
         assert!(err.to_string().contains("all embedding providers failed"));
+    }
+
+    struct PriorityProbe {
+        name: &'static str,
+        seen: std::sync::Arc<Mutex<Vec<u32>>>,
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for PriorityProbe {
+        async fn embed(&self, text: &str) -> crate::error::Result<Vec<f32>> {
+            self.embed_with_priority(text, 0).await
+        }
+
+        async fn embed_with_priority(
+            &self,
+            _text: &str,
+            priority: u32,
+        ) -> crate::error::Result<Vec<f32>> {
+            self.seen
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(priority);
+            Ok(vec![1.0; 8])
+        }
+
+        fn model_name(&self) -> &str {
+            self.name
+        }
+
+        fn dimensions(&self) -> usize {
+            8
+        }
+
+        fn provider_key(&self) -> &str {
+            self.name
+        }
+    }
+
+    #[tokio::test]
+    async fn fallback_forwards_search_priority_to_next_provider() {
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let fb = FallbackEmbeddingProvider::new(vec![
+            ("fail".into(), Box::new(FailingProvider)),
+            (
+                "ok".into(),
+                Box::new(PriorityProbe {
+                    name: "ok",
+                    seen: std::sync::Arc::clone(&seen),
+                }),
+            ),
+        ]);
+
+        let result = fb
+            .embed_with_priority("test", chelix_protocol::EMBEDDING_PRIORITY_SEARCH)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 8);
+        assert_eq!(fb.active_provider_name(), "ok");
+        assert_eq!(
+            *seen.lock().unwrap_or_else(|error| error.into_inner()),
+            vec![chelix_protocol::EMBEDDING_PRIORITY_SEARCH]
+        );
     }
 }

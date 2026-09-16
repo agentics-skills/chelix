@@ -362,6 +362,39 @@ fn memory_config_default_style_is_hybrid() {
 }
 
 #[test]
+fn memory_huggingface_api_key_parses_and_debug_redacts_secret() {
+    let cfg: MemoryEmbeddingConfig =
+        toml::from_str("huggingface_api_key = \"hf_secret_token_value\"").unwrap();
+    assert_eq!(
+        cfg.huggingface_api_key
+            .as_ref()
+            .map(secrecy::ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("hf_secret_token_value")
+    );
+    let debug = format!("{cfg:?}");
+    assert!(
+        !debug.contains("hf_secret_token_value"),
+        "debug leaked huggingface token: {debug}"
+    );
+}
+
+#[test]
+fn memory_huggingface_api_key_accepts_env_style_alias() {
+    let cfg: MemoryEmbeddingConfig =
+        toml::from_str("HUGGINGFACE_API_KEY = \"hf_alias_token_value\"").unwrap();
+    assert_eq!(
+        cfg.huggingface_api_key
+            .as_ref()
+            .map(secrecy::ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("hf_alias_token_value")
+    );
+    let debug = format!("{cfg:?}");
+    assert!(!debug.contains("hf_alias_token_value"));
+}
+
+#[test]
 fn memory_config_default_agent_write_mode_is_hybrid() {
     let cfg = MemoryEmbeddingConfig::default();
     assert_eq!(cfg.agent_write_mode, AgentMemoryWriteMode::Hybrid);

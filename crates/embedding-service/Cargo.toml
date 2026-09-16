@@ -1,5 +1,5 @@
 [package]
-description       = "Managed local GGUF embedding sidecar for Chelix"
+description       = "Managed local embedding sidecar for Chelix"
 edition.workspace = true
 name              = "chelix-embedding-service"
 version.workspace = true
@@ -12,7 +12,7 @@ required-features = ["native-engine"]
 [features]
 default       = ["metrics", "native-engine", "tracing"]
 metrics       = ["dep:metrics"]
-native-engine = ["dep:llama-cpp-2"]
+native-engine = ["dep:mistralrs"]
 tracing       = ["dep:tracing", "dep:tracing-subscriber"]
 
 [dependencies]
@@ -21,15 +21,21 @@ async-trait        = { workspace = true }
 axum               = { workspace = true }
 chelix-protocol    = { workspace = true }
 clap               = { workspace = true }
-llama-cpp-2        = { optional = true, workspace = true }
+either             = { workspace = true }
+fd-lock            = { workspace = true }
 metrics            = { optional = true, workspace = true }
+mistralrs          = { optional = true, workspace = true }
+serde              = { workspace = true }
 serde_json         = { workspace = true }
+sha2               = { workspace = true }
 tokio              = { workspace = true }
+tower              = { features = ["limit", "load-shed"], workspace = true }
 tracing            = { optional = true, workspace = true }
 tracing-subscriber = { optional = true, workspace = true }
 
 [dev-dependencies]
-reqwest = { workspace = true }
+reqwest  = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

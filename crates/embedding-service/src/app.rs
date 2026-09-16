@@ -8,19 +8,31 @@ use {
     tokio::io::AsyncReadExt,
 };
 
-use crate::engine::LocalGgufEngine;
+use crate::engine::{LocalMistralEngine, ModelLoadArgs};
 
-#[derive(Debug, Parser)]
-#[command(about = "Chelix local GGUF embedding service")]
+#[derive(Parser)]
+#[command(about = "Chelix local embedding service")]
 struct Args {
+    /// Hugging Face model id or local snapshot directory.
     #[arg(long)]
-    model: PathBuf,
+    model: String,
+    /// Hugging Face token for first-time download. Prefer env HF_TOKEN.
+    #[arg(long)]
+    hf_token: Option<String>,
+    /// Directory for HF cache and persisted UQFF artifacts.
+    #[arg(long)]
+    cache_dir: Option<PathBuf>,
 }
 
 pub(crate) async fn run() -> Result<()> {
     init_tracing();
     let args = Args::parse();
-    let engine = Arc::new(LocalGgufEngine::new(args.model)?);
+    let engine = LocalMistralEngine::new(ModelLoadArgs {
+        model_spec: args.model,
+        hf_token: args.hf_token,
+        cache_dir: args.cache_dir,
+    })
+    .await?;
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
         .await
         .context("binding local embedding service")?;
@@ -35,7 +47,7 @@ pub(crate) async fn run() -> Result<()> {
     };
     write_ready(&ready)?;
 
-    axum::serve(listener, api::router(engine))
+    axum::serve(listener, api::router(Arc::new(engine)))
         .with_graceful_shutdown(parent_closed_stdin())
         .await
         .context("serving local embedding API")

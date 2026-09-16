@@ -470,8 +470,9 @@ port = {port}                           # Port number (auto-generated for this i
 # agent_write_mode = "hybrid"       # "hybrid" | "prompt-only" | "search-only" | "off"
 # backend = "builtin"               # "builtin" | "qmd"
 # provider = "auto"                 # "local" (managed sidecar) | "openai" | "custom"
-# model = "/path/to/model.gguf"     # Local GGUF path or remote provider model name
+# model = "google/embeddinggemma-300m"  # HF id or local snapshot directory
 # base_url = "/path/to/model-cache" # Cache directory when provider = "local"
+# huggingface_api_key = "hf_..."    # Optional; first-time HF download only
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHONE (Telephony Providers)

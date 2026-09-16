@@ -45,6 +45,9 @@ FROM rust-toolchain AS cargo-planner
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY apps/courier ./apps/courier
+COPY patches ./patches
+COPY scripts/prepare-mistralrs.sh ./scripts/prepare-mistralrs.sh
+RUN chmod +x ./scripts/prepare-mistralrs.sh && ./scripts/prepare-mistralrs.sh
 
 RUN cargo +nightly-2026-07-30 chef prepare --recipe-path recipe.json
 
@@ -53,6 +56,7 @@ RUN cargo +nightly-2026-07-30 chef prepare --recipe-path recipe.json
 FROM rust-toolchain AS cargo-dependencies
 
 COPY --from=cargo-planner /build/recipe.json ./recipe.json
+COPY --from=cargo-planner /build/vendor ./vendor
 RUN cargo +nightly-2026-07-30 chef cook --recipe-path recipe.json --no-build && \
     cargo +nightly-2026-07-30 fetch --locked
 
@@ -81,6 +85,8 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY apps/courier ./apps/courier
 COPY scripts ./scripts
+COPY patches ./patches
+COPY --from=cargo-planner /build/vendor ./vendor
 
 # docs/src is embedded into chelix-agents via include_dir! (crates/agents/src/docs.rs).
 # CHANGELOG.md is the target of the docs/src/changelog.md symlink, so it must be

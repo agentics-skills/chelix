@@ -4,6 +4,9 @@
 //! Each delivery is verified, deduplicated, persisted, and processed
 //! asynchronously via the existing chat/session infrastructure.
 
+#[cfg(feature = "metrics")]
+use chelix_metrics as _;
+
 pub mod auth;
 pub mod dedup;
 pub mod error;

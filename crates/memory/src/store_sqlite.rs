@@ -262,6 +262,50 @@ impl MemoryStore for SqliteMemoryStore {
         Ok(())
     }
 
+    async fn replace_file_index(
+        &self,
+        file: &FileRow,
+        chunks: &[ChunkRow],
+    ) -> crate::error::Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            "INSERT INTO files (path, source, hash, mtime, size) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(path) DO UPDATE SET source=excluded.source, hash=excluded.hash, mtime=excluded.mtime, size=excluded.size",
+        )
+        .bind(&file.path)
+        .bind(&file.source)
+        .bind(&file.hash)
+        .bind(file.mtime)
+        .bind(file.size)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM chunks WHERE path = ?")
+            .bind(&file.path)
+            .execute(&mut *tx)
+            .await?;
+        for chunk in chunks {
+            let emb_blob = chunk.embedding.as_deref();
+            sqlx::query(
+                "INSERT INTO chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&chunk.id)
+            .bind(&chunk.path)
+            .bind(&chunk.source)
+            .bind(chunk.start_line)
+            .bind(chunk.end_line)
+            .bind(&chunk.hash)
+            .bind(&chunk.model)
+            .bind(&chunk.text)
+            .bind(emb_blob)
+            .bind(&chunk.updated_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     async fn get_chunk_by_id(&self, id: &str) -> crate::error::Result<Option<ChunkRow>> {
         let row: Option<(String, String, String, i64, i64, String, String, String, Option<Vec<u8>>, String)> =
             sqlx::query_as(
@@ -382,6 +426,7 @@ impl MemoryStore for SqliteMemoryStore {
         &self,
         query_embedding: &[f32],
         limit: usize,
+        model: Option<&str>,
     ) -> crate::error::Result<Vec<SearchResult>> {
         use {futures::TryStreamExt, std::collections::BinaryHeap};
 
@@ -390,8 +435,10 @@ impl MemoryStore for SqliteMemoryStore {
         let mut heap: BinaryHeap<ScoredResult> = BinaryHeap::with_capacity(limit + 1);
 
         let mut stream = sqlx::query_as::<_, (String, String, String, i64, i64, Option<Vec<u8>>)>(
-            "SELECT id, path, source, start_line, end_line, embedding FROM chunks WHERE embedding IS NOT NULL",
+            "SELECT id, path, source, start_line, end_line, embedding FROM chunks WHERE embedding IS NOT NULL AND (? IS NULL OR model = ?)",
         )
+        .bind(model)
+        .bind(model)
         .fetch(&self.pool);
 
         while let Some((id, path, source, start_line, end_line, emb)) = stream.try_next().await? {
@@ -540,6 +587,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn replace_file_index_replaces_chunks_in_one_transaction() {
+        let store = setup().await;
+        let file = FileRow {
+            path: "note.md".into(),
+            source: "daily".into(),
+            hash: "old".into(),
+            mtime: 1,
+            size: 1,
+        };
+        store.upsert_file(&file).await.unwrap();
+        store
+            .upsert_chunks(&[ChunkRow {
+                id: "note.md:0".into(),
+                path: "note.md".into(),
+                source: "daily".into(),
+                start_line: 1,
+                end_line: 2,
+                hash: "old-chunk".into(),
+                model: "old-model".into(),
+                text: "old text".into(),
+                embedding: Some(vec_to_blob(&[1.0, 0.0])),
+                updated_at: "1".into(),
+            }])
+            .await
+            .unwrap();
+
+        let new_file = FileRow {
+            path: "note.md".into(),
+            source: "daily".into(),
+            hash: "new".into(),
+            mtime: 2,
+            size: 2,
+        };
+        store
+            .replace_file_index(&new_file, &[ChunkRow {
+                id: "note.md:0".into(),
+                path: "note.md".into(),
+                source: "daily".into(),
+                start_line: 1,
+                end_line: 3,
+                hash: "new-chunk".into(),
+                model: "new-model".into(),
+                text: "new text".into(),
+                embedding: Some(vec_to_blob(&[0.0, 1.0])),
+                updated_at: "2".into(),
+            }])
+            .await
+            .unwrap();
+
+        let file = store.get_file("note.md").await.unwrap().unwrap();
+        assert_eq!(file.hash, "new");
+        let chunks = store.get_chunks_for_file("note.md").await.unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].model, "new-model");
+        assert_eq!(chunks[0].text, "new text");
+    }
+
+    #[tokio::test]
     async fn test_chunk_crud() {
         let store = setup().await;
         let file = FileRow {
@@ -640,7 +745,10 @@ mod tests {
         };
         store.upsert_chunks(&[c1, c2]).await.unwrap();
 
-        let results = store.vector_search(&[1.0, 0.0, 0.0], 2).await.unwrap();
+        let results = store
+            .vector_search(&[1.0, 0.0, 0.0], 2, None)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].chunk_id, "c1");
         assert!((results[0].score - 1.0).abs() < 1e-6);

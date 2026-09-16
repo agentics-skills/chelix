@@ -73,9 +73,6 @@ pub struct MemoryConfig {
     pub vector_weight: f32,
     /// Weight for keyword/FTS similarity in hybrid search (0.0–1.0).
     pub keyword_weight: f32,
-    /// Path to a local GGUF model file for offline embeddings.
-    /// If `None`, the default model path will be used when `local-embeddings` feature is enabled.
-    pub local_model_path: Option<PathBuf>,
     /// Whether to enable batch embedding via the OpenAI batch API (opt-in).
     pub batch_embeddings: bool,
     /// Minimum number of texts before switching to batch API (default: 50).
@@ -98,7 +95,6 @@ impl Default for MemoryConfig {
             chunk_overlap: 80,
             vector_weight: 0.7,
             keyword_weight: 0.3,
-            local_model_path: None,
             batch_embeddings: false,
             batch_threshold: 50,
             citations: CitationMode::default(),

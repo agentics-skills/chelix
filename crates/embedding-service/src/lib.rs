@@ -2,5 +2,7 @@
 
 pub mod api;
 mod engine_api;
+pub mod pool;
+pub mod queue;
 
 pub use engine_api::EmbeddingEngine;

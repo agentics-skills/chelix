@@ -25,7 +25,7 @@ lang-toml          = ["chelix-splitter/lang-toml"]
 lang-typescript    = ["chelix-splitter/lang-typescript"]
 # Existing features.
 file-watcher     = ["dep:notify-debouncer-full"]
-local-embeddings = ["dep:chelix-protocol"]
+local-embeddings = []
 metrics          = ["dep:chelix-metrics"]
 
 [dependencies]
@@ -34,7 +34,7 @@ async-trait           = { workspace = true }
 bytemuck              = { workspace = true }
 chelix-agents         = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
-chelix-protocol       = { optional = true, workspace = true }
+chelix-protocol       = { workspace = true }
 chelix-splitter       = { workspace = true }
 chrono                = { features = ["serde"], workspace = true }
 directories.workspace = true

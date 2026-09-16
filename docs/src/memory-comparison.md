@@ -34,7 +34,7 @@ writes to memory via file-writing tools (either dedicated or general-purpose).
 
 | Provider            | Chelix                              | OpenClaw                      |
 | ------------------- | ----------------------------------- | ----------------------------- |
-| **Local GGUF**      | EmbeddingGemma-300M via llama-cpp-2 | Auto-download GGUF (~0.6 GB)  |
+| **Local embeddings** | EmbeddingGemma-300M via managed sidecar (mistral.rs Q8) | Auto-download GGUF (~0.6 GB)  |
 | **OpenAI**          | text-embedding-3-small              | Via API key                   |
 | **Voyage**          | Not available                       | Via API key                   |
 | **Custom endpoint** | OpenAI-compatible                   | Not listed                    |

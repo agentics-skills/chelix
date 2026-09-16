@@ -27,6 +27,8 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+./scripts/prepare-mistralrs.sh
+
 if ! command -v git-cliff >/dev/null 2>&1; then
   echo "git-cliff is required. Install it first (for example: cargo install git-cliff --locked)." >&2
   exit 1

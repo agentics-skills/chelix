@@ -15,14 +15,14 @@ Chelix supports two memory backends:
 | Feature                 | Built-in                          | QMD                                    |
 | ----------------------- | --------------------------------- | -------------------------------------- |
 | **Search Type**         | Hybrid (vector + FTS5 keyword)    | Hybrid (BM25 + vector + LLM reranking) |
-| **Local Embeddings**    | GGUF via a managed llama-cpp sidecar | GGUF models                         |
+| **Local Embeddings**    | Managed mistral.rs sidecar (EmbeddingGemma-300M Q8) | GGUF models                         |
 | **Remote Embeddings**   | OpenAI and custom endpoints       | Built-in                               |
 | **Embedding Cache**     | SQLite with LRU eviction          | Built-in                               |
 | **Batch API**           | OpenAI batch (50% cost saving)    | No                                     |
 | **Circuit Breaker**     | Fallback chain with auto-recovery | No                                     |
 | **LLM Reranking**       | Optional (configurable)           | Built-in with `query` command          |
 | **File Watching**       | Real-time sync via notify         | Built-in                               |
-| **External Dependency** | Bundled managed sidecar for local GGUF | Requires QMD binary (Node.js/Bun)  |
+| **External Dependency** | Bundled managed sidecar for local embeddings | Requires QMD binary (Node.js/Bun)  |
 | **Offline Support**     | Yes (with local embeddings)       | Yes                                    |
 
 ### Built-in Backend
@@ -226,7 +226,7 @@ The built-in backend supports multiple embedding providers:
 
 | Provider     | Model                  | Dimensions | Notes                      |
 | ------------ | ---------------------- | ---------- | -------------------------- |
-| Local (GGUF) | EmbeddingGemma-300M    | 768        | Offline, managed sidecar   |
+| Local        | EmbeddingGemma-300M    | 768        | Offline, managed sidecar   |
 | OpenAI       | text-embedding-3-small | 1536       | Requires API key           |
 | Custom       | Configurable           | Varies     | OpenAI-compatible endpoint |
 
@@ -236,25 +236,30 @@ The system auto-detects available providers and creates a fallback chain:
 2. Fall back to other available providers if it fails
 3. Use keyword-only search if no embedding provider is available
 
-### Local GGUF sidecar
+### Local embedding sidecar
 
-`llama-cpp-2` and `llama-cpp-sys-2` are linked only into
-`chelix-embedding-service`; they are not part of the `chelix` binary dependency
-graph. Chelix launches the sidecar on a random loopback HTTP port, reads model
+`chelix-embedding-service` is a managed loopback sidecar. On first start it
+downloads `google/embeddinggemma-300m` (unless a local snapshot directory is
+configured), quantizes to Q8, and writes UQFF artifacts. Later starts load the
+UQFF only. Warm starts load those artifacts without the original snapshot, network,
+or token. Set `[memory] huggingface_api_key` (or `HUGGINGFACE_API_KEY` / `HF_TOKEN`)
+for the first download only; the token is passed to the sidecar as `HF_TOKEN`.
+An explicit `provider = "local"` fails gateway startup if the sidecar cannot start.
+
+Chelix launches the sidecar on a random loopback HTTP port, reads model
 metadata during startup, and stops the process with the gateway. The loopback
 API has no authentication and is not exposed on non-loopback interfaces.
 
-Build the two binaries separately:
+Prepare the pinned mistral.rs sources, then build the two binaries separately:
 
 ```bash
+./scripts/prepare-mistralrs.sh
 cargo build -p chelix --no-default-features --features full
 cargo build -p chelix-embedding-service
 ```
 
 Place `chelix-embedding-service` next to `chelix`. For custom layouts, set
-`CHELIX_EMBEDDING_SERVICE` to the sidecar path. Existing `memory.model`
-selection, model download/cache behavior, chunking, context-window handling,
-and mean-pooling behavior are unchanged.
+`CHELIX_EMBEDDING_SERVICE` to the sidecar path.
 
 ## Memory Directories
 
@@ -442,7 +447,7 @@ is removed. It is the low-level exact-delete primitive that powers
 │                    Embedding Providers                            │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │
 │  │  Local  │  │ OpenAI  │  │ Custom  │  │ Batch/Fallback│      │
-│  │  (GGUF) │  │         │  │         │  │               │      │
+│  │         │  │         │  │         │  │               │      │
 │  └─────────┘  └─────────┘  └─────────┘  └───────────────┘      │
 └──────────────────────────────────────────────────────────────────┘
 ```

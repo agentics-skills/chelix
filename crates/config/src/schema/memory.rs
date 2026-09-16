@@ -39,6 +39,14 @@ pub struct MemoryEmbeddingConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub api_key: Option<Secret<String>>,
+    /// Hugging Face token for first-time local embedding model download.
+    #[serde(
+        default,
+        alias = "HUGGINGFACE_API_KEY",
+        serialize_with = "crate::schema::serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub huggingface_api_key: Option<Secret<String>>,
     /// Citation mode for memory search results.
     pub citations: MemoryCitationsMode,
     /// Enable LLM reranking for hybrid search results.
@@ -84,6 +92,7 @@ impl Default for MemoryEmbeddingConfig {
             base_url: None,
             model: None,
             api_key: None,
+            huggingface_api_key: None,
             citations: MemoryCitationsMode::default(),
             llm_reranking: false,
             search_merge_strategy: MemorySearchMergeStrategy::default(),
@@ -181,7 +190,7 @@ pub enum MemoryCitationsMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MemoryProvider {
-    /// Built-in local GGUF embeddings.
+    /// Built-in local embeddings via the managed sidecar.
     Local,
     /// OpenAI embedding API.
     #[serde(rename = "openai")]

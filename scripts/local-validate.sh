@@ -103,6 +103,8 @@ else
   SHA="$(git rev-parse HEAD)"
 fi
 
+"$(cd "$(dirname "$0")" && pwd)/prepare-mistralrs.sh"
+
 # Auto-sync Cargo.lock if stale (common after merging main).
 # Uses `cargo fetch` (without --locked) to resolve deps without compiling
 # or upgrading existing dependency versions.

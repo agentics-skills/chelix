@@ -53,7 +53,7 @@ Current Rust workspace: ~271K LoC across 60 crates. The table below groups the m
 | `chelix-httpd` | 9.9K | HTTP server primitives and middleware |
 | `chelix` (CLI) | 4.7K | Entry point, CLI commands |
 | `chelix-tools-service` | — | Required managed native filesystem-tools service |
-| `chelix-embedding-service` | — | Optional managed local-GGUF embedding sidecar |
+| `chelix-embedding-service` | — | Optional managed local embedding sidecar |
 | `chelix-sessions` | 3.5K | Session persistence |
 | `chelix-common` | 1.5K | Shared utilities |
 | `chelix-service-traits` | 1.2K | Shared service interfaces |

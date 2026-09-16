@@ -4,24 +4,33 @@ use std::{collections::HashMap, path::Path as FsPath, sync::Arc};
 use std::path::PathBuf;
 
 use {
+    anyhow::Result,
     secrecy::ExposeSecret,
     tracing::{info, warn},
 };
 
 use super::helpers::env_value_with_overrides;
 
+fn uses_local_sidecar(
+    backend: chelix_config::MemoryBackend,
+    provider: Option<chelix_config::MemoryProvider>,
+) -> bool {
+    !matches!(backend, chelix_config::MemoryBackend::Qmd)
+        && matches!(provider, Some(chelix_config::MemoryProvider::Local))
+}
+
 /// Initialize the memory system (embedding providers, sync, watchers).
 ///
-/// Returns `Some(runtime)` when the memory system is available, or `None`
-/// when no embedding provider could be resolved or the database could not
-/// be opened.
+/// Returns `Ok(Some(runtime))` when the memory system is available, `Ok(None)`
+/// when the database could not be opened, and `Err` when an explicitly selected
+/// local embedding provider cannot start.
 pub(crate) async fn init_memory_system(
     config: &chelix_config::ChelixConfig,
     data_dir: &FsPath,
     effective_providers: &chelix_config::schema::ProvidersConfig,
     runtime_env_overrides: &HashMap<String, String>,
     db_pool_max_connections: u32,
-) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
+) -> Result<Option<chelix_memory::runtime::DynMemoryRuntime>> {
     // Build embedding provider(s) for the fallback chain.
     let mut embedding_providers: Vec<(
         String,
@@ -37,38 +46,54 @@ pub(crate) async fn init_memory_system(
         if let Some(provider) = mem_cfg.provider {
             match provider {
                 chelix_config::MemoryProvider::Local => {
-                    #[cfg(feature = "local-embeddings")]
-                    {
-                        let cache_dir = mem_cfg
+                    if uses_local_sidecar(mem_cfg.backend, Some(provider)) {
+                        #[cfg(feature = "local-embeddings")]
+                        {
+                            let cache_dir = mem_cfg
                             .base_url
                             .as_ref()
                             .map(PathBuf::from)
                             .unwrap_or_else(
-                                chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::default_cache_dir,
+                                chelix_memory::embeddings_local::LocalEmbeddingProvider::default_cache_dir,
                             );
-                        // `memory.model` selects the GGUF file (path or cached
-                        // filename); falls back to the bundled default when unset.
-                        match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::resolve_model(
-                            cache_dir,
-                            mem_cfg.model.as_deref(),
-                        )
-                        .await
+                            let hf_token = mem_cfg
+                                .huggingface_api_key
+                                .as_ref()
+                                .map(|key| key.expose_secret().clone())
+                                .filter(|token| !token.is_empty())
+                                .or_else(|| {
+                                    env_value_with_overrides(runtime_env_overrides, "HF_TOKEN")
+                                })
+                                .or_else(|| {
+                                    env_value_with_overrides(
+                                        runtime_env_overrides,
+                                        "HUGGINGFACE_API_KEY",
+                                    )
+                                });
+                            let model_spec =
+                            chelix_memory::embeddings_local::LocalEmbeddingProvider::resolve_model(
+                                cache_dir.clone(),
+                                mem_cfg.model.as_deref(),
+                            )?;
+                            let provider =
+                                chelix_memory::embeddings_local::LocalEmbeddingProvider::new(
+                                    model_spec, cache_dir, hf_token,
+                                )
+                                .await
+                                .map_err(|error| {
+                                    anyhow::anyhow!(
+                                        "memory: local embedding sidecar failed: {error}"
+                                    )
+                                })?;
+                            embedding_providers.push(("local".into(), Box::new(provider)));
+                        }
+                        #[cfg(not(feature = "local-embeddings"))]
                         {
-                            Ok(path) => {
-                                match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::new(
-                                    path,
-                                ).await {
-                                    Ok(p) => embedding_providers.push(("local-gguf".into(), Box::new(p))),
-                                    Err(e) => warn!("memory: failed to load local GGUF model: {e}"),
-                                }
-                            },
-                            Err(e) => warn!("memory: failed to ensure local model: {e}"),
+                            return Err(anyhow::anyhow!(
+                                "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
+                            ));
                         }
                     }
-                    #[cfg(not(feature = "local-embeddings"))]
-                    warn!(
-                        "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
-                    );
                 },
                 chelix_config::MemoryProvider::Custom | chelix_config::MemoryProvider::OpenAi => {
                     let base_url = mem_cfg
@@ -101,7 +126,7 @@ pub(crate) async fn init_memory_system(
             }
         }
 
-        // 2. Auto-detect: try remote API-key providers.
+        // 2. Auto-detect remote providers only when memory.provider is unset.
         const EMBEDDING_CANDIDATES: &[(&str, &str, &str)] = &[
             ("openai", "OPENAI_API_KEY", "https://api.openai.com"),
             (
@@ -111,22 +136,25 @@ pub(crate) async fn init_memory_system(
             ),
         ];
 
-        for (config_name, env_key, default_base) in EMBEDDING_CANDIDATES {
-            let key = effective_providers
-                .get(config_name)
-                .and_then(|e| e.api_key.as_ref().map(|k| k.expose_secret().clone()))
-                .or_else(|| env_value_with_overrides(runtime_env_overrides, env_key))
-                .filter(|k| !k.is_empty());
-            if let Some(api_key) = key {
-                let base = effective_providers
+        if mem_cfg.provider.is_none() {
+            for (config_name, env_key, default_base) in EMBEDDING_CANDIDATES {
+                let key = effective_providers
                     .get(config_name)
-                    .and_then(|e| e.base_url.clone())
-                    .unwrap_or_else(|| default_base.to_string());
-                let mut e = chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
-                if base != "https://api.openai.com" {
-                    e = e.with_base_url(base);
+                    .and_then(|e| e.api_key.as_ref().map(|k| k.expose_secret().clone()))
+                    .or_else(|| env_value_with_overrides(runtime_env_overrides, env_key))
+                    .filter(|k| !k.is_empty());
+                if let Some(api_key) = key {
+                    let base = effective_providers
+                        .get(config_name)
+                        .and_then(|e| e.base_url.clone())
+                        .unwrap_or_else(|| default_base.to_string());
+                    let mut e =
+                        chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
+                    if base != "https://api.openai.com" {
+                        e = e.with_base_url(base);
+                    }
+                    embedding_providers.push((config_name.to_string(), Box::new(e)));
                 }
-                embedding_providers.push((config_name.to_string(), Box::new(e)));
             }
         }
     }
@@ -175,7 +203,7 @@ pub(crate) async fn init_memory_system(
                         error = %error,
                         "memory: invalid memory database path"
                     );
-                    return None;
+                    return Ok(None);
                 },
             }
             .create_if_missing(true)
@@ -191,14 +219,14 @@ pub(crate) async fn init_memory_system(
         Ok(memory_pool) => {
             if let Err(e) = chelix_memory::schema::run_migrations(&memory_pool).await {
                 tracing::warn!("memory migration failed: {e}");
-                None
+                Ok(None)
             } else {
-                build_memory_runtime(mem_cfg, data_dir, embedder, memory_pool).await
+                Ok(build_memory_runtime(mem_cfg, data_dir, embedder, memory_pool).await)
             }
         },
         Err(e) => {
             tracing::warn!("memory: failed to open memory.db: {e}");
-            None
+            Ok(None)
         },
     }
 }
@@ -407,4 +435,45 @@ async fn build_memory_runtime(
         "memory system initialized"
     );
     Some(manager)
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::uses_local_sidecar,
+        chelix_config::{MemoryBackend, MemoryProvider},
+    };
+
+    #[test]
+    fn builtin_local_uses_sidecar() {
+        assert!(uses_local_sidecar(
+            MemoryBackend::Builtin,
+            Some(MemoryProvider::Local)
+        ));
+    }
+
+    #[test]
+    fn qmd_local_does_not_use_sidecar() {
+        assert!(!uses_local_sidecar(
+            MemoryBackend::Qmd,
+            Some(MemoryProvider::Local)
+        ));
+    }
+
+    #[test]
+    fn other_providers_do_not_use_sidecar() {
+        assert!(!uses_local_sidecar(MemoryBackend::Builtin, None));
+        assert!(!uses_local_sidecar(
+            MemoryBackend::Builtin,
+            Some(MemoryProvider::OpenAi)
+        ));
+        assert!(!uses_local_sidecar(
+            MemoryBackend::Builtin,
+            Some(MemoryProvider::Custom)
+        ));
+        assert!(!uses_local_sidecar(
+            MemoryBackend::Qmd,
+            Some(MemoryProvider::OpenAi)
+        ));
+    }
 }

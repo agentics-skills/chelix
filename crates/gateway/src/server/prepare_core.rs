@@ -1030,7 +1030,7 @@ pub async fn prepare_gateway_core(
         &runtime_env_overrides,
         config.server.db_pool_max_connections,
     )
-    .await;
+    .await?;
     startup_mem_probe.checkpoint("memory_manager.initialized");
 
     // Wire live session service.

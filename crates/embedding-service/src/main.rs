@@ -1,5 +1,4 @@
 mod app;
-#[allow(unsafe_code)]
 mod engine;
 
 #[tokio::main]

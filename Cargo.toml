@@ -112,6 +112,7 @@ members = [
   "crates/webhooks",
   "crates/whatsapp",
 ]
+exclude = ["vendor", "vendor/mistral.rs"]
 resolver = "2"
 
 [patch.crates-io]
@@ -175,6 +176,7 @@ async-stream = "0.3"
 async-trait  = "0.1"
 directories  = "6"
 dotenvy      = "0.15"
+either       = "1"
 futures      = "0.3"
 futures-util = "0.3"
 indexmap     = { features = ["serde"], version = "2" }
@@ -192,7 +194,6 @@ gix               = "0.83"
 hex               = "0.4"
 hmac              = "0.12"
 jsonschema        = { default-features = false, version = "0.49" }
-llama-cpp-2       = "0.1"
 matrix-sdk        = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
 mockito           = "1.7"
 serde_yaml        = "0.9"
@@ -245,8 +246,9 @@ url         = "2"
 urlencoding = "2"
 web-push    = "0.11"
 # Metrics
-metrics                     = "0.24"
+metrics                     = "0.24.6"
 metrics-exporter-prometheus = "0.16"
+mistralrs                   = { default-features = false, path = "vendor/mistral.rs/mistralrs" }
 metrics-tracing-context     = "0.16"
 # Content processing
 content_inspector = "0.2.4"

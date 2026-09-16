@@ -455,6 +455,8 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("embedding_model", Leaf),
                 ("api_key", Leaf),
                 ("embedding_api_key", Leaf),
+                ("huggingface_api_key", Leaf),
+                ("HUGGINGFACE_API_KEY", Leaf),
                 ("embedding_dimensions", Leaf),
                 ("citations", Leaf),
                 ("llm_reranking", Leaf),

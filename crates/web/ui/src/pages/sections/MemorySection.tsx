@@ -578,7 +578,7 @@ export function MemorySection(): VNode {
 					value={provider}
 					options={[
 						["auto", "Auto-detect"],
-						["local", "Local GGUF"],
+						["local", "Local"],
 						["openai", "OpenAI"],
 						["custom", "Custom OpenAI-compatible"],
 					]}

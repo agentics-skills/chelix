@@ -496,6 +496,7 @@ impl AgentScopedMemoryWriter {
             self.manager.remove_path(&path).await?
         } else {
             tokio::fs::write(&path, &removal.content).await?;
+            self.manager.remove_path(&path).await?;
             self.manager.sync_path(&path).await?;
             false
         };

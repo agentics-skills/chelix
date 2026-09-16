@@ -1,0 +1,36 @@
+From 57c08b7d9f80c483b44b0e9c8e5d1b8da711c593 Mon Sep 17 00:00:00 2001
+From: chelix <dev@local>
+Date: Wed, 16 Sep 2026 00:12:17 +0300
+Subject: [PATCH 1/3] fix: skip KV cache queries for embedding pipelines
+ without a cache
+
+---
+ mistralrs-core/src/engine/mod.rs | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/mistralrs-core/src/engine/mod.rs b/mistralrs-core/src/engine/mod.rs
+index 681f9dbd..5d342a3a 100644
+--- a/mistralrs-core/src/engine/mod.rs
++++ b/mistralrs-core/src/engine/mod.rs
+@@ -596,14 +596,16 @@ impl Engine {
+         ) = {
+             let pipeline = get_mut_arcmutex!(pipeline);
+             let pipeline_metadata = pipeline.get_metadata();
++            let is_hybrid =
++                !pipeline_metadata.no_kv_cache && pipeline.cache().is_hybrid();
+             (
+                 pipeline.requires_uniform_prompt_batch(),
+                 pipeline.requires_uniform_completion_batch(),
+                 pipeline.requires_uniform_media_batch(),
+                 pipeline.supports_packed_prefill(),
+-                pipeline.cache().is_hybrid(),
++                is_hybrid,
+                 pipeline.device().is_cuda() && !pipeline_metadata.is_xlora,
+-                pipeline.cache().is_hybrid(),
++                is_hybrid,
+                 pipeline.speculative_prefix_checkpoint_policy(),
+             )
+         };
+-- 
+2.53.0
+
