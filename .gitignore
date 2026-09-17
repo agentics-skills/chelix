@@ -31,4 +31,4 @@ crates/web/src/assets/js/vendor/shiki.mjs
 *.db
 .codesight/
 
-vendor/
+/vendor/

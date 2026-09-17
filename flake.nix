@@ -34,12 +34,16 @@
         };
 
         # Create a clean source that includes the required project files.
-        # vendor/ is gitignored and reconstructed in preBuild from the pinned fetch.
+        # Only the repository-root vendor/ is excluded: it is gitignored and
+        # reconstructed in preBuild from the pinned fetch. Nested vendor
+        # directories (e.g. crates/web/src/assets/*/vendor) are tracked assets.
         src = pkgs.lib.cleanSourceWith {
           src = ./.;
           filter = path: type:
             pkgs.lib.cleanSourceFilter path type
-            && builtins.baseNameOf path != "vendor";
+            && !(type == "directory"
+              && builtins.baseNameOf path == "vendor"
+              && dirOf path == toString ./.);
         };
 
         mistralRev = "d5ae0f18f2170f10d30880cb7d21fb0880410e7b";
