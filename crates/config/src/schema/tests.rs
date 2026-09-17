@@ -410,12 +410,6 @@ fn memory_config_default_user_profile_write_mode_is_explicit_and_auto() {
 }
 
 #[test]
-fn memory_config_default_backend_is_builtin() {
-    let cfg = MemoryEmbeddingConfig::default();
-    assert_eq!(cfg.backend, MemoryBackend::Builtin);
-}
-
-#[test]
 fn memory_config_default_citations_is_auto() {
     let cfg = MemoryEmbeddingConfig::default();
     assert_eq!(cfg.citations, MemoryCitationsMode::Auto);
@@ -453,12 +447,6 @@ fn memory_config_toml_parses_user_profile_write_mode() {
         cfg.user_profile_write_mode,
         UserProfileWriteMode::ExplicitOnly
     );
-}
-
-#[test]
-fn memory_config_toml_parses_backend() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("backend = \"qmd\"").unwrap();
-    assert_eq!(cfg.backend, MemoryBackend::Qmd);
 }
 
 #[test]

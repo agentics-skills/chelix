@@ -245,17 +245,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let qmd_collection = || Struct(HashMap::from([("paths", Leaf), ("globs", Leaf)]));
-
-    let qmd = || {
-        Struct(HashMap::from([
-            ("command", Leaf),
-            ("collections", Map(Box::new(qmd_collection()))),
-            ("max_results", Leaf),
-            ("timeout_ms", Leaf),
-        ]))
-    };
-
     let agent = || {
         Struct(HashMap::from([
             ("name", Leaf),
@@ -445,7 +434,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("style", Leaf),
                 ("agent_write_mode", Leaf),
                 ("user_profile_write_mode", Leaf),
-                ("backend", Leaf),
                 ("provider", Leaf),
                 ("embedding_provider", Leaf),
                 ("disable_rag", Leaf),
@@ -462,7 +450,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("llm_reranking", Leaf),
                 ("search_merge_strategy", Leaf),
                 ("session_export", Leaf),
-                ("qmd", qmd()),
                 ("enable_prefetch", Leaf),
                 ("prefetch_limit", Leaf),
                 ("auto_extract_interval", Leaf),

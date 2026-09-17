@@ -1,19 +1,6 @@
 use super::*;
 
 #[test]
-fn unknown_memory_backend_is_parse_error() {
-    let toml = r#"
-[memory]
-backend = "postgres"
-"#;
-    let result = validate_toml_str(toml);
-    assert!(
-        result.has_errors(),
-        "expected parse error for unknown memory backend"
-    );
-}
-
-#[test]
 fn unknown_memory_citations_mode_is_parse_error() {
     let toml = r#"
 [memory]

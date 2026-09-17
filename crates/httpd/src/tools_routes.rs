@@ -189,6 +189,18 @@ pub async fn config_validate(
     // Try to parse the TOML as ChelixConfig
     match toml::from_str::<chelix_config::ChelixConfig>(toml_str) {
         Ok(config) => {
+            // Deserialization ignores unknown keys; the schema walk rejects them.
+            let diagnostics = config_validation_errors(toml_str);
+            if !diagnostics.is_empty() {
+                return Json(serde_json::json!({
+                    "code": CONFIG_INVALID_CONFIG,
+                    "valid": false,
+                    "error": diagnostics.join("; "),
+                    "diagnostics": diagnostics,
+                }))
+                .into_response();
+            }
+
             // Run validation checks
             let warnings = validate_config(&config);
 
@@ -571,4 +583,91 @@ fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
     }
 
     warnings
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        axum::{body::to_bytes, response::Response},
+        chelix_gateway::{
+            auth, methods::MethodRegistry, services::GatewayServices, state::GatewayState,
+        },
+        std::sync::Arc,
+    };
+
+    async fn response_json(response: Response) -> serde_json::Value {
+        let body = match to_bytes(response.into_body(), usize::MAX).await {
+            Ok(bytes) => bytes,
+            Err(err) => panic!("failed to read body bytes: {err}"),
+        };
+        match serde_json::from_slice::<serde_json::Value>(&body) {
+            Ok(value) => value,
+            Err(err) => panic!("failed to parse json body: {err}"),
+        }
+    }
+
+    fn localhost_app_state() -> crate::server::AppState {
+        let mut config = chelix_config::ChelixConfig::default();
+        config.sandbox.mode = chelix_config::schema::SandboxMode::Off;
+        let gateway = GatewayState::with_options(
+            auth::resolve_auth(None, None),
+            GatewayServices::noop(),
+            config,
+            Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+            None,
+            true,
+            false,
+            false,
+            None,
+            None,
+            Arc::new(chelix_code_index::CodeIndex::config_only(
+                chelix_code_index::CodeIndexConfig::default(),
+            )),
+            18789,
+            false,
+            None,
+            None,
+            #[cfg(feature = "metrics")]
+            None,
+            #[cfg(feature = "metrics")]
+            None,
+            #[cfg(feature = "vault")]
+            None,
+        );
+        crate::server::AppState {
+            gateway,
+            methods: Arc::new(MethodRegistry::new()),
+            request_throttle: Arc::new(crate::request_throttle::RequestThrottle::new()),
+            webauthn_registry: None,
+            #[cfg(feature = "push-notifications")]
+            push_service: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn config_validate_rejects_unknown_memory_field() {
+        let state = localhost_app_state();
+        let body = serde_json::json!({
+            "toml": "[memory]\nunexpected_field = \"x\"\n",
+        });
+
+        let response = config_validate(State(state), Json(body))
+            .await
+            .into_response();
+        let json = response_json(response).await;
+
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["code"], CONFIG_INVALID_CONFIG);
+        let diagnostics = match json["diagnostics"].as_array() {
+            Some(diagnostics) => diagnostics,
+            None => panic!("expected diagnostics array: {json}"),
+        };
+        assert!(
+            diagnostics.iter().any(|d| d
+                .as_str()
+                .is_some_and(|s| s.contains("memory.unexpected_field"))),
+            "diagnostics should mention the unknown memory field: {diagnostics:?}"
+        );
+    }
 }

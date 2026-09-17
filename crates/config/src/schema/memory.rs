@@ -1,7 +1,6 @@
 use {
     secrecy::Secret,
     serde::{Deserialize, Deserializer, Serialize},
-    std::collections::HashMap,
 };
 
 /// Memory embedding provider configuration.
@@ -17,8 +16,6 @@ pub struct MemoryEmbeddingConfig {
     pub agent_write_mode: AgentMemoryWriteMode,
     /// How Chelix writes the managed `USER.md` profile surface.
     pub user_profile_write_mode: UserProfileWriteMode,
-    /// Memory backend used for search, retrieval, and indexing.
-    pub backend: MemoryBackend,
     /// Embedding provider: "local", "openai", "custom", or None for auto-detect.
     #[serde(alias = "embedding_provider")]
     pub provider: Option<MemoryProvider>,
@@ -60,9 +57,6 @@ pub struct MemoryEmbeddingConfig {
         deserialize_with = "deserialize_session_export_mode"
     )]
     pub session_export: SessionExportMode,
-    /// QMD-specific configuration (only used when backend = "qmd").
-    #[serde(default)]
-    pub qmd: QmdConfig,
     /// Prefetch relevant memories at the start of each turn and inject them
     /// into the system prompt as `<recalled_context>`. Default: true.
     #[serde(default = "default_true")]
@@ -86,7 +80,6 @@ impl Default for MemoryEmbeddingConfig {
             style: MemoryStyle::default(),
             agent_write_mode: AgentMemoryWriteMode::default(),
             user_profile_write_mode: UserProfileWriteMode::default(),
-            backend: MemoryBackend::default(),
             provider: None,
             disable_rag: false,
             base_url: None,
@@ -97,7 +90,6 @@ impl Default for MemoryEmbeddingConfig {
             llm_reranking: false,
             search_merge_strategy: MemorySearchMergeStrategy::default(),
             session_export: default_session_export_mode(),
-            qmd: QmdConfig::default(),
             enable_prefetch: true,
             prefetch_limit: 3,
             auto_extract_interval: 5,
@@ -210,17 +202,6 @@ pub enum MemorySearchMergeStrategy {
     Linear,
 }
 
-/// Backend implementation for long-term memory search and retrieval.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MemoryBackend {
-    /// Built-in SQLite-backed indexer and retriever.
-    #[default]
-    Builtin,
-    /// External QMD CLI-backed index and search runtime.
-    Qmd,
-}
-
 /// How chat sessions are exported into searchable memory.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -257,31 +238,4 @@ where
             }
         },
     })
-}
-
-/// QMD backend configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct QmdConfig {
-    /// Path to the qmd binary (default: "qmd").
-    pub command: Option<String>,
-    /// Named collections with paths and glob patterns.
-    #[serde(default)]
-    pub collections: HashMap<String, QmdCollection>,
-    /// Maximum results to retrieve.
-    pub max_results: Option<usize>,
-    /// Search timeout in milliseconds.
-    pub timeout_ms: Option<u64>,
-}
-
-/// A QMD collection configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct QmdCollection {
-    /// Paths to include in this collection.
-    #[serde(default)]
-    pub paths: Vec<String>,
-    /// Glob patterns to filter files.
-    #[serde(default)]
-    pub globs: Vec<String>,
 }

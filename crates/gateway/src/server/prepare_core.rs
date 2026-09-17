@@ -1060,7 +1060,7 @@ pub async fn prepare_gateway_core(
     }
 
     // ── Code index initialization ──────────────────────────────────────
-    let code_index = init_code_index::init_code_index(&data_dir, &config).await;
+    let code_index = init_code_index::init_code_index(&data_dir, &config).await?;
     startup_mem_probe.checkpoint("code_index.initialized");
 
     post_state::complete_startup(post_state::PostStateInputs {
@@ -1102,7 +1102,7 @@ pub async fn prepare_gateway_core(
         #[cfg(feature = "vault")]
         vault,
         code_index,
-        #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
+        #[cfg(feature = "code-index-builtin")]
         project_store: Arc::clone(&project_store),
     })
     .await

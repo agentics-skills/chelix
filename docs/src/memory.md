@@ -2,33 +2,31 @@
 
 Chelix provides a powerful memory system that enables the agent to recall past
 conversations, notes, and context across sessions. This document explains the
-available backends, features, and configuration options.
+storage backend, features, and configuration options.
 
 If you are trying to understand the difference between short-term session state,
 long-term memory files, and sandbox persistence, start with
 [Memory Surfaces](memory-surfaces.md).
 
-## Backends
+## Backend
 
-Chelix supports two memory backends:
+Chelix stores memory in SQLite with FTS5 for keyword search and optional vector
+embeddings for semantic search:
 
-| Feature                 | Built-in                          | QMD                                    |
-| ----------------------- | --------------------------------- | -------------------------------------- |
-| **Search Type**         | Hybrid (vector + FTS5 keyword)    | Hybrid (BM25 + vector + LLM reranking) |
-| **Local Embeddings**    | Managed mistral.rs sidecar (EmbeddingGemma-300M Q8) | GGUF models                         |
-| **Remote Embeddings**   | OpenAI and custom endpoints       | Built-in                               |
-| **Embedding Cache**     | SQLite with LRU eviction          | Built-in                               |
-| **Batch API**           | OpenAI batch (50% cost saving)    | No                                     |
-| **Circuit Breaker**     | Fallback chain with auto-recovery | No                                     |
-| **LLM Reranking**       | Optional (configurable)           | Built-in with `query` command          |
-| **File Watching**       | Real-time sync via notify         | Built-in                               |
-| **External Dependency** | Bundled managed sidecar for local embeddings | Requires QMD binary (Node.js/Bun)  |
-| **Offline Support**     | Yes (with local embeddings)       | Yes                                    |
+| Feature                 | Built-in                                            |
+| ----------------------- | --------------------------------------------------- |
+| **Search Type**         | Hybrid (vector + FTS5 keyword)                      |
+| **Local Embeddings**    | Managed mistral.rs sidecar (EmbeddingGemma-300M Q8) |
+| **Remote Embeddings**   | OpenAI and custom endpoints                         |
+| **Embedding Cache**     | SQLite with LRU eviction                            |
+| **Batch API**           | OpenAI batch (50% cost saving)                      |
+| **Circuit Breaker**     | Fallback chain with auto-recovery                   |
+| **LLM Reranking**       | Optional (configurable)                             |
+| **File Watching**       | Real-time sync via notify                           |
+| **External Dependency** | Bundled managed sidecar for local embeddings        |
+| **Offline Support**     | Yes (with local embeddings)                         |
 
-### Built-in Backend
-
-The default backend uses SQLite for storage with FTS5 for keyword search and
-optional vector embeddings for semantic search. Key advantages:
+Key properties:
 
 - **Managed local inference**: Chelix starts and stops the separately built
   `chelix-embedding-service` sidecar when the local provider is selected
@@ -36,25 +34,6 @@ optional vector embeddings for semantic search. Key advantages:
   fails
 - **Batch embedding**: Reduces OpenAI API costs by 50% for large sync operations
 - **Embedding cache**: Avoids re-embedding unchanged content
-
-### QMD Backend
-
-QMD is an optional external sidecar that provides enhanced search capabilities:
-
-- **BM25 keyword search**: Fast, instant results (similar to Elasticsearch)
-- **Vector search**: Semantic similarity using local GGUF models
-- **Hybrid search with LLM reranking**: Combines both methods with an LLM pass
-  for optimal relevance
-
-To use QMD:
-
-1. Install the QMD CLI from [github.com/tobi/qmd](https://github.com/tobi/qmd):
-   `npm install -g @tobilu/qmd` or `bun install -g @tobilu/qmd`
-2. Verify the binary is on your `PATH`: `qmd --version`
-3. Enable it in Settings > Memory > Backend
-
-Chelix invokes the `qmd` CLI directly for indexing and search, so the memory
-backend does not require a separate background daemon.
 
 ## Features
 
@@ -113,11 +92,7 @@ agent_write_mode = "hybrid"
 # Managed USER.md write policy: "explicit-and-auto", "explicit-only", or "off"
 user_profile_write_mode = "explicit-and-auto"
 
-# Backend: "builtin" (default) or "qmd"
-backend = "builtin"
-
-# Embedding provider for the built-in backend: "local", "openai", "custom", or auto-detect
-# Ignored while backend = "qmd", but preserved for switching back later
+# Embedding provider: "local", "openai", "custom", or auto-detect
 # Omit this field for the real default, which is auto-detect
 provider = "auto"
 
@@ -138,12 +113,6 @@ search_merge_strategy = "rrf"
 
 # Export sessions to memory for cross-run recall: "on-new-or-reset" or "off"
 session_export = "on-new-or-reset"
-
-# QMD-specific settings (only used when backend = "qmd")
-[memory.qmd]
-command = "qmd"
-max_results = 10
-timeout_ms = 30000
 ```
 
 Real defaults, if you leave the fields unset:
@@ -151,7 +120,6 @@ Real defaults, if you leave the fields unset:
 - `style = "hybrid"`
 - `agent_write_mode = "hybrid"`
 - `user_profile_write_mode = "explicit-and-auto"`
-- `backend = "builtin"`
 - `provider = auto-detect` (unset, not hardcoded `local`)
 - `disable_rag = false`
 - `citations = "auto"`
@@ -194,8 +162,6 @@ memory files:
 
 Interaction rules that matter in practice:
 
-- `provider`, `base_url`, `model`, and `api_key` only apply to
-  `backend = "builtin"`. QMD ignores them.
 - `[chat].prompt_memory_mode` only matters when `style` still allows prompt
   memory, `hybrid` or `prompt-only`.
 - `llm_reranking` is only meaningful when RAG is enabled. If
@@ -211,18 +177,17 @@ Common combinations:
 
 | Goal                                  | Settings                                                                        |
 | ------------------------------------- | ------------------------------------------------------------------------------- |
-| Default everyday setup                | `style = "hybrid"`, `backend = "builtin"`, `prompt_memory_mode = "live-reload"` |
+| Default everyday setup                | `style = "hybrid"`, `prompt_memory_mode = "live-reload"`                        |
 | Deterministic prompt memory           | `style = "hybrid"`, `prompt_memory_mode = "frozen-at-session-start"`            |
 | Search-only long-term memory          | `style = "search-only"`                                                         |
 | Prompt-only memory, no recall tools   | `style = "prompt-only"`                                                         |
 | Disable agent memory writes           | `agent_write_mode = "off"`                                                      |
 | Keep `USER.md` from silent enrichment | `user_profile_write_mode = "explicit-only"`                                     |
 | Keep user profile only in config      | `user_profile_write_mode = "off"`                                               |
-| QMD backend experiment                | `backend = "qmd"`                                                               |
 
 ## Embedding Providers
 
-The built-in backend supports multiple embedding providers:
+The memory system supports multiple embedding providers:
 
 | Provider     | Model                  | Dimensions | Notes                      |
 | ------------ | ---------------------- | ---------- | -------------------------- |
@@ -437,12 +402,12 @@ is removed. It is the low-level exact-delete primitive that powers
 │  └─────────────────┘  └──────────────────┘  └────────────────┘  │
 ├──────────────────────────────────────────────────────────────────┤
 │                      Storage Backend                             │
-│  ┌────────────────────────┐  ┌────────────────────────┐         │
-│  │   Built-in (SQLite)    │  │   QMD (sidecar)        │         │
-│  │  - FTS5 keyword        │  │  - BM25 keyword        │         │
-│  │  - Vector similarity   │  │  - Vector similarity   │         │
-│  │  - Embedding cache     │  │  - LLM reranking       │         │
-│  └────────────────────────┘  └────────────────────────┘         │
+│  ┌────────────────────────┐                                       │
+│  │   Built-in (SQLite)    │                                       │
+│  │  - FTS5 keyword        │                                       │
+│  │  - Vector similarity   │                                       │
+│  │  - Embedding cache     │                                       │
+│  └────────────────────────┘                                       │
 ├──────────────────────────────────────────────────────────────────┤
 │                    Embedding Providers                            │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │
@@ -468,11 +433,3 @@ is removed. It is the low-level exact-delete primitive that powers
 1. Check that memory files exist in the expected directories
 2. Trigger a manual sync by restarting chelix
 3. Check logs for sync errors
-
-### QMD not available
-
-1. Install QMD if needed: `npm install -g @tobilu/qmd` or
-   `bun install -g @tobilu/qmd`
-2. Verify QMD is installed: `qmd --version`
-3. Check that the path is correct in settings
-4. Ensure QMD can see its index and collections: `qmd status`

@@ -2183,10 +2183,6 @@ reasoning_supported_efforts = ["off"]
 
     #[async_trait]
     impl chelix_memory::runtime::MemoryRuntime for MockMemoryRuntime {
-        fn backend_name(&self) -> &'static str {
-            "mock"
-        }
-
         fn data_dir(&self) -> Option<&Path> {
             Some(&self.data_dir)
         }

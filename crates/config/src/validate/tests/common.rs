@@ -144,7 +144,6 @@ mode = "On"
 backend = "auto"
 
 [memory]
-backend = "builtin"
 provider = "local"
 
 [metrics]

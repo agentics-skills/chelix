@@ -103,16 +103,6 @@ impl MemoryManager {
         self.config.llm_reranking
     }
 
-    /// Resolve a file path by a content-hash prefix.
-    pub async fn resolve_file_by_hash_prefix(&self, hash_prefix: &str) -> Result<Option<String>> {
-        let prefix = hash_prefix.trim_start_matches('#');
-        let files = self.store.list_files().await?;
-        Ok(files
-            .into_iter()
-            .find(|file| file.hash.starts_with(prefix))
-            .map(|file| file.path))
-    }
-
     /// Synchronize: walk configured directories, detect changed files, re-chunk and re-embed.
     pub async fn sync(&self) -> Result<SyncReport> {
         let mut report = SyncReport::default();

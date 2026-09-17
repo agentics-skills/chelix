@@ -407,7 +407,8 @@ pub struct GatewayState {
     /// `Arc` because it is cloned into background tokio tasks.
     pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
     /// Code index for workspace codebase intelligence (discover, filter, status, peek).
-    /// Always initialized in config-only mode; search is deferred to QMD backend.
+    /// Search requires the builtin code-index backend; config-only mode reports
+    /// discover, filter, and status only.
     pub code_index: Arc<chelix_code_index::CodeIndex>,
     /// Whether the server is bound to a loopback address (localhost/127.0.0.1/::1).
     pub localhost_only: bool,

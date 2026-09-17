@@ -1,4 +1,4 @@
-use crate::{MemoryBackend, UserProfile, schema::ChelixConfig};
+use crate::{UserProfile, schema::ChelixConfig};
 
 use super::*;
 
@@ -106,12 +106,12 @@ fn apply_env_overrides_multiple() {
     let vars = vec![
         ("CHELIX_AUTH__DISABLED".into(), "true".into()),
         ("CHELIX_TOOLS__AGENT_TIMEOUT_SECS".into(), "300".into()),
-        ("CHELIX_MEMORY__BACKEND".into(), "builtin".into()),
+        ("CHELIX_MEMORY__DISABLE_RAG".into(), "true".into()),
     ];
     let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
     assert!(config.auth.disabled);
     assert_eq!(config.tools.agent_timeout_secs, 300);
-    assert_eq!(config.memory.backend, MemoryBackend::Builtin);
+    assert!(config.memory.disable_rag);
 }
 
 #[test]

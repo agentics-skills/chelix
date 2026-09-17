@@ -75,7 +75,6 @@ Defaults today:
 - `memory.style = "hybrid"`
 - `memory.agent_write_mode = "hybrid"`
 - `memory.user_profile_write_mode = "explicit-and-auto"`
-- `memory.backend = "builtin"`
 - `memory.session_export = "on-new-or-reset"`
 - `chat.prompt_memory_mode = "live-reload"`
 
@@ -106,10 +105,8 @@ surface:
 - `citations`: `auto`, `on`, or `off`
 - `search_merge_strategy`: `rrf` or `linear`
 
-Two easy-to-miss interaction rules:
+One easy-to-miss interaction rule:
 
-- builtin embedding knobs such as `memory.provider`, `memory.base_url`,
-  `memory.model`, and `memory.api_key` do nothing while `memory.backend = "qmd"`
 - `memory.session_export` affects searchable transcript files under
   `memory/sessions/*.md`, not prompt memory injection
 

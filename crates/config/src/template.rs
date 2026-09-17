@@ -468,7 +468,6 @@ port = {port}                           # Port number (auto-generated for this i
 # [memory]
 # style = "hybrid"                  # "hybrid" | "prompt-only" | "search-only" | "off"
 # agent_write_mode = "hybrid"       # "hybrid" | "prompt-only" | "search-only" | "off"
-# backend = "builtin"               # "builtin" | "qmd"
 # provider = "auto"                 # "local" (managed sidecar) | "openai" | "custom"
 # model = "google/embeddinggemma-300m"  # HF id or local snapshot directory
 # base_url = "/path/to/model-cache" # Cache directory when provider = "local"

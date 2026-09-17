@@ -190,14 +190,6 @@ fn parse_user_profile_write_mode(
     }
 }
 
-fn parse_memory_backend(value: &str) -> Result<chelix_config::MemoryBackend, ErrorShape> {
-    match value {
-        "builtin" => Ok(chelix_config::MemoryBackend::Builtin),
-        "qmd" => Ok(chelix_config::MemoryBackend::Qmd),
-        _ => Err(invalid_memory_config_value("backend", value)),
-    }
-}
-
 fn parse_memory_provider(value: &str) -> Result<Option<chelix_config::MemoryProvider>, ErrorShape> {
     match value {
         "auto" => Ok(None),
@@ -520,7 +512,6 @@ mod tests {
             cfg.memory.style = chelix_config::MemoryStyle::SearchOnly;
             cfg.memory.agent_write_mode = chelix_config::AgentMemoryWriteMode::PromptOnly;
             cfg.memory.user_profile_write_mode = chelix_config::UserProfileWriteMode::ExplicitOnly;
-            cfg.memory.backend = chelix_config::MemoryBackend::Qmd;
             cfg.memory.provider = Some(chelix_config::MemoryProvider::OpenAi);
             cfg.memory.citations = chelix_config::MemoryCitationsMode::Off;
             cfg.memory.disable_rag = true;
@@ -535,7 +526,6 @@ mod tests {
         assert_eq!(payload["style"], "search-only");
         assert_eq!(payload["agent_write_mode"], "prompt-only");
         assert_eq!(payload["user_profile_write_mode"], "explicit-only");
-        assert_eq!(payload["backend"], "qmd");
         assert_eq!(payload["provider"], "openai");
         assert_eq!(payload["citations"], "off");
         assert_eq!(payload["disable_rag"], true);
@@ -555,7 +545,6 @@ mod tests {
                 "style": "prompt-only",
                 "agent_write_mode": "search-only",
                 "user_profile_write_mode": "off",
-                "backend": "qmd",
                 "provider": "custom",
                 "citations": "on",
                 "disable_rag": true,
@@ -570,7 +559,6 @@ mod tests {
         assert_eq!(payload["style"], "prompt-only");
         assert_eq!(payload["agent_write_mode"], "search-only");
         assert_eq!(payload["user_profile_write_mode"], "off");
-        assert_eq!(payload["backend"], "qmd");
         assert_eq!(payload["provider"], "custom");
         assert_eq!(payload["citations"], "on");
         assert_eq!(payload["disable_rag"], true);
@@ -590,7 +578,6 @@ mod tests {
             config.memory.user_profile_write_mode,
             chelix_config::UserProfileWriteMode::Off
         );
-        assert_eq!(config.memory.backend, chelix_config::MemoryBackend::Qmd);
         assert_eq!(
             config.memory.provider,
             Some(chelix_config::MemoryProvider::Custom)
@@ -636,5 +623,53 @@ mod tests {
             error.message,
             "invalid memory config value for 'style': 'surprise-mode'"
         );
+    }
+
+    #[tokio::test]
+    async fn memory_config_update_rejects_unknown_field() {
+        let _guard = MemoryConfigTestGuard::new();
+        let response = dispatch_memory_method_response(
+            "memory.config.update",
+            serde_json::json!({
+                "unexpected_field": true,
+                "provider": "custom",
+            }),
+        )
+        .await;
+
+        assert!(!response.ok, "unknown field should fail");
+        let error = match response.error {
+            Some(error) => error,
+            None => panic!("expected invalid request error"),
+        };
+        assert_eq!(error.code, error_codes::INVALID_REQUEST);
+
+        let config = chelix_config::discover_and_load()
+            .unwrap_or_else(|error| panic!("load config: {error}"));
+        assert_eq!(config.memory.provider, None);
+    }
+
+    #[tokio::test]
+    async fn memory_config_update_rejects_null_session_export() {
+        let _guard = MemoryConfigTestGuard::new();
+        let response = dispatch_memory_method_response(
+            "memory.config.update",
+            serde_json::json!({
+                "session_export": null,
+                "provider": "custom",
+            }),
+        )
+        .await;
+
+        assert!(!response.ok, "null session_export should fail");
+        let error = match response.error {
+            Some(error) => error,
+            None => panic!("expected invalid request error"),
+        };
+        assert_eq!(error.code, error_codes::INVALID_REQUEST);
+
+        let config = chelix_config::discover_and_load()
+            .unwrap_or_else(|error| panic!("load config: {error}"));
+        assert_eq!(config.memory.provider, None);
     }
 }

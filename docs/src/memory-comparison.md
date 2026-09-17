@@ -21,7 +21,6 @@ writes to memory via file-writing tools (either dedicated or general-purpose).
 | **Storage format**                  | Markdown files on disk                     | Markdown files on disk                         |
 | **Index storage**                   | SQLite (per data dir)                      | SQLite (per agent)                             |
 | **Default backend**                 | Built-in (SQLite + FTS5 + vector)          | Built-in (SQLite + BM25 + vector)              |
-| **Alternative backend**             | QMD (sidecar, BM25 + vector + reranking)   | QMD (sidecar, BM25 + vector + reranking)       |
 | **Keyword search**                  | FTS5                                       | BM25                                           |
 | **Vector search**                   | Cosine similarity                          | Cosine similarity                              |
 | **Hybrid scoring**                  | Configurable vector/keyword weights        | Configurable vector/text weights               |
@@ -148,7 +147,6 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 
 | Feature           | Chelix                                          | OpenClaw                                      |
 | ----------------- | ----------------------------------------------- | --------------------------------------------- |
-| **LLM reranking** | Optional (configurable)                         | Built-in with QMD                             |
 | **Citations**     | Configurable (auto/on/off)                      | Configurable (auto/on/off)                    |
 | **Result format** | Chunk ID, path, source, line range, score, text | Path, line range, score, snippet (~700 chars) |
 | **Fallback**      | Keyword-only if no embeddings                   | BM25-only if no embeddings                    |
@@ -157,13 +155,10 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 
 | Setting              | Chelix (`chelix.toml`)         | OpenClaw (`openclaw.json`)                |
 | -------------------- | ------------------------------ | ----------------------------------------- |
-| **Backend**          | `memory.backend = "builtin"`   | `memory.backend = "builtin"`              |
 | **Provider**         | `memory.provider = "local"`    | Auto-detect from available keys           |
 | **Citations**        | `memory.citations = "auto"`    | `memory.citations = "auto"`               |
-| **LLM reranking**    | `memory.llm_reranking = false` | Via QMD config                            |
 | **Session export**   | `memory.session_export = true` | `memorySearch.experimental.sessionMemory` |
 | **UI configuration** | Settings > Memory page         | Config file only                          |
-| **QMD settings**     | `[memory.qmd]` section         | `memory.backend = "qmd"`                  |
 
 ### CLI Commands
 

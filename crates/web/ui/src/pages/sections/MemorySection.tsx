@@ -25,24 +25,17 @@ interface MemoryConfig {
 	style?: string;
 	agent_write_mode?: string;
 	user_profile_write_mode?: string;
-	backend?: string;
 	provider?: string;
 	citations?: string;
 	llm_reranking?: boolean;
 	search_merge_strategy?: string;
 	session_export?: string;
 	prompt_memory_mode?: string;
-	qmd_feature_enabled?: boolean;
 	enable_prefetch?: boolean;
 	prefetch_limit?: number;
 	auto_extract_interval?: number;
 	enable_session_summary?: boolean;
 	enable_self_improvement?: boolean;
-}
-
-interface QmdStatus {
-	available?: boolean;
-	version?: string;
 }
 
 function configString(value: string | undefined, fallback: string): string {
@@ -140,128 +133,6 @@ function MemoryStatusCard({ status }: { status: MemoryStatus | null }): VNode | 
 					</div>
 				))}
 			</div>
-		</div>
-	);
-}
-
-interface MemoryBackendPanelProps {
-	backend: string;
-	qmdFeatureEnabled: boolean;
-	qmdAvailable: boolean;
-	qmdStatus: QmdStatus | null;
-	onBackend: (backend: string) => void;
-}
-
-const MEMORY_BACKEND_FEATURES = [
-	{ feature: "Search type", builtin: "FTS5 + vector", qmd: "BM25 + vector + LLM" },
-	{ feature: "External dependency", builtin: "None", qmd: "Node.js/Bun", builtinGood: true },
-	{ feature: "Embedding cache", builtin: "\u2713", qmd: "\u2717", builtinGood: true },
-	{ feature: "OpenAI batch API", builtin: "\u2713 (50% cheaper)", qmd: "\u2717", builtinGood: true },
-	{ feature: "Provider fallback", builtin: "\u2713", qmd: "\u2717", builtinGood: true },
-	{ feature: "LLM reranking", builtin: "Optional", qmd: "Built-in", qmdGood: true },
-	{ feature: "Best for", builtin: "Most users", qmd: "Power users" },
-];
-
-function MemoryBackendComparison(): VNode {
-	return (
-		<div className="mb-3 p-3 rounded-md border border-[var(--border)] bg-[var(--bg)] text-xs">
-			<table className="w-full border-collapse">
-				<thead>
-					<tr className="border-b border-[var(--border)]">
-						<th className="text-left py-1 pr-2 pb-2 text-[var(--muted)] font-medium">Feature</th>
-						<th className="text-center p-1 pb-2 text-[var(--muted)] font-medium">Built-in</th>
-						<th className="text-center p-1 pb-2 text-[var(--muted)] font-medium">QMD</th>
-					</tr>
-				</thead>
-				<tbody>
-					{MEMORY_BACKEND_FEATURES.map((row) => (
-						<tr key={row.feature}>
-							<td className="py-1.5 pr-2 text-[var(--text)]">{row.feature}</td>
-							<td className={`p-1.5 text-center ${row.builtinGood ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
-								{row.builtin}
-							</td>
-							<td className={`p-1.5 text-center ${row.qmdGood ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
-								{row.qmd}
-							</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</div>
-	);
-}
-
-function QmdInstallation(): VNode {
-	return (
-		<div>
-			<div className="text-xs text-[var(--error)] mb-2">{"\u2717"} QMD is not installed or not found in PATH</div>
-			<div className="text-xs text-[var(--muted)] leading-relaxed">
-				<strong className="text-[var(--text)]">Installation:</strong>
-				<br />
-				<code className="font-mono text-[.7rem] bg-[var(--surface)] py-0.5 px-1 rounded">
-					npm install -g @tobilu/qmd
-				</code>
-				<span className="mx-1">or</span>
-				<code className="font-mono text-[.7rem] bg-[var(--surface)] py-0.5 px-1 rounded">
-					bun install -g @tobilu/qmd
-				</code>
-				<br />
-				<br />
-				Verify the CLI is available:
-				<code className="block mt-1 font-mono text-[.7rem] bg-[var(--surface)] py-0.5 px-1 rounded">qmd --version</code>
-				<br />
-				<a href="https://github.com/tobi/qmd" target="_blank" rel="noopener" className="text-[var(--accent)]">
-					View documentation {"\u2192"}
-				</a>
-			</div>
-		</div>
-	);
-}
-
-function QmdStatusPanel({ available, status }: { available: boolean; status: QmdStatus | null }): VNode {
-	return (
-		<div className="mt-3 p-3 rounded-md border border-[var(--border)] bg-[var(--bg)]">
-			<h4 className="text-xs font-medium text-[var(--text-strong)] mt-0 mb-2">QMD Status</h4>
-			{available ? (
-				<div className="text-xs text-[var(--accent)] flex items-center gap-1.5">
-					<span>{"\u2713"}</span> QMD is installed
-					{status?.version && <span className="text-[var(--muted)]">({status.version})</span>}
-				</div>
-			) : (
-				<QmdInstallation />
-			)}
-		</div>
-	);
-}
-
-function MemoryBackendPanel(props: MemoryBackendPanelProps): VNode {
-	return (
-		<div>
-			<SubHeading title="Backend" />
-			<MemoryBackendComparison />
-			<div className="flex gap-2">
-				<button
-					type="button"
-					className={`provider-btn ${props.backend === "builtin" ? "" : "provider-btn-secondary"}`}
-					onClick={() => props.onBackend("builtin")}
-				>
-					Built-in (Recommended)
-				</button>
-				<button
-					type="button"
-					className={`provider-btn ${props.backend === "qmd" ? "" : "provider-btn-secondary"}`}
-					disabled={!props.qmdFeatureEnabled}
-					onClick={() => props.onBackend("qmd")}
-				>
-					QMD
-				</button>
-			</div>
-			{!props.qmdFeatureEnabled && (
-				<div className="text-xs text-[var(--error)] mt-2">
-					QMD feature is not enabled. Rebuild chelix with <code className="font-mono text-[.7rem]">--features qmd</code>
-				</div>
-			)}
-			{props.backend === "qmd" && <QmdStatusPanel available={props.qmdAvailable} status={props.qmdStatus} />}
 		</div>
 	);
 }
@@ -367,15 +238,12 @@ function SelfImprovementPanel(props: SelfImprovementPanelProps): VNode {
 
 export function MemorySection(): VNode {
 	const [memStatus, setMemStatus] = useState<MemoryStatus | null>(null);
-	const [memConfig, setMemConfig] = useState<MemoryConfig | null>(null);
-	const [qmdStatus, setQmdStatus] = useState<QmdStatus | null>(null);
 	const [memLoading, setMemLoading] = useState(true);
 	const save = useSaveState();
 
 	const [style, setStyle] = useState("hybrid");
 	const [agentWriteMode, setAgentWriteMode] = useState("hybrid");
 	const [userProfileWriteMode, setUserProfileWriteMode] = useState("explicit-and-auto");
-	const [backend, setBackend] = useState("builtin");
 	const [provider, setProvider] = useState("auto");
 	const [citations, setCitations] = useState("auto");
 	const [llmReranking, setLlmReranking] = useState(false);
@@ -389,11 +257,9 @@ export function MemorySection(): VNode {
 	const [enableSelfImprovement, setEnableSelfImprovement] = useState(true);
 
 	function applyMemoryConfig(config: MemoryConfig): void {
-		setMemConfig(config);
 		setStyle(configString(config.style, "hybrid"));
 		setAgentWriteMode(configString(config.agent_write_mode, "hybrid"));
 		setUserProfileWriteMode(configString(config.user_profile_write_mode, "explicit-and-auto"));
-		setBackend(configString(config.backend, "builtin"));
 		setProvider(configString(config.provider, "auto"));
 		setCitations(configString(config.citations, "auto"));
 		setLlmReranking(configBoolean(config.llm_reranking, false));
@@ -407,18 +273,17 @@ export function MemorySection(): VNode {
 		setEnableSelfImprovement(configBoolean(config.enable_self_improvement, true));
 	}
 
-	function applyMemoryResponses(statusRes: RpcResponse, configRes: RpcResponse, qmdRes: RpcResponse): void {
+	function applyMemoryResponses(statusRes: RpcResponse, configRes: RpcResponse): void {
 		if (statusRes?.ok) setMemStatus(statusRes.payload as MemoryStatus);
 		if (configRes?.ok) applyMemoryConfig(configRes.payload as MemoryConfig);
-		if (qmdRes?.ok) setQmdStatus(qmdRes.payload as QmdStatus);
 		setMemLoading(false);
 		rerender();
 	}
 
 	useEffect(() => {
-		Promise.all([sendRpc("memory.status", {}), sendRpc("memory.config.get", {}), sendRpc("memory.qmd.status", {})])
-			.then(([statusRes, configRes, qmdRes]: [RpcResponse, RpcResponse, RpcResponse]) => {
-				applyMemoryResponses(statusRes, configRes, qmdRes);
+		Promise.all([sendRpc("memory.status", {}), sendRpc("memory.config.get", {})])
+			.then(([statusRes, configRes]: [RpcResponse, RpcResponse]) => {
+				applyMemoryResponses(statusRes, configRes);
 			})
 			.catch(() => {
 				setMemLoading(false);
@@ -435,7 +300,6 @@ export function MemorySection(): VNode {
 			style,
 			agent_write_mode: agentWriteMode,
 			user_profile_write_mode: userProfileWriteMode,
-			backend,
 			provider,
 			citations,
 			llm_reranking: llmReranking,
@@ -450,7 +314,6 @@ export function MemorySection(): VNode {
 		}).then((res: RpcResponse) => {
 			save.setSaving(false);
 			if (res?.ok) {
-				setMemConfig(res.payload as MemoryConfig);
 				save.flashSaved();
 			} else {
 				save.setError((res?.error as { message?: string })?.message || "Failed to save");
@@ -460,7 +323,6 @@ export function MemorySection(): VNode {
 	}
 
 	const setStyleAndRender = (value: string): void => updateMemorySetting(setStyle, value);
-	const setBackendAndRender = (value: string): void => updateMemorySetting(setBackend, value);
 	const setPromptMemoryModeAndRender = (value: string): void => updateMemorySetting(setPromptMemoryMode, value);
 	const setAgentWriteModeAndRender = (value: string): void => updateMemorySetting(setAgentWriteMode, value);
 	const setUserProfileWriteModeAndRender = (value: string): void => updateMemorySetting(setUserProfileWriteMode, value);
@@ -485,9 +347,6 @@ export function MemorySection(): VNode {
 			</div>
 		);
 	}
-
-	const qmdFeatureEnabled = memConfig?.qmd_feature_enabled !== false;
-	const qmdAvailable = qmdStatus?.available === true;
 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
@@ -514,13 +373,6 @@ export function MemorySection(): VNode {
 						["off", "Off"],
 					]}
 					onChange={setStyleAndRender}
-				/>
-				<MemoryBackendPanel
-					backend={backend}
-					qmdFeatureEnabled={qmdFeatureEnabled}
-					qmdAvailable={qmdAvailable}
-					qmdStatus={qmdStatus}
-					onBackend={setBackendAndRender}
 				/>
 				<MemorySelectSetting
 					title="Prompt Memory Mode"
@@ -574,7 +426,7 @@ export function MemorySection(): VNode {
 				/>
 				<MemorySelectSetting
 					title="Embedding Provider"
-					description="Select which embedding provider the built-in memory backend should use for RAG. QMD manages retrieval separately, so this setting is ignored while the QMD backend is active."
+					description="Select which embedding provider the memory system should use for RAG."
 					value={provider}
 					options={[
 						["auto", "Auto-detect"],
@@ -582,8 +434,6 @@ export function MemorySection(): VNode {
 						["openai", "OpenAI"],
 						["custom", "Custom OpenAI-compatible"],
 					]}
-					disabled={backend === "qmd"}
-					disabledMessage="This setting is kept for when you switch back to the built-in backend."
 					onChange={setProviderAndRender}
 				/>
 				<MemorySelectSetting

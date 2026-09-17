@@ -883,7 +883,6 @@ dependencies = [
  "chelix-common",
  "chelix-config",
  "chelix-providers",
- "chelix-qmd",
  "chelix-sessions",
  "codspeed-divan-compat",
  "grep-regex",
@@ -1536,7 +1535,6 @@ dependencies = [
  "chelix-agents",
  "chelix-config",
  "chelix-memory",
- "chelix-qmd",
  "chelix-splitter",
  "chelix-tools",
  "gix",
@@ -1766,7 +1764,6 @@ dependencies = [
  "chelix-protocol",
  "chelix-provider-setup",
  "chelix-providers",
- "chelix-qmd",
  "chelix-secret-store",
  "chelix-service-traits",
  "chelix-sessions",
@@ -2196,24 +2193,6 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite 0.26.2",
  "toml 0.8.23",
- "tracing",
-]
-
-[[package]]
-name = "chelix-qmd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chelix-agents",
- "chelix-memory",
- "serde",
- "serde_json",
- "sha2",
- "sqlx",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
  "tracing",
 ]
 

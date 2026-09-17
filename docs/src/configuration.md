@@ -302,7 +302,6 @@ Long-term memory uses embeddings for semantic search:
 style = "hybrid"              # Or "prompt-only", "search-only", "off"
 agent_write_mode = "hybrid"   # Or "prompt-only", "search-only", "off"
 user_profile_write_mode = "explicit-and-auto" # Or "explicit-only", "off"
-backend = "builtin"             # Or "qmd"
 provider = "openai"             # Or "local", "custom"
 model = "text-embedding-3-small"
 citations = "auto"              # "on", "off", or "auto"
@@ -509,7 +508,6 @@ network = "bridge"
 packages = ["curl", "git", "jq", "python3", "nodejs"]
 
 [memory]
-backend = "builtin"
 provider = "openai"
 model = "text-embedding-3-small"
 
