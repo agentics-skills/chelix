@@ -320,7 +320,7 @@ pub struct GatewayInner {
     /// Push notification service for sending notifications to subscribed devices.
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<crate::push::PushService>>,
-    /// Shared LLM provider registry for auto-title and session summary.
+    /// Shared LLM provider registry for auto-title.
     pub llm_providers: Option<Arc<RwLock<chelix_providers::ProviderRegistry>>>,
     /// Cached user geolocation from browser Geolocation API, persisted to `USER.md`.
     pub cached_location: Option<chelix_config::GeoLocation>,
@@ -407,7 +407,8 @@ pub struct GatewayState {
     /// `Arc` because it is cloned into background tokio tasks.
     pub memory_manager: Option<chelix_memory::runtime::DynMemoryRuntime>,
     /// Code index for workspace codebase intelligence (discover, filter, status, peek).
-    /// Always initialized in config-only mode; search is deferred to QMD backend.
+    /// Search requires the builtin code-index backend; config-only mode reports
+    /// discover, filter, and status only.
     pub code_index: Arc<chelix_code_index::CodeIndex>,
     /// Whether the server is bound to a loopback address (localhost/127.0.0.1/::1).
     pub localhost_only: bool,

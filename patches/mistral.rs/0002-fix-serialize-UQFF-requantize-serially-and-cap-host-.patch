@@ -1,0 +1,55 @@
+From 34b0cbe42106a02bca1b2d1ac81d8be0b48f8b19 Mon Sep 17 00:00:00 2001
+From: chelix <dev@local>
+Date: Wed, 16 Sep 2026 02:24:37 +0300
+Subject: [PATCH 2/3] fix: serialize UQFF requantize serially and cap host
+ reserve at 1GiB
+
+---
+ mistralrs-core/src/pipeline/isq.rs |  2 +-
+ mistralrs-quant/src/utils/isq.rs   | 17 +++++++++++------
+ 2 files changed, 12 insertions(+), 7 deletions(-)
+
+diff --git a/mistralrs-core/src/pipeline/isq.rs b/mistralrs-core/src/pipeline/isq.rs
+index 3c8043d7..ad863bec 100644
+--- a/mistralrs-core/src/pipeline/isq.rs
++++ b/mistralrs-core/src/pipeline/isq.rs
+@@ -736,7 +736,7 @@ pub(crate) struct UqffWriteRequest<'a> {
+     pub imatrix: std::collections::HashMap<String, Vec<f32>>,
+ }
+ 
+-const MAX_UQFF_SIZE_BYTES: usize = 10 * 1024 * 1024 * 1024;
++const MAX_UQFF_SIZE_BYTES: usize = 1024 * 1024 * 1024;
+ 
+ struct UqffTypeWriteContext<'a> {
+     ty: IsqType,
+diff --git a/mistralrs-quant/src/utils/isq.rs b/mistralrs-quant/src/utils/isq.rs
+index a9f0738a..fb2d4572 100644
+--- a/mistralrs-quant/src/utils/isq.rs
++++ b/mistralrs-quant/src/utils/isq.rs
+@@ -231,12 +231,17 @@ pub fn requantize_tracked(
+             consumer,
+             module_key: module.key.clone(),
+         };
+-        let plan = layer.plan_isq(&request)?;
+-        let rx = executor.submit(plan, consumer, move || {
+-            layer
+-                .clone()
+-                .apply_isq(Some(ty), device, &AtomicUsize::new(0), imatrix, guard)
+-        });
++        let _plan = layer.plan_isq(&request)?;
++        let value = layer.apply_isq(
++            Some(ty),
++            device,
++            &AtomicUsize::new(0),
++            imatrix,
++            guard,
++        )?;
++        let (tx, rx) = std::sync::mpsc::sync_channel(1);
++        tx.send(Ok(crate::IsqJobOutput::ready(value)))
++            .map_err(|_| candle_core::Error::msg("ISQ replay channel closed"))?;
+         receivers.push(rx);
+     }
+     Ok(RequantizeHandles {
+-- 
+2.53.0
+

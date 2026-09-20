@@ -1,25 +1,6 @@
-use std::{collections::HashMap, path::Path as FsPath};
+use std::collections::HashMap;
 
 use chelix_config::ApprovalMode;
-
-#[cfg(feature = "qmd")]
-#[test]
-fn sanitize_qmd_index_name_normalizes_non_alphanumeric_segments() {
-    let path = FsPath::new("/Users/Penso/.chelix/data///");
-    assert_eq!(
-        crate::server::helpers::sanitize_qmd_index_name(path),
-        "chelix-users_penso_chelix_data"
-    );
-}
-
-#[cfg(feature = "qmd")]
-#[test]
-fn sanitize_qmd_index_name_falls_back_for_empty_root() {
-    assert_eq!(
-        crate::server::helpers::sanitize_qmd_index_name(FsPath::new("///")),
-        "chelix"
-    );
-}
 
 #[test]
 fn summarize_model_ids_for_logs_returns_all_when_within_limit() {

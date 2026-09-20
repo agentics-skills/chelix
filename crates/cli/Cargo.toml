@@ -94,7 +94,6 @@ full = [
   "metrics",
   "prometheus",
   "push-notifications",
-  "qmd",
   "signal",
   "telegram",
   "telephony",
@@ -140,7 +139,6 @@ mdns               = ["chelix-gateway/mdns"]
 metrics            = ["chelix-httpd/metrics", "chelix-web?/metrics"]
 prometheus         = ["chelix-httpd/prometheus"]
 push-notifications = ["chelix-httpd/push-notifications", "chelix-web?/push-notifications"]
-qmd                = ["chelix-gateway/qmd"]
 signal             = ["chelix-httpd/signal"]
 telegram           = ["chelix-gateway/telegram"]
 telephony          = ["chelix-httpd/telephony"]

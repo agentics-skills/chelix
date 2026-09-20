@@ -3,25 +3,22 @@ use std::{collections::HashMap, path::Path as FsPath, sync::Arc};
 #[cfg(feature = "local-embeddings")]
 use std::path::PathBuf;
 
-use {
-    secrecy::ExposeSecret,
-    tracing::{info, warn},
-};
+use {anyhow::Result, secrecy::ExposeSecret, tracing::info};
 
 use super::helpers::env_value_with_overrides;
 
 /// Initialize the memory system (embedding providers, sync, watchers).
 ///
-/// Returns `Some(runtime)` when the memory system is available, or `None`
-/// when no embedding provider could be resolved or the database could not
-/// be opened.
+/// Returns `Ok(Some(runtime))` when the memory system is available, `Ok(None)`
+/// when the database could not be opened, and `Err` when an explicitly selected
+/// local embedding provider cannot start.
 pub(crate) async fn init_memory_system(
     config: &chelix_config::ChelixConfig,
     data_dir: &FsPath,
     effective_providers: &chelix_config::schema::ProvidersConfig,
     runtime_env_overrides: &HashMap<String, String>,
     db_pool_max_connections: u32,
-) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
+) -> Result<Option<chelix_memory::runtime::DynMemoryRuntime>> {
     // Build embedding provider(s) for the fallback chain.
     let mut embedding_providers: Vec<(
         String,
@@ -39,36 +36,42 @@ pub(crate) async fn init_memory_system(
                 chelix_config::MemoryProvider::Local => {
                     #[cfg(feature = "local-embeddings")]
                     {
-                        let cache_dir = mem_cfg
-                            .base_url
+                        let cache_dir = mem_cfg.base_url.as_ref().map(PathBuf::from).unwrap_or_else(
+                            chelix_memory::embeddings_local::LocalEmbeddingProvider::default_cache_dir,
+                        );
+                        let hf_token = mem_cfg
+                            .huggingface_api_key
                             .as_ref()
-                            .map(PathBuf::from)
-                            .unwrap_or_else(
-                                chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::default_cache_dir,
-                            );
-                        // `memory.model` selects the GGUF file (path or cached
-                        // filename); falls back to the bundled default when unset.
-                        match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::resolve_model(
-                            cache_dir,
-                            mem_cfg.model.as_deref(),
-                        )
-                        .await
-                        {
-                            Ok(path) => {
-                                match chelix_memory::embeddings_local::LocalGgufEmbeddingProvider::new(
-                                    path,
-                                ).await {
-                                    Ok(p) => embedding_providers.push(("local-gguf".into(), Box::new(p))),
-                                    Err(e) => warn!("memory: failed to load local GGUF model: {e}"),
-                                }
-                            },
-                            Err(e) => warn!("memory: failed to ensure local model: {e}"),
-                        }
+                            .map(|key| key.expose_secret().clone())
+                            .filter(|token| !token.is_empty())
+                            .or_else(|| env_value_with_overrides(runtime_env_overrides, "HF_TOKEN"))
+                            .or_else(|| {
+                                env_value_with_overrides(
+                                    runtime_env_overrides,
+                                    "HUGGINGFACE_API_KEY",
+                                )
+                            });
+                        let model_spec =
+                            chelix_memory::embeddings_local::LocalEmbeddingProvider::resolve_model(
+                                cache_dir.clone(),
+                                mem_cfg.model.as_deref(),
+                            )?;
+                        let provider =
+                            chelix_memory::embeddings_local::LocalEmbeddingProvider::new(
+                                model_spec, cache_dir, hf_token,
+                            )
+                            .await
+                            .map_err(|error| {
+                                anyhow::anyhow!("memory: local embedding sidecar failed: {error}")
+                            })?;
+                        embedding_providers.push(("local".into(), Box::new(provider)));
                     }
                     #[cfg(not(feature = "local-embeddings"))]
-                    warn!(
-                        "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
-                    );
+                    {
+                        return Err(anyhow::anyhow!(
+                            "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
+                        ));
+                    }
                 },
                 chelix_config::MemoryProvider::Custom | chelix_config::MemoryProvider::OpenAi => {
                     let base_url = mem_cfg
@@ -101,7 +104,7 @@ pub(crate) async fn init_memory_system(
             }
         }
 
-        // 2. Auto-detect: try remote API-key providers.
+        // 2. Auto-detect remote providers only when memory.provider is unset.
         const EMBEDDING_CANDIDATES: &[(&str, &str, &str)] = &[
             ("openai", "OPENAI_API_KEY", "https://api.openai.com"),
             (
@@ -111,22 +114,25 @@ pub(crate) async fn init_memory_system(
             ),
         ];
 
-        for (config_name, env_key, default_base) in EMBEDDING_CANDIDATES {
-            let key = effective_providers
-                .get(config_name)
-                .and_then(|e| e.api_key.as_ref().map(|k| k.expose_secret().clone()))
-                .or_else(|| env_value_with_overrides(runtime_env_overrides, env_key))
-                .filter(|k| !k.is_empty());
-            if let Some(api_key) = key {
-                let base = effective_providers
+        if mem_cfg.provider.is_none() {
+            for (config_name, env_key, default_base) in EMBEDDING_CANDIDATES {
+                let key = effective_providers
                     .get(config_name)
-                    .and_then(|e| e.base_url.clone())
-                    .unwrap_or_else(|| default_base.to_string());
-                let mut e = chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
-                if base != "https://api.openai.com" {
-                    e = e.with_base_url(base);
+                    .and_then(|e| e.api_key.as_ref().map(|k| k.expose_secret().clone()))
+                    .or_else(|| env_value_with_overrides(runtime_env_overrides, env_key))
+                    .filter(|k| !k.is_empty());
+                if let Some(api_key) = key {
+                    let base = effective_providers
+                        .get(config_name)
+                        .and_then(|e| e.base_url.clone())
+                        .unwrap_or_else(|| default_base.to_string());
+                    let mut e =
+                        chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
+                    if base != "https://api.openai.com" {
+                        e = e.with_base_url(base);
+                    }
+                    embedding_providers.push((config_name.to_string(), Box::new(e)));
                 }
-                embedding_providers.push((config_name.to_string(), Box::new(e)));
             }
         }
     }
@@ -175,7 +181,7 @@ pub(crate) async fn init_memory_system(
                         error = %error,
                         "memory: invalid memory database path"
                     );
-                    return None;
+                    return Ok(None);
                 },
             }
             .create_if_missing(true)
@@ -191,14 +197,14 @@ pub(crate) async fn init_memory_system(
         Ok(memory_pool) => {
             if let Err(e) = chelix_memory::schema::run_migrations(&memory_pool).await {
                 tracing::warn!("memory migration failed: {e}");
-                None
+                Ok(None)
             } else {
-                build_memory_runtime(mem_cfg, data_dir, embedder, memory_pool).await
+                Ok(build_memory_runtime(mem_cfg, data_dir, embedder, memory_pool).await)
             }
         },
         Err(e) => {
             tracing::warn!("memory: failed to open memory.db: {e}");
-            None
+            Ok(None)
         },
     }
 }
@@ -211,17 +217,8 @@ async fn build_memory_runtime(
     memory_pool: sqlx::SqlitePool,
 ) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
     let data_memory_file = data_dir.join("MEMORY.md");
-    let data_memory_file_lower = data_dir.join("memory.md");
-    let data_memory_sub = data_dir.join("memory");
     let agents_root = data_dir.join("agents");
 
-    if let Err(error) = std::fs::create_dir_all(&data_memory_sub) {
-        tracing::warn!(
-            path = %data_memory_sub.display(),
-            error = %error,
-            "memory: failed to create memory directory"
-        );
-    }
     if let Err(error) = std::fs::create_dir_all(&agents_root) {
         tracing::warn!(
             path = %agents_root.display(),
@@ -233,12 +230,7 @@ async fn build_memory_runtime(
     let memory_runtime_config = chelix_memory::config::MemoryConfig {
         db_path: data_dir.join("memory.db").to_string_lossy().into(),
         data_dir: Some(data_dir.to_path_buf()),
-        memory_dirs: vec![
-            data_memory_file,
-            data_memory_file_lower,
-            data_memory_sub,
-            agents_root,
-        ],
+        memory_dirs: vec![data_memory_file, agents_root],
         citations: match mem_cfg.citations {
             chelix_config::MemoryCitationsMode::On => chelix_memory::config::CitationMode::On,
             chelix_config::MemoryCitationsMode::Off => chelix_memory::config::CitationMode::Off,
@@ -260,55 +252,12 @@ async fn build_memory_runtime(
         memory_pool,
     ));
     let memory_dirs_for_watch = memory_runtime_config.memory_dirs.clone();
-    let builtin_manager = Arc::new(if let Some(embedder) = embedder {
-        chelix_memory::manager::MemoryManager::new(memory_runtime_config, store, embedder)
-    } else {
-        chelix_memory::manager::MemoryManager::keyword_only(memory_runtime_config, store)
-    });
-    let manager: chelix_memory::runtime::DynMemoryRuntime = match mem_cfg.backend {
-        chelix_config::MemoryBackend::Builtin => builtin_manager.clone(),
-        chelix_config::MemoryBackend::Qmd => {
-            #[cfg(feature = "qmd")]
-            {
-                let qmd_manager =
-                    Arc::new(chelix_qmd::QmdManager::new(chelix_qmd::QmdManagerConfig {
-                        command: mem_cfg.qmd.command.clone().unwrap_or_else(|| "qmd".into()),
-                        collections: super::helpers::build_qmd_collections(data_dir, &mem_cfg.qmd),
-                        max_results: mem_cfg.qmd.max_results.unwrap_or(20),
-                        timeout_ms: mem_cfg.qmd.timeout_ms.unwrap_or(30_000),
-                        work_dir: data_dir.to_path_buf(),
-                        index_name: super::helpers::sanitize_qmd_index_name(data_dir),
-                        env_overrides: HashMap::new(),
-                    }));
-
-                if qmd_manager.is_available().await {
-                    info!(
-                        index = %qmd_manager.index_name(),
-                        collections = qmd_manager.collections().len(),
-                        "memory: using QMD backend"
-                    );
-                    Arc::new(chelix_qmd::QmdMemoryRuntime::new(
-                        qmd_manager,
-                        builtin_manager.clone(),
-                        mem_cfg.disable_rag,
-                    ))
-                } else {
-                    warn!(
-                        "memory: QMD backend requested but qmd is unavailable, falling back to builtin memory"
-                    );
-                    builtin_manager.clone()
-                }
-            }
-
-            #[cfg(not(feature = "qmd"))]
-            {
-                warn!(
-                    "memory: QMD backend requested but the gateway was built without the qmd feature, falling back to builtin memory"
-                );
-                builtin_manager.clone()
-            }
-        },
-    };
+    let manager: chelix_memory::runtime::DynMemoryRuntime =
+        Arc::new(if let Some(embedder) = embedder {
+            chelix_memory::manager::MemoryManager::new(memory_runtime_config, store, embedder)
+        } else {
+            chelix_memory::manager::MemoryManager::keyword_only(memory_runtime_config, store)
+        });
 
     // Initial sync + periodic re-sync (15min with watcher, 5min without).
     let sync_manager = Arc::clone(&manager);
@@ -402,7 +351,6 @@ async fn build_memory_runtime(
     });
 
     info!(
-        backend = manager.backend_name(),
         embeddings = manager.has_embeddings(),
         "memory system initialized"
     );

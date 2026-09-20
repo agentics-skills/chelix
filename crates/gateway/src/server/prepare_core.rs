@@ -1020,7 +1020,7 @@ pub async fn prepare_gateway_core(
     super::hooks::seed_example_hook();
     let persisted_disabled = crate::methods::load_disabled_hooks();
     let (hook_registry, discovered_hooks_info) =
-        crate::server::discover_and_build_hooks(&persisted_disabled, Some(&session_store)).await?;
+        crate::server::discover_and_build_hooks(&persisted_disabled).await?;
 
     // ── Memory system initialization ─────────────────────────────────────
     let memory_manager = init_memory::init_memory_system(
@@ -1030,7 +1030,7 @@ pub async fn prepare_gateway_core(
         &runtime_env_overrides,
         config.server.db_pool_max_connections,
     )
-    .await;
+    .await?;
     startup_mem_probe.checkpoint("memory_manager.initialized");
 
     // Wire live session service.
@@ -1050,9 +1050,6 @@ pub async fn prepare_gateway_core(
         .with_queued_prompts(Arc::clone(&queued_prompts))
         .with_browser_service(Arc::clone(&services.browser))
         .with_session_mutations(Arc::clone(&session_mutations));
-        if let Some(ref manager) = memory_manager {
-            session_svc = session_svc.with_memory_manager(Arc::clone(manager));
-        }
         if let Some(ref hooks) = hook_registry {
             session_svc = session_svc.with_hooks(Arc::clone(hooks));
         }
@@ -1060,7 +1057,7 @@ pub async fn prepare_gateway_core(
     }
 
     // ── Code index initialization ──────────────────────────────────────
-    let code_index = init_code_index::init_code_index(&data_dir, &config).await;
+    let code_index = init_code_index::init_code_index(&data_dir, &config).await?;
     startup_mem_probe.checkpoint("code_index.initialized");
 
     post_state::complete_startup(post_state::PostStateInputs {
@@ -1102,7 +1099,7 @@ pub async fn prepare_gateway_core(
         #[cfg(feature = "vault")]
         vault,
         code_index,
-        #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
+        #[cfg(feature = "code-index-builtin")]
         project_store: Arc::clone(&project_store),
     })
     .await

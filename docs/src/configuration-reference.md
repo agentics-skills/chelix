@@ -76,8 +76,6 @@
   - [`mcp.servers.<name>.oauth`](#mcpserversnameoauth)
 - **Memory**
   - [`memory`](#memory)
-  - [`memory.qmd`](#memoryqmd)
-  - [`memory.qmd.collections.<name>`](#memoryqmdcollectionsname)
 - **Scheduling**
   - [`heartbeat`](#heartbeat)
   - [`heartbeat.active_hours`](#heartbeatactive-hours)
@@ -578,7 +576,6 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `style`                   | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"`            | High-level memory orchestration style.                          |
 | `agent_write_mode`        | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"`            | Where agent-authored memory writes are allowed to land.         |
 | `user_profile_write_mode` | enum (`explicit-and-auto`, `explicit-only`, `off`)   | `"explicit-and-auto"` | How Chelix writes the managed `USER.md` profile surface.        |
-| `backend`                 | enum (`builtin`, `qmd`)                              | `"builtin"`           | Memory backend used for search, retrieval, and indexing.        |
 | `provider`                | optional enum (`local`, `openai`, `custom`)          | _auto-detect_         | Embedding provider. Alias: `embedding_provider`.                |
 | `disable_rag`             | bool                                                 | `false`               | Disable RAG embeddings and force keyword-only memory search.    |
 | `base_url`                | optional string                                      | —                     | Base URL for the embedding API. Alias: `embedding_base_url`.    |
@@ -587,28 +584,6 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `citations`               | enum (`on`, `off`, `auto`)                           | `"auto"`              | Citation mode for memory search results.                        |
 | `llm_reranking`           | bool                                                 | `false`               | Enable LLM reranking for hybrid search results.                 |
 | `search_merge_strategy`   | enum (`rrf`, `linear`)                               | `"rrf"`               | Merge strategy for hybrid search results.                       |
-| `session_export`          | enum (`off`, `on-new-or-reset`)                      | `"on-new-or-reset"`   | How session transcripts are exported into searchable memory.    |
-| `qmd`                     | map (see `memory.qmd`)                               | `{}`                  | QMD-specific configuration (only used when backend = `"qmd"`).  |
-
-### `memory.qmd`
-
-**Struct:** `QmdConfig`
-
-| Key           | Type                          | Default | Description                                     |
-| ------------- | ----------------------------- | ------- | ----------------------------------------------- |
-| `command`     | optional string               | `"qmd"` | Path to the qmd binary.                         |
-| `collections` | map of name → `QmdCollection` | `{}`    | Named collections with paths and glob patterns. |
-| `max_results` | optional integer              | —       | Maximum results to retrieve.                    |
-| `timeout_ms`  | optional integer              | —       | Search timeout in milliseconds.                 |
-
-### `memory.qmd.collections.<name>`
-
-**Struct:** `QmdCollection`
-
-| Key     | Type            | Default | Description                          |
-| ------- | --------------- | ------- | ------------------------------------ |
-| `paths` | array of string | `[]`    | Paths to include in this collection. |
-| `globs` | array of string | `[]`    | Glob patterns to filter files.       |
 
 ---
 

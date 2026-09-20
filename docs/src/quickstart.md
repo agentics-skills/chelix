@@ -113,7 +113,8 @@ provider = "openai"
 model = "text-embedding-3-small"
 ```
 
-Add knowledge by placing Markdown files in `~/.chelix/memory/`.
+Add knowledge by writing `~/.chelix/MEMORY.md` or agent notes under
+`~/.chelix/agents/<id>/MEMORY.md` and `~/.chelix/agents/<id>/memory/*.md`.
 
 ## Useful Commands
 

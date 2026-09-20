@@ -14,8 +14,6 @@ pub type DynMemoryRuntime = Arc<dyn MemoryRuntime>;
 
 #[async_trait]
 pub trait MemoryRuntime: MemoryWriter + Send + Sync {
-    fn backend_name(&self) -> &'static str;
-
     fn data_dir(&self) -> Option<&Path>;
 
     fn has_embeddings(&self) -> bool;
@@ -39,10 +37,6 @@ pub trait MemoryRuntime: MemoryWriter + Send + Sync {
 
 #[async_trait]
 impl MemoryRuntime for MemoryManager {
-    fn backend_name(&self) -> &'static str {
-        "builtin"
-    }
-
     fn data_dir(&self) -> Option<&Path> {
         MemoryManager::data_dir(self)
     }

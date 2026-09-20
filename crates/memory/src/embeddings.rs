@@ -18,6 +18,17 @@ pub trait EmbeddingProvider: Send + Sync {
         Ok(results)
     }
 
+    /// Generate an embedding, forwarding `priority` to providers that queue work.
+    /// Default implementation ignores priority and calls [`Self::embed`].
+    async fn embed_with_priority(&self, text: &str, _priority: u32) -> Result<Vec<f32>> {
+        self.embed(text).await
+    }
+
+    /// Sidecar JSON body limit when this provider talks to the local embed service.
+    fn max_embed_payload_bytes(&self) -> Option<usize> {
+        None
+    }
+
     /// The model name used by this provider (e.g. "text-embedding-3-small").
     fn model_name(&self) -> &str;
 

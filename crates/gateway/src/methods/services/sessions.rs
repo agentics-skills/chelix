@@ -122,7 +122,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let total_steps = if key.is_empty() {
                     2
                 } else {
-                    4
+                    3
                 };
                 progress
                     .emit(
@@ -134,41 +134,14 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     )
                     .await;
 
-                // Run session-end memory summary before clearing, if enabled.
                 if !key.is_empty() {
-                    let summary_result = progress
-                        .run_with_heartbeat(
-                            "summarizing",
-                            "Creating memory summary and embeddings before reset…",
-                            Some(1),
-                            Some(total_steps),
-                            crate::session::summary::run_session_summary_if_enabled(
-                                &ctx.state, &key,
-                            ),
-                        )
-                        .await;
-                    if let Err(error) = summary_result {
-                        let message = error.to_string();
-                        progress
-                            .emit(
-                                "failed",
-                                &format!("Session reset failed: {message}"),
-                                None,
-                                None,
-                                true,
-                            )
-                            .await;
-                        return Err(ErrorShape::from(ServiceError::message(message)));
-                    }
-
-                    // Export the session before the reset destroys its history.
                     let hooks = ctx.state.inner.read().await.hook_registry.clone();
                     if let Some(ref hooks) = hooks {
                         progress
                             .run_with_heartbeat(
-                                "exporting",
+                                "hooks",
                                 "Running session reset hooks…",
-                                Some(2),
+                                Some(1),
                                 Some(total_steps),
                                 crate::session::dispatch_command_hook(hooks, &key, "reset", None),
                             )

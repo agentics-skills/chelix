@@ -14,7 +14,7 @@ use {
 use std::time::Instant;
 
 #[cfg(feature = "metrics")]
-use chelix_metrics::{counter, histogram, labels, memory as mem_metrics};
+use chelix_metrics::{counter, histogram, labels, session as session_metrics};
 
 use crate::model::{ChatMessage, LlmProvider, UserContent};
 
@@ -90,16 +90,11 @@ pub async fn generate_title(
             {
                 let duration = start.elapsed().as_secs_f64();
                 counter!(
-                    mem_metrics::SILENT_TURNS_TOTAL,
-                    labels::VARIANT => "title-generation",
+                    session_metrics::TITLE_GENERATIONS_TOTAL,
                     labels::SUCCESS => "true"
                 )
                 .increment(1);
-                histogram!(
-                    mem_metrics::SILENT_TURN_DURATION_SECONDS,
-                    labels::VARIANT => "title-generation"
-                )
-                .record(duration);
+                histogram!(session_metrics::TITLE_GENERATION_DURATION_SECONDS).record(duration);
             }
             let raw = response.text.unwrap_or_default();
             let title = clean_title(&raw);
@@ -114,16 +109,11 @@ pub async fn generate_title(
             {
                 let duration = start.elapsed().as_secs_f64();
                 counter!(
-                    mem_metrics::SILENT_TURNS_TOTAL,
-                    labels::VARIANT => "title-generation",
+                    session_metrics::TITLE_GENERATIONS_TOTAL,
                     labels::SUCCESS => "false"
                 )
                 .increment(1);
-                histogram!(
-                    mem_metrics::SILENT_TURN_DURATION_SECONDS,
-                    labels::VARIANT => "title-generation"
-                )
-                .record(duration);
+                histogram!(session_metrics::TITLE_GENERATION_DURATION_SECONDS).record(duration);
             }
             warn!(error = %e, "title generation LLM call failed");
             Err(e)

@@ -2,8 +2,6 @@ use std::{collections::HashSet, sync::Arc};
 
 use tracing::{info, warn};
 
-use chelix_sessions::store::SessionStore;
-
 use super::seed_content::{EXAMPLE_HOOK_MD, EXAMPLE_SKILL_MD};
 
 // ── Hook seeding helpers ─────────────────────────────────────────────────────
@@ -54,33 +52,24 @@ fn builtin_hook_metadata() -> Vec<(
     &'static str,
 )> {
     use chelix_common::hooks::HookEvent;
-    vec![
-        (
-            "command-logger",
-            "Logs all slash-command invocations to a JSONL audit file at ~/.chelix/logs/commands.log.",
-            vec![HookEvent::Command],
-            "crates/plugins/src/bundled/command_logger.rs",
-        ),
-        (
-            "session-memory",
-            "Saves the conversation history to a markdown file in the memory directory when a session is reset or a new session is created, making it searchable for future sessions.",
-            vec![HookEvent::Command],
-            "crates/plugins/src/bundled/session_memory.rs",
-        ),
-    ]
+    vec![(
+        "command-logger",
+        "Logs all slash-command invocations to a JSONL audit file at ~/.chelix/logs/commands.log.",
+        vec![HookEvent::Command],
+        "crates/plugins/src/bundled/command_logger.rs",
+    )]
 }
 
 /// Discover hooks from the filesystem, check eligibility, and build a
 /// [`HookRegistry`] plus a `Vec<DiscoveredHookInfo>` for the web UI.
 pub(crate) async fn discover_and_build_hooks(
     disabled: &HashSet<String>,
-    session_store: Option<&Arc<SessionStore>>,
 ) -> anyhow::Result<(
     Option<Arc<chelix_common::hooks::HookRegistry>>,
     Vec<crate::state::DiscoveredHookInfo>,
 )> {
     use chelix_plugins::{
-        bundled::{command_logger::CommandLoggerHook, session_memory::SessionMemoryHook},
+        bundled::command_logger::CommandLoggerHook,
         hook_discovery::{FsHookDiscoverer, HookDiscoverer, HookSource},
         hook_eligibility::check_hook_eligibility,
         shell_hook::ShellHookHandler,
@@ -89,7 +78,6 @@ pub(crate) async fn discover_and_build_hooks(
     let config = chelix_config::discover_and_load()?;
     let discoverer = FsHookDiscoverer::new(FsHookDiscoverer::default_paths());
     let discovered = discoverer.discover().await.unwrap_or_default();
-    let session_export_mode = config.memory.session_export;
 
     let mut registry = chelix_common::hooks::HookRegistry::new();
     let mut info_list = Vec::with_capacity(discovered.len());
@@ -242,21 +230,9 @@ pub(crate) async fn discover_and_build_hooks(
             CommandLoggerHook::default_path().unwrap_or_else(|| data.join("logs/commands.log"));
         let logger = CommandLoggerHook::new(log_path);
         registry.register(Arc::new(logger));
-
-        if let Some(store) = session_store
-            && !matches!(session_export_mode, chelix_config::SessionExportMode::Off)
-        {
-            let memory_hook = SessionMemoryHook::new(data.clone(), Arc::clone(store));
-            registry.register(Arc::new(memory_hook));
-        }
     }
 
     for (name, description, events, source_file) in builtin_hook_metadata() {
-        let enabled = if name == "session-memory" {
-            !matches!(session_export_mode, chelix_config::SessionExportMode::Off)
-        } else {
-            true
-        };
         info_list.push(crate::state::DiscoveredHookInfo {
             name: name.to_string(),
             description: description.to_string(),
@@ -271,7 +247,7 @@ pub(crate) async fn discover_and_build_hooks(
             missing_os: false,
             missing_bins: vec![],
             missing_env: vec![],
-            enabled,
+            enabled: true,
             body: String::new(),
             body_html: format!(
                 "<p><em>Built-in hook implemented in Rust.</em></p><p>{}</p>",

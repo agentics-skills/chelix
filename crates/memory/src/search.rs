@@ -69,10 +69,14 @@ pub async fn hybrid_search(
     #[cfg(feature = "metrics")]
     counter!(mem_metrics::SEARCHES_TOTAL, labels::SEARCH_TYPE => "hybrid").increment(1);
 
-    let query_embedding = embedder.embed(query).await?;
+    let query_embedding = embedder
+        .embed_with_priority(query, chelix_protocol::EMBEDDING_PRIORITY_SEARCH)
+        .await?;
 
     let fetch_limit = limit * 3; // over-fetch for merging
-    let vector_results = store.vector_search(&query_embedding, fetch_limit).await?;
+    let vector_results = store
+        .vector_search(&query_embedding, fetch_limit, Some(embedder.model_name()))
+        .await?;
     let keyword_results = store.keyword_search(query, fetch_limit).await?;
 
     let merged = match merge_strategy {
@@ -221,7 +225,14 @@ fn merge_results_rrf(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        crate::{
+            error::Result,
+            schema::{ChunkRow, FileRow},
+            store::{CacheEntry, MemoryStore},
+        },
+    };
 
     fn make_result(id: &str, score: f32) -> SearchResult {
         SearchResult {
@@ -443,6 +454,149 @@ mod tests {
         assert_eq!(
             "anything".parse::<CitationMode>().unwrap(),
             CitationMode::Auto
+        );
+    }
+
+    struct RecordingEmbedder {
+        seen: std::sync::Mutex<Vec<u32>>,
+    }
+
+    #[async_trait::async_trait]
+    impl EmbeddingProvider for RecordingEmbedder {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+            self.embed_with_priority(text, 0).await
+        }
+
+        async fn embed_with_priority(&self, _text: &str, priority: u32) -> Result<Vec<f32>> {
+            self.seen
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(priority);
+            Ok(vec![1.0, 0.0, 0.0])
+        }
+
+        fn model_name(&self) -> &str {
+            "test"
+        }
+
+        fn dimensions(&self) -> usize {
+            3
+        }
+
+        fn provider_key(&self) -> &str {
+            "test"
+        }
+    }
+
+    struct EmptyStore;
+
+    #[async_trait::async_trait]
+    impl MemoryStore for EmptyStore {
+        async fn upsert_file(&self, _file: &FileRow) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_file(&self, _path: &str) -> Result<Option<FileRow>> {
+            Ok(None)
+        }
+
+        async fn delete_file(&self, _path: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn list_files(&self) -> Result<Vec<FileRow>> {
+            Ok(Vec::new())
+        }
+
+        async fn upsert_chunks(&self, _chunks: &[ChunkRow]) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_chunks_for_file(&self, _path: &str) -> Result<Vec<ChunkRow>> {
+            Ok(Vec::new())
+        }
+
+        async fn delete_chunks_for_file(&self, _path: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn replace_file_index(&self, _file: &FileRow, _chunks: &[ChunkRow]) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_chunk_by_id(&self, _id: &str) -> Result<Option<ChunkRow>> {
+            Ok(None)
+        }
+
+        async fn get_cached_embedding(
+            &self,
+            _provider: &str,
+            _model: &str,
+            _hash: &str,
+        ) -> Result<Option<Vec<f32>>> {
+            Ok(None)
+        }
+
+        async fn put_cached_embedding(
+            &self,
+            _provider: &str,
+            _model: &str,
+            _provider_key: &str,
+            _hash: &str,
+            _embedding: &[f32],
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn put_cached_embeddings_batch(&self, _entries: &[CacheEntry<'_>]) -> Result<()> {
+            Ok(())
+        }
+
+        async fn count_cached_embeddings(&self) -> Result<usize> {
+            Ok(0)
+        }
+
+        async fn evict_embedding_cache(&self, _keep: usize) -> Result<usize> {
+            Ok(0)
+        }
+
+        async fn vector_search(
+            &self,
+            _query_embedding: &[f32],
+            _limit: usize,
+            _model: Option<&str>,
+        ) -> Result<Vec<SearchResult>> {
+            Ok(Vec::new())
+        }
+
+        async fn keyword_search(&self, _query: &str, _limit: usize) -> Result<Vec<SearchResult>> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn hybrid_search_uses_search_priority() {
+        let embedder = RecordingEmbedder {
+            seen: std::sync::Mutex::new(Vec::new()),
+        };
+        hybrid_search(
+            &EmptyStore,
+            &embedder,
+            "query",
+            5,
+            0.7,
+            0.3,
+            MergeStrategy::Rrf,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *embedder
+                .seen
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec![chelix_protocol::EMBEDDING_PRIORITY_SEARCH]
         );
     }
 }

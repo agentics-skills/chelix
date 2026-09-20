@@ -253,10 +253,6 @@ impl LiveSessionService {
         {
             errors.push(format!("session '{key}' prompt queue cleanup: {error}"));
         }
-        if let Err(error) = self.cleanup_session_memory_exports(key).await {
-            errors.push(format!("session '{key}' memory export cleanup: {error}"));
-        }
-
         if let Some(hooks) = self.hook_registry.as_ref() {
             let payload = chelix_common::hooks::HookPayload::SessionEnd {
                 session_key: key.to_string(),
@@ -265,73 +261,6 @@ impl LiveSessionService {
                 warn!(session = %key, %error, "SessionEnd hook failed");
             }
         }
-    }
-
-    async fn cleanup_session_memory_exports(&self, key: &str) -> Result<(), anyhow::Error> {
-        let Some(manager) = self.memory_manager.as_ref() else {
-            return Ok(());
-        };
-        let Some(data_dir) = manager.data_dir().map(Path::to_path_buf) else {
-            return Ok(());
-        };
-
-        let memory_dir = data_dir.join("memory");
-        let markers = session_memory_markers(key);
-        let mut dirs = vec![memory_dir];
-
-        while let Some(dir) = dirs.pop() {
-            let mut entries = match tokio::fs::read_dir(&dir).await {
-                Ok(entries) => entries,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => {
-                    tracing::warn!(path = %dir.display(), %error, "failed to scan memory directory");
-                    continue;
-                },
-            };
-
-            while let Some(entry) = entries.next_entry().await? {
-                let path = entry.path();
-                let file_type = match entry.file_type().await {
-                    Ok(file_type) => file_type,
-                    Err(error) => {
-                        tracing::warn!(path = %path.display(), %error, "failed to inspect memory entry");
-                        continue;
-                    },
-                };
-
-                if file_type.is_dir() {
-                    dirs.push(path);
-                    continue;
-                }
-                if !file_type.is_file() || !is_session_memory_export_candidate(&path) {
-                    continue;
-                }
-
-                let content = match tokio::fs::read_to_string(&path).await {
-                    Ok(content) => content,
-                    Err(error) => {
-                        tracing::warn!(path = %path.display(), %error, "failed to read memory export candidate");
-                        continue;
-                    },
-                };
-                if !markers.iter().any(|marker| content.contains(marker)) {
-                    continue;
-                }
-
-                if let Err(error) = manager.remove_path(&path).await {
-                    tracing::warn!(path = %path.display(), %error, "failed to remove memory export from index");
-                }
-                match tokio::fs::remove_file(&path).await {
-                    Ok(()) => {},
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(error) => {
-                        tracing::warn!(path = %path.display(), %error, "failed to delete memory export file");
-                    },
-                }
-            }
-        }
-
-        Ok(())
     }
 
     pub(super) async fn fork_impl(&self, params: Value) -> ServiceResult {
@@ -630,19 +559,4 @@ impl LiveSessionService {
             }
         }))
     }
-}
-
-fn session_memory_markers(key: &str) -> Vec<String> {
-    vec![
-        format!("- **Session**: {key}"),
-        format!("session_id: {key}"),
-    ]
-}
-
-fn is_session_memory_export_candidate(path: &Path) -> bool {
-    path.extension().and_then(|extension| extension.to_str()) == Some("md")
-        && path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with("session-"))
 }

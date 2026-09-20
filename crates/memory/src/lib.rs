@@ -1,9 +1,11 @@
 //! Memory management: markdown files → chunked → embedded → hybrid search in SQLite.
 
+pub mod allowlist;
 pub mod chunker;
 pub mod config;
 #[cfg(test)]
 pub mod contract;
+mod embed_payload;
 pub mod embeddings;
 pub mod embeddings_batch;
 pub mod embeddings_fallback;
@@ -16,7 +18,6 @@ pub mod reranking;
 pub mod runtime;
 pub mod schema;
 pub mod search;
-pub mod session_export;
 pub mod store;
 pub mod store_sqlite;
 pub mod tools;

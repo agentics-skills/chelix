@@ -28,6 +28,7 @@ pub trait MemoryStore: Send + Sync {
     async fn upsert_chunks(&self, chunks: &[ChunkRow]) -> Result<()>;
     async fn get_chunks_for_file(&self, path: &str) -> Result<Vec<ChunkRow>>;
     async fn delete_chunks_for_file(&self, path: &str) -> Result<()>;
+    async fn replace_file_index(&self, file: &FileRow, chunks: &[ChunkRow]) -> Result<()>;
     async fn get_chunk_by_id(&self, id: &str) -> Result<Option<ChunkRow>>;
 
     // ---- embedding cache ----
@@ -61,6 +62,7 @@ pub trait MemoryStore: Send + Sync {
         &self,
         query_embedding: &[f32],
         limit: usize,
+        model: Option<&str>,
     ) -> Result<Vec<SearchResult>>;
 
     async fn keyword_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>>;

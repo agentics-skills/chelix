@@ -33,10 +33,23 @@
           rustc = rustToolchain;
         };
 
-        # Create a clean source that includes the required project files
+        # Create a clean source that includes the required project files.
+        # Only the repository-root vendor/ is excluded: it is gitignored and
+        # reconstructed in preBuild from the pinned fetch. Nested vendor
+        # directories (e.g. crates/web/src/assets/*/vendor) are tracked assets.
         src = pkgs.lib.cleanSourceWith {
           src = ./.;
-          filter = pkgs.lib.cleanSourceFilter;
+          filter = path: type:
+            pkgs.lib.cleanSourceFilter path type
+            && !(type == "directory"
+              && builtins.baseNameOf path == "vendor"
+              && dirOf path == toString ./.);
+        };
+
+        mistralRev = "d5ae0f18f2170f10d30880cb7d21fb0880410e7b";
+        mistralSrc = pkgs.fetchurl {
+          url = "https://github.com/EricLBuehler/mistral.rs/archive/${mistralRev}.tar.gz";
+          hash = "sha256-Lqw/mHs6YUrCK1tu7B74KhlZqO9r3WD08pL0qYaii0k=";
         };
       in {
         packages.default = rustPlatform.buildRustPackage {
@@ -49,10 +62,17 @@
             "embedded-assets"
           ];
           preBuild = ''
+            mkdir -p vendor
+            tar -xzf ${mistralSrc} -C vendor
+            mv vendor/mistral.rs-${mistralRev} vendor/mistral.rs
+            for patch in patches/mistral.rs/*.patch; do
+              patch -d vendor/mistral.rs -p1 < "$patch"
+            done
             cargo build --release -p chelix-embedding-service
           '';
           cargoLock = {
             lockFile = ./Cargo.lock;
+            allowBuiltinFetchGit = true;
             outputHashes = {
               "sqlx-core-0.8.6" = "sha256-iZZlJ8YGlM1YUEGitK4aZH68tmg3y+gAVysXS8B+DW8=";
             };
@@ -60,6 +80,7 @@
           nativeBuildInputs = with pkgs; [
             rustPlatform.bindgenHook
             cmake
+            patch
             perl
             pkg-config
           ];

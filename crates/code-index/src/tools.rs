@@ -23,7 +23,7 @@ use crate::CodeIndexConfig;
 
 /// Search the codebase index for a project using hybrid (keyword + vector) search.
 ///
-/// Requires a QMD backend. Returns ranked results with file path, line range,
+/// Requires the builtin backend. Returns ranked results with file path, line range,
 /// score, and matched text.
 pub struct CodebaseSearchTool {
     index: Arc<CodeIndex>,
@@ -201,7 +201,7 @@ impl AgentTool for CodebasePeekTool {
 /// Report the indexing status for a project.
 ///
 /// Returns file counts, backend type, and last sync time.
-/// Works with or without a QMD backend — config-only instances report
+/// Works with or without the builtin backend — config-only instances report
 /// discover stats without search capability.
 pub struct CodebaseStatusTool {
     index: Arc<CodeIndex>,
@@ -278,7 +278,7 @@ impl AgentTool for CodebaseStatusTool {
 
 /// Register all code-index tools into a [`ToolRegistry`].
 ///
-/// Call this when any backend is configured (QMD or builtin).
+/// Call this when the builtin backend is configured.
 /// Tools gracefully degrade to `BackendUnavailable` errors if
 /// the backend is config-only.
 pub fn register_tools(

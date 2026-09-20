@@ -174,7 +174,7 @@ pub struct IndexStatus {
     pub last_sync_ms: Option<u64>,
     /// Embedding model in use (if any).
     pub embedding_model: Option<String>,
-    /// Index backend in use (e.g. "qmd", "builtin").
+    /// Index backend in use ("builtin").
     pub backend: String,
 }
 
@@ -193,6 +193,6 @@ pub struct SearchResult {
     pub score: f32,
     /// Matched text content.
     pub text: String,
-    /// Source of the result (e.g. "qmd", "builtin").
+    /// Source of the result ("builtin").
     pub source: String,
 }

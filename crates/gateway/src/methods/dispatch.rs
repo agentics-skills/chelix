@@ -143,7 +143,6 @@ const READ_METHODS: &[&str] = &[
     "voice.personas.get",
     "memory.status",
     "memory.config.get",
-    "memory.qmd.status",
     "hooks.list",
     "external_agents.list",
     "external_agents.status",

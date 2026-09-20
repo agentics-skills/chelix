@@ -648,7 +648,7 @@ pub(crate) fn memory_style_allows_tools(style: MemoryStyle) -> bool {
 }
 
 pub(crate) fn is_prompt_memory_file(file: &str) -> bool {
-    matches!(file.trim(), "MEMORY.md" | "memory.md")
+    matches!(file.trim(), "MEMORY.md")
 }
 
 pub(crate) fn validate_agent_memory_target_for_mode(

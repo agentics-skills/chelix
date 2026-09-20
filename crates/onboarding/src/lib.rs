@@ -2,6 +2,9 @@
 //!
 //! Flow: welcome → user name → agent name → agent emoji → confirm → done.
 
+#[cfg(feature = "metrics")]
+use chelix_metrics as _;
+
 pub mod error;
 pub mod service;
 pub mod state;

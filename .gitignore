@@ -30,3 +30,5 @@ crates/web/src/assets/js/vendor/shiki.mjs
 .dolt/
 *.db
 .codesight/
+
+/vendor/

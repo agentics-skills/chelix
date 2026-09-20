@@ -93,7 +93,6 @@ export interface RpcMethodMap {
 	// ── Memory ──────────────────────────────────────────────────
 	"memory.config.get": unknown;
 	"memory.config.update": unknown;
-	"memory.qmd.status": unknown;
 	"memory.status": unknown;
 
 	// ── Models ──────────────────────────────────────────────────

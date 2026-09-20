@@ -64,6 +64,11 @@ pub mod session {
     pub const MESSAGES_TOTAL: &str = "chelix_session_messages_total";
     /// Session duration in seconds
     pub const DURATION_SECONDS: &str = "chelix_session_duration_seconds";
+    /// Total session title generations (label: success).
+    pub const TITLE_GENERATIONS_TOTAL: &str = "chelix_session_title_generations_total";
+    /// Session title generation duration in seconds.
+    pub const TITLE_GENERATION_DURATION_SECONDS: &str =
+        "chelix_session_title_generation_duration_seconds";
 }
 
 /// Chat metrics
@@ -146,12 +151,6 @@ pub mod memory {
     pub const PREFETCH_TOTAL: &str = "chelix_memory_prefetch_total";
     /// Prefetch search duration in seconds
     pub const PREFETCH_DURATION_SECONDS: &str = "chelix_memory_prefetch_duration_seconds";
-    /// Total silent memory turns (label: variant=compaction|periodic-extract|session-summary)
-    pub const SILENT_TURNS_TOTAL: &str = "chelix_memory_silent_turns_total";
-    /// Silent turn duration in seconds
-    pub const SILENT_TURN_DURATION_SECONDS: &str = "chelix_memory_silent_turn_duration_seconds";
-    /// Files written by silent memory turns
-    pub const SILENT_TURN_FILES_WRITTEN: &str = "chelix_memory_silent_turn_files_written";
 }
 
 /// Plugin metrics

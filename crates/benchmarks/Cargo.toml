@@ -5,9 +5,6 @@ name                 = "benchmarks"
 repository.workspace = true
 version.workspace    = true
 
-[dependencies]
-chelix-qmd = { optional = true, workspace = true }
-
 [dev-dependencies]
 chelix-agents     = { workspace = true }
 chelix-code-index = { workspace = true }
@@ -30,9 +27,6 @@ name    = "boot"
 [[bench]]
 harness = false
 name    = "code_index"
-
-[features]
-qmd = ["dep:chelix-qmd"]
 
 [lints]
 workspace = true

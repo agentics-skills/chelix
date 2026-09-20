@@ -362,6 +362,39 @@ fn memory_config_default_style_is_hybrid() {
 }
 
 #[test]
+fn memory_huggingface_api_key_parses_and_debug_redacts_secret() {
+    let cfg: MemoryEmbeddingConfig =
+        toml::from_str("huggingface_api_key = \"hf_secret_token_value\"").unwrap();
+    assert_eq!(
+        cfg.huggingface_api_key
+            .as_ref()
+            .map(secrecy::ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("hf_secret_token_value")
+    );
+    let debug = format!("{cfg:?}");
+    assert!(
+        !debug.contains("hf_secret_token_value"),
+        "debug leaked huggingface token: {debug}"
+    );
+}
+
+#[test]
+fn memory_huggingface_api_key_accepts_env_style_alias() {
+    let cfg: MemoryEmbeddingConfig =
+        toml::from_str("HUGGINGFACE_API_KEY = \"hf_alias_token_value\"").unwrap();
+    assert_eq!(
+        cfg.huggingface_api_key
+            .as_ref()
+            .map(secrecy::ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("hf_alias_token_value")
+    );
+    let debug = format!("{cfg:?}");
+    assert!(!debug.contains("hf_alias_token_value"));
+}
+
+#[test]
 fn memory_config_default_agent_write_mode_is_hybrid() {
     let cfg = MemoryEmbeddingConfig::default();
     assert_eq!(cfg.agent_write_mode, AgentMemoryWriteMode::Hybrid);
@@ -377,12 +410,6 @@ fn memory_config_default_user_profile_write_mode_is_explicit_and_auto() {
 }
 
 #[test]
-fn memory_config_default_backend_is_builtin() {
-    let cfg = MemoryEmbeddingConfig::default();
-    assert_eq!(cfg.backend, MemoryBackend::Builtin);
-}
-
-#[test]
 fn memory_config_default_citations_is_auto() {
     let cfg = MemoryEmbeddingConfig::default();
     assert_eq!(cfg.citations, MemoryCitationsMode::Auto);
@@ -392,12 +419,6 @@ fn memory_config_default_citations_is_auto() {
 fn memory_config_default_search_merge_strategy_is_rrf() {
     let cfg = MemoryEmbeddingConfig::default();
     assert_eq!(cfg.search_merge_strategy, MemorySearchMergeStrategy::Rrf);
-}
-
-#[test]
-fn memory_config_default_session_export_mode_is_on_new_or_reset() {
-    let cfg = MemoryEmbeddingConfig::default();
-    assert_eq!(cfg.session_export, SessionExportMode::OnNewOrReset);
 }
 
 #[test]
@@ -423,12 +444,6 @@ fn memory_config_toml_parses_user_profile_write_mode() {
 }
 
 #[test]
-fn memory_config_toml_parses_backend() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("backend = \"qmd\"").unwrap();
-    assert_eq!(cfg.backend, MemoryBackend::Qmd);
-}
-
-#[test]
 fn memory_config_toml_parses_provider() {
     let cfg: MemoryEmbeddingConfig = toml::from_str("provider = \"openai\"").unwrap();
     assert_eq!(cfg.provider, Some(MemoryProvider::OpenAi));
@@ -444,21 +459,6 @@ fn memory_config_toml_parses_citations() {
 fn memory_config_toml_parses_search_merge_strategy() {
     let cfg: MemoryEmbeddingConfig = toml::from_str("search_merge_strategy = \"linear\"").unwrap();
     assert_eq!(cfg.search_merge_strategy, MemorySearchMergeStrategy::Linear);
-}
-
-#[test]
-fn memory_config_toml_parses_session_export_mode() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("session_export = \"off\"").unwrap();
-    assert_eq!(cfg.session_export, SessionExportMode::Off);
-}
-
-#[test]
-fn memory_config_toml_accepts_legacy_bool_session_export() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("session_export = false").unwrap();
-    assert_eq!(cfg.session_export, SessionExportMode::Off);
-
-    let cfg: MemoryEmbeddingConfig = toml::from_str("session_export = true").unwrap();
-    assert_eq!(cfg.session_export, SessionExportMode::OnNewOrReset);
 }
 
 #[test]

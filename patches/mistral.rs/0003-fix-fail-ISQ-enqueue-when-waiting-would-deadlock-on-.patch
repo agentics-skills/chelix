@@ -1,0 +1,200 @@
+From 2c313f69f79f023b782530f0bbfd9a1d59fa90d1 Mon Sep 17 00:00:00 2001
+From: chelix <dev@local>
+Date: Wed, 16 Sep 2026 04:20:47 +0300
+Subject: [PATCH 3/3] fix: fail ISQ enqueue when waiting would deadlock on
+ unconsumed output
+
+---
+ mistralrs-quant/src/isq_executor.rs | 115 +++++++++++++++++++++++++---
+ 1 file changed, 106 insertions(+), 9 deletions(-)
+
+diff --git a/mistralrs-quant/src/isq_executor.rs b/mistralrs-quant/src/isq_executor.rs
+index 8860f7e7..4d5d9079 100644
+--- a/mistralrs-quant/src/isq_executor.rs
++++ b/mistralrs-quant/src/isq_executor.rs
+@@ -174,6 +174,7 @@ impl IsqExecutor {
+         F: FnOnce() -> Result<T> + Send + 'static,
+     {
+         let (tx, rx) = mpsc::sync_channel(1);
++        let fail_tx = tx.clone();
+         let task = Box::new(move || {
+             let result = catch_unwind(AssertUnwindSafe(job));
+             let (success, send) = match result {
+@@ -194,11 +195,13 @@ impl IsqExecutor {
+             };
+             JobOutcome { success, send }
+         }) as JobTask;
+-        self.inner.enqueue(QueuedJob {
++        if let Err(error) = self.inner.enqueue(QueuedJob {
+             plan,
+             consumer,
+             task,
+-        });
++        }) {
++            let _ = fail_tx.send(Err(error));
++        }
+         rx
+     }
+ 
+@@ -283,22 +286,31 @@ struct ExecutorState {
+     held_input_bytes: usize,
+     active_host_scratch: usize,
+     retained_output: usize,
++    active_jobs: usize,
+     active_large_jobs: usize,
+     active_exclusive_devices: HashSet<DeviceLocation>,
+     shutdown: bool,
+ }
+ 
+ impl ExecutorInner {
+-    fn enqueue(&self, job: QueuedJob) {
++    fn enqueue(&self, job: QueuedJob) -> Result<()> {
+         let mut state = self.state.lock().expect("ISQ executor lock poisoned");
+-        while !can_enqueue(&state, &self.config, &job) {
++        loop {
++            if can_enqueue(&state, &self.config, &job) {
++                state.held_input_bytes = state
++                    .held_input_bytes
++                    .saturating_add(job.plan.resources.input_bytes);
++                state.pending.push_back(job);
++                self.cvar.notify_all();
++                return Ok(());
++            }
++            if !enqueue_wait_can_progress(&state, &self.config) {
++                candle_core::bail!(
++                    "ISQ host budget exhausted while unconsumed outputs still hold memory"
++                );
++            }
+             state = self.cvar.wait(state).expect("ISQ executor lock poisoned");
+         }
+-        state.held_input_bytes = state
+-            .held_input_bytes
+-            .saturating_add(job.plan.resources.input_bytes);
+-        state.pending.push_back(job);
+-        self.cvar.notify_all();
+     }
+ 
+     fn release_output(self: &Arc<Self>, bytes: usize) {
+@@ -368,6 +380,16 @@ fn can_enqueue(state: &ExecutorState, config: &IsqExecutorConfig, job: &QueuedJo
+     host_next <= config.host_budget_bytes || no_host_work
+ }
+ 
++fn enqueue_wait_can_progress(state: &ExecutorState, config: &IsqExecutorConfig) -> bool {
++    if state.active_jobs > 0 {
++        return true;
++    }
++    state
++        .pending
++        .iter()
++        .any(|job| can_start(state, config, job))
++}
++
+ fn can_start(state: &ExecutorState, config: &IsqExecutorConfig, job: &QueuedJob) -> bool {
+     let resources = &job.plan.resources;
+     let host_next = state
+@@ -395,6 +417,7 @@ fn can_start(state: &ExecutorState, config: &IsqExecutorConfig, job: &QueuedJob)
+ 
+ fn reserve_job(state: &mut ExecutorState, job: &QueuedJob) {
+     let resources = &job.plan.resources;
++    state.active_jobs = state.active_jobs.saturating_add(1);
+     state.active_host_scratch = state
+         .active_host_scratch
+         .saturating_add(resources.host_scratch_bytes);
+@@ -418,6 +441,7 @@ fn finish_job(
+     let retain_output = success && running.consumer.retains_output();
+     let mut state = inner.state.lock().expect("ISQ executor lock poisoned");
+     state.held_input_bytes = state.held_input_bytes.saturating_sub(resources.input_bytes);
++    state.active_jobs = state.active_jobs.saturating_sub(1);
+     state.active_host_scratch = state
+         .active_host_scratch
+         .saturating_sub(resources.host_scratch_bytes);
+@@ -672,6 +696,15 @@ mod tests {
+         plan
+     }
+ 
++    fn retaining_plan(bytes: usize) -> IsqPlanParams {
++        let mut plan = plan(0);
++        plan.resources.input_bytes = bytes;
++        plan.resources.output_bytes = bytes;
++        plan.resources.host_scratch_bytes = 0;
++        plan.resources.large_job = false;
++        plan
++    }
++
+     fn queued_job(plan: IsqPlanParams, consumer: IsqConsumer) -> QueuedJob {
+         QueuedJob {
+             plan,
+@@ -822,6 +855,70 @@ mod tests {
+         done_rx.recv_timeout(TEST_RECV_TIMEOUT).unwrap();
+     }
+ 
++    #[test]
++    fn submit_fails_instead_of_deadlocking_on_unconsumed_output() {
++        let executor = IsqExecutor::new(IsqExecutorConfig::for_tests(1, 100));
++        let rx1 = executor.submit(retaining_plan(70), IsqConsumer::UqffWrite, || Ok(1usize));
++        let first = rx1
++            .recv_timeout(TEST_RECV_TIMEOUT)
++            .unwrap()
++            .unwrap();
++
++        let (done_tx, done_rx) = std::sync::mpsc::channel();
++        let executor_clone = executor.clone();
++        std::thread::spawn(move || {
++            let rx2 = executor_clone.submit(retaining_plan(70), IsqConsumer::UqffWrite, || Ok(2usize));
++            let _ = done_tx.send(rx2);
++        });
++        let rx2 = done_rx.recv_timeout(Duration::from_secs(2)).unwrap_or_else(|_| {
++            panic!("submit blocked on unconsumed ISQ output")
++        });
++        let result = rx2
++            .recv_timeout(TEST_RECV_TIMEOUT)
++            .unwrap_or_else(|error| panic!("missing submit error: {error}"));
++        assert!(result.is_err(), "expected host-budget error, got {result:?}");
++        drop(first);
++    }
++
++    #[test]
++    fn submit_waits_for_running_immediate_load_without_scratch() {
++        let executor = IsqExecutor::new(IsqExecutorConfig::for_tests(1, 100));
++        let (started_tx, started_rx) = std::sync::mpsc::channel();
++        let (release_tx, release_rx) = std::sync::mpsc::channel();
++        let rx1 = executor.submit(
++            retaining_plan(70),
++            IsqConsumer::ImmediateLoad,
++            move || {
++                started_tx.send(()).unwrap();
++                release_rx.recv().unwrap();
++                Ok(1usize)
++            },
++        );
++        started_rx.recv_timeout(TEST_RECV_TIMEOUT).unwrap();
++
++        let (done_tx, done_rx) = std::sync::mpsc::channel();
++        let executor_clone = executor.clone();
++        std::thread::spawn(move || {
++            let rx2 = executor_clone.submit(
++                retaining_plan(70),
++                IsqConsumer::ImmediateLoad,
++                || Ok(2usize),
++            );
++            let _ = done_tx.send(rx2);
++        });
++        std::thread::sleep(Duration::from_millis(50));
++        assert!(
++            done_rx.try_recv().is_err(),
++            "second submit returned before the running job finished"
++        );
++        release_tx.send(()).unwrap();
++        let rx2 = done_rx
++            .recv_timeout(Duration::from_secs(2))
++            .unwrap_or_else(|_| panic!("second submit did not complete after the running job finished"));
++        assert_eq!(rx1.recv_timeout(TEST_RECV_TIMEOUT).unwrap().unwrap().value, 1);
++        assert_eq!(rx2.recv_timeout(TEST_RECV_TIMEOUT).unwrap().unwrap().value, 2);
++    }
++
+     #[test]
+     fn singlethread_env_sets_one_worker() {
+         let _guard = ENV_LOCK.lock().unwrap();
+-- 
+2.53.0
+

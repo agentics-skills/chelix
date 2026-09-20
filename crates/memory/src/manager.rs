@@ -1,11 +1,10 @@
 /// Memory manager: orchestrates file sync, chunking, embedding, and search.
-use std::path::Path;
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use {
     async_trait::async_trait,
     sha2::{Digest, Sha256},
     tracing::{debug, info, warn},
-    walkdir::WalkDir,
 };
 
 use chelix_agents::memory_writer::{MemoryWriteResult, MemoryWriter};
@@ -13,18 +12,20 @@ use chelix_agents::memory_writer::{MemoryWriteResult, MemoryWriter};
 use crate::{
     chunker::chunk_content,
     config::MemoryConfig,
+    embed_payload::split_oversize_embed_chunks,
     embeddings::EmbeddingProvider,
     error::Result,
     schema::{ChunkRow, FileRow},
     search::{self, SearchResult},
     store::{CacheEntry, MemoryStore},
-    writer::{ensure_memory_target_not_symlink, validate_memory_path},
+    writer::validate_memory_path,
 };
 
 pub struct MemoryManager {
     config: MemoryConfig,
     store: Box<dyn MemoryStore>,
     embedder: Option<Box<dyn EmbeddingProvider>>,
+    path_epochs: tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<u64>>>>,
 }
 
 /// Status info about the memory system.
@@ -67,6 +68,7 @@ impl MemoryManager {
             config,
             store,
             embedder: Some(embedder),
+            path_epochs: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -76,6 +78,7 @@ impl MemoryManager {
             config,
             store,
             embedder: None,
+            path_epochs: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -99,80 +102,60 @@ impl MemoryManager {
         self.config.llm_reranking
     }
 
-    /// Resolve a file path by a content-hash prefix.
-    pub async fn resolve_file_by_hash_prefix(&self, hash_prefix: &str) -> Result<Option<String>> {
-        let prefix = hash_prefix.trim_start_matches('#');
-        let files = self.store.list_files().await?;
-        Ok(files
-            .into_iter()
-            .find(|file| file.hash.starts_with(prefix))
-            .map(|file| file.path))
-    }
-
-    /// Synchronize: walk configured directories, detect changed files, re-chunk and re-embed.
+    /// Synchronize allowlisted files, detect changes, re-chunk and re-embed.
     pub async fn sync(&self) -> Result<SyncReport> {
         let mut report = SyncReport::default();
+        let Some(data_dir) = self.config.data_dir.as_ref() else {
+            return Ok(report);
+        };
 
-        let mut discovered_paths = Vec::new();
+        let discovered = match crate::allowlist::discover_indexable_memory_files(data_dir) {
+            Ok(paths) => paths,
+            Err(error) => {
+                warn!(error = %error, "memory: discovery failed");
+                return Err(error.into());
+            },
+        };
+        let discovered_paths: Vec<String> = discovered
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect();
 
-        for dir in &self.config.memory_dirs {
-            if !dir.exists() {
-                debug!(?dir, "memory directory does not exist, skipping");
-                continue;
-            }
-
-            for entry in WalkDir::new(dir).follow_links(true).into_iter().flatten() {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                if ext != "md" && ext != "markdown" {
-                    continue;
-                }
-
-                let path_str = path.to_string_lossy().to_string();
-                discovered_paths.push(path_str.clone());
-
-                match self.sync_file(path, &path_str, &mut report).await {
-                    Ok(changed) => {
-                        if changed {
-                            report.files_updated += 1;
-                        } else {
-                            report.files_unchanged += 1;
-                        }
-                    },
-                    Err(e) => {
-                        warn!(path = %path_str, error = %e, "failed to sync file");
-                        report.errors += 1;
-                    },
-                }
+        for (path, path_str) in discovered.iter().zip(discovered_paths.iter()) {
+            match self.sync_file(path, path_str, &mut report).await {
+                Ok(changed) => {
+                    if changed {
+                        report.files_updated += 1;
+                    } else {
+                        report.files_unchanged += 1;
+                    }
+                },
+                Err(e) => {
+                    warn!(path = %path_str, error = %e, "failed to sync file");
+                    report.errors += 1;
+                },
             }
         }
 
-        // Remove files no longer on disk.
-        // Skip the full reconciliation when the DB file count matches the
-        // discovered count and nothing was updated — the DB is already clean.
         let existing_files = self.store.list_files().await?;
-        if existing_files.len() != discovered_paths.len() || report.files_updated > 0 {
-            let discovered_set: std::collections::HashSet<&str> =
-                discovered_paths.iter().map(|s| s.as_str()).collect();
-            let mut removed_stale = 0usize;
-            for file in existing_files {
-                if !discovered_set.contains(file.path.as_str()) {
-                    debug!(path = %file.path, "removing stale file from memory index");
-                    self.store.delete_chunks_for_file(&file.path).await?;
-                    self.store.delete_file(&file.path).await?;
-                    report.files_removed += 1;
-                    removed_stale += 1;
-                }
+        let discovered_set: std::collections::HashSet<&str> =
+            discovered_paths.iter().map(|s| s.as_str()).collect();
+        let mut removed_stale = 0usize;
+        for file in existing_files {
+            if discovered_set.contains(file.path.as_str()) {
+                continue;
             }
-            if removed_stale > 0 {
-                info!(
-                    removed = removed_stale,
-                    "memory: removed stale indexed files"
-                );
-            }
+            debug!(path = %file.path, "removing stale file from memory index");
+            self.store.delete_chunks_for_file(&file.path).await?;
+            self.store.delete_file(&file.path).await?;
+            report.files_removed += 1;
+            removed_stale += 1;
+        }
+        if removed_stale > 0 {
+            info!(
+                removed = removed_stale,
+                "memory: removed stale indexed files"
+            );
         }
 
         // LRU eviction on embedding cache
@@ -193,22 +176,63 @@ impl MemoryManager {
 
     /// Sync a single file by path. Returns true if it was updated.
     pub async fn sync_path(&self, path: &Path) -> Result<bool> {
+        let Some(data_dir) = self.config.data_dir.as_ref() else {
+            return Ok(false);
+        };
+        let path = crate::allowlist::absolutize(path);
+        if !crate::allowlist::is_indexable_memory_path(data_dir, &path) {
+            self.remove_path(&path).await?;
+            return Ok(false);
+        }
         let path_str = path.to_string_lossy().to_string();
         let mut report = SyncReport::default();
-        self.sync_file(path, &path_str, &mut report).await
+        self.sync_file(&path, &path_str, &mut report).await
+    }
+
+    async fn path_epoch(&self, path: &str) -> Arc<tokio::sync::Mutex<u64>> {
+        let mut epochs = self.path_epochs.lock().await;
+        epochs
+            .entry(path.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(0)))
+            .clone()
+    }
+
+    async fn bump_path_epoch(&self, path: &str) {
+        let epoch = self.path_epoch(path).await;
+        let mut epoch_guard = epoch.lock().await;
+        *epoch_guard = epoch_guard.saturating_add(1);
     }
 
     /// Remove a file path from the memory index after the backing file is gone.
     pub async fn remove_path(&self, path: &Path) -> Result<bool> {
+        let path = crate::allowlist::absolutize(path);
         let path_str = path.to_string_lossy().to_string();
+        let epoch = self.path_epoch(&path_str).await;
+        let mut epoch_guard = epoch.lock().await;
+        *epoch_guard = epoch_guard.saturating_add(1);
         let had_file = self.store.get_file(&path_str).await?.is_some();
         let had_chunks = !self.store.get_chunks_for_file(&path_str).await?.is_empty();
         self.store.delete_chunks_for_file(&path_str).await?;
         self.store.delete_file(&path_str).await?;
+        drop(epoch_guard);
         if had_file || had_chunks {
             info!(path = %path_str, "memory: removed file from index");
         }
         Ok(had_file || had_chunks)
+    }
+
+    async fn file_embeddings_current(&self, path: &str) -> Result<bool> {
+        let Some(embedder) = self.embedder.as_ref() else {
+            return Ok(true);
+        };
+        let chunks = self.store.get_chunks_for_file(path).await?;
+        if chunks.is_empty() {
+            return Ok(false);
+        }
+        let model = embedder.model_name();
+        Ok(chunks
+            .iter()
+            .all(|chunk| chunk.model == model && chunk.embedding.is_some()))
     }
 
     /// Sync a single file. Returns true if it was updated. Accumulates cache stats in `report`.
@@ -226,31 +250,46 @@ impl MemoryManager {
             .as_secs() as i64;
         let size = metadata.len() as i64;
 
-        // Fast path: skip read+hash if mtime and size are unchanged.
+        // Fast path: skip read+hash if mtime and size are unchanged and embeddings match.
         if let Some(existing) = self.store.get_file(path_str).await?
             && existing.mtime == mtime
             && existing.size == size
+            && self.file_embeddings_current(path_str).await?
         {
             return Ok(false);
         }
 
+        let mut start_epoch = {
+            let epoch = self.path_epoch(path_str).await;
+            *epoch.lock().await
+        };
         let content = tokio::fs::read_to_string(path).await?;
         let hash = sha256_hex(&content);
 
         // Check if content hash is unchanged (mtime changed but content didn't).
-        if let Some(existing) = self.store.get_file(path_str).await?
-            && existing.hash == hash
-        {
-            // Update mtime so the fast path works next time.
-            let file_row = FileRow {
-                path: path_str.to_string(),
-                source: existing.source,
-                hash: existing.hash,
-                mtime,
-                size,
-            };
-            self.store.upsert_file(&file_row).await?;
-            return Ok(false);
+        if let Some(existing) = self.store.get_file(path_str).await? {
+            if existing.hash == hash {
+                // Update mtime so the fast path works next time.
+                let file_row = FileRow {
+                    path: path_str.to_string(),
+                    source: existing.source,
+                    hash: existing.hash,
+                    mtime,
+                    size,
+                };
+                if self.file_embeddings_current(path_str).await? {
+                    self.store.upsert_file(&file_row).await?;
+                    return Ok(false);
+                }
+            } else {
+                self.bump_path_epoch(path_str).await;
+                self.store.delete_chunks_for_file(path_str).await?;
+                self.store.delete_file(path_str).await?;
+                start_epoch = {
+                    let epoch = self.path_epoch(path_str).await;
+                    *epoch.lock().await
+                };
+            }
         }
 
         // Determine source from path
@@ -267,7 +306,6 @@ impl MemoryManager {
             mtime,
             size,
         };
-        self.store.upsert_file(&file_row).await?;
         info!(path = %path_str, source, size, "memory: loaded markdown file");
 
         // Chunk the content (tree-sitter AST splitting when grammar available, else line-based).
@@ -278,11 +316,16 @@ impl MemoryManager {
             self.config.chunk_overlap,
             ext,
         );
+        let raw_chunks = match self
+            .embedder
+            .as_ref()
+            .and_then(|embedder| embedder.max_embed_payload_bytes())
+        {
+            Some(limit) => split_oversize_embed_chunks(raw_chunks, limit)?,
+            None => raw_chunks,
+        };
 
-        // Delete old chunks
-        self.store.delete_chunks_for_file(path_str).await?;
-
-        // Generate embeddings (if provider available) and create chunk rows.
+        // Generate embeddings before replacing index rows so a sidecar failure keeps the old chunks.
         let texts: Vec<String> = raw_chunks.iter().map(|c| c.text.clone()).collect();
         let chunk_hashes: Vec<String> = texts.iter().map(|t| sha256_hex(t)).collect();
 
@@ -367,7 +410,16 @@ impl MemoryManager {
             })
             .collect();
 
-        self.store.upsert_chunks(&chunk_rows).await?;
+        {
+            let epoch = self.path_epoch(path_str).await;
+            let current_epoch = epoch.lock().await;
+            if *current_epoch != start_epoch || !tokio::fs::try_exists(path).await? {
+                return Ok(false);
+            }
+            self.store
+                .replace_file_index(&file_row, &chunk_rows)
+                .await?;
+        }
         info!(path = %path_str, chunks = chunk_rows.len(), "synced file");
 
         Ok(true)
@@ -446,7 +498,6 @@ impl MemoryWriter for MemoryManager {
         }
 
         let path = validate_memory_path(data_dir, file)?;
-        ensure_memory_target_not_symlink(&path).await?;
 
         // Create parent directories if needed.
         if let Some(parent) = path.parent() {
@@ -510,9 +561,19 @@ fn chrono_now() -> String {
 mod tests {
     use {
         super::*,
-        crate::{schema::run_migrations, store_sqlite::SqliteMemoryStore},
+        crate::{
+            schema::{ChunkRow, FileRow, run_migrations},
+            store_sqlite::SqliteMemoryStore,
+        },
         async_trait::async_trait,
-        std::io::Write,
+        std::{
+            io::Write,
+            path::{Path, PathBuf},
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+        },
         tempfile::TempDir,
     };
 
@@ -560,37 +621,50 @@ mod tests {
         }
     }
 
-    async fn setup() -> (MemoryManager, TempDir) {
-        let tmp = TempDir::new().unwrap();
-        let mem_dir = tmp.path().join("memory");
-        std::fs::create_dir_all(&mem_dir).unwrap();
+    fn notes_dir(data_dir: &Path) -> PathBuf {
+        data_dir.join("agents").join("main").join("memory")
+    }
 
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        run_migrations(&pool).await.unwrap();
+    fn write_note(data_dir: &Path, name: &str, content: &str) -> PathBuf {
+        let dir = notes_dir(data_dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, content).unwrap();
+        path
+    }
 
-        let config = MemoryConfig {
+    fn manager_config(data_dir: PathBuf) -> MemoryConfig {
+        MemoryConfig {
             db_path: ":memory:".into(),
-            memory_dirs: vec![mem_dir],
+            data_dir: Some(data_dir.clone()),
+            memory_dirs: vec![data_dir.join("MEMORY.md"), data_dir.join("agents")],
             chunk_size: 50,
             chunk_overlap: 10,
             vector_weight: 0.7,
             keyword_weight: 0.3,
             ..Default::default()
-        };
+        }
+    }
 
+    async fn setup() -> (MemoryManager, TempDir) {
+        let tmp = TempDir::new().unwrap();
+        let data_dir = tmp.path().to_path_buf();
+        std::fs::create_dir_all(notes_dir(&data_dir)).unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        run_migrations(&pool).await.unwrap();
         let store = Box::new(SqliteMemoryStore::new(pool));
         let embedder = Box::new(MockEmbedder);
-
-        (MemoryManager::new(config, store, embedder), tmp)
+        (
+            MemoryManager::new(manager_config(data_dir), store, embedder),
+            tmp,
+        )
     }
 
     #[tokio::test]
     async fn test_sync_and_search() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
-
-        // Create a test file
-        let mut f = std::fs::File::create(mem_dir.join("2024-01-01.md")).unwrap();
+        let note = write_note(tmp.path(), "2024-01-01.md", "");
+        let mut f = std::fs::File::create(&note).unwrap();
         writeln!(f, "# Daily Log").unwrap();
         writeln!(f, "Today I worked on the Rust memory system.").unwrap();
         writeln!(f, "It uses SQLite for storage and hybrid search.").unwrap();
@@ -613,9 +687,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sync_reconciles_equal_sized_path_sets_when_allowed_file_fails() {
+        let (manager, tmp) = setup().await;
+        let data_dir = tmp.path();
+        let allowed = data_dir.join("MEMORY.md");
+        std::fs::write(&allowed, "allowed alpha notes").unwrap();
+        assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+
+        let forbidden = data_dir.join("agents").join("main").join("SOUL.md");
+        std::fs::write(&forbidden, "forbidden soul").unwrap();
+        let forbidden_path = forbidden.to_string_lossy().into_owned();
+        manager
+            .store
+            .upsert_file(&FileRow {
+                path: forbidden_path.clone(),
+                source: "md".into(),
+                hash: "stale".into(),
+                mtime: 1,
+                size: 14,
+            })
+            .await
+            .unwrap();
+        manager
+            .store
+            .upsert_chunks(&[ChunkRow {
+                id: "stale-chunk".into(),
+                path: forbidden_path.clone(),
+                source: "md".into(),
+                start_line: 1,
+                end_line: 1,
+                hash: "stale".into(),
+                model: "mock-model".into(),
+                text: "forbidden soul".into(),
+                embedding: None,
+                updated_at: "now".into(),
+            }])
+            .await
+            .unwrap();
+
+        let failing = data_dir.join("agents").join("other");
+        std::fs::create_dir_all(&failing).unwrap();
+        std::fs::write(failing.join("MEMORY.md"), [0xff, 0xfe, 0xfd]).unwrap();
+
+        let report = manager.sync().await.unwrap();
+        assert_eq!(report.files_updated, 0);
+        assert!(report.errors > 0);
+        assert!(report.files_removed > 0);
+
+        let indexed: Vec<String> = manager
+            .store
+            .list_files()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|file| file.path)
+            .collect();
+        assert!(
+            indexed
+                .iter()
+                .any(|path| path == &allowed.to_string_lossy())
+        );
+        assert!(!indexed.iter().any(|path| path == &forbidden_path));
+
+        assert_eq!(
+            std::fs::read_to_string(&allowed).unwrap(),
+            "allowed alpha notes"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&forbidden).unwrap(),
+            "forbidden soul"
+        );
+        assert!(failing.join("MEMORY.md").exists());
+    }
+
+    #[tokio::test]
     async fn test_sync_detects_changes() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
         let file_path = mem_dir.join("test.md");
 
         std::fs::write(&file_path, "version 1").unwrap();
@@ -630,7 +778,7 @@ mod tests {
     #[tokio::test]
     async fn test_sync_removes_deleted_files() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
         let file_path = mem_dir.join("temp.md");
 
         std::fs::write(&file_path, "temporary content").unwrap();
@@ -646,7 +794,7 @@ mod tests {
     #[tokio::test]
     async fn test_search_returns_synced_content() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
 
         std::fs::write(
             mem_dir.join("2024-01-15.md"),
@@ -671,7 +819,7 @@ mod tests {
     #[tokio::test]
     async fn test_keyword_search_through_manager() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
 
         std::fs::write(
             mem_dir.join("log.md"),
@@ -698,7 +846,7 @@ mod tests {
     #[tokio::test]
     async fn test_multi_file_topic_separation() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
 
         std::fs::write(
             mem_dir.join("rust.md"),
@@ -753,7 +901,7 @@ mod tests {
     #[tokio::test]
     async fn test_scale_many_files() {
         let (manager, tmp) = setup().await;
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
 
         // Create 50 files, each with several lines
         for i in 0..50 {
@@ -799,19 +947,14 @@ mod tests {
     #[tokio::test]
     async fn test_keyword_only_mode() {
         let tmp = TempDir::new().unwrap();
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
         std::fs::create_dir_all(&mem_dir).unwrap();
 
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let config = MemoryConfig {
-            db_path: ":memory:".into(),
-            memory_dirs: vec![mem_dir.clone()],
-            chunk_size: 50,
-            chunk_overlap: 10,
-            ..Default::default()
-        };
+        let data_dir = tmp.path().to_path_buf();
+        let config = manager_config(data_dir);
 
         let store = Box::new(SqliteMemoryStore::new(pool));
         let manager = MemoryManager::keyword_only(config, store);
@@ -844,26 +987,25 @@ mod tests {
 
     /// Mock embedder that counts how many texts it has been asked to embed.
     struct CountingEmbedder {
-        embed_count: std::sync::atomic::AtomicUsize,
+        embed_count: AtomicUsize,
     }
 
     impl CountingEmbedder {
         fn new() -> Self {
             Self {
-                embed_count: std::sync::atomic::AtomicUsize::new(0),
+                embed_count: AtomicUsize::new(0),
             }
         }
 
         fn count(&self) -> usize {
-            self.embed_count.load(std::sync::atomic::Ordering::SeqCst)
+            self.embed_count.load(Ordering::SeqCst)
         }
     }
 
     #[async_trait]
     impl EmbeddingProvider for CountingEmbedder {
         async fn embed(&self, text: &str) -> Result<Vec<f32>> {
-            self.embed_count
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.embed_count.fetch_add(1, Ordering::SeqCst);
             Ok(keyword_embedding(text))
         }
 
@@ -883,27 +1025,20 @@ mod tests {
     #[tokio::test]
     async fn test_embedding_cache_hits() {
         let tmp = TempDir::new().unwrap();
-        let mem_dir = tmp.path().join("memory");
+        let mem_dir = notes_dir(tmp.path());
         std::fs::create_dir_all(&mem_dir).unwrap();
 
         let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let config = MemoryConfig {
-            db_path: ":memory:".into(),
-            memory_dirs: vec![mem_dir.clone()],
-            chunk_size: 50,
-            chunk_overlap: 10,
-            vector_weight: 0.7,
-            keyword_weight: 0.3,
-            ..Default::default()
-        };
+        let data_dir = tmp.path().to_path_buf();
+        let config = manager_config(data_dir);
 
-        let embedder = std::sync::Arc::new(CountingEmbedder::new());
-        let embedder_ref = std::sync::Arc::clone(&embedder);
+        let embedder = Arc::new(CountingEmbedder::new());
+        let embedder_ref = Arc::clone(&embedder);
 
         // Wrap in a forwarding provider that delegates to the Arc'd one.
-        struct ArcEmbedder(std::sync::Arc<CountingEmbedder>);
+        struct ArcEmbedder(Arc<CountingEmbedder>);
 
         #[async_trait]
         impl EmbeddingProvider for ArcEmbedder {
@@ -981,29 +1116,7 @@ mod tests {
 
     /// Create a `MemoryManager` with `data_dir` set, enabling write support.
     async fn setup_writable() -> (MemoryManager, TempDir) {
-        let tmp = TempDir::new().unwrap();
-        let data_dir = tmp.path().to_path_buf();
-        let mem_dir = data_dir.join("memory");
-        std::fs::create_dir_all(&mem_dir).unwrap();
-
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        run_migrations(&pool).await.unwrap();
-
-        let config = MemoryConfig {
-            db_path: ":memory:".into(),
-            data_dir: Some(data_dir),
-            memory_dirs: vec![mem_dir],
-            chunk_size: 50,
-            chunk_overlap: 10,
-            vector_weight: 0.7,
-            keyword_weight: 0.3,
-            ..Default::default()
-        };
-
-        let store = Box::new(SqliteMemoryStore::new(pool));
-        let embedder = Box::new(MockEmbedder);
-
-        (MemoryManager::new(config, store, embedder), tmp)
+        setup().await
     }
 
     #[tokio::test]
@@ -1041,33 +1154,6 @@ mod tests {
         let content = std::fs::read_to_string(data_dir.join("MEMORY.md")).unwrap();
         assert!(content.contains("first"));
         assert!(content.contains("second"));
-    }
-
-    #[tokio::test]
-    async fn test_memory_writer_creates_parent_dir() {
-        let tmp = TempDir::new().unwrap();
-        let data_dir = tmp.path().to_path_buf();
-        // Do NOT pre-create memory/ dir
-
-        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-        run_migrations(&pool).await.unwrap();
-
-        let config = MemoryConfig {
-            db_path: ":memory:".into(),
-            data_dir: Some(data_dir.clone()),
-            memory_dirs: vec![data_dir.join("memory")],
-            ..Default::default()
-        };
-
-        let store = Box::new(SqliteMemoryStore::new(pool));
-        let manager = MemoryManager::keyword_only(config, store);
-
-        manager
-            .write_memory("memory/notes.md", "hello", false)
-            .await
-            .unwrap();
-
-        assert!(data_dir.join("memory").join("notes.md").exists());
     }
 
     #[tokio::test]
@@ -1130,7 +1216,7 @@ mod tests {
 
         manager
             .write_memory(
-                "memory/recipe.md",
+                "MEMORY.md",
                 "The cooking recipe uses garlic and olive oil.",
                 false,
             )
@@ -1165,9 +1251,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_writer_disabled_without_data_dir() {
-        let (manager, _tmp) = setup().await;
+        let tmp = TempDir::new().unwrap();
+        let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
+        run_migrations(&pool).await.unwrap();
+        let config = MemoryConfig {
+            db_path: ":memory:".into(),
+            data_dir: None,
+            chunk_size: 50,
+            chunk_overlap: 10,
+            ..Default::default()
+        };
+        let manager = MemoryManager::keyword_only(config, Box::new(SqliteMemoryStore::new(pool)));
+        let _tmp = tmp;
 
-        // setup() does not set data_dir, so writes should be rejected
         let result = manager.write_memory("MEMORY.md", "test", false).await;
         assert!(result.is_err(), "writes should fail without data_dir");
         assert!(
@@ -1176,6 +1272,481 @@ mod tests {
                 .to_string()
                 .contains("no data_dir configured"),
             "error should mention data_dir"
+        );
+    }
+
+    async fn file_pool(db_path: &Path) -> sqlx::SqlitePool {
+        use {sqlx::sqlite::SqliteConnectOptions, std::str::FromStr};
+        let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", db_path.display()))
+            .unwrap()
+            .create_if_missing(true);
+        sqlx::SqlitePool::connect_with(options).await.unwrap()
+    }
+
+    async fn file_backed_manager(
+        db_path: &Path,
+        data_dir: PathBuf,
+        embedder: Box<dyn EmbeddingProvider>,
+    ) -> MemoryManager {
+        let pool = file_pool(db_path).await;
+        run_migrations(&pool).await.unwrap();
+        let mut config = manager_config(data_dir);
+        config.db_path = db_path.to_string_lossy().into_owned();
+        MemoryManager::new(config, Box::new(SqliteMemoryStore::new(pool)), embedder)
+    }
+
+    async fn chunks_for(db_path: &Path, path: &str) -> Vec<ChunkRow> {
+        let store = SqliteMemoryStore::new(file_pool(db_path).await);
+        store.get_chunks_for_file(path).await.unwrap()
+    }
+
+    async fn indexed_file(db_path: &Path, path: &str) -> Option<FileRow> {
+        let store = SqliteMemoryStore::new(file_pool(db_path).await);
+        store.get_file(path).await.unwrap()
+    }
+
+    struct FailingEmbedder {
+        model: &'static str,
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for FailingEmbedder {
+        async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
+            Err(crate::error::Error::Embedding("sidecar failed".into()))
+        }
+
+        fn model_name(&self) -> &str {
+            self.model
+        }
+
+        fn dimensions(&self) -> usize {
+            8
+        }
+
+        fn provider_key(&self) -> &str {
+            self.model
+        }
+    }
+
+    struct NamedEmbedder {
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for NamedEmbedder {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+            Ok(keyword_embedding(text))
+        }
+
+        fn model_name(&self) -> &str {
+            self.name
+        }
+
+        fn dimensions(&self) -> usize {
+            8
+        }
+
+        fn provider_key(&self) -> &str {
+            self.name
+        }
+    }
+
+    #[tokio::test]
+    async fn embed_failure_keeps_previous_chunks() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "Rust programming with database memory.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "mock-model" }),
+            )
+            .await;
+            let report = manager.sync().await.unwrap();
+            assert_eq!(report.files_updated, 1);
+        }
+        let chunks = chunks_for(&db_path, &path_str).await;
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|chunk| chunk.model == "mock-model"));
+
+        let manager = file_backed_manager(
+            &db_path,
+            tmp.path().to_path_buf(),
+            Box::new(FailingEmbedder { model: "new-model" }),
+        )
+        .await;
+        let report = manager.sync().await.unwrap();
+        assert!(report.errors > 0);
+        let chunks = chunks_for(&db_path, &path_str).await;
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().any(|chunk| chunk.text.contains("Rust")));
+        assert!(chunks.iter().all(|chunk| chunk.model == "mock-model"));
+    }
+
+    #[tokio::test]
+    async fn model_change_reembeds_unchanged_markdown() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "Rust programming with database memory.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "old-model" }),
+            )
+            .await;
+            assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+        }
+
+        let manager = file_backed_manager(
+            &db_path,
+            tmp.path().to_path_buf(),
+            Box::new(NamedEmbedder { name: "new-model" }),
+        )
+        .await;
+        let report = manager.sync().await.unwrap();
+        assert_eq!(report.files_updated, 1);
+        let chunks = chunks_for(&db_path, &path_str).await;
+        assert!(!chunks.is_empty());
+        assert!(chunks.iter().all(|chunk| chunk.model == "new-model"));
+    }
+
+    struct GatedEmbedder {
+        started: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for GatedEmbedder {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+            if let Some(started) = self.started.lock().await.take() {
+                let _ = started.send(());
+            }
+            if let Some(release) = self.release.lock().await.take() {
+                let _ = release.await;
+            }
+            Ok(keyword_embedding(text))
+        }
+
+        fn model_name(&self) -> &str {
+            self.name
+        }
+
+        fn dimensions(&self) -> usize {
+            8
+        }
+
+        fn provider_key(&self) -> &str {
+            self.name
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_during_embed_does_not_restore_index() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "Rust programming with database memory.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "old-model" }),
+            )
+            .await;
+            assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+        }
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let manager = Arc::new(
+            file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(GatedEmbedder {
+                    started: tokio::sync::Mutex::new(Some(started_tx)),
+                    release: tokio::sync::Mutex::new(Some(release_rx)),
+                    name: "new-model",
+                }),
+            )
+            .await,
+        );
+        let sync_manager = Arc::clone(&manager);
+        let sync_task = tokio::spawn(async move { sync_manager.sync().await });
+        started_rx.await.unwrap();
+        std::fs::remove_file(&note).unwrap();
+        assert!(manager.remove_path(&note).await.unwrap());
+        release_tx.send(()).unwrap();
+        let report = sync_task.await.unwrap().unwrap();
+        assert_eq!(report.errors, 0);
+        assert!(chunks_for(&db_path, &path_str).await.is_empty());
+        assert!(indexed_file(&db_path, &path_str).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn partial_delete_embed_failure_does_not_keep_removed_text() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "SECRETTOKEN keep this note.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "old-model" }),
+            )
+            .await;
+            assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+            assert!(
+                chunks_for(&db_path, &path_str)
+                    .await
+                    .iter()
+                    .any(|chunk| chunk.text.contains("SECRETTOKEN"))
+            );
+        }
+
+        std::fs::write(&note, "keep this note.").unwrap();
+        let manager = file_backed_manager(
+            &db_path,
+            tmp.path().to_path_buf(),
+            Box::new(FailingEmbedder { model: "old-model" }),
+        )
+        .await;
+        assert!(manager.remove_path(&note).await.unwrap());
+        assert!(manager.sync_path(&note).await.is_err());
+        assert!(
+            chunks_for(&db_path, &path_str)
+                .await
+                .iter()
+                .all(|chunk| !chunk.text.contains("SECRETTOKEN"))
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_sync_after_partial_delete_does_not_restore_removed_text() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "SECRETTOKEN keep this note.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "old-model" }),
+            )
+            .await;
+            assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+        }
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let manager = Arc::new(
+            file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(GatedEmbedder {
+                    started: tokio::sync::Mutex::new(Some(started_tx)),
+                    release: tokio::sync::Mutex::new(Some(release_rx)),
+                    name: "new-model",
+                }),
+            )
+            .await,
+        );
+        let sync_manager = Arc::clone(&manager);
+        let note_for_sync = note.clone();
+        let sync_task = tokio::spawn(async move { sync_manager.sync_path(&note_for_sync).await });
+        started_rx.await.unwrap();
+        std::fs::write(&note, "keep this note.").unwrap();
+        assert!(manager.remove_path(&note).await.unwrap());
+        release_tx.send(()).unwrap();
+        let _ = sync_task.await.unwrap();
+        assert!(
+            chunks_for(&db_path, &path_str)
+                .await
+                .iter()
+                .all(|chunk| !chunk.text.contains("SECRETTOKEN"))
+        );
+    }
+
+    #[tokio::test]
+    async fn content_change_embed_failure_drops_stale_chunks() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "SECRETTOKEN original version.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "old-model" }),
+            )
+            .await;
+            assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+        }
+
+        std::fs::write(&note, "replacement without secret.").unwrap();
+        let manager = file_backed_manager(
+            &db_path,
+            tmp.path().to_path_buf(),
+            Box::new(FailingEmbedder { model: "old-model" }),
+        )
+        .await;
+        assert!(manager.sync_path(&note).await.is_err());
+        assert!(
+            chunks_for(&db_path, &path_str)
+                .await
+                .iter()
+                .all(|chunk| !chunk.text.contains("SECRETTOKEN"))
+        );
+    }
+
+    struct FirstEmbedGatesThenFails {
+        started: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+        seen: AtomicUsize,
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl EmbeddingProvider for FirstEmbedGatesThenFails {
+        async fn embed(&self, text: &str) -> Result<Vec<f32>> {
+            let call = self.seen.fetch_add(1, Ordering::SeqCst);
+            if call == 0 {
+                if let Some(started) = self.started.lock().await.take() {
+                    let _ = started.send(());
+                }
+                if let Some(release) = self.release.lock().await.take() {
+                    let _ = release.await;
+                }
+                return Ok(keyword_embedding(text));
+            }
+            Err(crate::error::Error::Embedding("sidecar failed".into()))
+        }
+
+        fn model_name(&self) -> &str {
+            self.name
+        }
+
+        fn dimensions(&self) -> usize {
+            8
+        }
+
+        fn provider_key(&self) -> &str {
+            self.name
+        }
+    }
+
+    #[tokio::test]
+    async fn overwrite_during_stale_model_sync_does_not_restore_old_text() {
+        let tmp = TempDir::new().unwrap();
+        let mem_dir = notes_dir(tmp.path());
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        let db_path = tmp.path().join("memory.db");
+        let note = mem_dir.join("note.md");
+        let path_str = note.to_string_lossy().into_owned();
+        std::fs::write(&note, "SECRETTOKEN original version.").unwrap();
+
+        {
+            let manager = file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(NamedEmbedder { name: "old-model" }),
+            )
+            .await;
+            assert_eq!(manager.sync().await.unwrap().files_updated, 1);
+        }
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let manager = Arc::new(
+            file_backed_manager(
+                &db_path,
+                tmp.path().to_path_buf(),
+                Box::new(FirstEmbedGatesThenFails {
+                    started: tokio::sync::Mutex::new(Some(started_tx)),
+                    release: tokio::sync::Mutex::new(Some(release_rx)),
+                    seen: AtomicUsize::new(0),
+                    name: "new-model",
+                }),
+            )
+            .await,
+        );
+        let sync_manager = Arc::clone(&manager);
+        let note_for_sync = note.clone();
+        let stale_sync = tokio::spawn(async move { sync_manager.sync_path(&note_for_sync).await });
+        started_rx.await.unwrap();
+        std::fs::write(&note, "replacement without secret.").unwrap();
+        assert!(manager.sync_path(&note).await.is_err());
+        release_tx.send(()).unwrap();
+        let _ = stale_sync.await.unwrap();
+        assert!(
+            chunks_for(&db_path, &path_str)
+                .await
+                .iter()
+                .all(|chunk| !chunk.text.contains("SECRETTOKEN"))
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_path_stores_absolutized_key_for_relative_data_dir() {
+        std::fs::create_dir_all("target").unwrap();
+        let tmp = TempDir::new_in("target").unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let abs_data = crate::allowlist::absolutize(tmp.path());
+        let rel_data = abs_data
+            .strip_prefix(&cwd)
+            .expect("temp data dir should be under the test cwd")
+            .to_path_buf();
+        assert!(!rel_data.is_absolute());
+
+        let db_path = tmp.path().join("memory.db");
+        let relative_file = rel_data.join("MEMORY.md");
+        std::fs::write(&relative_file, "relative data dir memory").unwrap();
+
+        let manager = file_backed_manager(
+            &db_path,
+            rel_data.clone(),
+            Box::new(NamedEmbedder { name: "mock-model" }),
+        )
+        .await;
+        manager.sync_path(&relative_file).await.unwrap();
+
+        let expected = crate::allowlist::absolutize(&relative_file)
+            .to_string_lossy()
+            .into_owned();
+        assert!(indexed_file(&db_path, &expected).await.is_some());
+        assert!(
+            indexed_file(&db_path, &relative_file.to_string_lossy())
+                .await
+                .is_none()
         );
     }
 }

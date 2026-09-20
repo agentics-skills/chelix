@@ -3,11 +3,44 @@ use super::*;
 #[cfg(feature = "voice")]
 use crate::methods::voice;
 
-#[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
+#[cfg(feature = "code-index-builtin")]
 use std::{path::PathBuf, sync::Arc};
 
-#[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
+#[cfg(feature = "code-index-builtin")]
 use tracing::info;
+
+/// Parameters accepted by `memory.config.update`.
+///
+/// Every field is optional: an absent field keeps the current configured
+/// value. Unknown fields reject the whole request.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryConfigUpdateParams {
+    #[serde(default)]
+    style: Option<String>,
+    #[serde(default)]
+    agent_write_mode: Option<String>,
+    #[serde(default)]
+    user_profile_write_mode: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    citations: Option<String>,
+    #[serde(default)]
+    llm_reranking: Option<bool>,
+    #[serde(default)]
+    search_merge_strategy: Option<String>,
+    #[serde(default)]
+    disable_rag: Option<bool>,
+    #[serde(default)]
+    prompt_memory_mode: Option<String>,
+    #[serde(default)]
+    enable_prefetch: Option<bool>,
+    #[serde(default)]
+    prefetch_limit: Option<u64>,
+    #[serde(default)]
+    enable_self_improvement: Option<bool>,
+}
 
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Update
@@ -166,7 +199,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         Box::new(|ctx| {
             Box::pin(async move {
                 // Check if code_index_enabled is transitioning from off → on
-                #[cfg(any(feature = "qmd", feature = "code-index-builtin"))]
+                #[cfg(feature = "code-index-builtin")]
                 {
                     let project_id = ctx
                         .params
@@ -771,7 +804,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     match mm.status().await {
                         Ok(status) => Ok(serde_json::json!({
                             "available": true,
-                            "backend": mm.backend_name(),
                             "total_files": status.total_files,
                             "total_chunks": status.total_chunks,
                             "db_size": status.db_size_bytes,
@@ -820,10 +852,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         chelix_config::UserProfileWriteMode::ExplicitOnly => "explicit-only",
                         chelix_config::UserProfileWriteMode::Off => "off",
                     },
-                    "backend": match memory.backend {
-                        chelix_config::MemoryBackend::Builtin => "builtin",
-                        chelix_config::MemoryBackend::Qmd => "qmd",
-                    },
                     "provider": match memory.provider {
                         Some(chelix_config::MemoryProvider::Local) => "local",
                         Some(chelix_config::MemoryProvider::OpenAi) => "openai",
@@ -841,19 +869,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         chelix_config::MemorySearchMergeStrategy::Rrf => "rrf",
                         chelix_config::MemorySearchMergeStrategy::Linear => "linear",
                     },
-                    "session_export": match memory.session_export {
-                        chelix_config::SessionExportMode::Off => "off",
-                        chelix_config::SessionExportMode::OnNewOrReset => "on-new-or-reset",
-                    },
                     "prompt_memory_mode": match chat.prompt_memory_mode {
                         chelix_config::PromptMemoryMode::LiveReload => "live-reload",
                         chelix_config::PromptMemoryMode::FrozenAtSessionStart => "frozen-at-session-start",
                     },
-                    "qmd_feature_enabled": cfg!(feature = "qmd"),
                     "enable_prefetch": memory.enable_prefetch,
                     "prefetch_limit": memory.prefetch_limit,
-                    "auto_extract_interval": memory.auto_extract_interval,
-                    "enable_session_summary": memory.enable_session_summary,
                     "enable_self_improvement": config.skills.enable_self_improvement,
                 }))
             })
@@ -864,79 +885,68 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         "memory.config.update",
         Box::new(|ctx| {
             Box::pin(async move {
+                let params: MemoryConfigUpdateParams = serde_json::from_value(ctx.params.clone())
+                    .map_err(|error| {
+                    ErrorShape::new(
+                        error_codes::INVALID_REQUEST,
+                        format!("invalid memory.config.update params: {error}"),
+                    )
+                })?;
                 let current_config =
                     chelix_config::discover_and_load().map_err(ServiceError::message)?;
                 let current_memory = current_config.memory;
                 let current_chat = current_config.chat;
-                let style = ctx.params.get("style").and_then(|v| v.as_str()).unwrap_or(
-                    match current_memory.style {
+                let style = params
+                    .style
+                    .as_deref()
+                    .unwrap_or(match current_memory.style {
                         chelix_config::MemoryStyle::Hybrid => "hybrid",
                         chelix_config::MemoryStyle::PromptOnly => "prompt-only",
                         chelix_config::MemoryStyle::SearchOnly => "search-only",
                         chelix_config::MemoryStyle::Off => "off",
-                    },
-                );
-                let backend = ctx
-                    .params
-                    .get("backend")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_memory.backend {
-                        chelix_config::MemoryBackend::Builtin => "builtin",
-                        chelix_config::MemoryBackend::Qmd => "qmd",
                     });
-                let agent_write_mode = ctx
-                    .params
-                    .get("agent_write_mode")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_memory.agent_write_mode {
+                let agent_write_mode = params.agent_write_mode.as_deref().unwrap_or(
+                    match current_memory.agent_write_mode {
                         chelix_config::AgentMemoryWriteMode::Hybrid => "hybrid",
                         chelix_config::AgentMemoryWriteMode::PromptOnly => "prompt-only",
                         chelix_config::AgentMemoryWriteMode::SearchOnly => "search-only",
                         chelix_config::AgentMemoryWriteMode::Off => "off",
-                    });
-                let user_profile_write_mode = ctx
-                    .params
-                    .get("user_profile_write_mode")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_memory.user_profile_write_mode {
+                    },
+                );
+                let user_profile_write_mode = params.user_profile_write_mode.as_deref().unwrap_or(
+                    match current_memory.user_profile_write_mode {
                         chelix_config::UserProfileWriteMode::ExplicitAndAuto => "explicit-and-auto",
                         chelix_config::UserProfileWriteMode::ExplicitOnly => "explicit-only",
                         chelix_config::UserProfileWriteMode::Off => "off",
-                    });
-                let citations = ctx
-                    .params
-                    .get("citations")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_memory.citations {
-                        chelix_config::MemoryCitationsMode::On => "on",
-                        chelix_config::MemoryCitationsMode::Off => "off",
-                        chelix_config::MemoryCitationsMode::Auto => "auto",
-                    });
-                let provider = ctx
-                    .params
-                    .get("provider")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_memory.provider {
-                        Some(chelix_config::MemoryProvider::Local) => "local",
-                        Some(chelix_config::MemoryProvider::OpenAi) => "openai",
-                        Some(chelix_config::MemoryProvider::Custom) => "custom",
-                        None => "auto",
-                    });
-                let llm_reranking = ctx
-                    .params
-                    .get("llm_reranking")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(current_memory.llm_reranking);
-                let search_merge_strategy = ctx
-                    .params
-                    .get("search_merge_strategy")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_memory.search_merge_strategy {
+                    },
+                );
+                let citations =
+                    params
+                        .citations
+                        .as_deref()
+                        .unwrap_or(match current_memory.citations {
+                            chelix_config::MemoryCitationsMode::On => "on",
+                            chelix_config::MemoryCitationsMode::Off => "off",
+                            chelix_config::MemoryCitationsMode::Auto => "auto",
+                        });
+                let provider =
+                    params
+                        .provider
+                        .as_deref()
+                        .unwrap_or(match current_memory.provider {
+                            Some(chelix_config::MemoryProvider::Local) => "local",
+                            Some(chelix_config::MemoryProvider::OpenAi) => "openai",
+                            Some(chelix_config::MemoryProvider::Custom) => "custom",
+                            None => "auto",
+                        });
+                let llm_reranking = params.llm_reranking.unwrap_or(current_memory.llm_reranking);
+                let search_merge_strategy = params.search_merge_strategy.as_deref().unwrap_or(
+                    match current_memory.search_merge_strategy {
                         chelix_config::MemorySearchMergeStrategy::Rrf => "rrf",
                         chelix_config::MemorySearchMergeStrategy::Linear => "linear",
-                    });
+                    },
+                );
                 let style_value = parse_memory_style(style)?;
-                let backend_value = parse_memory_backend(backend)?;
                 let agent_write_mode_value = parse_agent_memory_write_mode(agent_write_mode)?;
                 let user_profile_write_mode_value =
                     parse_user_profile_write_mode(user_profile_write_mode)?;
@@ -944,55 +954,31 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let provider_value = parse_memory_provider(provider)?;
                 let search_merge_strategy_value =
                     parse_memory_search_merge_strategy(search_merge_strategy)?;
-                let disable_rag = ctx.params.get("disable_rag").and_then(|v| v.as_bool());
-                let session_export = match ctx.params.get("session_export") {
-                    Some(value) => parse_session_export_mode(value)?,
-                    None => current_memory.session_export,
-                };
-                let prompt_memory_mode = ctx
-                    .params
-                    .get("prompt_memory_mode")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(match current_chat.prompt_memory_mode {
+                let disable_rag = params.disable_rag;
+                let prompt_memory_mode = params.prompt_memory_mode.as_deref().unwrap_or(
+                    match current_chat.prompt_memory_mode {
                         chelix_config::PromptMemoryMode::LiveReload => "live-reload",
                         chelix_config::PromptMemoryMode::FrozenAtSessionStart => {
                             "frozen-at-session-start"
                         },
-                    });
+                    },
+                );
                 let prompt_memory_mode_value = parse_prompt_memory_mode(prompt_memory_mode)?;
                 let mut effective_disable_rag = current_memory.disable_rag;
-                let enable_prefetch = ctx
-                    .params
-                    .get("enable_prefetch")
-                    .and_then(|v| v.as_bool())
+                let enable_prefetch = params
+                    .enable_prefetch
                     .unwrap_or(current_memory.enable_prefetch);
-                let prefetch_limit = ctx
-                    .params
-                    .get("prefetch_limit")
-                    .and_then(|v| v.as_u64())
+                let prefetch_limit = params
+                    .prefetch_limit
                     .map(|v| v as usize)
                     .unwrap_or(current_memory.prefetch_limit);
-                let auto_extract_interval = ctx
-                    .params
-                    .get("auto_extract_interval")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32)
-                    .unwrap_or(current_memory.auto_extract_interval);
-                let enable_session_summary = ctx
-                    .params
-                    .get("enable_session_summary")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(current_memory.enable_session_summary);
-                let enable_self_improvement = ctx
-                    .params
-                    .get("enable_self_improvement")
-                    .and_then(|v| v.as_bool())
+                let enable_self_improvement = params
+                    .enable_self_improvement
                     .unwrap_or(current_config.skills.enable_self_improvement);
-                if let Err(e) = chelix_config::update_config(|cfg| {
+                chelix_config::update_config(|cfg| {
                     cfg.memory.style = style_value;
                     cfg.memory.agent_write_mode = agent_write_mode_value;
                     cfg.memory.user_profile_write_mode = user_profile_write_mode_value;
-                    cfg.memory.backend = backend_value;
                     cfg.memory.provider = provider_value;
                     cfg.memory.citations = citations_value;
                     cfg.memory.llm_reranking = llm_reranking;
@@ -1000,88 +986,28 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     if let Some(value) = disable_rag {
                         cfg.memory.disable_rag = value;
                     }
-                    cfg.memory.session_export = session_export;
                     cfg.memory.enable_prefetch = enable_prefetch;
                     cfg.memory.prefetch_limit = prefetch_limit;
-                    cfg.memory.auto_extract_interval = auto_extract_interval;
-                    cfg.memory.enable_session_summary = enable_session_summary;
                     cfg.skills.enable_self_improvement = enable_self_improvement;
                     cfg.chat.prompt_memory_mode = prompt_memory_mode_value;
                     effective_disable_rag = cfg.memory.disable_rag;
-                }) {
-                    tracing::warn!(error = %e, "failed to persist memory config");
-                }
+                })
+                .map_err(ServiceError::message)?;
 
                 Ok(serde_json::json!({
                     "style": style,
                     "agent_write_mode": agent_write_mode,
                     "user_profile_write_mode": user_profile_write_mode,
-                    "backend": backend,
                     "provider": provider,
                     "citations": citations,
                     "disable_rag": effective_disable_rag,
                     "llm_reranking": llm_reranking,
                     "search_merge_strategy": search_merge_strategy,
-                    "session_export": match session_export {
-                        chelix_config::SessionExportMode::Off => "off",
-                        chelix_config::SessionExportMode::OnNewOrReset => "on-new-or-reset",
-                    },
                     "prompt_memory_mode": prompt_memory_mode,
                     "enable_prefetch": enable_prefetch,
                     "prefetch_limit": prefetch_limit,
-                    "auto_extract_interval": auto_extract_interval,
-                    "enable_session_summary": enable_session_summary,
                     "enable_self_improvement": enable_self_improvement,
                 }))
-            })
-        }),
-    );
-
-    // QMD status check
-    reg.register(
-        "memory.qmd.status",
-        Box::new(|_ctx| {
-            Box::pin(async move {
-                #[cfg(feature = "qmd")]
-                {
-                    use chelix_qmd::{QmdManager, QmdManagerConfig};
-
-                    let config =
-                        chelix_config::discover_and_load().map_err(ServiceError::message)?;
-                    let qmd_config = QmdManagerConfig {
-                        command: config
-                            .memory
-                            .qmd
-                            .command
-                            .clone()
-                            .unwrap_or_else(|| "qmd".into()),
-                        collections: std::collections::HashMap::new(),
-                        max_results: config.memory.qmd.max_results.unwrap_or(10),
-                        timeout_ms: config.memory.qmd.timeout_ms.unwrap_or(30_000),
-                        work_dir: chelix_config::data_dir(),
-                        index_name: "chelix-status".into(),
-                        env_overrides: std::collections::HashMap::new(),
-                    };
-
-                    let manager = QmdManager::new(qmd_config);
-                    let status = manager.status().await;
-
-                    Ok(serde_json::json!({
-                        "feature_enabled": true,
-                        "available": status.available,
-                        "version": status.version,
-                        "error": status.error,
-                    }))
-                }
-
-                #[cfg(not(feature = "qmd"))]
-                {
-                    Ok(serde_json::json!({
-                        "feature_enabled": false,
-                        "available": false,
-                        "error": "QMD feature not enabled. Rebuild with --features qmd",
-                    }))
-                }
             })
         }),
     );

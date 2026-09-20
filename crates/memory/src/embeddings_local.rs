@@ -1,4 +1,4 @@
-//! Managed client for the local GGUF embedding sidecar.
+//! Managed client for the local embedding sidecar.
 
 use std::{
     ffi::OsString,
@@ -12,8 +12,9 @@ use {
     anyhow::{Context, Result, bail},
     async_trait::async_trait,
     chelix_protocol::{
-        EMBEDDING_SERVICE_EMBED_PATH, EMBEDDING_SERVICE_PROTOCOL_VERSION, EmbeddingModelMetadata,
-        EmbeddingRequest, EmbeddingResponse, EmbeddingServiceError, EmbeddingServiceReady,
+        EMBEDDING_MAX_BODY_BYTES, EMBEDDING_PRIORITY_INDEX, EMBEDDING_SERVICE_EMBED_PATH,
+        EMBEDDING_SERVICE_PROTOCOL_VERSION, EmbeddingModelMetadata, EmbeddingRequest,
+        EmbeddingResponse, EmbeddingServiceError, EmbeddingServiceReady,
     },
     tokio::{
         io::{AsyncBufReadExt, BufReader},
@@ -24,8 +25,7 @@ use {
 
 use crate::embeddings::EmbeddingProvider;
 
-const DEFAULT_MODEL_FILENAME: &str = "embeddinggemma-300M-Q8_0.gguf";
-const DEFAULT_MODEL_URL: &str = "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf";
+const DEFAULT_MODEL_ID: &str = "google/embeddinggemma-300m";
 const SERVICE_BINARY_NAME: &str = "chelix-embedding-service";
 
 struct ManagedService {
@@ -52,25 +52,34 @@ impl Drop for ManagedService {
     }
 }
 
-pub struct LocalGgufEmbeddingProvider {
+pub struct LocalEmbeddingProvider {
     client: reqwest::Client,
     embed_url: String,
     model: EmbeddingModelMetadata,
     _service: Option<ManagedService>,
 }
 
-impl LocalGgufEmbeddingProvider {
-    /// Start the sidecar and load a GGUF model from a specific path.
-    pub async fn new(model_path: PathBuf) -> Result<Self> {
+impl LocalEmbeddingProvider {
+    /// Start the sidecar with a Hugging Face id or local snapshot directory.
+    pub async fn new(
+        model_spec: String,
+        cache_dir: PathBuf,
+        hf_token: Option<String>,
+    ) -> Result<Self> {
         let service_path = embedding_service_binary()?;
         let mut command = Command::new(&service_path);
         command
             .arg("--model")
-            .arg(&model_path)
+            .arg(&model_spec)
+            .arg("--cache-dir")
+            .arg(&cache_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
+        if let Some(token) = hf_token.filter(|token| !token.is_empty()) {
+            command.env("HF_TOKEN", token);
+        }
 
         let mut child = command.spawn().with_context(|| {
             format!(
@@ -118,7 +127,7 @@ impl LocalGgufEmbeddingProvider {
         info!(
             model = %provider.model.model_name,
             dimensions = provider.model.dimensions,
-            "started managed local GGUF embedding service"
+            "started managed local embedding service"
         );
         Ok(provider)
     }
@@ -141,60 +150,23 @@ impl LocalGgufEmbeddingProvider {
         })
     }
 
-    /// Resolve which GGUF file to load.
-    pub async fn resolve_model(cache_dir: PathBuf, model: Option<&str>) -> Result<PathBuf> {
+    /// Resolve a Hugging Face id or local snapshot directory for the sidecar.
+    pub fn resolve_model(cache_dir: PathBuf, model: Option<&str>) -> Result<String> {
+        let _ = cache_dir;
         if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
             let candidate = PathBuf::from(model);
+            if candidate.is_dir() {
+                info!(path = %candidate.display(), "using local embedding snapshot directory");
+                return Ok(candidate.to_string_lossy().into_owned());
+            }
             if candidate.is_file() {
-                info!(path = %candidate.display(), "using configured local embedding model");
-                return Ok(candidate);
+                bail!(
+                    "local embedding sidecar no longer loads GGUF files; pass a snapshot directory or Hugging Face model id"
+                );
             }
-            let in_cache = cache_dir.join(model);
-            if in_cache.is_file() {
-                info!(path = %in_cache.display(), "using configured local embedding model from cache");
-                return Ok(in_cache);
-            }
-            warn!(
-                model,
-                "configured local embedding model not found; falling back to default"
-            );
+            return Ok(model.to_string());
         }
-        Self::ensure_model(cache_dir).await
-    }
-
-    /// Ensure the default model exists in the cache directory, downloading if needed.
-    pub async fn ensure_model(cache_dir: PathBuf) -> Result<PathBuf> {
-        let model_path = cache_dir.join(DEFAULT_MODEL_FILENAME);
-        if model_path.exists() {
-            info!(path = %model_path.display(), "local embedding model found in cache");
-            return Ok(model_path);
-        }
-
-        tokio::fs::create_dir_all(&cache_dir)
-            .await
-            .context("creating model cache dir")?;
-        info!(url = DEFAULT_MODEL_URL, "downloading local embedding model");
-
-        let response = reqwest::get(DEFAULT_MODEL_URL)
-            .await
-            .context("downloading GGUF model")?
-            .error_for_status()
-            .context("GGUF model download failed")?;
-        let bytes = response.bytes().await.context("reading model bytes")?;
-        let tmp_path = model_path.with_extension("tmp");
-        tokio::fs::write(&tmp_path, &bytes)
-            .await
-            .context("writing model file")?;
-        tokio::fs::rename(&tmp_path, &model_path)
-            .await
-            .context("renaming model file")?;
-
-        info!(
-            path = %model_path.display(),
-            size_mb = bytes.len() / (1024 * 1024),
-            "local embedding model downloaded"
-        );
-        Ok(model_path)
+        Ok(DEFAULT_MODEL_ID.to_string())
     }
 
     /// Default cache directory: `~/.chelix/models/`.
@@ -258,13 +230,23 @@ fn service_binary_filename() -> OsString {
 }
 
 #[async_trait]
-impl EmbeddingProvider for LocalGgufEmbeddingProvider {
+impl EmbeddingProvider for LocalEmbeddingProvider {
     async fn embed(&self, text: &str) -> crate::error::Result<Vec<f32>> {
+        self.embed_with_priority(text, EMBEDDING_PRIORITY_INDEX)
+            .await
+    }
+
+    async fn embed_with_priority(
+        &self,
+        text: &str,
+        priority: u32,
+    ) -> crate::error::Result<Vec<f32>> {
         let response = self
             .client
             .post(&self.embed_url)
             .json(&EmbeddingRequest {
                 text: text.to_owned(),
+                priority,
             })
             .send()
             .await?;
@@ -301,23 +283,29 @@ impl EmbeddingProvider for LocalGgufEmbeddingProvider {
     fn provider_key(&self) -> &str {
         &self.model.provider_key
     }
+
+    fn max_embed_payload_bytes(&self) -> Option<usize> {
+        Some(EMBEDDING_MAX_BODY_BYTES)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use chelix_protocol::EMBEDDING_PRIORITY_SEARCH;
+
     use super::*;
 
     fn metadata() -> EmbeddingModelMetadata {
         EmbeddingModelMetadata {
             model_name: "test-model".into(),
             dimensions: 3,
-            provider_key: "local-gguf:test-model.gguf".into(),
+            provider_key: "local-mistral:q8:test-model:0123456789abcdef".into(),
         }
     }
 
     #[test]
     fn default_cache_dir_contains_models() {
-        let dir = LocalGgufEmbeddingProvider::default_cache_dir();
+        let dir = LocalEmbeddingProvider::default_cache_dir();
         assert!(dir.to_string_lossy().contains("models"));
     }
 
@@ -346,14 +334,18 @@ mod tests {
         let mock = server
             .mock("POST", EMBEDDING_SERVICE_EMBED_PATH)
             .match_body(mockito::Matcher::JsonString(
-                serde_json::json!({ "text": "hello" }).to_string(),
+                serde_json::json!({
+                    "text": "hello",
+                    "priority": EMBEDDING_PRIORITY_INDEX,
+                })
+                .to_string(),
             ))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(r#"{"embedding":[1.0,2.0,3.0]}"#)
             .create_async()
             .await;
-        let provider = LocalGgufEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
+        let provider = LocalEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
             .unwrap_or_else(|error| panic!("provider creation failed: {error}"));
 
         let embedding = provider
@@ -363,7 +355,10 @@ mod tests {
 
         assert_eq!(embedding, vec![1.0, 2.0, 3.0]);
         assert_eq!(provider.model_name(), "test-model");
-        assert_eq!(provider.provider_key(), "local-gguf:test-model.gguf");
+        assert_eq!(
+            provider.provider_key(),
+            "local-mistral:q8:test-model:0123456789abcdef"
+        );
         mock.assert_async().await;
     }
 
@@ -377,7 +372,7 @@ mod tests {
             .with_body(r#"{"embedding":[1.0]}"#)
             .create_async()
             .await;
-        let provider = LocalGgufEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
+        let provider = LocalEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
             .unwrap_or_else(|error| panic!("provider creation failed: {error}"));
 
         let result = provider.embed("hello").await;
@@ -388,5 +383,34 @@ mod tests {
                 .err()
                 .is_some_and(|error| error.to_string().contains("returned 1 dimensions"))
         );
+    }
+
+    #[tokio::test]
+    async fn embed_with_priority_sends_search_priority() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", EMBEDDING_SERVICE_EMBED_PATH)
+            .match_body(mockito::Matcher::JsonString(
+                serde_json::json!({
+                    "text": "hello",
+                    "priority": EMBEDDING_PRIORITY_SEARCH,
+                })
+                .to_string(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"embedding":[1.0,2.0,3.0]}"#)
+            .create_async()
+            .await;
+        let provider = LocalEmbeddingProvider::from_endpoint(server.url(), metadata(), None)
+            .unwrap_or_else(|error| panic!("provider creation failed: {error}"));
+
+        let embedding = provider
+            .embed_with_priority("hello", EMBEDDING_PRIORITY_SEARCH)
+            .await
+            .unwrap_or_else(|error| panic!("embedding failed: {error}"));
+
+        assert_eq!(embedding, vec![1.0, 2.0, 3.0]);
+        mock.assert_async().await;
     }
 }

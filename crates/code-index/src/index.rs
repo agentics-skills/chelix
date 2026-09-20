@@ -31,14 +31,9 @@ use crate::watcher::FileWatcher;
 // ---------------------------------------------------------------------------
 
 /// Active backend for the code index.
-#[allow(clippy::large_enum_variant)]
 enum Backend {
     /// No backend configured — search always returns empty.
     ConfigOnly,
-
-    /// QMD (external vector DB) backend.
-    #[cfg(feature = "qmd")]
-    Qmd(chelix_qmd::QmdManager),
 
     /// Built-in SQLite + FTS5 backend with optional embedding provider.
     #[cfg(feature = "builtin")]
@@ -58,9 +53,6 @@ pub struct CodeIndex {
     snapshot_store: SnapshotStore,
     backend: Backend,
 
-    /// Project ID → project directory mapping for search scoping.
-    project_dirs: std::sync::Mutex<std::collections::HashMap<String, std::path::PathBuf>>,
-
     /// Active file watchers, keyed by project ID.
     #[cfg(feature = "file-watcher")]
     watchers: std::sync::Mutex<Vec<FileWatcher>>,
@@ -70,25 +62,6 @@ impl CodeIndex {
     // -----------------------------------------------------------------------
     // Constructors
     // -----------------------------------------------------------------------
-
-    /// Create a new code index with QMD backend.
-    #[cfg(feature = "qmd")]
-    pub fn new(config: CodeIndexConfig, qmd: chelix_qmd::QmdManager) -> Self {
-        let snapshot_store = SnapshotStore::new(
-            config
-                .data_dir
-                .clone()
-                .unwrap_or_else(|| chelix_config::data_dir().join("code-index")),
-        );
-        Self {
-            config,
-            snapshot_store,
-            backend: Backend::Qmd(qmd),
-            project_dirs: std::sync::Mutex::new(std::collections::HashMap::new()),
-            #[cfg(feature = "file-watcher")]
-            watchers: std::sync::Mutex::new(Vec::new()),
-        }
-    }
 
     /// Create a new code index with builtin backend.
     #[cfg(feature = "builtin")]
@@ -107,7 +80,6 @@ impl CodeIndex {
             config,
             snapshot_store,
             backend: Backend::Builtin { store, embedder },
-            project_dirs: std::sync::Mutex::new(std::collections::HashMap::new()),
             #[cfg(feature = "file-watcher")]
             watchers: std::sync::Mutex::new(Vec::new()),
         }
@@ -125,7 +97,6 @@ impl CodeIndex {
             config,
             snapshot_store,
             backend: Backend::ConfigOnly,
-            project_dirs: std::sync::Mutex::new(std::collections::HashMap::new()),
             #[cfg(feature = "file-watcher")]
             watchers: std::sync::Mutex::new(Vec::new()),
         }
@@ -158,12 +129,6 @@ impl CodeIndex {
         force: bool,
         project_dir: &Path,
     ) -> Result<IndexStatus> {
-        // Remember the project directory for search scoping.
-        self.project_dirs
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(project_id.to_string(), project_dir.to_path_buf());
-
         // Discover + filter are blocking filesystem I/O — offload to blocking
         // thread when a tokio runtime is available (builtin / file-watcher).
         #[cfg(any(feature = "builtin", feature = "file-watcher"))]
@@ -187,9 +152,9 @@ impl CodeIndex {
             let filtered = filter_tracked_files(project_dir, &tracked, &self.config)?;
             (tracked, filtered)
         };
-        #[cfg(not(any(feature = "builtin", feature = "qmd")))]
+        #[cfg(not(feature = "builtin"))]
         let _filtered = filtered;
-        #[cfg(not(any(feature = "builtin", feature = "qmd")))]
+        #[cfg(not(feature = "builtin"))]
         let _force = force;
 
         match &self.backend {
@@ -197,23 +162,6 @@ impl CodeIndex {
                 project_id: project_id.to_string(),
                 message: "no backend configured".to_string(),
             }),
-
-            #[cfg(feature = "qmd")]
-            Backend::Qmd(qmd) => {
-                qmd.ensure_collections()
-                    .await
-                    .map_err(|e| Error::IndexFailed {
-                        project_id: project_id.to_string(),
-                        message: format!("QMD ensure_collections error: {e}"),
-                    })?;
-                qmd.refresh_index(true)
-                    .await
-                    .map_err(|e| Error::IndexFailed {
-                        project_id: project_id.to_string(),
-                        message: format!("QMD refresh_index error: {e}"),
-                    })?;
-                self.status(project_id).await
-            },
 
             #[cfg(feature = "builtin")]
             Backend::Builtin { store, embedder } => {
@@ -255,41 +203,6 @@ impl CodeIndex {
                 "no backend configured".to_string(),
             )),
 
-            #[cfg(feature = "qmd")]
-            Backend::Qmd(qmd) => {
-                // Request extra results to compensate for cross-project filtering.
-                let fetch_limit = limit * 3;
-                let results = qmd
-                    .hybrid_search(query, fetch_limit, true)
-                    .await
-                    .map_err(|e| Error::SearchFailed {
-                        project_id: project_id.to_string(),
-                        message: format!("QMD search error: {e}"),
-                    })?;
-                let mapped = crate::search::from_qmd_results(&results, project_id);
-
-                // Filter results to only include files belonging to this project.
-                let project_dir = self
-                    .project_dirs
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .get(project_id)
-                    .cloned();
-                let scoped: Vec<SearchResult> = if let Some(ref dir) = project_dir {
-                    mapped
-                        .into_iter()
-                        .filter(|r| {
-                            r.path.starts_with(dir.to_string_lossy().as_ref())
-                                || Path::new(&r.path).starts_with(dir)
-                        })
-                        .take(limit)
-                        .collect()
-                } else {
-                    mapped.into_iter().take(limit).collect()
-                };
-                Ok(scoped)
-            },
-
             #[cfg(feature = "builtin")]
             Backend::Builtin { store, embedder } => {
                 self.search_builtin(
@@ -311,20 +224,6 @@ impl CodeIndex {
             Backend::ConfigOnly => Err(Error::BackendUnavailable(
                 "no backend configured".to_string(),
             )),
-
-            #[cfg(feature = "qmd")]
-            Backend::Qmd(qmd) => {
-                let qmd_status = qmd.status().await;
-                let total_files: usize = qmd_status.indexed_files.values().sum();
-                Ok(IndexStatus {
-                    project_id: project_id.to_string(),
-                    total_files,
-                    total_chunks: total_files, // QMD doesn't expose chunk count
-                    last_sync_ms: None,
-                    embedding_model: None,
-                    backend: "qmd".to_string(),
-                })
-            },
 
             #[cfg(feature = "builtin")]
             Backend::Builtin { store, embedder } => {

@@ -37,7 +37,6 @@ chelix-projects         = { workspace = true }
 chelix-protocol         = { workspace = true }
 chelix-provider-setup   = { workspace = true }
 chelix-providers        = { workspace = true }
-chelix-qmd              = { optional = true, workspace = true }
 chelix-secret-store     = { workspace = true }
 chelix-service-traits   = { workspace = true }
 chelix-sessions         = { workspace = true }
@@ -108,7 +107,6 @@ default = [
   "metrics",
   "prometheus",
   "push-notifications",
-  "qmd",
   "signal",
   "telegram",
   "telephony",
@@ -144,7 +142,6 @@ metrics = [
 ]
 prometheus = ["chelix-metrics/prometheus", "metrics"]
 push-notifications = ["chelix-chat/push-notifications", "dep:chrono", "dep:p256", "dep:web-push"]
-qmd = ["chelix-code-index/qmd", "dep:chelix-qmd"]
 signal = ["dep:chelix-signal"]
 telegram = ["chelix-chat/telegram", "dep:chelix-telegram"]
 telephony = ["dep:chelix-telephony"]
