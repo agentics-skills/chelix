@@ -584,7 +584,6 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `citations`               | enum (`on`, `off`, `auto`)                           | `"auto"`              | Citation mode for memory search results.                        |
 | `llm_reranking`           | bool                                                 | `false`               | Enable LLM reranking for hybrid search results.                 |
 | `search_merge_strategy`   | enum (`rrf`, `linear`)                               | `"rrf"`               | Merge strategy for hybrid search results.                       |
-| `session_export`          | enum (`off`, `on-new-or-reset`)                      | `"on-new-or-reset"`   | How session transcripts are exported into searchable memory.    |
 
 ---
 

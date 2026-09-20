@@ -5,7 +5,7 @@ use {async_trait::async_trait, chelix_agents::tool_registry::AgentTool, serde_js
 
 use crate::{
     runtime::MemoryRuntime,
-    writer::{ensure_memory_target_not_symlink, remove_exact_text, validate_memory_path},
+    writer::{remove_exact_text, validate_memory_path},
 };
 
 /// Tool: search memory with a natural language query.
@@ -26,7 +26,7 @@ impl AgentTool for MemorySearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search agent memory using hybrid vector + keyword search. Returns relevant chunks from daily logs and long-term memory files."
+        "Search agent memory using hybrid vector + keyword search. Returns relevant chunks from long-term memory files."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -160,7 +160,7 @@ impl AgentTool for MemorySaveTool {
     }
 
     fn description(&self) -> &str {
-        "Save content to long-term memory. Writes to MEMORY.md or memory/<name>.md. Content persists across sessions and is searchable via memory_search."
+        "Save content to long-term memory. Writes to MEMORY.md. Content persists across sessions and is searchable via memory_search."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -173,7 +173,7 @@ impl AgentTool for MemorySaveTool {
                 },
                 "file": {
                     "type": "string",
-                    "description": "Target file: MEMORY.md, memory.md, or memory/<name>.md",
+                    "description": "Target file: MEMORY.md",
                     "default": "MEMORY.md"
                 },
                 "append": {
@@ -230,7 +230,7 @@ impl AgentTool for MemoryDeleteTool {
             "properties": {
                 "file": {
                     "type": "string",
-                    "description": "Target file: MEMORY.md, memory.md, or memory/<name>.md"
+                    "description": "Target file: MEMORY.md"
                 },
                 "text": {
                     "type": "string",
@@ -270,7 +270,6 @@ impl AgentTool for MemoryDeleteTool {
         }
 
         let path = resolve_memory_tool_path(self.manager.as_ref(), file)?;
-        ensure_memory_target_not_symlink(&path).await?;
 
         if delete_file {
             let file_existed = tokio::fs::try_exists(&path).await?;
@@ -371,21 +370,18 @@ mod tests {
 
     /// Set up a memory manager in a temporary directory.
     ///
-    /// Returns the Arc'd manager, the TempDir handle, and the data_dir path
-    /// (which is `tmp.path()` — the root for MEMORY.md and memory/).
+    /// Returns the Arc'd manager and the TempDir handle (`tmp.path()` is data_dir).
     async fn setup_manager() -> (Arc<MemoryManager>, TempDir) {
         let tmp = TempDir::new().unwrap();
         let data_dir = tmp.path().to_path_buf();
-        let mem_dir = data_dir.join("memory");
-        std::fs::create_dir_all(&mem_dir).unwrap();
 
         let pool = SqlitePool::connect(":memory:").await.unwrap();
         run_migrations(&pool).await.unwrap();
 
         let config = MemoryConfig {
             db_path: ":memory:".into(),
-            data_dir: Some(data_dir),
-            memory_dirs: vec![tmp.path().join("MEMORY.md"), mem_dir],
+            data_dir: Some(data_dir.clone()),
+            memory_dirs: vec![data_dir.join("MEMORY.md"), data_dir.join("agents")],
             chunk_size: 50,
             chunk_overlap: 10,
             vector_weight: 0.7,
@@ -436,10 +432,9 @@ mod tests {
     #[tokio::test]
     async fn test_memory_search_tool_execute() {
         let (manager, tmp) = setup_manager().await;
-        let mem_dir = tmp.path().join("memory");
 
         std::fs::write(
-            mem_dir.join("note.md"),
+            tmp.path().join("MEMORY.md"),
             "Rust is a systems programming language with great memory safety.",
         )
         .unwrap();
@@ -485,9 +480,8 @@ mod tests {
     #[tokio::test]
     async fn test_memory_get_tool_execute() {
         let (manager, tmp) = setup_manager().await;
-        let mem_dir = tmp.path().join("memory");
 
-        std::fs::write(mem_dir.join("data.md"), "Some database content here.").unwrap();
+        std::fs::write(tmp.path().join("MEMORY.md"), "Some database content here.").unwrap();
         manager.sync().await.unwrap();
 
         // First search to find a chunk_id
@@ -544,10 +538,9 @@ mod tests {
     #[tokio::test]
     async fn test_tools_round_trip() {
         let (manager, tmp) = setup_manager().await;
-        let mem_dir = tmp.path().join("memory");
 
         let original_text = "Cooking pasta with fresh herbs and olive oil is a delight.";
-        std::fs::write(mem_dir.join("recipe.md"), original_text).unwrap();
+        std::fs::write(tmp.path().join("MEMORY.md"), original_text).unwrap();
         manager.sync().await.unwrap();
 
         let search_tool = MemorySearchTool::new(manager.clone());
@@ -667,49 +660,6 @@ mod tests {
         assert!(content.contains("Replaced"), "overwrite should have new");
     }
 
-    /// Custom file under memory/ subdirectory.
-    #[tokio::test]
-    async fn test_memory_save_custom_file() {
-        let (manager, tmp) = setup_manager().await;
-        let data_dir = tmp.path().to_path_buf();
-        let tool = MemorySaveTool::new(manager.clone());
-
-        let result = tool
-            .execute(json!({
-                "content": "Notes from 2024-01-15 about cooking.",
-                "file": "memory/2024-01-15.md"
-            }))
-            .await
-            .unwrap();
-
-        assert_eq!(result["saved"], json!(true));
-        assert_eq!(result["path"], json!("memory/2024-01-15.md"));
-
-        let content =
-            std::fs::read_to_string(data_dir.join("memory").join("2024-01-15.md")).unwrap();
-        assert!(content.contains("Notes from 2024-01-15"));
-    }
-
-    /// Auto-creates memory/ directory if it doesn't exist.
-    #[tokio::test]
-    async fn test_memory_save_creates_memory_dir() {
-        let (manager, tmp) = setup_manager().await;
-        let data_dir = tmp.path().to_path_buf();
-        // Remove the memory dir that setup_manager created
-        std::fs::remove_dir_all(data_dir.join("memory")).unwrap();
-        assert!(!data_dir.join("memory").exists());
-
-        let tool = MemorySaveTool::new(manager.clone());
-        tool.execute(json!({
-            "content": "Content for new dir.",
-            "file": "memory/notes.md"
-        }))
-        .await
-        .unwrap();
-
-        assert!(data_dir.join("memory").join("notes.md").exists());
-    }
-
     /// Re-indexes after write so content is immediately searchable.
     #[tokio::test]
     async fn test_memory_save_reindexes() {
@@ -720,7 +670,7 @@ mod tests {
         save_tool
             .execute(json!({
                 "content": "The cooking recipe uses garlic and olive oil.",
-                "file": "memory/recipe.md"
+                "file": "MEMORY.md"
             }))
             .await
             .unwrap();
@@ -766,35 +716,6 @@ mod tests {
             .execute(json!({ "content": "test", "file": "/etc/passwd" }))
             .await;
         assert!(result.is_err(), "should reject absolute paths");
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn test_memory_mutations_reject_symlink_target() {
-        use std::os::unix::fs::symlink;
-
-        let (manager, tmp) = setup_manager().await;
-        let outside = tempfile::tempdir().unwrap();
-        let outside_file = outside.path().join("memory.md");
-        std::fs::write(&outside_file, "outside content\n").unwrap();
-        let memory_path = tmp.path().join("MEMORY.md");
-        symlink(&outside_file, &memory_path).unwrap();
-
-        let save_tool = MemorySaveTool::new(manager.clone());
-        let save_result = save_tool
-            .execute(json!({ "content": "replacement", "append": false }))
-            .await;
-        assert!(save_result.is_err());
-
-        let delete_tool = MemoryDeleteTool::new(manager);
-        let delete_result = delete_tool
-            .execute(json!({ "file": "MEMORY.md", "delete_file": true }))
-            .await;
-        assert!(delete_result.is_err());
-        assert_eq!(
-            std::fs::read_to_string(outside_file).unwrap(),
-            "outside content\n"
-        );
     }
 
     /// Invalid file names are rejected.
@@ -856,7 +777,7 @@ mod tests {
 
         let text = "Music from the jazz era is deeply expressive and soulful.";
         save_tool
-            .execute(json!({ "content": text, "file": "memory/jazz.md" }))
+            .execute(json!({ "content": text, "file": "MEMORY.md" }))
             .await
             .unwrap();
 
@@ -928,13 +849,13 @@ mod tests {
     async fn test_memory_delete_deletes_file_when_requested() {
         let (manager, tmp) = setup_manager().await;
         let data_dir = tmp.path().to_path_buf();
-        std::fs::write(data_dir.join("memory").join("notes.md"), "temporary note").unwrap();
+        std::fs::write(data_dir.join("MEMORY.md"), "temporary note").unwrap();
         manager.sync().await.unwrap();
 
         let delete_tool = MemoryDeleteTool::new(manager.clone());
         let result = delete_tool
             .execute(json!({
-                "file": "memory/notes.md",
+                "file": "MEMORY.md",
                 "delete_file": true,
             }))
             .await
@@ -942,7 +863,7 @@ mod tests {
 
         assert_eq!(result["deleted"], json!(true));
         assert_eq!(result["file_deleted"], json!(true));
-        assert!(!data_dir.join("memory").join("notes.md").exists());
+        assert!(!data_dir.join("MEMORY.md").exists());
         let search = manager.search("temporary note", 5).await.unwrap();
         assert!(
             search.is_empty(),

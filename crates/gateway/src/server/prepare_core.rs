@@ -1020,7 +1020,7 @@ pub async fn prepare_gateway_core(
     super::hooks::seed_example_hook();
     let persisted_disabled = crate::methods::load_disabled_hooks();
     let (hook_registry, discovered_hooks_info) =
-        crate::server::discover_and_build_hooks(&persisted_disabled, Some(&session_store)).await?;
+        crate::server::discover_and_build_hooks(&persisted_disabled).await?;
 
     // ── Memory system initialization ─────────────────────────────────────
     let memory_manager = init_memory::init_memory_system(
@@ -1050,9 +1050,6 @@ pub async fn prepare_gateway_core(
         .with_queued_prompts(Arc::clone(&queued_prompts))
         .with_browser_service(Arc::clone(&services.browser))
         .with_session_mutations(Arc::clone(&session_mutations));
-        if let Some(ref manager) = memory_manager {
-            session_svc = session_svc.with_memory_manager(Arc::clone(manager));
-        }
         if let Some(ref hooks) = hook_registry {
             session_svc = session_svc.with_hooks(Arc::clone(hooks));
         }

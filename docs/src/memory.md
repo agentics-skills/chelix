@@ -53,18 +53,6 @@ Source: memory/notes.md#42
 - `on`: Always include citations
 - `off`: Never include citations
 
-### Session Export
-
-Session transcripts can be exported into searchable memory on `/new` and
-`/reset`. This allows the agent to remember past conversations even after
-restarts.
-
-Exported sessions are:
-
-- Stored in `memory/sessions/` as markdown files
-- Sanitized to remove sensitive tool results and system messages
-- Automatically cleaned up based on age/count limits
-
 ### LLM Reranking
 
 LLM reranking uses the configured language model to re-score and reorder search
@@ -110,9 +98,6 @@ llm_reranking = false
 
 # Merge vector and keyword results with "rrf" or "linear"
 search_merge_strategy = "rrf"
-
-# Export sessions to memory for cross-run recall: "on-new-or-reset" or "off"
-session_export = "on-new-or-reset"
 ```
 
 Real defaults, if you leave the fields unset:
@@ -125,8 +110,7 @@ Real defaults, if you leave the fields unset:
 - `citations = "auto"`
 - `llm_reranking = false`
 - `search_merge_strategy = "rrf"`
-- `session_export = "on-new-or-reset"`
-- `[chat].prompt_memory_mode = "live-reload"`
+- `[chat].prompt_memory_mode = "live-reload"
 
 `style` is separate from `[chat].prompt_memory_mode`. Style controls whether
 `MEMORY.md` is injected and whether memory tools are exposed. Prompt memory mode
@@ -166,8 +150,6 @@ Interaction rules that matter in practice:
   memory, `hybrid` or `prompt-only`.
 - `llm_reranking` is only meaningful when RAG is enabled. If
   `disable_rag = true`, memory falls back to keyword search.
-- `session_export` exports transcripts into searchable memory files. It does not
-  inject those transcripts into the prompt directly.
 
 Or via the web UI: **Settings > Memory**
 
@@ -230,9 +212,9 @@ Place `chelix-embedding-service` next to `chelix`. For custom layouts, set
 
 By default, chelix indexes markdown files from:
 
-- `~/.chelix/MEMORY.md` - Main long-term memory file
-- `~/.chelix/memory/*.md` - Additional memory files
-- `~/.chelix/memory/sessions/*.md` - Exported session transcripts
+- `MEMORY.md` under `data_dir`
+- `agents/<id>/MEMORY.md`
+- `agents/<id>/memory/*.md`
 
 Prompt injection from `MEMORY.md` is controlled separately via
 `[chat].prompt_memory_mode`. Use `live-reload` to reread `MEMORY.md` before each
@@ -292,7 +274,7 @@ path even when memory files are visible through a read-only sandbox mount.
 | Parameter | Type    | Default      | Description                                                  |
 | --------- | ------- | ------------ | ------------------------------------------------------------ |
 | `content` | string  | _(required)_ | The content to save                                          |
-| `file`    | string  | `MEMORY.md`  | Target file: `MEMORY.md`, `memory.md`, or `memory/<name>.md` |
+| `file`    | string  | `MEMORY.md`  | Target file: `MEMORY.md` or `memory/<name>.md`               |
 | `append`  | boolean | `true`       | Append to existing file (`true`) or overwrite (`false`)      |
 
 If `memory.agent_write_mode = "search-only"` and `file` is omitted,
@@ -302,8 +284,8 @@ targets that are otherwise valid paths.
 **Path validation:** The tool enforces a strict allowlist of write targets to
 prevent path traversal attacks. Only these patterns are accepted:
 
-- `MEMORY.md` or `memory.md` (root memory files)
-- `memory/<name>.md` (files in the memory subdirectory, one level deep)
+- `MEMORY.md` (root or agent prompt memory)
+- `memory/<name>.md` (agent notes, one level deep)
 
 Absolute paths, `..` traversal, non-`.md` extensions, spaces in filenames, and
 nested subdirectories (`memory/a/b.md`) are all rejected. Content is limited to
@@ -368,7 +350,7 @@ To delete an entire memory note instead:
 
 | Parameter         | Type    | Default      | Description                                                        |
 | ----------------- | ------- | ------------ | ------------------------------------------------------------------ |
-| `file`            | string  | _(required)_ | Target file: `MEMORY.md`, `memory.md`, or `memory/<name>.md`       |
+| `file`            | string  | _(required)_ | Target file: `MEMORY.md` or `memory/<name>.md`                     |
 | `text`            | string  | _(none)_     | Exact text snippet to remove. Required unless `delete_file = true` |
 | `delete_file`     | boolean | `false`      | Delete the whole file instead of removing exact text               |
 | `all_matches`     | boolean | `false`      | Remove every exact match of `text` instead of only the first       |
@@ -389,17 +371,17 @@ is removed. It is the low-level exact-delete primitive that powers
 │               (implements MemoryWriter trait)                     │
 ├──────────────────────────────────────────────────────────────────┤
 │                         Read Path                                │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐      │
-│  │   Chunker   │  │   Search    │  │  Session Export     │      │
-│  │ (markdown)  │  │  (hybrid)   │  │  (transcripts)      │      │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘      │
+│  ┌─────────────┐  ┌─────────────┐                                │
+│  │   Chunker   │  │   Search    │                                │
+│  │ (markdown)  │  │  (hybrid)   │                                │
+│  └─────────────┘  └─────────────┘                                │
 ├──────────────────────────────────────────────────────────────────┤
 │                        Write Path                                │
-│  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────┐  │
-│  │ memory_save /   │  │  Silent Turn     │  │  Path          │  │
-│  │ memory_delete   │  │  (pre-compact)   │  │  Validation    │  │
-│  │  (agent tools)  │  │                  │  │                │  │
-│  └─────────────────┘  └──────────────────┘  └────────────────┘  │
+│  ┌─────────────────┐  ┌────────────────┐                         │
+│  │ memory_save /   │  │  Path          │                         │
+│  │ memory_delete   │  │  Validation    │                         │
+│  │  (agent tools)  │  │                │                         │
+│  └─────────────────┘  └────────────────┘                         │
 ├──────────────────────────────────────────────────────────────────┤
 │                      Storage Backend                             │
 │  ┌────────────────────────┐                                       │

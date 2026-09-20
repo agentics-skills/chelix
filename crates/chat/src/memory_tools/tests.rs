@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::{
+    path::{Path, PathBuf},
     pin::Pin,
     sync::{Arc, Mutex},
 };
@@ -360,17 +361,30 @@ impl AgentTool for NamedTool {
     }
 }
 
-async fn setup_agent_memory(
+fn relative_temp_data_dir() -> (TempDir, PathBuf) {
+    std::fs::create_dir_all("target").unwrap();
+    let tmp = TempDir::new_in("target").unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    let abs = chelix_memory::allowlist::absolutize(tmp.path());
+    let rel = abs
+        .strip_prefix(&cwd)
+        .expect("temp data dir should be under the test cwd")
+        .to_path_buf();
+    assert!(
+        !rel.is_absolute(),
+        "test data_dir should be relative, got {}",
+        rel.display()
+    );
+    (tmp, rel)
+}
+
+async fn setup_agent_memory_in(
+    data_dir: PathBuf,
     agent_id: &str,
     content: &str,
     chunk_size: usize,
-) -> (
-    chelix_memory::runtime::DynMemoryRuntime,
-    TempDir,
-    std::path::PathBuf,
-) {
-    let tmp = TempDir::new().unwrap();
-    chelix_config::set_data_dir(tmp.path().to_path_buf());
+) -> (chelix_memory::runtime::DynMemoryRuntime, PathBuf) {
+    chelix_config::set_data_dir(data_dir.clone());
 
     let workspace = chelix_config::agent_workspace_dir(agent_id);
     std::fs::create_dir_all(workspace.join("memory")).unwrap();
@@ -381,7 +395,7 @@ async fn setup_agent_memory(
     run_migrations(&pool).await.unwrap();
     let config = MemoryConfig {
         db_path: ":memory:".into(),
-        data_dir: Some(tmp.path().to_path_buf()),
+        data_dir: Some(data_dir),
         memory_dirs: vec![workspace.join("MEMORY.md"), workspace.join("memory")],
         chunk_size,
         chunk_overlap: 0,
@@ -396,6 +410,17 @@ async fn setup_agent_memory(
         Box::new(MockEmbedder),
     ));
     manager.sync().await.unwrap();
+    (manager, memory_path)
+}
+
+async fn setup_agent_memory(
+    agent_id: &str,
+    content: &str,
+    chunk_size: usize,
+) -> (chelix_memory::runtime::DynMemoryRuntime, TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let (manager, memory_path) =
+        setup_agent_memory_in(tmp.path().to_path_buf(), agent_id, content, chunk_size).await;
     (manager, tmp, memory_path)
 }
 
@@ -558,6 +583,86 @@ async fn memory_forget_deletes_selected_scoped_chunk() {
     assert!(updated.contains("spicy food"));
 }
 
+#[test]
+fn memory_file_label_from_root_maps_absolute_path_with_relative_root() {
+    let root = Path::new("data/agents/writer");
+    let path = chelix_memory::allowlist::absolutize(&root.join("MEMORY.md"));
+    assert_eq!(
+        memory_file_label_from_root(root, &path).as_deref(),
+        Some("MEMORY.md")
+    );
+    let note = chelix_memory::allowlist::absolutize(&root.join("memory").join("notes.md"));
+    assert_eq!(
+        memory_file_label_from_root(root, &note).as_deref(),
+        Some("memory/notes.md")
+    );
+}
+
+#[tokio::test]
+async fn agent_memory_scope_matches_absolute_path_when_data_dir_is_relative() {
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
+    let _guard = DataDirGuard;
+    chelix_config::set_data_dir(PathBuf::from("data"));
+    let abs = chelix_memory::allowlist::absolutize(Path::new("data/agents/writer/MEMORY.md"));
+    assert!(is_path_in_agent_memory_scope(&abs, "writer"));
+    let note =
+        chelix_memory::allowlist::absolutize(Path::new("data/agents/writer/memory/notes.md"));
+    assert!(is_path_in_agent_memory_scope(&note, "writer"));
+}
+
+#[tokio::test]
+async fn memory_forget_deletes_selected_chunk_when_data_dir_is_relative() {
+    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
+    let _guard = DataDirGuard;
+    let (_tmp, rel_data) = relative_temp_data_dir();
+    let (manager, memory_path) = setup_agent_memory_in(
+        rel_data,
+        "writer",
+        "Color preference dark mode\nFood preference spicy food\n",
+        4,
+    )
+    .await;
+    let (provider_resolver, _providers, _metadata) =
+        setup_memory_forget_provider_resolver(Arc::new(ForgetPlannerProvider {
+            needle: "dark mode".to_string(),
+        }))
+        .await;
+
+    let mut registry = ToolRegistry::new();
+    registry.register(Box::new(NamedTool("memory_forget")));
+    install_agent_scoped_memory_tools(
+        &mut registry,
+        &manager,
+        provider_resolver,
+        "writer",
+        MemoryStyle::Hybrid,
+        AgentMemoryWriteMode::Hybrid,
+    );
+
+    let tool = registry.get("memory_forget").unwrap();
+    let context = memory_forget_context();
+    let result = tool
+        .execute_with_context(
+            json!({ "request": "forget that I prefer dark mode" }),
+            &context,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result["deleted"], json!(true));
+    assert_eq!(result["needs_confirmation"], json!(false));
+    assert_eq!(
+        result["planned_matches"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let updated = std::fs::read_to_string(memory_path).unwrap();
+    assert!(!updated.contains("dark mode"));
+    assert!(updated.contains("spicy food"));
+}
+
 #[tokio::test]
 async fn memory_forget_refuses_ambiguous_exact_text() {
     let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
@@ -601,34 +706,6 @@ async fn memory_forget_refuses_ambiguous_exact_text() {
 
     let updated = std::fs::read_to_string(memory_path).unwrap();
     assert_eq!(updated, "duplicate memory line\nduplicate memory line\n");
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn agent_scoped_memory_mutations_reject_symlink_target() {
-    use {chelix_agents::memory_writer::MemoryWriter, std::os::unix::fs::symlink};
-
-    let _lock = crate::DATA_DIR_TEST_LOCK.lock().await;
-    let _guard = DataDirGuard;
-    let (manager, _tmp, memory_path) = setup_agent_memory("writer", "original memory\n", 4).await;
-    std::fs::remove_file(&memory_path).unwrap();
-    let outside = tempfile::tempdir().unwrap();
-    let outside_file = outside.path().join("memory.md");
-    std::fs::write(&outside_file, "outside content\n").unwrap();
-    symlink(&outside_file, &memory_path).unwrap();
-
-    let writer =
-        AgentScopedMemoryWriter::new(manager, "writer".to_string(), AgentMemoryWriteMode::Hybrid);
-    let write_result = writer.write_memory("MEMORY.md", "replacement", false).await;
-    assert!(write_result.is_err());
-    let delete_result = writer
-        .delete_memory("MEMORY.md", None, true, false, true)
-        .await;
-    assert!(delete_result.is_err());
-    assert_eq!(
-        std::fs::read_to_string(outside_file).unwrap(),
-        "outside content\n"
-    );
 }
 
 #[test]

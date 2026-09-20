@@ -422,12 +422,6 @@ fn memory_config_default_search_merge_strategy_is_rrf() {
 }
 
 #[test]
-fn memory_config_default_session_export_mode_is_on_new_or_reset() {
-    let cfg = MemoryEmbeddingConfig::default();
-    assert_eq!(cfg.session_export, SessionExportMode::OnNewOrReset);
-}
-
-#[test]
 fn memory_config_toml_parses_style() {
     let cfg: MemoryEmbeddingConfig = toml::from_str("style = \"search-only\"").unwrap();
     assert_eq!(cfg.style, MemoryStyle::SearchOnly);
@@ -465,21 +459,6 @@ fn memory_config_toml_parses_citations() {
 fn memory_config_toml_parses_search_merge_strategy() {
     let cfg: MemoryEmbeddingConfig = toml::from_str("search_merge_strategy = \"linear\"").unwrap();
     assert_eq!(cfg.search_merge_strategy, MemorySearchMergeStrategy::Linear);
-}
-
-#[test]
-fn memory_config_toml_parses_session_export_mode() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("session_export = \"off\"").unwrap();
-    assert_eq!(cfg.session_export, SessionExportMode::Off);
-}
-
-#[test]
-fn memory_config_toml_accepts_legacy_bool_session_export() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("session_export = false").unwrap();
-    assert_eq!(cfg.session_export, SessionExportMode::Off);
-
-    let cfg: MemoryEmbeddingConfig = toml::from_str("session_export = true").unwrap();
-    assert_eq!(cfg.session_export, SessionExportMode::OnNewOrReset);
 }
 
 #[test]

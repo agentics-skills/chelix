@@ -2031,7 +2031,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "walkdir",
 ]
 
 [[package]]
@@ -2096,7 +2095,6 @@ dependencies = [
  "chelix-common",
  "chelix-config",
  "chelix-metrics",
- "chelix-sessions",
  "serde",
  "serde_json",
  "tempfile",

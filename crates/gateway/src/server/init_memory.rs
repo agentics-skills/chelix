@@ -217,17 +217,8 @@ async fn build_memory_runtime(
     memory_pool: sqlx::SqlitePool,
 ) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
     let data_memory_file = data_dir.join("MEMORY.md");
-    let data_memory_file_lower = data_dir.join("memory.md");
-    let data_memory_sub = data_dir.join("memory");
     let agents_root = data_dir.join("agents");
 
-    if let Err(error) = std::fs::create_dir_all(&data_memory_sub) {
-        tracing::warn!(
-            path = %data_memory_sub.display(),
-            error = %error,
-            "memory: failed to create memory directory"
-        );
-    }
     if let Err(error) = std::fs::create_dir_all(&agents_root) {
         tracing::warn!(
             path = %agents_root.display(),
@@ -239,12 +230,7 @@ async fn build_memory_runtime(
     let memory_runtime_config = chelix_memory::config::MemoryConfig {
         db_path: data_dir.join("memory.db").to_string_lossy().into(),
         data_dir: Some(data_dir.to_path_buf()),
-        memory_dirs: vec![
-            data_memory_file,
-            data_memory_file_lower,
-            data_memory_sub,
-            agents_root,
-        ],
+        memory_dirs: vec![data_memory_file, agents_root],
         citations: match mem_cfg.citations {
             chelix_config::MemoryCitationsMode::On => chelix_memory::config::CitationMode::On,
             chelix_config::MemoryCitationsMode::Off => chelix_memory::config::CitationMode::Off,

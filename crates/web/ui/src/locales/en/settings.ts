@@ -248,8 +248,6 @@ export default {
 		citationsNever: "Never",
 		llmRerankingLabel: "LLM Reranking",
 		llmRerankingDescription: "Use the LLM to rerank search results for better relevance (slower but more accurate).",
-		sessionExport: "Session Export",
-		sessionExportDescription: "Export session transcripts to memory for cross-run recall of past conversations.",
 	},
 
 	// ── Notifications section ────────────────────────────────

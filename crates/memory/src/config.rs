@@ -90,7 +90,7 @@ impl Default for MemoryConfig {
         Self {
             db_path: "memory.db".into(),
             data_dir: None,
-            memory_dirs: vec![PathBuf::from("memory")],
+            memory_dirs: Vec::new(),
             chunk_size: 400,
             chunk_overlap: 80,
             vector_weight: 0.7,

@@ -8,7 +8,6 @@ async-trait     = { workspace = true }
 chelix-common   = { workspace = true }
 chelix-config   = { workspace = true }
 chelix-metrics  = { optional = true, workspace = true }
-chelix-sessions = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 thiserror       = { workspace = true }

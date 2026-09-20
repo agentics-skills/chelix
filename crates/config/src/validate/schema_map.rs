@@ -449,11 +449,8 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("citations", Leaf),
                 ("llm_reranking", Leaf),
                 ("search_merge_strategy", Leaf),
-                ("session_export", Leaf),
                 ("enable_prefetch", Leaf),
                 ("prefetch_limit", Leaf),
-                ("auto_extract_interval", Leaf),
-                ("enable_session_summary", Leaf),
             ])),
         ),
         (

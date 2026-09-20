@@ -157,12 +157,7 @@ mod tests {
     fn build_watch_specs_does_not_recurse_over_data_dir_for_files() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
-        let specs = build_watch_specs(&[
-            data_dir.join("MEMORY.md"),
-            data_dir.join("memory.md"),
-            data_dir.join("memory"),
-            data_dir.join("agents"),
-        ]);
+        let specs = build_watch_specs(&[data_dir.join("MEMORY.md"), data_dir.join("agents")]);
 
         assert!(has_spec(&specs, data_dir, RecursiveMode::NonRecursive));
         assert!(!has_spec(&specs, data_dir, RecursiveMode::Recursive));
@@ -172,34 +167,26 @@ mod tests {
     fn build_watch_specs_recurse_only_existing_directories() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
-        let memory_dir = data_dir.join("memory");
         let agents_dir = data_dir.join("agents");
-        std::fs::create_dir_all(&memory_dir).unwrap();
         std::fs::create_dir_all(&agents_dir).unwrap();
 
-        let specs = build_watch_specs(&[
-            data_dir.join("MEMORY.md"),
-            data_dir.join("memory.md"),
-            memory_dir.clone(),
-            agents_dir.clone(),
-        ]);
+        let specs = build_watch_specs(&[data_dir.join("MEMORY.md"), agents_dir.clone()]);
 
         assert!(has_spec(&specs, data_dir, RecursiveMode::NonRecursive));
-        assert!(has_spec(&specs, &memory_dir, RecursiveMode::Recursive));
         assert!(has_spec(&specs, &agents_dir, RecursiveMode::Recursive));
     }
 
     #[tokio::test]
     async fn emits_event_for_new_markdown_file_while_watcher_is_alive() {
         let tmp = tempfile::tempdir().unwrap();
-        let memory_dir = tmp.path().join("memory");
-        std::fs::create_dir_all(&memory_dir).unwrap();
-        let memory_dir = std::fs::canonicalize(memory_dir).unwrap();
+        let notes_dir = tmp.path().join("agents").join("main").join("memory");
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        let notes_dir = std::fs::canonicalize(notes_dir).unwrap();
 
-        let specs = build_watch_specs(std::slice::from_ref(&memory_dir));
+        let specs = build_watch_specs(std::slice::from_ref(&notes_dir));
         let mut watcher = MemoryFileWatcher::start(specs).unwrap();
-        let memory_file = memory_dir.join("session-test.md");
-        std::fs::write(&memory_file, "# Session Log\n").unwrap();
+        let memory_file = notes_dir.join("notes.md");
+        std::fs::write(&memory_file, "# Notes\n").unwrap();
 
         let received_path = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {

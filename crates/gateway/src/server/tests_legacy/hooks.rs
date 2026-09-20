@@ -7,14 +7,11 @@ use {
 
 async fn discover_and_build_hooks(
     disabled: &HashSet<String>,
-    session_store: Option<&Arc<chelix_sessions::store::SessionStore>>,
 ) -> (
     Option<Arc<chelix_common::hooks::HookRegistry>>,
     Vec<crate::state::DiscoveredHookInfo>,
 ) {
-    discover_hooks(disabled, session_store)
-        .await
-        .expect("discover hooks")
+    discover_hooks(disabled).await.expect("discover hooks")
 }
 
 fn write_config_hook(config_dir: &std::path::Path, command: &str, env: Option<(&str, &str)>) {
@@ -58,68 +55,20 @@ timeout = 7
 #[tokio::test]
 async fn discover_hooks_registers_builtin_handlers() {
     let _guard = LocalModelConfigTestGuard::new();
-    let tmp = tempfile::tempdir().unwrap();
     let config_dir = tempfile::tempdir().unwrap();
     let project_dir = tempfile::tempdir().unwrap();
     let old_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(project_dir.path()).unwrap();
-    std::fs::write(
-        config_dir.path().join("chelix.toml"),
-        "[memory]\nsession_export = \"on-new-or-reset\"\n",
-    )
-    .unwrap();
+    std::fs::write(config_dir.path().join("chelix.toml"), "").unwrap();
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
-    let sessions_dir = tmp.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-
-    let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
+    let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
     let handler_names = registry.handler_names();
 
     assert!(handler_names.iter().any(|n| n == "command-logger"));
-    assert!(handler_names.iter().any(|n| n == "session-memory"));
     assert!(
         info.iter()
             .any(|h| h.name == "command-logger" && h.source == "builtin")
-    );
-    assert!(
-        info.iter()
-            .any(|h| h.name == "session-memory" && h.source == "builtin")
-    );
-
-    std::env::set_current_dir(old_cwd).unwrap();
-    chelix_config::clear_config_dir();
-}
-
-#[tokio::test]
-async fn discover_hooks_respects_session_export_mode_off() {
-    let _guard = LocalModelConfigTestGuard::new();
-    let tmp = tempfile::tempdir().unwrap();
-    let config_dir = tempfile::tempdir().unwrap();
-    let project_dir = tempfile::tempdir().unwrap();
-    let old_cwd = std::env::current_dir().unwrap();
-    std::env::set_current_dir(project_dir.path()).unwrap();
-    std::fs::write(
-        config_dir.path().join("chelix.toml"),
-        "[memory]\nsession_export = \"off\"\n",
-    )
-    .unwrap();
-    chelix_config::set_config_dir(config_dir.path().to_path_buf());
-
-    let sessions_dir = tmp.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-
-    let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
-    let registry = registry.expect("expected hook registry to be created");
-    let handler_names = registry.handler_names();
-
-    assert!(handler_names.iter().any(|n| n == "command-logger"));
-    assert!(!handler_names.iter().any(|n| n == "session-memory"));
-    assert!(
-        info.iter()
-            .any(|h| h.name == "session-memory" && h.source == "builtin" && !h.enabled)
     );
 
     std::env::set_current_dir(old_cwd).unwrap();
@@ -139,11 +88,7 @@ async fn discover_hooks_registers_config_shell_hooks() {
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
-    let sessions_dir = data_dir.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-
-    let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
+    let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
     let handler_names = registry.handler_names();
 
@@ -172,12 +117,9 @@ async fn discover_hooks_lists_disabled_config_hooks_without_registering() {
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
-    let sessions_dir = data_dir.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
     let disabled = HashSet::from(["config-test-hook".to_string()]);
 
-    let (registry, info) = discover_and_build_hooks(&disabled, Some(&session_store)).await;
+    let (registry, info) = discover_and_build_hooks(&disabled).await;
     let registry = registry.expect("expected hook registry to be created");
     let handler_names = registry.handler_names();
 
@@ -214,11 +156,7 @@ timeout = 7
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
-    let sessions_dir = data_dir.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-
-    let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
+    let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
     let handler_names = registry.handler_names();
 
@@ -266,10 +204,7 @@ timeout = 7
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
-    let sessions_dir = data_dir.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-    let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
+    let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
 
     assert_eq!(
@@ -317,10 +252,7 @@ async fn filesystem_hook_takes_precedence_over_same_named_config_hook() {
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
-    let sessions_dir = data_dir.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-    let (registry, info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
+    let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
 
     assert!(
@@ -369,10 +301,7 @@ async fn config_shell_hook_runs_when_event_dispatches() {
     chelix_config::set_data_dir(data_dir.path().to_path_buf());
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
 
-    let sessions_dir = data_dir.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-    let (registry, _info) = discover_and_build_hooks(&HashSet::new(), Some(&session_store)).await;
+    let (registry, _info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
 
     let action = registry
@@ -394,54 +323,4 @@ async fn config_shell_hook_runs_when_event_dispatches() {
 
     chelix_config::clear_config_dir();
     chelix_config::clear_data_dir();
-}
-
-#[tokio::test]
-async fn command_hook_dispatch_saves_session_memory_file() {
-    let tmp = tempfile::tempdir().unwrap();
-    let sessions_dir = tmp.path().join("sessions");
-    std::fs::create_dir_all(&sessions_dir).unwrap();
-    let session_store = Arc::new(chelix_sessions::store::SessionStore::new(sessions_dir));
-
-    session_store
-        .append(
-            "smoke-session",
-            &serde_json::json!({"role": "user", "content": "Hello from smoke test"}),
-        )
-        .await
-        .unwrap();
-    session_store
-        .append(
-            "smoke-session",
-            &serde_json::json!({"role": "assistant", "content": "Hi there"}),
-        )
-        .await
-        .unwrap();
-
-    let mut registry = chelix_common::hooks::HookRegistry::new();
-    registry.register(Arc::new(
-        chelix_plugins::bundled::session_memory::SessionMemoryHook::new(
-            tmp.path().to_path_buf(),
-            Arc::clone(&session_store),
-        ),
-    ));
-
-    let payload = chelix_common::hooks::HookPayload::Command {
-        session_key: "smoke-session".into(),
-        action: "new".into(),
-        sender_id: None,
-    };
-    let result = registry.dispatch(&payload).await.unwrap();
-    assert!(matches!(result, chelix_common::hooks::HookAction::Continue));
-
-    let memory_dir = tmp.path().join("memory");
-    assert!(memory_dir.is_dir());
-
-    let files: Vec<_> = std::fs::read_dir(&memory_dir).unwrap().flatten().collect();
-    assert_eq!(files.len(), 1);
-
-    let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(content.contains("smoke-session"));
-    assert!(content.contains("Hello from smoke test"));
-    assert!(content.contains("Hi there"));
 }

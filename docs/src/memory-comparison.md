@@ -47,9 +47,8 @@ writes to memory via file-writing tools (either dedicated or general-purpose).
 | ----------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------ |
 | **Data directory**      | `~/.chelix/` (configurable)                                                          | `~/.openclaw/workspace/`                   |
 | **Long-term memory**    | `MEMORY.md`                                                                          | `MEMORY.md`                                |
-| **Daily logs**          | `memory/YYYY-MM-DD.md`                                                               | `memory/YYYY-MM-DD.md`                     |
-| **Session transcripts** | `memory/sessions/*.md`                                                               | Session JSONL files (separate)             |
-| **Extra paths**         | Via `memory_dirs` config                                                             | Via `memorySearch.extraPaths`              |
+| **Daily logs**          | `agents/<id>/memory/*.md`                                                            | `memory/YYYY-MM-DD.md`                     |
+| **Extra paths**         | Allowlisted memory files only                                                        | Via `memorySearch.extraPaths`              |
 | **MEMORY.md loading**   | Available in system prompt, with configurable live reload or frozen-per-session mode | Only in private sessions (not group chats) |
 
 ### Agent Tools
@@ -64,7 +63,6 @@ This is where the two systems differ most significantly in approach.
 | **memory_forget**        | LLM-guided forget flow on top of exact deletes                 | No dedicated tool                             |
 | **memory_delete**        | Dedicated tool for safe forget/delete flows                    | No dedicated tool                             |
 | **General file writing** | `execute_command` tool (shell commands)                        | Generic `write_file` tool                     |
-| **Silent memory turn**   | Periodic extraction and session-end summary via `MemoryWriter` | Pre-compaction flush via `write_file`         |
 
 #### How "Remember X" Works
 
@@ -114,10 +112,8 @@ prompt to guide the agent to memory paths and the file watcher to re-index.
 | **Session storage**             | SQLite database                                                  | JSONL files (append-only, tree structure)     |
 | **Auto-compaction**             | Yes, near context window limit                                   | Yes, near context window limit                |
 | **Manual compaction**           | `/compact` (uses the same full [checkpoint flow](compaction.md)) | `/compact` command with optional instructions |
-| **Pre-compaction memory flush** | No                                                               | Silent turn via `write_file` tool             |
-| **Session export to memory**    | Markdown files under `memory/` and `memory/sessions/`            | Optional (`sessionMemory` experimental flag)  |
+| **Pre-compaction memory flush** | No                                                               | Extra compaction-adjacent turn via `write_file` |
 | **Session pruning**             | Not yet                                                          | Cache-TTL based, trims old tool results       |
-| **Session transcript indexing** | Via session export                                               | Experimental, async delta-based               |
 
 ### Pre-Compaction Memory Flush
 
@@ -137,7 +133,7 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 
 | Aspect                   | Chelix                                               | OpenClaw                            |
 | ------------------------ | ---------------------------------------------------- | ----------------------------------- |
-| **Path validation**      | Strict allowlist (MEMORY.md, memory.md, memory/*.md) | No special memory path restrictions |
+| **Path validation**      | Strict allowlist (MEMORY.md, agents/*/MEMORY.md, agents/*/memory/*.md) | No special memory path restrictions |
 | **Traversal prevention** | Rejects `..`, absolute paths, non-.md extensions     | Relies on workspace sandboxing      |
 | **Size limit**           | 50 KB per write                                      | No documented limit                 |
 | **Write scope**          | Only memory files                                    | Any file in workspace               |
@@ -157,7 +153,6 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 | -------------------- | ------------------------------ | ----------------------------------------- |
 | **Provider**         | `memory.provider = "local"`    | Auto-detect from available keys           |
 | **Citations**        | `memory.citations = "auto"`    | `memory.citations = "auto"`               |
-| **Session export**   | `memory.session_export = true` | `memorySearch.experimental.sessionMemory` |
 | **UI configuration** | Settings > Memory page         | Config file only                          |
 
 ### CLI Commands
@@ -175,7 +170,7 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 | ----------------------- | ------------------------------------------------------ | ------------------------------------- |
 | **Language**            | Rust                                                   | TypeScript/Node.js                    |
 | **Memory crate/module** | `chelix-memory` crate                                  | `memory-core` plugin                  |
-| **Write abstraction**   | `MemoryWriter` trait (shared by tools and silent turn) | Direct file I/O via `write_file` tool |
+| **Write abstraction**   | `MemoryWriter` trait                                   | Direct file I/O via `write_file` tool |
 | **Plugin system**       | Memory is a core crate                                 | Memory is a swappable plugin slot     |
 | **Multi-agent**         | Single agent                                           | Per-agent memory isolation            |
 

@@ -307,7 +307,6 @@ model = "text-embedding-3-small"
 citations = "auto"              # "on", "off", or "auto"
 llm_reranking = false
 search_merge_strategy = "rrf"   # Or "linear"
-session_export = "on-new-or-reset" # Or "off"
 ```
 
 See [Memory Surfaces](memory-surfaces.md) for the boundary between
@@ -317,8 +316,7 @@ only affects prompt-visible `MEMORY.md`. `memory.agent_write_mode` controls
 where agent-authored writes are allowed to land.
 `memory.user_profile_write_mode` controls whether Chelix writes the managed
 `USER.md` surface, and whether browser/channel timezone or location signals may
-update it silently. `memory.session_export` controls whether session rollover
-exports are written at all.
+update it silently.
 
 ## Authentication
 

@@ -320,7 +320,7 @@ pub struct GatewayInner {
     /// Push notification service for sending notifications to subscribed devices.
     #[cfg(feature = "push-notifications")]
     pub push_service: Option<Arc<crate::push::PushService>>,
-    /// Shared LLM provider registry for auto-title and session summary.
+    /// Shared LLM provider registry for auto-title.
     pub llm_providers: Option<Arc<RwLock<chelix_providers::ProviderRegistry>>>,
     /// Cached user geolocation from browser Geolocation API, persisted to `USER.md`.
     pub cached_location: Option<chelix_config::GeoLocation>,

@@ -1,9 +1,6 @@
-//! Trait for writing to memory files, shared by `MemorySaveTool` and the silent memory turn.
+//! Trait for writing to memory files, shared by memory tools.
 //!
 //! Implementations handle path validation, size limits, and the actual I/O.
-//! This trait exists to DRY the duplicate logic that previously lived in both
-//! `chelix-memory::tools::MemorySaveTool` and `agents::silent_turn::MemoryWriteFileTool`,
-//! and to ensure the silent turn gets the same path-traversal checks as the save tool.
 
 /// Result of a successful memory write.
 #[derive(Debug)]

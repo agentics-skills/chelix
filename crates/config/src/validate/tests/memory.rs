@@ -238,8 +238,6 @@ prepend_sender_badge = true
 [memory]
 enable_prefetch = true
 prefetch_limit = 5
-auto_extract_interval = 10
-enable_session_summary = false
 "#;
     let result = validate_toml_str(toml);
     let unknown: Vec<_> = result
@@ -285,14 +283,6 @@ fn memory_lifecycle_fields_default_to_true() {
     assert_eq!(
         config.memory.prefetch_limit, 3,
         "prefetch_limit should default 3"
-    );
-    assert_eq!(
-        config.memory.auto_extract_interval, 5,
-        "auto_extract_interval should default 5"
-    );
-    assert!(
-        config.memory.enable_session_summary,
-        "enable_session_summary should default true"
     );
     assert!(
         config.skills.enable_self_improvement,

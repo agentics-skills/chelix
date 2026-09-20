@@ -32,21 +32,12 @@ struct MemoryConfigUpdateParams {
     search_merge_strategy: Option<String>,
     #[serde(default)]
     disable_rag: Option<bool>,
-    /// Declared only so the key is known; the value is read from the raw
-    /// params because an explicit `null` must be rejected, not ignored.
-    #[serde(default)]
-    #[allow(dead_code)]
-    session_export: Option<serde_json::Value>,
     #[serde(default)]
     prompt_memory_mode: Option<String>,
     #[serde(default)]
     enable_prefetch: Option<bool>,
     #[serde(default)]
     prefetch_limit: Option<u64>,
-    #[serde(default)]
-    auto_extract_interval: Option<u64>,
-    #[serde(default)]
-    enable_session_summary: Option<bool>,
     #[serde(default)]
     enable_self_improvement: Option<bool>,
 }
@@ -878,18 +869,12 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         chelix_config::MemorySearchMergeStrategy::Rrf => "rrf",
                         chelix_config::MemorySearchMergeStrategy::Linear => "linear",
                     },
-                    "session_export": match memory.session_export {
-                        chelix_config::SessionExportMode::Off => "off",
-                        chelix_config::SessionExportMode::OnNewOrReset => "on-new-or-reset",
-                    },
                     "prompt_memory_mode": match chat.prompt_memory_mode {
                         chelix_config::PromptMemoryMode::LiveReload => "live-reload",
                         chelix_config::PromptMemoryMode::FrozenAtSessionStart => "frozen-at-session-start",
                     },
                     "enable_prefetch": memory.enable_prefetch,
                     "prefetch_limit": memory.prefetch_limit,
-                    "auto_extract_interval": memory.auto_extract_interval,
-                    "enable_session_summary": memory.enable_session_summary,
                     "enable_self_improvement": config.skills.enable_self_improvement,
                 }))
             })
@@ -970,10 +955,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let search_merge_strategy_value =
                     parse_memory_search_merge_strategy(search_merge_strategy)?;
                 let disable_rag = params.disable_rag;
-                let session_export = match ctx.params.get("session_export") {
-                    Some(value) => parse_session_export_mode(value)?,
-                    None => current_memory.session_export,
-                };
                 let prompt_memory_mode = params.prompt_memory_mode.as_deref().unwrap_or(
                     match current_chat.prompt_memory_mode {
                         chelix_config::PromptMemoryMode::LiveReload => "live-reload",
@@ -991,13 +972,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .prefetch_limit
                     .map(|v| v as usize)
                     .unwrap_or(current_memory.prefetch_limit);
-                let auto_extract_interval = params
-                    .auto_extract_interval
-                    .map(|v| v as u32)
-                    .unwrap_or(current_memory.auto_extract_interval);
-                let enable_session_summary = params
-                    .enable_session_summary
-                    .unwrap_or(current_memory.enable_session_summary);
                 let enable_self_improvement = params
                     .enable_self_improvement
                     .unwrap_or(current_config.skills.enable_self_improvement);
@@ -1012,11 +986,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     if let Some(value) = disable_rag {
                         cfg.memory.disable_rag = value;
                     }
-                    cfg.memory.session_export = session_export;
                     cfg.memory.enable_prefetch = enable_prefetch;
                     cfg.memory.prefetch_limit = prefetch_limit;
-                    cfg.memory.auto_extract_interval = auto_extract_interval;
-                    cfg.memory.enable_session_summary = enable_session_summary;
                     cfg.skills.enable_self_improvement = enable_self_improvement;
                     cfg.chat.prompt_memory_mode = prompt_memory_mode_value;
                     effective_disable_rag = cfg.memory.disable_rag;
@@ -1032,15 +1003,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     "disable_rag": effective_disable_rag,
                     "llm_reranking": llm_reranking,
                     "search_merge_strategy": search_merge_strategy,
-                    "session_export": match session_export {
-                        chelix_config::SessionExportMode::Off => "off",
-                        chelix_config::SessionExportMode::OnNewOrReset => "on-new-or-reset",
-                    },
                     "prompt_memory_mode": prompt_memory_mode,
                     "enable_prefetch": enable_prefetch,
                     "prefetch_limit": prefetch_limit,
-                    "auto_extract_interval": auto_extract_interval,
-                    "enable_session_summary": enable_session_summary,
                     "enable_self_improvement": enable_self_improvement,
                 }))
             })

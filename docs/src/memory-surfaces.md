@@ -10,7 +10,7 @@ different problems, and confusing them leads to very weird debugging sessions.
 | `session_state`                     | Short-term structured state for a session           | Until the session is deleted  | One session key              | SQLite `session_state` table                                |
 | Managed user profile (`USER.md`)    | User name, timezone, and optional location hints    | Persistent                    | Whole workspace              | `USER.md` in `data_dir()` plus `[user]` in `chelix.toml`    |
 | Prompt memory (`MEMORY.md`)         | High-signal facts injected into the system prompt   | Persistent                    | Agent workspace              | `MEMORY.md` in `data_dir()` or `agents/<id>/MEMORY.md`      |
-| Searchable memory (`memory_search`) | Long-term recall without spending prompt tokens     | Persistent                    | Agent workspace              | `MEMORY.md`, `memory/*.md`, optional exported session files |
+| Searchable memory (`memory_search`) | Long-term recall without spending prompt tokens     | Persistent                    | Agent workspace              | `MEMORY.md`, `agents/<id>/MEMORY.md`, `agents/<id>/memory/*.md` |
 | Sandbox data directory mount        | Lets sandboxed commands read and write Chelix files | Sandbox lifetime              | Agent workspace              | Mandatory `data_dir()` path                                 |
 | Sandbox home (`/home/sandbox`)      | Command-side scratch files and tool caches          | Depends on `home_persistence` | Shared, per-session, or none | Sandbox home volume/dir                                     |
 
@@ -30,10 +30,9 @@ snapshots that should not become part of long-term memory.
 
 Long-term memory lives in Markdown files inside the Chelix data directory.
 
-- Main agent prompt memory: `~/.chelix/MEMORY.md`
-- Main agent searchable memory: `~/.chelix/memory/*.md`
-- Non-main agent prompt memory: `~/.chelix/agents/<agent_id>/MEMORY.md`
-- Non-main agent searchable memory: `~/.chelix/agents/<agent_id>/memory/*.md`
+- Root prompt memory: `~/.chelix/MEMORY.md`
+- Agent prompt memory: `~/.chelix/agents/<agent_id>/MEMORY.md`
+- Agent searchable notes: `~/.chelix/agents/<agent_id>/memory/*.md`
 
 `USER.md` is not part of agent long-term memory. It is a managed user profile
 surface used for things like name, timezone, and cached location. Chelix also
@@ -75,8 +74,7 @@ Defaults today:
 - `memory.style = "hybrid"`
 - `memory.agent_write_mode = "hybrid"`
 - `memory.user_profile_write_mode = "explicit-and-auto"`
-- `memory.session_export = "on-new-or-reset"`
-- `chat.prompt_memory_mode = "live-reload"`
+- `chat.prompt_memory_mode = "live-reload"
 
 `memory.agent_write_mode` is a third axis:
 
@@ -85,11 +83,6 @@ Defaults today:
 - `search-only` restricts agent-authored writes to `memory/*.md`
 - `off` disables agent-authored memory mutations, including `memory_save`,
   `memory_forget`, and `memory_delete`
-
-`memory.session_export` is separate again:
-
-- `on-new-or-reset` exports session transcripts into `memory/sessions/*.md`
-- `off` disables that export hook entirely
 
 `memory.user_profile_write_mode` is a fourth axis for the managed `USER.md`
 surface:
@@ -104,11 +97,6 @@ surface:
 
 - `citations`: `auto`, `on`, or `off`
 - `search_merge_strategy`: `rrf` or `linear`
-
-One easy-to-miss interaction rule:
-
-- `memory.session_export` affects searchable transcript files under
-  `memory/sessions/*.md`, not prompt memory injection
 
 The chat UI exposes the active prompt-memory mode in the toolbar and full
 context view. Frozen sessions can also refresh their snapshot manually without

@@ -29,12 +29,9 @@ interface MemoryConfig {
 	citations?: string;
 	llm_reranking?: boolean;
 	search_merge_strategy?: string;
-	session_export?: string;
 	prompt_memory_mode?: string;
 	enable_prefetch?: boolean;
 	prefetch_limit?: number;
-	auto_extract_interval?: number;
-	enable_session_summary?: boolean;
 	enable_self_improvement?: boolean;
 }
 
@@ -141,13 +138,9 @@ interface SelfImprovementPanelProps {
 	enableSelfImprovement: boolean;
 	enablePrefetch: boolean;
 	prefetchLimit: number;
-	autoExtractInterval: number;
-	enableSessionSummary: boolean;
 	onSelfImprovement: (enabled: boolean) => void;
 	onPrefetch: (enabled: boolean) => void;
 	onPrefetchLimit: (limit: number) => void;
-	onAutoExtractInterval: (interval: number) => void;
-	onSessionSummary: (enabled: boolean) => void;
 }
 
 function MemoryToggle({
@@ -205,32 +198,6 @@ function SelfImprovementPanel(props: SelfImprovementPanelProps): VNode {
 						/>
 					</label>
 				)}
-				<MemoryToggle
-					checked={props.autoExtractInterval > 0}
-					title="Periodic memory extraction"
-					description="Automatically save important context every N turns"
-					onChange={(enabled) => props.onAutoExtractInterval(enabled ? 5 : 0)}
-				/>
-				{props.autoExtractInterval > 0 && (
-					<label className="ml-6 text-xs text-[var(--muted)]">
-						Every{" "}
-						<input
-							type="number"
-							min={1}
-							max={50}
-							className="provider-key-input w-[60px] mx-1"
-							value={props.autoExtractInterval}
-							onChange={(event) => props.onAutoExtractInterval(Number.parseInt(targetValue(event), 10) || 5)}
-						/>{" "}
-						turns
-					</label>
-				)}
-				<MemoryToggle
-					checked={props.enableSessionSummary}
-					title="Session-end summary"
-					description="Summarize accomplishments when a session is reset"
-					onChange={props.onSessionSummary}
-				/>
 			</div>
 		</div>
 	);
@@ -248,12 +215,9 @@ export function MemorySection(): VNode {
 	const [citations, setCitations] = useState("auto");
 	const [llmReranking, setLlmReranking] = useState(false);
 	const [searchMergeStrategy, setSearchMergeStrategy] = useState("rrf");
-	const [sessionExport, setSessionExport] = useState("on-new-or-reset");
 	const [promptMemoryMode, setPromptMemoryMode] = useState("live-reload");
 	const [enablePrefetch, setEnablePrefetch] = useState(true);
 	const [prefetchLimit, setPrefetchLimit] = useState(3);
-	const [autoExtractInterval, setAutoExtractInterval] = useState(5);
-	const [enableSessionSummary, setEnableSessionSummary] = useState(true);
 	const [enableSelfImprovement, setEnableSelfImprovement] = useState(true);
 
 	function applyMemoryConfig(config: MemoryConfig): void {
@@ -264,12 +228,9 @@ export function MemorySection(): VNode {
 		setCitations(configString(config.citations, "auto"));
 		setLlmReranking(configBoolean(config.llm_reranking, false));
 		setSearchMergeStrategy(configString(config.search_merge_strategy, "rrf"));
-		setSessionExport(configString(config.session_export, "on-new-or-reset"));
 		setPromptMemoryMode(configString(config.prompt_memory_mode, "live-reload"));
 		setEnablePrefetch(configBoolean(config.enable_prefetch, true));
 		setPrefetchLimit(configNumber(config.prefetch_limit, 3));
-		setAutoExtractInterval(configNumber(config.auto_extract_interval, 5));
-		setEnableSessionSummary(configBoolean(config.enable_session_summary, true));
 		setEnableSelfImprovement(configBoolean(config.enable_self_improvement, true));
 	}
 
@@ -304,12 +265,9 @@ export function MemorySection(): VNode {
 			citations,
 			llm_reranking: llmReranking,
 			search_merge_strategy: searchMergeStrategy,
-			session_export: sessionExport,
 			prompt_memory_mode: promptMemoryMode,
 			enable_prefetch: enablePrefetch,
 			prefetch_limit: prefetchLimit,
-			auto_extract_interval: autoExtractInterval,
-			enable_session_summary: enableSessionSummary,
 			enable_self_improvement: enableSelfImprovement,
 		}).then((res: RpcResponse) => {
 			save.setSaving(false);
@@ -334,10 +292,6 @@ export function MemorySection(): VNode {
 		updateMemorySetting(setEnableSelfImprovement, value);
 	const setEnablePrefetchAndRender = (value: boolean): void => updateMemorySetting(setEnablePrefetch, value);
 	const setPrefetchLimitAndRender = (value: number): void => updateMemorySetting(setPrefetchLimit, value);
-	const setAutoExtractIntervalAndRender = (value: number): void => updateMemorySetting(setAutoExtractInterval, value);
-	const setEnableSessionSummaryAndRender = (value: boolean): void =>
-		updateMemorySetting(setEnableSessionSummary, value);
-	const setSessionExportAndRender = (value: string): void => updateMemorySetting(setSessionExport, value);
 
 	if (memLoading) {
 		return (
@@ -467,23 +421,9 @@ export function MemorySection(): VNode {
 					enableSelfImprovement={enableSelfImprovement}
 					enablePrefetch={enablePrefetch}
 					prefetchLimit={prefetchLimit}
-					autoExtractInterval={autoExtractInterval}
-					enableSessionSummary={enableSessionSummary}
 					onSelfImprovement={setEnableSelfImprovementAndRender}
 					onPrefetch={setEnablePrefetchAndRender}
 					onPrefetchLimit={setPrefetchLimitAndRender}
-					onAutoExtractInterval={setAutoExtractIntervalAndRender}
-					onSessionSummary={setEnableSessionSummaryAndRender}
-				/>
-				<MemorySelectSetting
-					title="Session Export"
-					description="Export session transcripts into searchable memory when a session is rolled over."
-					value={sessionExport}
-					options={[
-						["on-new-or-reset", "On session change"],
-						["off", "Off"],
-					]}
-					onChange={setSessionExportAndRender}
 				/>
 				<div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
 					<SaveButton saving={save.saving} saved={save.saved} type="submit" />

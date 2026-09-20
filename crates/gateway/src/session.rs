@@ -18,7 +18,6 @@ use {
         hooks::HookRegistry,
         tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
     },
-    chelix_memory::runtime::DynMemoryRuntime,
     chelix_projects::ProjectStore,
     chelix_sessions::{
         QueuedPrompts, SessionKey, message::PersistedMessage, metadata::SqliteSessionMetadata,
@@ -67,9 +66,7 @@ fn resolve_hook_channel_binding(
 }
 
 /// Dispatch a [`HookPayload::Command`] event (e.g. "new" or "reset") for the
-/// given session.  This is called from every code-path that creates or clears a
-/// session so that the `SessionMemoryHook` can export the conversation before
-/// the history is lost.
+/// given session.
 pub(crate) async fn dispatch_command_hook(
     hook_registry: &HookRegistry,
     session_key: &str,
@@ -850,7 +847,6 @@ mod initialization;
 mod maintenance;
 mod service;
 mod share;
-pub(crate) mod summary;
 #[cfg(test)]
 mod tests;
 pub(crate) mod title;

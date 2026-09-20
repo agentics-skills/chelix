@@ -430,11 +430,6 @@ This is separate from project `AGENTS.md`/`CLAUDE.md` discovery. Use workspace
 `AGENTS.md` for global instructions that should apply across projects in this
 workspace.
 
-### session-memory
-
-Saves session context when you use the `/new` command, preserving important
-information for future sessions.
-
 ### command-logger
 
 Logs all `Command` events to a JSONL file for auditing.

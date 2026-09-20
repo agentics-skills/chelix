@@ -1,6 +1,6 @@
 use {
     secrecy::Secret,
-    serde::{Deserialize, Deserializer, Serialize},
+    serde::{Deserialize, Serialize},
 };
 
 /// Memory embedding provider configuration.
@@ -51,12 +51,6 @@ pub struct MemoryEmbeddingConfig {
     pub llm_reranking: bool,
     /// Merge strategy for hybrid search results.
     pub search_merge_strategy: MemorySearchMergeStrategy,
-    /// How session transcripts are exported into searchable memory.
-    #[serde(
-        default = "default_session_export_mode",
-        deserialize_with = "deserialize_session_export_mode"
-    )]
-    pub session_export: SessionExportMode,
     /// Prefetch relevant memories at the start of each turn and inject them
     /// into the system prompt as `<recalled_context>`. Default: true.
     #[serde(default = "default_true")]
@@ -64,14 +58,6 @@ pub struct MemoryEmbeddingConfig {
     /// Maximum number of memories to prefetch per turn. Default: 3.
     #[serde(default = "default_prefetch_limit")]
     pub prefetch_limit: usize,
-    /// Run a background memory extraction every N turns (0 = disabled).
-    /// Default: 5.
-    #[serde(default = "default_auto_extract_interval")]
-    pub auto_extract_interval: u32,
-    /// Write a session summary to memory when a session ends
-    /// (`/new`, `/reset`, or timeout). Default: true.
-    #[serde(default = "default_true")]
-    pub enable_session_summary: bool,
 }
 
 impl Default for MemoryEmbeddingConfig {
@@ -89,11 +75,8 @@ impl Default for MemoryEmbeddingConfig {
             citations: MemoryCitationsMode::default(),
             llm_reranking: false,
             search_merge_strategy: MemorySearchMergeStrategy::default(),
-            session_export: default_session_export_mode(),
             enable_prefetch: true,
             prefetch_limit: 3,
-            auto_extract_interval: 5,
-            enable_session_summary: true,
         }
     }
 }
@@ -104,10 +87,6 @@ fn default_true() -> bool {
 
 fn default_prefetch_limit() -> usize {
     3
-}
-
-fn default_auto_extract_interval() -> u32 {
-    5
 }
 
 /// High-level orchestration style for prompt memory and memory tools.
@@ -200,42 +179,4 @@ pub enum MemorySearchMergeStrategy {
     Rrf,
     /// Linear blend of raw keyword and vector scores.
     Linear,
-}
-
-/// How chat sessions are exported into searchable memory.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SessionExportMode {
-    /// Do not export session transcripts.
-    Off,
-    /// Export transcripts when the session is rolled with `/new` or `/reset`.
-    #[default]
-    OnNewOrReset,
-}
-
-fn default_session_export_mode() -> SessionExportMode {
-    SessionExportMode::OnNewOrReset
-}
-
-fn deserialize_session_export_mode<'de, D>(deserializer: D) -> Result<SessionExportMode, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum SessionExportModeRepr {
-        Mode(SessionExportMode),
-        LegacyBool(bool),
-    }
-
-    Ok(match SessionExportModeRepr::deserialize(deserializer)? {
-        SessionExportModeRepr::Mode(mode) => mode,
-        SessionExportModeRepr::LegacyBool(enabled) => {
-            if enabled {
-                SessionExportMode::OnNewOrReset
-            } else {
-                SessionExportMode::Off
-            }
-        },
-    })
 }

@@ -2,15 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-const ROOT_MEMORY_FILES: [&str; 2] = ["MEMORY.md", "memory.md"];
-const MEMORY_DIR_PREFIX: &str = "memory/";
-
-/// Validate and resolve a memory write path relative to `data_dir`.
+/// Validate and resolve a global memory write path relative to `data_dir`.
 ///
-/// Allowed targets:
-/// - `MEMORY.md`
-/// - `memory.md`
-/// - `memory/<name>.md` (single segment only)
+/// The only allowed target is `MEMORY.md`.
 pub fn validate_memory_path(data_dir: &Path, file: &str) -> crate::error::Result<PathBuf> {
     let path = file.trim();
     if path.is_empty() {
@@ -31,35 +25,13 @@ pub fn validate_memory_path(data_dir: &Path, file: &str) -> crate::error::Result
         ));
     }
 
-    if ROOT_MEMORY_FILES.contains(&path) {
+    if path == "MEMORY.md" {
         return Ok(data_dir.join(path));
     }
 
-    let Some(name) = path.strip_prefix(MEMORY_DIR_PREFIX) else {
-        return Err(crate::error::Error::Validation(format!(
-            "invalid memory path '{path}': allowed targets are MEMORY.md, memory.md, or memory/<name>.md"
-        )));
-    };
-
-    if !is_valid_memory_file_name(name) {
-        return Err(crate::error::Error::Validation(format!(
-            "invalid memory path '{path}': allowed targets are MEMORY.md, memory.md, or memory/<name>.md"
-        )));
-    }
-
-    Ok(data_dir.join(MEMORY_DIR_PREFIX).join(name))
-}
-
-/// Reject an existing memory target that is a symbolic link.
-pub async fn ensure_memory_target_not_symlink(path: &Path) -> crate::error::Result<()> {
-    match tokio::fs::symlink_metadata(path).await {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(crate::error::Error::Validation(
-            format!("memory target '{}' must not be a symlink", path.display()),
-        )),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
-    }
+    Err(crate::error::Error::Validation(format!(
+        "invalid memory path '{path}': allowed target is MEMORY.md"
+    )))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -126,33 +98,6 @@ fn text_variants(snippet: &str) -> Vec<String> {
     variants
 }
 
-fn is_valid_memory_file_name(name: &str) -> bool {
-    if name.is_empty() {
-        return false;
-    }
-
-    // Exactly one level under memory/.
-    if name.contains('/') {
-        return false;
-    }
-
-    if !name.ends_with(".md") {
-        return false;
-    }
-
-    if name.chars().any(char::is_whitespace) {
-        return false;
-    }
-
-    // Reject empty stem (`.md`) and hidden-ish names (`.foo.md`).
-    let stem = &name[..name.len() - 3];
-    if stem.is_empty() || stem.starts_with('.') {
-        return false;
-    }
-
-    true
-}
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -161,30 +106,11 @@ mod tests {
     use super::{remove_exact_text, validate_memory_path};
 
     #[test]
-    fn allows_root_memory_files() {
+    fn allows_root_memory_file() {
         let root = Path::new("/tmp/chelix");
-
         assert_eq!(
             validate_memory_path(root, "MEMORY.md").unwrap(),
             root.join("MEMORY.md")
-        );
-        assert_eq!(
-            validate_memory_path(root, "memory.md").unwrap(),
-            root.join("memory.md")
-        );
-    }
-
-    #[test]
-    fn allows_single_level_memory_files() {
-        let root = Path::new("/tmp/chelix");
-
-        assert_eq!(
-            validate_memory_path(root, "memory/notes.md").unwrap(),
-            root.join("memory").join("notes.md")
-        );
-        assert_eq!(
-            validate_memory_path(root, "memory/2026-02-14.md").unwrap(),
-            root.join("memory").join("2026-02-14.md")
         );
     }
 
@@ -194,14 +120,11 @@ mod tests {
         let invalid = [
             "",
             " ",
+            "memory.md",
+            "memory/notes.md",
             "/etc/passwd",
             "../etc/passwd",
             "memory/../../secret.md",
-            "memory/a/b.md",
-            "memory/.md",
-            "memory/.hidden.md",
-            "memory/notes.txt",
-            "memory/a b.md",
             "random.md",
             "foo/bar.md",
             "memory\\notes.md",

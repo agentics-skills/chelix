@@ -221,24 +221,6 @@ fn parse_memory_search_merge_strategy(
     }
 }
 
-fn parse_session_export_mode(
-    value: &serde_json::Value,
-) -> Result<chelix_config::SessionExportMode, ErrorShape> {
-    match value {
-        serde_json::Value::Bool(false) => Ok(chelix_config::SessionExportMode::Off),
-        serde_json::Value::Bool(true) => Ok(chelix_config::SessionExportMode::OnNewOrReset),
-        serde_json::Value::String(string) => match string.as_str() {
-            "off" => Ok(chelix_config::SessionExportMode::Off),
-            "on-new-or-reset" => Ok(chelix_config::SessionExportMode::OnNewOrReset),
-            _ => Err(invalid_memory_config_value("session_export", string)),
-        },
-        _ => Err(ErrorShape::new(
-            error_codes::INVALID_REQUEST,
-            "invalid memory config value for 'session_export': expected bool or string",
-        )),
-    }
-}
-
 fn parse_prompt_memory_mode(value: &str) -> Result<chelix_config::PromptMemoryMode, ErrorShape> {
     match value {
         "live-reload" => Ok(chelix_config::PromptMemoryMode::LiveReload),
@@ -359,11 +341,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 }
 async fn reload_hooks(state: &Arc<crate::state::GatewayState>) -> Result<(), ErrorShape> {
     let disabled = state.inner.read().await.disabled_hooks.clone();
-    let session_store = state.services.session_store.as_ref();
-    let (new_registry, new_info) =
-        crate::server::discover_and_build_hooks(&disabled, session_store)
-            .await
-            .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
+    let (new_registry, new_info) = crate::server::discover_and_build_hooks(&disabled)
+        .await
+        .map_err(|error| ErrorShape::new(error_codes::INTERNAL, error.to_string()))?;
 
     {
         let mut inner = state.inner.write().await;
@@ -517,7 +497,6 @@ mod tests {
             cfg.memory.disable_rag = true;
             cfg.memory.llm_reranking = true;
             cfg.memory.search_merge_strategy = chelix_config::MemorySearchMergeStrategy::Linear;
-            cfg.memory.session_export = chelix_config::SessionExportMode::Off;
             cfg.chat.prompt_memory_mode = chelix_config::PromptMemoryMode::FrozenAtSessionStart;
         });
         assert!(update_result.is_ok(), "config update should succeed");
@@ -531,7 +510,6 @@ mod tests {
         assert_eq!(payload["disable_rag"], true);
         assert_eq!(payload["llm_reranking"], true);
         assert_eq!(payload["search_merge_strategy"], "linear");
-        assert_eq!(payload["session_export"], "off");
         assert_eq!(payload["prompt_memory_mode"], "frozen-at-session-start");
     }
 
@@ -550,7 +528,6 @@ mod tests {
                 "disable_rag": true,
                 "llm_reranking": true,
                 "search_merge_strategy": "linear",
-                "session_export": false,
                 "prompt_memory_mode": "frozen-at-session-start",
             }),
         )
@@ -564,7 +541,6 @@ mod tests {
         assert_eq!(payload["disable_rag"], true);
         assert_eq!(payload["llm_reranking"], true);
         assert_eq!(payload["search_merge_strategy"], "linear");
-        assert_eq!(payload["session_export"], "off");
         assert_eq!(payload["prompt_memory_mode"], "frozen-at-session-start");
 
         let config = chelix_config::discover_and_load()
@@ -591,10 +567,6 @@ mod tests {
         assert_eq!(
             config.memory.search_merge_strategy,
             chelix_config::MemorySearchMergeStrategy::Linear
-        );
-        assert_eq!(
-            config.memory.session_export,
-            chelix_config::SessionExportMode::Off
         );
         assert_eq!(
             config.chat.prompt_memory_mode,
@@ -638,30 +610,6 @@ mod tests {
         .await;
 
         assert!(!response.ok, "unknown field should fail");
-        let error = match response.error {
-            Some(error) => error,
-            None => panic!("expected invalid request error"),
-        };
-        assert_eq!(error.code, error_codes::INVALID_REQUEST);
-
-        let config = chelix_config::discover_and_load()
-            .unwrap_or_else(|error| panic!("load config: {error}"));
-        assert_eq!(config.memory.provider, None);
-    }
-
-    #[tokio::test]
-    async fn memory_config_update_rejects_null_session_export() {
-        let _guard = MemoryConfigTestGuard::new();
-        let response = dispatch_memory_method_response(
-            "memory.config.update",
-            serde_json::json!({
-                "session_export": null,
-                "provider": "custom",
-            }),
-        )
-        .await;
-
-        assert!(!response.ok, "null session_export should fail");
         let error = match response.error {
             Some(error) => error,
             None => panic!("expected invalid request error"),

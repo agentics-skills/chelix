@@ -89,8 +89,8 @@ session titles, memory-forget planning, and compaction. It retains text, tool
 calls, terminal usage, canonical provider segments, and bounded raw events.
 Canonical segments retain received item identities and positions at the
 collection boundary. Provider errors, unsuccessful segment outcomes, and EOF before `Done` are
-returned as errors. Silent memory turns use the streaming agent runner with
-callbacks omitted; tool execution and canonical item replay use that runner.
+returned as errors. Tool execution and canonical item replay use the streaming
+agent runner.
 
 The trait also exposes `supports_tools()`, `reasoning_effort()`, and
 `with_reasoning_effort()` for provider capability discovery.

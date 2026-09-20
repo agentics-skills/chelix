@@ -22,7 +22,7 @@ use {
         tool_registry::{AgentTool, ToolRegistry},
     },
     chelix_config::{AgentMemoryWriteMode, MemoryStyle},
-    chelix_memory::writer::{ensure_memory_target_not_symlink, remove_exact_text},
+    chelix_memory::writer::remove_exact_text,
     chelix_providers::ProviderRegistry,
     chelix_sessions::{SessionKey, metadata::SqliteSessionMetadata},
 };
@@ -191,12 +191,14 @@ fn memory_forget_parameters_schema() -> Value {
 }
 
 fn memory_file_label_from_root(root: &Path, path: &Path) -> Option<String> {
-    let relative = path.strip_prefix(root).ok()?;
+    let root = chelix_memory::allowlist::absolutize(root);
+    let path = chelix_memory::allowlist::absolutize(path);
+    let relative = path.strip_prefix(&root).ok()?;
     let mut components = relative.components();
     let first = components.next()?.as_os_str().to_str()?;
 
     match first {
-        "MEMORY.md" | "memory.md" if components.next().is_none() => Some(first.to_string()),
+        "MEMORY.md" if components.next().is_none() => Some(first.to_string()),
         "memory" => {
             let leaf = components.next()?.as_os_str().to_str()?;
             if components.next().is_some() || !is_valid_agent_memory_leaf_name(leaf) {
@@ -410,29 +412,29 @@ pub(crate) fn resolve_agent_memory_target_path(
     }
 
     let workspace = chelix_config::agent_workspace_dir(agent_id);
-    if trimmed == "MEMORY.md" || trimmed == "memory.md" {
+    if trimmed == "MEMORY.md" {
         return Ok(workspace.join(trimmed));
     }
 
     let Some(name) = trimmed.strip_prefix("memory/") else {
         anyhow::bail!(
-            "invalid memory path '{trimmed}': allowed targets are MEMORY.md, memory.md, or memory/<name>.md"
+            "invalid memory path '{trimmed}': allowed targets are MEMORY.md or memory/<name>.md"
         );
     };
     if !is_valid_agent_memory_leaf_name(name) {
         anyhow::bail!(
-            "invalid memory path '{trimmed}': allowed targets are MEMORY.md, memory.md, or memory/<name>.md"
+            "invalid memory path '{trimmed}': allowed targets are MEMORY.md or memory/<name>.md"
         );
     }
     Ok(workspace.join("memory").join(name))
 }
 
 pub(crate) fn is_path_in_agent_memory_scope(path: &Path, agent_id: &str) -> bool {
-    let workspace = chelix_config::agent_workspace_dir(agent_id);
+    let workspace =
+        chelix_memory::allowlist::absolutize(&chelix_config::agent_workspace_dir(agent_id));
+    let path = chelix_memory::allowlist::absolutize(path);
     let workspace_memory_dir = workspace.join("memory");
-    path == workspace.join("MEMORY.md")
-        || path == workspace.join("memory.md")
-        || path.starts_with(&workspace_memory_dir)
+    path == workspace.join("MEMORY.md") || path.starts_with(&workspace_memory_dir)
 }
 
 pub struct AgentScopedMemoryWriter {
@@ -468,7 +470,6 @@ impl AgentScopedMemoryWriter {
 
         validate_agent_memory_target_for_mode(self.write_mode, file)?;
         let path = resolve_agent_memory_target_path(&self.agent_id, file)?;
-        ensure_memory_target_not_symlink(&path).await?;
 
         if delete_file {
             let file_existed = tokio::fs::try_exists(&path).await?;
@@ -541,7 +542,6 @@ impl chelix_agents::memory_writer::MemoryWriter for AgentScopedMemoryWriter {
 
         validate_agent_memory_target_for_mode(self.write_mode, file)?;
         let path = resolve_agent_memory_target_path(&self.agent_id, file)?;
-        ensure_memory_target_not_symlink(&path).await?;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
@@ -757,7 +757,7 @@ impl AgentTool for AgentScopedMemorySaveTool {
                 },
                 "file": {
                     "type": "string",
-                    "description": "Target file: MEMORY.md, memory.md, or memory/<name>.md",
+                    "description": "Target file: MEMORY.md or memory/<name>.md",
                     "default": "MEMORY.md"
                 },
                 "append": {
@@ -827,7 +827,7 @@ impl AgentTool for AgentScopedMemoryDeleteTool {
             "properties": {
                 "file": {
                     "type": "string",
-                    "description": "Target file: MEMORY.md, memory.md, or memory/<name>.md"
+                    "description": "Target file: MEMORY.md or memory/<name>.md"
                 },
                 "text": {
                     "type": "string",

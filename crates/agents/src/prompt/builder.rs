@@ -539,7 +539,7 @@ fn append_memory_section(
     if has_memory_search {
         prompt.push_str(concat!(
             "\nYou also have `memory_search` to find additional details from ",
-            "`memory/*.md` files and past session history beyond what is shown above. ",
+            "`memory/*.md` files beyond what is shown above. ",
             "**Always search memory before claiming you don't know something.** ",
             "The long-term memory system holds user facts, past decisions, project context, ",
             "and anything previously stored.\n",
@@ -556,7 +556,7 @@ fn append_memory_section(
             "language, key preferences). This is loaded into every conversation, ",
             "so keep it short.\n",
             "- **memory/&lt;topic&gt;.md** — everything else (detailed notes, project ",
-            "context, decisions, session summaries). These are only retrieved via ",
+            "context, decisions). These are only retrieved via ",
             "`memory_search` and do not consume prompt space.\n",
         ));
     }

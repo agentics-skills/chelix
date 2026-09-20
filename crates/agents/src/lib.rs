@@ -15,7 +15,6 @@ pub use {
 };
 pub mod lazy_tools;
 pub mod response_sanitizer;
-pub mod silent_turn;
 pub mod skills;
 pub mod title;
 pub mod tool_arg_validator;
