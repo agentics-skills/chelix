@@ -54,21 +54,12 @@ pub trait ImageBuilder: Send + Sync {
     async fn prune_all(&self) -> Result<usize>;
 }
 
-/// Docker-based image builder using `docker build`.
-///
-/// Auto-detects whether to use `podman` or `docker` at construction time.
-/// Prefers podman (daemonless) when available; falls back to docker.
+/// Image builder for the configured Docker or Podman CLI.
 pub struct DockerImageBuilder {
     cli: &'static str,
 }
 
 impl DockerImageBuilder {
-    pub fn new() -> Self {
-        Self {
-            cli: crate::sandbox::container_cli(),
-        }
-    }
-
     /// Create with an explicit CLI binary name.
     pub fn with_cli(cli: &'static str) -> Self {
         Self { cli }
@@ -81,7 +72,6 @@ impl DockerImageBuilder {
         let cli = match backend {
             SandboxBackend::AppleContainer | SandboxBackend::Docker => "docker",
             SandboxBackend::Podman => "podman",
-            SandboxBackend::Auto => crate::sandbox::container_cli(),
         };
         Self { cli }
     }
@@ -157,12 +147,6 @@ impl DockerImageBuilder {
     }
 }
 
-impl Default for DockerImageBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[async_trait]
 impl ImageBuilder for DockerImageBuilder {
     async fn ensure_image(
@@ -184,48 +168,9 @@ impl ImageBuilder for DockerImageBuilder {
 
         info!(tag, dockerfile = %dockerfile.display(), "building tool image");
 
-        // Try the configured CLI first. If it fails with a daemon connection
-        // error, try the alternative CLI (docker ↔ podman).
         let output = self.try_build(&tag, dockerfile, context).await?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            let is_daemon_error = stderr.contains("Cannot connect")
-                || stderr.contains("connect to the Docker daemon")
-                || stderr.contains("unable to connect")
-                || stderr.contains("connection refused");
-
-            if is_daemon_error {
-                let alt_cli = if self.cli == "podman" {
-                    "docker"
-                } else {
-                    "podman"
-                };
-                if crate::sandbox::containers::is_cli_available(alt_cli) {
-                    info!(
-                        primary = self.cli,
-                        fallback = alt_cli,
-                        "primary CLI daemon not available, trying fallback"
-                    );
-                    let alt_output = Self::run_build(alt_cli, &tag, dockerfile, context).await?;
-                    if alt_output.status.success() {
-                        info!(
-                            tag,
-                            cli = alt_cli,
-                            "tool image built successfully (via fallback)"
-                        );
-                        return Ok(tag);
-                    }
-                    let alt_stderr = String::from_utf8_lossy(&alt_output.stderr);
-                    warn!(
-                        cli = alt_cli,
-                        tag,
-                        exit_code = alt_output.status.code().unwrap_or(-1),
-                        stderr = %alt_stderr.trim(),
-                        "fallback image build also failed"
-                    );
-                }
-            }
-
             let stdout = String::from_utf8_lossy(&output.stdout);
             warn!(
                 cli = self.cli,

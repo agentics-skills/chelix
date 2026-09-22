@@ -351,12 +351,6 @@ pub struct BrowserConfig {
     /// When set, `persist_profile` is implicitly true.
     /// If not set and `persist_profile` is true, defaults to `data_dir()/browser/profile/`.
     pub profile_dir: Option<String>,
-    /// Hostname or IP used to connect to the browser container from the host.
-    /// Default: "127.0.0.1" (localhost). When running Chelix itself inside Docker,
-    /// set this to "host.docker.internal" or the Docker bridge gateway IP so
-    /// Chelix can reach the sibling browser container via the host's port mapping.
-    #[serde(default = "default_container_host")]
-    pub container_host: String,
     /// Browserless API compatibility mode for websocket endpoints.
     /// - "v1" (default): connect to the base websocket URL.
     /// - "v2": try Browserless v2 paths (`/chrome`, `/chromium`) when needed.
@@ -382,10 +376,6 @@ const fn default_low_memory_threshold_mb() -> u64 {
 
 const fn default_persist_profile() -> bool {
     true
-}
-
-fn default_container_host() -> String {
-    "127.0.0.1".to_string()
 }
 
 const fn default_browserless_api_version() -> BrowserlessApiVersion {
@@ -414,7 +404,6 @@ impl Default for BrowserConfig {
             low_memory_threshold_mb: default_low_memory_threshold_mb(),
             persist_profile: default_persist_profile(),
             profile_dir: None,
-            container_host: default_container_host(),
             browserless_api_version: default_browserless_api_version(),
         }
     }
@@ -546,7 +535,6 @@ impl std::fmt::Display for SandboxMode {
 #[serde(rename_all = "kebab-case")]
 pub enum SandboxBackend {
     #[default]
-    Auto,
     Docker,
     Podman,
     AppleContainer,
@@ -556,7 +544,6 @@ impl SandboxBackend {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Auto => "auto",
             Self::Docker => "docker",
             Self::Podman => "podman",
             Self::AppleContainer => "apple-container",
@@ -799,7 +786,7 @@ impl Default for SandboxConfig {
             image: None,
             container_prefix: None,
             network: "bridge".into(),
-            backend: SandboxBackend::Auto,
+            backend: SandboxBackend::Docker,
             resource_limits: ResourceLimitsConfig::default(),
             gpus: None,
             packages: default_sandbox_packages(),

@@ -54,7 +54,10 @@ impl Default for BrowserManager {
 impl BrowserManager {
     /// Create a new browser manager with the given configuration.
     pub fn new(config: BrowserConfig, sandbox_mode: SandboxMode) -> Self {
-        match crate::container::cleanup_stale_browser_containers(&config.container_prefix) {
+        match crate::container::cleanup_stale_browser_containers(
+            &config.container_prefix,
+            config.backend,
+        ) {
             Ok(removed) if removed > 0 => {
                 info!(
                     removed,

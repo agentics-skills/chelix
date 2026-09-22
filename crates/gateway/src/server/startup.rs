@@ -10,12 +10,6 @@ fn spawn_post_listener_warmups(
     browser_service: Arc<dyn crate::services::BrowserService>,
     browser_tool: Option<Arc<dyn chelix_agents::tool_registry::AgentTool>>,
 ) {
-    // Warm the container CLI OnceLock off the async worker threads.
-    tokio::task::spawn_blocking(|| {
-        let cli = chelix_tools::sandbox::container_cli();
-        debug!(cli, "container CLI detected");
-    });
-
     if !super::helpers::env_flag_enabled("CHELIX_BROWSER_WARMUP") {
         debug!("startup browser warmup disabled (set CHELIX_BROWSER_WARMUP=1 to enable)");
         return;

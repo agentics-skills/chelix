@@ -23,7 +23,7 @@ pub use apple::{AppleContainerSandbox, ensure_apple_container_service};
 pub use {
     containers::{
         ContainerBackend, ContainerDiskUsage, ContainerRunState, RunningContainer, SandboxImage,
-        clean_all_containers, clean_sandbox_images, container_cli, container_disk_usage,
+        clean_all_containers, clean_sandbox_images, container_disk_usage,
         current_sandbox_image_tag, is_cli_available, list_running_containers, list_sandbox_images,
         remove_container, remove_sandbox_image, restart_container_daemon, sandbox_image_tag,
         stop_container,

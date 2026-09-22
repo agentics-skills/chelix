@@ -133,18 +133,3 @@ export function handleSandboxImageProvision(payload: SandboxPhasePayload): void 
 		chatAddMsg("error", `Sandbox provisioning failed: ${payload.error || "unknown"}`);
 	}
 }
-
-export function handleBrowserImagePull(payload: SandboxPhasePayload): void {
-	const isChatPage = currentPrefix === "/chats";
-	if (!isChatPage) return;
-	const image = payload.image || "browser container";
-	if (payload.phase === "start") {
-		chatAddMsg("system", `Pulling browser container image (${image})\u2026 This may take a few minutes on first run.`);
-	} else if (payload.phase === "done") {
-		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-		chatAddMsg("system", `Browser container image ready: ${image}`);
-	} else if (payload.phase === "error") {
-		if (S.chatMsgBox?.lastChild) S.chatMsgBox.removeChild(S.chatMsgBox.lastChild);
-		chatAddMsg("error", `Browser container image pull failed: ${payload.error || "unknown"}`);
-	}
-}

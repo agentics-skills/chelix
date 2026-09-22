@@ -949,10 +949,9 @@ pub async fn api_set_default_backend_handler(
     Json(body): Json<SandboxDefaultBackendUpdateRequest>,
 ) -> impl IntoResponse {
     let backend = body.backend;
-    let valid = backend == chelix_config::schema::SandboxBackend::Auto
-        || available_sandbox_backends()
-            .iter()
-            .any(|candidate| candidate.id == backend);
+    let valid = available_sandbox_backends()
+        .iter()
+        .any(|candidate| candidate.id == backend);
 
     if !valid {
         return api_error_response(

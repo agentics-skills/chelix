@@ -527,13 +527,12 @@ fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
     if config.tools.browser.enabled {
         // Browser isolation follows the global sandbox mode.
         if config.sandbox.mode != chelix_config::schema::SandboxMode::Off
-            && !chelix_browser::container::is_container_available()
+            && !chelix_browser::container::configured_backend_available(config.sandbox.backend)
         {
-            warnings.push(
-                "Sandbox mode is available but no container runtime found. \
-                 Browser sandbox (for sandboxed sessions) requires Docker, Podman, or Apple Container."
-                    .to_string(),
-            );
+            warnings.push(format!(
+                "Sandbox backend {} is not available.",
+                config.sandbox.backend.as_str()
+            ));
         }
 
         if config.tools.browser.allowed_domains.is_empty() {

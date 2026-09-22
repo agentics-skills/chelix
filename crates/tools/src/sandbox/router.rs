@@ -1,4 +1,4 @@
-//! Sandbox orchestration: backend selection, failover, routing.
+//! Sandbox orchestration: backend selection and routing.
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -6,9 +6,6 @@ use {
     tokio::sync::RwLock,
     tracing::{debug, info},
 };
-
-#[cfg(any(target_os = "macos", test))]
-use async_trait::async_trait;
 
 #[cfg(target_os = "macos")]
 use super::apple::{AppleContainerSandbox, ensure_apple_container_service};
@@ -25,261 +22,6 @@ use {
     },
     crate::error::{Error, Result},
 };
-
-#[cfg(any(target_os = "macos", test))]
-use {
-    super::{
-        containers::is_apple_container_corruption_error,
-        types::{BuildImageResult, ToolsServiceEndpoint},
-    },
-    crate::command::{CommandOptions, CommandOutput},
-};
-
-/// Wrapper sandbox that can fail over from a primary backend to a fallback backend.
-///
-/// This is used on macOS to fail over from Apple Container to Docker when the
-/// Apple runtime enters a corrupted state (stale metadata, missing config.json,
-/// service errors, etc.).
-#[cfg(any(target_os = "macos", test))]
-pub(crate) struct FailoverSandbox {
-    primary: Arc<dyn Sandbox>,
-    fallback: Arc<dyn Sandbox>,
-    primary_backend: SandboxBackendId,
-    fallback_backend: SandboxBackendId,
-    use_fallback: RwLock<bool>,
-}
-
-#[cfg(any(target_os = "macos", test))]
-impl FailoverSandbox {
-    pub(crate) fn new(primary: Arc<dyn Sandbox>, fallback: Arc<dyn Sandbox>) -> Result<Self> {
-        if !primary.provides_fs_isolation() || !fallback.provides_fs_isolation() {
-            return Err(Error::message(
-                "sandbox failover requires filesystem-isolated primary and fallback backends",
-            ));
-        }
-        let primary_backend = primary.backend_id();
-        let fallback_backend = fallback.backend_id();
-        Ok(Self {
-            primary,
-            fallback,
-            primary_backend,
-            fallback_backend,
-            use_fallback: RwLock::new(false),
-        })
-    }
-
-    async fn fallback_enabled(&self) -> bool {
-        *self.use_fallback.read().await
-    }
-
-    async fn switch_to_fallback(&self, error: &Error) {
-        let mut use_fallback = self.use_fallback.write().await;
-        if !*use_fallback {
-            tracing::warn!(
-                primary = %self.primary_backend,
-                fallback = %self.fallback_backend,
-                %error,
-                "sandbox primary backend failed, switching to fallback backend"
-            );
-            *use_fallback = true;
-        }
-    }
-
-    fn should_failover(&self, error: &Error) -> bool {
-        let message = format!("{error:#}");
-        match self.primary_backend {
-            SandboxBackendId::AppleContainer => is_apple_container_corruption_error(&message),
-            SandboxBackendId::Docker => is_docker_failover_error(&message),
-            SandboxBackendId::Podman => is_podman_failover_error(&message),
-            SandboxBackendId::None => false,
-        }
-    }
-}
-
-#[cfg(any(target_os = "macos", test))]
-#[async_trait]
-impl Sandbox for FailoverSandbox {
-    fn backend_id(&self) -> SandboxBackendId {
-        // Report the active backend so callers know the true isolation level.
-        // On lock contention (write lock held during failover switch),
-        // conservatively assume fallback is active — the safer default.
-        if self
-            .use_fallback
-            .try_read()
-            .map(|guard| *guard)
-            .unwrap_or(true)
-        {
-            self.fallback_backend
-        } else {
-            self.primary_backend
-        }
-    }
-
-    fn provides_fs_isolation(&self) -> bool {
-        // On lock contention, conservatively report the fallback's (weaker)
-        // isolation level rather than the primary's.
-        if self
-            .use_fallback
-            .try_read()
-            .map(|guard| *guard)
-            .unwrap_or(true)
-        {
-            self.fallback.provides_fs_isolation()
-        } else {
-            self.primary.provides_fs_isolation()
-        }
-    }
-
-    fn workspace_dir(&self) -> &str {
-        if self
-            .use_fallback
-            .try_read()
-            .map(|guard| *guard)
-            .unwrap_or(true)
-        {
-            self.fallback.workspace_dir()
-        } else {
-            self.primary.workspace_dir()
-        }
-    }
-
-    async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
-        if self.fallback_enabled().await {
-            return self.fallback.ensure_ready(id).await;
-        }
-
-        match self.primary.ensure_ready(id).await {
-            Ok(()) => Ok(()),
-            Err(primary_error) => {
-                if !self.should_failover(&primary_error) {
-                    return Err(primary_error);
-                }
-
-                self.switch_to_fallback(&primary_error).await;
-                let primary_message = format!("{primary_error:#}");
-                self.fallback
-                    .ensure_ready(id)
-                    .await
-                    .map_err(|fallback_error| {
-                        Error::message(format!(
-                            "primary sandbox backend ({}) failed: {}; fallback backend ({}) also failed: {}",
-                            self.primary_backend,
-                            primary_message,
-                            self.fallback_backend,
-                            fallback_error
-                        ))
-                    })
-            },
-        }
-    }
-
-    async fn tools_service_endpoint(&self, id: &SandboxId) -> Result<ToolsServiceEndpoint> {
-        if self.fallback_enabled().await {
-            self.fallback.tools_service_endpoint(id).await
-        } else {
-            self.primary.tools_service_endpoint(id).await
-        }
-    }
-
-    async fn tools_service_instances(&self) -> Result<Vec<ToolsServiceInstance>> {
-        if self.fallback_enabled().await {
-            self.fallback.tools_service_instances().await
-        } else {
-            self.primary.tools_service_instances().await
-        }
-    }
-
-    async fn run_command(
-        &self,
-        id: &SandboxId,
-        command: &str,
-        opts: &CommandOptions,
-    ) -> Result<CommandOutput> {
-        if self.fallback_enabled().await {
-            return self.fallback.run_command(id, command, opts).await;
-        }
-
-        match self.primary.run_command(id, command, opts).await {
-            Ok(result) => Ok(result),
-            Err(primary_error) => {
-                if !self.should_failover(&primary_error) {
-                    return Err(primary_error);
-                }
-
-                self.switch_to_fallback(&primary_error).await;
-                let primary_message = format!("{primary_error:#}");
-                self.fallback
-                    .ensure_ready(id)
-                    .await
-                    .map_err(|fallback_error| {
-                        Error::message(format!(
-                            "primary sandbox backend ({}) failed during command execution: {}; fallback backend ({}) failed to initialize: {}",
-                            self.primary_backend,
-                            primary_message,
-                            self.fallback_backend,
-                            fallback_error
-                        ))
-                    })?;
-                self.fallback.run_command(id, command, opts).await
-            },
-        }
-    }
-
-    async fn cleanup(&self, id: &SandboxId) -> Result<()> {
-        if self.fallback_enabled().await {
-            let result = self.fallback.cleanup(id).await;
-            if let Err(error) = self.primary.cleanup(id).await {
-                debug!(
-                    backend = %self.primary_backend,
-                    %error,
-                    "primary sandbox cleanup failed after failover"
-                );
-            }
-            return result;
-        }
-
-        self.primary.cleanup(id).await
-    }
-
-    async fn build_image(
-        &self,
-        base: &str,
-        packages: &[String],
-    ) -> Result<Option<BuildImageResult>> {
-        if self.fallback_enabled().await {
-            return self.fallback.build_image(base, packages).await;
-        }
-
-        let primary_result = match self.primary.build_image(base, packages).await {
-            Ok(result) => result,
-            Err(primary_error) => {
-                if !self.should_failover(&primary_error) {
-                    return Err(primary_error);
-                }
-
-                self.switch_to_fallback(&primary_error).await;
-                return self.fallback.build_image(base, packages).await;
-            },
-        };
-
-        let fallback_result = self.fallback.build_image(base, packages).await?;
-        match (primary_result, fallback_result) {
-            (Some(mut primary), Some(fallback)) => {
-                if primary.tag != fallback.tag {
-                    return Err(Error::message(format!(
-                        "sandbox failover backends produced different deterministic image tags: primary={} fallback={}",
-                        primary.tag, fallback.tag
-                    )));
-                }
-                primary.built |= fallback.built;
-                Ok(Some(primary))
-            },
-            (Some(primary), None) => Ok(Some(primary)),
-            (None, Some(fallback)) => Ok(Some(fallback)),
-            (None, None) => Ok(None),
-        }
-    }
-}
 
 /// Create the appropriate sandbox backend based on config and platform.
 pub fn create_sandbox(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
@@ -299,12 +41,6 @@ fn create_sandbox_with_global_image(
 }
 
 /// Select the sandbox backend based on config and platform availability.
-///
-/// When `backend` is `"auto"` (the default):
-/// - On macOS, prefer Apple Container if the `container` CLI is installed
-///   (each sandbox runs in a lightweight VM — stronger isolation than Docker).
-/// - Prefer Podman (daemonless, rootless) over Docker when available.
-/// - Fall back to Docker, then fail closed when no isolated runtime is available.
 #[cfg(test)]
 pub(crate) fn select_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
     let effective_image = shared_sandbox_image(&config);
@@ -316,7 +52,6 @@ fn select_backend_with_global_image(
     effective_image: SharedSandboxImage,
 ) -> Result<Arc<dyn Sandbox>> {
     match config.backend {
-        SandboxBackend::Auto => auto_detect_backend_with_global_image(config, effective_image),
         SandboxBackend::Docker => {
             if !should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available())
             {
@@ -370,131 +105,6 @@ fn create_apple_backend(
     ))
 }
 
-/// Wrap a primary sandbox backend with a failover chain.
-///
-/// Tries Podman, then Docker as isolated fallbacks, returning the primary
-/// unwrapped if no fallback runtime is available.
-#[cfg(target_os = "macos")]
-fn maybe_wrap_with_failover(
-    primary: Arc<dyn Sandbox>,
-    config: &SandboxConfig,
-    effective_image: SharedSandboxImage,
-) -> Result<Arc<dyn Sandbox>> {
-    let primary_backend = primary.backend_id();
-
-    // Try Podman as fallback (skip if primary is already Podman).
-    if primary_backend != SandboxBackendId::Podman && is_cli_available("podman") {
-        tracing::info!(
-            primary = %primary_backend,
-            fallback = "podman",
-            "sandbox backend failover enabled"
-        );
-        return Ok(Arc::new(FailoverSandbox::new(
-            primary,
-            Arc::new(DockerSandbox::podman_with_global_image(
-                config.clone(),
-                effective_image,
-            )),
-        )?));
-    }
-
-    // Try Docker as fallback (skip if primary is already Docker).
-    if primary_backend != SandboxBackendId::Docker
-        && should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available())
-    {
-        tracing::info!(
-            primary = %primary_backend,
-            fallback = "docker",
-            "sandbox backend failover enabled"
-        );
-        return Ok(Arc::new(FailoverSandbox::new(
-            primary,
-            Arc::new(DockerSandbox::new_with_global_image(
-                config.clone(),
-                effective_image,
-            )),
-        )?));
-    }
-
-    Ok(primary)
-}
-
-/// Check whether an error message indicates a Docker daemon connectivity issue.
-#[cfg(any(target_os = "macos", test))]
-pub(crate) fn is_docker_failover_error(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("cannot connect to the docker daemon")
-        || lower.contains("is the docker daemon running")
-        || lower.contains("error during connect")
-        || lower.contains("connection refused")
-}
-
-/// Check whether an error message indicates a Podman runtime issue that warrants
-/// failover. Podman is daemonless so most Docker-daemon errors don't apply, but
-/// socket/service errors or missing runtimes do.
-#[cfg(any(target_os = "macos", test))]
-pub(crate) fn is_podman_failover_error(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
-    lower.contains("cannot connect to podman")
-        || lower.contains("no such file or directory") && lower.contains("podman")
-        || lower.contains("connection refused")
-        || lower.contains("runtime") && lower.contains("not found")
-}
-
-pub fn auto_detect_backend(config: SandboxConfig) -> Result<Arc<dyn Sandbox>> {
-    let effective_image = shared_sandbox_image(&config);
-    auto_detect_backend_with_global_image(config, effective_image)
-}
-
-fn auto_detect_backend_with_global_image(
-    config: SandboxConfig,
-    effective_image: SharedSandboxImage,
-) -> Result<Arc<dyn Sandbox>> {
-    #[cfg(target_os = "macos")]
-    {
-        if is_cli_available("container") {
-            if ensure_apple_container_service() {
-                tracing::info!("sandbox backend: apple-container (VM-isolated, preferred)");
-                let apple_backend: Arc<dyn Sandbox> =
-                    Arc::new(AppleContainerSandbox::new_with_global_image(
-                        config.clone(),
-                        Arc::clone(&effective_image),
-                    ));
-                return maybe_wrap_with_failover(apple_backend, &config, effective_image);
-            }
-            tracing::warn!(
-                "apple container CLI found but service could not be started; \
-                 falling back to podman/docker"
-            );
-        }
-    }
-
-    // Prefer Podman (daemonless, rootless by default) over Docker.
-    if is_cli_available("podman") {
-        tracing::info!("sandbox backend: podman (daemonless, preferred over docker)");
-        return Ok(Arc::new(DockerSandbox::podman_with_global_image(
-            config,
-            effective_image,
-        )));
-    }
-
-    if should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available()) {
-        tracing::info!("sandbox backend: docker");
-        return Ok(Arc::new(DockerSandbox::new_with_global_image(
-            config,
-            effective_image,
-        )));
-    }
-
-    if is_cli_available("docker") {
-        tracing::warn!("docker CLI detected but daemon is not accessible");
-    }
-
-    Err(Error::message(
-        "sandbox mode is On, but no isolated runtime is available; install or start Apple Container, Podman, or Docker",
-    ))
-}
-
 /// Events emitted by the sandbox subsystem for UI feedback.
 #[derive(Debug, Clone)]
 pub enum SandboxEvent {
@@ -532,7 +142,7 @@ pub enum SandboxEvent {
 pub struct SandboxRouter {
     config: SandboxConfig,
     backend: Arc<dyn Sandbox>,
-    /// Single effective image shared by the router and every OCI failover backend.
+    /// Single effective image shared by every sandbox session.
     effective_image: SharedSandboxImage,
     /// Event channel for sandbox lifecycle events (prepare/provision/build feedback).
     event_tx: tokio::sync::broadcast::Sender<SandboxEvent>,
@@ -665,7 +275,6 @@ impl SandboxRouter {
 
         let (backend, id) = self.prepare_command_session(session_key).await?;
 
-        // Preparation can switch a failover backend to a weaker implementation.
         Self::require_fs_isolation(session_key, &*backend)?;
 
         Ok(ExecEnv::Sandbox { backend, id })

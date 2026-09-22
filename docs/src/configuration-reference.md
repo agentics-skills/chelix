@@ -345,8 +345,8 @@ loading the configuration.
 | `shared_home_dir`        | optional string                        | `null`            | Host directory for shared `/home/sandbox` persistence. Relative paths resolved against `data_dir()`.                                                                                 |
 | `image`                  | optional string                        | `null`            | Docker/Podman image for sandbox containers.                                                                                                                                          |
 | `container_prefix`       | optional string                        | `null`            | Name prefix for created containers.                                                                                                                                                  |
-| `network`                | string                                 | `"bridge"`        | Docker/Podman network name passed as `--network=<name>`.                                                                                                                             |
-| `backend`                | enum                                   | `"auto"`          | Isolated backend: `"auto"`, `"docker"`, `"podman"`, or `"apple-container"`.                                                    |
+| `network`                | string                                 | `"bridge"`        | Docker/Podman network name passed as `--network=<name>` to sandbox and sandboxed browser containers.                                                                                |
+| `backend`                | enum                                   | `"docker"`        | Isolated backend: `"docker"`, `"podman"`, or `"apple-container"`. A missing key uses `"docker"`. Chelix does not select another runtime. |
 | `mounts`                 | array of tables                        | `[]`              | Additional mounts with `host`, absolute `guest`, and `mode` (`"ro"` or `"rw"`).                                                                                                      |
 | `packages`               | array                                  | _(~130 packages)_ | Packages to install via `apt-get` in the sandbox image. Empty list to skip.                                                                                                          |
 
@@ -393,7 +393,6 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | `low_memory_threshold_mb` | integer              | `2048`                           | System RAM threshold (MB) below which memory-saving Chrome flags are injected (0 to disable).                               |
 | `persist_profile`         | bool                 | `true`                           | Persist Chrome user profile (cookies, auth, local storage) across sessions.                                                 |
 | `profile_dir`             | optional string      | `null`                           | Custom path for persistent Chrome profile directory. Implies `persist_profile = true`.                                      |
-| `container_host`          | string               | `"127.0.0.1"`                    | Hostname/IP to connect to the browser container from the host. Use `"host.docker.internal"` when Chelix runs inside Docker. |
 | `browserless_api_version` | enum: `"v1"`, `"v2"` | `"v1"`                           | Browserless API compatibility mode for websocket endpoints.                                                                 |
 
 ---

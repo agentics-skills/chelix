@@ -219,7 +219,7 @@ workspace_sysmount = "ro"       # "ro" keeps rootfs/cap-drop hardening, "rw" rel
 # host_data_dir = "/host/path/data"  # Optional override if auto-detection cannot resolve the host path
 home_persistence = "shared"     # "off", "session", or "shared" (default: "shared")
 # shared_home_dir = "/path/to/shared-home"  # Optional path for shared mode
-backend = "auto"                # "auto", "docker", or "apple-container"
+backend = "docker"              # "docker", "podman", or "apple-container"
 network = "bridge"              # Docker/Podman network passed as --network=<name>
 
 # Packages installed in the sandbox image
@@ -501,7 +501,7 @@ scope = "session"
 workspace_sysmount = "ro"
 home_persistence = "session"
 # shared_home_dir = "/path/to/shared-home"
-backend = "auto"
+backend = "docker"
 network = "bridge"
 packages = ["curl", "git", "jq", "python3", "nodejs"]
 

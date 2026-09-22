@@ -43,11 +43,6 @@ fn test_is_docker_available() {
 }
 
 #[test]
-fn test_is_container_available() {
-    let _ = is_container_available();
-}
-
-#[test]
 fn test_docker_backend_cli() {
     assert_eq!(ContainerBackend::Docker.cli(), "docker");
 }
@@ -56,16 +51,6 @@ fn test_docker_backend_cli() {
 #[test]
 fn test_apple_container_backend_cli() {
     assert_eq!(ContainerBackend::AppleContainer.cli(), "container");
-}
-
-#[test]
-fn test_detect_backend_returns_some() {
-    let result = detect_backend();
-    if is_container_available() {
-        assert!(result.is_ok());
-    } else {
-        assert!(result.is_err());
-    }
 }
 
 #[test]

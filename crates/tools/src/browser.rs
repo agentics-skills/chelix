@@ -61,12 +61,14 @@ impl BrowserTool {
     pub fn from_config(
         browser: &chelix_config::schema::BrowserConfig,
         sandbox: &chelix_config::schema::SandboxConfig,
+        container_prefix: &str,
     ) -> Option<Self> {
         if !browser.enabled {
             return None;
         }
         let mut browser_config = chelix_browser::BrowserConfig::from(browser);
-        browser_config.host_data_dir = sandbox.host_data_dir.as_ref().map(std::path::PathBuf::from);
+        browser_config.container_prefix = container_prefix.to_string();
+        browser_config.apply_sandbox_container(sandbox);
         Some(Self::new(browser_config, sandbox.mode))
     }
 
@@ -316,9 +318,12 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool =
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
-                .unwrap();
+        let tool = BrowserTool::from_config(
+            &config,
+            &chelix_config::schema::SandboxConfig::default(),
+            "chelix-test-agent-browser",
+        )
+        .unwrap();
         assert_eq!(tool.name(), "browser");
     }
 
@@ -329,8 +334,12 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default(),)
-                .is_none()
+            BrowserTool::from_config(
+                &config,
+                &chelix_config::schema::SandboxConfig::default(),
+                "chelix-test-agent-browser",
+            )
+            .is_none()
         );
     }
 
@@ -342,16 +351,39 @@ mod tests {
         };
         let sandbox = chelix_config::schema::SandboxConfig {
             host_data_dir: Some("/host/chelix-data".to_string()),
+            network: "  chelix-net  ".to_string(),
+            backend: chelix_config::schema::SandboxBackend::Docker,
             ..Default::default()
         };
 
-        let tool = BrowserTool::from_config(&browser, &sandbox).unwrap();
+        let tool =
+            BrowserTool::from_config(&browser, &sandbox, "chelix-test-agent-browser").unwrap();
 
         assert_eq!(
             tool.config.host_data_dir.as_deref(),
             Some(std::path::Path::new("/host/chelix-data"))
         );
+        assert_eq!(tool.config.network, "chelix-net");
+        assert_eq!(
+            tool.config.backend,
+            chelix_config::schema::SandboxBackend::Docker
+        );
+        assert_eq!(tool.config.container_prefix, "chelix-test-agent-browser");
         assert_eq!(tool.sandbox_mode, SandboxMode::On);
+
+        let empty_network = chelix_config::schema::SandboxConfig {
+            network: "   ".to_string(),
+            backend: chelix_config::schema::SandboxBackend::Podman,
+            ..Default::default()
+        };
+        let empty_tool =
+            BrowserTool::from_config(&browser, &empty_network, "chelix-test-agent-browser")
+                .unwrap();
+        assert_eq!(empty_tool.config.network, "bridge");
+        assert_eq!(
+            empty_tool.config.backend,
+            chelix_config::schema::SandboxBackend::Podman
+        );
     }
 
     #[test]
@@ -360,9 +392,12 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool =
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
-                .unwrap();
+        let tool = BrowserTool::from_config(
+            &config,
+            &chelix_config::schema::SandboxConfig::default(),
+            "chelix-test-agent-browser",
+        )
+        .unwrap();
         let schema = tool.parameters_schema();
         let required = schema["required"].as_array().unwrap();
         assert!(
@@ -382,9 +417,12 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool =
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
-                .unwrap();
+        let tool = BrowserTool::from_config(
+            &config,
+            &chelix_config::schema::SandboxConfig::default(),
+            "chelix-test-agent-browser",
+        )
+        .unwrap();
 
         tool.save_session("web:session:one", "browser-session-one")
             .await;
@@ -408,9 +446,12 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool =
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
-                .unwrap();
+        let tool = BrowserTool::from_config(
+            &config,
+            &chelix_config::schema::SandboxConfig::default(),
+            "chelix-test-agent-browser",
+        )
+        .unwrap();
         tool.save_session("web:session:one", "").await;
         assert_eq!(tool.get_saved_session("web:session:one").await, None);
     }
@@ -421,9 +462,12 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool =
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
-                .unwrap();
+        let tool = BrowserTool::from_config(
+            &config,
+            &chelix_config::schema::SandboxConfig::default(),
+            "chelix-test-agent-browser",
+        )
+        .unwrap();
 
         // Fill the cache to capacity
         for i in 0..BrowserTool::MAX_TRACKED_SESSIONS {
@@ -448,9 +492,12 @@ mod tests {
             enabled: true,
             ..Default::default()
         };
-        let tool =
-            BrowserTool::from_config(&config, &chelix_config::schema::SandboxConfig::default())
-                .unwrap();
+        let tool = BrowserTool::from_config(
+            &config,
+            &chelix_config::schema::SandboxConfig::default(),
+            "chelix-test-agent-browser",
+        )
+        .unwrap();
 
         tool.save_session("web:session:one", "browser-session-one")
             .await;

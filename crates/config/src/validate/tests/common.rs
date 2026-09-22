@@ -141,7 +141,7 @@ default_timeout_secs = 30
 
 [sandbox]
 mode = "On"
-backend = "auto"
+backend = "docker"
 
 [memory]
 provider = "local"

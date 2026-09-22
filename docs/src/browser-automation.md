@@ -66,9 +66,6 @@ navigation_timeout_ms = 30000  # Page load timeout
 # Browser container image (used when global sandbox mode is "On")
 sandbox_image = "docker.io/browserless/chrome"
 # allowed_domains = ["example.com", "*.trusted.org"]  # Restrict navigation
-
-# Container connectivity (for Chelix-in-Docker setups)
-# container_host = "127.0.0.1"  # Default; change when Chelix runs inside Docker
 ```
 
 ### Memory-Based Pool Limits
@@ -293,30 +290,10 @@ sandbox_image = "docker.io/browserless/chrome"  # Browser container image
 
 Requirements:
 
-- Docker or Apple Container must be installed and running
-- The container image is pulled automatically on first use
+- The runtime named by `[sandbox].backend` must be installed and running
 - Global sandbox mode must be enabled (`[sandbox] mode = "On"`)
-
-### Chelix Inside Docker (Sibling Containers)
-
-When Chelix itself runs inside a Docker container, the browser container is
-launched as a sibling via the host's Docker socket. By default Chelix connects
-to the browser at `127.0.0.1`, which points to the Chelix container's own
-loopback — not the host where the browser port is mapped.
-
-Set `container_host` so Chelix can reach the browser container through the
-host's port mapping:
-
-```toml
-[tools.browser]
-container_host = "host.docker.internal"   # macOS / Windows Docker Desktop
-# container_host = "172.17.0.1"           # Linux Docker bridge gateway IP
-```
-
-On Linux, `host.docker.internal` is not available by default. Use the Docker
-bridge gateway IP (typically `172.17.0.1`) or add
-`--add-host=host.docker.internal:host-gateway` to the Chelix container's
-`docker run` command.
+- Docker and Podman publish container port `3000` with `-p 127.0.0.1::3000` on `[sandbox].network`
+- Chelix connects to the first reachable candidate from `<cli> port` and `<cli> inspect`: host loopback, or the container address on port `3000`
 
 ### Execute Command Scripts
 

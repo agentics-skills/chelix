@@ -199,7 +199,7 @@ impl Default for SandboxConfig {
             image: None,
             container_prefix: None,
             network: "bridge".into(),
-            backend: SandboxBackend::Auto,
+            backend: SandboxBackend::Docker,
             resource_limits: ResourceLimits::default(),
             gpus: None,
             packages: Vec::new(),
