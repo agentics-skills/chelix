@@ -24,26 +24,23 @@ Configure in `chelix.toml`:
 ```toml
 [sandbox]
 mode = "On"
-backend = "auto"          # default — picks the best available
-# backend = "podman"      # force Podman (daemonless, rootless)
-# backend = "docker"      # force Docker
-# backend = "apple-container"  # force Apple Container (macOS only)
+backend = "docker"        # default
+# backend = "podman"      # Podman (daemonless, rootless)
+# backend = "apple-container"  # Apple Container (macOS only)
 ```
 
-Only `"auto"`, `"docker"`, `"podman"`, and `"apple-container"` are accepted.
+Only `"docker"`, `"podman"`, and `"apple-container"` are accepted. A missing
+`backend` key uses `"docker"`. Chelix does not probe for another runtime.
 
-With `"auto"` (the default), Chelix selects the first available isolated
-container runtime:
+| Backend         | Platform | Isolation                               |
+| --------------- | -------- | --------------------------------------- |
+| Docker          | any      | Linux namespaces / cgroups              |
+| Podman          | any      | Linux namespaces / cgroups (daemonless) |
+| Apple Container | macOS    | VM (Virtualization.framework)           |
 
-| Priority | Backend         | Platform | Isolation                               |
-| -------- | --------------- | -------- | --------------------------------------- |
-| 1        | Apple Container | macOS    | VM (Virtualization.framework)           |
-| 2        | Podman          | any      | Linux namespaces / cgroups (daemonless) |
-| 3        | Docker          | any      | Linux namespaces / cgroups              |
-
-When `mode = "On"`, an unavailable explicit backend or an `"auto"` selection
-with no available isolated runtime aborts gateway startup. Chelix never falls
-back to host execution. `mode = "Off"` is the only direct host execution path.
+When `mode = "On"`, an unavailable configured backend aborts gateway startup.
+Chelix never falls back to another runtime or to host execution. `mode = "Off"`
+is the only direct host execution path.
 
 ## Apple Container (recommended on macOS)
 
@@ -78,15 +75,13 @@ container --version
 container run --rm ubuntu echo "hello from VM"
 ```
 
-Once installed, restart `chelix gateway` — the startup banner will show
-`sandbox: apple-container backend`.
+Once installed, set `backend = "apple-container"` and restart `chelix gateway`.
 
 ## Podman
 
 [Podman](https://podman.io/) is a daemonless, rootless container engine that is
-CLI-compatible with Docker. It is preferred over Docker in auto-detection
-because it doesn't require a background daemon process and runs rootless by
-default for better security.
+CLI-compatible with Docker. Select it with `backend = "podman"`. It does not
+require a background daemon and runs rootless by default.
 
 ### Install
 
@@ -162,19 +157,6 @@ shell commands.
 > even for root. Podman masks `/sys/firmware` via its built-in OCI
 > `MaskedPaths`; `/sys/class/dmi`, `/sys/devices/virtual/dmi`, and
 > `/sys/class/block` remain readable inside the container on Podman.
-
-## Failover Chain
-
-When `backend = "auto"` selects Apple Container on macOS, Chelix can attach one
-isolated fallback: Podman when available, otherwise Docker. A non-isolated
-primary or fallback is rejected when the chain is constructed.
-
-Failover is sticky for the lifetime of the gateway process — once triggered, all
-subsequent commands use the fallback backend. Restart the gateway to retry the
-primary backend.
-
-If no isolated fallback is available, Apple Container remains the sole backend;
-an execution failure is returned rather than routed to the host.
 
 ## Global mode
 

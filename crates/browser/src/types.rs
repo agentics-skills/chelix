@@ -512,10 +512,10 @@ pub struct BrowserConfig {
     pub persist_profile: bool,
     /// Custom path for the persistent Chrome profile directory.
     pub profile_dir: Option<String>,
-    /// Hostname or IP used to connect to the browser container.
-    /// Default: "127.0.0.1". Set to e.g. "host.docker.internal" when
-    /// Chelix runs inside Docker alongside a sibling browser container.
-    pub container_host: String,
+    /// Docker/Podman network copied from `[sandbox].network`.
+    pub network: String,
+    /// Sandbox backend copied from `[sandbox].backend`.
+    pub backend: chelix_config::schema::SandboxBackend,
     /// Optional host-visible path for Chelix `data_dir()` when launching
     /// browser sandbox containers from inside another container.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -549,6 +549,15 @@ fn default_container_prefix() -> String {
     "chelix-browser".to_string()
 }
 
+fn normalize_container_network(network: &str) -> String {
+    let trimmed = network.trim();
+    if trimmed.is_empty() {
+        "bridge".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 impl Default for BrowserConfig {
     fn default() -> Self {
         Self {
@@ -572,7 +581,8 @@ impl Default for BrowserConfig {
             low_memory_threshold_mb: 2048,
             persist_profile: true,
             profile_dir: None,
-            container_host: "127.0.0.1".to_string(),
+            network: "bridge".to_string(),
+            backend: chelix_config::schema::SandboxBackend::Docker,
             host_data_dir: None,
             browserless_api_version: BrowserlessApiVersion::V1,
         }
@@ -580,6 +590,12 @@ impl Default for BrowserConfig {
 }
 
 impl BrowserConfig {
+    pub fn apply_sandbox_container(&mut self, sandbox: &chelix_config::schema::SandboxConfig) {
+        self.host_data_dir = sandbox.host_data_dir.as_deref().map(PathBuf::from);
+        self.network = normalize_container_network(&sandbox.network);
+        self.backend = sandbox.backend;
+    }
+
     /// Resolve the effective Chrome profile directory, if profile persistence is enabled.
     ///
     /// Returns `Some(path)` when either `profile_dir` is set or `persist_profile` is true.
@@ -619,7 +635,8 @@ impl From<&chelix_config::schema::BrowserConfig> for BrowserConfig {
             low_memory_threshold_mb: cfg.low_memory_threshold_mb,
             persist_profile: cfg.persist_profile,
             profile_dir: cfg.profile_dir.clone(),
-            container_host: cfg.container_host.clone(),
+            network: "bridge".to_string(),
+            backend: chelix_config::schema::SandboxBackend::Docker,
             host_data_dir: None,
             browserless_api_version: match cfg.browserless_api_version {
                 chelix_config::schema::BrowserlessApiVersion::V1 => BrowserlessApiVersion::V1,

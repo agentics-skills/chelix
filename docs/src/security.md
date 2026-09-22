@@ -546,7 +546,7 @@ Always run with sandbox enabled in production:
 ```toml
 [sandbox]
 mode = "On"
-backend = "auto"  # uses strongest available
+backend = "docker"
 ```
 
 ### 3. Limit Rate Limits

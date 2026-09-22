@@ -569,7 +569,7 @@ function backendRecommendation(info: SandboxGonInfo | null): { level: string; te
 	if (os === "macos" && backend === "docker") {
 		return {
 			level: "info",
-			text: "Apple Container provides stronger VM-level isolation on macOS 26+. Install it for automatic use (chelix prefers it over Docker). Run: brew install container",
+			text: "Apple Container provides stronger VM-level isolation on macOS 26+. Set sandbox.backend to apple-container to use it. Run: brew install container",
 		};
 	}
 	if (os === "linux" && backend === "docker") {
@@ -619,7 +619,7 @@ function SandboxBackendButton({ backend, isDefault, disabled, onSelect }: Sandbo
 }
 
 const availableBackendsList = signal<AvailableBackendInfo[]>([]);
-const defaultBackendId = signal("auto");
+const defaultBackendId = signal("");
 const backendSaving = signal(false);
 
 function fetchAvailableBackends(): void {
@@ -627,7 +627,7 @@ function fetchAvailableBackends(): void {
 		.then((r) => r.json())
 		.then((data) => {
 			availableBackendsList.value = data.backends || [];
-			defaultBackendId.value = data.default || "auto";
+			defaultBackendId.value = data.default || "";
 		})
 		.catch((error: unknown) => {
 			console.warn("Failed to load available sandbox backends:", error);
@@ -676,10 +676,7 @@ function SandboxBanner(): VNode | null {
 						<SandboxBackendButton
 							key={backend.id}
 							backend={backend}
-							isDefault={
-								backend.id === defaultBackendId.value ||
-								(defaultBackendId.value === "auto" && backend.id === info.backend)
-							}
+							isDefault={backend.id === defaultBackendId.value}
 							disabled={backendSaving.value}
 							onSelect={changeDefault}
 						/>

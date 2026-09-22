@@ -12,16 +12,15 @@ pub struct RealBrowserService {
 impl RealBrowserService {
     pub fn new(
         config: &chelix_config::schema::BrowserConfig,
-        sandbox_mode: chelix_config::schema::SandboxMode,
+        sandbox: &chelix_config::schema::SandboxConfig,
         container_prefix: String,
-        host_data_dir: Option<std::path::PathBuf>,
     ) -> Self {
         let mut browser_config = chelix_browser::BrowserConfig::from(config);
         browser_config.container_prefix = container_prefix;
-        browser_config.host_data_dir = host_data_dir;
+        browser_config.apply_sandbox_container(sandbox);
         Self {
             config: browser_config,
-            sandbox_mode,
+            sandbox_mode: sandbox.mode,
             manager: tokio::sync::OnceCell::new(),
         }
     }
@@ -35,13 +34,8 @@ impl RealBrowserService {
         }
         Some(Self::new(
             &config.tools.browser,
-            config.sandbox.mode,
+            &config.sandbox,
             container_prefix,
-            config
-                .sandbox
-                .host_data_dir
-                .as_ref()
-                .map(std::path::PathBuf::from),
         ))
     }
 

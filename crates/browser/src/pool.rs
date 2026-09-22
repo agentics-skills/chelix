@@ -399,12 +399,9 @@ impl BrowserPool {
 
     /// Launch a browser inside a container (sandboxed mode).
     async fn launch_sandboxed_browser(&self, session_id: &str) -> Result<BrowserInstance, Error> {
-        use crate::container;
-
-        // All container operations (CLI checks, image pulls, container start +
-        // readiness polling) use synchronous `std::process::Command` and
-        // `std::thread::sleep`.  Run them on the blocking thread-pool so they
-        // don't stall the tokio event loop.
+        // Container start and readiness polling use synchronous
+        // `std::process::Command` and `std::thread::sleep`. Run them on the
+        // blocking thread-pool so they don't stall the tokio event loop.
         let image = self.config.sandbox_image.clone();
         let prefix = self.config.container_prefix.clone();
         let vw = self.config.viewport_width;
@@ -417,36 +414,20 @@ impl BrowserPool {
         );
         let profile_dir = sandbox_profile_dir(self.config.resolved_profile_dir(), session_id);
         let host_data_dir = self.config.host_data_dir.clone();
-        let container_host = self.config.container_host.clone();
+        let network = self.config.network.clone();
+        let backend = self.config.backend;
 
         info!(
             session_id,
             image = %image,
-            container_host = %container_host,
+            backend = backend.as_str(),
+            network = %network,
             profile_dir = ?profile_dir,
             session_timeout_ms,
             "launching sandboxed browser container"
         );
 
         let container = tokio::task::spawn_blocking(move || {
-            // Check container runtime availability (Docker, Podman, or Apple Container)
-            if !container::is_container_available() {
-                return Err(Error::LaunchFailed(
-                    "No container runtime available for sandboxed browser. \
-                     Please install Docker, Podman, or Apple Container."
-                        .to_string(),
-                ));
-            }
-
-            // Ensure the container image is available
-            let t_image = Instant::now();
-            container::ensure_image(&image)
-                .map_err(|e| Error::LaunchFailed(format!("failed to ensure browser image: {e}")))?;
-            info!(
-                elapsed_ms = t_image.elapsed().as_millis() as u64,
-                "browser container image ready"
-            );
-
             // Create profile directory on host if needed.
             // The directory must be world-writable (0o777) because the browserless/chrome
             // container runs Chrome as uid 999 (`chrome` user), which differs from the
@@ -476,7 +457,8 @@ impl BrowserPool {
                 session_timeout_ms,
                 profile_dir.as_deref(),
                 host_data_dir.as_deref(),
-                &container_host,
+                &network,
+                backend,
             )
             .map_err(|e| Error::LaunchFailed(format!("failed to start browser container: {e}")))
         })

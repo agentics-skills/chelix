@@ -1055,34 +1055,23 @@ pub(crate) fn apple_container_status_from_inspect(stdout: &str) -> Option<&'stat
     None
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 pub(crate) fn is_apple_container_service_error(stderr: &str) -> bool {
     stderr.contains("XPC connection error") || stderr.contains("Connection invalid")
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 pub(crate) fn is_apple_container_exists_error(stderr: &str) -> bool {
     stderr.contains("already exists") || stderr.contains("exists: \"container with id")
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 pub(crate) fn is_apple_container_daemon_stale_error(text: &str) -> bool {
     // Both patterns are required — `NSPOSIXErrorDomain` alone can appear in
     // benign log-fetching errors (Code=2 "No such file or directory") when a
     // container vanishes. The stale-daemon signature is specifically EINVAL:
     // `NSPOSIXErrorDomain Code=22 "Invalid argument"`.
     text.contains("NSPOSIXErrorDomain") && text.contains("Invalid argument")
-}
-
-#[cfg(any(target_os = "macos", test))]
-pub(crate) fn is_apple_container_corruption_error(stderr: &str) -> bool {
-    let lower = stderr.to_ascii_lowercase();
-    is_apple_container_service_error(stderr)
-        || is_apple_container_exists_error(stderr)
-        || is_apple_container_daemon_stale_error(stderr)
-        || lower.contains("failed to bootstrap container")
-        || lower.contains("config.json")
-        || lower.contains("vm never booted")
 }
 
 pub(crate) fn should_use_docker_backend(
@@ -1109,20 +1098,4 @@ pub fn is_cli_available(name: &str) -> bool {
         .stderr(std::process::Stdio::null())
         .status()
         .is_ok_and(|s| s.success())
-}
-
-/// Return the name of the container CLI to use for OCI image operations
-/// (`docker run`, `docker build`, etc.).
-///
-/// Prefers `podman` (daemonless) when available, falls back to `docker`.
-/// The result is cached after the first call.
-pub fn container_cli() -> &'static str {
-    static CLI: std::sync::OnceLock<&str> = std::sync::OnceLock::new();
-    CLI.get_or_init(|| {
-        if is_cli_available("podman") {
-            "podman"
-        } else {
-            "docker"
-        }
-    })
 }

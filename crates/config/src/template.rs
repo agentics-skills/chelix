@@ -240,7 +240,7 @@ port = {port}                           # Port number (auto-generated for this i
 # [sandbox]
 # mode = "On"                       # "On" | "Off"; global for every session
 # scope = "session"                 # "session" | "agent" | "shared"
-# backend = "auto"                  # "auto" | "docker" | "podman" | "apple-container"
+# backend = "docker"                # "docker" | "podman" | "apple-container"
 # image = "custom-image:tag"        # Custom container image (default: auto-built)
 # network = "bridge"                # Docker/Podman network passed as --network=<name>
 # workspace_sysmount = "ro"         # "ro" | "rw" (rootfs + cap-drop/no-new-privileges hardening)

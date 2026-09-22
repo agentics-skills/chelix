@@ -14,7 +14,7 @@ fn explicit_unavailable_backend_fails_closed() {
             should_use_docker_backend(is_cli_available("docker"), is_docker_daemon_available())
         },
         SandboxBackend::Podman => is_cli_available("podman"),
-        _ => unreachable!(),
+        SandboxBackend::AppleContainer => false,
     };
     if runtime_available {
         return;
@@ -32,20 +32,6 @@ fn explicit_unavailable_backend_fails_closed() {
     };
 
     assert!(error.to_string().contains("unavailable"));
-}
-
-#[test]
-fn failover_rejects_nonisolated_backend() {
-    let isolated: Arc<dyn Sandbox> =
-        Arc::new(TestSandbox::new(SandboxBackendId::Docker, None, None));
-    let host: Arc<dyn Sandbox> = Arc::new(NoSandbox);
-
-    let error = match FailoverSandbox::new(isolated, host) {
-        Ok(_) => panic!("non-isolated failover backend must be rejected"),
-        Err(error) => error,
-    };
-
-    assert!(error.to_string().contains("filesystem-isolated"));
 }
 
 #[test]

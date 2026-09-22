@@ -9,12 +9,9 @@ use std::{
 use tracing::warn;
 
 use {
-    super::{
-        containers::{is_cli_available, is_docker_daemon_available, should_use_docker_backend},
-        types::{
-            HomePersistence, SANDBOX_HOME_DIR, SandboxBackend, SandboxConfig, SandboxId,
-            sanitize_path_component,
-        },
+    super::types::{
+        HomePersistence, SANDBOX_HOME_DIR, SandboxBackend, SandboxConfig, SandboxId,
+        sanitize_path_component,
     },
     crate::error::Result,
     chelix_config::container_mounts::{SandboxMount, sandbox_mount_plan},
@@ -68,19 +65,6 @@ pub(crate) fn detected_container_cli(config: &SandboxConfig) -> Option<&'static 
     match config.backend {
         SandboxBackend::Docker => Some("docker"),
         SandboxBackend::Podman => Some("podman"),
-        SandboxBackend::Auto => {
-            if is_cli_available("podman") {
-                Some("podman")
-            } else if should_use_docker_backend(
-                is_cli_available("docker"),
-                is_docker_daemon_available(),
-            ) || is_cli_available("docker")
-            {
-                Some("docker")
-            } else {
-                None
-            }
-        },
         SandboxBackend::AppleContainer => None,
     }
 }

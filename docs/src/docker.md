@@ -246,43 +246,21 @@ file before relying on unattended auto-unseal.
 
 ## Browser Sandbox in Docker
 
-When Chelix runs inside Docker and launches a sandboxed browser, the browser
-container is a sibling container on the host. By default, Chelix connects to
-`127.0.0.1` which only reaches its own loopback, not the browser.
+When global sandbox mode is `On`, Chelix starts the browser container with the
+same Docker or Podman backend and `[sandbox].network` as the command sandbox.
+Container port `3000` is published with `-p 127.0.0.1::3000`. Chelix reads
+`<cli> port` and `<cli> inspect`, then uses the first candidate that answers
+`GET /json/version`: the host loopback publication, or the container address on
+port `3000`.
 
-The sibling browser also needs a host-visible mount for its Chrome profile. If
-your Chelix data directory is bind-mounted or stored somewhere that is not
-visible on the host as `/home/chelix/.chelix`, configure
-`[sandbox].host_data_dir` as described in
-[Docker Socket Sandbox Execution](#docker-socket-sandbox-execution). Without
+A containerized gateway reaches the browser address when both containers share
+a network that allows container-to-container traffic. Use the same
+`[sandbox] network` setup as the managed tools service.
+
+The persistent Chrome profile mount still uses `[sandbox].host_data_dir` when
+Chelix's data directory is not the host path `/home/chelix/.chelix`. Without
 that override, Chrome may fail with `SingletonLock: Permission denied` when the
 browser container tries to write `/data/browser-profile`.
-
-Add `container_host` to your `chelix.toml` so Chelix can reach the browser
-container through the host's port mapping:
-
-```toml
-[tools.browser]
-container_host = "host.docker.internal"
-```
-
-On Linux, add `--add-host` to the Chelix container so `host.docker.internal`
-resolves to the host:
-
-```bash
-docker run -d \
-  --name chelix \
-  --add-host=host.docker.internal:host-gateway \
-  -p 13131:13131 \
-  -p 13132:13132 \
-  -v chelix-config:/home/chelix/.config/chelix \
-  -v chelix-data:/home/chelix/.chelix \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/agentics-skills/chelix:latest
-```
-
-Alternatively, use the Docker bridge gateway IP directly
-(`container_host = "172.17.0.1"` on most Linux setups).
 
 ## Podman Support
 

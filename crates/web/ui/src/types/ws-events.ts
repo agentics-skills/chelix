@@ -12,7 +12,6 @@ export enum WsEventName {
 	SandboxPrepare = "sandbox.prepare",
 	SandboxImageBuild = "sandbox.image.build",
 	SandboxImageProvision = "sandbox.image.provision",
-	BrowserImagePull = "browser.image.pull",
 	ModelsUpdated = "models.updated",
 	LocationRequest = "location.request",
 	OperationProgress = "operation.progress",
@@ -371,7 +370,6 @@ export interface WsEventPayloadMap {
 	[WsEventName.SandboxPrepare]: SandboxPhasePayload;
 	[WsEventName.SandboxImageBuild]: SandboxPhasePayload;
 	[WsEventName.SandboxImageProvision]: SandboxPhasePayload;
-	[WsEventName.BrowserImagePull]: SandboxPhasePayload;
 	[WsEventName.ModelsUpdated]: ModelsUpdatedPayload;
 	[WsEventName.LocationRequest]: LocationRequestPayload;
 	[WsEventName.OperationProgress]: OperationProgressPayload;

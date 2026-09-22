@@ -767,28 +767,6 @@ fn test_podman_sandbox_provides_fs_isolation() {
     assert!(sandbox.provides_fs_isolation());
 }
 
-#[tokio::test]
-async fn test_failover_sandbox_reports_isolated_fallback() {
-    let primary = Arc::new(TestSandbox::new(
-        SandboxBackendId::Docker,
-        Some("cannot connect to the docker daemon"),
-        None,
-    ));
-    let fallback = Arc::new(TestSandbox::new(SandboxBackendId::Podman, None, None));
-    let failover = FailoverSandbox::new(primary, fallback).unwrap();
-
-    let id = SandboxId {
-        scope: SandboxScope::Session,
-        key: "test-failover".into(),
-    };
-
-    assert_eq!(failover.backend_id(), SandboxBackendId::Docker);
-    assert!(failover.provides_fs_isolation());
-    failover.ensure_ready(&id).await.unwrap();
-    assert_eq!(failover.backend_id(), SandboxBackendId::Podman);
-    assert!(failover.provides_fs_isolation());
-}
-
 /// E2E regression test for #796: Podman+BuildKit may leave images in
 /// BuildKit's cache instead of the Podman store.  Gated behind
 /// `CHELIX_SANDBOX_RUNTIME_E2E=1` and requires Podman to be installed.

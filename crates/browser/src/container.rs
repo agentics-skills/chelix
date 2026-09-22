@@ -1,7 +1,7 @@
 //! Container management for sandboxed browser instances.
 //!
-//! Supports Docker, Podman, and Apple Container backends, auto-detecting the
-//! best available option (Apple Container on macOS → Podman → Docker).
+//! Docker and Podman are selected from `[sandbox].backend`. Apple Container is
+//! used only when that backend is explicitly configured.
 
 use std::{
     fmt::Display,
@@ -17,8 +17,6 @@ use {
 type Result<T> = std::result::Result<T, Error>;
 
 trait ContextExt<T> {
-    fn context(self, context: impl Into<String>) -> Result<T>;
-
     fn with_context<C, F>(self, f: F) -> Result<T>
     where
         C: Into<String>,
@@ -29,11 +27,6 @@ impl<T, E> ContextExt<T> for std::result::Result<T, E>
 where
     E: Display,
 {
-    fn context(self, context: impl Into<String>) -> Result<T> {
-        let context = context.into();
-        self.map_err(|source| Error::LaunchFailed(format!("{context}: {source}")))
-    }
-
     fn with_context<C, F>(self, f: F) -> Result<T>
     where
         C: Into<String>,
@@ -45,10 +38,6 @@ where
 }
 
 impl<T> ContextExt<T> for Option<T> {
-    fn context(self, context: impl Into<String>) -> Result<T> {
-        self.ok_or_else(|| Error::LaunchFailed(context.into()))
-    }
-
     fn with_context<C, F>(self, f: F) -> Result<T>
     where
         C: Into<String>,
@@ -266,7 +255,12 @@ fn stop_container_by_id(backend: ContainerBackend, container_id: &str) {
     // Containers are started without --rm so that logs and status remain
     // available for diagnostics after a crash.  Explicitly remove the
     // container after stopping it.
-    match Command::new(cli).args(["rm", container_id]).output() {
+    let mut rm_args = vec!["rm".to_string()];
+    if matches!(backend, ContainerBackend::Docker | ContainerBackend::Podman) {
+        rm_args.push("-fv".to_string());
+    }
+    rm_args.push(container_id.to_string());
+    match Command::new(cli).args(&rm_args).output() {
         Ok(output) if output.status.success() => {
             debug!(container_id, backend = cli, "browser container removed");
         },
@@ -307,11 +301,8 @@ pub struct BrowserContainer {
 }
 
 impl BrowserContainer {
-    /// Start a new browser container using the auto-detected backend.
+    /// Start a new browser container with the configured sandbox backend.
     ///
-    /// Returns a container instance with the host port for CDP connections.
-    /// `container_host` is the hostname/IP used to reach the container (e.g.
-    /// `"127.0.0.1"` on the host, `"host.docker.internal"` from inside Docker).
     /// When `profile_dir` is `Some`, the host directory is mounted into the
     /// container so that browser profile data persists across sessions.
     pub fn start(
@@ -323,9 +314,10 @@ impl BrowserContainer {
         session_timeout_ms: u64,
         profile_dir: Option<&Path>,
         host_data_dir: Option<&Path>,
-        container_host: &str,
+        network: &str,
+        backend: chelix_config::schema::SandboxBackend,
     ) -> Result<Self> {
-        let backend = detect_backend()?;
+        let backend = resolve_container_backend(backend)?;
         Self::start_with_backend(
             backend,
             image,
@@ -336,7 +328,7 @@ impl BrowserContainer {
             session_timeout_ms,
             profile_dir,
             host_data_dir,
-            container_host,
+            network,
         )
     }
 
@@ -351,7 +343,7 @@ impl BrowserContainer {
         session_timeout_ms: u64,
         profile_dir: Option<&Path>,
         host_data_dir: Option<&Path>,
-        container_host: &str,
+        network: &str,
     ) -> Result<Self> {
         use std::time::Instant;
 
@@ -362,14 +354,10 @@ impl BrowserContainer {
             )));
         }
 
-        // Find an available port
-        let host_port = find_available_port()?;
-
         info!(
             image,
-            host_port,
             backend = backend.cli(),
-            container_host,
+            network,
             "starting browser container"
         );
 
@@ -381,115 +369,59 @@ impl BrowserContainer {
             ensure_profile_dir(guest_dir);
         }
 
-        let container_id = match backend {
-            ContainerBackend::Docker | ContainerBackend::Podman => start_oci_container(
-                backend,
-                image,
-                container_prefix,
-                host_port,
-                viewport_width,
-                viewport_height,
-                low_memory_threshold_mb,
-                session_timeout_ms,
-                profile_mount_dir.as_deref(),
-            )?,
+        let (container_id, endpoint) = match backend {
+            ContainerBackend::Docker | ContainerBackend::Podman => {
+                let container_id = start_oci_container(
+                    backend,
+                    image,
+                    container_prefix,
+                    network,
+                    viewport_width,
+                    viewport_height,
+                    low_memory_threshold_mb,
+                    session_timeout_ms,
+                    profile_mount_dir.as_deref(),
+                )?;
+                finish_browser_start(
+                    backend,
+                    container_id,
+                    profile_mount_dir.as_deref(),
+                    host_data_dir,
+                    t0,
+                )?
+            },
             #[cfg(target_os = "macos")]
-            ContainerBackend::AppleContainer => start_apple_container(
-                image,
-                container_prefix,
-                host_port,
-                viewport_width,
-                viewport_height,
-                low_memory_threshold_mb,
-                session_timeout_ms,
-                profile_mount_dir.as_deref(),
-            )?,
+            ContainerBackend::AppleContainer => {
+                let host_port = find_available_port()?;
+                let container_id = start_apple_container(
+                    image,
+                    container_prefix,
+                    host_port,
+                    viewport_width,
+                    viewport_height,
+                    low_memory_threshold_mb,
+                    session_timeout_ms,
+                    profile_mount_dir.as_deref(),
+                )?;
+                let candidates = vec![BrowserEndpoint {
+                    host: "127.0.0.1".to_string(),
+                    port: host_port,
+                }];
+                finish_browser_start_with_candidates(
+                    backend,
+                    container_id,
+                    candidates,
+                    profile_mount_dir.as_deref(),
+                    host_data_dir,
+                    t0,
+                )?
+            },
         };
-
-        info!(
-            container_id,
-            host_port,
-            backend = backend.cli(),
-            elapsed_ms = t0.elapsed().as_millis() as u64,
-            "browser container process started, waiting for Chrome readiness"
-        );
-
-        // Wait for the container to be ready
-        if let Err(error) = wait_for_ready(container_host, host_port) {
-            // Fetch container logs before cleanup to help diagnose why Chrome
-            // didn't start (e.g. crash, missing libs, permission errors).
-            let container_logs = fetch_container_logs(backend, &container_id);
-            let container_status = inspect_container_status(backend, &container_id);
-
-            warn!(
-                container_id,
-                host_port,
-                container_host,
-                backend = backend.cli(),
-                error = %error,
-                "browser container failed readiness check, cleaning up"
-            );
-
-            if let Some(ref status) = container_status {
-                warn!(
-                    container_id,
-                    container_status = status,
-                    "browser container status at time of failure"
-                );
-            }
-
-            if let Some(ref logs) = container_logs {
-                // Already limited to 50 lines by --tail 50 in fetch_container_logs
-                warn!(
-                    container_id,
-                    logs = %logs,
-                    "browser container logs"
-                );
-            } else {
-                warn!(container_id, "no container logs available");
-            }
-
-            let permission_hint = browser_profile_permission_hint(
-                container_logs.as_deref(),
-                profile_mount_dir.as_deref(),
-                host_data_dir,
-            );
-
-            if let Some(ref hint) = permission_hint {
-                warn!(
-                    container_id,
-                    hint, "browser profile mount permission failure detected"
-                );
-            }
-
-            if is_running_in_container() {
-                warn!(
-                    container_host,
-                    "chelix appears to be running inside a container — if the browser \
-                     container is a sibling (not nested), set browser.container_host to \
-                     the Docker host IP or \"host.docker.internal\" in chelix.toml"
-                );
-            }
-
-            stop_container_by_id(backend, &container_id);
-            if let Some(hint) = permission_hint {
-                return Err(launch_error_with_hint(error, hint));
-            }
-            return Err(error);
-        }
-
-        info!(
-            container_id,
-            host_port,
-            backend = backend.cli(),
-            total_startup_ms = t0.elapsed().as_millis() as u64,
-            "browser container ready"
-        );
 
         Ok(Self {
             container_id,
-            host_port,
-            host: container_host.to_string(),
+            host_port: endpoint.port,
+            host: endpoint.host,
             image: image.to_string(),
             backend,
         })
@@ -614,12 +546,211 @@ fn browserless_container_env(session_timeout_ms: u64) -> Vec<String> {
     ]
 }
 
-/// Start a Docker container for the browser.
+const BROWSER_CONTAINER_PORT: u16 = 3000;
+
+#[derive(Clone)]
+struct BrowserEndpoint {
+    host: String,
+    port: u16,
+}
+
+fn finish_browser_start(
+    backend: ContainerBackend,
+    container_id: String,
+    profile_mount_dir: Option<&Path>,
+    host_data_dir: Option<&Path>,
+    started: std::time::Instant,
+) -> Result<(String, BrowserEndpoint)> {
+    let candidates = match browser_endpoint_candidates(backend, &container_id) {
+        Ok(candidates) => candidates,
+        Err(error) => {
+            return Err(fail_browser_container(
+                backend,
+                &container_id,
+                profile_mount_dir,
+                host_data_dir,
+                error,
+            ));
+        },
+    };
+    finish_browser_start_with_candidates(
+        backend,
+        container_id,
+        candidates,
+        profile_mount_dir,
+        host_data_dir,
+        started,
+    )
+}
+
+fn finish_browser_start_with_candidates(
+    backend: ContainerBackend,
+    container_id: String,
+    candidates: Vec<BrowserEndpoint>,
+    profile_mount_dir: Option<&Path>,
+    host_data_dir: Option<&Path>,
+    started: std::time::Instant,
+) -> Result<(String, BrowserEndpoint)> {
+    info!(
+        container_id,
+        candidates = candidates.len(),
+        backend = backend.cli(),
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "browser container process started, waiting for Chrome readiness"
+    );
+    match wait_for_ready(&candidates) {
+        Ok(endpoint) => {
+            info!(
+                container_id,
+                host = %endpoint.host,
+                host_port = endpoint.port,
+                backend = backend.cli(),
+                total_startup_ms = started.elapsed().as_millis() as u64,
+                "browser container ready"
+            );
+            Ok((container_id, endpoint))
+        },
+        Err(error) => Err(fail_browser_container(
+            backend,
+            &container_id,
+            profile_mount_dir,
+            host_data_dir,
+            error,
+        )),
+    }
+}
+
+fn fail_browser_container(
+    backend: ContainerBackend,
+    container_id: &str,
+    profile_mount_dir: Option<&Path>,
+    host_data_dir: Option<&Path>,
+    error: Error,
+) -> Error {
+    let container_logs = fetch_container_logs(backend, container_id);
+    let container_status = inspect_container_status(backend, container_id);
+    warn!(
+        container_id,
+        backend = backend.cli(),
+        error = %error,
+        "browser container failed readiness check, cleaning up"
+    );
+    if let Some(ref status) = container_status {
+        warn!(
+            container_id,
+            container_status = status,
+            "browser container status at time of failure"
+        );
+    }
+    if let Some(ref logs) = container_logs {
+        warn!(container_id, logs = %logs, "browser container logs");
+    } else {
+        warn!(container_id, "no container logs available");
+    }
+    let permission_hint = browser_profile_permission_hint(
+        container_logs.as_deref(),
+        profile_mount_dir,
+        host_data_dir,
+    );
+    if let Some(ref hint) = permission_hint {
+        warn!(
+            container_id,
+            hint, "browser profile mount permission failure detected"
+        );
+    }
+    stop_container_by_id(backend, container_id);
+    if let Some(hint) = permission_hint {
+        launch_error_with_hint(error, hint)
+    } else {
+        error
+    }
+}
+
+fn browser_endpoint_candidates(
+    backend: ContainerBackend,
+    name: &str,
+) -> Result<Vec<BrowserEndpoint>> {
+    let cli = backend.cli();
+    let published_output = Command::new(cli)
+        .args(["port", name, &format!("{BROWSER_CONTAINER_PORT}/tcp")])
+        .output()
+        .with_context(|| format!("failed to run {cli} port"))?;
+    let inspect_output = Command::new(cli)
+        .args([
+            "inspect",
+            "--format",
+            "{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}",
+            name,
+        ])
+        .output()
+        .with_context(|| format!("failed to run {cli} inspect"))?;
+    let published = if published_output.status.success() {
+        String::from_utf8_lossy(&published_output.stdout).into_owned()
+    } else {
+        String::new()
+    };
+    let addresses = if inspect_output.status.success() {
+        String::from_utf8_lossy(&inspect_output.stdout).into_owned()
+    } else {
+        String::new()
+    };
+    let candidates = endpoints_from_port_and_inspect(&published, &addresses);
+    if candidates.is_empty() {
+        let published_error = String::from_utf8_lossy(&published_output.stderr);
+        let inspect_error = String::from_utf8_lossy(&inspect_output.stderr);
+        return Err(Error::LaunchFailed(format!(
+            "{cli} returned no browser endpoint candidates for container {name}; port error: {}; inspect error: {}",
+            published_error.trim(),
+            inspect_error.trim()
+        )));
+    }
+    Ok(candidates)
+}
+
+fn endpoints_from_port_and_inspect(published: &str, inspect_output: &str) -> Vec<BrowserEndpoint> {
+    let mut endpoints = Vec::new();
+    if let Some(port) = parse_published_port(published) {
+        endpoints.push(BrowserEndpoint {
+            host: "127.0.0.1".to_string(),
+            port,
+        });
+    }
+    for address in parse_container_addresses(inspect_output) {
+        let host = match address {
+            std::net::IpAddr::V4(address) => address.to_string(),
+            std::net::IpAddr::V6(address) => format!("[{address}]"),
+        };
+        endpoints.push(BrowserEndpoint {
+            host,
+            port: BROWSER_CONTAINER_PORT,
+        });
+    }
+    endpoints.dedup_by(|left, right| left.host == right.host && left.port == right.port);
+    endpoints
+}
+
+fn parse_published_port(output: &str) -> Option<u16> {
+    output.lines().find_map(|line| {
+        line.trim()
+            .rsplit_once(':')
+            .and_then(|(_, port)| port.parse().ok())
+    })
+}
+
+fn parse_container_addresses(output: &str) -> Vec<std::net::IpAddr> {
+    output
+        .lines()
+        .filter_map(|line| line.trim().parse().ok())
+        .filter(|address: &std::net::IpAddr| !address.is_unspecified())
+        .collect()
+}
+
+/// Start a Docker or Podman container for the browser.
 fn start_oci_container(
     backend: ContainerBackend,
     image: &str,
     container_prefix: &str,
-    host_port: u16,
+    network: &str,
     viewport_width: u32,
     viewport_height: u32,
     low_memory_threshold_mb: u64,
@@ -644,8 +775,9 @@ fn start_oci_container(
         "-d".to_string(),
         "--name".to_string(),
         container_name.clone(),
+        format!("--network={network}"),
         "-p".to_string(),
-        format!("{}:3000", host_port),
+        format!("127.0.0.1::{BROWSER_CONTAINER_PORT}"),
         "-e".to_string(),
         launch_args,
         "--shm-size=2gb".to_string(),
@@ -681,9 +813,32 @@ fn start_oci_container(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let launch_error = stderr.trim().to_string();
+        match Command::new(cli)
+            .args(["rm", "-fv", &container_name])
+            .output()
+        {
+            Ok(cleanup) if cleanup.status.success() => {},
+            Ok(cleanup) => {
+                let cleanup_error = String::from_utf8_lossy(&cleanup.stderr);
+                warn!(
+                    container_name,
+                    cli,
+                    error = %cleanup_error.trim(),
+                    "failed to remove browser container after run failure"
+                );
+            },
+            Err(error) => {
+                warn!(
+                    container_name,
+                    cli,
+                    %error,
+                    "failed to remove browser container after run failure"
+                );
+            },
+        }
         return Err(Error::LaunchFailed(format!(
-            "failed to start {cli} container: {}",
-            stderr.trim()
+            "failed to start {cli} container: {launch_error}"
         )));
     }
 
@@ -755,7 +910,7 @@ fn start_apple_container(
     let output = Command::new("container")
         .args(&container_args)
         .output()
-        .context("failed to run container command")?;
+        .with_context(|| "failed to run container command")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -766,49 +921,6 @@ fn start_apple_container(
     }
 
     Ok(container_name)
-}
-
-/// Detect the best available container backend.
-///
-/// Prefers Apple Container on macOS when available and functional (VM-isolated),
-/// then Podman (daemonless), then Docker.
-pub fn detect_backend() -> Result<ContainerBackend> {
-    #[cfg(target_os = "macos")]
-    {
-        if is_apple_container_functional() {
-            info!("browser sandbox backend: apple-container (VM-isolated)");
-            return Ok(ContainerBackend::AppleContainer);
-        }
-    }
-
-    if ContainerBackend::Podman.is_available() {
-        info!("browser sandbox backend: podman (daemonless)");
-        return Ok(ContainerBackend::Podman);
-    }
-
-    if is_docker_available() {
-        info!("browser sandbox backend: docker");
-        return Ok(ContainerBackend::Docker);
-    }
-
-    Err(Error::LaunchFailed(
-        "No container runtime available. Please install Docker or Podman to use sandboxed browser mode."
-            .to_string(),
-    ))
-}
-
-/// Check if Apple Container is actually functional (has required plugins).
-#[cfg(target_os = "macos")]
-fn is_apple_container_functional() -> bool {
-    if !is_cli_available("container") {
-        return false;
-    }
-    Command::new("container")
-        .args(["image", "pull", "--help"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
 }
 
 /// Check if a CLI tool is available.
@@ -822,13 +934,14 @@ fn is_cli_available(name: &str) -> bool {
 }
 
 /// Find an available TCP port.
+#[cfg(any(target_os = "macos", test))]
 fn find_available_port() -> Result<u16> {
-    let listener =
-        std::net::TcpListener::bind("127.0.0.1:0").context("failed to bind to ephemeral port")?;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .with_context(|| "failed to bind to ephemeral port")?;
 
     let port = listener
         .local_addr()
-        .context("failed to get local address")?
+        .with_context(|| "failed to get local address")?
         .port();
 
     drop(listener);
@@ -898,49 +1011,21 @@ fn inspect_container_status(backend: ContainerBackend, container_id: &str) -> Op
     }
 }
 
-/// Detect whether we are running inside a container (Docker/Podman/etc.).
-///
-/// Checks for `/.dockerenv` (Docker) and cgroup markers (various runtimes).
-fn is_running_in_container() -> bool {
-    use std::path::Path;
-
-    // Docker creates this file inside its containers
-    if Path::new("/.dockerenv").exists() {
-        return true;
-    }
-
-    // Podman/other runtimes may set container env vars
-    if std::env::var_os("container").is_some() {
-        return true;
-    }
-
-    // Check cgroup for container markers
-    if let Ok(cgroup) = std::fs::read_to_string("/proc/1/cgroup")
-        && (cgroup.contains("docker")
-            || cgroup.contains("kubepods")
-            || cgroup.contains("containerd"))
-    {
-        return true;
-    }
-
-    false
-}
-
 /// Wait for the container to be ready by probing the Chrome DevTools endpoint.
 ///
 /// TCP connectivity alone isn't sufficient - Chrome inside the container may accept
 /// connections before it's ready to handle WebSocket requests. We probe `/json/version`
 /// which browserless exposes when Chrome is truly ready.
-fn wait_for_ready(host: &str, port: u16) -> Result<()> {
+fn wait_for_ready(candidates: &[BrowserEndpoint]) -> Result<BrowserEndpoint> {
     use std::time::{Duration, Instant};
 
-    let url = format!("http://{}:{}/json/version", host, port);
     let timeout = Duration::from_secs(60);
     let start = Instant::now();
     let mut attempts: u32 = 0;
+    let mut last_error = String::new();
 
     info!(
-        url,
+        candidates = candidates.len(),
         timeout_secs = 60,
         "waiting for browser container Chrome readiness"
     );
@@ -955,49 +1040,44 @@ fn wait_for_ready(host: &str, port: u16) -> Result<()> {
                 timeout.as_secs()
             );
             return Err(Error::LaunchFailed(format!(
-                "browser container failed to become ready within {}s ({} probe attempts)",
+                "browser container failed to become ready within {}s ({} probe attempts): {last_error}",
                 timeout.as_secs(),
                 attempts
             )));
         }
 
         attempts += 1;
-
-        // Try HTTP GET /json/version - this endpoint returns 200 when Chrome is ready
-        match probe_http_endpoint(host, port) {
-            Ok(true) => {
-                info!(
-                    attempts,
-                    elapsed_ms = elapsed.as_millis() as u64,
-                    "browser container Chrome endpoint is ready"
-                );
-                return Ok(());
-            },
-            Ok(false) => {
-                // Log progress every 10 attempts (~5 seconds)
-                if attempts.is_multiple_of(10) {
+        let mut round_errors = Vec::new();
+        for candidate in candidates {
+            match probe_http_endpoint(&candidate.host, candidate.port) {
+                Ok(true) => {
                     info!(
                         attempts,
+                        host = %candidate.host,
+                        port = candidate.port,
                         elapsed_ms = elapsed.as_millis() as u64,
-                        "Chrome endpoint not ready yet, still probing"
+                        "browser container Chrome endpoint is ready"
                     );
-                } else {
-                    debug!(attempts, "Chrome endpoint not ready yet, retrying");
-                }
-            },
-            Err(e) => {
-                // Log progress every 10 attempts (~5 seconds)
-                if attempts.is_multiple_of(10) {
-                    info!(
-                        attempts,
-                        elapsed_ms = elapsed.as_millis() as u64,
-                        error = %e,
-                        "probe failed, still retrying"
-                    );
-                } else {
-                    debug!(attempts, error = %e, "probe failed, retrying");
-                }
-            },
+                    return Ok(candidate.clone());
+                },
+                Ok(false) => {
+                    round_errors.push(format!("{}:{} not ready", candidate.host, candidate.port));
+                },
+                Err(error) => {
+                    round_errors.push(format!("{}:{}: {error}", candidate.host, candidate.port));
+                },
+            }
+        }
+        last_error = round_errors.join("; ");
+        if attempts.is_multiple_of(10) {
+            info!(
+                attempts,
+                elapsed_ms = elapsed.as_millis() as u64,
+                error = %last_error,
+                "Chrome endpoint not ready yet, still probing"
+            );
+        } else {
+            debug!(attempts, error = %last_error, "Chrome endpoint not ready yet, retrying");
         }
 
         std::thread::sleep(Duration::from_millis(500));
@@ -1049,21 +1129,41 @@ pub fn is_docker_available() -> bool {
     is_cli_available("docker")
 }
 
-/// Check if Apple Container is available and functional.
-#[cfg(target_os = "macos")]
+/// Report whether the configured sandbox backend CLI is installed.
 #[must_use]
-pub fn is_apple_container_available() -> bool {
-    is_apple_container_functional()
+pub fn configured_backend_available(backend: chelix_config::schema::SandboxBackend) -> bool {
+    match backend {
+        chelix_config::schema::SandboxBackend::Docker => is_cli_available("docker"),
+        chelix_config::schema::SandboxBackend::Podman => is_cli_available("podman"),
+        chelix_config::schema::SandboxBackend::AppleContainer => is_cli_available("container"),
+    }
 }
 
-/// Check if any container runtime is available and functional.
-#[must_use]
-pub fn is_container_available() -> bool {
-    #[cfg(target_os = "macos")]
-    if is_apple_container_available() {
-        return true;
+fn resolve_container_backend(
+    backend: chelix_config::schema::SandboxBackend,
+) -> Result<ContainerBackend> {
+    if !configured_backend_available(backend) {
+        return Err(Error::LaunchFailed(format!(
+            "{} is not available. Please install it to use sandboxed browser.",
+            backend.as_str()
+        )));
     }
-    ContainerBackend::Podman.is_available() || is_docker_available()
+    match backend {
+        chelix_config::schema::SandboxBackend::Docker => Ok(ContainerBackend::Docker),
+        chelix_config::schema::SandboxBackend::Podman => Ok(ContainerBackend::Podman),
+        chelix_config::schema::SandboxBackend::AppleContainer => {
+            #[cfg(target_os = "macos")]
+            {
+                Ok(ContainerBackend::AppleContainer)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                Err(Error::LaunchFailed(
+                    "Apple Container sandbox is only available on macOS".to_string(),
+                ))
+            }
+        },
+    }
 }
 
 fn parse_docker_container_names(output: &[u8], container_prefix: &str) -> Vec<String> {
@@ -1090,8 +1190,8 @@ struct AppleContainerConfig {
 
 #[cfg(target_os = "macos")]
 fn parse_apple_container_names(output: &[u8]) -> Result<Vec<String>> {
-    let entries: Vec<AppleContainerListEntry> =
-        serde_json::from_slice(output).context("failed to parse apple container list JSON")?;
+    let entries: Vec<AppleContainerListEntry> = serde_json::from_slice(output)
+        .with_context(|| "failed to parse apple container list JSON")?;
     Ok(entries
         .into_iter()
         .map(|entry| entry.configuration.id)
@@ -1110,19 +1210,19 @@ fn parse_apple_container_names_for_prefix(
         .collect())
 }
 
-fn cleanup_stale_docker_browser_containers(container_prefix: &str) -> Result<usize> {
-    if !is_docker_available() {
+fn cleanup_stale_oci_browser_containers(cli: &str, container_prefix: &str) -> Result<usize> {
+    if !is_cli_available(cli) {
         return Ok(0);
     }
 
-    let output = Command::new("docker")
+    let output = Command::new(cli)
         .args(["ps", "-a", "--format", "{{.Names}}"])
         .output()
-        .context("failed to list docker containers")?;
+        .with_context(|| format!("failed to list {cli} containers"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(Error::LaunchFailed(format!(
-            "docker ps failed while cleaning stale browser containers: {}",
+            "{cli} ps failed while cleaning stale browser containers: {}",
             stderr.trim()
         )));
     }
@@ -1130,18 +1230,19 @@ fn cleanup_stale_docker_browser_containers(container_prefix: &str) -> Result<usi
     let names = parse_docker_container_names(&output.stdout, container_prefix);
     let mut removed = 0usize;
     for name in names {
-        let rm = Command::new("docker")
-            .args(["rm", "-f", &name])
+        let rm = Command::new(cli)
+            .args(["rm", "-fv", &name])
             .output()
-            .with_context(|| format!("failed to remove stale docker browser container {name}"))?;
+            .with_context(|| format!("failed to remove stale {cli} browser container {name}"))?;
         if rm.status.success() {
             removed += 1;
         } else {
             let stderr = String::from_utf8_lossy(&rm.stderr);
             warn!(
                 container_name = %name,
+                cli,
                 error = %stderr.trim(),
-                "failed to remove stale docker browser container"
+                "failed to remove stale browser container"
             );
         }
     }
@@ -1158,7 +1259,7 @@ fn cleanup_stale_apple_browser_containers(container_prefix: &str) -> Result<usiz
     let output = Command::new("container")
         .args(["list", "--all", "--format", "json"])
         .output()
-        .context("failed to list apple containers")?;
+        .with_context(|| "failed to list apple containers")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(Error::LaunchFailed(format!(
@@ -1207,82 +1308,22 @@ fn cleanup_stale_apple_browser_containers_for_current_platform(
 ///
 /// Browser containers are named with an instance-specific prefix so startup can
 /// clean up orphaned instances before creating new ones.
-pub fn cleanup_stale_browser_containers(container_prefix: &str) -> Result<usize> {
-    Ok(cleanup_stale_docker_browser_containers(container_prefix)?
-        + cleanup_stale_apple_browser_containers_for_current_platform(container_prefix)?)
-}
-
-/// Pull the browser container image if not present.
-/// Falls back to Docker if the primary backend fails.
-pub fn ensure_image(image: &str) -> Result<()> {
-    let backend = detect_backend()?;
-
-    // Try primary backend first
-    let result = ensure_image_with_backend(backend, image);
-
-    // On macOS, if Apple Container fails, try Docker as fallback
-    #[cfg(target_os = "macos")]
-    if result.is_err() && backend == ContainerBackend::AppleContainer && is_docker_available() {
-        if let Err(ref e) = result {
-            warn!(
-                error = %e,
-                "Apple Container image pull failed, falling back to Docker"
-            );
-        }
-        return ensure_image_with_backend(ContainerBackend::Docker, image);
-    }
-
-    result
-}
-
-/// Pull the browser container image using a specific backend.
-pub fn ensure_image_with_backend(backend: ContainerBackend, image: &str) -> Result<()> {
-    let cli = backend.cli();
-
-    // Check if image exists locally
-    let output = Command::new(cli)
-        .args(["image", "inspect", image])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .context("failed to check for image")?;
-
-    if output.success() {
-        info!(
-            image,
-            backend = cli,
-            "browser container image already present"
-        );
-        return Ok(());
-    }
-
-    info!(image, backend = cli, "pulling browser container image");
-
-    let output = match backend {
-        ContainerBackend::Docker | ContainerBackend::Podman => {
-            Command::new(cli).args(["pull", image]).output()
+pub fn cleanup_stale_browser_containers(
+    container_prefix: &str,
+    backend: chelix_config::schema::SandboxBackend,
+) -> Result<usize> {
+    let removed = match backend {
+        chelix_config::schema::SandboxBackend::Docker => {
+            cleanup_stale_oci_browser_containers("docker", container_prefix)?
         },
-        #[cfg(target_os = "macos")]
-        ContainerBackend::AppleContainer => {
-            Command::new(cli).args(["image", "pull", image]).output()
+        chelix_config::schema::SandboxBackend::Podman => {
+            cleanup_stale_oci_browser_containers("podman", container_prefix)?
         },
-    }
-    .context("failed to pull image")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::LaunchFailed(format!(
-            "failed to pull browser image: {}",
-            stderr.trim()
-        )));
-    }
-
-    info!(
-        image,
-        backend = cli,
-        "browser container image pulled successfully"
-    );
-    Ok(())
+        chelix_config::schema::SandboxBackend::AppleContainer => {
+            cleanup_stale_apple_browser_containers_for_current_platform(container_prefix)?
+        },
+    };
+    Ok(removed)
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
