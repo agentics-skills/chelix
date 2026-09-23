@@ -580,7 +580,7 @@ impl ToolInvocationExecutor<'_> {
                         ToolLifecycleUpdate::ExecutionProgress {
                             arguments: lifecycle_arguments.clone(),
                             elapsed_ms: elapsed_seconds.saturating_mul(1_000),
-                            message: format!("wait for result [{elapsed_seconds}] sec."),
+                            message: progress_message(elapsed_seconds, execution_context.retry_count()),
                         },
                         None,
                     )
@@ -739,6 +739,15 @@ impl ToolInvocationExecutor<'_> {
     }
 }
 
+fn progress_message(elapsed_seconds: u64, retry_count: u64) -> String {
+    let message = format!("wait for result [{elapsed_seconds}] sec.");
+    if retry_count == 0 {
+        message
+    } else {
+        format!("{message} Provider request retries: {retry_count}.")
+    }
+}
+
 fn public_arguments_after_hook(
     arguments: &serde_json::Value,
     trusted_context: Option<&serde_json::Value>,
@@ -764,4 +773,18 @@ pub(crate) fn lifecycle_now_ms() -> Result<u64, AgentRunError> {
             "current UTC timestamp is outside the supported lifecycle range: {error}"
         ))
     })
+}
+
+#[cfg(test)]
+mod search_retry_progress_tests {
+    use super::progress_message;
+
+    #[test]
+    fn progress_reports_retries_without_changing_other_tool_messages() {
+        assert_eq!(progress_message(1, 0), "wait for result [1] sec.");
+        assert_eq!(
+            progress_message(5, 1),
+            "wait for result [5] sec. Provider request retries: 1."
+        );
+    }
 }

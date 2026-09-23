@@ -380,6 +380,21 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
+    for (name, timeout) in [
+        ("exa", config.tools.exa.request_timeout_secs),
+        ("google", config.tools.google.request_timeout_secs),
+        ("felo", config.tools.felo.request_timeout_secs),
+    ] {
+        if timeout == 0 {
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "invalid-value",
+                path: format!("tools.{name}.request_timeout_secs"),
+                message: format!("tools.{name}.request_timeout_secs must be at least 1"),
+            });
+        }
+    }
+
     if config.tools.duckduckgo.request_timeout_secs == 0 {
         diagnostics.push(Diagnostic {
             severity: Severity::Error,

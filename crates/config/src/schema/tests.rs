@@ -70,6 +70,27 @@ fn tools_loop_detector_window_defaults_to_two() {
 }
 
 #[test]
+fn search_credentials_are_redacted_and_timeouts_default() {
+    let config: ChelixConfig = toml::from_str(
+        r#"
+[tools.exa]
+token = "exa-secret"
+[tools.google]
+token = "google-secret"
+engine_id = "engine-secret"
+"#,
+    )
+    .unwrap();
+    assert_eq!(config.tools.exa.request_timeout_secs, 300);
+    assert_eq!(config.tools.google.request_timeout_secs, 300);
+    assert_eq!(config.tools.felo.request_timeout_secs, 300);
+    let debug = format!("{:?} {:?}", config.tools.exa, config.tools.google);
+    assert!(!debug.contains("exa-secret"));
+    assert!(!debug.contains("google-secret"));
+    assert!(!debug.contains("engine-secret"));
+}
+
+#[test]
 fn context7_request_timeout_defaults_to_five_minutes() {
     let config: ChelixConfig = toml::from_str("").unwrap();
     assert_eq!(

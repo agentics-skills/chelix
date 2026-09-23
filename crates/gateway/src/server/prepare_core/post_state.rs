@@ -609,6 +609,15 @@ pub(super) async fn complete_startup(
         #[cfg(feature = "linkup")]
         chelix_linkup::register_tools(&mut tool_registry, &config.tools.linkup);
 
+        #[cfg(feature = "exa")]
+        chelix_exa::register_tools(&mut tool_registry, &config.tools.exa);
+
+        #[cfg(feature = "google")]
+        chelix_google::register_tools(&mut tool_registry, &config.tools.google);
+
+        #[cfg(feature = "felo")]
+        chelix_felo::register_tools(&mut tool_registry, &config.tools.felo);
+
         #[cfg(feature = "github")]
         chelix_github::register_tools(&mut tool_registry, &config.tools.github);
 

@@ -325,6 +325,29 @@ Both tools return strings and retain the default tool-result persistence and
 truncation policy. Full results therefore pass through the common runner pipeline
 and oversized in-context copies point to the persisted text file.
 
+## Exa, Google, and Felo search tools
+
+`exa_search` uses `tools.exa.token` and sends a POST to `https://api.exa.ai/search`.
+Its input includes `query`, `maxResults`, date ranges, location, text phrases, and domain.
+The Markdown output lists the normalized filters and numbered results.
+Chelix interprets Exa search ISO timestamps without an offset as UTC;
+date-only values remain unchanged before the `T00:00:00.000Z` suffix is added.
+
+`google_search` uses `tools.google.token` and `tools.google.engine_id` to query
+`https://www.googleapis.com/customsearch/v1`. Its input includes `query`,
+`num_results`, `page`, `resultsPerPage`, site, language, date, exact terms,
+result type, and sort. The returned text includes numbered titles, URLs,
+snippets, and pagination instructions.
+
+`felo_search` streams answers from `https://api.felo.ai/search/threads` with
+browser-style request headers and returns the final `answer` text.
+Configure `tools.felo.request_timeout_secs` to bound each request.
+All three clients coordinate their own `429` cooldown across sessions; when a
+numeric `Retry-After` is present, they retry once after the cooldown. Retries
+are logged and displayed in the tool's UI progress. Missing Exa/Google
+credentials fail before sending a request. All three return strings through the
+default shared persistence and truncation pipeline.
+
 ## Linkup search tool
 
 The built-in `linkup_search` tool calls `POST https://api.linkup.so/v1/search`

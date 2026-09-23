@@ -330,6 +330,21 @@ port = {port}                           # Port number (auto-generated for this i
 # token = "..."                     # Linkup API token
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
+# ── Exa Search ────────────────────────────────────────────────────────────────
+# [tools.exa]
+# token = "..."                     # Exa API key
+# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
+
+# ── Google Search ─────────────────────────────────────────────────────────────
+# [tools.google]
+# token = "..."                     # Google API key
+# engine_id = "..."                 # Programmable Search engine ID
+# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
+
+# ── Felo Search ───────────────────────────────────────────────────────────────
+# [tools.felo]
+# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
+
 # ── DuckDuckGo Search ─────────────────────────────────────────────────────────
 # request_timeout_secs covers the complete search lifecycle: shared queue wait,
 # retry/backoff, the HTTP request, and response body reading.

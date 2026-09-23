@@ -67,9 +67,12 @@ full = [
   "code-splitter",
   "context7",
   "duckduckgo",
+  "exa",
+  "felo",
   "file-watcher",
   "firecrawl",
   "github",
+  "google",
   "home-assistant",
   "jemalloc",
   "lang-bash",
@@ -110,9 +113,12 @@ code-splitter      = ["chelix-memory/code-splitter"]
 context7           = ["chelix-gateway/context7"]
 duckduckgo         = ["chelix-gateway/duckduckgo"]
 embedded-assets    = ["chelix-web?/embedded-assets"]
+exa                = ["chelix-gateway/exa"]
+felo               = ["chelix-gateway/felo"]
 file-watcher       = ["chelix-gateway/file-watcher"]
 firecrawl          = ["chelix-gateway/firecrawl"]
 github             = ["chelix-gateway/github"]
+google             = ["chelix-gateway/google"]
 jemalloc           = ["dep:tikv-jemallocator"]
 lang-bash          = ["chelix-memory/lang-bash"]
 lang-c             = ["chelix-memory/lang-c"]

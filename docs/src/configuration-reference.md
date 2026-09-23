@@ -58,6 +58,9 @@
   - [`tools.web.firecrawl`](#toolswebfirecrawl)
   - [`tools.context7`](#toolscontext7)
   - [`tools.linkup`](#toolslinkup)
+  - [`tools.exa`](#toolsexa)
+  - [`tools.google`](#toolsgoogle)
+  - [`tools.felo`](#toolsfelo)
   - [`tools.duckduckgo`](#toolsduckduckgo)
   - [`tools.github`](#toolsgithub)
   - [`tools.maps`](#toolsmaps)
@@ -425,6 +428,27 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 | -------------------- | --------------- | ------- | --------------------------------------------------------------- |
 | token                | optional string | —       | Linkup API token used by `linkup_search`.                       |
 | request_timeout_secs | integer         | `300`   | Per-request Linkup HTTP timeout in seconds. Must be at least `1`. |
+
+### `tools.exa` — ExaConfig
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| token | optional string | — | Exa API key used by `exa_search`. |
+| request_timeout_secs | integer | `300` | Per-request HTTP timeout in seconds; minimum `1`. |
+
+### `tools.google` — GoogleConfig
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| token | optional string | — | Google API key used by `google_search`. |
+| engine_id | optional string | — | Google Programmable Search engine ID. |
+| request_timeout_secs | integer | `300` | Per-request HTTP timeout in seconds; minimum `1`. |
+
+### `tools.felo` — FeloConfig
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| request_timeout_secs | integer | `300` | Per-request HTTP timeout in seconds; minimum `1`. |
 
 ### `tools.duckduckgo` — DuckDuckGoConfig
 
