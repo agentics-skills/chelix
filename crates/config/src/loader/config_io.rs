@@ -861,6 +861,7 @@ pub(super) fn apply_env_overrides_with_options(
     validate_provider_names(&config.providers, "environment overrides")?;
     validate_context7_request_timeout(&config, "environment overrides")?;
     validate_linkup_request_timeout(&config, "environment overrides")?;
+    validate_search_request_timeouts(&config, "environment overrides")?;
     Ok(config)
 }
 
@@ -992,6 +993,7 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     }
     validate_context7_request_timeout(&config, &context)?;
     validate_linkup_request_timeout(&config, &context)?;
+    validate_search_request_timeouts(&config, &context)?;
     Ok(config)
 }
 
@@ -1009,6 +1011,21 @@ fn validate_linkup_request_timeout(config: &ChelixConfig, context: &str) -> crat
         return Err(crate::Error::message(format!(
             "invalid {context}: tools.linkup.request_timeout_secs must be at least 1"
         )));
+    }
+    Ok(())
+}
+
+fn validate_search_request_timeouts(config: &ChelixConfig, context: &str) -> crate::Result<()> {
+    for (name, timeout) in [
+        ("exa", config.tools.exa.request_timeout_secs),
+        ("google", config.tools.google.request_timeout_secs),
+        ("felo", config.tools.felo.request_timeout_secs),
+    ] {
+        if timeout == 0 {
+            return Err(crate::Error::message(format!(
+                "invalid {context}: tools.{name}.request_timeout_secs must be at least 1"
+            )));
+        }
     }
     Ok(())
 }

@@ -281,6 +281,18 @@ agent_max_iterations = 25
 }
 
 #[test]
+fn new_search_timeouts_reject_zero() {
+    for name in ["exa", "google", "felo"] {
+        let config = format!("[tools.{name}]\nrequest_timeout_secs = 0\n");
+        let result = validate_toml_str(&config);
+        assert!(result.diagnostics.iter().any(|diagnostic| {
+            diagnostic.path == format!("tools.{name}.request_timeout_secs")
+                && diagnostic.severity == Severity::Error
+        }));
+    }
+}
+
+#[test]
 fn context7_request_timeout_is_accepted() {
     let toml = r#"
 [tools.context7]

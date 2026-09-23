@@ -627,6 +627,28 @@ fn initialize_config_rejects_zero_context7_request_timeout() {
 }
 
 #[test]
+fn initialize_config_rejects_zero_search_timeouts() {
+    let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    for name in ["exa", "google", "felo"] {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join("chelix.toml");
+        let invalid = format!("[tools.{name}]\nrequest_timeout_secs = 0\n");
+        std::fs::write(&config_path, &invalid).expect("write config");
+        set_config_dir(dir.path().to_path_buf());
+        let result = initialize_config();
+        clear_config_dir();
+        let error = result.expect_err("zero search timeout must fail initialization");
+        assert!(error.to_string().contains(&format!(
+            "tools.{name}.request_timeout_secs must be at least 1"
+        )));
+        assert_eq!(
+            std::fs::read_to_string(config_path).expect("read config"),
+            invalid
+        );
+    }
+}
+
+#[test]
 fn initialize_config_rejects_zero_linkup_request_timeout() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");

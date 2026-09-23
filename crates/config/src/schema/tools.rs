@@ -17,6 +17,9 @@ pub struct ToolsConfig {
     pub browser: BrowserConfig,
     pub context7: Context7Config,
     pub linkup: LinkupConfig,
+    pub exa: ExaConfig,
+    pub google: GoogleConfig,
+    pub felo: FeloConfig,
     pub duckduckgo: DuckDuckGoConfig,
     pub github: GitHubConfig,
     /// Maximum wall-clock seconds for an agent run (0 = no timeout). Default 600.
@@ -63,6 +66,9 @@ impl Default for ToolsConfig {
             browser: BrowserConfig::default(),
             context7: Context7Config::default(),
             linkup: LinkupConfig::default(),
+            exa: ExaConfig::default(),
+            google: GoogleConfig::default(),
+            felo: FeloConfig::default(),
             duckduckgo: DuckDuckGoConfig::default(),
             github: GitHubConfig::default(),
             agent_timeout_secs: default_agent_timeout_secs(),
@@ -238,6 +244,108 @@ impl Default for LinkupConfig {
         Self {
             token: None,
             request_timeout_secs: DEFAULT_LINKUP_REQUEST_TIMEOUT_SECS,
+        }
+    }
+}
+
+/// Exa search configuration.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ExaConfig {
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token: Option<Secret<String>>,
+    pub request_timeout_secs: u64,
+}
+
+impl Default for ExaConfig {
+    fn default() -> Self {
+        Self {
+            token: None,
+            request_timeout_secs: 300,
+        }
+    }
+}
+
+impl std::fmt::Debug for ExaConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExaConfig")
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .finish()
+    }
+}
+
+/// Google Programmable Search configuration.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GoogleConfig {
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token: Option<Secret<String>>,
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub engine_id: Option<Secret<String>>,
+    pub request_timeout_secs: u64,
+}
+
+impl Default for GoogleConfig {
+    fn default() -> Self {
+        Self {
+            token: None,
+            engine_id: None,
+            request_timeout_secs: 300,
+        }
+    }
+}
+
+impl std::fmt::Debug for GoogleConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleConfig")
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("engine_id", &self.engine_id.as_ref().map(|_| "[REDACTED]"))
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .finish()
+    }
+}
+
+/// Felo search configuration.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FeloConfig {
+    /// Felo API key used by `felo_search`.
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token: Option<Secret<String>>,
+    pub request_timeout_secs: u64,
+}
+
+impl std::fmt::Debug for FeloConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FeloConfig")
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .finish()
+    }
+}
+
+impl Default for FeloConfig {
+    fn default() -> Self {
+        Self {
+            token: None,
+            request_timeout_secs: 300,
         }
     }
 }

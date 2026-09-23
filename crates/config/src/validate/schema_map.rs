@@ -179,6 +179,16 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("browser", browser()),
             ("context7", context7()),
             ("linkup", linkup()),
+            ("exa", linkup()),
+            (
+                "google",
+                Struct(HashMap::from([
+                    ("token", Leaf),
+                    ("engine_id", Leaf),
+                    ("request_timeout_secs", Leaf),
+                ])),
+            ),
+            ("felo", linkup()),
             ("duckduckgo", duckduckgo()),
             ("github", github()),
             (

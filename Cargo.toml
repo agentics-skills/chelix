@@ -17,9 +17,12 @@ default-members = [
   "crates/cron",
   "crates/ctl",
   "crates/duckduckgo",
+  "crates/exa",
   "crates/external-agents",
+  "crates/felo",
   "crates/gateway",
   "crates/github",
+  "crates/google",
   "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
@@ -74,9 +77,12 @@ members = [
   "crates/ctl",
   "crates/duckduckgo",
   "crates/embedding-service",
+  "crates/exa",
   "crates/external-agents",
+  "crates/felo",
   "crates/gateway",
   "crates/github",
+  "crates/google",
   "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
@@ -313,9 +319,12 @@ chelix-config           = { path = "crates/config" }
 chelix-context7         = { path = "crates/context7" }
 chelix-cron             = { path = "crates/cron" }
 chelix-duckduckgo       = { path = "crates/duckduckgo" }
+chelix-exa              = { path = "crates/exa" }
 chelix-external-agents  = { path = "crates/external-agents" }
+chelix-felo             = { path = "crates/felo" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
 chelix-github           = { path = "crates/github" }
+chelix-google           = { path = "crates/google" }
 chelix-home-assistant   = { path = "crates/home-assistant" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }
 chelix-linkup           = { path = "crates/linkup" }

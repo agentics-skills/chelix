@@ -1,3 +1,8 @@
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+
 use chelix_sessions::SessionKey;
 
 /// Trusted execution context supplied by the agent runner separately from a
@@ -7,6 +12,7 @@ pub struct ToolExecutionContext {
     session_key: Option<SessionKey>,
     agent_id: Option<String>,
     execution_arguments: Option<serde_json::Value>,
+    retry_count: Arc<AtomicU64>,
 }
 
 impl ToolExecutionContext {
@@ -17,6 +23,7 @@ impl ToolExecutionContext {
             session_key: Some(session_key),
             agent_id: None,
             execution_arguments: None,
+            retry_count: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -27,6 +34,7 @@ impl ToolExecutionContext {
             session_key: Some(session_key),
             agent_id: Some(agent_id.into()),
             execution_arguments: None,
+            retry_count: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -69,7 +77,19 @@ impl ToolExecutionContext {
             session_key,
             agent_id,
             execution_arguments: Some(execution_arguments),
+            retry_count: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    /// Record a provider request retry for the UI lifecycle.
+    pub fn record_retry(&self) {
+        self.retry_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Number of retries during this invocation.
+    #[must_use]
+    pub fn retry_count(&self) -> u64 {
+        self.retry_count.load(Ordering::Relaxed)
     }
 
     pub(crate) const fn execution_arguments(&self) -> Option<&serde_json::Value> {

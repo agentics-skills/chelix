@@ -172,6 +172,24 @@ fn apply_env_overrides_rejects_zero_context7_request_timeout() {
 }
 
 #[test]
+fn apply_env_overrides_rejects_zero_search_timeouts() {
+    for name in ["EXA", "GOOGLE", "FELO"] {
+        let vars = vec![(
+            format!("CHELIX_TOOLS__{name}__REQUEST_TIMEOUT_SECS"),
+            "0".into(),
+        )];
+        let error =
+            apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
+                .expect_err("zero search timeout must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("request_timeout_secs must be at least 1")
+        );
+    }
+}
+
+#[test]
 fn apply_env_overrides_rejects_zero_linkup_request_timeout() {
     let vars = vec![(
         "CHELIX_TOOLS__LINKUP__REQUEST_TIMEOUT_SECS".into(),

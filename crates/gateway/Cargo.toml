@@ -21,8 +21,11 @@ chelix-config           = { workspace = true }
 chelix-context7         = { optional = true, workspace = true }
 chelix-cron             = { workspace = true }
 chelix-duckduckgo       = { optional = true, workspace = true }
+chelix-exa              = { optional = true, workspace = true }
 chelix-external-agents  = { workspace = true }
+chelix-felo             = { optional = true, workspace = true }
 chelix-github           = { optional = true, workspace = true }
+chelix-google           = { optional = true, workspace = true }
 chelix-home-assistant   = { optional = true, workspace = true }
 chelix-linkup           = { optional = true, workspace = true }
 chelix-matrix           = { optional = true, workspace = true }
@@ -97,9 +100,12 @@ default = [
   "code-index-builtin",
   "context7",
   "duckduckgo",
+  "exa",
+  "felo",
   "file-watcher",
   "firecrawl",
   "github",
+  "google",
   "home-assistant",
   "linkup",
   "matrix",
@@ -117,6 +123,8 @@ default = [
   "whatsapp",
 ]
 duckduckgo = ["dep:chelix-duckduckgo"]
+exa = ["dep:chelix-exa"]
+felo = ["dep:chelix-felo"]
 file-watcher = [
   "chelix-code-index/file-watcher",
   "chelix-memory/file-watcher",
@@ -124,6 +132,7 @@ file-watcher = [
 ]
 firecrawl = ["chelix-tools/firecrawl"]
 github = ["dep:chelix-github"]
+google = ["dep:chelix-google"]
 home-assistant = ["dep:chelix-home-assistant"]
 linkup = ["dep:chelix-linkup"]
 local-embeddings = ["chelix-memory/local-embeddings"]
@@ -133,7 +142,10 @@ metrics = [
   "chelix-chat/metrics",
   "chelix-context7?/metrics",
   "chelix-duckduckgo?/metrics",
+  "chelix-exa?/metrics",
+  "chelix-felo?/metrics",
   "chelix-github?/metrics",
+  "chelix-google?/metrics",
   "chelix-linkup?/metrics",
   "chelix-matrix/metrics",
   "chelix-metrics/sqlite",

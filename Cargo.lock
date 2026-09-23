@@ -1709,6 +1709,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "chelix-exa"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "mockito",
+ "reqwest 0.13.2",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "chelix-external-agents"
 version = "0.1.0"
 dependencies = [
@@ -1726,6 +1748,26 @@ dependencies = [
  "tokio-util",
  "tracing",
  "which 8.0.2",
+]
+
+[[package]]
+name = "chelix-felo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "mockito",
+ "reqwest 0.13.2",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1748,8 +1790,11 @@ dependencies = [
  "chelix-context7",
  "chelix-cron",
  "chelix-duckduckgo",
+ "chelix-exa",
  "chelix-external-agents",
+ "chelix-felo",
  "chelix-github",
+ "chelix-google",
  "chelix-home-assistant",
  "chelix-linkup",
  "chelix-matrix",
@@ -1828,6 +1873,27 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "time",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "chelix-google"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chelix-agents",
+ "chelix-common",
+ "chelix-config",
+ "chelix-metrics",
+ "chelix-sessions",
+ "mockito",
+ "reqwest 0.13.2",
+ "secrecy",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "url",
