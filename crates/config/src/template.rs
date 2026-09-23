@@ -343,6 +343,7 @@ port = {port}                           # Port number (auto-generated for this i
 
 # ── Felo Search ───────────────────────────────────────────────────────────────
 # [tools.felo]
+# token = "..."                     # Felo API key
 # request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
 
 # ── DuckDuckGo Search ─────────────────────────────────────────────────────────

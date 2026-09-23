@@ -1,4 +1,4 @@
-//! Felo streaming search agent tool.
+//! Felo search agent tool.
 mod metrics;
 mod rate_limit;
 mod registration;

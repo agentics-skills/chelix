@@ -319,15 +319,32 @@ impl std::fmt::Debug for GoogleConfig {
 }
 
 /// Felo search configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct FeloConfig {
+    /// Felo API key used by `felo_search`.
+    #[serde(
+        default,
+        serialize_with = "serialize_option_secret",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub token: Option<Secret<String>>,
     pub request_timeout_secs: u64,
+}
+
+impl std::fmt::Debug for FeloConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FeloConfig")
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("request_timeout_secs", &self.request_timeout_secs)
+            .finish()
+    }
 }
 
 impl Default for FeloConfig {
     fn default() -> Self {
         Self {
+            token: None,
             request_timeout_secs: 300,
         }
     }

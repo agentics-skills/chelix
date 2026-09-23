@@ -339,14 +339,14 @@ date-only values remain unchanged before the `T00:00:00.000Z` suffix is added.
 result type, and sort. The returned text includes numbered titles, URLs,
 snippets, and pagination instructions.
 
-`felo_search` streams answers from `https://api.felo.ai/search/threads` with
-browser-style request headers and returns the final `answer` text.
-Configure `tools.felo.request_timeout_secs` to bound each request.
-All three clients coordinate their own `429` cooldown across sessions; when a
-numeric `Retry-After` is present, they retry once after the cooldown. Retries
-are logged and displayed in the tool's UI progress. Missing Exa/Google
-credentials fail before sending a request. All three return strings through the
-default shared persistence and truncation pipeline.
+`felo_search` authenticates with `tools.felo.token`, calls
+`POST https://openapi.felo.ai/v2/chat` with the query, and returns the
+`data.answer` text. Configure `tools.felo.request_timeout_secs` to bound the
+HTTP request. All three clients coordinate their own `429` cooldown across
+sessions; when a numeric `Retry-After` is present, they retry once after the
+cooldown. Retries are logged and displayed in the tool's UI progress. Missing
+Exa/Google/Felo credentials fail before sending a request. All three return
+strings through the default shared persistence and truncation pipeline.
 
 ## Linkup search tool
 

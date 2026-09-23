@@ -448,6 +448,7 @@ inside the sandbox. This invariant is not configurable. Add other mounts with
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
+| token | optional string | — | Felo API key used by `felo_search`. |
 | request_timeout_secs | integer | `300` | Per-request HTTP timeout in seconds; minimum `1`. |
 
 ### `tools.duckduckgo` — DuckDuckGoConfig

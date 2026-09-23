@@ -1,25 +1,18 @@
-//! Felo request fingerprint and incremental SSE answer extraction.
+//! Authenticated Felo search through the official Chat API.
 use {
     crate::rate_limit::RateLimitCoordinator,
     async_trait::async_trait,
     chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
     chelix_config::schema::FeloConfig,
+    reqwest::header::{AUTHORIZATION, HeaderValue, RETRY_AFTER},
+    secrecy::ExposeSecret,
     serde::Deserialize,
     serde_json::{Value, json},
     std::{sync::Arc, time::Duration},
-    uuid::Uuid,
 };
 
 const DESCRIPTION: &str = "Search the web for up-to-date technical information like latest releases, security advisories, migration guides, benchmarks, and community insights.";
-const BASE_URL: &str = "https://api.felo.ai/search/threads";
-const USER_AGENTS: [&str; 5] = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/120.0.0.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-];
-const COOKIE: &str = "_clck=1gifk45%7C2%7Cfoa%7C0%7C1686; _clsk=1g5lv07%7C1723558310439%7C1%7C1%7Cu.clarity.ms%2Fcollect; _ga=GA1.1.877307181.1723558313; _ga_8SZPRV97HV=GS1.1.1723558313.1.1.1723558341.0.0.0; _ga_Q9Q1E734CC=GS1.1.1723558313.1.1.1723558341.0.0.0";
+const BASE_URL: &str = "https://openapi.felo.ai/v2/chat";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,24 +20,48 @@ struct Input {
     query: Option<String>,
 }
 
-fn answer_from_line(line: &[u8], answer: &mut String) {
-    let line = String::from_utf8_lossy(line);
-    let Some(data) = line.strip_prefix("data:") else {
-        return;
-    };
-    let data = data.trim();
-    if data.is_empty() || data == "[DONE]" {
-        return;
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ApiStatus {
+    Label(StatusLabel),
+    Http(u16),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum StatusLabel {
+    Ok,
+    Error,
+}
+
+#[derive(Deserialize)]
+enum ApiCode {
+    #[serde(rename = "OK")]
+    Ok,
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl ApiCode {
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Ok => "OK",
+            Self::Other(code) => code,
+        }
     }
-    let Ok(parsed) = serde_json::from_str::<Value>(data) else {
-        return;
-    };
-    if parsed.get("type").and_then(Value::as_str) == Some("answer")
-        && let Some(text) = parsed.pointer("/data/text").and_then(Value::as_str)
-        && text.encode_utf16().count() > answer.encode_utf16().count()
-    {
-        *answer = text.to_string();
-    }
+}
+
+#[derive(Deserialize)]
+struct ChatResponse {
+    status: ApiStatus,
+    data: Option<ChatData>,
+    code: Option<ApiCode>,
+    message: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ChatData {
+    answer: String,
 }
 
 pub struct FeloSearchTool {
@@ -53,6 +70,7 @@ pub struct FeloSearchTool {
     gate: RateLimitCoordinator,
     base_url: String,
 }
+
 impl FeloSearchTool {
     pub fn new(config: Arc<FeloConfig>) -> Self {
         Self {
@@ -61,6 +79,22 @@ impl FeloSearchTool {
             gate: RateLimitCoordinator::default(),
             base_url: BASE_URL.into(),
         }
+    }
+
+    fn authorization(&self) -> anyhow::Result<HeaderValue> {
+        let token = self
+            .config
+            .token
+            .as_ref()
+            .map(ExposeSecret::expose_secret)
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Felo API key is not configured in tools.felo.token"))?;
+        let mut value = HeaderValue::try_from(format!("Bearer {token}"))
+            .map_err(|error| anyhow::anyhow!("invalid Felo API key: {error}"))?;
+        value.set_sensitive(true);
+        Ok(value)
     }
 
     fn request_error(&self, error: reqwest::Error) -> anyhow::Error {
@@ -96,7 +130,7 @@ impl FeloSearchTool {
             .map_err(|error| self.request_error(error))?;
         let retry_after = response
             .headers()
-            .get(reqwest::header::RETRY_AFTER)
+            .get(RETRY_AFTER)
             .and_then(|value| value.to_str().ok());
         let cooldown = permit.complete(
             response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS,
@@ -152,56 +186,48 @@ impl FeloSearchTool {
             .map(str::trim)
             .filter(|text| !text.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: query"))?;
-        let uuid = Uuid::new_v4();
-        let index = usize::from(uuid.as_bytes()[0]) % USER_AGENTS.len();
-        let payload = json!({ "query": query, "search_uuid": uuid.to_string(), "lang": "", "agent_lang": "en",
-            "search_options": { "langcode": "en-US" }, "search_video": true, "contexts_from": "google" });
-        let mut response = self.send_with_retry(context, || self.http.post(&self.base_url)
-            .header("accept", "*/*")
-            .header("accept-encoding", "gzip, deflate, br")
-            .header("accept-language", "en-US,en;q=0.9")
-            .header("content-type", "application/json")
-            .header("cookie", COOKIE)
-            .header("dnt", "1")
-            .header("origin", "https://felo.ai")
-            .header("referer", "https://felo.ai/")
-            .header("sec-ch-ua", "\"Not)A;Brand\";v=\"99\", \"Microsoft Edge\";v=\"127\", \"Chromium\";v=\"127\"")
-            .header("sec-ch-ua-mobile", "?0")
-            .header("sec-ch-ua-platform", "\"Windows\"")
-            .header("sec-fetch-dest", "empty")
-            .header("sec-fetch-mode", "cors")
-            .header("sec-fetch-site", "same-site")
-            .header(reqwest::header::USER_AGENT, USER_AGENTS[index])
-            .json(&payload)
-            .timeout(Duration::from_secs(self.config.request_timeout_secs))).await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response
-                .text()
-                .await
-                .map_err(|error| self.request_error(error))?;
-            anyhow::bail!("Felo API request failed: {} - {text}", status.as_u16());
-        }
-        let mut buffered = Vec::new();
-        let mut answer = String::new();
-        while let Some(chunk) = response
-            .chunk()
+        let authorization = self.authorization()?;
+        let response = self
+            .send_with_retry(context, || {
+                self.http
+                    .post(&self.base_url)
+                    .header(AUTHORIZATION, authorization.clone())
+                    .json(&json!({ "query": query }))
+                    .timeout(Duration::from_secs(self.config.request_timeout_secs))
+            })
+            .await?;
+        let status = response.status();
+        let body = response
+            .text()
             .await
-            .map_err(|error| self.request_error(error))?
-        {
-            buffered.extend_from_slice(&chunk);
-            while let Some(index) = buffered.iter().position(|byte| *byte == b'\n') {
-                let line: Vec<u8> = buffered.drain(..=index).collect();
-                let line = line.strip_suffix(b"\n").unwrap_or(&line);
-                let line = line.strip_suffix(b"\r").unwrap_or(line);
-                answer_from_line(line, &mut answer);
-            }
+            .map_err(|error| self.request_error(error))?;
+        if !status.is_success() {
+            anyhow::bail!("Felo API request failed: {} - {body}", status.as_u16());
         }
-        if !buffered.is_empty() {
-            answer_from_line(&buffered, &mut answer);
+        let chat: ChatResponse = serde_json::from_str(&body)
+            .map_err(|error| anyhow::anyhow!("invalid Felo API response: {error}"))?;
+        let success = matches!(
+            (&chat.status, chat.code.as_ref()),
+            (ApiStatus::Label(StatusLabel::Ok), None | Some(ApiCode::Ok))
+                | (ApiStatus::Http(200), Some(ApiCode::Ok))
+        );
+        if !success {
+            let code = chat
+                .code
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Felo API error response missing code"))?;
+            let message = chat
+                .message
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Felo API error response missing message"))?;
+            anyhow::bail!("Felo API request failed: {} - {message}", code.as_str());
         }
+        let answer = chat
+            .data
+            .ok_or_else(|| anyhow::anyhow!("Felo API response missing data"))?
+            .answer;
         if answer.is_empty() {
-            Ok("No response received from Felo AI.".to_string())
+            Ok("No response received from Felo AI.".to_owned())
         } else {
             Ok(answer)
         }
@@ -247,128 +273,177 @@ impl AgentTool for FeloSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, secrecy::Secret};
 
-    #[test]
-    fn keeps_only_longest_answer_and_handles_utf8() {
-        let mut answer = String::new();
-        answer_from_line(
-            "data: {\"type\":\"answer\",\"data\":{\"text\":\"Привет\"}}".as_bytes(),
-            &mut answer,
-        );
-        answer_from_line(
-            b"data: {\"type\":\"answer\",\"data\":{\"text\":\"x\"}}",
-            &mut answer,
-        );
-        assert_eq!(answer, "Привет");
-        answer_from_line(
-            "data: {\"type\":\"answer\",\"data\":{\"text\":\"Ответ: да\"}}".as_bytes(),
-            &mut answer,
-        );
-        answer_from_line(
-            "data: {\"type\":\"answer\",\"data\":{\"text\":\"Answer: yes, ok\"}}".as_bytes(),
-            &mut answer,
-        );
-        assert_eq!(answer, "Answer: yes, ok");
+    fn config() -> Arc<FeloConfig> {
+        Arc::new(FeloConfig {
+            token: Some(Secret::new("test-key".to_owned())),
+            request_timeout_secs: 10,
+        })
     }
 
     #[tokio::test]
-    async fn reports_http_failure_with_reference_status_format() {
+    async fn returns_answer_from_authenticated_chat_request() {
         let mut server = mockito::Server::new_async().await;
         let mock = server
-            .mock("POST", "/search/threads")
-            .with_status(403)
-            .with_body("Denied")
+            .mock("POST", "/v2/chat")
+            .match_header("authorization", "Bearer test-key")
+            .match_header("content-type", "application/json")
+            .match_body(mockito::Matcher::Json(json!({"query":"sample"})))
+            .with_status(200)
+            .with_body(
+                r#"{"status":200,"code":"OK","data":{"answer":"**Привет**","resources":[]}}"#,
+            )
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(
-            Arc::new(FeloConfig {
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search/threads", server.url()),
-        );
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let result = tool
+            .execute(json!({"query":" sample "}))
+            .await
+            .unwrap_or_else(|error| panic!("search failed: {error}"));
+        assert_eq!(result, json!("**Привет**"));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn reports_http_and_api_errors() {
+        let mut server = mockito::Server::new_async().await;
+        let denied = server
+            .mock("POST", "/v2/chat")
+            .with_status(401)
+            .with_body(r#"{"status":"error","code":"INVALID_API_KEY","message":"Invalid key"}"#)
+            .create_async()
+            .await;
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
         let error = tool
-            .execute(json!({ "query": "sample" }))
+            .execute(json!({"query":"sample"}))
             .await
             .err()
             .map(|error| error.to_string())
             .unwrap_or_default();
-        assert_eq!(
-            error,
-            "felo_search error: Felo API request failed: 403 - Denied"
-        );
-        mock.assert_async().await;
+        assert!(error.contains("401"));
+        assert!(error.contains("INVALID_API_KEY"));
+        denied.assert_async().await;
+        let mut server = mockito::Server::new_async().await;
+        let api_error = server
+            .mock("POST", "/v2/chat")
+            .with_status(200)
+            .with_body(r#"{"status":"error","code":"CHAT_FAILED","message":"Internal error"}"#)
+            .create_async()
+            .await;
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let error = tool
+            .execute(json!({"query":"sample"}))
+            .await
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+        assert!(error.contains("CHAT_FAILED - Internal error"));
+        api_error.assert_async().await;
+
+        let mut server = mockito::Server::new_async().await;
+        let numeric_error = server
+            .mock("POST", "/v2/chat")
+            .with_status(200)
+            .with_body(r#"{"status":500,"code":"CHAT_FAILED","message":"Provider failure"}"#)
+            .create_async()
+            .await;
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let error = tool
+            .execute(json!({"query":"sample"}))
+            .await
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+        assert!(error.contains("CHAT_FAILED - Provider failure"));
+        numeric_error.assert_async().await;
+
+        let mut server = mockito::Server::new_async().await;
+        let malformed = server
+            .mock("POST", "/v2/chat")
+            .with_status(200)
+            .with_body(r#"{"status":true}"#)
+            .create_async()
+            .await;
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let error = tool
+            .execute(json!({"query":"sample"}))
+            .await
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+        assert!(error.contains("invalid Felo API response"));
+        malformed.assert_async().await;
     }
 
     #[tokio::test]
     async fn rate_limit_retries_once_and_records_progress() {
         let mut server = mockito::Server::new_async().await;
         let limited = server
-            .mock("POST", "/search/threads")
+            .mock("POST", "/v2/chat")
             .with_status(429)
             .with_header("retry-after", "0")
             .expect(1)
             .create_async()
             .await;
         let success = server
-            .mock("POST", "/search/threads")
+            .mock("POST", "/v2/chat")
             .with_status(200)
-            .with_body("data: {\"type\":\"answer\",\"data\":{\"text\":\"Ready\"}}\n\n")
+            .with_body(r#"{"status":"ok","data":{"answer":"Ready"}}"#)
             .expect(1)
             .create_async()
             .await;
-        let tool = FeloSearchTool::for_test(
-            Arc::new(FeloConfig {
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search/threads", server.url()),
-        );
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
         let context = ToolExecutionContext::for_session(chelix_sessions::SessionKey::new(
             "session:search-test",
         ));
         let result = tool
-            .execute_with_context(json!({ "query": "sample" }), &context)
+            .execute_with_context(json!({"query":"sample"}), &context)
             .await
             .unwrap_or_else(|error| panic!("retry failed: {error}"));
-        assert_eq!(result.as_str(), Some("Ready"));
+        assert_eq!(result, json!("Ready"));
         assert_eq!(context.retry_count(), 1);
         limited.assert_async().await;
         success.assert_async().await;
     }
 
     #[tokio::test]
-    async fn returns_longest_streamed_answer() {
+    async fn missing_token_fails_before_network_request() {
         let mut server = mockito::Server::new_async().await;
-        let mock = server.mock("POST", "/search/threads")
-            .match_header("cookie", "_clck=1gifk45%7C2%7Cfoa%7C0%7C1686; _clsk=1g5lv07%7C1723558310439%7C1%7C1%7Cu.clarity.ms%2Fcollect; _ga=GA1.1.877307181.1723558313; _ga_8SZPRV97HV=GS1.1.1723558313.1.1.1723558341.0.0.0; _ga_Q9Q1E734CC=GS1.1.1723558313.1.1.1723558341.0.0.0")
-            .match_header("sec-ch-ua", "\"Not)A;Brand\";v=\"99\", \"Microsoft Edge\";v=\"127\", \"Chromium\";v=\"127\"")
-            .match_header("origin", "https://felo.ai")
-            .match_header("referer", "https://felo.ai/")
-            .match_header("accept-encoding", "gzip, deflate, br")
-            .match_header("user-agent", mockito::Matcher::AnyOf(vec![
-                mockito::Matcher::Exact("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".into()),
-                mockito::Matcher::Exact("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/120.0.0.0".into()),
-                mockito::Matcher::Exact("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15".into()),
-                mockito::Matcher::Exact("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0".into()),
-                mockito::Matcher::Exact("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".into()),
-            ]))
-            .match_body(mockito::Matcher::PartialJson(json!({
-                "query": "sample", "lang": "", "agent_lang": "en", "search_options": {"langcode": "en-US"},
-                "search_video": true, "contexts_from": "google"
-            })))
-            .with_status(200).with_body("data: {\"type\":\"answer\",\"data\":{\"text\":\"Hi\"}}\n\ndata: {\"type\":\"answer\",\"data\":{\"text\":\"Hi there\"}}\n")
-            .create_async().await;
+        let post = server
+            .mock("POST", "/v2/chat")
+            .expect(0)
+            .create_async()
+            .await;
         let tool = FeloSearchTool::for_test(
-            Arc::new(FeloConfig {
-                request_timeout_secs: 10,
-            }),
-            format!("{}/search/threads", server.url()),
+            Arc::new(FeloConfig::default()),
+            format!("{}/v2/chat", server.url()),
         );
-        let result = tool
-            .execute(json!({ "query": "sample" }))
+        let error = tool
+            .execute(json!({"query":"sample"}))
             .await
-            .unwrap_or_else(|error| panic!("search failed: {error}"));
-        assert_eq!(result, json!("Hi there"));
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+        assert!(error.contains("tools.felo.token"));
+        post.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn empty_answer_preserves_result_format() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v2/chat")
+            .with_status(200)
+            .with_body(r#"{"status":"ok","data":{"answer":""}}"#)
+            .create_async()
+            .await;
+        let tool = FeloSearchTool::for_test(config(), format!("{}/v2/chat", server.url()));
+        let result = tool
+            .execute(json!({"query":"sample"}))
+            .await
+            .unwrap_or_else(|error| panic!("empty answer failed: {error}"));
+        assert_eq!(result, json!("No response received from Felo AI."));
         mock.assert_async().await;
     }
 }

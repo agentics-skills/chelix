@@ -188,7 +188,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                     ("request_timeout_secs", Leaf),
                 ])),
             ),
-            ("felo", duckduckgo()),
+            ("felo", linkup()),
             ("duckduckgo", duckduckgo()),
             ("github", github()),
             (

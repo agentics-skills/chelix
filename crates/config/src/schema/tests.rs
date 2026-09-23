@@ -78,16 +78,33 @@ token = "exa-secret"
 [tools.google]
 token = "google-secret"
 engine_id = "engine-secret"
+[tools.felo]
+token = "felo-secret"
 "#,
     )
     .unwrap();
     assert_eq!(config.tools.exa.request_timeout_secs, 300);
     assert_eq!(config.tools.google.request_timeout_secs, 300);
     assert_eq!(config.tools.felo.request_timeout_secs, 300);
-    let debug = format!("{:?} {:?}", config.tools.exa, config.tools.google);
+    assert_eq!(
+        config
+            .tools
+            .felo
+            .token
+            .as_ref()
+            .map(ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("felo-secret")
+    );
+    let debug = format!(
+        "{:?} {:?} {:?}",
+        config.tools.exa, config.tools.google, config.tools.felo
+    );
+    assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains("exa-secret"));
     assert!(!debug.contains("google-secret"));
     assert!(!debug.contains("engine-secret"));
+    assert!(!debug.contains("felo-secret"));
 }
 
 #[test]

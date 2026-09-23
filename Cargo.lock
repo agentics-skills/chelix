@@ -1763,11 +1763,11 @@ dependencies = [
  "chelix-sessions",
  "mockito",
  "reqwest 0.13.2",
+ "secrecy",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
- "uuid 1.23.1",
 ]
 
 [[package]]
