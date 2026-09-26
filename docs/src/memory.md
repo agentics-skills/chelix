@@ -197,10 +197,9 @@ Chelix launches the sidecar on a random loopback HTTP port, reads model
 metadata during startup, and stops the process with the gateway. The loopback
 API has no authentication and is not exposed on non-loopback interfaces.
 
-Prepare the pinned mistral.rs sources, then build the two binaries separately:
+Build the two binaries separately:
 
 ```bash
-./scripts/prepare-mistralrs.sh
 cargo build -p chelix --no-default-features --features full
 cargo build -p chelix-embedding-service
 ```

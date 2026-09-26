@@ -21,7 +21,6 @@ async-trait        = { workspace = true }
 axum               = { workspace = true }
 chelix-protocol    = { workspace = true }
 clap               = { workspace = true }
-either             = { workspace = true }
 fd-lock            = { workspace = true }
 metrics            = { optional = true, workspace = true }
 mistralrs          = { optional = true, workspace = true }

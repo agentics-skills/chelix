@@ -5,7 +5,6 @@ use {
     async_trait::async_trait,
     chelix_embedding_service::{EmbeddingEngine, pool::mean_pool_normalized_windows},
     chelix_protocol::EmbeddingModelMetadata,
-    either::Either,
     mistralrs::{
         AutoDeviceMapParams, DeviceMapSetting, EmbeddingModelBuilder, EmbeddingRequest, IsqType,
         TokenSource, UqffEmbeddingModelBuilder,
@@ -97,7 +96,7 @@ impl EmbeddingEngine for LocalMistralEngine {
     async fn embed(&self, text: &str, _priority: u32) -> Result<Vec<f32>> {
         let tokens = self
             .model
-            .tokenize(Either::Right(text.to_owned()), None, true, false, None)
+            .tokenize(text.to_owned(), true)
             .await
             .map_err(|error| anyhow::anyhow!("tokenization failed: {error}"))?;
         if tokens.is_empty() {
