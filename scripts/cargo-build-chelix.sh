@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_dir="$(cd "$(dirname "$0")" && pwd)"
-"$script_dir/prepare-mistralrs.sh"
-
 features="${CHELIX_BUILD_FEATURES:-full}"
 profile="debug"
 target=""
@@ -37,8 +34,7 @@ cargo build -p chelix-tools-service "$@"
 
 # Keep the embedding sidecar out of the main binary's dependency graph. Build
 # the managed sidecar in a separate Cargo invocation only when the selected
-# Chelix feature set enables local embeddings. Run scripts/prepare-mistralrs.sh
-# first so vendor/mistral.rs exists for the path dependency.
+# Chelix feature set enables local embeddings.
 normalized_features=",${features// /,},"
 case "$normalized_features" in
 	*,full,*|*,local-embeddings,*)

@@ -6,16 +6,12 @@ default:
 # Read nightly toolchain from rust-toolchain.toml (single source of truth).
 nightly_toolchain := `grep '^channel' rust-toolchain.toml | sed 's/.*"\(.*\)"/\1/'`
 
-# Clone pinned mistral.rs and apply tracked patches into vendor/.
-prepare-mistralrs:
-    ./scripts/prepare-mistralrs.sh
-
 # Format Rust code
-format: prepare-mistralrs
+format:
     cargo +{{nightly_toolchain}} fmt --all
 
 # Check if code is formatted
-format-check: prepare-mistralrs
+format-check:
     cargo +{{nightly_toolchain}} fmt --all -- --check
 
 # Run the full live provider integration workflow locally (sources .envrc when present).
@@ -30,10 +26,10 @@ provider-e2e-scenarios:
 provider-e2e-daily: provider-e2e-scenarios
 
 # Verify Cargo.lock is in sync with workspace manifests.
-lockfile-check: prepare-mistralrs
+lockfile-check:
     cargo fetch --locked
 
-# Lint Rust code using clippy (OS-aware: macOS excludes CUDA features)
+# Lint Rust code using clippy (macOS omits --all-features and excludes chelix-matrix).
 lint: lockfile-check
     #!/usr/bin/env bash
     set -euo pipefail
@@ -76,13 +72,13 @@ codesign-debug:
     done
 
 # Build the project
-build: build-web-assets prepare-mistralrs
+build: build-web-assets
     cargo build
     cargo build -p chelix-embedding-service
     just codesign-debug
 
 # Build only the native local embedding sidecar.
-build-embedding-service: prepare-mistralrs
+build-embedding-service:
     cargo build -p chelix-embedding-service
 
 # Build in release mode
@@ -90,7 +86,7 @@ build-release:
     ./scripts/cargo-build-chelix.sh --release
 
 # Run local dev server with workspace-local config/data dirs.
-dev-server: prepare-mistralrs
+dev-server:
     cargo build --bin chelix
     cargo build -p chelix-embedding-service
     just codesign-debug
@@ -102,7 +98,7 @@ ci: format-check lint i18n-check build-web-assets build test
 # Compile once, then run Rust tests.
 # Uses the same nightly toolchain as clippy/local-validate so the build cache
 # is shared — no double-compilation.
-build-test: build-web-assets prepare-mistralrs
+build-test: build-web-assets
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> Building all workspace targets (bins + tests)..."
@@ -154,10 +150,10 @@ ship commit_message='' pr_title='' pr_body='':
     ./scripts/ship-pr.sh {{ quote(commit_message) }} {{ quote(pr_title) }} {{ quote(pr_body) }}
 
 # Run all tests (nightly to share build cache with clippy/lint, OS-aware).
-# On macOS: single nextest run using default features (includes Metal, not CUDA).
-# On Linux: --all-features (includes CUDA).
+# On macOS: build and nextest use the default features.
+# On Linux: nextest uses --all-features.
 # Builds first so codesign can run before test execution (prevents Little Snitch prompts).
-test: prepare-mistralrs
+test:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" = "Darwin" ]; then
@@ -169,7 +165,7 @@ test: prepare-mistralrs
     fi
 
 # Run contract test suites (channel, provider, memory, tools)
-contract-tests: prepare-mistralrs
+contract-tests:
     cargo test -p chelix-channels contract
     cargo test -p chelix-providers contract
     cargo test -p chelix-memory contract
@@ -180,11 +176,11 @@ i18n-check:
     ./scripts/i18n-check.sh
 
 # Build the APNS push relay.
-courier-build: prepare-mistralrs
+courier-build:
     cargo build -p chelix-courier --release
 
 # Cross-compile courier for linux/x86_64.
-courier-cross: prepare-mistralrs
+courier-cross:
     cargo build -p chelix-courier --release --target x86_64-unknown-linux-gnu
 
 # Deploy courier to remote server(s) via Ansible.
@@ -192,6 +188,6 @@ courier-deploy:
     cd apps/courier/deploy && ansible-playbook playbook.yml
 
 # Run the APNS push relay (dev).
-courier-run *ARGS: prepare-mistralrs
+courier-run *ARGS:
     cargo run -p chelix-courier -- {{ARGS}}
 

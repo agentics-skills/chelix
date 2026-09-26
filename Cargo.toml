@@ -57,7 +57,6 @@ default-members = [
   "crates/webhooks",
   "crates/whatsapp",
 ]
-exclude = ["vendor", "vendor/mistral.rs"]
 members = [
   "apps/courier",
   "crates/agents",
@@ -180,7 +179,6 @@ async-stream = "0.3"
 async-trait  = "0.1"
 directories  = "6"
 dotenvy      = "0.15"
-either       = "1"
 futures      = "0.3"
 futures-util = "0.3"
 indexmap     = { features = ["serde"], version = "2" }
@@ -253,7 +251,7 @@ web-push    = "0.11"
 metrics                     = "0.24.6"
 metrics-exporter-prometheus = "0.16"
 metrics-tracing-context     = "0.16"
-mistralrs                   = { default-features = false, path = "vendor/mistral.rs/mistralrs" }
+mistralrs                   = { default-features = false, git = "https://github.com/ivan-mezentsev/mistralrs-embedding", tag = "v0.1.1", version = "0.1.1" }
 # Content processing
 content_inspector = "0.2.4"
 image             = { default-features = false, features = ["jpeg", "png", "webp"], version = "0.25" }

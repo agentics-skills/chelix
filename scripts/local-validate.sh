@@ -103,8 +103,6 @@ else
   SHA="$(git rev-parse HEAD)"
 fi
 
-"$(cd "$(dirname "$0")" && pwd)/prepare-mistralrs.sh"
-
 # Auto-sync Cargo.lock if stale (common after merging main).
 # Uses `cargo fetch` (without --locked) to resolve deps without compiling
 # or upgrading existing dependency versions.
@@ -204,7 +202,7 @@ strip_all_features_flag() {
   printf '%s' "$cmd"
 }
 
-if [[ "$(uname -s)" == "Darwin" ]] && ! command -v nvcc >/dev/null 2>&1; then
+if [[ "$(uname -s)" == "Darwin" ]]; then
   if [[ -z "${LOCAL_VALIDATE_LINT_CMD:-}" ]]; then
     if command -v just >/dev/null 2>&1 && [[ -f justfile ]]; then
       lint_cmd="just lint"
@@ -227,8 +225,8 @@ if [[ "$(uname -s)" == "Darwin" ]] && ! command -v nvcc >/dev/null 2>&1; then
   fi
   build_cmd="$(strip_all_features_flag "$build_cmd")"
   coverage_cmd="$(strip_all_features_flag "$coverage_cmd")"
-  echo "Detected macOS without nvcc; using Darwin-native validation commands without Linux CUDA features." >&2
-  echo "CI still covers the Linux/CUDA all-features path. Override with LOCAL_VALIDATE_* if you need a different split." >&2
+  echo "Detected macOS; using Darwin validation commands without --all-features." >&2
+  echo "Linux validation still uses --all-features. Override with LOCAL_VALIDATE_* if you need a different split." >&2
 fi
 
 ensure_zizmor() {
@@ -261,17 +259,6 @@ ensure_zizmor() {
 if [[ -z "${LOCAL_VALIDATE_ZIZMOR_CMD:-}" ]]; then
   ensure_zizmor
 fi
-
-repair_stale_llama_build_dirs() {
-  shopt -s nullglob
-  for dir in target/*/build/llama-cpp-sys-2-* target/*/build/llama-cpp-2-*; do
-    if [[ -d "$dir" ]]; then
-      echo "Removing cached llama build dir: $dir"
-      rm -rf "$dir"
-    fi
-  done
-  shopt -u nullglob
-}
 
 set_status() {
   local state="$1"
@@ -459,10 +446,6 @@ if [[ -f "$VALIDATE_MARKER" ]] && [[ "$(cat "$VALIDATE_MARKER" 2>/dev/null)" == 
   echo "Commit ${SHA:0:7} already validated — skipping."
   exit 0
 fi
-
-# macOS local builds can leave stale cmake output dirs where configure was skipped
-# but no generator files remain. Clean those up before lint/test.
-repair_stale_llama_build_dirs
 
 # Run fast independent checks in parallel.
 run_check_async "local/fmt" "$fmt_cmd"

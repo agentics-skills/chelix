@@ -40,12 +40,8 @@ in the PR.
 
 - The script requires a clean working tree (no uncommitted or untracked
   changes). Commit or stash local changes before running.
-- On macOS without CUDA (`nvcc`), the script automatically falls back to
-  non-CUDA test/coverage defaults for local runs.
-- On Linux, `local/lint` and `local/test` use `--all-features`. If you want the
-  opt-in Vulkan path covered locally, install the Vulkan development packages
-  first, for example `libvulkan-dev` and `glslang-tools` on Debian/Ubuntu (on
-  Ubuntu 22.04, install `glslang-tools` from the LunarG Vulkan SDK).
+- On macOS, the script uses validation commands without `--all-features`.
+- On Linux, `local/lint` and `local/test` use `--all-features`.
 - `local/lint` uses the same clippy flags as CI and release:
   `cargo clippy -Z unstable-options --workspace --all-features --all-targets --timings -- -D warnings`
   (uses the nightly pinned in `rust-toolchain.toml`).
