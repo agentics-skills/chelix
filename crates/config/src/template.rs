@@ -9,9 +9,10 @@
 
 /// Generate the default config template with a specific port.
 ///
-/// The template is override-only: only the installation-specific port is set
-/// as an active value. All other settings are commented out with documentation
-/// so users can see what's available without accidentally freezing defaults.
+/// The template is override-only: the installation-specific port and
+/// `tools.execute_command.terminal_size` are active values. All other settings
+/// are commented out with documentation so users can see what's available
+/// without accidentally freezing defaults.
 pub fn default_config_template(port: u16) -> String {
     format!(
         r##"# Chelix User Configuration
@@ -289,7 +290,8 @@ port = {port}                           # Port number (auto-generated for this i
 
 # ── Command Execution ─────────────────────────────────────────────────────────
 
-# [tools.execute_command]
+[tools.execute_command]
+terminal_size = "115x58"             # 115 chars x 58
 # default_timeout_secs = 30         # Default timeout for commands
 # rewrite_timeout_secs = 300        # Minimum for agent-provided timeouts; unset by default
 # approval_mode = "never"           # "always" = ask before every command, "never" = never ask

@@ -326,6 +326,7 @@ full-output file.
 | `default_timeout_secs` | integer         | `30`          | Wall-clock timeout in seconds used when the agent omits the command timeout.                                  |
 | `rewrite_timeout_secs` | integer         | unset         | Minimum timeout in seconds for an agent-provided timeout; smaller values are rewritten to this value.         |
 | `approval_mode`        | enum            | `"never"`     | Operator approval policy. Accepted values are exactly `"always"` and `"never"`.                              |
+| `terminal_size`        | string          | required      | Fixed PTY size, format `"<cols>x<rows>"` (`115x58` is 115 chars x 58). Both parts are decimal `u16` values. The key is required in the configuration file; `CHELIX_TOOLS__EXECUTE_COMMAND__TERMINAL_SIZE` only overrides a value already present in the file. This size is passed to `chelix-tools-service` and is applied when the PTY is created and instead of websocket resize `cols`/`rows`. |
 
 When the agent omits a timeout, `default_timeout_secs` is used without applying
 `rewrite_timeout_secs`. When the agent provides a timeout and

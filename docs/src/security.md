@@ -45,6 +45,7 @@ Configure approval behavior in `chelix.toml`:
 
 ```toml
 [tools.execute_command]
+terminal_size = "115x58"    # 115 chars x 58
 approval_mode = "never"    # default: do not request operator approval
 # approval_mode = "always"  # request approval for every command
 ```

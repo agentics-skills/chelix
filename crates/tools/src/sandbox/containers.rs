@@ -103,6 +103,8 @@ pub(crate) fn apple_container_run_args(
     mounts: &[String],
     tools_token: &str,
     host_port: u16,
+    terminal_cols: u16,
+    terminal_rows: u16,
 ) -> Vec<String> {
     let mut args = vec![
         "run".to_string(),
@@ -136,6 +138,10 @@ pub(crate) fn apple_container_run_args(
         format!("0.0.0.0:{}", chelix_protocol::TOOLS_SERVICE_CONTAINER_PORT),
         "--working-dir".to_string(),
         SANDBOX_HOME_DIR.to_string(),
+        "--terminal-cols".to_string(),
+        terminal_cols.to_string(),
+        "--terminal-rows".to_string(),
+        terminal_rows.to_string(),
     ]);
     args
 }

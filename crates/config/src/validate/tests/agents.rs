@@ -284,6 +284,9 @@ max_tools_threshold = 128
 compaction_reminder = true
 prepend_sender_badge = true
 max_tool_result_bytes = 100000
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     );
     assert!(
@@ -313,6 +316,9 @@ prepend_sender_badge = true
 
 [agents.quick.tools]
 preload = ["read_file", "ripgrep"]
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     );
     assert!(

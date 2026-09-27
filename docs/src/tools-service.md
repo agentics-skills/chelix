@@ -145,7 +145,11 @@ In global `Off` mode, the host service binds to `127.0.0.1:0`, so the operating
 system selects an available loopback port. It writes one JSON readiness record
 to its stdout pipe. That record contains the protocol version, selected port,
 and generated token. The gateway starts the child with
-`--shutdown-on-stdin-eof` and configures kill-on-drop for the managed process.
+`--shutdown-on-stdin-eof`, `--terminal-cols`, and `--terminal-rows` taken from
+`tools.execute_command.terminal_size`, and configures kill-on-drop for the
+managed process. Those two size flags are required. The service creates the PTY
+at that size and applies the same size from `resize_terminal` instead of
+websocket `cols`/`rows`.
 
 ## Global routing
 
@@ -436,7 +440,7 @@ replaces the previous idle sleep bootstrap as the container's long-running
 workload:
 
 ```text
-chelix-tools-service --listen 0.0.0.0:43271
+chelix-tools-service --listen 0.0.0.0:43271 --terminal-cols 115 --terminal-rows 58
 ```
 
 The backend generates a token for each container and passes it through

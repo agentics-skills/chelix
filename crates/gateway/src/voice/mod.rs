@@ -392,7 +392,9 @@ mod tests {
 
     #[test]
     fn merge_voice_keys_populates_config_from_key_store() {
-        let guard = VoiceConfigTestGuard::with_config("");
+        let guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
 
         // Save a key to the store via the public save_config method.
         let store = crate::provider_setup::KeyStore::new();
@@ -416,7 +418,9 @@ mod tests {
 
     #[test]
     fn migrate_voice_keys_moves_config_keys_to_key_store() {
-        let guard = VoiceConfigTestGuard::with_config("");
+        let guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
 
         // Build a config with voice keys as if they came from TOML.
         let mut cfg = chelix_config::ChelixConfig::default();
@@ -449,7 +453,9 @@ mod tests {
 
     #[test]
     fn migrate_voice_keys_skips_env_var_references() {
-        let guard = VoiceConfigTestGuard::with_config("");
+        let guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
 
         let mut cfg = chelix_config::ChelixConfig::default();
         cfg.voice.tts.elevenlabs.api_key = Some(Secret::new("${ELEVENLABS_API_KEY}".to_string()));

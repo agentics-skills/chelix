@@ -421,7 +421,7 @@ docker inspect --format '{{json .NetworkSettings.Networks}}' <sandbox-container>
 ```
 
 The sandbox's main process should be `chelix-tools-service --listen
-0.0.0.0:43271`. If Chelix runs in Docker, the Chelix and sandbox containers need
+0.0.0.0:43271 --terminal-cols <cols> --terminal-rows <rows>`. If Chelix runs in Docker, the Chelix and sandbox containers need
 a network path between them; use the shared user-defined bridge configuration in
 [Managed tools service connectivity](#managed-tools-service-connectivity).
 

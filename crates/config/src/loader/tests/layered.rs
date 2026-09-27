@@ -24,6 +24,9 @@ MY_API_KEY = "{expected}"
 
 [tools.web.firecrawl]
 api_key = "${{MY_API_KEY}}"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#
         ),
     )
@@ -78,6 +81,9 @@ fn gh770_resubstitute_config_resolves_db_env_vars() {
             r#"
 [tools.web.firecrawl]
 api_key = "${{{var}}}"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#
         ),
     )
@@ -140,6 +146,9 @@ prepend_sender_badge = true
 
 [tools.web.firecrawl]
 api_key = "${{{var}}}"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#
         ),
     )
@@ -187,6 +196,9 @@ fn gh770_resubstitute_handles_special_chars_in_values() {
             r#"
 [tools.web.firecrawl]
 api_key = "${{{var}}}"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#
         ),
     )
@@ -297,7 +309,11 @@ fn save_user_config_does_not_materialize_defaults() {
     let path = dir.path().join("chelix.toml");
 
     // Start with a minimal user config.
-    std::fs::write(&path, "[server]\nport = 12345\n").expect("write seed");
+    std::fs::write(
+        &path,
+        "[server]\nport = 12345\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+    )
+    .expect("write seed");
 
     let raw = std::fs::read_to_string(&path).expect("read seed");
     let mut config: ChelixConfig = parse_config(&raw, &path).expect("parse");
@@ -363,7 +379,7 @@ fn update_config_preserves_override_boundary() {
     // Seed a minimal user config.
     std::fs::write(
         &config_path,
-        "[server]\nport = 54321\n\n[auth]\ndisabled = true\n",
+        "[server]\nport = 54321\n\n[auth]\ndisabled = true\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
     )
     .expect("write seed");
 
@@ -403,7 +419,7 @@ fn layered_load_user_override_wins_over_defaults() {
     // Write user config with an override.
     std::fs::write(
         &config_path,
-        "[server]\nport = 11111\n\n[tools]\nagent_timeout_secs = 999\n",
+        "[server]\nport = 11111\n\n[tools]\nagent_timeout_secs = 999\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
     )
     .expect("write user config");
 
@@ -428,7 +444,11 @@ fn upgrade_adds_new_defaults_automatically() {
     let config_path = dir.path().join("chelix.toml");
 
     // Write a minimal user config (no tools section).
-    std::fs::write(&config_path, "[server]\nport = 22222\n").expect("write user config");
+    std::fs::write(
+        &config_path,
+        "[server]\nport = 22222\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+    )
+    .expect("write user config");
 
     // Write defaults.toml.
     crate::defaults::write_defaults_toml(dir.path()).expect("write defaults");
@@ -453,7 +473,7 @@ fn user_override_survives_defaults_refresh() {
     // User overrides timeout.
     std::fs::write(
         &config_path,
-        "[server]\nport = 33333\n\n[tools]\nagent_timeout_secs = 42\n",
+        "[server]\nport = 33333\n\n[tools]\nagent_timeout_secs = 42\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
     )
     .expect("write user config");
 
@@ -522,6 +542,9 @@ port = 18789
 [voice.tts.coqui]
 enabled = true
 endpoint = "http://localhost:5002"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     )
     .expect("write config");
@@ -557,6 +580,9 @@ port = 0
 [voice.tts.coqui]
 enabled = true
 endpoint = "http://localhost:5002"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     )
     .expect("write config");
@@ -844,6 +870,9 @@ reasoning_effort = "off"
 max_tools_threshold = 7
 compaction_reminder = true
 prepend_sender_badge = true
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     )
     .expect("write seed");

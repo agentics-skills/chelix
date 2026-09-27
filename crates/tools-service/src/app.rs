@@ -19,6 +19,10 @@ struct Args {
     shutdown_on_stdin_eof: bool,
     #[arg(long)]
     working_dir: PathBuf,
+    #[arg(long)]
+    terminal_cols: u16,
+    #[arg(long)]
+    terminal_rows: u16,
 }
 
 pub async fn run() -> Result<()> {
@@ -42,8 +46,12 @@ pub async fn run() -> Result<()> {
 
     let shutdown_on_stdin_eof = args.shutdown_on_stdin_eof;
     let terminal_manager = Arc::new(
-        crate::terminal::TerminalManager::new(args.working_dir)
-            .context("initializing terminal manager")?,
+        crate::terminal::TerminalManager::new(
+            args.working_dir,
+            args.terminal_cols,
+            args.terminal_rows,
+        )
+        .context("initializing terminal manager")?,
     );
     let serve_result = axum::serve(
         listener,

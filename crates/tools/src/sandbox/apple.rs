@@ -329,13 +329,24 @@ impl AppleContainerSandbox {
         tz: Option<&str>,
         mounts: &[String],
         endpoint: &ToolsServiceEndpoint,
+        terminal_cols: u16,
+        terminal_rows: u16,
     ) -> std::result::Result<(), CreateError> {
         let port = endpoint
             .base_url
             .rsplit_once(':')
             .and_then(|(_, port)| port.parse::<u16>().ok())
             .ok_or_else(|| CreateError::Other("invalid tools service endpoint port".into()))?;
-        let args = apple_container_run_args(name, image, tz, mounts, &endpoint.token, port);
+        let args = apple_container_run_args(
+            name,
+            image,
+            tz,
+            mounts,
+            &endpoint.token,
+            port,
+            terminal_cols,
+            terminal_rows,
+        );
 
         let output = tokio::process::Command::new("container")
             .args(&args)
@@ -645,6 +656,10 @@ impl Sandbox for AppleContainerSandbox {
         let image = self.resolve_local_image(&effective_image).await?;
         let tz = self.config.timezone.as_deref();
         let mounts = self.mount_specs(id)?;
+        let terminal_size = self
+            .config
+            .terminal_size
+            .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
 
         const MAX_ATTEMPTS: usize = 3;
         let mut daemon_restarted = false;
@@ -677,7 +692,17 @@ impl Sandbox for AppleContainerSandbox {
 
             let endpoint = Self::allocate_tools_endpoint()?;
             info!(name, image = %image, attempt, "creating apple tools service container");
-            match Self::run_container(&name, &image, tz, &mounts, &endpoint).await {
+            match Self::run_container(
+                &name,
+                &image,
+                tz,
+                &mounts,
+                &endpoint,
+                terminal_size.cols,
+                terminal_size.rows,
+            )
+            .await
+            {
                 Ok(()) => {
                     let readiness = async {
                         Self::wait_for_container_running(&name).await?;

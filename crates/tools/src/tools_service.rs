@@ -99,7 +99,13 @@ impl ManagedToolsService {
             );
             ManagedToolsRuntime::Sandbox
         } else {
-            ManagedToolsRuntime::Host(Box::new(HostToolsService::start(&client).await?))
+            let terminal_size = router
+                .config()
+                .terminal_size
+                .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
+            ManagedToolsRuntime::Host(Box::new(
+                HostToolsService::start(&client, terminal_size).await?,
+            ))
         };
         Ok(Arc::new(Self {
             router,
@@ -664,7 +670,10 @@ struct HostToolsService {
 }
 
 impl HostToolsService {
-    async fn start(client: &reqwest::Client) -> Result<Self> {
+    async fn start(
+        client: &reqwest::Client,
+        terminal_size: chelix_config::schema::TerminalSizeConfig,
+    ) -> Result<Self> {
         let binary = resolve_host_binary()?;
         let working_dir = chelix_config::home_dir()
             .ok_or_else(|| Error::message("cannot resolve host tools service working directory"))?;
@@ -672,6 +681,10 @@ impl HostToolsService {
             .arg("--shutdown-on-stdin-eof")
             .arg("--working-dir")
             .arg(&working_dir)
+            .arg("--terminal-cols")
+            .arg(terminal_size.cols.to_string())
+            .arg("--terminal-rows")
+            .arg(terminal_size.rows.to_string())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

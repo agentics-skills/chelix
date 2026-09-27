@@ -1168,7 +1168,7 @@ mod tests {
         let mut file = std::fs::File::create(&path).unwrap();
         writeln!(
             file,
-            "[channels]\noffered = [\"telegram\", \"matrix\", \"whatsapp\"]"
+            "[channels]\noffered = [\"telegram\", \"matrix\", \"whatsapp\"]\n[tools.execute_command]\nterminal_size = \"115x58\""
         )
         .unwrap();
 

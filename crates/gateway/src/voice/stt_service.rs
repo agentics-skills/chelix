@@ -495,6 +495,9 @@ port = 18080
 
 [voice.stt.whisper]
 base_url = "http://127.0.0.1:8001/"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
         );
 
@@ -527,6 +530,9 @@ endpoint = "http://127.0.0.1:9000/"
 
 [voice.stt.whisper_local]
 endpoint = "http://127.0.0.1:9001/"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
         );
 
@@ -545,7 +551,9 @@ endpoint = "http://127.0.0.1:9001/"
 
     #[tokio::test]
     async fn test_live_stt_service_status() {
-        let _guard = VoiceConfigTestGuard::with_config("");
+        let _guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
         let service = LiveSttService::new(SttServiceConfig::default());
         let status = service.status().await.unwrap();
 
@@ -560,7 +568,9 @@ endpoint = "http://127.0.0.1:9001/"
 
     #[tokio::test]
     async fn test_live_stt_service_providers() {
-        let _guard = VoiceConfigTestGuard::with_config("");
+        let _guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
         let service = LiveSttService::new(SttServiceConfig::default());
         let providers = service.providers().await.unwrap();
 

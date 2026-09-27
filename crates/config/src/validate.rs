@@ -148,7 +148,17 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
 
     // 4. Type check and semantic checks on the parsed config
     match toml::from_str::<ChelixConfig>(toml_str) {
-        Ok(config) => semantic::check_semantic_warnings(&config, &mut diagnostics),
+        Ok(config) => {
+            if config.tools.execute_command.terminal_size.is_none() {
+                diagnostics.push(Diagnostic {
+                    severity: Severity::Error,
+                    category: "missing-field",
+                    path: "tools.execute_command.terminal_size".into(),
+                    message: "tools.execute_command.terminal_size is required".into(),
+                });
+            }
+            semantic::check_semantic_warnings(&config, &mut diagnostics);
+        },
         Err(error) => {
             let message = format!("type error: {error}");
             if !semantic::should_suppress_deprecated_conflict_type_error(

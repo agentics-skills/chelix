@@ -246,7 +246,7 @@ fn parse_config_rejects_unknown_channel_types() {
 #[test]
 fn parse_config_accepts_matrix_accounts_in_extra() {
     let config = parse_config(
-        "[channels]\noffered = ['matrix']\n[channels.matrix.bot]\naccess_token = 'test'",
+        "[channels]\noffered = ['matrix']\n[channels.matrix.bot]\naccess_token = 'test'\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
         std::path::Path::new("chelix.toml"),
     )
     .expect("known channel config must load");
@@ -302,7 +302,7 @@ fn apply_env_overrides_providers_offered_empty_array() {
 
 #[test]
 fn layered_candidate_applies_env_overrides_missing_from_raw_parse() {
-    let raw = "[providers]\noffered = [\"deepinfra\"]\n";
+    let raw = "[providers]\noffered = [\"deepinfra\"]\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n";
     let direct = toml::from_str::<ChelixConfig>(raw).expect("raw candidate should parse");
     let layered =
         load_layered_config_toml_source(raw, std::path::Path::new("chelix.toml"), true, vec![(
@@ -466,7 +466,7 @@ fn write_default_config_writes_template_to_requested_path() {
         "generated template should include selected server port"
     );
     // The override-only template has most settings commented out.
-    // Port is the only active value (installation-specific).
+    // Port and terminal_size are the active values.
     assert!(
         raw.contains("# prompt_memory_mode"),
         "generated template should document prompt memory mode as commented example"
@@ -555,6 +555,9 @@ reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
 prepend_sender_badge = true
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     )
     .expect("write seed config");

@@ -28,6 +28,9 @@ name = "config-test-hook"
 command = {command:?}
 events = ["BeforeLLMCall"]
 timeout = 7
+
+[tools.execute_command]
+terminal_size = "115x58"
 {env_config}"#
         ),
     )
@@ -59,7 +62,11 @@ async fn discover_hooks_registers_builtin_handlers() {
     let project_dir = tempfile::tempdir().unwrap();
     let old_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(project_dir.path()).unwrap();
-    std::fs::write(config_dir.path().join("chelix.toml"), "").unwrap();
+    std::fs::write(
+        config_dir.path().join("chelix.toml"),
+        "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+    )
+    .unwrap();
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
     let (registry, info) = discover_and_build_hooks(&HashSet::new()).await;
     let registry = registry.expect("expected hook registry to be created");
@@ -150,6 +157,9 @@ name = "config-test-hook"
 command = "printf ''"
 events = ["BeforeLLMCall", "NotARealEvent"]
 timeout = 7
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#,
     )
     .unwrap();
@@ -197,6 +207,9 @@ name = "config-test-hook"
 command = {second_command:?}
 events = ["BeforeLLMCall"]
 timeout = 7
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#
         ),
     )

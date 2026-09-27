@@ -112,6 +112,8 @@ fn test_apple_container_run_args_launch_tools_service() {
         &[],
         "test-token",
         43123,
+        115,
+        58,
     );
     let expected = vec![
         "run",
@@ -132,6 +134,10 @@ fn test_apple_container_run_args_launch_tools_service() {
         "0.0.0.0:43271",
         "--working-dir",
         "/home/sandbox",
+        "--terminal-cols",
+        "115",
+        "--terminal-rows",
+        "58",
     ]
     .into_iter()
     .map(str::to_string)
@@ -151,6 +157,8 @@ fn test_apple_container_run_args_with_declarative_mounts() {
         ],
         "test-token",
         43123,
+        115,
+        58,
     );
     let expected = vec![
         "run",
@@ -175,6 +183,10 @@ fn test_apple_container_run_args_with_declarative_mounts() {
         "0.0.0.0:43271",
         "--working-dir",
         "/home/sandbox",
+        "--terminal-cols",
+        "115",
+        "--terminal-rows",
+        "58",
     ]
     .into_iter()
     .map(str::to_string)

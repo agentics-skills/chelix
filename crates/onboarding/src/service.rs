@@ -284,6 +284,11 @@ mod tests {
 
     fn write_config(path: &std::path::Path, default_id: &str) {
         let mut config = ChelixConfig::default();
+        config.tools.execute_command.terminal_size =
+            Some(chelix_config::schema::TerminalSizeConfig {
+                cols: 115,
+                rows: 58,
+            });
         config.agents.default = default_id.to_string();
         config.agents.entries.insert(
             default_id.to_string(),
@@ -401,7 +406,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         chelix_config::set_data_dir(dir.path().to_path_buf());
         let config_path = dir.path().join("chelix.toml");
-        chelix_config::loader::save_config_to_path(&config_path, &ChelixConfig::default()).unwrap();
+        let mut config = ChelixConfig::default();
+        config.tools.execute_command.terminal_size =
+            Some(chelix_config::schema::TerminalSizeConfig {
+                cols: 115,
+                rows: 58,
+            });
+        chelix_config::loader::save_config_to_path(&config_path, &config).unwrap();
         let service = LiveOnboardingService::new(config_path.clone());
 
         let initial = service.user_get().unwrap();

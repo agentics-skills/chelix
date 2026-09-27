@@ -185,6 +185,9 @@ prepend_sender_badge = true
 FIRECRAWL_API_KEY = "test-key"
 OPENROUTER_API_KEY = "sk-or-test"
 CUSTOM_VAR = "some-value"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#;
     let result = validate_toml_str(toml);
     let errors: Vec<_> = result
