@@ -90,6 +90,7 @@ interface TerminalRuntime {
 	lastRows: number;
 	ready: boolean;
 	disposed: boolean;
+	detachTouchScroll: () => void;
 }
 
 interface TerminalServerMessage {
@@ -215,7 +216,90 @@ function disposeRuntime(runtime: TerminalRuntime): void {
 	runtime.dataDisposable.dispose();
 	runtime.resizeDisposable.dispose();
 	for (const disposable of runtime.oscDisposables) disposable.dispose();
+	runtime.detachTouchScroll();
 	runtime.xterm.dispose();
+}
+
+function touchById(touches: TouchList, id: number): Touch | null {
+	for (let index = 0; index < touches.length; index += 1) {
+		const touch = touches.item(index);
+		if (touch?.identifier === id) return touch;
+	}
+	return null;
+}
+
+function isScrollbarTouch(target: EventTarget | null): boolean {
+	return target instanceof Element && target.closest(".scrollbar") !== null;
+}
+
+function terminalTouchWheelEvent(deltaY: number, clientX: number, clientY: number): WheelEvent {
+	const event = new WheelEvent("wheel", {
+		bubbles: true,
+		cancelable: true,
+		deltaY,
+		deltaX: 0,
+		deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+		clientX,
+		clientY,
+	});
+	// xterm uses wheelDeltaY/120 when that property is a number and -deltaY/40 otherwise.
+	Object.defineProperty(event, "wheelDeltaY", { configurable: true, value: -3 * deltaY });
+	return event;
+}
+
+function attachTerminalTouchScroll(host: HTMLElement): () => void {
+	const xtermElement = host.querySelector(":scope > .xterm");
+	const scrollable = xtermElement?.querySelector(":scope > .xterm-scrollable-element");
+	if (!(xtermElement instanceof HTMLElement && scrollable instanceof HTMLElement)) {
+		throw new Error("xterm scrollable element is unavailable");
+	}
+	let touchId: number | null = null;
+	let lastY = 0;
+
+	const onTouchStart = (event: TouchEvent): void => {
+		if (event.touches.length !== 1 || isScrollbarTouch(event.target)) {
+			touchId = null;
+			return;
+		}
+		const touch = event.touches.item(0);
+		if (!touch) {
+			touchId = null;
+			return;
+		}
+		touchId = touch.identifier;
+		lastY = touch.clientY;
+	};
+
+	const onTouchMove = (event: TouchEvent): void => {
+		if (touchId === null) return;
+		if (!event.cancelable) {
+			touchId = null;
+			return;
+		}
+		const touch = touchById(event.touches, touchId);
+		if (!touch) return;
+		const deltaY = lastY - touch.clientY;
+		lastY = touch.clientY;
+		if (deltaY === 0) return;
+		const wheel = terminalTouchWheelEvent(deltaY, touch.clientX, touch.clientY);
+		scrollable.dispatchEvent(wheel);
+		if (wheel.defaultPrevented) event.preventDefault();
+	};
+
+	const onTouchEnd = (event: TouchEvent): void => {
+		if (touchId !== null && touchById(event.changedTouches, touchId)) touchId = null;
+	};
+
+	xtermElement.addEventListener("touchstart", onTouchStart, { passive: true });
+	xtermElement.addEventListener("touchmove", onTouchMove, { passive: false });
+	xtermElement.addEventListener("touchend", onTouchEnd);
+	xtermElement.addEventListener("touchcancel", onTouchEnd);
+	return () => {
+		xtermElement.removeEventListener("touchstart", onTouchStart);
+		xtermElement.removeEventListener("touchmove", onTouchMove);
+		xtermElement.removeEventListener("touchend", onTouchEnd);
+		xtermElement.removeEventListener("touchcancel", onTouchEnd);
+	};
 }
 
 async function createRuntime(element: HTMLDivElement, signal: AbortSignal): Promise<TerminalRuntime> {
@@ -279,7 +363,16 @@ async function createRuntime(element: HTMLDivElement, signal: AbortSignal): Prom
 		lastRows: 0,
 		ready: false,
 		disposed: false,
+		detachTouchScroll: () => {
+			return;
+		},
 	};
+	try {
+		runtime.detachTouchScroll = attachTerminalTouchScroll(element);
+	} catch (error) {
+		disposeRuntime(runtime);
+		throw error;
+	}
 	return runtime;
 }
 
