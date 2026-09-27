@@ -387,7 +387,7 @@ mod tests {
         tokio::spawn(async move {
             let working_dir = std::env::temp_dir();
             let terminal_manager = Arc::new(
-                TerminalManager::new(working_dir.clone())
+                TerminalManager::new(working_dir.clone(), 220, 56)
                     .unwrap_or_else(|error| panic!("terminal manager failed: {error}")),
             );
             let ripgrep_runtime = RipgrepRuntime::initialize(working_dir)

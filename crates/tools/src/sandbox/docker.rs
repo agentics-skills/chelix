@@ -445,6 +445,10 @@ impl DockerSandbox {
         ));
         args.extend(self.mount_args(id)?);
 
+        let terminal_size = self
+            .config
+            .terminal_size
+            .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
         args.push(image);
         args.extend([
             "chelix-tools-service".to_string(),
@@ -452,6 +456,10 @@ impl DockerSandbox {
             format!("0.0.0.0:{TOOLS_SERVICE_CONTAINER_PORT}"),
             "--working-dir".to_string(),
             self.workspace_dir().to_string(),
+            "--terminal-cols".to_string(),
+            terminal_size.cols.to_string(),
+            "--terminal-rows".to_string(),
+            terminal_size.rows.to_string(),
         ]);
 
         let output = tokio::process::Command::new(self.cli)

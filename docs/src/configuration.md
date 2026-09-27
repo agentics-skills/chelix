@@ -7,9 +7,9 @@ Chelix uses a **layered config model** with two files:
 | `defaults.toml` | **Chelix** | Shipped defaults, regenerated on every startup |
 | `chelix.toml`   | **You**    | Your overrides only                            |
 
-On first run, both files are created in `~/.config/chelix/`. Your `chelix.toml`
-starts nearly empty — only the installation-specific port is set. All other
-settings inherit from `defaults.toml` automatically.
+On first run, both files are created in `~/.config/chelix/`. A new `chelix.toml`
+sets the installation-specific port and `tools.execute_command.terminal_size`.
+All other settings inherit from `defaults.toml` automatically.
 
 ## Merge Order
 

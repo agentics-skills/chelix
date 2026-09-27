@@ -994,7 +994,20 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     validate_context7_request_timeout(&config, &context)?;
     validate_linkup_request_timeout(&config, &context)?;
     validate_search_request_timeouts(&config, &context)?;
+    validate_execute_command_terminal_size(&config, &context)?;
     Ok(config)
+}
+
+fn validate_execute_command_terminal_size(
+    config: &ChelixConfig,
+    context: &str,
+) -> crate::Result<()> {
+    if config.tools.execute_command.terminal_size.is_none() {
+        return Err(crate::Error::message(format!(
+            "invalid {context}: tools.execute_command.terminal_size is required"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_context7_request_timeout(config: &ChelixConfig, context: &str) -> crate::Result<()> {

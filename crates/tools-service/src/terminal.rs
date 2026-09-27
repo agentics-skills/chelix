@@ -24,8 +24,6 @@ use {
     uuid::Uuid,
 };
 
-const DEFAULT_COLS: u16 = 220;
-const DEFAULT_ROWS: u16 = 56;
 const MAX_COMMAND_BYTES: usize = 1024 * 1024;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const MAX_TOOL_CALL_ID_BYTES: usize = 1024;
@@ -34,6 +32,8 @@ const PROMPT_ID_EXPRESSION: &str = "$((__chelix_prompt_id += 1))";
 
 pub(crate) struct TerminalManager {
     default_working_dir: PathBuf,
+    cols: u16,
+    rows: u16,
     next_terminal_id: AtomicU64,
     terminals: RwLock<HashMap<String, Arc<ManagedTerminal>>>,
     tool_call_terminals: Mutex<HashMap<(String, String), Arc<ManagedTerminal>>>,
@@ -121,7 +121,7 @@ enum ParsedOutputItem {
 }
 
 impl TerminalManager {
-    pub(crate) fn new(default_working_dir: PathBuf) -> Result<Self> {
+    pub(crate) fn new(default_working_dir: PathBuf, cols: u16, rows: u16) -> Result<Self> {
         if !default_working_dir.is_dir() {
             bail!(
                 "terminal working directory is unavailable: {}",
@@ -130,6 +130,8 @@ impl TerminalManager {
         }
         Ok(Self {
             default_working_dir,
+            cols,
+            rows,
             next_terminal_id: AtomicU64::new(1),
             terminals: RwLock::new(HashMap::new()),
             tool_call_terminals: Mutex::new(HashMap::new()),
@@ -357,16 +359,20 @@ impl TerminalManager {
         &self,
         session_key: &str,
         terminal_id: &str,
-        cols: u16,
-        rows: u16,
+        _cols: u16,
+        _rows: u16,
     ) -> Result<()> {
         let terminal = self.find_terminal(session_key, terminal_id).await?;
-        let size = TerminalSize::new(cols.max(2), rows.max(1));
+        let size = self.configured_size();
         lock(&terminal.writer)
             .resize(size)
             .context("resizing terminal PTY")?;
         lock(&terminal.output).screen.resize(size);
         Ok(())
+    }
+
+    fn configured_size(&self) -> TerminalSize {
+        TerminalSize::new(self.cols.max(2), self.rows.max(1))
     }
 
     pub(crate) async fn subscribe_terminal(
@@ -505,7 +511,7 @@ impl TerminalManager {
             ChildCommand::new("/bin/bash")
                 .args(["--noprofile", "--norc", "-i"])
                 .current_dir(cwd)
-                .size(TerminalSize::new(DEFAULT_COLS, DEFAULT_ROWS))
+                .size(self.configured_size())
                 .env("TERM", "xterm-256color")
                 .env("COLORTERM", "truecolor")
                 .env("HISTCONTROL", "ignorespace")
@@ -530,10 +536,7 @@ impl TerminalManager {
             environment_fingerprint,
             output: Mutex::new(TerminalOutput {
                 history: Vec::new(),
-                screen: TerminalScreen::new(
-                    TerminalSize::new(DEFAULT_COLS, DEFAULT_ROWS),
-                    usize::MAX,
-                ),
+                screen: TerminalScreen::new(self.configured_size(), usize::MAX),
                 parser: ShellEventParser::default(),
                 active_run: None,
                 last_exit_code: None,
@@ -1631,7 +1634,7 @@ mod tests {
 
     #[tokio::test]
     async fn interactive_terminals_use_numeric_ids_and_enforce_session_ownership() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
 
         let first = manager
@@ -1671,7 +1674,7 @@ mod tests {
 
     #[tokio::test]
     async fn background_command_transitions_from_running_to_idle() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
         let mut request = command_request("session:background", "sleep 1");
         request.new_terminal = true;
@@ -1712,7 +1715,7 @@ mod tests {
 
     #[tokio::test]
     async fn commands_reuse_persistent_shell_state() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
         let mut setup = command_request(
             "session:state",
@@ -1750,7 +1753,7 @@ mod tests {
 
     #[tokio::test]
     async fn terminal_rejects_reuse_with_changed_environment() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
         let mut initial = command_request("session:environment", "printf 'ready\\n'");
         initial.new_terminal = true;
@@ -1803,7 +1806,7 @@ mod tests {
     #[tokio::test]
     async fn tool_call_binding_is_exact_visible_during_execution_and_removed_afterward() {
         let manager = Arc::new(
-            TerminalManager::new(std::env::temp_dir())
+            TerminalManager::new(std::env::temp_dir(), 220, 56)
                 .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}")),
         );
         let mut request = command_request("session:binding", "sleep 1; printf 'done\\n'");
@@ -1856,7 +1859,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_tool_call_binding_is_rejected_and_guard_removes_exact_entry() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
         let terminal_info = manager
             .create_interactive_terminal("session:duplicate", &[])
@@ -1891,7 +1894,7 @@ mod tests {
 
     #[tokio::test]
     async fn tool_call_binding_is_removed_on_success_error_background_and_timeout() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
 
         let mut success = command_request("session:cleanup", "printf 'success\\n'");
@@ -1962,7 +1965,7 @@ mod tests {
 
     #[tokio::test]
     async fn terminal_subscription_returns_new_append_only_pty_bytes() {
-        let manager = TerminalManager::new(std::env::temp_dir())
+        let manager = TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"));
         let mut initial = command_request("session:subscription", "printf 'ready\\n'");
         initial.new_terminal = true;

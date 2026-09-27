@@ -552,7 +552,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_tts_service_status() {
-        let _guard = VoiceConfigTestGuard::with_config("");
+        let _guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
         let service = LiveTtsService::new(TtsConfig::default());
         let status = service.status().await.unwrap();
 
@@ -567,7 +569,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_live_tts_service_providers() {
-        let _guard = VoiceConfigTestGuard::with_config("");
+        let _guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
         let service = LiveTtsService::new(TtsConfig::default());
         let providers = service.providers().await.unwrap();
 
@@ -590,7 +594,9 @@ mod tests {
     async fn test_live_tts_service_enable() {
         // enable() may call update_config() which writes to the config dir.
         // Hold the config lock so concurrent tests don't see our writes.
-        let _guard = VoiceConfigTestGuard::with_config("");
+        let _guard = VoiceConfigTestGuard::with_config(
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        );
         let service = LiveTtsService::new(TtsConfig::default());
         let result = service.enable(json!({})).await;
 

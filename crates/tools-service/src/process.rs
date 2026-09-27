@@ -44,7 +44,7 @@ mod tests {
     use super::*;
 
     fn manager() -> TerminalManager {
-        TerminalManager::new(std::env::temp_dir())
+        TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("terminal manager setup failed: {error}"))
     }
 

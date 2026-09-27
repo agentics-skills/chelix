@@ -18,7 +18,7 @@ fn request(command: &str, terminal_id: Option<&str>) -> ExecuteCommandRequest {
 
 async fn setup() -> (Arc<TerminalManager>, Arc<ManagedTerminal>) {
     let manager = Arc::new(
-        TerminalManager::new(std::env::temp_dir())
+        TerminalManager::new(std::env::temp_dir(), 220, 56)
             .unwrap_or_else(|error| panic!("manager setup failed: {error}")),
     );
     let response = manager

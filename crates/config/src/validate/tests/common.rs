@@ -89,7 +89,7 @@ allowed_models = ["legacy-model"]
 
 #[test]
 fn empty_config_is_valid_agent_setup_state() {
-    let result = validate_toml_str("");
+    let result = validate_toml_str("[tools.execute_command]\nterminal_size = \"115x58\"\n");
     assert!(
         result
             .diagnostics
@@ -138,6 +138,7 @@ auto_generate = true
 
 [tools.execute_command]
 default_timeout_secs = 30
+terminal_size = "115x58"
 
 [sandbox]
 mode = "On"

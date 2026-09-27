@@ -512,6 +512,10 @@ async fn test_ensure_ready_recreates_stopped_container_with_fresh_endpoint() {
             home_persistence: HomePersistence::Off,
             host_data_dir: Some(directory.path().join("data")),
             image: Some("test-image:latest".into()),
+            terminal_size: Some(chelix_config::schema::TerminalSizeConfig {
+                cols: 115,
+                rows: 58,
+            }),
             ..Default::default()
         },
         cli,

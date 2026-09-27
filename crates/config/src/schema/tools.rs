@@ -1,7 +1,7 @@
 use {
     super::*,
     secrecy::Secret,
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
 pub use crate::container_mounts::{MountMode, SandboxMount};
@@ -526,6 +526,52 @@ pub enum ApprovalMode {
     Never,
 }
 
+/// Fixed PTY size for `execute_command` terminals.
+///
+/// The only accepted representation is `"<cols>x<rows>"`: one `x` between two
+/// non-empty unsigned decimal integers that fit in `u16`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalSizeConfig {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+impl TerminalSizeConfig {
+    fn parse(value: &str) -> Result<Self, String> {
+        let Some((cols, rows)) = value.split_once('x') else {
+            return Err(terminal_size_format_error());
+        };
+        if !is_u16_decimal(cols) || !is_u16_decimal(rows) {
+            return Err(terminal_size_format_error());
+        }
+        match (cols.parse::<u16>(), rows.parse::<u16>()) {
+            (Ok(cols), Ok(rows)) => Ok(Self { cols, rows }),
+            _ => Err(terminal_size_format_error()),
+        }
+    }
+}
+
+fn is_u16_decimal(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn terminal_size_format_error() -> String {
+    "tools.execute_command.terminal_size must be \"<cols>x<rows>\"".to_string()
+}
+
+impl Serialize for TerminalSizeConfig {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{}x{}", self.cols, self.rows))
+    }
+}
+
+impl<'de> Deserialize<'de> for TerminalSizeConfig {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(serde::de::Error::custom)
+    }
+}
+
 /// `execute_command` tool configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -533,6 +579,8 @@ pub struct ExecuteCommandConfig {
     pub default_timeout_secs: u64,
     pub rewrite_timeout_secs: Option<u64>,
     pub approval_mode: ApprovalMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_size: Option<TerminalSizeConfig>,
 }
 
 impl Default for ExecuteCommandConfig {
@@ -541,6 +589,7 @@ impl Default for ExecuteCommandConfig {
             default_timeout_secs: 30,
             rewrite_timeout_secs: None,
             approval_mode: ApprovalMode::default(),
+            terminal_size: None,
         }
     }
 }

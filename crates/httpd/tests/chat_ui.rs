@@ -35,6 +35,9 @@ model = "test::model"
 reasoning_effort = "off"
 max_tools_threshold = 128
 compaction_reminder = true
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#;
 
 fn test_agents() -> chelix_config::AgentsConfig {

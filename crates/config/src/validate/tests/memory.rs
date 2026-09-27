@@ -126,6 +126,9 @@ embedding_provider = "custom"
 embedding_model = "intfloat/multilingual-e5-small"
 embedding_base_url = "http://chelix-embeddings:7997/v1"
 embedding_dimensions = 384
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#;
     let result = validate_toml_str(toml);
 
@@ -238,6 +241,9 @@ prepend_sender_badge = true
 [memory]
 enable_prefetch = true
 prefetch_limit = 5
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#;
     let result = validate_toml_str(toml);
     let unknown: Vec<_> = result

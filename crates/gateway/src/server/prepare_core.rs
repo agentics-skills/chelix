@@ -822,8 +822,14 @@ pub async fn prepare_gateway_core(
 
     // Build sandbox router from config.
     let sandbox_config = chelix_tools::sandbox::SandboxConfig::from(&config.sandbox);
+    let terminal_size = config
+        .tools
+        .execute_command
+        .terminal_size
+        .ok_or_else(|| anyhow::anyhow!("tools.execute_command.terminal_size is required"))?;
     let sandbox_router = Arc::new(sandbox::build_sandbox_router(
         &sandbox_config,
+        terminal_size,
         &sandbox_container_prefix,
         config.user.timezone.as_ref().map(|tz| tz.name()),
         Arc::clone(&session_metadata),
