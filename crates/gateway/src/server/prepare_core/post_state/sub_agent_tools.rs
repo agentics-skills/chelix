@@ -686,7 +686,7 @@ async fn snapshot_from_store(
     last_terminal: Option<SessionTerminal>,
 ) -> chelix_tools::Result<ChildSnapshot> {
     let messages = session_store
-        .read_typed(session_key)
+        .child_snapshot_messages(session_key)
         .await
         .map_err(tool_error)?;
     Ok(snapshot_from_messages(&messages, last_terminal))
@@ -708,7 +708,7 @@ async fn child_status(
         return Ok(status_from_runtime_terminal(terminal));
     }
     let messages = session_store
-        .read_typed(session_key)
+        .child_snapshot_messages(session_key)
         .await
         .map_err(tool_error)?;
     Ok(snapshot_from_messages(&messages, None).status)
@@ -748,7 +748,7 @@ async fn child_snapshot(
         Some(SessionTerminal::Completed) | None => {},
     }
     let messages = session_store
-        .read_typed(session_key)
+        .child_snapshot_messages(session_key)
         .await
         .map_err(tool_error)?;
     Ok(snapshot_from_messages(&messages, last_terminal))

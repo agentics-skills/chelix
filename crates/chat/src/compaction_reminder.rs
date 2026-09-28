@@ -14,24 +14,18 @@ pub(crate) struct CompactionReminder {
 }
 
 impl CompactionReminder {
-    pub(crate) fn from_history(enabled: bool, history: &[Value]) -> error::Result<Self> {
+    pub(crate) fn from_parts(
+        enabled: bool,
+        checkpoint_active: bool,
+        first_user: Option<&Value>,
+    ) -> error::Result<Self> {
         if !enabled {
             return Ok(Self {
                 text: None,
                 checkpoint_active: false,
             });
         }
-
-        let checkpoint_active = history
-            .iter()
-            .any(|message| message.get("role").and_then(Value::as_str) == Some("checkpoint"));
-        let text = history
-            .iter()
-            .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
-            .map(first_user_text)
-            .transpose()?
-            .flatten();
-
+        let text = first_user.map(first_user_text).transpose()?.flatten();
         Ok(Self {
             text,
             checkpoint_active,
@@ -108,12 +102,9 @@ mod tests {
 
     #[test]
     fn plain_text_is_rendered_byte_for_byte_after_checkpoint() {
-        let history = vec![
-            serde_json::json!({"role": "user", "content": "  first\nmessage  "}),
-            serde_json::json!({"role": "checkpoint", "summary": "summary"}),
-        ];
+        let first_user = serde_json::json!({"role": "user", "content": "  first\nmessage  "});
 
-        let reminder = CompactionReminder::from_history(true, &history).unwrap();
+        let reminder = CompactionReminder::from_parts(true, true, Some(&first_user)).unwrap();
 
         assert_eq!(
             reminder.render("system"),
@@ -123,21 +114,18 @@ mod tests {
 
     #[test]
     fn multimodal_text_blocks_are_concatenated_without_media_or_separators() {
-        let history = vec![
-            serde_json::json!({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "first"},
-                    {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
-                    {"type": "text", "text": "second"}
-                ],
-                "audio": "media/voice.webm",
-                "documents": [{"display_name": "notes.txt"}]
-            }),
-            serde_json::json!({"role": "checkpoint", "summary": "summary"}),
-        ];
+        let first_user = serde_json::json!({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "first"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+                {"type": "text", "text": "second"}
+            ],
+            "audio": "media/voice.webm",
+            "documents": [{"display_name": "notes.txt"}]
+        });
 
-        let reminder = CompactionReminder::from_history(true, &history).unwrap();
+        let reminder = CompactionReminder::from_parts(true, true, Some(&first_user)).unwrap();
 
         assert_eq!(
             reminder.render("system"),
@@ -147,16 +135,12 @@ mod tests {
 
     #[test]
     fn image_only_first_user_does_not_fall_through_to_later_user() {
-        let history = vec![
-            serde_json::json!({
-                "role": "user",
-                "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}]
-            }),
-            serde_json::json!({"role": "user", "content": "later text"}),
-            serde_json::json!({"role": "checkpoint", "summary": "summary"}),
-        ];
+        let first_user = serde_json::json!({
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}]
+        });
 
-        let reminder = CompactionReminder::from_history(true, &history).unwrap();
+        let reminder = CompactionReminder::from_parts(true, true, Some(&first_user)).unwrap();
 
         assert!(!reminder.is_active());
         assert_eq!(reminder.render("system"), "system");
@@ -164,12 +148,9 @@ mod tests {
 
     #[test]
     fn explicit_empty_text_renders_an_empty_reminder_body() {
-        let history = vec![
-            serde_json::json!({"role": "user", "content": ""}),
-            serde_json::json!({"role": "checkpoint", "summary": "summary"}),
-        ];
+        let first_user = serde_json::json!({"role": "user", "content": ""});
 
-        let reminder = CompactionReminder::from_history(true, &history).unwrap();
+        let reminder = CompactionReminder::from_parts(true, true, Some(&first_user)).unwrap();
 
         assert!(reminder.is_active());
         assert_eq!(
@@ -180,8 +161,8 @@ mod tests {
 
     #[test]
     fn reminder_activates_only_after_checkpoint_and_never_duplicates() {
-        let history = vec![serde_json::json!({"role": "user", "content": "task"})];
-        let mut reminder = CompactionReminder::from_history(true, &history).unwrap();
+        let first_user = serde_json::json!({"role": "user", "content": "task"});
+        let mut reminder = CompactionReminder::from_parts(true, false, Some(&first_user)).unwrap();
 
         assert_eq!(reminder.render("system"), "system");
         reminder.activate();
@@ -192,27 +173,25 @@ mod tests {
 
     #[test]
     fn missing_first_user_keeps_system_prompt_unchanged() {
-        let history = vec![serde_json::json!({"role": "checkpoint", "summary": "summary"})];
-
-        let reminder = CompactionReminder::from_history(true, &history).unwrap();
+        let reminder = CompactionReminder::from_parts(true, true, None).unwrap();
 
         assert_eq!(reminder.render("system"), "system");
     }
 
     #[test]
     fn malformed_first_user_content_is_an_error() {
-        let history = vec![serde_json::json!({"role": "user", "content": 42})];
+        let first_user = serde_json::json!({"role": "user", "content": 42});
 
-        let error = CompactionReminder::from_history(true, &history).unwrap_err();
+        let error = CompactionReminder::from_parts(true, true, Some(&first_user)).unwrap_err();
 
         assert!(error.to_string().contains("must be a string or array"));
     }
 
     #[test]
     fn disabled_reminder_does_not_parse_user_content() {
-        let history = vec![serde_json::json!({"role": "user", "content": 42})];
+        let first_user = serde_json::json!({"role": "user", "content": 42});
 
-        let reminder = CompactionReminder::from_history(false, &history).unwrap();
+        let reminder = CompactionReminder::from_parts(false, true, Some(&first_user)).unwrap();
 
         assert_eq!(reminder.render("system"), "system");
     }

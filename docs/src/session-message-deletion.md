@@ -23,7 +23,7 @@ Before truncating a session tail, the gateway cancels queued messages and aborts
 the active chat run for that session. A shared per-session mutation coordinator
 blocks new chat turns while the truncation is reserved, waits for any active
 turn to release the session after abort, validates the canonical cut, and then
-truncates both the JSONL journal and semantic SQLite snapshots.
+truncates both the canonical `session_records` journal and semantic SQLite snapshots.
 
 After truncation, session metadata is updated: message counts are reduced, the
 active run state is cleared, and the preview is replaced with the

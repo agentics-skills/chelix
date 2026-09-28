@@ -89,47 +89,51 @@ impl UiDatabase {
 
     pub(crate) async fn session(&self, key: &str, access: UiSessionAccess) -> Result<UiSessionRow> {
         let pool = self.pool().await?;
-        let row = sqlx::query("SELECT * FROM ui_history_sessions WHERE session_key = ?")
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+        let row = sqlx::query(
+            "SELECT generation, revision, next_position, total_messages, failure FROM ui_history_sessions WHERE session_key = ?",
+        )
+        .bind(key)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let generation = if let Some(row) = &row {
+            UiGeneration(row.try_get("generation")?)
+        } else {
+            let generation = UiGeneration(uuid::Uuid::new_v4().to_string());
+            sqlx::query(
+                "INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages) VALUES (?, ?, 0, 0, 0)",
+            )
             .bind(key)
-            .fetch_optional(pool)
+            .bind(&generation.0)
+            .execute(&mut *tx)
             .await?;
-        if let Some(row) = row {
-            return Ok(UiSessionRow {
-                generation: UiGeneration(row.try_get("generation")?),
+            generation
+        };
+        let pointers =
+            crate::journal::ensure_open_tx(&mut tx, key, access == UiSessionAccess::Discard)
+                .await?;
+        let mapped = if let Some(row) = row {
+            UiSessionRow {
+                generation,
                 revision: unsigned(row.try_get("revision")?)?,
                 next_position: unsigned(row.try_get("next_position")?)?,
                 total_messages: u32::try_from(unsigned(row.try_get("total_messages")?)?)
                     .map_err(|error| Error::message(error.to_string()))?,
-                canonical_tail: usize::try_from(unsigned(row.try_get("canonical_tail")?)?)
-                    .map_err(|error| Error::message(error.to_string()))?,
+                canonical_tail: pointers.canonical_tail,
                 failure: row.try_get("failure")?,
-            });
-        }
-        let journal = self.directory.join(format!(
-            "{}.jsonl",
-            crate::store::SessionStore::key_to_filename(key)
-        ));
-        match tokio::fs::metadata(&journal).await {
-            Ok(metadata) if metadata.len() > 0 && access == UiSessionAccess::Open => {
-                return Err(Error::MissingUiSnapshots {
-                    session_key: key.to_string(),
-                });
-            },
-            Ok(_) => {},
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-            Err(error) => return Err(error.into()),
-        }
-        let generation = UiGeneration(uuid::Uuid::new_v4().to_string());
-        sqlx::query("INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages, canonical_tail) VALUES (?, ?, 0, 0, 0, 0)")
-            .bind(key).bind(&generation.0).execute(pool).await?;
-        Ok(UiSessionRow {
-            generation,
-            revision: 0,
-            next_position: 0,
-            total_messages: 0,
-            canonical_tail: 0,
-            failure: None,
-        })
+            }
+        } else {
+            UiSessionRow {
+                generation,
+                revision: 0,
+                next_position: 0,
+                total_messages: 0,
+                canonical_tail: pointers.canonical_tail,
+                failure: None,
+            }
+        };
+        tx.commit().await?;
+        Ok(mapped)
     }
 
     pub(crate) async fn entry(&self, key: &str, id: &UiMessageId) -> Result<Option<UiEntry>> {

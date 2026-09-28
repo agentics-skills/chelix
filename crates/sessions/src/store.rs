@@ -1,23 +1,21 @@
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Seek, Write, copy},
+    fs,
     path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, Mutex},
 };
 
-use {
-    crate::{
-        Error, PersistedMessage, Result,
-        tail_cursor::{SessionFileStamp, SessionTailRegistry, SessionTailState, scan_tail},
-    },
-    fd_lock::RwLock,
-    serde::Serialize,
+use serde::Serialize;
+
+use crate::{
+    Error, PersistedMessage, Result,
+    journal::{self, ActiveEvent, JournalImportConflict},
+    owner_lock::ProcessOwnerLock,
 };
 
 /// How to locate a user message that starts a session-tail mutation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserMessageTarget {
-    /// Zero-based physical JSONL message index.
+    /// Zero-based physical journal index.
     MessageIndex(usize),
     /// Client-assigned user message sequence number.
     ClientSeq(u64),
@@ -34,11 +32,11 @@ pub struct TruncateTailResult {
 
 pub type SearchResult = crate::ui_history_types::UiSearchHit;
 
-/// Append-only JSONL session storage with file locking.
+/// Canonical journal in `ui-history.sqlite` plus on-disk media.
 pub struct SessionStore {
     pub base_dir: PathBuf,
-    tail_registry: Arc<SessionTailRegistry>,
     pub ui_history: Arc<crate::ui_history_engine::UiHistoryEngine>,
+    owner_lock: Mutex<Option<ProcessOwnerLock>>,
 }
 
 impl SessionStore {
@@ -48,86 +46,69 @@ impl SessionStore {
                 base_dir.clone(),
             )),
             base_dir,
-            tail_registry: Arc::new(SessionTailRegistry::new()),
+            owner_lock: Mutex::new(None),
         }
     }
 
-    /// Sanitize a session key for use as a filename.
+    /// Hold the process owner lock until this store is dropped.
+    pub fn hold_owner_lock(&self) -> Result<()> {
+        let lock = ProcessOwnerLock::try_acquire(&self.base_dir.join("ui-history.owner.lock"))?;
+        let mut slot = self
+            .owner_lock
+            .lock()
+            .map_err(|error| Error::lock_failed(error.to_string()))?;
+        *slot = Some(lock);
+        Ok(())
+    }
+
+    /// Sanitize a session key for use as a media directory name.
     pub fn key_to_filename(key: &str) -> String {
         key.replace(':', "_")
     }
 
-    fn path_for(&self, key: &str) -> PathBuf {
-        self.base_dir
-            .join(format!("{}.jsonl", Self::key_to_filename(key)))
-    }
-
-    fn tail_state_for(
-        &self,
-        key: &str,
-        path: &std::path::Path,
-    ) -> Result<Arc<Mutex<SessionTailState>>> {
-        self.tail_registry.session_state(path).inspect_err(|error| {
-            tracing::error!(session_key = key, %error, "failed to access session tail state");
-        })
-    }
-
-    /// Directory for session media files (screenshots, audio, etc.).
     fn media_dir_for(&self, key: &str) -> PathBuf {
         self.base_dir.join("media").join(Self::key_to_filename(key))
     }
 
-    /// Absolute path for a session media file.
     pub fn media_path_for(&self, key: &str, filename: &str) -> PathBuf {
         self.media_dir_for(key).join(filename)
     }
 
-    /// Save a media file for a session. Returns the relative path from base_dir.
+    async fn pool(&self) -> Result<&sqlx::SqlitePool> {
+        self.ui_history.pool().await
+    }
+
     pub async fn save_media(&self, key: &str, filename: &str, data: &[u8]) -> Result<String> {
         let dir = self.media_dir_for(key);
         let file_path = self.media_path_for(key, filename);
         let data = data.to_vec();
-
         tokio::task::spawn_blocking(move || -> Result<()> {
             fs::create_dir_all(&dir)?;
             fs::write(&file_path, &data)?;
             Ok(())
         })
         .await??;
-
         let sanitized = Self::key_to_filename(key);
         Ok(format!("media/{sanitized}/{filename}"))
     }
 
-    /// Read a media file. Returns raw bytes.
     pub async fn read_media(&self, key: &str, filename: &str) -> Result<Vec<u8>> {
         let file_path = self.media_path_for(key, filename);
-
-        tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
-            let data = fs::read(&file_path)?;
-            Ok(data)
-        })
-        .await?
+        tokio::task::spawn_blocking(move || -> Result<Vec<u8>> { Ok(fs::read(&file_path)?) })
+            .await?
     }
 
-    /// Append a message (JSON value) as a single line to the session file.
     pub async fn append(&self, key: &str, message: &serde_json::Value) -> Result<()> {
         self.append_serializable(key, std::slice::from_ref(message), None)
             .await
             .map(|_| ())
     }
 
-    /// Append a message and return its zero-based physical JSONL index.
-    ///
-    /// The existing line count and append share one exclusive file lock, so
-    /// the returned index always identifies the record written by this call.
     pub async fn append_with_index(&self, key: &str, message: &serde_json::Value) -> Result<usize> {
         self.append_with_expected_index(key, std::slice::from_ref(message), None)
             .await
     }
 
-    /// Append a message only when its expected zero-based physical index still
-    /// matches the session tail. The check and write share one exclusive lock.
     pub async fn append_at_index(
         &self,
         key: &str,
@@ -138,12 +119,6 @@ impl SessionStore {
             .await
     }
 
-    /// Append several messages as one unit and return the index of the first.
-    ///
-    /// The tail check and every write share a single exclusive file lock, and
-    /// the batch is serialized before the lock is taken. A turn that leads with
-    /// replayed queue prompts therefore never leaves a partially persisted
-    /// prefix behind: either the whole batch lands in history, or none of it.
     pub async fn append_batch_at_index(
         &self,
         key: &str,
@@ -171,55 +146,34 @@ impl SessionStore {
         expected_index: Option<usize>,
     ) -> Result<usize>
     where
-        T: Clone + Send + Serialize + 'static,
+        T: Serialize + Send + Sync,
     {
         let ui = self.ui_history.session(key).await?;
-        let mut journal = ui.journal.lock().await;
+        let mut journal_state = ui.journal.lock().await;
         if let Some(expected) = expected_index
-            && expected != journal.canonical_tail
+            && expected != journal_state.canonical_tail
         {
             return Err(Error::message(format!(
                 "expected message index {expected}, found session tail {}",
-                journal.canonical_tail
+                journal_state.canonical_tail
             )));
         }
-        let expected_index = Some(journal.canonical_tail);
-        let batch = serialize_batch(messages)?;
-        let records = messages
+        if messages.is_empty() {
+            return Ok(journal_state.canonical_tail);
+        }
+        let values = messages
             .iter()
-            .map(|message| {
-                crate::ui_history_types::UiRecord::try_from(serde_json::to_value(message)?)
-            })
+            .map(|message| serde_json::to_value(message).map_err(Error::from))
+            .collect::<Result<Vec<_>>>()?;
+        let records = values
+            .iter()
+            .map(|message| crate::ui_history_types::UiRecord::try_from(message.clone()))
             .collect::<Result<Vec<_>>>()?;
         let receipts = ui.stage_batch(records).await?;
-        let path = self.path_for(key);
-        let session_key = key.to_string();
-        let registry = Arc::clone(&self.tail_registry);
-
-        let result = tokio::task::spawn_blocking(move || -> Result<usize> {
-            let tail_state = registry.session_state(&path).inspect_err(|error| {
-                tracing::error!(%session_key, %error, "failed to access session tail state");
-            })?;
-            let mut tail = lock_tail_state(&tail_state, &registry, &path, &session_key)?;
-            let result =
-                append_serialized_locked(&path, &batch, expected_index, &registry, &mut tail);
-            match result {
-                Ok(message_index) => Ok(message_index),
-                Err(AppendFailure::ExpectedIndex(error)) => {
-                    tracing::warn!(%session_key, %error, "session append tail check failed");
-                    Err(error)
-                },
-                Err(AppendFailure::InvalidatesCursor(error)) => {
-                    tail.invalidate();
-                    tracing::error!(%session_key, %error, "session append failed");
-                    Err(error)
-                },
-            }
-        })
-        .await
-        .map_err(Error::from)
-        .inspect_err(|error| ui.fail(error))?;
-        let index = result.inspect_err(|error| ui.fail(error))?;
+        let pool = self.pool().await?;
+        let index = journal::append(pool, key, &values, journal_state.canonical_tail)
+            .await
+            .inspect_err(|error| ui.fail(error))?;
         for (offset, receipt) in receipts.iter().enumerate() {
             let position = index
                 .checked_add(offset)
@@ -227,7 +181,7 @@ impl SessionStore {
             ui.bind(receipt, position)
                 .inspect_err(|error| ui.fail(error))?;
         }
-        journal.canonical_tail = index
+        journal_state.canonical_tail = index
             .checked_add(receipts.len())
             .ok_or_else(|| Error::message("canonical index overflow"))?;
         ui.flush_if_idle()
@@ -236,41 +190,27 @@ impl SessionStore {
         Ok(index)
     }
 
-    /// Read all messages from a session file.
-    pub async fn read(&self, key: &str) -> Result<Vec<serde_json::Value>> {
-        let path = self.path_for(key);
-
-        tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
-            if !path.exists() {
-                return Ok(vec![]);
-            }
-            let file = File::open(&path)?;
-            let reader = BufReader::new(file);
-            let mut messages = Vec::new();
-            for line in reader.lines() {
-                let line = line?;
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str(trimmed) {
-                    Ok(val) => messages.push(val),
-                    Err(e) => {
-                        tracing::warn!("skipping malformed JSONL line: {e}");
-                    },
-                }
-            }
-            Ok(messages)
-        })
-        .await?
+    pub async fn with_active_records<F>(&self, key: &str, visit: F) -> Result<usize>
+    where
+        F: FnMut(ActiveEvent) -> Result<()>,
+    {
+        let _ui = self.ui_history.session(key).await?;
+        journal::with_active_records(self.pool().await?, key, visit).await
     }
 
-    /// Count the compact UI history entities for session metadata.
+    pub async fn read(&self, key: &str) -> Result<Vec<serde_json::Value>> {
+        let pool = self.pool().await?;
+        match journal::pointers(pool, key).await {
+            Ok(pointers) => journal::read_range(pool, key, 0, pointers.canonical_tail).await,
+            Err(Error::NoCanonicalJournal { .. }) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
     pub async fn ui_message_count(&self, key: &str) -> Result<u32> {
         self.ui_history.count(key).await
     }
 
-    /// Read all messages from a session that match a given `run_id`.
     pub async fn read_by_run_id(&self, key: &str, run_id: &str) -> Result<Vec<serde_json::Value>> {
         self.ui_history
             .session(key)
@@ -282,80 +222,47 @@ impl SessionStore {
             .collect()
     }
 
-    /// Read the last N messages from a session file.
-    pub async fn read_last_n(&self, key: &str, n: usize) -> Result<Vec<serde_json::Value>> {
-        let path = self.path_for(key);
-
-        tokio::task::spawn_blocking(move || -> Result<Vec<serde_json::Value>> {
-            if !path.exists() {
-                return Ok(vec![]);
-            }
-            let file = File::open(&path)?;
-            let reader = BufReader::new(file);
-            let mut all: Vec<serde_json::Value> = Vec::new();
-            for line in reader.lines() {
-                let line = line?;
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Ok(val) = serde_json::from_str(trimmed) {
-                    all.push(val);
-                }
-            }
-            let start = all.len().saturating_sub(n);
-            Ok(all[start..].to_vec())
-        })
-        .await?
+    pub async fn read_record(&self, key: &str, index: usize) -> Result<serde_json::Value> {
+        journal::read_record(self.pool().await?, key, index).await
     }
 
-    /// Delete the session file, its media directory, and its persisted tool results.
+    pub async fn read_range(
+        &self,
+        key: &str,
+        start: usize,
+        end: usize,
+    ) -> Result<Vec<serde_json::Value>> {
+        journal::read_range(self.pool().await?, key, start, end).await
+    }
+
+    pub async fn read_last_n(&self, key: &str, n: usize) -> Result<Vec<serde_json::Value>> {
+        let pool = self.pool().await?;
+        match journal::pointers(pool, key).await {
+            Ok(_) => journal::read_last_n(pool, key, n).await,
+            Err(Error::NoCanonicalJournal { .. }) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
     pub async fn clear(&self, key: &str) -> Result<()> {
         let ui = self.ui_history.session_for_clear(key).await?;
-        let mut journal = ui.journal.lock().await;
-        let path = self.path_for(key);
+        let mut journal_state = ui.journal.lock().await;
         let media_dir = self.media_dir_for(key);
         let tool_results_dir =
             crate::tool_results::ToolResultStore::new(self.base_dir.clone()).session_dir(key);
         let session_key = key.to_string();
-        let registry = Arc::clone(&self.tail_registry);
-        let tail_state = self.tail_state_for(key, &path)?;
-
         let cleanup = tokio::task::spawn_blocking(move || -> Result<()> {
-            let mut tail = lock_tail_state(&tail_state, &registry, &path, &session_key)?;
-            let result = (|| -> Result<()> {
-                match OpenOptions::new().read(true).write(true).open(&path) {
-                    Ok(file) => {
-                        let mut lock = RwLock::new(file);
-                        let _guard = lock
-                            .write()
-                            .map_err(|error| Error::lock_failed(error.to_string()))?;
-                        fs::remove_file(&path)?;
-                    },
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(error) => return Err(error.into()),
-                }
-                // Deleting this parent-session media directory also breaks any fork that still
-                // references the same paths; forks need containerized media snapshots.
-                match fs::remove_dir_all(&media_dir) {
-                    Ok(()) => {},
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(error) => return Err(error.into()),
-                }
-                match fs::remove_dir_all(&tool_results_dir) {
-                    Ok(()) => {},
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(error) => return Err(error.into()),
-                }
-                Ok(())
-            })();
-            tail.invalidate();
-            drop(tail);
-            registry.remove(&path, &tail_state)?;
-            if let Err(error) = &result {
-                tracing::error!(%session_key, %error, "failed to clear session history");
+            match fs::remove_dir_all(&media_dir) {
+                Ok(()) => {},
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(error) => return Err(error.into()),
             }
-            result
+            match fs::remove_dir_all(&tool_results_dir) {
+                Ok(()) => {},
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(error) => return Err(error.into()),
+            }
+            Ok(())
         })
         .await
         .map_err(Error::from)
@@ -365,27 +272,18 @@ impl SessionStore {
             ui.flush().await?;
             return Err(error);
         }
-
+        journal::clear_journal(self.pool().await?, &session_key)
+            .await
+            .inspect_err(|error| ui.fail(error))?;
         ui.truncate(0).await.inspect_err(|error| ui.fail(error))?;
-        journal.canonical_tail = 0;
+        journal_state.canonical_tail = 0;
         Ok(())
     }
 
-    /// List all session keys by scanning JSONL files in the base directory.
-    pub fn list_keys(&self) -> Vec<String> {
-        let Ok(entries) = fs::read_dir(&self.base_dir) else {
-            return vec![];
-        };
-        entries
-            .filter_map(|e| e.ok())
-            .filter_map(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                name.strip_suffix(".jsonl").map(|s| s.replace('_', ":"))
-            })
-            .collect()
+    pub async fn list_keys(&self) -> Result<Vec<String>> {
+        journal::list_keys(self.pool().await?).await
     }
 
-    /// Search semantic snapshots in the caller's authorized sessions.
     pub async fn search(
         &self,
         keys: &[String],
@@ -417,15 +315,7 @@ impl SessionStore {
             .try_lock()
             .map_err(|error| Error::message(format!("fork destination is busy: {error}")))?;
         destination.ensure_empty()?;
-        if self.path_for(key).exists() {
-            return Err(Error::message("fork destination already has a journal"));
-        }
-        let mut messages = self.read(parent).await?;
-        if boundary > messages.len() {
-            return Err(Error::message("fork boundary is outside canonical journal"));
-        }
-        messages.truncate(boundary);
-        self.replace_serializable(key, messages).await?;
+        journal::copy_prefix(self.pool().await?, parent, key, boundary).await?;
         destination
             .copy_prefix_from(snapshot)
             .await
@@ -434,183 +324,102 @@ impl SessionStore {
         Ok(result)
     }
 
-    /// Read all messages as typed [`PersistedMessage`] values.
-    ///
-    /// Lines that fail to deserialize into `PersistedMessage` are skipped
-    /// (with a warning), matching the behavior of [`read`].
     pub async fn read_typed(&self, key: &str) -> Result<Vec<PersistedMessage>> {
-        let path = self.path_for(key);
-
-        tokio::task::spawn_blocking(move || -> Result<Vec<PersistedMessage>> {
-            if !path.exists() {
-                return Ok(vec![]);
-            }
-            let file = File::open(&path)?;
-            let reader = BufReader::new(file);
-            let mut messages = Vec::new();
-            for line in reader.lines() {
-                let line = line?;
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str(trimmed) {
-                    Ok(msg) => messages.push(msg),
-                    Err(e) => {
-                        tracing::warn!("skipping malformed JSONL line (typed): {e}");
-                    },
-                }
-            }
-            Ok(messages)
-        })
-        .await?
+        self.read(key)
+            .await?
+            .into_iter()
+            .map(|value| serde_json::from_value(value).map_err(Error::from))
+            .collect()
     }
 
-    /// Read the last N messages as typed [`PersistedMessage`] values.
-    pub async fn read_last_n_typed(&self, key: &str, n: usize) -> Result<Vec<PersistedMessage>> {
-        let path = self.path_for(key);
-
-        tokio::task::spawn_blocking(move || -> Result<Vec<PersistedMessage>> {
-            if !path.exists() {
-                return Ok(vec![]);
-            }
-            let file = File::open(&path)?;
-            let reader = BufReader::new(file);
-            let mut all: Vec<PersistedMessage> = Vec::new();
-            for line in reader.lines() {
-                let line = line?;
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Ok(msg) = serde_json::from_str(trimmed) {
-                    all.push(msg);
-                }
-            }
-            let start = all.len().saturating_sub(n);
-            Ok(all[start..].to_vec())
-        })
-        .await?
+    pub async fn child_snapshot_messages(&self, key: &str) -> Result<Vec<PersistedMessage>> {
+        let values = match journal::child_suffix(self.pool().await?, key).await {
+            Ok(values) => values,
+            Err(Error::NoCanonicalJournal { .. }) => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        values
+            .into_iter()
+            .map(|value| serde_json::from_value(value).map_err(Error::from))
+            .collect()
     }
 
-    async fn replace_serializable<T>(&self, key: &str, messages: Vec<T>) -> Result<()>
-    where
-        T: Send + Serialize + 'static,
-    {
-        let path = self.path_for(key);
-        let session_key = key.to_string();
-        let registry = Arc::clone(&self.tail_registry);
-
-        tokio::task::spawn_blocking(move || -> Result<()> {
-            let mut staged = stage_history(&path, &messages).inspect_err(|error| {
-                tracing::error!(%session_key, %error, "failed to serialize session history");
-            })?;
-            let tail_state = registry.session_state(&path).inspect_err(|error| {
-                tracing::error!(%session_key, %error, "failed to access session tail state");
-            })?;
-            let mut tail = lock_tail_state(&tail_state, &registry, &path, &session_key)?;
-            let result = replace_from_staged_locked(&path, &mut staged, messages.len(), &mut tail);
-            if let Err(error) = &result {
-                tail.invalidate();
-                tracing::error!(%session_key, %error, "failed to replace session history");
-            }
-            result
-        })
-        .await?
+    pub async fn pointers(&self, key: &str) -> Result<journal::JournalPointers> {
+        journal::pointers(self.pool().await?, key).await
     }
 
-    /// Truncate a session from a selected user message, removing that message
-    /// and every subsequent message in the JSONL file.
+    pub async fn visible_tool_names(&self, key: &str) -> Result<std::collections::HashSet<String>> {
+        journal::visible_tool_names(self.pool().await?, key).await
+    }
+
+    pub async fn token_totals(&self, key: &str) -> Result<journal::TokenTotals> {
+        journal::token_totals(self.pool().await?, key).await
+    }
+
+    pub async fn assistant_payloads(&self, key: &str) -> Result<Vec<serde_json::Value>> {
+        journal::assistant_payloads(self.pool().await?, key).await
+    }
+
     pub async fn truncate_from_user_message(
         &self,
         key: &str,
         target: UserMessageTarget,
     ) -> Result<TruncateTailResult> {
         let ui = self.ui_history.session(key).await?;
-        let mut journal = ui.journal.lock().await;
-        let boundary = find_user_message_target(&self.read(key).await?, target)?;
+        let mut journal_state = ui.journal.lock().await;
+        let boundary = self.resolve_user_target(key, target).await?;
         ui.validate_canonical_cut(boundary).await?;
-        let path = self.path_for(key);
+        let original = journal_state.canonical_tail;
+        let kept = self.read_range(key, 0, boundary).await?;
+        let retained_media = collect_session_media_refs(&kept, &Self::key_to_filename(key));
+        journal::truncate_journal(self.pool().await?, key, boundary).await?;
         let media_dir = self.media_dir_for(key);
-        let key_filename = Self::key_to_filename(key);
-        let session_key = key.to_string();
-        let registry = Arc::clone(&self.tail_registry);
-        let tail_state = self.tail_state_for(key, &path)?;
-
-        let result = tokio::task::spawn_blocking(move || -> Result<TruncateTailResult> {
-            let mut tail = lock_tail_state(&tail_state, &registry, &path, &session_key)?;
-            let result = (|| -> Result<TruncateTailResult> {
-                let file = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .truncate(false)
-                    .open(&path)
-                    .map_err(|error| {
-                        if error.kind() == std::io::ErrorKind::NotFound {
-                            Error::message(format!("session '{session_key}' not found"))
-                        } else {
-                            error.into()
-                        }
-                    })?;
-                let mut lock = RwLock::new(file);
-                let mut guard = lock
-                    .write()
-                    .map_err(|error| Error::lock_failed(error.to_string()))?;
-
-                let mut messages = read_messages_from_file(&mut guard)?;
-                let original_count = messages.len();
-                let target_index = find_user_message_target(&messages, target)?;
-                let retained_media =
-                    collect_session_media_refs(&messages[..target_index], &key_filename);
-                let removed_count = original_count.saturating_sub(target_index);
-                messages.truncate(target_index);
-
-                guard.set_len(0)?;
-                guard.rewind()?;
-                for msg in &messages {
-                    let line = serde_json::to_string(msg)?;
-                    writeln!(*guard, "{line}")?;
-                }
-                guard.flush()?;
-                let post_write_stamp = SessionFileStamp::read(&guard)?;
-                tail.set(messages.len(), post_write_stamp);
-
-                // This only checks media references retained in the current session file.
-                // Forks may still reference parent media until fork snapshots get their
-                // own containerized media copy without prompt-cache-sensitive URL rewrites.
-                let pruned_media_count = prune_unreferenced_media(&media_dir, &retained_media)?;
-
-                Ok(TruncateTailResult {
-                    target_index,
-                    kept_count: messages.len(),
-                    removed_count,
-                    pruned_media_count,
-                })
-            })();
-            if let Err(error) = &result {
-                tail.invalidate();
-                tracing::error!(%session_key, %error, "failed to truncate session history");
-            }
-            result
+        let pruned_media_count = tokio::task::spawn_blocking(move || {
+            prune_unreferenced_media(&media_dir, &retained_media)
         })
         .await??;
-        ui.truncate(result.target_index)
+        ui.truncate(boundary)
             .await
             .inspect_err(|error| ui.fail(error))?;
-        journal.canonical_tail = result.target_index;
-        Ok(result)
+        journal_state.canonical_tail = boundary;
+        Ok(TruncateTailResult {
+            target_index: boundary,
+            kept_count: boundary,
+            removed_count: original.saturating_sub(boundary),
+            pruned_media_count,
+        })
     }
 
-    /// Append a typed message to the session file.
+    async fn resolve_user_target(&self, key: &str, target: UserMessageTarget) -> Result<usize> {
+        let pool = self.pool().await?;
+        let tail = match journal::pointers(pool, key).await {
+            Ok(pointers) => pointers.canonical_tail,
+            Err(Error::NoCanonicalJournal { .. }) => 0,
+            Err(error) => return Err(error),
+        };
+        match target {
+            UserMessageTarget::MessageIndex(index) => {
+                if index >= tail {
+                    return Err(Error::message(format!(
+                        "messageIndex {index} exceeds message count {tail}"
+                    )));
+                }
+                let role = journal::record_role(pool, key, index).await?;
+                if role != "user" {
+                    return Err(Error::message(format!(
+                        "message at index {index} is not a user message"
+                    )));
+                }
+                Ok(index)
+            },
+            UserMessageTarget::ClientSeq(seq) => journal::user_index_for_seq(pool, key, seq).await,
+        }
+    }
+
     pub async fn append_typed(&self, key: &str, message: &PersistedMessage) -> Result<()> {
         self.append(key, &message.to_value()).await
     }
 
-    /// Update one typed message by its zero-based history index.
-    ///
-    /// The entire read-modify-write operation is performed while holding the
-    /// session file lock, so callers can safely finalize metadata on an
-    /// already-persisted assistant segment without changing its position.
     pub async fn update_typed_at<F>(
         &self,
         key: &str,
@@ -641,71 +450,14 @@ impl SessionStore {
     {
         let ui = self.ui_history.session(key).await?;
         let _journal = ui.journal.lock().await;
-        let path = self.path_for(key);
-        let session_key = key.to_string();
-        let registry = Arc::clone(&self.tail_registry);
-        let tail_state = self.tail_state_for(key, &path)?;
-
+        let existing = self.read_record(key, message_index).await?;
+        let updated = update(existing)?;
         let prepared = ui.prepare_record_update(message_index).await?;
-        let validation_entry = prepared.entry.clone();
-        let writer_ui = Arc::clone(&ui);
-        let updated = tokio::task::spawn_blocking(move || -> Result<serde_json::Value> {
-            let mut tail = lock_tail_state(&tail_state, &registry, &path, &session_key)?;
-            let mut writing = false;
-            let result = (|| -> Result<serde_json::Value> {
-                let Some(parent) = path.parent() else {
-                    return Err(Error::message(path.display().to_string()));
-                };
-                fs::create_dir_all(parent)?;
-
-                let file = OpenOptions::new().read(true).write(true).open(&path)?;
-                let mut lock = RwLock::new(file);
-                let mut guard = lock
-                    .write()
-                    .map_err(|error| Error::lock_failed(error.to_string()))?;
-                let mut lines: Vec<String> = BufReader::new(&*guard)
-                    .lines()
-                    .collect::<std::io::Result<Vec<_>>>()?
-                    .into_iter()
-                    .filter(|line| !line.trim().is_empty())
-                    .collect();
-                let line_count = lines.len();
-                if message_index >= lines.len() {
-                    return Err(Error::message(format!(
-                        "message index {message_index} is outside session history"
-                    )));
-                }
-                let existing = serde_json::from_str(&lines[message_index])?;
-                let updated = update(existing)?;
-                crate::ui_history_engine::UiHistorySession::validate_record_update(
-                    &validation_entry,
-                    crate::ui_history_types::UiRecord::try_from(updated.clone())?,
-                )?;
-                lines[message_index] = serde_json::to_string(&updated)?;
-
-                writing = true;
-                guard.set_len(0)?;
-                guard.rewind()?;
-                for line in lines {
-                    writeln!(*guard, "{line}")?;
-                }
-                guard.flush()?;
-                let post_write_stamp = SessionFileStamp::read(&guard)?;
-                tail.set(line_count, post_write_stamp);
-                Ok(updated)
-            })();
-            if let Err(error) = &result {
-                tail.invalidate();
-                tracing::error!(%session_key, %error, "failed to update typed session message");
-                if writing {
-                    writer_ui.fail(error);
-                }
-            }
-            result
-        })
-        .await
-        .map_err(Error::from)
-        .inspect_err(|error| ui.fail(error))??;
+        crate::ui_history_engine::UiHistorySession::validate_record_update(
+            &prepared.entry,
+            crate::ui_history_types::UiRecord::try_from(updated.clone())?,
+        )?;
+        journal::update_record(self.pool().await?, key, message_index, &updated).await?;
         ui.update_record(
             &prepared,
             crate::ui_history_types::UiRecord::try_from(updated.clone())?,
@@ -715,261 +467,91 @@ impl SessionStore {
         Ok(updated)
     }
 
-    /// Count messages in a session file without parsing them.
-    pub async fn count(&self, key: &str) -> Result<u32> {
-        let path = self.path_for(key);
-
-        tokio::task::spawn_blocking(move || -> Result<u32> {
-            if !path.exists() {
-                return Ok(0);
-            }
-            let file = File::open(&path)?;
-            let reader = BufReader::new(file);
-            let count = reader
-                .lines()
-                .map_while(std::result::Result::ok)
-                .filter(|l| !l.trim().is_empty())
-                .count();
-            Ok(count as u32)
-        })
-        .await?
+    pub async fn latest_matching_assistant(
+        &self,
+        key: &str,
+        tail: usize,
+        expected_ids: &[&str],
+    ) -> Result<Option<usize>> {
+        journal::latest_matching_assistant(self.pool().await?, key, tail, expected_ids).await
     }
-}
 
-struct SerializedBatch {
-    bytes: Vec<u8>,
-    record_count: usize,
-}
+    pub async fn latest_user_before(&self, key: &str, before: usize) -> Result<Option<usize>> {
+        journal::latest_user_before(self.pool().await?, key, before).await
+    }
 
-enum AppendFailure {
-    ExpectedIndex(Error),
-    InvalidatesCursor(Error),
-}
+    pub async fn latest_user_text_contained_by(
+        &self,
+        key: &str,
+        tail: usize,
+        expected: &str,
+    ) -> Result<Option<usize>> {
+        journal::latest_user_text_contained_by(self.pool().await?, key, tail, expected).await
+    }
 
-fn lock_tail_state<'a>(
-    tail_state: &'a Arc<Mutex<SessionTailState>>,
-    registry: &SessionTailRegistry,
-    path: &std::path::Path,
-    session_key: &str,
-) -> Result<MutexGuard<'a, SessionTailState>> {
-    match tail_state.lock() {
-        Ok(tail) => Ok(tail),
-        Err(error) => {
-            let error = Error::lock_failed(error.to_string());
-            if let Err(remove_error) = registry.remove(path, tail_state) {
+    pub async fn record_role(&self, key: &str, index: usize) -> Result<String> {
+        journal::record_role(self.pool().await?, key, index).await
+    }
+
+    pub async fn import_journal(
+        &self,
+        snapshot: &std::path::Path,
+        conflict: JournalImportConflict,
+    ) -> Result<Vec<String>> {
+        let pool = self.pool().await?;
+        let mut conn = pool.acquire().await?;
+        let escaped = snapshot.to_string_lossy().replace('\'', "''");
+        sqlx::query(&format!("ATTACH DATABASE '{escaped}' AS import_db"))
+            .execute(&mut *conn)
+            .await?;
+        let import_result = async {
+            let keys = journal::import_attached_keys(&mut conn).await?;
+            let mut errors = Vec::new();
+            for key in keys {
+                let mut skipped = false;
+                let idle = self
+                    .ui_history
+                    .import_key_if_idle(&key, async {
+                        let imported = journal::import_one(&mut conn, &key, conflict).await?;
+                        skipped = !imported;
+                        Ok(())
+                    })
+                    .await?;
+                if !idle {
+                    errors.push(format!(
+                        "session '{key}' is in use (open in the UI or running); retry when it is idle"
+                    ));
+                } else if skipped {
+                    errors.push(format!("session '{key}' already exists; skipped"));
+                }
+            }
+            Ok(errors)
+        }
+        .await;
+        let detached = sqlx::query("DETACH DATABASE import_db")
+            .execute(&mut *conn)
+            .await;
+        if let Err(error) = detached {
+            tracing::error!(%error, "failed to detach imported session journal");
+            if let Err(close_error) = conn.close().await {
                 tracing::error!(
-                    %session_key,
-                    %remove_error,
-                    "failed to remove inaccessible session tail state"
+                    %close_error,
+                    "failed to close session journal connection after detach"
                 );
             }
-            tracing::error!(%session_key, %error, "failed to lock session tail state");
-            Err(error)
-        },
-    }
-}
-
-fn serialize_batch<T>(messages: &[T]) -> Result<SerializedBatch>
-where
-    T: Serialize,
-{
-    let mut bytes = Vec::new();
-    for message in messages {
-        serde_json::to_writer(&mut bytes, message)?;
-        bytes.push(b'\n');
-    }
-    Ok(SerializedBatch {
-        bytes,
-        record_count: messages.len(),
-    })
-}
-
-fn append_serialized_locked(
-    path: &std::path::Path,
-    batch: &SerializedBatch,
-    expected_index: Option<usize>,
-    registry: &SessionTailRegistry,
-    tail: &mut SessionTailState,
-) -> std::result::Result<usize, AppendFailure> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(Error::from)
-            .map_err(AppendFailure::InvalidatesCursor)?;
-    }
-    let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .append(true)
-        .open(path)
-        .map_err(Error::from)
-        .map_err(AppendFailure::InvalidatesCursor)?;
-    let mut lock = RwLock::new(file);
-    #[cfg(test)]
-    if registry.take_file_lock_failure() {
-        return Err(AppendFailure::InvalidatesCursor(Error::lock_failed(
-            "injected session file lock failure",
-        )));
-    }
-    let mut guard = lock
-        .write()
-        .map_err(|error| Error::lock_failed(error.to_string()))
-        .map_err(AppendFailure::InvalidatesCursor)?;
-    #[cfg(test)]
-    if registry.take_metadata_failure() {
-        return Err(AppendFailure::InvalidatesCursor(Error::message(
-            "injected session metadata failure",
-        )));
-    }
-    let pre_write_stamp =
-        SessionFileStamp::read(&guard).map_err(AppendFailure::InvalidatesCursor)?;
-    let message_index = match &tail.cursor {
-        Some(cursor) if cursor.file_stamp == pre_write_stamp => cursor.next_index,
-        _ => {
-            let message_index =
-                scan_tail(&mut guard, registry).map_err(AppendFailure::InvalidatesCursor)?;
-            tail.set(message_index, pre_write_stamp.clone());
-            message_index
-        },
-    };
-
-    if let Some(expected_index) = expected_index
-        && message_index != expected_index
-    {
-        return Err(AppendFailure::ExpectedIndex(Error::message(format!(
-            "expected message index {expected_index}, found session tail {message_index}"
-        ))));
-    }
-
-    let next_index = message_index
-        .checked_add(batch.record_count)
-        .ok_or_else(|| {
-            AppendFailure::InvalidatesCursor(Error::message("session message index overflow"))
-        })?;
-    write_append_batch(&mut guard, &batch.bytes, registry)
-        .map_err(AppendFailure::InvalidatesCursor)?;
-    guard
-        .flush()
-        .map_err(Error::from)
-        .map_err(AppendFailure::InvalidatesCursor)?;
-    let post_write_stamp =
-        SessionFileStamp::read(&guard).map_err(AppendFailure::InvalidatesCursor)?;
-    tail.set(next_index, post_write_stamp);
-    Ok(message_index)
-}
-
-fn write_append_batch(file: &mut File, bytes: &[u8], registry: &SessionTailRegistry) -> Result<()> {
-    #[cfg(test)]
-    if registry.take_write_failure() {
-        let partial_len = bytes.len().saturating_sub(1);
-        file.write_all(&bytes[..partial_len])?;
-        return Err(Error::message("injected session append write failure"));
-    }
-
-    #[cfg(not(test))]
-    let _ = registry;
-    file.write_all(bytes)?;
-    Ok(())
-}
-
-fn stage_history<T>(path: &std::path::Path, messages: &[T]) -> Result<tempfile::NamedTempFile>
-where
-    T: Serialize,
-{
-    let parent = path
-        .parent()
-        .ok_or_else(|| Error::message(path.display().to_string()))?;
-    fs::create_dir_all(parent)?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-    for message in messages {
-        serde_json::to_writer(staged.as_file_mut(), message)?;
-        staged.as_file_mut().write_all(b"\n")?;
-    }
-    staged.as_file_mut().flush()?;
-    Ok(staged)
-}
-
-fn replace_from_staged_locked(
-    path: &std::path::Path,
-    staged: &mut tempfile::NamedTempFile,
-    record_count: usize,
-    tail: &mut SessionTailState,
-) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(path)?;
-    let mut lock = RwLock::new(file);
-    let mut guard = lock
-        .write()
-        .map_err(|error| Error::lock_failed(error.to_string()))?;
-    staged.as_file_mut().rewind()?;
-    guard.set_len(0)?;
-    guard.rewind()?;
-    copy(staged.as_file_mut(), &mut *guard)?;
-    guard.flush()?;
-    let post_write_stamp = SessionFileStamp::read(&guard)?;
-    tail.set(record_count, post_write_stamp);
-    Ok(())
-}
-
-fn read_messages_from_file(file: &mut File) -> Result<Vec<serde_json::Value>> {
-    file.rewind()?;
-    let mut messages = Vec::new();
-    {
-        let reader = BufReader::new(&mut *file);
-        for line in reader.lines() {
-            let line = line?;
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            match serde_json::from_str(trimmed) {
-                Ok(val) => messages.push(val),
-                Err(e) => {
-                    tracing::warn!("skipping malformed JSONL line while truncating: {e}");
+            return match import_result {
+                Err(error) => Err(error),
+                Ok(mut errors) => {
+                    errors.push(
+                        "session journal rows were committed, but detaching the import snapshot failed"
+                            .to_string(),
+                    );
+                    Ok(errors)
                 },
-            }
+            };
         }
+        import_result
     }
-    file.rewind()?;
-    Ok(messages)
-}
-
-fn find_user_message_target(
-    messages: &[serde_json::Value],
-    target: UserMessageTarget,
-) -> Result<usize> {
-    let index = match target {
-        UserMessageTarget::MessageIndex(idx) => {
-            if idx >= messages.len() {
-                return Err(Error::message(format!(
-                    "messageIndex {idx} exceeds message count {}",
-                    messages.len()
-                )));
-            }
-            idx
-        },
-        UserMessageTarget::ClientSeq(seq) => messages
-            .iter()
-            .position(|msg| {
-                msg.get("role").and_then(|v| v.as_str()) == Some("user")
-                    && msg.get("seq").and_then(|v| v.as_u64()) == Some(seq)
-            })
-            .ok_or_else(|| Error::message(format!("user message with seq {seq} not found")))?,
-    };
-
-    let role = messages[index].get("role").and_then(|v| v.as_str());
-    if role != Some("user") {
-        return Err(Error::message(format!(
-            "message at index {index} is not a user message"
-        )));
-    }
-    Ok(index)
 }
 
 fn collect_session_media_refs(
@@ -1034,8 +616,6 @@ fn prune_unreferenced_media(
         if retained_media.contains(file_name) {
             continue;
         }
-        // Deleting this parent-session media file also breaks any fork that still
-        // references the same path; forks need containerized media snapshots.
         match fs::remove_file(&path) {
             Ok(()) => pruned += 1,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
@@ -1048,15 +628,7 @@ fn prune_unreferenced_media(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        serde::{Serializer, ser::Error as _},
-        serde_json::json,
-        std::sync::{
-            atomic::{AtomicBool, Ordering},
-            mpsc,
-        },
-    };
+    use {super::*, serde_json::json};
 
     fn temp_store() -> (SessionStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
@@ -1064,274 +636,566 @@ mod tests {
         (store, dir)
     }
 
-    impl SessionStore {
-        async fn append_canonical(&self, key: &str, value: &serde_json::Value) -> Result<usize> {
-            self.append_canonical_checked(key, value, None).await
-        }
-
-        async fn append_canonical_at(
-            &self,
-            key: &str,
-            value: &serde_json::Value,
-            expected: usize,
-        ) -> Result<usize> {
-            self.append_canonical_checked(key, value, Some(expected))
-                .await
-        }
-
-        async fn append_canonical_checked(
-            &self,
-            key: &str,
-            value: &serde_json::Value,
-            expected: Option<usize>,
-        ) -> Result<usize> {
-            let batch = serialize_batch(std::slice::from_ref(value))?;
-            let path = self.path_for(key);
-            let registry = Arc::clone(&self.tail_registry);
-            let key = key.to_string();
-            tokio::task::spawn_blocking(move || {
-                let tail_state = registry.session_state(&path)?;
-                let mut tail = lock_tail_state(&tail_state, &registry, &path, &key)?;
-                match append_serialized_locked(&path, &batch, expected, &registry, &mut tail) {
-                    Ok(index) => Ok(index),
-                    Err(AppendFailure::ExpectedIndex(error)) => Err(error),
-                    Err(AppendFailure::InvalidatesCursor(error)) => {
-                        tail.invalidate();
-                        Err(error)
-                    },
-                }
-            })
-            .await?
-        }
-    }
-
-    #[derive(Clone)]
-    struct FailingSerialize;
-
-    impl Serialize for FailingSerialize {
-        fn serialize<S>(&self, _serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            Err(S::Error::custom("injected serialization failure"))
-        }
-    }
-
-    #[derive(Clone)]
-    struct LockCheckingSerialize {
-        path: PathBuf,
-        observed_unlocked: Arc<AtomicBool>,
-    }
-
-    impl Serialize for LockCheckingSerialize {
-        fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&self.path)
-                .map_err(S::Error::custom)?;
-            let mut lock = RwLock::new(file);
-            let _guard = lock.try_write().map_err(S::Error::custom)?;
-            self.observed_unlocked.store(true, Ordering::Relaxed);
-            json!({"role": "user", "content": "journal fixture", "record": "serialized-before-lock"}).serialize(serializer)
-        }
-    }
-
     #[tokio::test]
-    async fn test_append_and_read() {
+    async fn append_assigns_indexes_and_pointers() {
         let (store, _dir) = temp_store();
-
-        store
-            .append("main", &json!({"role": "user", "content": "hello"}))
+        let first = store
+            .append_with_index("main", &PersistedMessage::user("first").to_value())
             .await
             .unwrap();
-        store
-            .append("main", &json!({"role": "assistant", "content": "hi"}))
+        let second = store
+            .append_with_index("main", &PersistedMessage::user("second").to_value())
             .await
             .unwrap();
-
-        let msgs = store.read("main").await.unwrap();
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(msgs[0]["role"], "user");
-        assert_eq!(msgs[1]["role"], "assistant");
+        assert_eq!((first, second), (0, 1));
+        let pointers = store.pointers("main").await.unwrap();
+        assert_eq!(pointers.canonical_tail, 2);
+        assert_eq!(pointers.first_user_index, Some(0));
+        assert_eq!(pointers.last_checkpoint_index, None);
+        store
+            .append(
+                "main",
+                &PersistedMessage::checkpoint("sum", "model", "provider", 1, 2, 2).to_value(),
+            )
+            .await
+            .unwrap();
+        let pointers = store.pointers("main").await.unwrap();
+        assert_eq!(pointers.last_checkpoint_index, Some(2));
+        assert_eq!(pointers.first_user_index, Some(0));
     }
 
     #[tokio::test]
-    async fn test_read_empty() {
+    async fn expected_index_mismatch_writes_nothing() {
         let (store, _dir) = temp_store();
-        let msgs = store.read("nonexistent").await.unwrap();
-        assert!(msgs.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_read_last_n() {
-        let (store, _dir) = temp_store();
-
-        for i in 0..10 {
+        store
+            .append("main", &PersistedMessage::user("one").to_value())
+            .await
+            .unwrap();
+        assert!(
             store
-                .append(
-                    "test",
-                    &json!({"role": "user", "content": "fixture", "i": i}),
-                )
+                .append_at_index("main", &PersistedMessage::user("nope").to_value(), 0)
                 .await
-                .unwrap();
-        }
-
-        let last3 = store.read_last_n("test", 3).await.unwrap();
-        assert_eq!(last3.len(), 3);
-        assert_eq!(last3[0]["i"], 7);
-        assert_eq!(last3[2]["i"], 9);
-    }
-
-    #[tokio::test]
-    async fn test_clear() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("main", &json!({"role": "user", "content": "hello"}))
-            .await
-            .unwrap();
+                .is_err()
+        );
         assert_eq!(store.read("main").await.unwrap().len(), 1);
-
-        store.clear("main").await.unwrap();
-        assert!(store.read("main").await.unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn test_count() {
+    async fn active_read_keeps_the_pre_checkpoint_continuation() {
         let (store, _dir) = temp_store();
-
-        assert_eq!(store.count("main").await.unwrap(), 0);
+        for (index, value) in [
+            json!({"role": "user", "content": "old"}),
+            json!({"role": "checkpoint", "summary": "first", "messagesSummarized": 1}),
+            json!({"role": "user", "content": "between"}),
+            json!({"role": "assistant", "content": "working"}),
+            json!({"role": "checkpoint", "summary": "second", "messagesSummarized": 3}),
+            json!({"role": "user", "content": "after"}),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            store.append_at_index("main", &value, index).await.unwrap();
+        }
+        let mut rows = Vec::new();
         store
-            .append("main", &json!({"role": "user", "content": "question"}))
+            .with_active_records("main", |event| {
+                if let ActiveEvent::Row { payload, .. } = event {
+                    rows.push(
+                        payload["content"]
+                            .as_str()
+                            .unwrap_or("checkpoint")
+                            .to_string(),
+                    );
+                    if payload["role"] == "checkpoint" {
+                        rows.push(payload["summary"].as_str().unwrap().to_string());
+                    }
+                }
+                Ok(())
+            })
             .await
             .unwrap();
-        store
-            .append("main", &json!({"role": "assistant", "content": "answer"}))
-            .await
-            .unwrap();
-        assert_eq!(store.count("main").await.unwrap(), 2);
+        assert_eq!(rows, vec!["checkpoint", "second", "working", "after"]);
     }
 
     #[tokio::test]
-    async fn ui_message_count_compacts_tool_lifecycle_transitions() {
+    async fn disclosures_follow_the_journal_boundary_and_survive_checkpoint() {
         let (store, _dir) = temp_store();
-        let lifecycle_base = json!({
-            "role": "tool_lifecycle",
-            "toolCallId": "call-1",
-            "toolName": "execute_command",
-            "emittedAtMs": 1,
-            "runId": "run-1"
-        });
-
         store
-            .append("main", &json!({"role": "user", "content": "run it"}))
+            .append("main", &PersistedMessage::user("keep").to_value())
             .await
             .unwrap();
-        let mut created = lifecycle_base.clone();
-        created["sequence"] = json!(1);
-        created["stage"] = json!("created");
-        created["providerIndex"] = json!(0);
-        store.append("main", &created).await.unwrap();
-        let mut completed = lifecycle_base;
-        completed["sequence"] = json!(2);
-        completed["stage"] = json!("completed");
-        completed["arguments"] = json!({"command": "echo done"});
-        completed["success"] = json!(true);
-        completed["result"] = json!("{\"stdout\":\"done\",\"exitCode\":0}");
-        completed["error"] = serde_json::Value::Null;
-        store.append("main", &completed).await.unwrap();
-
-        assert_eq!(store.count("main").await.unwrap(), 3);
-        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "assistant",
+                    "content": "call",
+                    "tool_calls": [{"id": "1", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]
+                }),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &PersistedMessage::checkpoint("sum", "model", "provider", 1, 1, 1).to_value(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            store
+                .visible_tool_names("main")
+                .await
+                .unwrap()
+                .contains("read_file")
+        );
+        store.fork_history("main", "child", None).await.unwrap();
+        assert!(
+            store
+                .visible_tool_names("child")
+                .await
+                .unwrap()
+                .contains("read_file")
+        );
+        store
+            .append("main", &PersistedMessage::user("cut").to_value())
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "assistant",
+                    "content": "later",
+                    "tool_calls": [{"id": "2", "type": "function", "function": {"name": "other_tool", "arguments": "{}"}}]
+                }),
+            )
+            .await
+            .unwrap();
+        store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(3))
+            .await
+            .unwrap();
+        let visible = store.visible_tool_names("main").await.unwrap();
+        assert!(visible.contains("read_file"));
+        assert!(!visible.contains("other_tool"));
+        let pointers = store.pointers("main").await.unwrap();
+        assert_eq!(pointers.canonical_tail, 3);
+        assert_eq!(pointers.last_checkpoint_index, Some(2));
+        assert_eq!(pointers.first_user_index, Some(0));
     }
 
-    /// A streamed answer is many records but one message; the counter shown in
-    /// the UI must agree with the number of bubbles, not with the record count.
     #[tokio::test]
-    async fn ui_message_count_counts_a_streamed_answer_as_one_message() {
+    async fn fork_boundary_past_the_parent_tail_writes_nothing() {
         let (store, _dir) = temp_store();
-
         store
-            .append("main", &json!({"role": "user", "content": "hi"}))
+            .append("main", &PersistedMessage::user("one").to_value())
             .await
             .unwrap();
-        for sequence in 0..64 {
+        let error = journal::copy_prefix(store.pool().await.unwrap(), "main", "child", 5)
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("fork boundary is outside canonical journal")
+        );
+        let child_rows = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM session_journal WHERE session_key = 'child'",
+        )
+        .fetch_one(store.pool().await.unwrap())
+        .await
+        .unwrap();
+        assert_eq!(child_rows, 0);
+    }
+
+    #[tokio::test]
+    async fn failed_import_rolls_back_and_later_attach_works() {
+        let (source, dir) = temp_store();
+        source
+            .append("main", &PersistedMessage::user("from-archive").to_value())
+            .await
+            .unwrap();
+        let good = dir.path().join("good.sqlite");
+        let good_sql = good.to_string_lossy().replace('\'', "''");
+        sqlx::query(&format!("VACUUM INTO '{good_sql}'"))
+            .execute(source.pool().await.unwrap())
+            .await
+            .unwrap();
+
+        let bad = dir.path().join("bad.sqlite");
+        let bad_pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&bad)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE session_journal (session_key TEXT PRIMARY KEY, canonical_tail INTEGER NOT NULL, last_checkpoint_index INTEGER, first_user_index INTEGER)",
+        )
+        .execute(&bad_pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO session_journal (session_key, canonical_tail) VALUES ('main', 1)")
+            .execute(&bad_pool)
+            .await
+            .unwrap();
+        bad_pool.close().await;
+
+        let (store, _dir) = temp_store();
+        assert!(
+            store
+                .import_journal(&bad, JournalImportConflict::Overwrite)
+                .await
+                .is_err()
+        );
+        let warnings = store
+            .import_journal(&good, JournalImportConflict::Overwrite)
+            .await
+            .unwrap();
+        assert!(warnings.is_empty());
+        let records = store.read("main").await.unwrap();
+        assert_eq!(records[0]["content"], "from-archive");
+    }
+
+    #[tokio::test]
+    async fn truncate_targets_client_seq_and_rejects_a_non_user_or_missing_index() {
+        let (store, _dir) = temp_store();
+        store
+            .append("main", &json!({"role": "user", "content": "cut", "seq": 4}))
+            .await
+            .unwrap();
+        store
+            .append("main", &PersistedMessage::user("later").to_value())
+            .await
+            .unwrap();
+        let truncated = store
+            .truncate_from_user_message("main", UserMessageTarget::ClientSeq(4))
+            .await
+            .unwrap();
+        assert_eq!(truncated.target_index, 0);
+        assert_eq!(store.pointers("main").await.unwrap().canonical_tail, 0);
+
+        store
+            .append("main", &json!({"role": "assistant", "content": "not-user"}))
+            .await
+            .unwrap();
+        let role_error = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
+            .await
+            .unwrap_err();
+        assert!(role_error.to_string().contains("not a user message"));
+        let range_error = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(5))
+            .await
+            .unwrap_err();
+        assert!(range_error.to_string().contains("exceeds message count"));
+    }
+
+    #[tokio::test]
+    async fn truncate_prunes_media_that_the_removed_tail_alone_referenced() {
+        let (store, _dir) = temp_store();
+        let media = store.save_media("main", "pic.bin", b"data").await.unwrap();
+        store
+            .append("main", &json!({"role": "user", "content": media}))
+            .await
+            .unwrap();
+        let truncated = store
+            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
+            .await
+            .unwrap();
+        assert_eq!(truncated.pruned_media_count, 1);
+        assert!(!store.media_path_for("main", "pic.bin").exists());
+    }
+
+    #[tokio::test]
+    async fn import_skip_keeps_rows_overwrite_replaces_them_and_a_live_session_is_left_idle() {
+        let (source, dir) = temp_store();
+        source
+            .append(
+                "imported",
+                &PersistedMessage::user("from-archive").to_value(),
+            )
+            .await
+            .unwrap();
+        let snapshot = dir.path().join("snapshot.sqlite");
+        let snapshot_sql = snapshot.to_string_lossy().replace('\'', "''");
+        sqlx::query(&format!("VACUUM INTO '{snapshot_sql}'"))
+            .execute(source.pool().await.unwrap())
+            .await
+            .unwrap();
+
+        let (store, _dir) = temp_store();
+        store
+            .append("imported", &PersistedMessage::user("local").to_value())
+            .await
+            .unwrap();
+        let skipped = store
+            .import_journal(&snapshot, JournalImportConflict::Skip)
+            .await
+            .unwrap();
+        assert!(
+            skipped
+                .iter()
+                .any(|warning| warning.contains("already exists"))
+        );
+        assert_eq!(store.read("imported").await.unwrap()[0]["content"], "local");
+
+        let live = store.ui_history.session("imported").await.unwrap();
+        let busy = store
+            .import_journal(&snapshot, JournalImportConflict::Overwrite)
+            .await
+            .unwrap();
+        assert!(busy.iter().any(|warning| warning.contains("is in use")));
+        assert_eq!(store.read("imported").await.unwrap()[0]["content"], "local");
+        drop(live);
+
+        assert!(
+            store
+                .import_journal(&snapshot, JournalImportConflict::Overwrite)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store.read("imported").await.unwrap()[0]["content"],
+            "from-archive"
+        );
+    }
+
+    #[tokio::test]
+    async fn active_segment_ids_include_a_pre_boundary_segment_referenced_after_it() {
+        let (store, _dir) = temp_store();
+        store
+            .append(
+                "main",
+                &json!({"role": "assistant", "content": "old", "segmentId": "seg-old"}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({"role": "checkpoint", "summary": "s", "messagesSummarized": 1}),
+            )
+            .await
+            .unwrap();
+        store
+            .append(
+                "main",
+                &json!({
+                    "role": "provider_update",
+                    "segmentId": "seg-old",
+                    "itemId": "msg",
+                    "position": 1,
+                    "updateSeq": 1,
+                    "payload": {"update_type": "message_done", "text": "x"}
+                }),
+            )
+            .await
+            .unwrap();
+        let mut ids = std::collections::HashSet::new();
+        store
+            .with_active_records("main", |event| {
+                if let ActiveEvent::Start { segment_ids, .. } = event {
+                    ids = segment_ids;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert!(ids.contains(&chelix_common::ProviderSegmentId("seg-old".to_string())));
+    }
+
+    #[tokio::test]
+    async fn active_read_returns_a_full_page_and_a_pre_checkpoint_page_past_it() {
+        let (store, _dir) = temp_store();
+        for index in 0..64 {
             store
                 .append(
-                    "main",
-                    &PersistedMessage::ProviderUpdate {
-                        update: chelix_common::ProviderItemUpdate {
-                            segment_id: chelix_common::ProviderSegmentId::new("segment-1"),
-                            item_id: chelix_common::ProviderItemId::new("item-1"),
-                            position: chelix_common::ProviderItemPosition(0),
-                            update_seq: sequence,
-                            payload: chelix_common::ProviderItemUpdatePayload::MessageDelta {
-                                delta: "hello".into(),
-                            },
-                        },
-                        created_at: None,
-                        seq: None,
-                        run_id: None,
-                    }
-                    .to_value(),
+                    "page",
+                    &PersistedMessage::user(index.to_string()).to_value(),
+                )
+                .await
+                .unwrap();
+        }
+        let mut page_rows = 0;
+        store
+            .with_active_records("page", |event| {
+                if matches!(event, ActiveEvent::Row { .. }) {
+                    page_rows += 1;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert_eq!(page_rows, 64);
+
+        for index in 0..70 {
+            store
+                .append(
+                    "before",
+                    &PersistedMessage::user(index.to_string()).to_value(),
                 )
                 .await
                 .unwrap();
         }
         store
             .append(
-                "main",
-                &json!({"role": "provider_segment_close", "segmentId": "segment-1", "outcome": "completed"}),
+                "before",
+                &json!({"role": "checkpoint", "summary": "s", "messagesSummarized": 0}),
             )
             .await
             .unwrap();
-        let page = store
-            .ui_history
-            .page("main", crate::ui_history_types::UiHistoryRange::Latest, 1)
+        let mut before_rows = 0;
+        store
+            .with_active_records("before", |event| {
+                if let ActiveEvent::Row { payload, .. } = event
+                    && payload["role"] == "user"
+                {
+                    before_rows += 1;
+                }
+                Ok(())
+            })
             .await
             .unwrap();
-        let crate::ui_history_types::UiContent::Record(record) = &page.history[0].content else {
-            panic!("assistant snapshot required")
-        };
-        store.append_typed("main", &record.message).await.unwrap();
-
-        assert_eq!(store.count("main").await.unwrap(), 67);
-        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
+        assert_eq!(before_rows, 70);
     }
 
     #[tokio::test]
-    async fn ui_message_count_includes_failed_and_tool_only_segments() {
-        let (store, _dir) = temp_store();
+    async fn import_overwrite_replaces_a_ui_row_that_has_no_journal() {
+        let (source, dir) = temp_store();
+        source
+            .append("legacy", &PersistedMessage::user("from-archive").to_value())
+            .await
+            .unwrap();
+        let snapshot = dir.path().join("snapshot.sqlite");
+        let snapshot_sql = snapshot.to_string_lossy().replace('\'', "''");
+        sqlx::query(&format!("VACUUM INTO '{snapshot_sql}'"))
+            .execute(source.pool().await.unwrap())
+            .await
+            .unwrap();
 
+        let (store, _dir) = temp_store();
+        sqlx::query(
+            "INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages) VALUES ('legacy', 'old', 0, 0, 1)",
+        )
+        .execute(store.pool().await.unwrap())
+        .await
+        .unwrap();
+        let skipped = store
+            .import_journal(&snapshot, JournalImportConflict::Skip)
+            .await
+            .unwrap();
+        assert!(
+            skipped
+                .iter()
+                .any(|warning| warning.contains("already exists"))
+        );
+        let journals = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM session_journal WHERE session_key = 'legacy'",
+        )
+        .fetch_one(store.pool().await.unwrap())
+        .await
+        .unwrap();
+        assert_eq!(journals, 0);
+
+        assert!(
+            store
+                .import_journal(&snapshot, JournalImportConflict::Overwrite)
+                .await
+                .unwrap()
+                .is_empty()
+        );
         store
-            .append(
-                "main",
-                &PersistedMessage::ProviderUpdate {
-                    update: chelix_common::ProviderItemUpdate {
-                        segment_id: chelix_common::ProviderSegmentId::new("abandoned"),
-                        item_id: chelix_common::ProviderItemId::new("item-1"),
-                        position: chelix_common::ProviderItemPosition(0),
-                        update_seq: 1,
-                        payload: chelix_common::ProviderItemUpdatePayload::MessageDelta {
-                            delta: "partial".into(),
-                        },
-                    },
-                    created_at: None,
-                    seq: None,
-                    run_id: None,
-                }
-                .to_value(),
+            .ui_history
+            .page(
+                "legacy",
+                crate::ui_history_types::UiHistoryRange::Latest,
+                10,
             )
             .await
             .unwrap();
+        assert_eq!(
+            store.read("legacy").await.unwrap()[0]["content"],
+            "from-archive"
+        );
+    }
+
+    #[tokio::test]
+    async fn child_snapshot_without_a_journal_is_empty() {
+        let (store, _dir) = temp_store();
+        let messages = store.child_snapshot_messages("missing").await.unwrap();
+        assert!(messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn import_ignores_empty_journals_and_still_imports_nonempty_ones() {
+        let (source, dir) = temp_store();
+        source.ui_history.session("empty").await.unwrap();
+        source
+            .append("full", &PersistedMessage::user("from-archive").to_value())
+            .await
+            .unwrap();
+        let snapshot = dir.path().join("snapshot.sqlite");
+        let snapshot_sql = snapshot.to_string_lossy().replace('\'', "''");
+        sqlx::query(&format!("VACUUM INTO '{snapshot_sql}'"))
+            .execute(source.pool().await.unwrap())
+            .await
+            .unwrap();
+
+        for conflict in [
+            JournalImportConflict::Skip,
+            JournalImportConflict::Overwrite,
+        ] {
+            let (store, _dir) = temp_store();
+            store
+                .append("empty", &PersistedMessage::user("local-empty").to_value())
+                .await
+                .unwrap();
+            store
+                .append("full", &PersistedMessage::user("local-full").to_value())
+                .await
+                .unwrap();
+            let warnings = store.import_journal(&snapshot, conflict).await.unwrap();
+            assert!(
+                !warnings.iter().any(|warning| warning.contains("'empty'")),
+                "{warnings:?}"
+            );
+            assert_eq!(
+                store.read("empty").await.unwrap()[0]["content"],
+                "local-empty"
+            );
+            let full = store.read("full").await.unwrap()[0]["content"].clone();
+            match conflict {
+                JournalImportConflict::Skip => {
+                    assert_eq!(full, "local-full");
+                    assert!(warnings.iter().any(|warning| warning.contains("'full'")));
+                },
+                JournalImportConflict::Overwrite => {
+                    assert_eq!(full, "from-archive");
+                    assert!(warnings.is_empty(), "{warnings:?}");
+                },
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn token_totals_include_every_role_and_keep_the_last_assistant() {
+        let (store, _dir) = temp_store();
         store
             .append(
                 "main",
-                &json!({"role": "provider_segment_close", "segmentId": "abandoned", "outcome": "transport_error"}),
+                &json!({
+                    "role": "assistant",
+                    "content": "first",
+                    "inputTokens": 10,
+                    "outputTokens": 2,
+                    "cacheReadTokens": 3,
+                    "cacheWriteTokens": 4
+                }),
             )
             .await
             .unwrap();
@@ -1340,67 +1204,11 @@ mod tests {
                 "main",
                 &json!({
                     "role": "assistant",
-                    "content": "",
-                    "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]
-                }),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
-    }
-
-    /// A persisted failure is shown to the user, so it counts as a message.
-    #[tokio::test]
-    async fn ui_message_count_includes_persisted_errors() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("main", &json!({"role": "user", "content": "hi"}))
-            .await
-            .unwrap();
-        let session = store.ui_history.session("main").await.unwrap();
-        session
-            .record_error(crate::ui_history_types::UiProviderError {
-                run_id: "run-1".into(),
-                segment_id: None,
-                created_at: 123,
-                raw: "provider failed".into(),
-                details: json!({"status": 503}),
-                retry_after_ms: None,
-            })
-            .unwrap();
-        session.flush().await.unwrap();
-
-        assert_eq!(store.ui_message_count("main").await.unwrap(), 2);
-    }
-
-    #[tokio::test]
-    async fn read_by_run_id_matches_camel_case_tool_lifecycle_identity() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append(
-                "main",
-                &json!({"role": "user", "content": "run it", "run_id": "run-1"}),
-            )
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({
-                    "role": "tool_lifecycle",
-                    "toolCallId": "call-1",
-                    "toolName": "execute_command",
-                    "sequence": 1,
-                    "emittedAtMs": 1,
-                    "runId": "run-1",
-                    "stage": "completed",
-                    "arguments": {"command": "echo done"},
-                    "success": true,
-                    "result": "{\"stdout\":\"done\",\"exitCode\":0}",
-                    "error": null
+                    "content": "second",
+                    "inputTokens": 1,
+                    "outputTokens": 1,
+                    "cacheReadTokens": 1,
+                    "cacheWriteTokens": 1
                 }),
             )
             .await
@@ -1408,1377 +1216,19 @@ mod tests {
         store
             .append(
                 "main",
-                &json!({
-                    "role": "tool_lifecycle",
-                    "toolCallId": "call-2",
-                    "toolName": "execute_command",
-                    "sequence": 1,
-                    "emittedAtMs": 1,
-                    "runId": "run-2",
-                    "stage": "created",
-                    "providerIndex": 0
-                }),
+                &PersistedMessage::checkpoint("sum", "model", "provider", 7, 8, 2).to_value(),
             )
             .await
             .unwrap();
-
-        let messages = store.read_by_run_id("main", "run-1").await.unwrap();
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0]["role"], "user");
-        assert_eq!(messages[1]["role"], "tool_lifecycle");
-        assert_eq!(messages[1]["runId"], "run-1");
-    }
-
-    #[tokio::test]
-    async fn test_search_matching() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("s1", &json!({"role": "user", "content": "hello world"}))
-            .await
-            .unwrap();
-        store
-            .append("s1", &json!({"role": "assistant", "content": "hi there"}))
-            .await
-            .unwrap();
-        store
-            .append("s2", &json!({"role": "user", "content": "goodbye world"}))
-            .await
-            .unwrap();
-
-        let results = store.search(&store.list_keys(), "hello", 10).await.unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].session_key, "s1");
-        assert_eq!(results[0].role, "user");
-        assert!(results[0].snippet.contains("hello"));
-    }
-
-    #[tokio::test]
-    async fn test_search_case_insensitive() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("s1", &json!({"role": "user", "content": "Hello World"}))
-            .await
-            .unwrap();
-
-        let results = store
-            .search(&store.list_keys(), "hello world", 10)
-            .await
-            .unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].session_key, "s1");
-    }
-
-    #[tokio::test]
-    async fn test_search_no_match() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("s1", &json!({"role": "user", "content": "hello"}))
-            .await
-            .unwrap();
-
-        let results = store.search(&store.list_keys(), "xyz", 10).await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_search_empty_query() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("s1", &json!({"role": "user", "content": "hello"}))
-            .await
-            .unwrap();
-
-        let results = store.search(&store.list_keys(), "", 10).await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_search_across_sessions() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("s1", &json!({"role": "user", "content": "rust is great"}))
-            .await
-            .unwrap();
-        store
-            .append(
-                "s2",
-                &json!({"role": "assistant", "content": "rust is awesome"}),
-            )
-            .await
-            .unwrap();
-        store
-            .append("s3", &json!({"role": "user", "content": "python is nice"}))
-            .await
-            .unwrap();
-
-        let results = store.search(&store.list_keys(), "rust", 10).await.unwrap();
-        assert_eq!(results.len(), 2);
-        let keys: Vec<&str> = results.iter().map(|r| r.session_key.as_str()).collect();
-        assert!(keys.contains(&"s1"));
-        assert!(keys.contains(&"s2"));
-    }
-
-    #[tokio::test]
-    async fn test_search_max_results() {
-        let (store, _dir) = temp_store();
-
-        for i in 0..10 {
-            let key = format!("s{i}");
-            store
-                .append(&key, &json!({"role": "user", "content": "common term"}))
-                .await
-                .unwrap();
-        }
-
-        let results = store.search(&store.list_keys(), "common", 3).await.unwrap();
-        assert!(results.len() <= 3);
-    }
-
-    #[tokio::test]
-    async fn test_key_sanitization() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append(
-                "session:abc-123",
-                &json!({"role": "user", "content": "hello"}),
-            )
-            .await
-            .unwrap();
-        let msgs = store.read("session:abc-123").await.unwrap();
-        assert_eq!(msgs.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_save_and_read_media() {
-        let (store, _dir) = temp_store();
-        let data = b"fake png data";
-
-        let path = store.save_media("main", "call_1.png", data).await.unwrap();
-        assert_eq!(path, "media/main/call_1.png");
-
-        let read_back = store.read_media("main", "call_1.png").await.unwrap();
-        assert_eq!(read_back, data);
-    }
-
-    #[tokio::test]
-    async fn test_save_media_with_colon_key() {
-        let (store, _dir) = temp_store();
-        let data = b"screenshot bytes";
-
-        let path = store
-            .save_media("session:abc", "shot.png", data)
-            .await
-            .unwrap();
-        assert_eq!(path, "media/session_abc/shot.png");
-
-        let read_back = store.read_media("session:abc", "shot.png").await.unwrap();
-        assert_eq!(read_back, data);
-    }
-
-    #[test]
-    fn test_media_path_for_uses_session_media_dir() {
-        let (store, dir) = temp_store();
-        let path = store.media_path_for("session:abc", "report.pdf");
-        assert_eq!(
-            path,
-            dir.path()
-                .join("media")
-                .join("session_abc")
-                .join("report.pdf")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_read_media_missing_file() {
-        let (store, _dir) = temp_store();
-        let result = store.read_media("main", "nonexistent.png").await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_clear_removes_media_dir() {
-        let (store, dir) = temp_store();
-
-        // Create a session and media.
-        store
-            .append("main", &json!({"role": "user", "content": "hello"}))
-            .await
-            .unwrap();
-        store
-            .save_media("main", "shot.png", b"img data")
-            .await
-            .unwrap();
-
-        let media_dir = dir.path().join("media").join("main");
-        assert!(media_dir.exists());
-
-        store.clear("main").await.unwrap();
-
-        assert!(!media_dir.exists());
-        assert!(store.read("main").await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_truncate_from_user_message_removes_target_and_tail() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("main", &json!({"role": "system", "content": "context"}))
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({"role": "user", "content": "remove me", "seq": 7}),
-            )
-            .await
-            .unwrap();
-        store
-            .append("main", &json!({"role": "assistant", "content": "tail"}))
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({
-                    "role": "tool_lifecycle",
-                    "toolCallId": "call-tail",
-                    "toolName": "execute_command",
-                    "sequence": 1,
-                    "emittedAtMs": 1,
-                    "runId": "run-1",
-                    "stage": "completed",
-                    "arguments": {"command": "echo tail"},
-                    "success": true,
-                    "result": "{\"stdout\":\"tail\",\"exitCode\":0}",
-                    "error": null
-                }),
-            )
-            .await
-            .unwrap();
-
-        let result = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(1))
-            .await
-            .unwrap();
-
-        assert_eq!(result.target_index, 1);
-        assert_eq!(result.kept_count, 1);
-        assert_eq!(result.removed_count, 3);
-        let messages = store.read("main").await.unwrap();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0]["role"], "system");
-    }
-
-    #[tokio::test]
-    async fn test_truncate_from_user_message_can_target_client_seq() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append(
-                "main",
-                &json!({"role": "user", "content": "keep", "seq": 1}),
-            )
-            .await
-            .unwrap();
-        store
-            .append("main", &json!({"role": "assistant", "content": "keep"}))
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({"role": "user", "content": "remove", "seq": 2}),
-            )
-            .await
-            .unwrap();
-
-        let result = store
-            .truncate_from_user_message("main", UserMessageTarget::ClientSeq(2))
-            .await
-            .unwrap();
-
-        assert_eq!(result.target_index, 2);
-        assert_eq!(store.read("main").await.unwrap().len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_truncate_from_user_message_rejects_non_user_target() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("main", &json!({"role": "assistant", "content": "not user"}))
-            .await
-            .unwrap();
-
-        let error = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
-            .await
-            .unwrap_err();
-
-        assert!(error.to_string().contains("not a user message"));
-        assert_eq!(store.read("main").await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_truncate_from_user_message_rejects_out_of_range() {
-        let (store, _dir) = temp_store();
-
-        store
-            .append("main", &json!({"role": "user", "content": "only"}))
-            .await
-            .unwrap();
-
-        let error = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(5))
-            .await
-            .unwrap_err();
-
-        assert!(error.to_string().contains("exceeds message count"));
-        assert_eq!(store.read("main").await.unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_truncate_from_user_message_rejects_missing_session() {
-        let (store, dir) = temp_store();
-
-        let error = store
-            .truncate_from_user_message("missing", UserMessageTarget::MessageIndex(0))
-            .await
-            .unwrap_err();
-
-        assert_eq!(error.to_string(), "messageIndex 0 exceeds message count 0");
-        assert!(!dir.path().join("missing.jsonl").exists());
-    }
-
-    #[tokio::test]
-    async fn test_truncate_from_user_message_prunes_unreferenced_media() {
-        let (store, _dir) = temp_store();
-
-        store.save_media("main", "keep.ogg", b"keep").await.unwrap();
-        store
-            .save_media("main", "remove.ogg", b"remove")
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({"role": "user", "content": "keep", "audio": "media/main/keep.ogg"}),
-            )
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({"role": "user", "content": "remove", "audio": "media/main/remove.ogg"}),
-            )
-            .await
-            .unwrap();
-
-        let result = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(1))
-            .await
-            .unwrap();
-
-        assert_eq!(result.pruned_media_count, 1);
-        assert!(store.media_path_for("main", "keep.ogg").exists());
-        assert!(!store.media_path_for("main", "remove.ogg").exists());
-    }
-
-    // --- Typed API tests ---
-
-    #[tokio::test]
-    async fn test_append_typed_and_read_typed() {
-        use crate::message::PersistedMessage;
-
-        let (store, _dir) = temp_store();
-
-        store
-            .append_typed("main", &PersistedMessage::user("hello"))
-            .await
-            .unwrap();
-        store
-            .append_typed(
-                "main",
-                &PersistedMessage::assistant("hi", "gpt-4o", "openai", 10, 5, None),
-            )
-            .await
-            .unwrap();
-
-        let msgs = store.read_typed("main").await.unwrap();
-        assert_eq!(msgs.len(), 2);
-        match &msgs[0] {
-            PersistedMessage::User { content, .. } => {
-                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "hello"));
-            },
-            _ => panic!("expected User message"),
-        }
-        match &msgs[1] {
-            PersistedMessage::Assistant { content, model, .. } => {
-                assert_eq!(content, "hi");
-                assert_eq!(model.as_deref(), Some("gpt-4o"));
-            },
-            _ => panic!("expected Assistant message"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_append_with_index_returns_its_physical_history_index() {
-        let (store, _dir) = temp_store();
-        store
-            .append("main", &json!({ "role": "user", "content": "before" }))
-            .await
-            .unwrap();
-        store
-            .append("main", &json!({ "role": "assistant", "content": "middle" }))
-            .await
-            .unwrap();
-
-        let index = store
-            .append_with_index("main", &json!({ "role": "assistant", "content": "final" }))
-            .await
-            .unwrap();
-
-        assert_eq!(index, 2);
-        let history = store.read("main").await.unwrap();
-        assert_eq!(history.len(), 3);
-        assert_eq!(history[index]["content"], "final");
-    }
-
-    #[tokio::test]
-    async fn append_with_index_counts_existing_non_empty_jsonl_records() {
-        let (store, dir) = temp_store();
-        fs::write(
-            dir.path().join("main.jsonl"),
-            b"{\"record\":0}\n\n   \n{\"record\":1}\n",
-        )
-        .unwrap();
-
-        let index = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 2 }),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(index, 2);
-        assert_eq!(store.read("main").await.unwrap().len(), 3);
-    }
-
-    #[tokio::test]
-    async fn append_with_index_returns_zero_for_an_empty_file() {
-        let (store, dir) = temp_store();
-        fs::write(dir.path().join("main.jsonl"), []).unwrap();
-
-        let index = store
-            .append_with_index(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(index, 0);
-    }
-
-    #[tokio::test]
-    async fn append_with_index_recovers_one_hundred_existing_records() {
-        let (store, dir) = temp_store();
-        let history = (0..100)
-            .map(|record| format!("{{\"record\":{record}}}\n"))
-            .collect::<String>();
-        fs::write(dir.path().join("main.jsonl"), history).unwrap();
-
-        let index = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 100 }),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(index, 100);
-    }
-
-    #[tokio::test]
-    async fn append_batch_at_index_returns_first_record_index() {
-        let (store, _dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-
-        let index = store
-            .append_batch_at_index(
-                "main",
-                &[
-                    json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-                    json!({ "role": "user", "content": "journal fixture", "record": 2 }),
-                ],
-                1,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(index, 1);
-        let history = store.read("main").await.unwrap();
-        assert_eq!(history.len(), 3);
-        assert_eq!(history[1]["record"], 1);
-        assert_eq!(history[2]["record"], 2);
-    }
-
-    #[tokio::test]
-    async fn append_indexes_remain_contiguous() {
-        let (store, _dir) = temp_store();
-
-        for expected_index in 0..32 {
-            let index = store
-                .append_with_index("main", &json!({ "role": "user", "content": "journal fixture", "record": expected_index }))
-                .await
-                .unwrap();
-            assert_eq!(index, expected_index);
-        }
-    }
-
-    #[tokio::test]
-    async fn ordinary_append_advances_a_warm_indexed_tail() {
-        let (store, _dir) = temp_store();
-        assert_eq!(
-            store
-                .append_with_index(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 0 })
-                )
-                .await
-                .unwrap(),
-            0
-        );
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-            )
-            .await
-            .unwrap();
-
-        let index = store
-            .append_with_index(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 2 }),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(index, 2);
-    }
-
-    #[tokio::test]
-    async fn append_serializes_the_complete_batch_before_taking_the_file_lock() {
-        let (store, dir) = temp_store();
-        let path = dir.path().join("main.jsonl");
-        fs::write(&path, []).unwrap();
-        let observed_unlocked = Arc::new(AtomicBool::new(false));
-        let message = LockCheckingSerialize {
-            path,
-            observed_unlocked: Arc::clone(&observed_unlocked),
-        };
-
-        store
-            .append_serializable("main", &[message], None)
-            .await
-            .unwrap();
-
-        assert!(observed_unlocked.load(Ordering::Relaxed));
-    }
-
-    #[tokio::test]
-    async fn serialization_failure_preserves_file_and_warm_tail() {
-        let (store, dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        let path = dir.path().join("main.jsonl");
-        let bytes_before = fs::read(&path).unwrap();
-        let tail_state = store.tail_state_for("main", &path).unwrap();
-        let cursor_before = tail_state.lock().unwrap().cursor.clone();
-
-        let error = store
-            .append_serializable("main", &[FailingSerialize], None)
-            .await
-            .unwrap_err();
-
-        assert!(error.to_string().contains("injected serialization failure"));
-        assert_eq!(fs::read(path).unwrap(), bytes_before);
-        assert_eq!(tail_state.lock().unwrap().cursor, cursor_before);
-    }
-
-    #[tokio::test]
-    async fn test_append_at_index_mismatch_refuses_without_writing() {
-        let (store, dir) = temp_store();
-        store
-            .append("main", &json!({ "role": "user", "content": "before" }))
-            .await
-            .unwrap();
-        let session_path = dir.path().join("main.jsonl");
-        let bytes_before = fs::read(&session_path).unwrap();
-
-        let result = store
-            .append_at_index(
-                "main",
-                &json!({ "role": "assistant", "content": "must not persist" }),
-                2,
-            )
-            .await;
-
-        assert!(result.is_err());
-        assert_eq!(fs::read(session_path).unwrap(), bytes_before);
-        let history = store.read("main").await.unwrap();
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0]["content"], "before");
-    }
-
-    #[tokio::test]
-    async fn append_at_index_mismatch_preserves_the_warm_cursor() {
-        let (store, dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        let path = dir.path().join("main.jsonl");
-        let tail_state = store.tail_state_for("main", &path).unwrap();
-        let cursor_before = tail_state.lock().unwrap().cursor.clone();
-
-        store
-            .append_at_index(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-                2,
-            )
-            .await
-            .unwrap_err();
-
-        assert_eq!(tail_state.lock().unwrap().cursor, cursor_before);
-    }
-
-    #[tokio::test]
-    async fn repeated_cold_cas_mismatch_scans_existing_history_once() {
-        let (store, dir) = temp_store();
-        let history = (0..10_000)
-            .map(|record| format!("{{\"record\":{record}}}\n"))
-            .collect::<String>();
-        let path = dir.path().join("main.jsonl");
-        let bytes_before = history.as_bytes().to_vec();
-        fs::write(&path, history).unwrap();
-
-        for _ in 0..2 {
-            store
-                .append_canonical_at(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": "rejected" }),
-                    0,
-                )
-                .await
-                .unwrap_err();
-        }
-
-        assert_eq!(fs::read(path).unwrap(), bytes_before);
-        assert_eq!(store.tail_registry.scan_metrics().0, 1);
-    }
-
-    #[test]
-    fn append_index_overflow_is_an_explicit_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("main.jsonl");
-        let file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(&path)
-            .unwrap();
-        let stamp = SessionFileStamp::read(&file).unwrap();
-        let registry = SessionTailRegistry::new();
-        let mut tail = SessionTailState::default();
-        tail.set(usize::MAX, stamp);
-        let batch = serialize_batch(&[
-            json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-        ])
-        .unwrap();
-        let bytes_before = fs::read(&path).unwrap();
-
-        let result = append_serialized_locked(&path, &batch, None, &registry, &mut tail);
-
-        assert!(matches!(
-            result,
-            Err(AppendFailure::InvalidatesCursor(Error::Message { message }))
-                if message == "session message index overflow"
-        ));
-        assert_eq!(fs::read(path).unwrap(), bytes_before);
-    }
-
-    #[tokio::test]
-    async fn partial_write_failure_invalidates_tail_and_corruption_remains_fail_closed() {
-        let (store, dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        store.tail_registry.fail_next_write();
-
-        let error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("injected session append write failure")
-        );
-        let path = dir.path().join("main.jsonl");
-        let tail_state = store.tail_state_for("main", &path).unwrap();
-        assert!(tail_state.lock().unwrap().cursor.is_none());
-        let retry_error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 2 }),
-            )
-            .await
-            .unwrap_err();
-        assert!(
-            retry_error
-                .to_string()
-                .contains("session JSONL ends with an incomplete record")
-        );
-    }
-
-    #[tokio::test]
-    async fn file_lock_failure_is_explicit_and_the_next_append_recovers_the_tail() {
-        let (store, dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        let path = dir.path().join("main.jsonl");
-        let bytes_before = fs::read(&path).unwrap();
-        store.tail_registry.fail_next_file_lock();
-
-        let error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("injected session file lock failure")
-        );
-        assert_eq!(fs::read(&path).unwrap(), bytes_before);
-        assert_eq!(
-            store
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 1 })
-                )
-                .await
-                .unwrap(),
-            1
-        );
-    }
-
-    #[tokio::test]
-    async fn metadata_failure_is_explicit_and_the_next_append_recovers_the_tail() {
-        let (store, dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        let path = dir.path().join("main.jsonl");
-        let bytes_before = fs::read(&path).unwrap();
-        store.tail_registry.fail_next_metadata();
-
-        let error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("injected session metadata failure")
-        );
-        assert_eq!(fs::read(&path).unwrap(), bytes_before);
-        assert_eq!(
-            store
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 1 })
-                )
-                .await
-                .unwrap(),
-            1
-        );
-    }
-
-    #[tokio::test]
-    async fn test_update_typed_at_preserves_history_order() {
-        use crate::message::PersistedMessage;
-
-        let (store, _dir) = temp_store();
-        store
-            .append_typed("main", &PersistedMessage::user("before"))
-            .await
-            .unwrap();
-        store
-            .append_typed(
-                "main",
-                &PersistedMessage::assistant("tool segment", "gpt-4.1", "openai", 10, 2, None),
-            )
-            .await
-            .unwrap();
-        store
-            .append_typed("main", &PersistedMessage::system("after"))
-            .await
-            .unwrap();
-
-        store
-            .update_typed_at("main", 1, |_| {
-                PersistedMessage::assistant("finalized segment", "gpt-4.1", "openai", 20, 5, None)
-            })
-            .await
-            .unwrap();
-
-        let messages = store.read_typed("main").await.unwrap();
-        assert_eq!(messages.len(), 3);
-        assert!(matches!(
-            &messages[0],
-            PersistedMessage::User { content: crate::message::MessageContent::Text(content), .. } if content == "before"
-        ));
-        assert!(matches!(
-            &messages[1],
-            PersistedMessage::Assistant { content, input_tokens: Some(20), output_tokens: Some(5), .. } if content == "finalized segment"
-        ));
-        assert!(matches!(
-            &messages[2],
-            PersistedMessage::System { content, .. } if content == "after"
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_update_typed_at_missing_session_does_not_create_file() {
-        use crate::message::PersistedMessage;
-
-        let (store, dir) = temp_store();
-        let session_path = dir.path().join("missing.jsonl");
-
-        let result = store
-            .update_typed_at("missing", 0, |_| {
-                PersistedMessage::assistant("noop", "gpt-4.1", "openai", 1, 1, None)
-            })
-            .await;
-
-        assert!(result.is_err());
-        assert!(!session_path.exists());
-    }
-
-    #[tokio::test]
-    async fn test_read_typed_empty() {
-        let (store, _dir) = temp_store();
-        let msgs = store.read_typed("nonexistent").await.unwrap();
-        assert!(msgs.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_read_last_n_typed() {
-        use crate::message::PersistedMessage;
-
-        let (store, _dir) = temp_store();
-
-        for i in 0..5 {
-            store
-                .append_typed("test", &PersistedMessage::user(format!("msg-{i}")))
-                .await
-                .unwrap();
-        }
-
-        let last2 = store.read_last_n_typed("test", 2).await.unwrap();
-        assert_eq!(last2.len(), 2);
-        match &last2[0] {
-            PersistedMessage::User { content, .. } => {
-                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "msg-3"));
-            },
-            _ => panic!("expected User message"),
-        }
-        match &last2[1] {
-            PersistedMessage::User { content, .. } => {
-                assert!(matches!(content, crate::message::MessageContent::Text(t) if t == "msg-4"));
-            },
-            _ => panic!("expected User message"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_typed_roundtrip_with_value_api() {
-        use crate::message::PersistedMessage;
-
-        let (store, _dir) = temp_store();
-
-        // Write with typed API, read with Value API.
-        store
-            .append_typed("main", &PersistedMessage::user("typed write"))
-            .await
-            .unwrap();
-        let values = store.read("main").await.unwrap();
-        assert_eq!(values.len(), 1);
-        assert_eq!(values[0]["role"], "user");
-        assert_eq!(values[0]["content"], "typed write");
-
-        // Write with Value API, read with typed API.
-        store
-            .append(
-                "main",
-                &json!({"role": "assistant", "content": "value write"}),
-            )
-            .await
-            .unwrap();
-        let typed = store.read_typed("main").await.unwrap();
-        assert_eq!(typed.len(), 2);
-        match &typed[1] {
-            PersistedMessage::Assistant { content, .. } => {
-                assert_eq!(content, "value write");
-            },
-            _ => panic!("expected Assistant message"),
-        }
-    }
-
-    #[tokio::test]
-    async fn truncate_publishes_the_kept_record_count() {
-        let (store, _dir) = temp_store();
-        store
-            .append("main", &json!({ "role": "system", "content": "context" }))
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "remove", "seq": 7 }),
-            )
-            .await
-            .unwrap();
-        store
-            .append("main", &json!({ "role": "assistant", "content": "tail" }))
-            .await
-            .unwrap();
-        store
-            .truncate_from_user_message("main", UserMessageTarget::ClientSeq(7))
-            .await
-            .unwrap();
-
-        assert_eq!(
-            store
-                .append_with_index("main", &json!({ "role": "system", "content": "next" }))
-                .await
-                .unwrap(),
-            1
-        );
-    }
-
-    #[tokio::test]
-    async fn update_typed_at_preserves_tail_after_changing_line_size() {
-        let (store, _dir) = temp_store();
-        store
-            .append_typed("main", &PersistedMessage::user("short"))
-            .await
-            .unwrap();
-        store
-            .append_typed("main", &PersistedMessage::system("tail"))
-            .await
-            .unwrap();
-        store
-            .update_typed_at("main", 0, |_| PersistedMessage::user("x".repeat(16_384)))
-            .await
-            .unwrap();
-
-        assert_eq!(
-            store
-                .append_with_index("main", &json!({ "role": "system", "content": "next" }))
-                .await
-                .unwrap(),
-            2
-        );
-    }
-
-    #[tokio::test]
-    async fn clear_removes_tail_before_recreating_the_session() {
-        let (store, _dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 1 }),
-            )
-            .await
-            .unwrap();
-        store.clear("main").await.unwrap();
-
-        assert_eq!(
-            store
-                .append_with_index(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": "recreated" })
-                )
-                .await
-                .unwrap(),
-            0
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn concurrent_appends_return_a_unique_contiguous_order() {
-        let (store, _dir) = temp_store();
-        let store = Arc::new(store);
-        let mut tasks = Vec::new();
-        for record in 0..256 {
-            let store = Arc::clone(&store);
-            tasks.push(tokio::spawn(async move {
-                let index = store
-                    .append_with_index(
-                        "main",
-                        &json!({ "role": "user", "content": "journal fixture", "record": record }),
-                    )
-                    .await
-                    .unwrap();
-                (index, record)
-            }));
-        }
-
-        let mut issued = Vec::new();
-        for task in tasks {
-            issued.push(task.await.unwrap());
-        }
-        issued.sort_unstable_by_key(|(index, _)| *index);
-
-        assert_eq!(
-            issued.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
-            (0..256).collect::<Vec<_>>()
-        );
-        let history = store.read("main").await.unwrap();
-        assert_eq!(history.len(), 256);
-        for (index, record) in issued {
-            assert_eq!(history[index]["record"], record);
-        }
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn concurrent_expected_index_cas_allows_exactly_one_winner() {
-        let (store, _dir) = temp_store();
-        let store = Arc::new(store);
-        let mut tasks = Vec::new();
-        for contender in 0..128 {
-            let store = Arc::clone(&store);
-            tasks.push(tokio::spawn(async move {
-                store
-                    .append_at_index(
-                        "main",
-                        &json!({ "role": "user", "content": "journal fixture", "contender": contender }),
-                        0,
-                    )
-                    .await
-            }));
-        }
-
-        let mut winners = 0;
-        for task in tasks {
-            if task.await.unwrap().is_ok() {
-                winners += 1;
-            }
-        }
-
-        assert_eq!(winners, 1);
-        assert_eq!(store.read("main").await.unwrap().len(), 1);
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn blocked_session_state_does_not_block_another_session() {
-        let (store, _dir) = temp_store();
-        let store = Arc::new(store);
-        let _blocked_ui = store.ui_history.session("blocked").await.unwrap();
-        let _independent_ui = store.ui_history.session("independent").await.unwrap();
-        let blocked_path = store.path_for("blocked");
-        let blocked_state = store.tail_state_for("blocked", &blocked_path).unwrap();
-        let held_state = Arc::clone(&blocked_state);
-        let (locked_tx, locked_rx) = mpsc::sync_channel(1);
-        let (release_tx, release_rx) = mpsc::sync_channel(1);
-        let holder = std::thread::spawn(move || {
-            let _guard = held_state.lock().unwrap();
-            locked_tx.send(()).unwrap();
-            release_rx.recv().unwrap();
-        });
-        locked_rx.recv().unwrap();
-        let initial_references = Arc::strong_count(&blocked_state);
-        let blocked_store = Arc::clone(&store);
-        let blocked_task = tokio::spawn(async move {
-            blocked_store
-                .append_with_index(
-                    "blocked",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-                )
-                .await
-        });
-        while Arc::strong_count(&blocked_state) <= initial_references && !blocked_task.is_finished()
-        {
-            tokio::task::yield_now().await;
-        }
-
-        let independent_result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            store.append_with_index(
-                "independent",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            ),
-        )
-        .await;
-        let release_result = release_tx.send(());
-        let blocked_result = blocked_task.await;
-        let holder_result = holder.join();
-
-        release_result.unwrap();
-        holder_result.unwrap();
-        assert_eq!(
-            independent_result
-                .expect("independent session must not wait for another session")
-                .unwrap(),
-            0
-        );
-        assert_eq!(blocked_result.unwrap().unwrap(), 0);
-    }
-
-    #[tokio::test]
-    async fn a_second_store_recovers_after_each_external_stamp_change() {
-        let dir = tempfile::tempdir().unwrap();
-        let first = SessionStore::new(dir.path().to_path_buf());
-        let second = SessionStore::new(dir.path().to_path_buf());
-
-        assert_eq!(
-            first
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 0 })
-                )
-                .await
-                .unwrap(),
-            0
-        );
-        assert_eq!(
-            second
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 1 })
-                )
-                .await
-                .unwrap(),
-            1
-        );
-        assert_eq!(
-            first
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 2 })
-                )
-                .await
-                .unwrap(),
-            2
-        );
-        assert_eq!(
-            second
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 3 })
-                )
-                .await
-                .unwrap(),
-            3
-        );
-        assert_eq!(second.tail_registry.scan_metrics().0, 2);
-    }
-
-    #[tokio::test]
-    async fn external_file_append_invalidates_the_cached_stamp() {
-        let (store, dir) = temp_store();
-        store
-            .append(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap();
-        let path = dir.path().join("main.jsonl");
-        let mut file = OpenOptions::new().append(true).open(path).unwrap();
-        writeln!(file, "{{\"record\":1}}").unwrap();
-        file.flush().unwrap();
-
-        let index = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 2 }),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(index, 2);
-        assert_eq!(store.tail_registry.scan_metrics().0, 2);
-    }
-
-    #[tokio::test]
-    async fn restart_scans_existing_history_once() {
-        let dir = tempfile::tempdir().unwrap();
-        let initial = (0..10_000)
-            .map(|record| format!("{{\"record\":{record}}}\n"))
-            .collect::<String>();
-        fs::write(dir.path().join("main.jsonl"), initial).unwrap();
-        let restarted = SessionStore::new(dir.path().to_path_buf());
-
-        assert_eq!(
-            restarted
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 10_000 })
-                )
-                .await
-                .unwrap(),
-            10_000
-        );
-        assert_eq!(
-            restarted
-                .append_canonical(
-                    "main",
-                    &json!({ "role": "user", "content": "journal fixture", "record": 10_001 })
-                )
-                .await
-                .unwrap(),
-            10_001
-        );
-        assert_eq!(restarted.tail_registry.scan_metrics().0, 1);
-    }
-
-    #[tokio::test]
-    async fn incomplete_last_record_is_rejected_without_appending() {
-        let (store, dir) = temp_store();
-        let path = dir.path().join("main.jsonl");
-        let damaged = b"{\"record\":0}\n{\"record\":1}";
-        fs::write(&path, damaged).unwrap();
-
-        let error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 2 }),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("session JSONL ends with an incomplete record")
-        );
-        assert_eq!(fs::read(path).unwrap(), damaged);
-    }
-
-    #[tokio::test]
-    async fn scan_read_error_is_not_treated_as_an_empty_history() {
-        let (store, dir) = temp_store();
-        let path = dir.path().join("main.jsonl");
-        fs::write(&path, [0xff, b'\n']).unwrap();
-
-        let error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, Error::Io(_)));
-        assert_eq!(fs::read(path).unwrap(), [0xff, b'\n']);
-    }
-
-    #[tokio::test]
-    async fn open_error_is_not_treated_as_an_empty_history() {
-        let (store, dir) = temp_store();
-        fs::create_dir(dir.path().join("main.jsonl")).unwrap();
-
-        let error = store
-            .append_canonical(
-                "main",
-                &json!({ "role": "user", "content": "journal fixture", "record": 0 }),
-            )
-            .await
-            .unwrap_err();
-
-        assert!(matches!(error, Error::Io(_)));
-    }
-
-    #[tokio::test]
-    async fn warm_indexed_appends_scan_old_bytes_exactly_once() {
-        const EXISTING_RECORDS: usize = 100_000;
-        const NEW_RECORDS: usize = 2_000;
-
-        let (store, dir) = temp_store();
-        let initial = (0..EXISTING_RECORDS)
-            .map(|record| format!("{{\"record\":{record}}}\n"))
-            .collect::<String>();
-        let initial_bytes = initial.len();
-        fs::write(dir.path().join("main.jsonl"), initial).unwrap();
-
-        for offset in 0..NEW_RECORDS {
-            let expected_index = EXISTING_RECORDS + offset;
-            let index = store
-                .append_canonical("main", &json!({ "role": "user", "content": "journal fixture", "record": expected_index }))
-                .await
-                .unwrap();
-            assert_eq!(index, expected_index);
-        }
-
-        assert_eq!(store.tail_registry.scan_metrics(), (1, initial_bytes));
+        let totals = store.token_totals("main").await.unwrap();
+        assert_eq!(totals.input_tokens, 18);
+        assert_eq!(totals.output_tokens, 11);
+        assert_eq!(totals.cache_read_tokens, 4);
+        assert_eq!(totals.cache_write_tokens, 5);
+        assert_eq!(totals.last_assistant.unwrap()["content"], "second");
+        let payloads = store.assistant_payloads("main").await.unwrap();
+        assert_eq!(payloads.len(), 2);
+        assert_eq!(payloads[0]["content"], "first");
+        assert_eq!(payloads[1]["content"], "second");
     }
 }

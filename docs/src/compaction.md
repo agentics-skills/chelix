@@ -183,7 +183,7 @@ Because the history is append-only:
 
 - **Forking copies a confirmed prefix.** UI positions and canonical bindings
   must admit the same cut; see [Session Branching](session-branching.md).
-  Messages before the checkpoint remain in the session file, byte-identical.
+  Messages before the checkpoint remain in `session_records`, unchanged.
 - **The web UI shows the full conversation**, with a checkpoint card marking
   where each new context window begins.
 - **Synchronous inter-session sends keep their natural final gate.** Automatic

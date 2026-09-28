@@ -22,14 +22,11 @@ impl LiveSessionService {
             .as_ref()
             .ok_or_else(|| "session voice generation is not configured".to_string())?;
 
-        let history = self.store.read(key).await.map_err(ServiceError::message)?;
-        if history.is_empty() {
-            return Err(format!("session '{key}' has no messages").into());
-        }
-
-        let target_msg = history
-            .get(target_index)
-            .ok_or_else(|| format!("message index {target_index} is out of range"))?;
+        let target_msg = self
+            .store
+            .read_record(key, target_index)
+            .await
+            .map_err(ServiceError::message)?;
         if target_msg.get("role").and_then(|v| v.as_str()) != Some("assistant") {
             return Err("target message is not an assistant response".into());
         }
@@ -49,7 +46,7 @@ impl LiveSessionService {
             }));
         }
 
-        let text = message_text(target_msg)
+        let text = message_text(&target_msg)
             .ok_or_else(|| "assistant message has no text content to synthesize".to_string())?;
         let sanitized = sanitize_tts_text(&text).trim().to_string();
         if sanitized.is_empty() {

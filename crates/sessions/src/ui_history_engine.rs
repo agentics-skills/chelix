@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    future::Future,
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard, Weak},
     time::Duration,
@@ -109,6 +110,25 @@ impl UiHistoryEngine {
         self.load_session(key, UiSessionAccess::Discard).await
     }
 
+    pub(crate) async fn pool(&self) -> Result<&sqlx::SqlitePool> {
+        self.database.pool().await
+    }
+
+    /// Run `write` while preventing `session()` from loading `key`.
+    ///
+    /// Returns false when a live session already holds `key`.
+    pub(crate) async fn import_key_if_idle<Fut>(&self, key: &str, write: Fut) -> Result<bool>
+    where
+        Fut: Future<Output = Result<()>>,
+    {
+        let sessions = self.sessions.lock().await;
+        if sessions.get(key).and_then(Weak::upgrade).is_some() {
+            return Ok(false);
+        }
+        write.await?;
+        Ok(true)
+    }
+
     async fn load_session(
         &self,
         key: &str,
@@ -208,8 +228,8 @@ impl UiHistoryEngine {
         for key in keys {
             let session = match self.session(key).await {
                 Ok(session) => session,
-                Err(error @ Error::MissingUiSnapshots { .. }) => {
-                    tracing::warn!(session_key = %key, %error, "excluding session without UI snapshots from search");
+                Err(error @ Error::HistoryWithoutJournal { .. }) => {
+                    tracing::warn!(session_key = %key, %error, "excluding session without a canonical journal from search");
                     continue;
                 },
                 Err(error) => return Err(error),
@@ -620,7 +640,7 @@ impl UiHistorySession {
     /// Wait for all snapshots observed at entry, independently of socket listeners.
     pub async fn flush(&self) -> Result<()> {
         let mut progress = self.flush_progress.lock().await;
-        let (generation, revision, next_position, count, canonical_tail, failure, entries) = {
+        let (generation, revision, next_position, count, failure, entries) = {
             let state = self.lock()?;
             if state.revision == progress.revision {
                 return state.check();
@@ -630,7 +650,6 @@ impl UiHistorySession {
                 state.revision,
                 state.next_position,
                 state.total_messages,
-                state.canonical_tail,
                 state.failure.clone(),
                 state
                     .entries
@@ -641,10 +660,10 @@ impl UiHistorySession {
             )
         };
         let pool = self.database.pool().await?;
-        let mut transaction = pool.begin().await?;
-        let updated = sqlx::query("UPDATE ui_history_sessions SET revision = ?, next_position = ?, total_messages = ?, canonical_tail = ?, failure = ? WHERE session_key = ? AND generation = ? AND revision = ?")
+        let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await?;
+        let updated = sqlx::query("UPDATE ui_history_sessions SET revision = ?, next_position = ?, total_messages = ?, failure = ? WHERE session_key = ? AND generation = ? AND revision = ?")
             .bind(integer(revision)?).bind(integer(next_position)?).bind(i64::from(count))
-            .bind(i64::try_from(canonical_tail).map_err(|error| Error::message(error.to_string()))?).bind(&failure)
+            .bind(&failure)
             .bind(&self.key).bind(&generation.0).bind(integer(progress.revision)?)
             .execute(&mut *transaction).await?.rows_affected();
         if updated != 1 {
@@ -1119,7 +1138,7 @@ impl UiHistorySession {
         self.ensure_empty()?;
         let canonical_tail = snapshot.canonical_tail;
         let pool = self.database.pool().await?;
-        let mut transaction = pool.begin().await?;
+        let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await?;
         crate::ui_history_database::write_entries(&mut transaction, &self.key, &snapshot.entries)
             .await?;
         let row = sqlx::query("SELECT COUNT(*) AS count, COALESCE(MAX(revision), 0) AS revision, COALESCE(MAX(position) + 1, 0) AS next_position FROM ui_history_snapshots WHERE session_key = ?")
@@ -1128,9 +1147,9 @@ impl UiHistorySession {
             .map_err(|error| Error::message(error.to_string()))?;
         let revision = unsigned(row.try_get("revision")?)?;
         let next_position = unsigned(row.try_get("next_position")?)?;
-        sqlx::query("UPDATE ui_history_sessions SET revision = ?, next_position = ?, total_messages = ?, canonical_tail = ? WHERE session_key = ?")
+        sqlx::query("UPDATE ui_history_sessions SET revision = ?, next_position = ?, total_messages = ? WHERE session_key = ?")
             .bind(integer(revision)?).bind(integer(next_position)?).bind(i64::from(count))
-            .bind(i64::try_from(canonical_tail).map_err(|error| Error::message(error.to_string()))?).bind(&self.key)
+            .bind(&self.key)
             .execute(&mut *transaction).await?;
         transaction.commit().await?;
         let mut state = self.lock()?;
@@ -1206,7 +1225,7 @@ impl UiHistorySession {
             )
         };
         let pool = self.database.pool().await?;
-        let mut transaction = pool.begin().await?;
+        let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await?;
         let boundary =
             i64::try_from(canonical_tail).map_err(|error| Error::message(error.to_string()))?;
         let cutoff: Option<i64> = sqlx::query_scalar("SELECT MIN(position) FROM ui_history_snapshots WHERE session_key = ? AND canonical_start >= ?")
@@ -1226,9 +1245,9 @@ impl UiHistorySession {
             .map_err(|error| Error::message(error.to_string()))?;
         let next_position = unsigned(row.try_get("next_position")?)?;
         let generation = UiGeneration(uuid::Uuid::new_v4().to_string());
-        let affected = sqlx::query("UPDATE ui_history_sessions SET generation = ?, revision = ?, next_position = ?, total_messages = ?, canonical_tail = ?, failure = NULL WHERE session_key = ? AND generation = ?")
+        let affected = sqlx::query("UPDATE ui_history_sessions SET generation = ?, revision = ?, next_position = ?, total_messages = ?, failure = NULL WHERE session_key = ? AND generation = ?")
             .bind(&generation.0).bind(integer(revision)?).bind(integer(next_position)?).bind(i64::from(count))
-            .bind(boundary).bind(&self.key).bind(&previous.0).execute(&mut *transaction).await?.rows_affected();
+            .bind(&self.key).bind(&previous.0).execute(&mut *transaction).await?.rows_affected();
         if affected != 1 {
             return Err(Error::message("UI mutation generation conflict"));
         }

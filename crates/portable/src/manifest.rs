@@ -10,7 +10,7 @@ use {
 
 /// Current archive format version. Bump when layout changes in a
 /// backwards-incompatible way.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// Top-level manifest stored as `manifest.json` inside the archive.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,14 +30,12 @@ pub struct ArchiveInventory {
     pub has_memory_db: bool,
     pub session_files: Vec<String>,
     pub media_files: Vec<String>,
+    pub session_count: u32,
 }
 
 impl ArchiveInventory {
     pub fn session_count(&self) -> usize {
-        self.session_files
-            .iter()
-            .filter(|f| f.ends_with(".jsonl"))
-            .count()
+        self.session_count as usize
     }
 
     pub fn media_count(&self) -> usize {
@@ -60,8 +58,7 @@ pub fn inspect_archive<R: Read>(reader: R) -> anyhow::Result<ExportManifest> {
             .and_then(|n| n.to_str())
             .unwrap_or_default();
         if name == "manifest.json" {
-            let manifest: ExportManifest = serde_json::from_reader(&mut entry)?;
-            return Ok(manifest);
+            return crate::import::decode_manifest(&mut entry);
         }
     }
 
@@ -84,8 +81,9 @@ mod tests {
                 workspace_files: vec!["SOUL.md".into()],
                 has_chelix_db: true,
                 has_memory_db: false,
-                session_files: vec!["main.jsonl".into()],
+                session_files: vec![],
                 media_files: vec![],
+                session_count: 1,
             },
         };
         let json = serde_json::to_string(&manifest).unwrap();

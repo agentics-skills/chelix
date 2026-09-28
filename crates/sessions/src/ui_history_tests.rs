@@ -69,7 +69,10 @@ async fn schema_migration_is_tracked_and_validated_on_reopen() {
         .fetch_all(pool)
         .await
         .unwrap();
-        assert_eq!(migrations, vec![(20260909113752, true)]);
+        assert_eq!(migrations, vec![
+            (20260909113752, true),
+            (20260927174633, true)
+        ]);
         pool.close().await;
     }
 }
@@ -78,9 +81,11 @@ async fn schema_migration_is_tracked_and_validated_on_reopen() {
 async fn search_excludes_only_sessions_without_ui_snapshots() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    let journal = b"{\"role\":\"user\",\"content\":\"needle\"}\n";
+    let pool = store.ui_history.database.pool().await.unwrap();
     for key in ["old-first", "old-middle"] {
-        tokio::fs::write(directory.path().join(format!("{key}.jsonl")), journal)
+        sqlx::query("INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages) VALUES (?, 'old', 0, 0, 1)")
+            .bind(key)
+            .execute(pool)
             .await
             .unwrap();
     }
@@ -105,13 +110,7 @@ async fn search_excludes_only_sessions_without_ui_snapshots() {
     for key in ["old-first", "old-middle"] {
         assert!(
             matches!(store.ui_history.page(key, UiHistoryRange::Latest, 1).await,
-            Err(Error::MissingUiSnapshots { session_key }) if session_key == key)
-        );
-        assert_eq!(
-            tokio::fs::read(directory.path().join(format!("{key}.jsonl")))
-                .await
-                .unwrap(),
-            journal
+            Err(Error::HistoryWithoutJournal { session_key }) if session_key == key)
         );
     }
     let imported: i64 = sqlx::query_scalar(
@@ -120,7 +119,7 @@ async fn search_excludes_only_sessions_without_ui_snapshots() {
     .fetch_one(store.ui_history.database.pool().await.unwrap())
     .await
     .unwrap();
-    assert_eq!(imported, 0);
+    assert_eq!(imported, 2);
 
     let failed = store.ui_history.session("failed").await.unwrap();
     failed.fail(&Error::message("snapshot persistence failed"));
@@ -137,15 +136,15 @@ async fn search_excludes_only_sessions_without_ui_snapshots() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("snapshot persistence failed"));
-    assert!(!matches!(error, Error::MissingUiSnapshots { .. }));
+    assert!(!matches!(error, Error::HistoryWithoutJournal { .. }));
 }
 
 #[tokio::test]
-async fn explicit_clear_discards_an_unreadable_journal_without_importing_it() {
+async fn explicit_clear_discards_history_without_a_journal() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    let journal = directory.path().join("main.jsonl");
-    tokio::fs::write(&journal, b"{\"role\":\"user\",\"content\":\"discard\"}\n")
+    sqlx::query("INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages) VALUES ('main', 'old', 0, 0, 1)")
+        .execute(store.ui_history.database.pool().await.unwrap())
         .await
         .unwrap();
     store
@@ -154,7 +153,6 @@ async fn explicit_clear_discards_an_unreadable_journal_without_importing_it() {
         .unwrap();
     assert!(store.ui_history.session("main").await.is_err());
     store.clear("main").await.unwrap();
-    assert!(!journal.exists());
     assert!(store.read_media("main", "discard.ogg").await.is_err());
     assert_eq!(store.ui_message_count("main").await.unwrap(), 0);
     store
@@ -184,7 +182,9 @@ async fn clear_shares_the_live_registry_and_rotates_its_generation() {
 async fn failed_clear_persists_failure_instead_of_exposing_an_empty_history() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    tokio::fs::create_dir(directory.path().join("main.jsonl"))
+    let tool_results = directory.path().join("tool-results");
+    tokio::fs::create_dir_all(&tool_results).await.unwrap();
+    tokio::fs::write(tool_results.join("main"), b"not a directory")
         .await
         .unwrap();
     assert!(store.clear("main").await.is_err());
@@ -627,7 +627,13 @@ async fn default_fork_refuses_unconfirmed_only_source_but_explicit_zero_and_empt
     let run = run(&session);
     run.copy(update(1, "unfinished")).unwrap();
     assert!(store.fork_history("active", "refused", None).await.is_err());
-    assert!(!store.list_keys().contains(&"refused".to_string()));
+    assert!(
+        !store
+            .list_keys()
+            .await
+            .unwrap()
+            .contains(&"refused".to_string())
+    );
     let zero = store.fork_history("active", "zero", Some(0)).await.unwrap();
     assert_eq!(zero.fork_point, 0);
     assert_eq!(zero.source_end, 1);

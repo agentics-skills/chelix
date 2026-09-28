@@ -1,7 +1,7 @@
 //! Import a `.tar.gz` archive into a Chelix instance.
 
 use std::{
-    io::Read,
+    io::{Read, Seek, SeekFrom},
     path::{Component, Path},
 };
 
@@ -15,12 +15,26 @@ use {
 use crate::manifest::{ExportManifest, FORMAT_VERSION};
 
 /// Drop guard that removes a temporary file when it goes out of scope.
-struct TempFileGuard(std::path::PathBuf);
+#[derive(Debug)]
+pub struct TempFileGuard(pub(crate) std::path::PathBuf);
+
+impl TempFileGuard {
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
 
 impl Drop for TempFileGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
     }
+}
+
+/// Archive import plus the canonical journal snapshot, if the archive has one.
+#[derive(Debug)]
+pub struct ImportedArchive {
+    pub result: ImportResult,
+    pub journal_snapshot: Option<TempFileGuard>,
 }
 
 /// How to handle conflicts with existing data.
@@ -68,20 +82,22 @@ pub struct ImportResult {
 }
 
 /// Import a `.tar.gz` archive into the given config and data directories.
-pub async fn import_archive<R: Read>(
+pub async fn import_archive<R: Read + Seek>(
     config_dir: &Path,
     data_dir: &Path,
     opts: &ImportOptions,
-    reader: R,
-) -> anyhow::Result<ImportResult> {
+    mut reader: R,
+) -> anyhow::Result<ImportedArchive> {
+    let manifest = read_supported_manifest(&mut reader)?;
+    reader.seek(SeekFrom::Start(0))?;
     let decoder = GzDecoder::new(reader);
     let mut archive = Archive::new(decoder);
 
-    let mut manifest: Option<ExportManifest> = None;
     let mut imported = Vec::new();
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
     let mut db_snapshots: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut journal_bytes = None;
 
     for entry in archive.entries()? {
         let mut entry = entry?;
@@ -99,14 +115,6 @@ pub async fn import_archive<R: Read>(
         let stripped_str = stripped.display().to_string();
 
         if stripped_str == "manifest.json" {
-            let m: ExportManifest = serde_json::from_reader(&mut entry)?;
-            if m.format_version > FORMAT_VERSION {
-                anyhow::bail!(
-                    "archive format version {} is newer than supported version {FORMAT_VERSION}",
-                    m.format_version
-                );
-            }
-            manifest = Some(m);
             continue;
         }
 
@@ -168,13 +176,11 @@ pub async fn import_archive<R: Read>(
         debug!(path = %stripped_str, "ignoring unknown archive entry");
     }
 
-    let manifest = manifest.ok_or_else(|| anyhow::anyhow!("archive missing manifest.json"))?;
-
     // ── Merge SQLite databases ───────────────────────────────────────
     if !opts.dry_run {
-        for (archive_path, data) in &db_snapshots {
+        for (archive_path, data) in db_snapshots {
             if archive_path == "db/chelix.db" {
-                match merge_chelix_db(data_dir, data, opts.conflict).await {
+                match merge_chelix_db(data_dir, &data, opts.conflict).await {
                     Ok(counts) => {
                         for (table, n) in &counts {
                             if *n > 0 {
@@ -190,8 +196,10 @@ pub async fn import_archive<R: Read>(
                         warnings.push(format!("failed to merge chelix.db: {e}"));
                     },
                 }
+            } else if archive_path == "db/ui-history.sqlite" {
+                journal_bytes = Some(data);
             } else if archive_path == "db/memory.db" {
-                match apply_memory_db(data_dir, data, opts.conflict).await {
+                match apply_memory_db(data_dir, &data, opts.conflict).await {
                     Ok(action) => {
                         imported.push(ImportedItem {
                             category: "database".into(),
@@ -215,6 +223,21 @@ pub async fn import_archive<R: Read>(
         }
     }
 
+    let journal_snapshot = if opts.dry_run {
+        None
+    } else if let Some(bytes) = journal_bytes {
+        let path = data_dir
+            .join("sessions")
+            .join("ui-history.sqlite.import-tmp");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, bytes)?;
+        Some(TempFileGuard(path))
+    } else {
+        None
+    };
+
     info!(
         imported = imported.len(),
         skipped = skipped.len(),
@@ -222,15 +245,51 @@ pub async fn import_archive<R: Read>(
         "import complete"
     );
 
-    Ok(ImportResult {
-        manifest,
-        imported,
-        skipped,
-        warnings,
+    Ok(ImportedArchive {
+        result: ImportResult {
+            manifest,
+            imported,
+            skipped,
+            warnings,
+        },
+        journal_snapshot,
     })
 }
 
 /// Strip the top-level archive directory prefix.
+fn read_supported_manifest<R: Read>(reader: R) -> anyhow::Result<ExportManifest> {
+    let decoder = GzDecoder::new(reader);
+    let mut archive = Archive::new(decoder);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let raw_path = entry.path()?.to_path_buf();
+        let stripped = strip_archive_prefix(&raw_path);
+        if stripped.display().to_string() == "manifest.json" {
+            return decode_manifest(&mut entry);
+        }
+    }
+    anyhow::bail!("archive missing manifest.json")
+}
+
+pub(crate) fn decode_manifest<R: Read>(reader: R) -> anyhow::Result<ExportManifest> {
+    let value: serde_json::Value = serde_json::from_reader(reader)?;
+    let version = value
+        .get("format_version")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| anyhow::anyhow!("archive manifest is missing a numeric format_version"))?;
+    if version < u64::from(FORMAT_VERSION) {
+        anyhow::bail!(
+            "archive format version {version} is older than supported version {FORMAT_VERSION}"
+        );
+    }
+    if version > u64::from(FORMAT_VERSION) {
+        anyhow::bail!(
+            "archive format version {version} is newer than supported version {FORMAT_VERSION}"
+        );
+    }
+    Ok(serde_json::from_value(value)?)
+}
+
 fn strip_archive_prefix(path: &Path) -> &Path {
     let mut components = path.components();
     // Skip the first component (the dated prefix directory).

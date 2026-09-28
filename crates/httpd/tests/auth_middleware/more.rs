@@ -618,8 +618,8 @@ pub(super) async fn sealed_vault_allows_bootstrap() {
     assert_eq!(resp.status(), 200);
 }
 
-/// Session history remains available when the vault is sealed because session
-/// JSONL files are not yet encrypted by the vault.
+/// Session history remains available when the vault is sealed because the
+/// session journal is not yet encrypted by the vault.
 #[cfg(all(feature = "web-ui", feature = "vault"))]
 #[tokio::test]
 pub(super) async fn sealed_vault_allows_session_history() {

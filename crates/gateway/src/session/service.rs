@@ -43,7 +43,7 @@ async fn is_archivable_entry(
     Ok(entry.key != "main" && !is_current_channel_session(metadata, entry).await?)
 }
 
-/// Live session service backed by JSONL store + SQLite metadata.
+/// Live session service backed by the SQLite session journal + SQLite metadata.
 pub struct LiveSessionService {
     pub(super) store: Arc<SessionStore>,
     pub(super) metadata: Arc<SqliteSessionMetadata>,
@@ -484,8 +484,8 @@ impl SessionService for LiveSessionService {
                             e.preview = new_preview;
                         }
                     },
-                    Err(error @ chelix_sessions::Error::MissingUiSnapshots { .. }) => {
-                        warn!(session_key = %e.key, %error, "skipping preview for session without UI snapshots");
+                    Err(error @ chelix_sessions::Error::HistoryWithoutJournal { .. }) => {
+                        warn!(session_key = %e.key, %error, "skipping preview for session without a canonical journal");
                     },
                     Err(error) => return Err(ServiceError::message(error)),
                 }

@@ -895,10 +895,6 @@ mod tests {
             metadata.touch(key, 1).await.unwrap();
             assert!(metadata.get(key).await.unwrap().unwrap().preview.is_none());
         }
-        let journal = b"{\"role\":\"user\",\"content\":\"old message\"}\n";
-        tokio::fs::write(directory.path().join("old.jsonl"), journal)
-            .await
-            .unwrap();
         store
             .append_typed("healthy", &PersistedMessage::user("healthy message"))
             .await
@@ -924,16 +920,7 @@ mod tests {
                 .preview
                 .is_none()
         );
-        assert_eq!(
-            tokio::fs::read(directory.path().join("old.jsonl"))
-                .await
-                .unwrap(),
-            journal
-        );
-        assert!(matches!(
-            store.ui_history.session("old").await,
-            Err(chelix_sessions::Error::MissingUiSnapshots { .. })
-        ));
+        assert!(store.read("old").await.unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -602,7 +602,7 @@ pub(crate) fn prepare_run_registry(
         &chelix_memory::runtime::DynMemoryRuntime,
         crate::memory_tools::MemoryForgetProviderResolver,
     )>,
-    history_raw: &[Value],
+    visible_tools: std::collections::HashSet<String>,
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
     let mut registry = if tools_enabled {
         apply_runtime_tool_filters(base, config, skills, policy_context)
@@ -637,7 +637,7 @@ pub(crate) fn prepare_run_registry(
             chelix_config::ToolRegistryMode::Lazy
         )
     {
-        let mut visible = chelix_agents::lazy_tools::visible_tool_names_from_history(history_raw)?;
+        let mut visible = visible_tools;
         if let Some(agent) = config.agents.get(&policy_context.agent_id) {
             visible.extend(agent.tools.preload.iter().cloned());
         }
@@ -839,18 +839,6 @@ mod tests {
                     chelix_config::schema::ReasoningEffort::from("off"),
                 )
             });
-        let history = [serde_json::json!({
-            "role": "assistant",
-            "tool_calls": [{
-                "id": "call-1",
-                "type": "function",
-                "function": {
-                    "name": "mcp__github__builtin_named_like_mcp",
-                    "arguments": "{}"
-                }
-            }]
-        })];
-
         let registry = prepare_run_registry(
             &registry_with_mcp_tools(),
             &config,
@@ -859,7 +847,7 @@ mod tests {
             true,
             "preloaded",
             None,
-            &history,
+            std::collections::HashSet::from(["mcp__github__builtin_named_like_mcp".to_string()]),
         )
         .unwrap_or_else(|error| panic!("run registry preparation succeeds: {error}"));
 

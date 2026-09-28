@@ -20,8 +20,11 @@ pub enum Error {
     #[error("file lock failed: {message}")]
     Lock { message: String },
 
-    #[error("session '{session_key}' has a canonical journal without UI snapshots")]
-    MissingUiSnapshots { session_key: String },
+    #[error("session '{session_key}' has history without a canonical journal")]
+    HistoryWithoutJournal { session_key: String },
+
+    #[error("session '{session_key}' has no canonical journal")]
+    NoCanonicalJournal { session_key: String },
 
     #[error("{message}")]
     Message { message: String },

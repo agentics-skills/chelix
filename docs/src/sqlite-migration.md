@@ -20,7 +20,8 @@ crates/
 │   ├── migrations/
 │   │   ├── 20240205100001_init.sql   # sessions, channel_sessions, session_state
 │   │   └── ui-history/
-│   │       └── 20260909113752_init.sql # ui_history_sessions, ui_history_snapshots
+│   │       ├── 20260909113752_init.sql # ui_history_sessions, ui_history_snapshots
+│   │       └── 20260927174633_session_records.sql # session_records, session_journal
 │   └── src/
 │       ├── lib.rs                    # run_migrations(), run_ui_history_migrations export
 │       └── ui_history_migrations.rs  # dedicated UI history migrator
@@ -57,7 +58,7 @@ Each crate is autonomous and owns its schema:
 | ----------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `chelix-projects` | `chelix.db` | `projects`                                                                                                                                                              | `20240205100000_init.sql`                           |
 | `chelix-sessions` | `chelix.db` | `sessions`, `channel_sessions`, `session_state`                                                                                                                         | `20240205100001_init.sql` + later ADD COLUMN migrations |
-| `chelix-sessions` | `ui-history.sqlite` | `ui_history_sessions`, `ui_history_snapshots` | `ui-history/20260909113752_init.sql` |
+| `chelix-sessions` | `ui-history.sqlite` | `ui_history_sessions`, `ui_history_snapshots`, `session_records`, `session_journal`, `session_tool_disclosures`, `session_assistant_segments`, `session_disclosure_errors` | `ui-history/20260909113752_init.sql`, `ui-history/20260927174633_session_records.sql` |
 | `chelix-cron`     | `chelix.db` | `cron_jobs`, `cron_runs`                                                                                                                                                | `20240205100002_init.sql` + 1 migration             |
 | `chelix-gateway`  | `chelix.db` | `auth_*`, `passkeys`, `api_keys`, `env_variables`, `message_log`, `channels`, `agents`, `session_shares`, `device_pairing`, `ssh_keys`, `ssh_targets`, `auth_audit_log` | `20240205100003_init.sql` + 12 migrations           |
 | `chelix-webhooks` | `chelix.db` | `webhooks`, `webhook_deliveries`, `webhook_response_actions`                                                                                                            | `20260407000000_initial.sql` + 1 migration          |
@@ -98,8 +99,10 @@ gateway startup. The sessions migrator for `chelix.db` reads the SQL files direc
 inside `migrations/`; the UI history migrator reads its `ui-history/` subdirectory
 against the dedicated pool.
 
-The UI history migration creates the semantic schema. Existing user JSONL and
-session histories are not converted, replayed or backfilled.
+The UI history migrations create the semantic schema and the canonical
+`session_records` journal in the same database. Existing user JSONL and session
+histories are not converted, replayed or backfilled. Portable archives from
+format 1 are not imported.
 
 ### Version Tracking
 
@@ -118,7 +121,7 @@ which must be globally unique across all crates.
 | ----------- | --------------------- | -------------------------------------------------- |
 | `chelix.db` | `~/.chelix/chelix.db` | projects, sessions, cron, gateway, webhooks, vault |
 | `memory.db` | `~/.chelix/memory.db` | memory (separate, managed internally)              |
-| `ui-history.sqlite` | `<data_dir>/sessions/ui-history.sqlite` | sessions (separate semantic history pool) |
+| `ui-history.sqlite` | `<data_dir>/sessions/ui-history.sqlite` | sessions (semantic history and canonical journal) |
 
 ## Adding New Migrations
 

@@ -4,8 +4,8 @@
 //! `/compact`), the session model itself summarizes the conversation and a
 //! [`PersistedMessage::Checkpoint`] is appended to the session history. The
 //! stored history is never mutated, so forks from any point keep working.
-//! Context building (`values_to_chat_messages`) starts a fresh context
-//! window from the latest checkpoint, injecting the summary as a
+//! Context building (`load_active_messages` / `ChatReconstruction`) starts a
+//! fresh context window from the latest checkpoint, injecting the summary as a
 //! `<conversation-summary>` user message followed by the unsummarized
 //! triggering user/tool round.
 //!
@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use {
-    chelix_agents::model::{CompletionOptions, LlmProvider, values_to_chat_messages},
+    chelix_agents::model::{CompletionOptions, LlmProvider},
     chelix_sessions::{PersistedMessage, store::SessionStore},
     tokio_util::sync::CancellationToken,
     tracing::info,
@@ -189,9 +189,9 @@ struct PreparedCheckpoint {
 /// The request is built to share the provider prompt-cache prefix with the
 /// previous regular turn: the caller passes the session's own system prompt
 /// and native tool schemas, the exact stored history is converted with the
-/// same [`values_to_chat_messages`] used for regular runs (so a previous
-/// checkpoint already scopes the context), and the summarization
-/// instructions ride in a single trailing user message. The resulting
+/// same `load_active_messages` / `ChatReconstruction` path used for regular
+/// runs (so a previous checkpoint already scopes the context), and the
+/// summarization instructions ride in a single trailing user message. The resulting
 /// summary is appended as a [`PersistedMessage::Checkpoint`] — nothing in
 /// the existing history is modified.
 pub(crate) async fn summarize_session(
@@ -201,15 +201,9 @@ pub(crate) async fn summarize_session(
     system_prompt: &str,
     tools: &[serde_json::Value],
 ) -> error::Result<CheckpointOutcome> {
-    let history = store
-        .read(session_key)
-        .await
-        .map_err(|source| Error::external("failed to read session history", source))?;
+    let (active, _) = crate::active_context::load_active_messages(store, session_key).await?;
     let mut messages = vec![chelix_agents::ChatMessage::system(system_prompt)];
-    messages.extend(
-        values_to_chat_messages(&history)
-            .map_err(|source| Error::external("failed to reconstruct provider context", source))?,
-    );
+    messages.extend(active);
     summarize_session_from_prompt(store, session_key, provider, messages, &[], tools).await
 }
 
@@ -278,24 +272,26 @@ async fn prepare_checkpoint_from_prompt(
     continuation_messages: &[chelix_agents::ChatMessage],
     tools: &[serde_json::Value],
 ) -> error::Result<PreparedCheckpoint> {
-    let history = store
-        .read(session_key)
-        .await
-        .map_err(|source| Error::external("failed to read session history", source))?;
-
-    if history.is_empty() {
+    let tail = match store.pointers(session_key).await {
+        Ok(pointers) => pointers.canonical_tail,
+        Err(chelix_sessions::Error::NoCanonicalJournal { .. }) => 0,
+        Err(source) => {
+            return Err(Error::external("failed to read session history", source));
+        },
+    };
+    if tail == 0 {
         return Err(Error::message("nothing to compact"));
     }
-    if continuation_messages.is_empty()
-        && history
-            .last()
-            .and_then(|m| m.get("role"))
-            .and_then(serde_json::Value::as_str)
-            == Some("checkpoint")
-    {
-        return Err(Error::message(
-            "nothing to compact: session already ends with a checkpoint",
-        ));
+    if continuation_messages.is_empty() {
+        let role = store
+            .record_role(session_key, tail - 1)
+            .await
+            .map_err(|source| Error::external("failed to read session history", source))?;
+        if role == "checkpoint" {
+            return Err(Error::message(
+                "nothing to compact: session already ends with a checkpoint",
+            ));
+        }
     }
 
     messages.push(chelix_agents::ChatMessage::user(format!(
@@ -324,7 +320,8 @@ async fn prepare_checkpoint_from_prompt(
         .filter(|text| !text.is_empty())
         .ok_or_else(|| Error::message("summarization returned an empty response"))?;
 
-    let messages_summarized = find_preserved_tail_start(&history, continuation_messages)?;
+    let messages_summarized =
+        find_preserved_tail_start(store, session_key, tail, continuation_messages).await?;
     let checkpoint = PersistedMessage::checkpoint(
         summary,
         provider.id(),
@@ -382,37 +379,40 @@ pub(crate) async fn reload_checkpoint_context(
     session_key: &str,
     outcome: &CheckpointOutcome,
 ) -> error::Result<Vec<chelix_agents::ChatMessage>> {
-    let history = store
-        .read(session_key)
-        .await
-        .map_err(|source| Error::external("failed to reload compacted session history", source))?;
-
-    let persisted_checkpoint = history.get(outcome.index).ok_or_else(|| {
-        Error::message(format!(
-            "reloaded session history is missing checkpoint at index {}",
-            outcome.index
-        ))
-    })?;
-    if persisted_checkpoint != &outcome.message {
+    let persisted_checkpoint = match store.read_record(session_key, outcome.index).await {
+        Ok(record) => record,
+        Err(chelix_sessions::Error::Message { message })
+            if message == format!("message index {} is outside session history", outcome.index) =>
+        {
+            return Err(Error::message(format!(
+                "missing checkpoint at index {}",
+                outcome.index
+            )));
+        },
+        Err(source) => {
+            return Err(Error::external(
+                "failed to reload compacted session history",
+                source,
+            ));
+        },
+    };
+    if persisted_checkpoint != outcome.message {
         return Err(Error::message(format!(
             "reloaded session history does not match checkpoint at index {}",
             outcome.index
         )));
     }
-
-    let latest_checkpoint = history
-        .iter()
-        .rposition(|message| message["role"].as_str() == Some("checkpoint"));
-    if latest_checkpoint != Some(outcome.index) {
+    let pointers = store
+        .pointers(session_key)
+        .await
+        .map_err(|source| Error::external("failed to reload compacted session history", source))?;
+    if pointers.last_checkpoint_index != Some(outcome.index) {
         return Err(Error::message(format!(
             "checkpoint at index {} is no longer the latest checkpoint",
             outcome.index
         )));
     }
-
-    let context = values_to_chat_messages(&history).map_err(|source| {
-        Error::external("failed to reconstruct reloaded checkpoint context", source)
-    })?;
+    let (context, _) = crate::active_context::load_active_messages(store, session_key).await?;
     if context.is_empty() {
         return Err(Error::message(
             "reloaded checkpoint produced an empty provider context",
@@ -421,14 +421,15 @@ pub(crate) async fn reload_checkpoint_context(
     Ok(context)
 }
 
-fn find_preserved_tail_start(
-    history: &[serde_json::Value],
+async fn find_preserved_tail_start(
+    store: &SessionStore,
+    session_key: &str,
+    tail: usize,
     continuation: &[chelix_agents::ChatMessage],
 ) -> error::Result<usize> {
     if continuation.is_empty() {
-        return Ok(history.len());
+        return Ok(tail);
     }
-
     let expected_tool_call_ids = continuation.iter().find_map(|message| match message {
         chelix_agents::ChatMessage::Assistant { tool_calls, .. } if !tool_calls.is_empty() => Some(
             tool_calls
@@ -438,60 +439,42 @@ fn find_preserved_tail_start(
         ),
         _ => None,
     });
-    let assistant_index = expected_tool_call_ids.as_ref().and_then(|expected| {
-        history
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(index, message)| {
-                let persisted = persisted_tool_call_ids(message);
-                (persisted == *expected).then_some(index)
-            })
-    });
-
+    let assistant_index = match &expected_tool_call_ids {
+        Some(expected) => {
+            store
+                .latest_matching_assistant(session_key, tail, expected)
+                .await?
+        },
+        None => None,
+    };
     let boundary = match continuation.first() {
-        Some(chelix_agents::ChatMessage::User { content, .. }) => assistant_index
-            .and_then(|assistant_index| {
-                history[..assistant_index]
-                    .iter()
-                    .rposition(|message| message["role"].as_str() == Some("user"))
-            })
-            .or_else(|| find_matching_user(history, content)),
+        Some(chelix_agents::ChatMessage::User { content, .. }) => {
+            let before_assistant = match assistant_index {
+                Some(assistant_index) => {
+                    store
+                        .latest_user_before(session_key, assistant_index)
+                        .await?
+                },
+                None => None,
+            };
+            if before_assistant.is_some() {
+                before_assistant
+            } else {
+                match content {
+                    chelix_agents::UserContent::Text(expected) => {
+                        store
+                            .latest_user_text_contained_by(session_key, tail, expected)
+                            .await?
+                    },
+                    _ => store.latest_user_before(session_key, tail).await?,
+                }
+            }
+        },
         Some(chelix_agents::ChatMessage::Assistant { .. }) => assistant_index,
         _ => None,
     };
-
     boundary.ok_or_else(|| {
         Error::message("failed to locate the unsummarized continuation tail in session history")
-    })
-}
-
-fn persisted_tool_call_ids(message: &serde_json::Value) -> Vec<&str> {
-    if message["role"].as_str() != Some("assistant") {
-        return Vec::new();
-    }
-    message["tool_calls"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|call| call["id"].as_str())
-        .collect()
-}
-
-fn find_matching_user(
-    history: &[serde_json::Value],
-    expected: &chelix_agents::UserContent,
-) -> Option<usize> {
-    let chelix_agents::UserContent::Text(expected) = expected else {
-        return history
-            .iter()
-            .rposition(|message| message["role"].as_str() == Some("user"));
-    };
-    history.iter().rposition(|message| {
-        message["role"].as_str() == Some("user")
-            && message["content"]
-                .as_str()
-                .is_some_and(|persisted| expected.contains(persisted))
     })
 }
 
@@ -501,7 +484,10 @@ mod tests {
     use std::pin::Pin;
 
     use {
-        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, Usage},
+        chelix_agents::model::{
+            ChatMessage, CompletionOptions, LlmProvider, StreamEvent, Usage,
+            values_to_chat_messages,
+        },
         tokio_stream::Stream,
     };
 
@@ -959,12 +945,9 @@ mod tests {
     #[tokio::test]
     async fn reload_checkpoint_context_propagates_read_failure() {
         let (dir, store) = test_store();
+        let _ = dir;
         let session_key = "unreadable";
-        let session_path = dir.path().join(format!(
-            "{}.jsonl",
-            SessionStore::key_to_filename(session_key)
-        ));
-        std::fs::create_dir(session_path).unwrap();
+        std::fs::create_dir(store.base_dir.join("ui-history.sqlite")).unwrap();
 
         let error = reload_checkpoint_context(&store, session_key, &test_checkpoint_outcome(0))
             .await

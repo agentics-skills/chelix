@@ -136,57 +136,53 @@ pub(crate) struct SessionTokenUsage {
 }
 
 #[must_use]
-pub(crate) fn session_token_usage_from_messages(messages: &[Value]) -> SessionTokenUsage {
-    let session_input_tokens = messages
-        .iter()
-        .filter_map(|m| m.get("inputTokens").and_then(|v| v.as_u64()))
-        .sum();
-    let session_output_tokens = messages
-        .iter()
-        .filter_map(|m| m.get("outputTokens").and_then(|v| v.as_u64()))
-        .sum();
-    let session_cache_read_tokens = messages
-        .iter()
-        .filter_map(|m| m.get("cacheReadTokens").and_then(|v| v.as_u64()))
-        .sum();
-    let session_cache_write_tokens = messages
-        .iter()
-        .filter_map(|m| m.get("cacheWriteTokens").and_then(|v| v.as_u64()))
-        .sum();
+pub(crate) fn session_token_usage_from_totals(
+    totals: &chelix_sessions::TokenTotals,
+) -> SessionTokenUsage {
+    session_token_usage_from_parts(
+        totals.input_tokens,
+        totals.output_tokens,
+        totals.cache_read_tokens,
+        totals.cache_write_tokens,
+        totals.last_assistant.as_ref(),
+    )
+}
 
+fn session_token_usage_from_parts(
+    session_input_tokens: u64,
+    session_output_tokens: u64,
+    session_cache_read_tokens: u64,
+    session_cache_write_tokens: u64,
+    last_assistant: Option<&Value>,
+) -> SessionTokenUsage {
     let (
         current_request_input_tokens,
         current_request_output_tokens,
         current_request_cache_read_tokens,
         current_request_cache_write_tokens,
-    ) = messages
-        .iter()
-        .rev()
-        .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("assistant"))
-        .map_or((0, 0, 0, 0), |m| {
-            let input = m
-                .get("requestInputTokens")
-                .and_then(|v| v.as_u64())
-                .or_else(|| m.get("inputTokens").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
-            let output = m
-                .get("requestOutputTokens")
-                .and_then(|v| v.as_u64())
-                .or_else(|| m.get("outputTokens").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
-            let cache_read = m
-                .get("requestCacheReadTokens")
-                .and_then(|v| v.as_u64())
-                .or_else(|| m.get("cacheReadTokens").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
-            let cache_write = m
-                .get("requestCacheWriteTokens")
-                .and_then(|v| v.as_u64())
-                .or_else(|| m.get("cacheWriteTokens").and_then(|v| v.as_u64()))
-                .unwrap_or(0);
-            (input, output, cache_read, cache_write)
-        });
-
+    ) = last_assistant.map_or((0, 0, 0, 0), |message| {
+        let input = message
+            .get("requestInputTokens")
+            .and_then(Value::as_u64)
+            .or_else(|| message.get("inputTokens").and_then(Value::as_u64))
+            .unwrap_or(0);
+        let output = message
+            .get("requestOutputTokens")
+            .and_then(Value::as_u64)
+            .or_else(|| message.get("outputTokens").and_then(Value::as_u64))
+            .unwrap_or(0);
+        let cache_read = message
+            .get("requestCacheReadTokens")
+            .and_then(Value::as_u64)
+            .or_else(|| message.get("cacheReadTokens").and_then(Value::as_u64))
+            .unwrap_or(0);
+        let cache_write = message
+            .get("requestCacheWriteTokens")
+            .and_then(Value::as_u64)
+            .or_else(|| message.get("cacheWriteTokens").and_then(Value::as_u64))
+            .unwrap_or(0);
+        (input, output, cache_read, cache_write)
+    });
     SessionTokenUsage {
         session_input_tokens,
         session_output_tokens,
@@ -202,26 +198,19 @@ pub(crate) fn session_token_usage_from_messages(messages: &[Value]) -> SessionTo
 #[cfg(test)]
 mod tests {
     use {
-        super::{UsageSnapshot, build_assistant_turn_output, session_token_usage_from_messages},
+        super::{UsageSnapshot, build_assistant_turn_output, session_token_usage_from_totals},
         chelix_agents::model::Usage,
         chelix_common::ReasoningContent,
     };
 
     #[test]
     fn session_token_usage_tracks_cached_tokens() {
-        let messages = vec![
-            serde_json::json!({
-                "role": "assistant",
-                "inputTokens": 200,
-                "outputTokens": 20,
-                "cacheReadTokens": 150,
-                "cacheWriteTokens": 10,
-                "requestInputTokens": 180,
-                "requestOutputTokens": 18,
-                "requestCacheReadTokens": 140,
-                "requestCacheWriteTokens": 8
-            }),
-            serde_json::json!({
+        let usage = session_token_usage_from_totals(&chelix_sessions::TokenTotals {
+            input_tokens: 500,
+            output_tokens: 50,
+            cache_read_tokens: 270,
+            cache_write_tokens: 15,
+            last_assistant: Some(serde_json::json!({
                 "role": "assistant",
                 "inputTokens": 300,
                 "outputTokens": 30,
@@ -231,10 +220,8 @@ mod tests {
                 "requestOutputTokens": 25,
                 "requestCacheReadTokens": 100,
                 "requestCacheWriteTokens": 2
-            }),
-        ];
-
-        let usage = session_token_usage_from_messages(&messages);
+            })),
+        });
 
         assert_eq!(usage.session_input_tokens, 500);
         assert_eq!(usage.session_output_tokens, 50);

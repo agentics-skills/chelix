@@ -25,6 +25,7 @@ interface ImportPreview {
 			has_memory_db: boolean;
 			session_files: string[];
 			media_files: string[];
+			session_count: number;
 		};
 	};
 	imported: ImportedItem[];
@@ -295,7 +296,7 @@ function PreviewTable({ preview, onApply, applying }: PreviewTableProps): VNode 
 					<Row label="Workspace files" value={inv.workspace_files.length} />
 					<Row label="chelix.db" value={inv.has_chelix_db ? "Yes" : "No"} />
 					<Row label="memory.db" value={inv.has_memory_db ? "Yes" : "No"} />
-					<Row label="Sessions" value={inv.session_files.filter((f) => f.endsWith(".jsonl")).length} />
+					<Row label="Sessions" value={inv.session_count} />
 					<Row label="Media files" value={inv.media_files.length} />
 				</tbody>
 			</table>
