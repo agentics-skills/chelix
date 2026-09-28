@@ -615,11 +615,6 @@ impl ExternalAgentChatService {
             .map_err(ServiceError::message)?;
         let result: ServiceResult = async {
         let created_at = now_ms();
-        let mut history = self
-            .session_store
-            .read(&session_key)
-            .await
-            .map_err(ServiceError::message)?;
         let user_msg = PersistedMessage::User {
             content: MessageContent::Text(text.clone()),
             created_at: Some(created_at),
@@ -642,7 +637,11 @@ impl ExternalAgentChatService {
         let assistant_message_index = user_message_index
             .checked_add(1)
             .ok_or_else(|| ServiceError::message("assistant message index overflow"))?;
-        history.push(user_value);
+        let history = self
+            .session_store
+            .read_last_n(&session_key, 20)
+            .await
+            .map_err(ServiceError::message)?;
         let message_count = self
             .session_store
             .ui_message_count(&session_key)

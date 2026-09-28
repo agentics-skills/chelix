@@ -126,8 +126,43 @@ async fn handle_import(
         dry_run,
     };
 
+    let _owner_lock = if dry_run {
+        None
+    } else {
+        Some(
+            chelix_sessions::ProcessOwnerLock::try_acquire(
+                &data_dir.join("sessions").join("ui-history.owner.lock"),
+            )
+            .map_err(|error| match error {
+                chelix_sessions::Error::Lock { .. } => anyhow::anyhow!(
+                    "session history import requires the server to be stopped: {error}"
+                ),
+                other => anyhow::Error::from(other),
+            })?,
+        )
+    };
+
     let file = std::fs::File::open(&archive)?;
-    let result = chelix_portable::import_archive(&config_dir, &data_dir, &opts, file).await?;
+    let imported = chelix_portable::import_archive(&config_dir, &data_dir, &opts, file).await?;
+    let mut result = imported.result;
+    if let Some(snapshot) = imported.journal_snapshot {
+        let conflict = match conflict_strategy {
+            chelix_portable::ConflictStrategy::Overwrite => {
+                chelix_sessions::JournalImportConflict::Overwrite
+            },
+            chelix_portable::ConflictStrategy::Skip => chelix_sessions::JournalImportConflict::Skip,
+        };
+        let store = chelix_sessions::store::SessionStore::new(data_dir.join("sessions"));
+        match store.import_journal(snapshot.path(), conflict).await {
+            Ok(errors) => result.warnings.extend(errors),
+            Err(error) => {
+                result
+                    .warnings
+                    .push(format!("failed to import session journal: {error}"));
+            },
+        }
+    }
+    drop(_owner_lock);
 
     if json {
         println!("{}", serde_json::to_string_pretty(&result)?);

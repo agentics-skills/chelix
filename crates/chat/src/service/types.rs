@@ -693,7 +693,6 @@ impl LiveChatService {
     pub(in crate::service) async fn session_prompt_context(
         &self,
         session_key: &str,
-        history: &[Value],
         provider: &Arc<dyn chelix_agents::model::LlmProvider>,
         context: &ChatExecutionContext,
     ) -> error::Result<(String, Vec<Value>)> {
@@ -732,6 +731,16 @@ impl LiveChatService {
         let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
 
         let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context));
+        let visible_tools = crate::active_context::visible_tools(
+            &self.session_store,
+            session_key,
+            tools_enabled,
+            matches!(
+                persona.config.tools.registry_mode,
+                chelix_config::ToolRegistryMode::Lazy
+            ),
+        )
+        .await?;
         let filtered_registry = {
             let registry_guard = self.tool_registry.read().await;
             let memory_setup = self.state.memory_manager().map(|manager| {
@@ -751,7 +760,7 @@ impl LiveChatService {
                 tools_enabled,
                 &agent_id,
                 memory_setup,
-                history,
+                visible_tools,
             )
         }
         .map_err(|e| error::Error::message(e.to_string()))?;
@@ -795,10 +804,12 @@ impl LiveChatService {
         } else {
             Vec::new()
         };
-        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+        let compaction_reminder = crate::active_context::reminder_from_journal(
+            &self.session_store,
+            session_key,
             persona.agent.compaction_reminder,
-            history,
-        )?;
+        )
+        .await?;
         Ok((compaction_reminder.render(&prompt_build.prompt), tools))
     }
 }
@@ -1104,9 +1115,10 @@ mod tests {
         let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
         assert_eq!(
             store
-                .count("main")
+                .read("main")
                 .await
-                .unwrap_or_else(|error| panic!("history count: {error}")),
+                .unwrap_or_else(|error| panic!("history count: {error}"))
+                .len(),
             1
         );
         let drafts_guard = drafts.read().await;

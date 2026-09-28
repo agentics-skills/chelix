@@ -24,6 +24,41 @@ fn is_reserved_main_session(session_key: &str) -> bool {
     session_key == MAIN_SESSION_KEY
 }
 
+async fn load_title_context(
+    store: &chelix_sessions::store::SessionStore,
+    key: &str,
+) -> Result<(Vec<chelix_agents::ChatMessage>, usize)> {
+    let mut reconstruction = None;
+    let tail = store
+        .with_active_records(key, |event| {
+            match event {
+                chelix_sessions::ActiveEvent::Start { segment_ids, .. } => {
+                    reconstruction = Some(chelix_agents::model::ChatReconstruction::new(
+                        true,
+                        segment_ids,
+                    ));
+                },
+                chelix_sessions::ActiveEvent::Row { index, payload } => {
+                    let reconstruction = reconstruction.as_mut().ok_or_else(|| {
+                        chelix_sessions::Error::message(
+                            "active context started without its segment set",
+                        )
+                    })?;
+                    reconstruction
+                        .push(index, &payload)
+                        .map_err(|error| chelix_sessions::Error::message(error.to_string()))?;
+                },
+            }
+            Ok(())
+        })
+        .await?;
+    let messages = reconstruction
+        .ok_or_else(|| anyhow::anyhow!("active context produced no reconstruction"))?
+        .finish()
+        .map_err(|error| anyhow::anyhow!(error))?;
+    Ok((messages, tail))
+}
+
 /// Generate and persist a session title if the session has no label yet.
 ///
 /// Intended to be called from a background task after the first assistant
@@ -82,8 +117,8 @@ pub(crate) async fn generate_title_for_session(
         return Ok(None);
     };
 
-    let history = match session_store.read(session_key).await {
-        Ok(h) if h.len() >= MIN_MESSAGES_FOR_TITLE => h,
+    let (chat_msgs, _) = match load_title_context(session_store, session_key).await {
+        Ok(value) if value.1 >= MIN_MESSAGES_FOR_TITLE => value,
         Ok(_) => {
             debug!("auto-title: too few messages, skipping");
             return Ok(None);
@@ -114,8 +149,6 @@ pub(crate) async fn generate_title_for_session(
         Arc::clone(resolved.provider())
     };
 
-    let chat_msgs = chelix_agents::model::values_to_chat_messages(&history)
-        .context("failed to reconstruct session history for title generation")?;
     let title = chelix_agents::title::generate_title(provider, &chat_msgs).await?;
     // Persist the title as the session label and read back the
     // entry atomically so the broadcast version is consistent.

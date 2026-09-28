@@ -9,7 +9,10 @@ mod manifest;
 
 pub use {
     export::{ExportOptions, export_archive},
-    import::{ConflictStrategy, ImportOptions, ImportResult, ImportedItem, import_archive},
+    import::{
+        ConflictStrategy, ImportOptions, ImportResult, ImportedArchive, ImportedItem,
+        import_archive,
+    },
     manifest::{ArchiveInventory, ExportManifest, inspect_archive},
 };
 
@@ -58,7 +61,7 @@ mod integration_tests {
             .await
             .unwrap();
 
-        assert_eq!(manifest.format_version, 1);
+        assert_eq!(manifest.format_version, 2);
         assert!(
             manifest
                 .inventory
@@ -77,7 +80,7 @@ mod integration_tests {
                 .workspace_files
                 .contains(&"SOUL.md".to_owned())
         );
-        assert_eq!(manifest.inventory.session_count(), 1);
+        assert_eq!(manifest.inventory.session_count(), 0);
 
         // Inspect.
         let inspected = inspect_archive(Cursor::new(&archive_buf)).unwrap();
@@ -99,14 +102,15 @@ mod integration_tests {
             Cursor::new(&archive_buf),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .result;
 
         // Verify files were created.
         assert!(dst_config.path().join("chelix.toml").exists());
         assert!(dst_config.path().join("provider_keys.json").exists());
         assert!(dst_data.path().join("SOUL.md").exists());
         assert!(dst_data.path().join("IDENTITY.md").exists());
-        assert!(dst_data.path().join("sessions/main.jsonl").exists());
+        assert!(!dst_data.path().join("sessions/main.jsonl").exists());
 
         // Verify content.
         let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
@@ -116,6 +120,13 @@ mod integration_tests {
         assert!(soul.contains("Be helpful"));
 
         assert!(!result.imported.is_empty());
+        assert!(
+            !manifest
+                .inventory
+                .session_files
+                .iter()
+                .any(|file| file.ends_with(".jsonl"))
+        );
         assert!(result.warnings.is_empty());
     }
 
@@ -155,7 +166,8 @@ mod integration_tests {
             Cursor::new(&buf),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .result;
 
         // Existing files should NOT be overwritten.
         let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
@@ -194,7 +206,8 @@ mod integration_tests {
             Cursor::new(&buf),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .result;
 
         // File should be overwritten.
         let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();
@@ -232,11 +245,90 @@ mod integration_tests {
             Cursor::new(&buf),
         )
         .await
-        .unwrap();
+        .unwrap()
+        .result;
 
         // Nothing should be written.
         assert!(!dst_config.path().join("chelix.toml").exists());
         assert!(result.imported.is_empty());
         assert!(!result.skipped.is_empty());
+    }
+
+    fn archive_with_config_then_manifest(manifest: Option<&[u8]>) -> Vec<u8> {
+        let toml = b"replacement";
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        {
+            let mut builder = tar::Builder::new(&mut encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(toml.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    "chelix-backup/config/chelix.toml",
+                    Cursor::new(&toml[..]),
+                )
+                .unwrap();
+            if let Some(manifest) = manifest {
+                let mut header = tar::Header::new_gnu();
+                header.set_size(manifest.len() as u64);
+                header.set_mode(0o644);
+                header.set_cksum();
+                builder
+                    .append_data(
+                        &mut header,
+                        "chelix-backup/manifest.json",
+                        Cursor::new(manifest),
+                    )
+                    .unwrap();
+            }
+            builder.finish().unwrap();
+        }
+        encoder.finish().unwrap()
+    }
+
+    #[tokio::test]
+    async fn old_archive_is_rejected_before_any_file_is_written() {
+        let archive = archive_with_config_then_manifest(Some(
+            br#"{"format_version":1,"chelix_version":"old","created_at":"t","inventory":{"config_files":[],"workspace_files":[],"has_chelix_db":false,"has_memory_db":false,"session_files":[],"media_files":[]}}"#,
+        ));
+        let dst_config = tempfile::tempdir().unwrap();
+        let dst_data = tempfile::tempdir().unwrap();
+        std::fs::write(dst_config.path().join("chelix.toml"), "original").unwrap();
+        let error = import_archive(
+            dst_config.path(),
+            dst_data.path(),
+            &ImportOptions::default(),
+            Cursor::new(archive),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("older than supported version"));
+        assert_eq!(
+            std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap(),
+            "original"
+        );
+    }
+
+    #[tokio::test]
+    async fn archive_without_manifest_is_rejected_before_any_file_is_written() {
+        let archive = archive_with_config_then_manifest(None);
+        let dst_config = tempfile::tempdir().unwrap();
+        let dst_data = tempfile::tempdir().unwrap();
+        std::fs::write(dst_config.path().join("chelix.toml"), "original").unwrap();
+        let error = import_archive(
+            dst_config.path(),
+            dst_data.path(),
+            &ImportOptions::default(),
+            Cursor::new(archive),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("missing manifest.json"));
+        assert_eq!(
+            std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap(),
+            "original"
+        );
     }
 }

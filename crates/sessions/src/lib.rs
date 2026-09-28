@@ -1,22 +1,24 @@
 //! Session storage and management.
 //!
-//! Sessions are stored as JSONL files (one message per line) at
-//! `<data_dir>/agents/<agentId>/sessions/<sessionKey>.jsonl`
-//! with file locking for concurrent access.
+//! The canonical journal is `session_records` in `ui-history.sqlite`, next to
+//! the UI history tables. Media files stay on disk under the sessions directory.
 
 pub mod backing;
 pub mod error;
+mod journal;
 pub mod key;
 pub mod message;
 pub mod metadata;
+mod owner_lock;
 pub mod prompt_queue;
 mod provider_redaction;
 pub mod session_events;
 pub mod state_store;
 pub mod store;
-mod tail_cursor;
 pub mod tool_results;
 mod ui_history_database;
+
+pub use owner_lock::ProcessOwnerLock;
 pub mod ui_history_engine;
 mod ui_history_fork;
 mod ui_history_migrations;
@@ -26,6 +28,7 @@ pub mod ui_history_types;
 
 pub use {
     error::{Error, Result},
+    journal::{ActiveEvent, JournalImportConflict, JournalPointers, TokenTotals},
     key::SessionKey,
     message::{ContentBlock, MessageContent, PersistedMessage, UserDocument},
     prompt_queue::{

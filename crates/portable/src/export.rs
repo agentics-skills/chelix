@@ -145,7 +145,20 @@ pub async fn export_archive<W: Write>(
         info!("exported memory.db snapshot");
     }
 
-    // ── Session JSONL files ──────────────────────────────────────────
+    let ui_history = data_dir.join("sessions").join("ui-history.sqlite");
+    if ui_history.exists() {
+        let snapshot = vacuum_snapshot(&ui_history).await?;
+        let _guard = TempFileGuard(snapshot.clone());
+        inventory.session_count = session_journal_count(&snapshot).await?;
+        add_file_to_tar(
+            &mut builder,
+            &snapshot,
+            &format!("{prefix}/db/ui-history.sqlite"),
+        )?;
+        info!("exported ui-history.sqlite snapshot");
+    }
+
+    // ── Session media and other on-disk session files ───────────────
     let sessions_dir = data_dir.join("sessions");
     if sessions_dir.is_dir() {
         for entry in WalkDir::new(&sessions_dir)
@@ -161,6 +174,16 @@ pub async fn export_archive<W: Write>(
                 .strip_prefix(&sessions_dir)
                 .unwrap_or(entry.path());
             let rel_str = rel.display().to_string();
+            let file_name = entry.file_name().to_string_lossy();
+            let root_file = rel.components().count() == 1;
+            if file_name == "ui-history.sqlite"
+                || file_name == "ui-history.sqlite-wal"
+                || file_name == "ui-history.sqlite-shm"
+                || file_name == "ui-history.owner.lock"
+                || (root_file && file_name.ends_with(".jsonl"))
+            {
+                continue;
+            }
 
             let is_media = rel_str.starts_with("media/") || rel_str.starts_with("media\\");
 
@@ -301,6 +324,26 @@ async fn vacuum_snapshot(db_path: &Path) -> anyhow::Result<PathBuf> {
 
     debug!(path = %snapshot_path.display(), "created db snapshot");
     Ok(snapshot_path)
+}
+
+async fn session_journal_count(snapshot: &Path) -> anyhow::Result<u32> {
+    let pool = sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=ro", snapshot.display())).await?;
+    let exists: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'session_journal'",
+    )
+    .fetch_one(&pool)
+    .await?;
+    let count = if exists == 0 {
+        0
+    } else {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM session_journal WHERE canonical_tail > 0",
+        )
+        .fetch_one(&pool)
+        .await?
+    };
+    pool.close().await;
+    u32::try_from(count).map_err(|error| anyhow::anyhow!(error))
 }
 
 /// Strip authentication tables from a snapshot so secrets are never exported.

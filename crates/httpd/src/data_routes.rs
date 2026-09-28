@@ -8,12 +8,13 @@ use {
     axum::{
         Json, Router,
         body::Bytes,
-        extract::Query,
+        extract::{Query, State},
         http::{StatusCode, header},
         response::IntoResponse,
         routing::{get, post},
     },
     chelix_portable::{ConflictStrategy, ExportOptions, ImportOptions},
+    chelix_sessions::JournalImportConflict,
     serde::Deserialize,
     tokio_util::io::ReaderStream,
     tracing::warn,
@@ -156,19 +157,29 @@ async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
 }
 
 /// `POST /api/data/import`
-async fn import_handler(Query(query): Query<ImportQuery>, body: Bytes) -> impl IntoResponse {
-    run_import(query, body, false).await
+async fn import_handler(
+    State(state): State<AppState>,
+    Query(query): Query<ImportQuery>,
+    body: Bytes,
+) -> impl IntoResponse {
+    run_import(state, query, body, false).await
 }
 
 /// `POST /api/data/import/preview`
 async fn import_preview_handler(
+    State(state): State<AppState>,
     Query(query): Query<ImportQuery>,
     body: Bytes,
 ) -> impl IntoResponse {
-    run_import(query, body, true).await
+    run_import(state, query, body, true).await
 }
 
-async fn run_import(query: ImportQuery, body: Bytes, dry_run: bool) -> impl IntoResponse {
+async fn run_import(
+    state: AppState,
+    query: ImportQuery,
+    body: Bytes,
+    dry_run: bool,
+) -> impl IntoResponse {
     if body.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -199,14 +210,34 @@ async fn run_import(query: ImportQuery, body: Bytes, dry_run: bool) -> impl Into
     // Cursor<Bytes> implements Read without copying the data.
     let reader = std::io::Cursor::new(body);
     match chelix_portable::import_archive(&config_dir, &data_dir, &opts, reader).await {
-        Ok(result) => Json(serde_json::json!({
-            "ok": true,
-            "imported": result.imported,
-            "skipped": result.skipped,
-            "warnings": result.warnings,
-            "manifest": result.manifest,
-        }))
-        .into_response(),
+        Ok(imported) => {
+            let mut result = imported.result;
+            if let Some(snapshot) = imported.journal_snapshot {
+                let conflict = match opts.conflict {
+                    ConflictStrategy::Overwrite => JournalImportConflict::Overwrite,
+                    ConflictStrategy::Skip => JournalImportConflict::Skip,
+                };
+                match state.gateway.services.session_store.as_ref() {
+                    Some(store) => match store.import_journal(snapshot.path(), conflict).await {
+                        Ok(errors) => result.warnings.extend(errors),
+                        Err(error) => result
+                            .warnings
+                            .push(format!("failed to import session journal: {error}")),
+                    },
+                    None => result
+                        .warnings
+                        .push("session store is not available".to_string()),
+                }
+            }
+            Json(serde_json::json!({
+                "ok": true,
+                "imported": result.imported,
+                "skipped": result.skipped,
+                "warnings": result.warnings,
+                "manifest": result.manifest,
+            }))
+            .into_response()
+        },
         Err(e) => {
             warn!(error = %e, "data import failed");
             (

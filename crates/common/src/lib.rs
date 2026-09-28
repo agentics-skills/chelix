@@ -12,6 +12,7 @@ pub mod provider_output;
 pub mod reasoning_policy;
 pub mod secret_serde;
 pub mod ssrf;
+pub mod tool_disclosure;
 pub mod tool_lifecycle;
 pub mod tool_policy;
 pub mod types;

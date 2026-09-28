@@ -14,17 +14,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use {
-    anyhow::Result,
-    async_trait::async_trait,
-    chelix_common::tool_lifecycle::{ToolLifecycleEvent, ToolLifecycleUpdate},
-    tracing::debug,
-};
+use {anyhow::Result, async_trait::async_trait, tracing::debug};
 
 use crate::tool_registry::{AgentTool, LazyVisibleTools, ToolRegistry};
 
 /// Reserved control-plane meta-tool name. A user or MCP tool may not use it.
-pub const GET_TOOL_NAME: &str = "get_tool";
+pub use chelix_common::tool_disclosure::GET_TOOL_NAME;
 
 const GET_TOOL_DESCRIPTION: &str = concat!(
     "Fetch the full parameter schema for one allowed tool by exact name. ",
@@ -223,88 +218,6 @@ where
     registry.set_lazy_visible(Arc::clone(&visible));
     registry.register(Box::new(GetTool { entries, visible }));
     Ok(registry)
-}
-
-/// Reconstruct lazy-visible tool schemas from persisted chat history.
-///
-/// Only the current persisted wire format is supported:
-/// - assistant `tool_calls` restore direct public tool names;
-/// - a completed `tool_lifecycle` counts only when `toolName == "get_tool"`,
-///   `success == true`, and the JSON-encoded string result contains
-///   `schema_visible == true`, taking the revealed name from `result.name`.
-///
-/// `get_tool` is removed from the returned set because the wrapper always adds
-/// it.
-pub fn visible_tool_names_from_history(history: &[serde_json::Value]) -> Result<HashSet<String>> {
-    let mut visible = HashSet::new();
-
-    for message in history {
-        match message.get("role").and_then(serde_json::Value::as_str) {
-            Some("assistant") => collect_direct_tool_calls(message, &mut visible),
-            Some("tool_lifecycle") => collect_get_tool_reveal(message, &mut visible)?,
-            _ => {},
-        }
-    }
-
-    visible.remove(GET_TOOL_NAME);
-    Ok(visible)
-}
-
-fn collect_direct_tool_calls(message: &serde_json::Value, visible: &mut HashSet<String>) {
-    let Some(tool_calls) = message
-        .get("tool_calls")
-        .and_then(serde_json::Value::as_array)
-    else {
-        return;
-    };
-
-    for tool_call in tool_calls {
-        let Some(name) = tool_call
-            .get("function")
-            .and_then(|function| function.get("name"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|name| !name.is_empty() && *name != GET_TOOL_NAME)
-        else {
-            continue;
-        };
-        visible.insert(name.to_string());
-    }
-}
-
-fn collect_get_tool_reveal(
-    message: &serde_json::Value,
-    visible: &mut HashSet<String>,
-) -> Result<()> {
-    let lifecycle = serde_json::from_value::<ToolLifecycleEvent>(message.clone())?;
-    if lifecycle.tool_name != GET_TOOL_NAME {
-        return Ok(());
-    }
-    let ToolLifecycleUpdate::Completed {
-        success: true,
-        result: Some(result),
-        ..
-    } = lifecycle.update
-    else {
-        return Ok(());
-    };
-    let result = serde_json::from_str::<serde_json::Value>(&result)?;
-    if result
-        .get("schema_visible")
-        .and_then(serde_json::Value::as_bool)
-        != Some(true)
-    {
-        return Ok(());
-    }
-    if let Some(name) = result
-        .get("name")
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-    {
-        visible.insert(name.to_string());
-    }
-    Ok(())
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
@@ -695,92 +608,5 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result["ok"], true);
-    }
-
-    // ── History restore ──────────────────────────────────────────────
-
-    #[test]
-    fn history_restores_successful_get_tool_reveal() {
-        let history = vec![serde_json::json!({
-            "role": "tool_lifecycle",
-            "toolCallId": "call-get-tool",
-            "toolName": GET_TOOL_NAME,
-            "sequence": 1,
-            "emittedAtMs": 1,
-            "stage": "completed",
-            "arguments": {"name": "ripgrep"},
-            "success": true,
-            "result": r#"{"schema_visible":true,"name":"ripgrep"}"#,
-            "error": null
-        })];
-
-        let visible = visible_tool_names_from_history(&history).unwrap();
-        assert!(visible.contains("ripgrep"));
-        assert!(!visible.contains(GET_TOOL_NAME));
-    }
-
-    #[test]
-    fn history_ignores_failed_get_tool_reveal() {
-        let history = vec![serde_json::json!({
-            "role": "tool_lifecycle",
-            "toolCallId": "call-get-tool-failed",
-            "toolName": GET_TOOL_NAME,
-            "sequence": 1,
-            "emittedAtMs": 1,
-            "stage": "completed",
-            "arguments": {"name": "ripgrep"},
-            "success": false,
-            "result": r#"{"schema_visible":true,"name":"ripgrep"}"#,
-            "error": null
-        })];
-
-        assert!(
-            !visible_tool_names_from_history(&history)
-                .unwrap()
-                .contains("ripgrep")
-        );
-    }
-
-    #[test]
-    fn history_ignores_schema_not_visible_reveal() {
-        let history = vec![serde_json::json!({
-            "role": "tool_lifecycle",
-            "toolCallId": "call-get-tool",
-            "toolName": GET_TOOL_NAME,
-            "sequence": 1,
-            "emittedAtMs": 1,
-            "stage": "completed",
-            "arguments": {"name": "ripgrep"},
-            "success": true,
-            "result": r#"{"schema_visible":false,"name":"ripgrep"}"#,
-            "error": null
-        })];
-
-        assert!(
-            !visible_tool_names_from_history(&history)
-                .unwrap()
-                .contains("ripgrep")
-        );
-    }
-
-    #[test]
-    fn history_restores_direct_tool_calls() {
-        let history = vec![serde_json::json!({
-            "role": "assistant",
-            "tool_calls": [{
-                "id": "call_1",
-                "type": "function",
-                "function": {
-                    "name": "ripgrep",
-                    "arguments": "{\"pattern\":\"**/*.rs\"}"
-                }
-            }]
-        })];
-
-        assert!(
-            visible_tool_names_from_history(&history)
-                .unwrap()
-                .contains("ripgrep")
-        );
     }
 }

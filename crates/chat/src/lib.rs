@@ -1,3 +1,4 @@
+mod active_context;
 mod agent_loop;
 mod channels;
 mod compaction;

@@ -23,7 +23,8 @@ pub(crate) use aborted_calls::ensure_tool_call_results_present;
 
 mod convert;
 pub use convert::{
-    ChatMessageConversionError, provider_values_to_chat_messages, values_to_chat_messages,
+    ChatMessageConversionError, ChatReconstruction, provider_values_to_chat_messages,
+    values_to_chat_messages,
 };
 
 mod options;

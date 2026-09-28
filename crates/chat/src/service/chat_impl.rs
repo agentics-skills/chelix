@@ -21,7 +21,6 @@ use {
 use {
     chelix_agents::{
         ChatMessage, UserContent,
-        model::values_to_chat_messages,
         prompt::{
             build_system_prompt_minimal_runtime_details,
             build_system_prompt_with_session_runtime_details,
@@ -288,11 +287,15 @@ impl ChatService for LiveChatService {
             run_id: None,
         };
 
+        let (chat_history, history_tail) =
+            crate::active_context::load_active_messages(&self.session_store, &session_key)
+                .await
+                .map_err(ServiceError::message)?;
         self.session_store
-            .append(&session_key, &user_msg.to_value())
+            .append_at_index(&session_key, &user_msg.to_value(), history_tail)
             .await
             .map_err(ServiceError::message)?;
-        let (runtime_context, compaction_reminder, chat_history, history) = match async {
+        let (runtime_context, compaction_reminder) = match async {
             let ui_message_count = self
                 .session_store
                 .ui_message_count(&session_key)
@@ -320,22 +323,28 @@ impl ChatService for LiveChatService {
                     .map(|timezone| timezone.name()),
             );
 
-            // Load conversation history (excluding the message we just appended).
-            let mut history = self
+            let pointers = self
                 .session_store
-                .read(&session_key)
+                .pointers(&session_key)
                 .await
                 .map_err(ServiceError::message)?;
-            let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+            let first_user = if let Some(index) = pointers.first_user_index {
+                Some(
+                    self.session_store
+                        .read_record(&session_key, index)
+                        .await
+                        .map_err(ServiceError::message)?,
+                )
+            } else {
+                None
+            };
+            let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_parts(
                 persona.agent.compaction_reminder,
-                &history,
+                pointers.last_checkpoint_index.is_some(),
+                first_user.as_ref(),
             )
             .map_err(ServiceError::message)?;
-            if !history.is_empty() {
-                history.pop();
-            }
-            let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
-            Ok((runtime_context, compaction_reminder, chat_history, history))
+            Ok((runtime_context, compaction_reminder))
         }
         .await
         {
@@ -429,7 +438,7 @@ impl ChatService for LiveChatService {
                 &model_id,
                 &user_content,
                 &provider_name,
-                &chat_history,
+                chat_history,
                 &session_key,
                 &session_agent_id,
                 resolved_reasoning_effort.clone(),
@@ -460,8 +469,7 @@ impl ChatService for LiveChatService {
                 &tool_registry,
                 &user_content,
                 &provider_name,
-                &history,
-                &chat_history,
+                chat_history,
                 &session_key,
                 &session_agent_id,
                 resolved_reasoning_effort.clone(),
@@ -687,13 +695,12 @@ impl ChatService for LiveChatService {
         let resolved = self.resolve_chat_turn(&session_id, None).await?;
         let provider = Arc::clone(resolved.model.provider());
 
-        let history = self
-            .session_store
-            .read(session_key)
-            .await
-            .map_err(ServiceError::message)?;
-
-        if history.is_empty() {
+        let tail = match self.session_store.pointers(session_key).await {
+            Ok(pointers) => pointers.canonical_tail,
+            Err(chelix_sessions::Error::NoCanonicalJournal { .. }) => 0,
+            Err(error) => return Err(ServiceError::message(error)),
+        };
+        if tail == 0 {
             return Err("nothing to compact".into());
         }
 
@@ -701,7 +708,7 @@ impl ChatService for LiveChatService {
         // regular turn would, so the summarization request shares the
         // provider prompt-cache prefix with the previous turn.
         let (system_prompt, tools) = self
-            .session_prompt_context(session_key, &history, &provider, &context)
+            .session_prompt_context(session_key, &provider, &context)
             .await
             .map_err(ServiceError::message)?;
 
@@ -772,11 +779,6 @@ impl ChatService for LiveChatService {
             .load_prompt_persona_for_agent_run(session_key, session_entry.as_ref(), None)
             .await
             .map_err(ServiceError::message)?;
-        let messages = self
-            .session_store
-            .read(session_key)
-            .await
-            .map_err(ServiceError::message)?;
         let provider_name = provider.name().to_string();
         let tools_enabled = tool_mode_enables_tools(provider.tool_mode());
         let session_info = serde_json::json!({
@@ -837,7 +839,7 @@ impl ChatService for LiveChatService {
         };
 
         // Tools (only include when the configured tool mode enables them)
-        // `messages` is reused for token usage and lazy schema visibility.
+        // Token totals come from `token_totals`. Lazy names come from `visible_tools`.
         // `tools` is the UI discovery catalog (name + description of every
         // allowed public tool, plus `get_tool` in lazy mode). `toolSchemaCount`
         // separately reports how many parameter schemas are currently visible.
@@ -857,6 +859,17 @@ impl ChatService for LiveChatService {
                     ),
                 )
             });
+            let visible_tools = crate::active_context::visible_tools(
+                &self.session_store,
+                session_key,
+                true,
+                matches!(
+                    prompt_persona.config.tools.registry_mode,
+                    chelix_config::ToolRegistryMode::Lazy
+                ),
+            )
+            .await
+            .map_err(ServiceError::message)?;
             let effective_registry = prepare_run_registry(
                 &registry_guard,
                 &prompt_persona.config,
@@ -865,7 +878,7 @@ impl ChatService for LiveChatService {
                 true,
                 &list_agent_id,
                 memory_setup,
-                &messages,
+                visible_tools,
             )
             .map_err(|error| ServiceError::message(error.to_string()))?;
             let catalog = effective_registry
@@ -883,8 +896,15 @@ impl ChatService for LiveChatService {
             (vec![], 0)
         };
 
-        // Token usage from API-reported counts stored in messages.
-        let usage = session_token_usage_from_messages(&messages);
+        // Token usage from API-reported counts stored in canonical records.
+        let usage = {
+            let totals = self
+                .session_store
+                .token_totals(session_key)
+                .await
+                .map_err(ServiceError::message)?;
+            session_token_usage_from_totals(&totals)
+        };
         let total_tokens = usage.session_input_tokens
             + usage.session_output_tokens
             + usage.session_cache_read_tokens
@@ -995,11 +1015,6 @@ impl ChatService for LiveChatService {
         let session_key = session_id.as_str();
         let resolved = self.resolve_chat_turn(&session_id, None).await?;
         let provider = Arc::clone(resolved.model.provider());
-        let history = self
-            .session_store
-            .read(session_key)
-            .await
-            .map_err(ServiceError::message)?;
         let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
         let tools_enabled = tool_mode_enables_tools(tool_mode);
@@ -1060,6 +1075,17 @@ impl ChatService for LiveChatService {
                     ),
                 )
             });
+            let visible_tools = crate::active_context::visible_tools(
+                &self.session_store,
+                session_key,
+                tools_enabled,
+                matches!(
+                    persona.config.tools.registry_mode,
+                    chelix_config::ToolRegistryMode::Lazy
+                ),
+            )
+            .await
+            .map_err(ServiceError::message)?;
             prepare_run_registry(
                 &registry_guard,
                 &persona.config,
@@ -1068,7 +1094,7 @@ impl ChatService for LiveChatService {
                 tools_enabled,
                 &raw_prompt_agent_id,
                 memory_setup,
-                &history,
+                visible_tools,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1113,10 +1139,12 @@ impl ChatService for LiveChatService {
 
         let truncated = prompt_build.metadata.truncated();
         let workspace_files = prompt_build.metadata.workspace_files.clone();
-        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+        let compaction_reminder = crate::active_context::reminder_from_journal(
+            &self.session_store,
+            session_key,
             persona.agent.compaction_reminder,
-            &history,
         )
+        .await
         .map_err(ServiceError::message)?;
         let system_prompt = compaction_reminder.render(&prompt_build.prompt);
         let char_count = system_prompt.len();
@@ -1145,11 +1173,6 @@ impl ChatService for LiveChatService {
         let session_key = session_id.as_str();
         let resolved = self.resolve_chat_turn(&session_id, None).await?;
         let provider = Arc::clone(resolved.model.provider());
-        let history = self
-            .session_store
-            .read(session_key)
-            .await
-            .map_err(ServiceError::message)?;
         let tool_mode = provider.tool_mode();
         let native_tools = matches!(tool_mode, ToolMode::Native);
         let tools_enabled = tool_mode_enables_tools(tool_mode);
@@ -1210,6 +1233,17 @@ impl ChatService for LiveChatService {
                     ),
                 )
             });
+            let visible_tools = crate::active_context::visible_tools(
+                &self.session_store,
+                session_key,
+                tools_enabled,
+                matches!(
+                    persona.config.tools.registry_mode,
+                    chelix_config::ToolRegistryMode::Lazy
+                ),
+            )
+            .await
+            .map_err(ServiceError::message)?;
             prepare_run_registry(
                 &registry_guard,
                 &persona.config,
@@ -1218,7 +1252,7 @@ impl ChatService for LiveChatService {
                 tools_enabled,
                 &full_ctx_agent_id,
                 memory_setup,
-                &history,
+                visible_tools,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1260,27 +1294,31 @@ impl ChatService for LiveChatService {
 
         let truncated = prompt_build.metadata.truncated();
         let workspace_files = prompt_build.metadata.workspace_files.clone();
-        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+        let compaction_reminder = crate::active_context::reminder_from_journal(
+            &self.session_store,
+            session_key,
             persona.agent.compaction_reminder,
-            &history,
         )
+        .await
         .map_err(ServiceError::message)?;
         let system_prompt = compaction_reminder.render(&prompt_build.prompt);
         let system_prompt_chars = system_prompt.len();
 
         // Keep raw assistant outputs (including provider/model/token metadata)
         // so the UI can show a debug view of what the LLM actually returned.
-        let llm_outputs: Vec<Value> = history
-            .iter()
-            .filter(|entry| entry.get("role").and_then(|r| r.as_str()) == Some("assistant"))
-            .cloned()
-            .collect();
+        let llm_outputs = self
+            .session_store
+            .assistant_payloads(session_key)
+            .await
+            .map_err(ServiceError::message)?;
 
-        // Build the full messages array: system prompt + conversation history.
-        // `values_to_chat_messages` converts terminal tool lifecycle records to provider tool messages.
-        let mut messages = Vec::with_capacity(1 + history.len());
+        let (active_messages, _) =
+            crate::active_context::load_active_messages(&self.session_store, session_key)
+                .await
+                .map_err(ServiceError::message)?;
+        let mut messages = Vec::with_capacity(1 + active_messages.len());
         messages.push(ChatMessage::system(system_prompt));
-        messages.extend(values_to_chat_messages(&history).map_err(ServiceError::message)?);
+        messages.extend(active_messages);
 
         let openai_messages: Vec<Value> = messages.iter().map(|m| m.to_openai_value()).collect();
         let message_count = openai_messages.len();
@@ -1485,7 +1523,10 @@ mod tests {
     };
 
     use {
-        chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, Usage},
+        chelix_agents::{
+            UserContent,
+            model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, Usage},
+        },
         chelix_common::{ModelMetadata, ModelModality, ModelOverride},
         chelix_config::ToolMode,
         chelix_providers::{ModelInfo, ProviderRegistry},
@@ -1643,6 +1684,7 @@ mod tests {
     struct ValidationProvider {
         selected_effort: Option<chelix_common::ReasoningEffort>,
         resolved_efforts: Arc<Mutex<Vec<String>>>,
+        captured_messages: Arc<Mutex<Vec<Vec<ChatMessage>>>>,
     }
 
     impl LlmProvider for ValidationProvider {
@@ -1656,10 +1698,14 @@ mod tests {
 
         fn stream_with_tools_and_options(
             &self,
-            _messages: Vec<ChatMessage>,
+            messages: Vec<ChatMessage>,
             _tools: Vec<Value>,
             _options: CompletionOptions,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+            self.captured_messages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(messages);
             Box::pin(tokio_stream::iter(vec![
                 StreamEvent::Delta("summary".to_string()),
                 StreamEvent::Done(Usage::default()),
@@ -1670,7 +1716,18 @@ mod tests {
             &self,
             messages: Vec<ChatMessage>,
         ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
-            self.stream_with_tools_and_options(messages, Vec::new(), CompletionOptions::default())
+            self.captured_messages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(messages);
+            let segment_id = chelix_common::ProviderSegmentId::new("validation");
+            Box::pin(tokio_stream::iter(vec![
+                StreamEvent::SegmentStart {
+                    segment_id: segment_id.clone(),
+                },
+                StreamEvent::Delta("summary".to_string()),
+                StreamEvent::Done(Usage::default()),
+            ]))
         }
 
         fn tool_mode(&self) -> ToolMode {
@@ -1692,6 +1749,7 @@ mod tests {
             Some(Arc::new(Self {
                 selected_effort: Some(effort),
                 resolved_efforts: Arc::clone(&self.resolved_efforts),
+                captured_messages: Arc::clone(&self.captured_messages),
             }))
         }
     }
@@ -1724,6 +1782,7 @@ mod tests {
         Arc<SqliteSessionMetadata>,
         Arc<SessionStore>,
         Arc<Mutex<Vec<String>>>,
+        Arc<Mutex<Vec<Vec<ChatMessage>>>>,
     ) {
         let directory = tempfile::tempdir()
             .unwrap_or_else(|error| panic!("temporary session directory: {error}"));
@@ -1775,6 +1834,7 @@ mod tests {
         };
         let agents_config = Arc::new(RwLock::new(agents));
         let resolved_efforts = Arc::new(Mutex::new(Vec::new()));
+        let captured_messages = Arc::new(Mutex::new(Vec::new()));
         let mut registry = ProviderRegistry::empty();
         for model_id in ["model", "other"] {
             registry.register(
@@ -1786,6 +1846,7 @@ mod tests {
                 Arc::new(ValidationProvider {
                     selected_effort: None,
                     resolved_efforts: Arc::clone(&resolved_efforts),
+                    captured_messages: Arc::clone(&captured_messages),
                 }),
             );
         }
@@ -1807,12 +1868,13 @@ mod tests {
             metadata,
             session_store,
             resolved_efforts,
+            captured_messages,
         )
     }
 
     #[tokio::test]
     async fn chat_turn_resolution_uses_complete_request_or_persisted_session_pair() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let explicit = ModelOverride {
             model: "test::other".to_string(),
@@ -1858,7 +1920,7 @@ mod tests {
 
     #[tokio::test]
     async fn chat_auxiliary_surfaces_use_the_persisted_pair_and_one_resolved_provider() {
-        let (_directory, service, _metadata, session_store, resolved_efforts) =
+        let (_directory, service, _metadata, session_store, resolved_efforts, _captured_messages) =
             validation_test_service().await;
         session_store
             .append("main", &PersistedMessage::user("hello").to_value())
@@ -1913,7 +1975,7 @@ mod tests {
 
     #[tokio::test]
     async fn chat_auxiliary_surfaces_reject_invalid_persisted_pairs() {
-        let (_directory, service, metadata, _session_store, resolved_efforts) =
+        let (_directory, service, metadata, _session_store, resolved_efforts, _captured_messages) =
             validation_test_service().await;
         metadata
             .bind_external(
@@ -1985,7 +2047,7 @@ mod tests {
 
     #[tokio::test]
     async fn chat_turn_resolution_rejects_invalid_complete_pairs_or_missing_session_pair() {
-        let (_directory, service, metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         metadata
             .bind_external(
@@ -2049,7 +2111,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_send_preserves_entry_and_history() {
-        let (_directory, service, metadata, session_store, _resolved_efforts) =
+        let (_directory, service, metadata, session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let cases = [
             ("empty effort", ModelOverride {
@@ -2109,7 +2171,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_send_sync_agent_selection_preserves_entry_and_history() {
-        let (_directory, service, metadata, session_store, _resolved_efforts) =
+        let (_directory, service, metadata, session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let cases = [
             ("empty effort", ModelOverride {
@@ -2169,8 +2231,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_sync_keeps_unclosed_provider_segment_and_sends_user_once() {
+        let (_directory, service, _metadata, session_store, _resolved_efforts, captured_messages) =
+            validation_test_service().await;
+        session_store
+            .append(
+                "main",
+                &serde_json::json!({
+                    "role": "provider_update",
+                    "segmentId": "seg-1",
+                    "itemId": "msg_0",
+                    "position": 1,
+                    "updateSeq": 1,
+                    "payload": {"update_type": "message_done", "text": "partial answer"}
+                }),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("append open segment: {error}"));
+
+        service
+            .send_sync(
+                ChatSendSyncRequest {
+                    text: "hello".to_string(),
+                    model_override: None,
+                    tool_choice: None,
+                    input_medium: None,
+                },
+                ChatExecutionContext::internal(SessionKey::new("main")),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("send_sync: {error}"));
+
+        let captured = captured_messages
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert_eq!(captured.len(), 1, "provider was called once");
+        let messages = &captured[0];
+        let user_indexes = messages
+            .iter()
+            .enumerate()
+            .filter_map(|(index, message)| match message {
+                ChatMessage::User {
+                    content: UserContent::Text(text),
+                    ..
+                } if text == "hello" || text.ends_with("\n\nhello") => Some(index),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(user_indexes.len(), 1);
+        assert_eq!(user_indexes[0], messages.len() - 1);
+        let assistant_index = messages
+            .iter()
+            .position(|message| {
+                matches!(
+                    message,
+                    ChatMessage::Assistant {
+                        content: Some(text),
+                        ..
+                    } if text == "partial answer"
+                )
+            })
+            .unwrap_or_else(|| panic!("replayed assistant missing"));
+        assert!(assistant_index < user_indexes[0]);
+    }
+
+    #[tokio::test]
     async fn busy_send_persists_turn_settings_before_prompt_only_enqueue() {
-        let (_directory, service, metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let persisted_pair = chelix_common::ResolvedModelReasoning::try_new(
             "test::model".to_string(),
@@ -2421,7 +2549,7 @@ mod tests {
 
     #[tokio::test]
     async fn abort_waits_until_the_session_run_is_unmapped() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let session_key = "session:child";
         let run_id = "run-1";
@@ -2464,7 +2592,7 @@ mod tests {
 
     #[tokio::test]
     async fn abort_does_not_overwrite_a_terminal_run_outcome() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let session_key = "session:child";
         let run_id = "run-1";
@@ -2519,7 +2647,7 @@ mod tests {
 
     #[tokio::test]
     async fn abort_stays_pending_when_version_bumps_without_unmapping() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let session_key = "session:child";
         let run_id = "run-1";
@@ -2563,7 +2691,7 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_session_gate_returns_immediately_when_inactive() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let terminal = service
             .wait_for_session_gate("session:idle")
@@ -2581,7 +2709,7 @@ mod tests {
 
     #[tokio::test]
     async fn wait_for_session_gate_wakes_on_finish_without_a_run_id() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let session_key = "session:child";
         service.session_gates.begin_turn(session_key).await;
@@ -2620,7 +2748,7 @@ mod tests {
 
     #[tokio::test]
     async fn begin_turn_clears_last_terminal_for_the_next_send_sync_insert() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let session_key = "session:child";
         service
@@ -2639,7 +2767,7 @@ mod tests {
 
     #[tokio::test]
     async fn activate_session_turn_clears_terminal_before_session_is_active() {
-        let (_directory, service, _metadata, _session_store, _resolved_efforts) =
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let session_key = "session:child";
         service

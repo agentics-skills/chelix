@@ -670,8 +670,7 @@ pub(crate) async fn run_with_tools(
     tool_registry: &Arc<RwLock<ToolRegistry>>,
     user_content: &UserContent,
     provider_name: &str,
-    history_raw: &[Value],
-    chat_history: &[ChatMessage],
+    chat_history: Vec<ChatMessage>,
     session_key: &str,
     agent_id: &str,
     session_reasoning_effort: Option<String>,
@@ -738,6 +737,48 @@ pub(crate) async fn run_with_tools(
     let tools_enabled = !matches!(tool_mode, ToolMode::Off);
 
     let policy_ctx = build_policy_context(agent_id, runtime_context);
+    let lazy_registry = tools_enabled
+        && matches!(
+            persona.config.tools.registry_mode,
+            chelix_config::ToolRegistryMode::Lazy
+        );
+    let visible_tools = if lazy_registry {
+        let Some(store) = session_store else {
+            let error = "lazy tool registry requires the session journal";
+            crate::ui_history_ingress::fail_run(
+                ui_run.as_ref(),
+                state,
+                run_id,
+                error.to_string(),
+                provider_name,
+                None,
+            )
+            .await;
+            let error_obj = parse_chat_error(error, Some(provider_name));
+            deliver_channel_error(state, session_key, &error_obj).await;
+            return ChatRunOutcome::Failed;
+        };
+        match store.visible_tool_names(session_key).await {
+            Ok(names) => names,
+            Err(error) => {
+                warn!(run_id, error = %error, "failed to read disclosed tools");
+                crate::ui_history_ingress::fail_run(
+                    ui_run.as_ref(),
+                    state,
+                    run_id,
+                    error.to_string(),
+                    provider_name,
+                    None,
+                )
+                .await;
+                let error_obj = parse_chat_error(&error.to_string(), Some(provider_name));
+                deliver_channel_error(state, session_key, &error_obj).await;
+                return ChatRunOutcome::Failed;
+            },
+        }
+    } else {
+        HashSet::new()
+    };
     // Shared registry preparation: filter → agent-scoped memory tools → lazy
     // wrap, identical to the debug/UI prompt surfaces so they never diverge.
     let filtered_registry = {
@@ -753,7 +794,7 @@ pub(crate) async fn run_with_tools(
             tools_enabled,
             agent_id,
             memory_setup,
-            history_raw,
+            visible_tools,
         )
     };
     let filtered_registry = match filtered_registry {
@@ -1102,11 +1143,7 @@ pub(crate) async fn run_with_tools(
         .await
         .insert(session_key.to_string(), event_forwarder);
 
-    let hist = if chat_history.is_empty() {
-        None
-    } else {
-        Some(chat_history.to_vec())
-    };
+    let hist = (!chat_history.is_empty()).then_some(chat_history);
 
     // Fold datetime into the user message content so the message array before
     // it stays positionally stable, preserving KV cache prefix matching for
@@ -1854,12 +1891,13 @@ mod tests {
 
     #[test]
     fn compaction_reminder_guards_impossible_and_stalled_retries() {
-        let history = vec![
-            serde_json::json!({"role": "user", "content": "task"}),
-            serde_json::json!({"role": "checkpoint", "summary": "summary"}),
-        ];
-        let reminder = crate::compaction_reminder::CompactionReminder::from_history(true, &history)
-            .unwrap_or_else(|error| panic!("valid reminder: {error}"));
+        let first_user = serde_json::json!({"role": "user", "content": "task"});
+        let reminder = crate::compaction_reminder::CompactionReminder::from_parts(
+            true,
+            true,
+            Some(&first_user),
+        )
+        .unwrap_or_else(|error| panic!("valid reminder: {error}"));
         let system_with_reminder = reminder.render("system");
         let post_hook_system = format!("safety prefix\n{system_with_reminder}\nsafety suffix");
         let mut request = compaction_request(&post_hook_system, 0);

@@ -41,10 +41,7 @@ use crate::{
 
 use super::{super::session_gate::terminal_from_outcome, *};
 
-use {
-    crate::memory_tools::MemoryForgetProviderResolver,
-    chelix_agents::{ChatMessage, model::values_to_chat_messages},
-};
+use {crate::memory_tools::MemoryForgetProviderResolver, chelix_agents::ChatMessage};
 
 struct PreparedUserBatchPrefix {
     messages: Vec<ChatMessage>,
@@ -456,18 +453,16 @@ impl LiveChatService {
 
         // Load conversation history (the current user message is NOT yet
         // persisted — run_streaming / run_agent_loop add it themselves).
-        let history = self
-            .session_store
-            .read(&session_key)
-            .await
-            .map_err(ServiceError::message)?;
+        let (chat_history, history_tail) =
+            crate::active_context::load_active_messages(&self.session_store, &session_key)
+                .await
+                .map_err(ServiceError::message)?;
         info!(
             session = %session_key,
-            history_len = history.len(),
+            history_len = history_tail,
             client_seq = ?client_seq,
             "chat.send: history loaded"
         );
-        let chat_history = values_to_chat_messages(&history).map_err(ServiceError::message)?;
         let deferred_channel_target = queued_channel_reply_target(&prompt);
 
         // Dispatch the `MessageReceived` hook before the turn starts. The
@@ -806,15 +801,32 @@ impl LiveChatService {
             user_record["clientMessageId"] = serde_json::json!(id);
         }
         records.push(user_record);
-        let mut reminder_history = history.clone();
-        reminder_history.extend(records.iter().cloned());
-        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_history(
+        let pointers = self
+            .session_store
+            .pointers(&session_key)
+            .await
+            .map_err(ServiceError::message)?;
+        let first_user = if let Some(index) = pointers.first_user_index {
+            Some(
+                self.session_store
+                    .read_record(&session_key, index)
+                    .await
+                    .map_err(ServiceError::message)?,
+            )
+        } else {
+            records
+                .iter()
+                .find(|record| record.get("role").and_then(|role| role.as_str()) == Some("user"))
+                .cloned()
+        };
+        let compaction_reminder = crate::compaction_reminder::CompactionReminder::from_parts(
             persona.agent.compaction_reminder,
-            &reminder_history,
+            pointers.last_checkpoint_index.is_some(),
+            first_user.as_ref(),
         )
         .map_err(ServiceError::message)?;
         self.session_store
-            .append_batch_at_index(&session_key, &records, history.len())
+            .append_batch_at_index(&session_key, &records, history_tail)
             .await
             .map_err(ServiceError::message)?;
 
@@ -952,7 +964,7 @@ impl LiveChatService {
                         &model_id,
                         &user_content,
                         &provider_name,
-                        &chat_history,
+                        chat_history,
                         &session_key_clone,
                         &session_agent_id_clone,
                         resolved_reasoning_effort.clone(),
@@ -980,8 +992,7 @@ impl LiveChatService {
                         &tool_registry,
                         &user_content,
                         &provider_name,
-                        &history,
-                        &chat_history,
+                        chat_history,
                         &session_key_clone,
                         &session_agent_id_clone,
                         resolved_reasoning_effort.clone(),

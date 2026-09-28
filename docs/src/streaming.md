@@ -165,7 +165,7 @@ engine at the common `SessionStore` append boundary.
 
 SQLite stores accumulated semantic snapshots in `ui-history.sqlite`; the
 coalescing writer waits 50 ms between dirty notifications and flush work.
-JSONL stores the provider-context journal. Canonical bindings are confirmed
+`session_records` stores the provider-context journal. Canonical bindings are confirmed
 only after a successful append. Terminal run success waits for receipts and
 snapshot flush. Persistence failure publishes a failed session revision and
 refuses further run ingress.
@@ -326,7 +326,7 @@ live rendering and history reload.
 Provider stream → runner / stream-only / external-agent ingress
   → UiHistoryEngine → revision watch → per-client delivery → WebSocket → browser
        └→ coalesced SQLite snapshots
-  → ordered canonical append → JSONL → next provider request
+  → ordered canonical append → session_records → next provider request
        └→ canonical receipt → UiHistoryEngine
 ```
 

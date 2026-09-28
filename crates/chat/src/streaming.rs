@@ -301,7 +301,7 @@ pub(crate) async fn run_streaming(
     model_id: &str,
     user_content: &UserContent,
     provider_name: &str,
-    chat_history: &[ChatMessage],
+    chat_history: Vec<ChatMessage>,
     session_key: &str,
     _agent_id: &str,
     session_reasoning_effort: Option<String>,
@@ -420,7 +420,7 @@ pub(crate) async fn run_streaming(
 
     let mut messages: Vec<ChatMessage> = Vec::new();
     messages.push(ChatMessage::system(system_prompt));
-    messages.extend_from_slice(chat_history);
+    messages.extend(chat_history);
     messages.push(ChatMessage::User {
         content: effective_user_content,
         name: sender_name,

@@ -1,6 +1,6 @@
 //! Typed message structures for session storage.
 //!
-//! These types represent the JSON format stored in session JSONL files.
+//! These types represent the JSON payload stored in `session_records`.
 //! They include both LLM-relevant fields (role, content) and metadata
 //! fields (created_at, model, provider, tokens, channel).
 
@@ -14,7 +14,7 @@ use {
 
 pub use chelix_common::ContextBudgetMetadata;
 
-/// A message stored in a session JSONL file.
+/// A message stored in one `session_records` row.
 ///
 /// Includes both the LLM-relevant content and metadata for UI display
 /// and analytics. The `role` field determines which variant this is.
