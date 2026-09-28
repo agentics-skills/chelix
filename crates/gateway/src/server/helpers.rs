@@ -1,5 +1,7 @@
+#[cfg(any(test, feature = "local-embeddings"))]
+use std::collections::HashMap;
+
 use std::{
-    collections::HashMap,
     fs::OpenOptions,
     io::Write,
     path::{Path as FsPath, PathBuf},
@@ -36,6 +38,7 @@ pub(crate) fn browser_tool_container_prefix(instance_slug: &str) -> String {
 
 // ── Environment helpers ──────────────────────────────────────────────────────
 
+#[cfg(any(test, feature = "local-embeddings"))]
 pub(crate) fn env_value_with_overrides(
     env_overrides: &HashMap<String, String>,
     key: &str,

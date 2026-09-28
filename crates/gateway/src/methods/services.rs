@@ -192,10 +192,8 @@ fn parse_user_profile_write_mode(
 
 fn parse_memory_provider(value: &str) -> Result<Option<chelix_config::MemoryProvider>, ErrorShape> {
     match value {
-        "auto" => Ok(None),
+        "none" => Ok(None),
         "local" => Ok(Some(chelix_config::MemoryProvider::Local)),
-        "openai" => Ok(Some(chelix_config::MemoryProvider::OpenAi)),
-        "custom" => Ok(Some(chelix_config::MemoryProvider::Custom)),
         _ => Err(invalid_memory_config_value("provider", value)),
     }
 }
@@ -492,7 +490,7 @@ mod tests {
             cfg.memory.style = chelix_config::MemoryStyle::SearchOnly;
             cfg.memory.agent_write_mode = chelix_config::AgentMemoryWriteMode::PromptOnly;
             cfg.memory.user_profile_write_mode = chelix_config::UserProfileWriteMode::ExplicitOnly;
-            cfg.memory.provider = Some(chelix_config::MemoryProvider::OpenAi);
+            cfg.memory.provider = Some(chelix_config::MemoryProvider::Local);
             cfg.memory.citations = chelix_config::MemoryCitationsMode::Off;
             cfg.memory.disable_rag = true;
             cfg.memory.llm_reranking = true;
@@ -505,7 +503,7 @@ mod tests {
         assert_eq!(payload["style"], "search-only");
         assert_eq!(payload["agent_write_mode"], "prompt-only");
         assert_eq!(payload["user_profile_write_mode"], "explicit-only");
-        assert_eq!(payload["provider"], "openai");
+        assert_eq!(payload["provider"], "local");
         assert_eq!(payload["citations"], "off");
         assert_eq!(payload["disable_rag"], true);
         assert_eq!(payload["llm_reranking"], true);
@@ -523,7 +521,7 @@ mod tests {
                 "style": "prompt-only",
                 "agent_write_mode": "search-only",
                 "user_profile_write_mode": "off",
-                "provider": "custom",
+                "provider": "local",
                 "citations": "on",
                 "disable_rag": true,
                 "llm_reranking": true,
@@ -536,7 +534,7 @@ mod tests {
         assert_eq!(payload["style"], "prompt-only");
         assert_eq!(payload["agent_write_mode"], "search-only");
         assert_eq!(payload["user_profile_write_mode"], "off");
-        assert_eq!(payload["provider"], "custom");
+        assert_eq!(payload["provider"], "local");
         assert_eq!(payload["citations"], "on");
         assert_eq!(payload["disable_rag"], true);
         assert_eq!(payload["llm_reranking"], true);
@@ -556,7 +554,7 @@ mod tests {
         );
         assert_eq!(
             config.memory.provider,
-            Some(chelix_config::MemoryProvider::Custom)
+            Some(chelix_config::MemoryProvider::Local)
         );
         assert_eq!(
             config.memory.citations,
@@ -604,7 +602,7 @@ mod tests {
             "memory.config.update",
             serde_json::json!({
                 "unexpected_field": true,
-                "provider": "custom",
+                "provider": "local",
             }),
         )
         .await;

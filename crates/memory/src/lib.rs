@@ -7,11 +7,8 @@ pub mod config;
 pub mod contract;
 mod embed_payload;
 pub mod embeddings;
-pub mod embeddings_batch;
-pub mod embeddings_fallback;
 #[cfg(feature = "local-embeddings")]
 pub mod embeddings_local;
-pub mod embeddings_openai;
 pub mod error;
 pub mod manager;
 pub mod reranking;

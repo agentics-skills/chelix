@@ -302,8 +302,8 @@ Long-term memory uses embeddings for semantic search:
 style = "hybrid"              # Or "prompt-only", "search-only", "off"
 agent_write_mode = "hybrid"   # Or "prompt-only", "search-only", "off"
 user_profile_write_mode = "explicit-and-auto" # Or "explicit-only", "off"
-provider = "openai"             # Or "local", "custom"
-model = "text-embedding-3-small"
+provider = "local"              # Omit for keyword-only search
+model = "google/embeddinggemma-300m"
 citations = "auto"              # "on", "off", or "auto"
 llm_reranking = false
 search_merge_strategy = "rrf"   # Or "linear"
@@ -506,8 +506,8 @@ network = "bridge"
 packages = ["curl", "git", "jq", "python3", "nodejs"]
 
 [memory]
-provider = "openai"
-model = "text-embedding-3-small"
+provider = "local"
+model = "google/embeddinggemma-300m"
 
 [auth]
 disabled = false

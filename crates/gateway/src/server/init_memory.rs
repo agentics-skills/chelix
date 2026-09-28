@@ -3,11 +3,15 @@ use std::{collections::HashMap, path::Path as FsPath, sync::Arc};
 #[cfg(feature = "local-embeddings")]
 use std::path::PathBuf;
 
-use {anyhow::Result, secrecy::ExposeSecret, tracing::info};
+#[cfg(feature = "local-embeddings")]
+use secrecy::ExposeSecret;
 
+use {anyhow::Result, tracing::info};
+
+#[cfg(feature = "local-embeddings")]
 use super::helpers::env_value_with_overrides;
 
-/// Initialize the memory system (embedding providers, sync, watchers).
+/// Initialize the memory system (local embedding provider, sync, watchers).
 ///
 /// Returns `Ok(Some(runtime))` when the memory system is available, `Ok(None)`
 /// when the database could not be opened, and `Err` when an explicitly selected
@@ -15,156 +19,65 @@ use super::helpers::env_value_with_overrides;
 pub(crate) async fn init_memory_system(
     config: &chelix_config::ChelixConfig,
     data_dir: &FsPath,
-    effective_providers: &chelix_config::schema::ProvidersConfig,
     runtime_env_overrides: &HashMap<String, String>,
     db_pool_max_connections: u32,
 ) -> Result<Option<chelix_memory::runtime::DynMemoryRuntime>> {
-    // Build embedding provider(s) for the fallback chain.
-    let mut embedding_providers: Vec<(
-        String,
-        Box<dyn chelix_memory::embeddings::EmbeddingProvider>,
-    )> = Vec::new();
-
     let mem_cfg = &config.memory;
 
-    if mem_cfg.disable_rag {
+    let embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>> = if mem_cfg
+        .disable_rag
+    {
         info!("memory: RAG disabled via memory.disable_rag=true, using keyword-only search");
+        None
     } else {
-        // 1. If user explicitly configured an embedding provider, use it.
-        if let Some(provider) = mem_cfg.provider {
-            match provider {
-                chelix_config::MemoryProvider::Local => {
-                    #[cfg(feature = "local-embeddings")]
-                    {
-                        let cache_dir = mem_cfg.base_url.as_ref().map(PathBuf::from).unwrap_or_else(
-                            chelix_memory::embeddings_local::LocalEmbeddingProvider::default_cache_dir,
-                        );
-                        let hf_token = mem_cfg
-                            .huggingface_api_key
-                            .as_ref()
-                            .map(|key| key.expose_secret().clone())
-                            .filter(|token| !token.is_empty())
-                            .or_else(|| env_value_with_overrides(runtime_env_overrides, "HF_TOKEN"))
-                            .or_else(|| {
-                                env_value_with_overrides(
-                                    runtime_env_overrides,
-                                    "HUGGINGFACE_API_KEY",
-                                )
-                            });
-                        let model_spec =
-                            chelix_memory::embeddings_local::LocalEmbeddingProvider::resolve_model(
-                                cache_dir.clone(),
-                                mem_cfg.model.as_deref(),
-                            )?;
-                        let provider =
-                            chelix_memory::embeddings_local::LocalEmbeddingProvider::new(
-                                model_spec, cache_dir, hf_token,
-                            )
-                            .await
-                            .map_err(|error| {
-                                anyhow::anyhow!("memory: local embedding sidecar failed: {error}")
-                            })?;
-                        embedding_providers.push(("local".into(), Box::new(provider)));
-                    }
-                    #[cfg(not(feature = "local-embeddings"))]
-                    {
-                        return Err(anyhow::anyhow!(
-                            "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
-                        ));
-                    }
-                },
-                chelix_config::MemoryProvider::Custom | chelix_config::MemoryProvider::OpenAi => {
-                    let base_url = mem_cfg
-                        .base_url
-                        .clone()
-                        .unwrap_or_else(|| "https://api.openai.com".into());
-                    let api_key = mem_cfg
-                        .api_key
+        match mem_cfg.provider {
+            Some(chelix_config::MemoryProvider::Local) => {
+                #[cfg(feature = "local-embeddings")]
+                {
+                    let cache_dir = mem_cfg.base_url.as_ref().map(PathBuf::from).unwrap_or_else(
+                        chelix_memory::embeddings_local::LocalEmbeddingProvider::default_cache_dir,
+                    );
+                    let hf_token = mem_cfg
+                        .huggingface_api_key
                         .as_ref()
-                        .map(|k| k.expose_secret().clone())
+                        .map(|key| key.expose_secret().clone())
+                        .filter(|token| !token.is_empty())
+                        .or_else(|| env_value_with_overrides(runtime_env_overrides, "HF_TOKEN"))
                         .or_else(|| {
-                            env_value_with_overrides(runtime_env_overrides, "OPENAI_API_KEY")
-                        })
-                        .unwrap_or_default();
-                    let mut e =
-                        chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
-                    if base_url != "https://api.openai.com" {
-                        e = e.with_base_url(base_url);
-                    }
-                    if let Some(ref model) = mem_cfg.model {
-                        e = e.with_model(model.clone(), 1536);
-                    }
-                    let provider_name = match provider {
-                        chelix_config::MemoryProvider::Custom => "custom",
-                        chelix_config::MemoryProvider::OpenAi => "openai",
-                        chelix_config::MemoryProvider::Local => "local",
-                    };
-                    embedding_providers.push((provider_name.to_owned(), Box::new(e)));
-                },
-            }
-        }
-
-        // 2. Auto-detect remote providers only when memory.provider is unset.
-        const EMBEDDING_CANDIDATES: &[(&str, &str, &str)] = &[
-            ("openai", "OPENAI_API_KEY", "https://api.openai.com"),
-            (
-                "openrouter",
-                "OPENROUTER_API_KEY",
-                "https://openrouter.ai/api/v1",
-            ),
-        ];
-
-        if mem_cfg.provider.is_none() {
-            for (config_name, env_key, default_base) in EMBEDDING_CANDIDATES {
-                let key = effective_providers
-                    .get(config_name)
-                    .and_then(|e| e.api_key.as_ref().map(|k| k.expose_secret().clone()))
-                    .or_else(|| env_value_with_overrides(runtime_env_overrides, env_key))
-                    .filter(|k| !k.is_empty());
-                if let Some(api_key) = key {
-                    let base = effective_providers
-                        .get(config_name)
-                        .and_then(|e| e.base_url.clone())
-                        .unwrap_or_else(|| default_base.to_string());
-                    let mut e =
-                        chelix_memory::embeddings_openai::OpenAiEmbeddingProvider::new(api_key);
-                    if base != "https://api.openai.com" {
-                        e = e.with_base_url(base);
-                    }
-                    embedding_providers.push((config_name.to_string(), Box::new(e)));
+                            env_value_with_overrides(runtime_env_overrides, "HUGGINGFACE_API_KEY")
+                        });
+                    let model_spec =
+                        chelix_memory::embeddings_local::LocalEmbeddingProvider::resolve_model(
+                            cache_dir.clone(),
+                            mem_cfg.model.as_deref(),
+                        )?;
+                    let provider = chelix_memory::embeddings_local::LocalEmbeddingProvider::new(
+                        model_spec, cache_dir, hf_token,
+                    )
+                    .await
+                    .map_err(|error| {
+                        anyhow::anyhow!("memory: local embedding sidecar failed: {error}")
+                    })?;
+                    info!(
+                        provider = "local",
+                        "memory: using single embedding provider"
+                    );
+                    Some(Box::new(provider))
                 }
-            }
-        }
-    }
-
-    // Build the final embedder: fallback chain, single provider, or keyword-only.
-    let embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>> =
-        if mem_cfg.disable_rag {
-            None
-        } else if embedding_providers.is_empty() {
-            info!("memory: no embedding provider found, using keyword-only search");
-            None
-        } else {
-            let names: Vec<&str> = embedding_providers
-                .iter()
-                .map(|(n, _)| n.as_str())
-                .collect();
-            if embedding_providers.len() == 1 {
-                if let Some((name, provider)) = embedding_providers.into_iter().next() {
-                    info!(provider = %name, "memory: using single embedding provider");
-                    Some(provider)
-                } else {
-                    None
+                #[cfg(not(feature = "local-embeddings"))]
+                {
+                    let _ = runtime_env_overrides;
+                    return Err(anyhow::anyhow!(
+                        "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
+                    ));
                 }
-            } else {
-                info!(providers = ?names, active = names[0], "memory: fallback chain configured");
-                Some(Box::new(
-                    chelix_memory::embeddings_fallback::FallbackEmbeddingProvider::new(
-                        embedding_providers,
-                    ),
-                ))
-            }
-        };
+            },
+            None => {
+                info!("memory: no embedding provider found, using keyword-only search");
+                None
+            },
+        }
+    };
 
     let memory_db_path = data_dir.join("memory.db");
     let memory_pool_result = {

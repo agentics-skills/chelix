@@ -964,7 +964,6 @@ pub async fn prepare_gateway_core(
     let memory_manager = init_memory::init_memory_system(
         &config,
         &data_dir,
-        &effective_providers,
         &runtime_env_overrides,
         config.server.db_pool_max_connections,
     )

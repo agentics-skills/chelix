@@ -5,8 +5,8 @@ use {
 
 /// Memory embedding provider configuration.
 ///
-/// Controls which embedding provider the memory system uses.
-/// If not configured, the system auto-detects from available providers.
+/// Controls whether memory search uses the local embedding sidecar.
+/// If `provider` is unset, embeddings are not used and search is keyword-only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryEmbeddingConfig {
@@ -16,26 +16,18 @@ pub struct MemoryEmbeddingConfig {
     pub agent_write_mode: AgentMemoryWriteMode,
     /// How Chelix writes the managed `USER.md` profile surface.
     pub user_profile_write_mode: UserProfileWriteMode,
-    /// Embedding provider: "local", "openai", "custom", or None for auto-detect.
+    /// Embedding provider. The only value is `"local"`. `None` selects no provider.
     #[serde(alias = "embedding_provider")]
     pub provider: Option<MemoryProvider>,
     /// Disable RAG embeddings and force keyword-only memory search.
     #[serde(default)]
     pub disable_rag: bool,
-    /// Base URL for the embedding API (e.g. "https://api.openai.com/v1").
+    /// Cache directory for the local embedding sidecar.
     #[serde(alias = "embedding_base_url")]
     pub base_url: Option<String>,
-    /// Model name (e.g. "text-embedding-3-small" for OpenAI).
+    /// Local model id or snapshot directory (for example `"google/embeddinggemma-300m"`).
     #[serde(alias = "embedding_model")]
     pub model: Option<String>,
-    /// API key (optional for local endpoints).
-    #[serde(
-        default,
-        alias = "embedding_api_key",
-        serialize_with = "crate::schema::serialize_option_secret",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub api_key: Option<Secret<String>>,
     /// Hugging Face token for first-time local embedding model download.
     #[serde(
         default,
@@ -70,7 +62,6 @@ impl Default for MemoryEmbeddingConfig {
             disable_rag: false,
             base_url: None,
             model: None,
-            api_key: None,
             huggingface_api_key: None,
             citations: MemoryCitationsMode::default(),
             llm_reranking: false,
@@ -163,11 +154,6 @@ pub enum MemoryCitationsMode {
 pub enum MemoryProvider {
     /// Built-in local embeddings via the managed sidecar.
     Local,
-    /// OpenAI embedding API.
-    #[serde(rename = "openai")]
-    OpenAi,
-    /// Generic OpenAI-compatible endpoint.
-    Custom,
 }
 
 /// Strategy for merging keyword and vector search results.

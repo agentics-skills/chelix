@@ -109,8 +109,8 @@ Enable long-term memory for context across sessions:
 ```toml
 # In chelix.toml
 [memory]
-provider = "openai"
-model = "text-embedding-3-small"
+provider = "local"
+model = "google/embeddinggemma-300m"
 ```
 
 Add knowledge by writing `~/.chelix/MEMORY.md` or agent notes under

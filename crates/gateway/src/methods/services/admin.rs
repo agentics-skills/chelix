@@ -854,9 +854,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     },
                     "provider": match memory.provider {
                         Some(chelix_config::MemoryProvider::Local) => "local",
-                        Some(chelix_config::MemoryProvider::OpenAi) => "openai",
-                        Some(chelix_config::MemoryProvider::Custom) => "custom",
-                        None => "auto",
+                        None => "none",
                     },
                     "citations": match memory.citations {
                         chelix_config::MemoryCitationsMode::On => "on",
@@ -935,9 +933,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .as_deref()
                         .unwrap_or(match current_memory.provider {
                             Some(chelix_config::MemoryProvider::Local) => "local",
-                            Some(chelix_config::MemoryProvider::OpenAi) => "openai",
-                            Some(chelix_config::MemoryProvider::Custom) => "custom",
-                            None => "auto",
+                            None => "none",
                         });
                 let llm_reranking = params.llm_reranking.unwrap_or(current_memory.llm_reranking);
                 let search_merge_strategy = params.search_merge_strategy.as_deref().unwrap_or(

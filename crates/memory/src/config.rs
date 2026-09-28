@@ -73,10 +73,6 @@ pub struct MemoryConfig {
     pub vector_weight: f32,
     /// Weight for keyword/FTS similarity in hybrid search (0.0–1.0).
     pub keyword_weight: f32,
-    /// Whether to enable batch embedding via the OpenAI batch API (opt-in).
-    pub batch_embeddings: bool,
-    /// Minimum number of texts before switching to batch API (default: 50).
-    pub batch_threshold: usize,
     /// Citation mode for search results.
     pub citations: CitationMode,
     /// Whether to enable LLM reranking for hybrid search results.
@@ -95,8 +91,6 @@ impl Default for MemoryConfig {
             chunk_overlap: 80,
             vector_weight: 0.7,
             keyword_weight: 0.3,
-            batch_embeddings: false,
-            batch_threshold: 50,
             citations: CitationMode::default(),
             llm_reranking: false,
             merge_strategy: MergeStrategy::default(),

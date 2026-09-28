@@ -1887,8 +1887,6 @@ dependencies = [
  "mockito",
  "notify-debouncer-full",
  "reqwest 0.13.2",
- "secrecy",
- "serde",
  "serde_json",
  "sha2",
  "sqlx",
