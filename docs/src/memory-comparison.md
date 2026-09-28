@@ -34,11 +34,6 @@ writes to memory via file-writing tools (either dedicated or general-purpose).
 | Provider            | Chelix                              | OpenClaw                      |
 | ------------------- | ----------------------------------- | ----------------------------- |
 | **Local embeddings** | EmbeddingGemma-300M via managed sidecar (mistral.rs Q8) | Auto-download GGUF (~0.6 GB)  |
-| **OpenAI**          | text-embedding-3-small              | Via API key                   |
-| **Voyage**          | Not available                       | Via API key                   |
-| **Custom endpoint** | OpenAI-compatible                   | Not listed                    |
-| **Batch embedding** | OpenAI batch API (50% cost saving)  | OpenAI and Voyage batch       |
-| **Fallback chain**  | Auto-detect + circuit breaker       | Auto-select in priority order |
 | **Offline support** | Yes (local embeddings)              | Yes (local embeddings)        |
 
 ### Memory Files
@@ -179,8 +174,6 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 - **Dedicated `memory_save`, `memory_forget`, and `memory_delete` tools** with
   path validation and immediate re-indexing, reducing reliance on the system
   prompt for memory mutations
-- **Custom OpenAI-compatible embedding endpoints**
-- **Circuit breaker** with automatic fallback chain for embedding providers
 - **Web UI for memory configuration** (Settings > Memory page)
 - **Pure Rust implementation** with zero external runtime dependencies
 

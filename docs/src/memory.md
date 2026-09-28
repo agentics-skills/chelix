@@ -17,10 +17,7 @@ embeddings for semantic search:
 | ----------------------- | --------------------------------------------------- |
 | **Search Type**         | Hybrid (vector + FTS5 keyword)                      |
 | **Local Embeddings**    | Managed mistral.rs sidecar (EmbeddingGemma-300M Q8) |
-| **Remote Embeddings**   | OpenAI and custom endpoints                         |
 | **Embedding Cache**     | SQLite with LRU eviction                            |
-| **Batch API**           | OpenAI batch (50% cost saving)                      |
-| **Circuit Breaker**     | Fallback chain with auto-recovery                   |
 | **LLM Reranking**       | Optional (configurable)                             |
 | **File Watching**       | Real-time sync via notify                           |
 | **External Dependency** | Bundled managed sidecar for local embeddings        |
@@ -30,9 +27,6 @@ Key properties:
 
 - **Managed local inference**: Chelix starts and stops the separately built
   `chelix-embedding-service` sidecar when the local provider is selected
-- **Fallback chain**: Automatically switches between embedding providers if one
-  fails
-- **Batch embedding**: Reduces OpenAI API costs by 50% for large sync operations
 - **Embedding cache**: Avoids re-embedding unchanged content
 
 ## Features
@@ -80,15 +74,14 @@ agent_write_mode = "hybrid"
 # Managed USER.md write policy: "explicit-and-auto", "explicit-only", or "off"
 user_profile_write_mode = "explicit-and-auto"
 
-# Embedding provider: "local", "openai", "custom", or auto-detect
-# Omit this field for the real default, which is auto-detect
-provider = "auto"
+# Embedding provider. Only "local". Omit for keyword-only search.
+provider = "local"
 
 # Disable RAG embeddings and force keyword-only search
 disable_rag = false
 
-# Embedding API base URL (host, /v1, or full /embeddings endpoint)
-base_url = "https://embeddings.example.com/v1"
+# Cache directory for the local embedding sidecar
+base_url = "/path/to/model-cache"
 
 # Citation mode: "on", "off", or "auto"
 citations = "auto"
@@ -105,7 +98,7 @@ Real defaults, if you leave the fields unset:
 - `style = "hybrid"`
 - `agent_write_mode = "hybrid"`
 - `user_profile_write_mode = "explicit-and-auto"`
-- `provider = auto-detect` (unset, not hardcoded `local`)
+- `provider` unset (keyword-only, not `local`)
 - `disable_rag = false`
 - `citations = "auto"`
 - `llm_reranking = false`
@@ -169,19 +162,14 @@ Common combinations:
 
 ## Embedding Providers
 
-The memory system supports multiple embedding providers:
+The memory system has one embedding provider:
 
-| Provider     | Model                  | Dimensions | Notes                      |
-| ------------ | ---------------------- | ---------- | -------------------------- |
-| Local        | EmbeddingGemma-300M    | 768        | Offline, managed sidecar   |
-| OpenAI       | text-embedding-3-small | 1536       | Requires API key           |
-| Custom       | Configurable           | Varies     | OpenAI-compatible endpoint |
+| Provider | Model               | Dimensions | Notes                    |
+| -------- | ------------------- | ---------- | ------------------------ |
+| Local    | EmbeddingGemma-300M | 768        | Offline, managed sidecar |
 
-The system auto-detects available providers and creates a fallback chain:
-
-1. Try configured provider first
-2. Fall back to other available providers if it fails
-3. Use keyword-only search if no embedding provider is available
+Unset `provider` uses keyword-only search. `provider = "local"` fails gateway
+startup if the sidecar cannot start.
 
 ### Local embedding sidecar
 
@@ -390,11 +378,11 @@ is removed. It is the low-level exact-delete primitive that powers
 │  │  - Embedding cache     │                                       │
 │  └────────────────────────┘                                       │
 ├──────────────────────────────────────────────────────────────────┤
-│                    Embedding Providers                            │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌───────────────┐      │
-│  │  Local  │  │ OpenAI  │  │ Custom  │  │ Batch/Fallback│      │
-│  │         │  │         │  │         │  │               │      │
-│  └─────────┘  └─────────┘  └─────────┘  └───────────────┘      │
+│                    Embedding Provider                            │
+│  ┌─────────┐                                                     │
+│  │  Local  │                                                     │
+│  │         │                                                     │
+│  └─────────┘                                                     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -403,11 +391,10 @@ is removed. It is the low-level exact-delete primitive that powers
 ### Memory not working
 
 1. Check status in Settings > Memory
-2. Ensure at least one embedding provider is available:
-   - Local: Requires the `local-embeddings` client feature and the separately
-     built `chelix-embedding-service` binary
-   - OpenAI: Requires `OPENAI_API_KEY` environment variable
-   - Custom: Requires a configured OpenAI-compatible embedding endpoint
+2. For semantic search, set `provider = "local"`. That requires the
+   `local-embeddings` client feature and the separately built
+   `chelix-embedding-service` binary. With `provider` unset, search is
+   keyword-only.
 
 ### Search returns no results
 

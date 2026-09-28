@@ -141,8 +141,6 @@ pub mod memory {
     pub const SEARCHES_TOTAL: &str = "chelix_memory_searches_total";
     /// Memory search duration in seconds
     pub const SEARCH_DURATION_SECONDS: &str = "chelix_memory_search_duration_seconds";
-    /// Total number of embeddings generated
-    pub const EMBEDDINGS_GENERATED_TOTAL: &str = "chelix_memory_embeddings_generated_total";
     /// Number of documents in memory
     pub const DOCUMENTS_COUNT: &str = "chelix_memory_documents_count";
     /// Total memory size in bytes

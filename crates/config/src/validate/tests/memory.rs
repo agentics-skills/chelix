@@ -122,7 +122,7 @@ compaction_reminder = true
 prepend_sender_badge = true
 
 [memory]
-embedding_provider = "custom"
+embedding_provider = "local"
 embedding_model = "intfloat/multilingual-e5-small"
 embedding_base_url = "http://chelix-embeddings:7997/v1"
 embedding_dimensions = 384
@@ -191,8 +191,8 @@ terminal_size = "115x58"
 fn conflicting_legacy_and_modern_memory_field_reports_targeted_error() {
     let toml = r#"
 [memory]
-provider = "custom"
-embedding_provider = "custom"
+provider = "local"
+embedding_provider = "local"
 "#;
     let result = validate_toml_str(toml);
 

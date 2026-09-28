@@ -211,7 +211,7 @@ export function MemorySection(): VNode {
 	const [style, setStyle] = useState("hybrid");
 	const [agentWriteMode, setAgentWriteMode] = useState("hybrid");
 	const [userProfileWriteMode, setUserProfileWriteMode] = useState("explicit-and-auto");
-	const [provider, setProvider] = useState("auto");
+	const [provider, setProvider] = useState("none");
 	const [citations, setCitations] = useState("auto");
 	const [llmReranking, setLlmReranking] = useState(false);
 	const [searchMergeStrategy, setSearchMergeStrategy] = useState("rrf");
@@ -224,7 +224,7 @@ export function MemorySection(): VNode {
 		setStyle(configString(config.style, "hybrid"));
 		setAgentWriteMode(configString(config.agent_write_mode, "hybrid"));
 		setUserProfileWriteMode(configString(config.user_profile_write_mode, "explicit-and-auto"));
-		setProvider(configString(config.provider, "auto"));
+		setProvider(configString(config.provider, "none"));
 		setCitations(configString(config.citations, "auto"));
 		setLlmReranking(configBoolean(config.llm_reranking, false));
 		setSearchMergeStrategy(configString(config.search_merge_strategy, "rrf"));
@@ -380,13 +380,11 @@ export function MemorySection(): VNode {
 				/>
 				<MemorySelectSetting
 					title="Embedding Provider"
-					description="Select which embedding provider the memory system should use for RAG."
+					description="Use the local embedding sidecar for RAG, or keyword-only search."
 					value={provider}
 					options={[
-						["auto", "Auto-detect"],
+						["none", "Keyword-only"],
 						["local", "Local"],
-						["openai", "OpenAI"],
-						["custom", "Custom OpenAI-compatible"],
 					]}
 					onChange={setProviderAndRender}
 				/>

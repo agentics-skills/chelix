@@ -268,7 +268,6 @@ This allows you to:
 | ------------------------------------------ | --------- | ----------- | ------------------ |
 | `chelix_memory_searches_total`             | Counter   | search_type | Searches performed |
 | `chelix_memory_search_duration_seconds`    | Histogram | search_type | Search latency     |
-| `chelix_memory_embeddings_generated_total` | Counter   | provider    | Embeddings created |
 
 ### Channel Metrics
 

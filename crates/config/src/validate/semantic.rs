@@ -26,9 +26,6 @@ pub(super) fn check_deprecated_fields(
     if check_deprecated_memory_field(memory, "embedding_model", "model", diagnostics) {
         conflicting_replacements.push("model");
     }
-    if check_deprecated_memory_field(memory, "embedding_api_key", "api_key", diagnostics) {
-        conflicting_replacements.push("api_key");
-    }
     check_deprecated_ignored_memory_field(
         memory,
         "embedding_dimensions",

@@ -483,8 +483,8 @@ fn memory_config_toml_parses_user_profile_write_mode() {
 
 #[test]
 fn memory_config_toml_parses_provider() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("provider = \"openai\"").unwrap();
-    assert_eq!(cfg.provider, Some(MemoryProvider::OpenAi));
+    let cfg: MemoryEmbeddingConfig = toml::from_str("provider = \"local\"").unwrap();
+    assert_eq!(cfg.provider, Some(MemoryProvider::Local));
 }
 
 #[test]
@@ -787,15 +787,14 @@ fn memory_embedding_legacy_aliases_map_to_current_fields() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [memory]
-embedding_provider = "custom"
+embedding_provider = "local"
 embedding_base_url = "http://chelix-embeddings:7997/v1"
 embedding_model = "intfloat/multilingual-e5-small"
-embedding_api_key = "secret-key"
 "#,
     )
     .unwrap();
 
-    assert_eq!(config.memory.provider, Some(MemoryProvider::Custom));
+    assert_eq!(config.memory.provider, Some(MemoryProvider::Local));
     assert_eq!(
         config.memory.base_url.as_deref(),
         Some("http://chelix-embeddings:7997/v1")
@@ -803,15 +802,6 @@ embedding_api_key = "secret-key"
     assert_eq!(
         config.memory.model.as_deref(),
         Some("intfloat/multilingual-e5-small")
-    );
-    assert_eq!(
-        config
-            .memory
-            .api_key
-            .as_ref()
-            .map(ExposeSecret::expose_secret)
-            .map(String::as_str),
-        Some("secret-key")
     );
 }
 

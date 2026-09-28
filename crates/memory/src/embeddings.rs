@@ -29,7 +29,7 @@ pub trait EmbeddingProvider: Send + Sync {
         None
     }
 
-    /// The model name used by this provider (e.g. "text-embedding-3-small").
+    /// The model name used by this provider (e.g. "google/embeddinggemma-300m").
     fn model_name(&self) -> &str;
 
     /// The dimensionality of the embeddings produced.
