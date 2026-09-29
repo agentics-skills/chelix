@@ -91,7 +91,6 @@ full = [
   "lang-toml",
   "lang-typescript",
   "linkup",
-  "local-embeddings",
   "matrix",
   "mdns",
   "metrics",
@@ -139,7 +138,6 @@ linkup             = ["chelix-gateway/linkup"]
 # jemalloc is intentionally unavailable on linux/aarch64 to avoid runtime
 # crashes on 16 KiB page kernels (e.g. Raspberry Pi OS variants).
 lightweight        = ["jemalloc", "tls", "web-ui"]
-local-embeddings   = ["chelix-gateway/local-embeddings"]
 matrix             = ["chelix-httpd/matrix"]
 mdns               = ["chelix-gateway/mdns"]
 metrics            = ["chelix-httpd/metrics", "chelix-web?/metrics"]

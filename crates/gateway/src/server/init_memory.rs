@@ -1,82 +1,41 @@
-use std::{collections::HashMap, path::Path as FsPath, sync::Arc};
+use std::{path::Path as FsPath, sync::Arc};
 
-#[cfg(feature = "local-embeddings")]
-use std::path::PathBuf;
+use {anyhow::Result, chelix_memory::embeddings::EmbeddingProvider, tracing::info};
 
-#[cfg(feature = "local-embeddings")]
-use secrecy::ExposeSecret;
-
-use {anyhow::Result, tracing::info};
-
-#[cfg(feature = "local-embeddings")]
-use super::helpers::env_value_with_overrides;
-
-/// Initialize the memory system (local embedding provider, sync, watchers).
+/// Initialize the memory system (remote embedding provider, sync, watchers).
 ///
 /// Returns `Ok(Some(runtime))` when the memory system is available, `Ok(None)`
-/// when the database could not be opened, and `Err` when an explicitly selected
-/// local embedding provider cannot start.
+/// when the database could not be opened, and `Err` when a configured embedding
+/// provider cannot be reached.
 pub(crate) async fn init_memory_system(
     config: &chelix_config::ChelixConfig,
     data_dir: &FsPath,
-    runtime_env_overrides: &HashMap<String, String>,
     db_pool_max_connections: u32,
 ) -> Result<Option<chelix_memory::runtime::DynMemoryRuntime>> {
     let mem_cfg = &config.memory;
+    let endpoint = mem_cfg
+        .embedding_endpoint()
+        .map_err(|error| anyhow::anyhow!("memory: {error}"))?;
 
-    let embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>> = if mem_cfg
-        .disable_rag
-    {
+    let embedder: Option<Box<dyn EmbeddingProvider>> = if mem_cfg.disable_rag {
         info!("memory: RAG disabled via memory.disable_rag=true, using keyword-only search");
         None
+    } else if let Some(endpoint) = endpoint {
+        let provider = chelix_memory::embeddings_http::HttpEmbeddingProvider::new(
+            endpoint.url,
+            endpoint.api_key,
+            endpoint.dimensions,
+        )
+        .map_err(|error| anyhow::anyhow!("memory: embedding provider failed: {error}"))?;
+        provider
+            .embed("probe")
+            .await
+            .map_err(|error| anyhow::anyhow!("memory: embedding provider probe failed: {error}"))?;
+        info!("memory: using remote embedding provider");
+        Some(Box::new(provider))
     } else {
-        match mem_cfg.provider {
-            Some(chelix_config::MemoryProvider::Local) => {
-                #[cfg(feature = "local-embeddings")]
-                {
-                    let cache_dir = mem_cfg.base_url.as_ref().map(PathBuf::from).unwrap_or_else(
-                        chelix_memory::embeddings_local::LocalEmbeddingProvider::default_cache_dir,
-                    );
-                    let hf_token = mem_cfg
-                        .huggingface_api_key
-                        .as_ref()
-                        .map(|key| key.expose_secret().clone())
-                        .filter(|token| !token.is_empty())
-                        .or_else(|| env_value_with_overrides(runtime_env_overrides, "HF_TOKEN"))
-                        .or_else(|| {
-                            env_value_with_overrides(runtime_env_overrides, "HUGGINGFACE_API_KEY")
-                        });
-                    let model_spec =
-                        chelix_memory::embeddings_local::LocalEmbeddingProvider::resolve_model(
-                            cache_dir.clone(),
-                            mem_cfg.model.as_deref(),
-                        )?;
-                    let provider = chelix_memory::embeddings_local::LocalEmbeddingProvider::new(
-                        model_spec, cache_dir, hf_token,
-                    )
-                    .await
-                    .map_err(|error| {
-                        anyhow::anyhow!("memory: local embedding sidecar failed: {error}")
-                    })?;
-                    info!(
-                        provider = "local",
-                        "memory: using single embedding provider"
-                    );
-                    Some(Box::new(provider))
-                }
-                #[cfg(not(feature = "local-embeddings"))]
-                {
-                    let _ = runtime_env_overrides;
-                    return Err(anyhow::anyhow!(
-                        "memory: 'local' embedding provider requires the 'local-embeddings' client feature and the chelix-embedding-service binary"
-                    ));
-                }
-            },
-            None => {
-                info!("memory: no embedding provider found, using keyword-only search");
-                None
-            },
-        }
+        info!("memory: no embedding provider found, using keyword-only search");
+        None
     };
 
     let memory_db_path = data_dir.join("memory.db");
@@ -126,7 +85,7 @@ pub(crate) async fn init_memory_system(
 async fn build_memory_runtime(
     mem_cfg: &chelix_config::schema::MemoryEmbeddingConfig,
     data_dir: &FsPath,
-    embedder: Option<Box<dyn chelix_memory::embeddings::EmbeddingProvider>>,
+    embedder: Option<Box<dyn EmbeddingProvider>>,
     memory_pool: sqlx::SqlitePool,
 ) -> Option<chelix_memory::runtime::DynMemoryRuntime> {
     let data_memory_file = data_dir.join("MEMORY.md");
@@ -191,7 +150,7 @@ async fn build_memory_runtime(
                         files = status.total_files,
                         chunks = status.total_chunks,
                         db_size = %status.db_size_display(),
-                        model = %status.embedding_model,
+                        url = %status.embedding_url,
                         "memory: status"
                     ),
                     Err(e) => tracing::warn!("memory: failed to get status: {e}"),

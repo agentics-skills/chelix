@@ -2,7 +2,7 @@
 
 # Chelix — A secure persistent personal agent server in Rust
 
-Native Rust gateway with a required managed tools sidecar — sandboxed, secure, yours. Local embeddings use an optional managed sidecar.
+Native Rust gateway with a required managed tools sidecar — sandboxed, secure, yours. Semantic memory uses a remote embedding provider.
 
 [![codecov](https://codecov.io/gh/agentics-skills/chelix/graph/badge.svg)](https://codecov.io/gh/agentics-skills/chelix)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -20,7 +20,7 @@ Please [open an issue](https://github.com/agentics-skills/chelix/issues) for any
 
 **Secure by design** — Your keys stay under your control. Enabled sessions use isolated container sandboxes, while host execution remains available when policy disables sandboxing.
 
-**Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; native filesystem tools run in the required `chelix-tools-service` managed sidecar, and local embeddings use a separate optional sidecar.
+**Your hardware** — Runs on a Mac Mini, a Raspberry Pi, or any server you own. The Rust gateway has no Node.js or npm runtime; native filesystem tools run in the required `chelix-tools-service` managed sidecar, and semantic memory calls a remote embedding provider.
 
 **Full-featured** — Voice, memory, cross-session recall, scheduling, Telegram, Signal, browser automation, standards-based A2UI generative interfaces, MCP servers, managed SSH deploy keys and targets with host pinning in the web UI, a live Settings → Tools inventory, Cursor-compatible project context, and context-file threat scanning — all built-in. No plugin marketplace to get supply-chain attacked through.
 
@@ -53,7 +53,6 @@ Current Rust workspace: ~271K LoC across 60 crates. The table below groups the m
 | `chelix-httpd` | 9.9K | HTTP server primitives and middleware |
 | `chelix` (CLI) | 4.7K | Entry point, CLI commands |
 | `chelix-tools-service` | — | Required managed native filesystem-tools service |
-| `chelix-embedding-service` | — | Optional managed local embedding sidecar |
 | `chelix-sessions` | 3.5K | Session persistence |
 | `chelix-common` | 1.5K | Shared utilities |
 | `chelix-service-traits` | 1.2K | Shared service interfaces |
@@ -163,7 +162,7 @@ Requires [just](https://github.com/casey/just) (command runner) and Node.js (for
 git clone https://github.com/agentics-skills/chelix.git
 cd chelix
 just build-css                  # Build Tailwind CSS for the web UI
-just build-release              # Build gateway + required tools sidecar (+ optional embedding sidecar)
+just build-release              # Build gateway + required tools sidecar
 cargo run --release --bin chelix
 ```
 

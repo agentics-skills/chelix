@@ -135,7 +135,6 @@ github = ["dep:chelix-github"]
 google = ["dep:chelix-google"]
 home-assistant = ["dep:chelix-home-assistant"]
 linkup = ["dep:chelix-linkup"]
-local-embeddings = ["chelix-memory/local-embeddings"]
 matrix = ["dep:chelix-matrix"]
 mdns = ["dep:mdns-sd"]
 metrics = [

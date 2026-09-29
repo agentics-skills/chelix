@@ -9,6 +9,14 @@ use std::{path::PathBuf, sync::Arc};
 #[cfg(feature = "code-index-builtin")]
 use tracing::info;
 
+fn deserialize_optional_usize<'de, D>(deserializer: D) -> Result<Option<Option<usize>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    Ok(Some(Option::<usize>::deserialize(deserializer)?))
+}
+
 /// Parameters accepted by `memory.config.update`.
 ///
 /// Every field is optional: an absent field keeps the current configured
@@ -23,7 +31,11 @@ struct MemoryConfigUpdateParams {
     #[serde(default)]
     user_profile_write_mode: Option<String>,
     #[serde(default)]
-    provider: Option<String>,
+    url: Option<String>,
+    #[serde(default)]
+    api_key: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_usize")]
+    dimensions: Option<Option<usize>>,
     #[serde(default)]
     citations: Option<String>,
     #[serde(default)]
@@ -808,7 +820,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             "total_chunks": status.total_chunks,
                             "db_size": status.db_size_bytes,
                             "db_size_display": status.db_size_display(),
-                            "embedding_model": status.embedding_model,
+                            "embedding_url": status.embedding_url,
                             "has_embeddings": mm.has_embeddings(),
                         })),
                         Err(e) => Ok(serde_json::json!({
@@ -852,10 +864,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         chelix_config::UserProfileWriteMode::ExplicitOnly => "explicit-only",
                         chelix_config::UserProfileWriteMode::Off => "off",
                     },
-                    "provider": match memory.provider {
-                        Some(chelix_config::MemoryProvider::Local) => "local",
-                        None => "none",
-                    },
+                    "url": memory.url,
+                    "dimensions": memory.dimensions,
+                    "api_key_configured": memory.api_key.is_some(),
                     "citations": match memory.citations {
                         chelix_config::MemoryCitationsMode::On => "on",
                         chelix_config::MemoryCitationsMode::Off => "off",
@@ -927,14 +938,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             chelix_config::MemoryCitationsMode::Off => "off",
                             chelix_config::MemoryCitationsMode::Auto => "auto",
                         });
-                let provider =
-                    params
-                        .provider
-                        .as_deref()
-                        .unwrap_or(match current_memory.provider {
-                            Some(chelix_config::MemoryProvider::Local) => "local",
-                            None => "none",
-                        });
                 let llm_reranking = params.llm_reranking.unwrap_or(current_memory.llm_reranking);
                 let search_merge_strategy = params.search_merge_strategy.as_deref().unwrap_or(
                     match current_memory.search_merge_strategy {
@@ -947,7 +950,6 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let user_profile_write_mode_value =
                     parse_user_profile_write_mode(user_profile_write_mode)?;
                 let citations_value = parse_memory_citations_mode(citations)?;
-                let provider_value = parse_memory_provider(provider)?;
                 let search_merge_strategy_value =
                     parse_memory_search_merge_strategy(search_merge_strategy)?;
                 let disable_rag = params.disable_rag;
@@ -971,11 +973,45 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 let enable_self_improvement = params
                     .enable_self_improvement
                     .unwrap_or(current_config.skills.enable_self_improvement);
+                let explicit_clear = params.url.as_ref().is_some_and(|url| url.trim().is_empty())
+                    && matches!(params.dimensions, Some(None));
+                let mut next_memory = current_memory.clone();
+                if explicit_clear {
+                    next_memory.url = None;
+                    next_memory.api_key = None;
+                    next_memory.dimensions = None;
+                } else {
+                    if let Some(url) = params.url.clone() {
+                        next_memory.url = if url.trim().is_empty() {
+                            None
+                        } else {
+                            Some(url)
+                        };
+                    }
+                    if let Some(dimensions) = params.dimensions {
+                        next_memory.dimensions = dimensions;
+                    }
+                    if let Some(api_key) = params.api_key.clone() {
+                        next_memory.api_key = if api_key.is_empty() {
+                            None
+                        } else {
+                            Some(secrecy::Secret::new(api_key))
+                        };
+                    }
+                }
+                if let Err(message) = next_memory.embedding_fields_complete() {
+                    return Err(ErrorShape::new(error_codes::INVALID_REQUEST, message));
+                }
+                let response_url = next_memory.url.clone();
+                let response_dimensions = next_memory.dimensions;
+                let api_key_configured = next_memory.api_key.is_some();
                 chelix_config::update_config(|cfg| {
                     cfg.memory.style = style_value;
                     cfg.memory.agent_write_mode = agent_write_mode_value;
                     cfg.memory.user_profile_write_mode = user_profile_write_mode_value;
-                    cfg.memory.provider = provider_value;
+                    cfg.memory.url = next_memory.url.clone();
+                    cfg.memory.api_key = next_memory.api_key.clone();
+                    cfg.memory.dimensions = next_memory.dimensions;
                     cfg.memory.citations = citations_value;
                     cfg.memory.llm_reranking = llm_reranking;
                     cfg.memory.search_merge_strategy = search_merge_strategy_value;
@@ -994,7 +1030,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     "style": style,
                     "agent_write_mode": agent_write_mode,
                     "user_profile_write_mode": user_profile_write_mode,
-                    "provider": provider,
+                    "url": response_url,
+                    "dimensions": response_dimensions,
+                    "api_key_configured": api_key_configured,
                     "citations": citations,
                     "disable_rag": effective_disable_rag,
                     "llm_reranking": llm_reranking,

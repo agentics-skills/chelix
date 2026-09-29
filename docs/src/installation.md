@@ -1,9 +1,9 @@
 # Installation
 
 Chelix is distributed as a native gateway plus the required managed
-`chelix-tools-service` binary. Release packages install both executables together;
-local embeddings may add an optional managed embedding service. Choose the
-installation method that works best for your setup.
+`chelix-tools-service` binary. Release packages install both executables together.
+Semantic memory search uses a separate embedding provider reached over HTTP.
+Choose the installation method that works best for your setup.
 
 ## Quick Install (Recommended)
 

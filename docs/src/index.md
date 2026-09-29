@@ -12,7 +12,7 @@ Running an AI assistant on your own machine or server is still new territory. Tr
 
 Chelix compiles the AI gateway and web assets into native Rust executables. The
 gateway manages a required `chelix-tools-service` sidecar for native filesystem
-tools, and local embeddings use a separate optional managed service. There is no
+tools. Semantic memory search calls a remote embedding provider over HTTP. There is no
 Node.js process to babysit, no `node_modules` to sync, and no V8 garbage collector
 introducing latency spikes.
 

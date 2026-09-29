@@ -1,6 +1,3 @@
-#[cfg(any(test, feature = "local-embeddings"))]
-use std::collections::HashMap;
-
 use std::{
     fs::OpenOptions,
     io::Write,
@@ -34,24 +31,6 @@ pub(crate) fn browser_tool_container_prefix(instance_slug: &str) -> String {
         hex.push_str(&format!("{byte:02x}"));
     }
     format!("ct_{hex}")
-}
-
-// ── Environment helpers ──────────────────────────────────────────────────────
-
-#[cfg(any(test, feature = "local-embeddings"))]
-pub(crate) fn env_value_with_overrides(
-    env_overrides: &HashMap<String, String>,
-    key: &str,
-) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            env_overrides
-                .get(key)
-                .cloned()
-                .filter(|value| !value.trim().is_empty())
-        })
 }
 
 pub(crate) fn env_var_or_unset(name: &str) -> String {

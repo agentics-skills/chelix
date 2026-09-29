@@ -24,12 +24,12 @@ pub trait EmbeddingProvider: Send + Sync {
         self.embed(text).await
     }
 
-    /// Sidecar JSON body limit when this provider talks to the local embed service.
+    /// JSON body limit advertised by this provider.
     fn max_embed_payload_bytes(&self) -> Option<usize> {
         None
     }
 
-    /// The model name used by this provider (e.g. "google/embeddinggemma-300m").
+    /// Provider label. For the HTTP provider this is the configured endpoint URL.
     fn model_name(&self) -> &str;
 
     /// The dimensionality of the embeddings produced.
