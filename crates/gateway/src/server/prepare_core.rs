@@ -961,13 +961,9 @@ pub async fn prepare_gateway_core(
         crate::server::discover_and_build_hooks(&persisted_disabled).await?;
 
     // ── Memory system initialization ─────────────────────────────────────
-    let memory_manager = init_memory::init_memory_system(
-        &config,
-        &data_dir,
-        &runtime_env_overrides,
-        config.server.db_pool_max_connections,
-    )
-    .await?;
+    let memory_manager =
+        init_memory::init_memory_system(&config, &data_dir, config.server.db_pool_max_connections)
+            .await?;
     startup_mem_probe.checkpoint("memory_manager.initialized");
 
     // Wire live session service.

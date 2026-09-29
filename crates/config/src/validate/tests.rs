@@ -1,7 +1,6 @@
 use super::{
     ChelixConfig, Severity, check_shadowed_defaults, levenshtein,
     schema_map::{KnownKeys, build_schema_map},
-    semantic::should_suppress_deprecated_conflict_type_error,
     suggest, validate_toml_str,
 };
 

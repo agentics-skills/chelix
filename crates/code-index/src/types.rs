@@ -172,8 +172,8 @@ pub struct IndexStatus {
     pub total_chunks: usize,
     /// Epoch millis of the last successful full sync.
     pub last_sync_ms: Option<u64>,
-    /// Embedding model in use (if any).
-    pub embedding_model: Option<String>,
+    /// Embedding provider URL in use, if any.
+    pub embedding_url: Option<String>,
     /// Index backend in use ("builtin").
     pub backend: String,
 }

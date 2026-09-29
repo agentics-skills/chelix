@@ -1,12 +1,12 @@
 use {
-    secrecy::Secret,
+    secrecy::{ExposeSecret, Secret},
     serde::{Deserialize, Serialize},
 };
 
 /// Memory embedding provider configuration.
 ///
-/// Controls whether memory search uses the local embedding sidecar.
-/// If `provider` is unset, embeddings are not used and search is keyword-only.
+/// Embeddings are used only when `url`, `api_key`, and `dimensions` are all set.
+/// If all three are unset, search is keyword-only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MemoryEmbeddingConfig {
@@ -16,26 +16,22 @@ pub struct MemoryEmbeddingConfig {
     pub agent_write_mode: AgentMemoryWriteMode,
     /// How Chelix writes the managed `USER.md` profile surface.
     pub user_profile_write_mode: UserProfileWriteMode,
-    /// Embedding provider. The only value is `"local"`. `None` selects no provider.
-    #[serde(alias = "embedding_provider")]
-    pub provider: Option<MemoryProvider>,
     /// Disable RAG embeddings and force keyword-only memory search.
     #[serde(default)]
     pub disable_rag: bool,
-    /// Cache directory for the local embedding sidecar.
-    #[serde(alias = "embedding_base_url")]
-    pub base_url: Option<String>,
-    /// Local model id or snapshot directory (for example `"google/embeddinggemma-300m"`).
-    #[serde(alias = "embedding_model")]
-    pub model: Option<String>,
-    /// Hugging Face token for first-time local embedding model download.
+    /// Base URL of the remote embedding provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Bearer token sent to the remote embedding provider.
     #[serde(
         default,
-        alias = "HUGGINGFACE_API_KEY",
         serialize_with = "crate::schema::serialize_option_secret",
         skip_serializing_if = "Option::is_none"
     )]
-    pub huggingface_api_key: Option<Secret<String>>,
+    pub api_key: Option<Secret<String>>,
+    /// Embedding vector width expected from the provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<usize>,
     /// Citation mode for memory search results.
     pub citations: MemoryCitationsMode,
     /// Enable LLM reranking for hybrid search results.
@@ -58,11 +54,10 @@ impl Default for MemoryEmbeddingConfig {
             style: MemoryStyle::default(),
             agent_write_mode: AgentMemoryWriteMode::default(),
             user_profile_write_mode: UserProfileWriteMode::default(),
-            provider: None,
             disable_rag: false,
-            base_url: None,
-            model: None,
-            huggingface_api_key: None,
+            url: None,
+            api_key: None,
+            dimensions: None,
             citations: MemoryCitationsMode::default(),
             llm_reranking: false,
             search_merge_strategy: MemorySearchMergeStrategy::default(),
@@ -148,12 +143,63 @@ pub enum MemoryCitationsMode {
     Auto,
 }
 
-/// Embedding provider for memory/RAG features.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MemoryProvider {
-    /// Built-in local embeddings via the managed sidecar.
-    Local,
+/// Remote embedding endpoint selected by [`MemoryEmbeddingConfig::embedding_endpoint`].
+#[derive(Debug, Clone)]
+pub struct EmbeddingEndpoint {
+    pub url: String,
+    pub api_key: Secret<String>,
+    pub dimensions: usize,
+}
+
+impl MemoryEmbeddingConfig {
+    /// All three embedding fields are unset, or all three are present.
+    /// Does not parse `url`, so an unresolved `${VAR}` placeholder is accepted.
+    pub fn embedding_fields_complete(&self) -> Result<(), String> {
+        match (&self.url, &self.api_key, self.dimensions) {
+            (None, None, None) => Ok(()),
+            (Some(url), Some(api_key), Some(dimensions)) => {
+                if url.is_empty() {
+                    return Err("memory.url is empty".into());
+                }
+                if url != url.trim() {
+                    return Err("memory.url must not have leading or trailing whitespace".into());
+                }
+                if api_key.expose_secret().is_empty() {
+                    return Err("memory.api_key is empty".into());
+                }
+                if dimensions < 1 {
+                    return Err("memory.dimensions must be >= 1".into());
+                }
+                Ok(())
+            },
+            _ => Err("memory embedding requires url, api_key, and dimensions together".into()),
+        }
+    }
+
+    /// `Ok(None)` when url, api_key, and dimensions are all unset.
+    /// `Ok(Some)` when all three are present and `url` is an http(s) URL.
+    pub fn embedding_endpoint(&self) -> Result<Option<EmbeddingEndpoint>, String> {
+        self.embedding_fields_complete()?;
+        match (&self.url, &self.api_key, self.dimensions) {
+            (None, None, None) => Ok(None),
+            (Some(url), Some(api_key), Some(dimensions)) => {
+                let parsed = url::Url::parse(url)
+                    .map_err(|error| format!("memory.url is invalid: {error}"))?;
+                if parsed.scheme() != "http" && parsed.scheme() != "https" {
+                    return Err("memory.url scheme must be http or https".into());
+                }
+                if parsed.host_str().is_none_or(|host| host.is_empty()) {
+                    return Err("memory.url host is empty".into());
+                }
+                Ok(Some(EmbeddingEndpoint {
+                    url: url.clone(),
+                    api_key: api_key.clone(),
+                    dimensions,
+                }))
+            },
+            _ => Err("memory embedding requires url, api_key, and dimensions together".into()),
+        }
+    }
 }
 
 /// Strategy for merging keyword and vector search results.

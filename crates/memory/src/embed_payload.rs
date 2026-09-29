@@ -1,4 +1,4 @@
-//! Split oversized memory chunks so sidecar embed JSON stays within the body limit.
+//! Split oversized memory chunks so embed JSON stays within the body limit.
 
 use chelix_protocol::{EMBEDDING_PRIORITY_INDEX, EmbeddingRequest};
 
@@ -18,13 +18,13 @@ fn split_chunk(chunk: Chunk, limit: usize) -> Result<Vec<Chunk>> {
     }
     if chunk.text.chars().count() <= 1 {
         return Err(crate::error::Error::Embedding(
-            "embedding payload exceeds sidecar body limit".into(),
+            "embedding payload exceeds the provider body limit".into(),
         ));
     }
 
     let Some((left, right)) = split_text(&chunk.text) else {
         return Err(crate::error::Error::Embedding(
-            "embedding payload exceeds sidecar body limit".into(),
+            "embedding payload exceeds the provider body limit".into(),
         ));
     };
 

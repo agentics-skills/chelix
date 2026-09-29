@@ -601,10 +601,10 @@ JSON object that may contain provider-specific keys plus a `tools` sub-block
 | `style`                   | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"`            | High-level memory orchestration style.                          |
 | `agent_write_mode`        | enum (`hybrid`, `prompt-only`, `search-only`, `off`) | `"hybrid"`            | Where agent-authored memory writes are allowed to land.         |
 | `user_profile_write_mode` | enum (`explicit-and-auto`, `explicit-only`, `off`)   | `"explicit-and-auto"` | How Chelix writes the managed `USER.md` profile surface.        |
-| `provider`                | optional enum (`local`)                              | —                     | Embedding provider. Only `local`. Omit for keyword-only search. Alias: `embedding_provider`. |
+| `url`                     | optional string                                      | —                     | Base URL of the remote embedding provider. Set together with `api_key` and `dimensions`, or omit all three for keyword-only search. |
+| `api_key`                 | optional string                                      | —                     | Bearer token sent to the embedding provider. |
+| `dimensions`              | optional integer                                     | —                     | Vector width returned by the embedding provider. Must be >= 1. |
 | `disable_rag`             | bool                                                 | `false`               | Disable RAG embeddings and force keyword-only memory search.    |
-| `base_url`                | optional string                                      | —                     | Cache directory for the local embedding sidecar. Alias: `embedding_base_url`. |
-| `model`                   | optional string                                      | —                     | Local embedding model id or snapshot directory. Alias: `embedding_model`. |
 | `citations`               | enum (`on`, `off`, `auto`)                           | `"auto"`              | Citation mode for memory search results.                        |
 | `llm_reranking`           | bool                                                 | `false`               | Enable LLM reranking for hybrid search results.                 |
 | `search_merge_strategy`   | enum (`rrf`, `linear`)                               | `"rrf"`               | Merge strategy for hybrid search results.                       |

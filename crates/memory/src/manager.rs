@@ -33,7 +33,7 @@ pub struct MemoryManager {
 pub struct MemoryStatus {
     pub total_files: usize,
     pub total_chunks: usize,
-    pub embedding_model: String,
+    pub embedding_url: String,
     /// SQLite database file size in bytes (0 for in-memory DBs).
     pub db_size_bytes: u64,
 }
@@ -325,7 +325,7 @@ impl MemoryManager {
             None => raw_chunks,
         };
 
-        // Generate embeddings before replacing index rows so a sidecar failure keeps the old chunks.
+        // Generate embeddings before replacing index rows so a provider failure keeps the old chunks.
         let texts: Vec<String> = raw_chunks.iter().map(|c| c.text.clone()).collect();
         let chunk_hashes: Vec<String> = texts.iter().map(|t| sha256_hex(t)).collect();
 
@@ -464,7 +464,7 @@ impl MemoryManager {
         Ok(MemoryStatus {
             total_files: files.len(),
             total_chunks,
-            embedding_model: self
+            embedding_url: self
                 .embedder
                 .as_ref()
                 .map(|e| e.model_name().to_string())
@@ -683,7 +683,7 @@ mod tests {
         let status = manager.status().await.unwrap();
         assert_eq!(status.total_files, 1);
         assert!(status.total_chunks > 0);
-        assert_eq!(status.embedding_model, "mock-model");
+        assert_eq!(status.embedding_url, "mock-model");
     }
 
     #[tokio::test]
@@ -974,7 +974,7 @@ mod tests {
         let status = manager.status().await.unwrap();
         assert_eq!(status.total_files, 1);
         assert!(status.total_chunks > 0);
-        assert_eq!(status.embedding_model, "none (keyword-only)");
+        assert_eq!(status.embedding_url, "none (keyword-only)");
 
         // Keyword search should still work.
         let results = manager.search("programming", 5).await.unwrap();
@@ -1312,7 +1312,9 @@ mod tests {
     #[async_trait]
     impl EmbeddingProvider for FailingEmbedder {
         async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
-            Err(crate::error::Error::Embedding("sidecar failed".into()))
+            Err(crate::error::Error::Embedding(
+                "embedding request failed".into(),
+            ))
         }
 
         fn model_name(&self) -> &str {
@@ -1648,7 +1650,9 @@ mod tests {
                 }
                 return Ok(keyword_embedding(text));
             }
-            Err(crate::error::Error::Embedding("sidecar failed".into()))
+            Err(crate::error::Error::Embedding(
+                "embedding request failed".into(),
+            ))
         }
 
         fn model_name(&self) -> &str {

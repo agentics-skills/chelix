@@ -1,7 +1,4 @@
-use {
-    super::*,
-    chelix_config::{ChelixConfig, validate::Diagnostic},
-};
+use {super::*, chelix_config::ChelixConfig};
 
 #[test]
 fn status_labels() {
@@ -62,18 +59,6 @@ fn security_check_continues_without_effective_config() {
                 .message
                 .contains("effective config could not be loaded")
     }));
-}
-
-#[test]
-fn config_validation_status_warns_for_deprecated_field() {
-    let diagnostic = Diagnostic {
-        severity: Severity::Warning,
-        category: "deprecated-field",
-        path: "memory.embedding_provider".into(),
-        message: "deprecated field; use \"memory.provider\" instead".into(),
-    };
-
-    assert_eq!(config_validation_status(&diagnostic), Some(Status::Warn));
 }
 
 #[test]

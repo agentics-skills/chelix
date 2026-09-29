@@ -737,7 +737,7 @@ impl CodeIndex {
             total_files,
             total_chunks,
             last_sync_ms: None,
-            embedding_model: embedder.map(|e| e.model_name().to_string()),
+            embedding_url: embedder.map(|e| e.model_name().to_string()),
             backend: "builtin".to_string(),
         })
     }
@@ -929,7 +929,7 @@ mod tests {
         assert_eq!(status.project_id, "test-proj");
         assert!(status.total_files > 0, "should find at least one file");
         assert!(status.total_chunks > 0, "should produce at least one chunk");
-        assert!(status.embedding_model.is_none());
+        assert!(status.embedding_url.is_none());
         assert_eq!(status.backend, "builtin");
     }
 
@@ -1021,7 +1021,7 @@ mod tests {
             .unwrap();
 
         let status = index.status("test-proj").await.unwrap();
-        assert_eq!(status.embedding_model, Some("mock-embedder".to_string()));
+        assert_eq!(status.embedding_url, Some("mock-embedder".to_string()));
 
         // Search should work — vector results should be present
         let results = index.search("test-proj", "main", 10).await.unwrap();

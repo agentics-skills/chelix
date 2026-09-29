@@ -8,91 +8,16 @@ use {
     std::path::Path,
 };
 
-pub(super) fn check_deprecated_fields(
-    toml_value: &toml::Value,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Vec<&'static str> {
-    let Some(memory) = toml_value.get("memory").and_then(|value| value.as_table()) else {
-        return Vec::new();
-    };
-
-    let mut conflicting_replacements = Vec::new();
-    if check_deprecated_memory_field(memory, "embedding_provider", "provider", diagnostics) {
-        conflicting_replacements.push("provider");
-    }
-    if check_deprecated_memory_field(memory, "embedding_base_url", "base_url", diagnostics) {
-        conflicting_replacements.push("base_url");
-    }
-    if check_deprecated_memory_field(memory, "embedding_model", "model", diagnostics) {
-        conflicting_replacements.push("model");
-    }
-    check_deprecated_ignored_memory_field(
-        memory,
-        "embedding_dimensions",
-        "deprecated field; ignored because embedding dimensions are determined by the provider response",
-        diagnostics,
-    );
-    conflicting_replacements
-}
-
-pub(super) fn should_suppress_deprecated_conflict_type_error(
-    message: &str,
-    conflicting_replacements: &[&str],
-) -> bool {
-    conflicting_replacements
-        .iter()
-        .any(|replacement| message.contains(&format!("duplicate field `{replacement}`")))
-}
-
-fn check_deprecated_memory_field(
-    memory: &toml::map::Map<String, toml::Value>,
-    legacy: &str,
-    replacement: &str,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> bool {
-    if !memory.contains_key(legacy) {
-        return false;
-    }
-
-    if memory.contains_key(replacement) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Error,
-            category: "deprecated-field",
-            path: format!("memory.{legacy}"),
-            message: format!(
-                "deprecated field conflicts with \"memory.{replacement}\"; remove \"memory.{legacy}\""
-            ),
-        });
-        return true;
-    }
-
-    diagnostics.push(Diagnostic {
-        severity: Severity::Warning,
-        category: "deprecated-field",
-        path: format!("memory.{legacy}"),
-        message: format!("deprecated field; use \"memory.{replacement}\" instead"),
-    });
-    false
-}
-
-fn check_deprecated_ignored_memory_field(
-    memory: &toml::map::Map<String, toml::Value>,
-    legacy: &str,
-    message: &str,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    if memory.contains_key(legacy) {
-        diagnostics.push(Diagnostic {
-            severity: Severity::Warning,
-            category: "deprecated-field",
-            path: format!("memory.{legacy}"),
-            message: message.into(),
-        });
-    }
-}
-
 /// Run semantic checks on a successfully parsed config.
 pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut Vec<Diagnostic>) {
+    if let Err(message) = config.memory.embedding_fields_complete() {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "invalid-value",
+            path: "memory".into(),
+            message,
+        });
+    }
     for (path, name) in config.providers.invalid_provider_names() {
         let suggestion = suggest(&name, crate::schema::KNOWN_PROVIDER_NAMES, 3);
         let message = if let Some(suggestion) = suggestion {

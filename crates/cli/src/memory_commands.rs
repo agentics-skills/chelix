@@ -125,7 +125,7 @@ async fn show_status() -> anyhow::Result<()> {
     println!("Memory status:");
     println!("  Files:           {}", status.total_files);
     println!("  Chunks:          {}", status.total_chunks);
-    println!("  Embedding model: {}", status.embedding_model);
+    println!("  Embedding URL: {}", status.embedding_url);
     println!("  Database size:   {}", status.db_size_display());
     println!("  Database path:   {}", db_path.display());
 

@@ -145,7 +145,9 @@ mode = "On"
 backend = "docker"
 
 [memory]
-provider = "local"
+url = "http://127.0.0.1:8080"
+api_key = "secret"
+dimensions = 3
 
 [metrics]
 enabled = true

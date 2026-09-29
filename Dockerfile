@@ -138,7 +138,6 @@ FROM runtime-base AS runtime
 # Copy the core binary and its managed sidecars from builder
 COPY --from=rust-builder /build/target/release/chelix /usr/local/bin/chelix
 COPY --from=rust-builder /build/target/release/chelix-tools-service /usr/local/bin/chelix-tools-service
-COPY --from=rust-builder /build/target/release/chelix-embedding-service /usr/local/bin/chelix-embedding-service
 
 # Create config and data directories
 RUN mkdir -p /home/chelix/.config/chelix /home/chelix/.chelix /home/chelix/.npm && \

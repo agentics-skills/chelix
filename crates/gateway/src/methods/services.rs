@@ -190,14 +190,6 @@ fn parse_user_profile_write_mode(
     }
 }
 
-fn parse_memory_provider(value: &str) -> Result<Option<chelix_config::MemoryProvider>, ErrorShape> {
-    match value {
-        "none" => Ok(None),
-        "local" => Ok(Some(chelix_config::MemoryProvider::Local)),
-        _ => Err(invalid_memory_config_value("provider", value)),
-    }
-}
-
 fn parse_memory_citations_mode(
     value: &str,
 ) -> Result<chelix_config::MemoryCitationsMode, ErrorShape> {
@@ -490,7 +482,9 @@ mod tests {
             cfg.memory.style = chelix_config::MemoryStyle::SearchOnly;
             cfg.memory.agent_write_mode = chelix_config::AgentMemoryWriteMode::PromptOnly;
             cfg.memory.user_profile_write_mode = chelix_config::UserProfileWriteMode::ExplicitOnly;
-            cfg.memory.provider = Some(chelix_config::MemoryProvider::Local);
+            cfg.memory.url = Some("http://127.0.0.1:8080".into());
+            cfg.memory.api_key = Some(secrecy::Secret::new("secret".into()));
+            cfg.memory.dimensions = Some(3);
             cfg.memory.citations = chelix_config::MemoryCitationsMode::Off;
             cfg.memory.disable_rag = true;
             cfg.memory.llm_reranking = true;
@@ -503,7 +497,10 @@ mod tests {
         assert_eq!(payload["style"], "search-only");
         assert_eq!(payload["agent_write_mode"], "prompt-only");
         assert_eq!(payload["user_profile_write_mode"], "explicit-only");
-        assert_eq!(payload["provider"], "local");
+        assert_eq!(payload["url"], "http://127.0.0.1:8080");
+        assert_eq!(payload["dimensions"], 3);
+        assert_eq!(payload["api_key_configured"], true);
+        assert!(payload.get("api_key").is_none());
         assert_eq!(payload["citations"], "off");
         assert_eq!(payload["disable_rag"], true);
         assert_eq!(payload["llm_reranking"], true);
@@ -521,7 +518,9 @@ mod tests {
                 "style": "prompt-only",
                 "agent_write_mode": "search-only",
                 "user_profile_write_mode": "off",
-                "provider": "local",
+                "url": "http://127.0.0.1:8080",
+                "api_key": "secret",
+                "dimensions": 3,
                 "citations": "on",
                 "disable_rag": true,
                 "llm_reranking": true,
@@ -534,7 +533,10 @@ mod tests {
         assert_eq!(payload["style"], "prompt-only");
         assert_eq!(payload["agent_write_mode"], "search-only");
         assert_eq!(payload["user_profile_write_mode"], "off");
-        assert_eq!(payload["provider"], "local");
+        assert_eq!(payload["url"], "http://127.0.0.1:8080");
+        assert_eq!(payload["dimensions"], 3);
+        assert_eq!(payload["api_key_configured"], true);
+        assert!(payload.get("api_key").is_none());
         assert_eq!(payload["citations"], "on");
         assert_eq!(payload["disable_rag"], true);
         assert_eq!(payload["llm_reranking"], true);
@@ -552,9 +554,16 @@ mod tests {
             config.memory.user_profile_write_mode,
             chelix_config::UserProfileWriteMode::Off
         );
+        assert_eq!(config.memory.url.as_deref(), Some("http://127.0.0.1:8080"));
+        assert_eq!(config.memory.dimensions, Some(3));
         assert_eq!(
-            config.memory.provider,
-            Some(chelix_config::MemoryProvider::Local)
+            config
+                .memory
+                .api_key
+                .as_ref()
+                .map(secrecy::ExposeSecret::expose_secret)
+                .map(String::as_str),
+            Some("secret")
         );
         assert_eq!(
             config.memory.citations,
@@ -602,7 +611,6 @@ mod tests {
             "memory.config.update",
             serde_json::json!({
                 "unexpected_field": true,
-                "provider": "local",
             }),
         )
         .await;
@@ -616,6 +624,6 @@ mod tests {
 
         let config = chelix_config::discover_and_load()
             .unwrap_or_else(|error| panic!("load config: {error}"));
-        assert_eq!(config.memory.provider, None);
+        assert_eq!(config.memory.url, None);
     }
 }

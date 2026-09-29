@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use chelix_config::ApprovalMode;
 
 #[test]
@@ -65,14 +63,4 @@ fn proxy_tls_validation_allows_proxy_mode_when_tls_is_disabled() {
 #[test]
 fn proxy_tls_validation_allows_explicit_tls_override() {
     assert!(crate::server::helpers::validate_proxy_tls_configuration(true, true, true).is_ok());
-}
-
-#[test]
-fn env_value_with_overrides_uses_override_when_process_env_missing() {
-    let unique_key = format!("CHELIX_TEST_LOOKUP_{}", std::process::id());
-    let overrides = HashMap::from([(unique_key.clone(), "override-value".to_string())]);
-    assert_eq!(
-        crate::server::helpers::env_value_with_overrides(&overrides, &unique_key).as_deref(),
-        Some("override-value")
-    );
 }

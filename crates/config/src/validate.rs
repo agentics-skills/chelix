@@ -34,7 +34,7 @@ impl std::fmt::Display for Severity {
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
-    /// Category: "syntax", "unknown-field", "deprecated-field", "unknown-provider", "type-error",
+    /// Category: "syntax", "unknown-field", "unknown-provider", "type-error", "invalid-value",
     /// "security", "file-ref"
     pub category: &'static str,
     /// Dotted path, e.g. "server.bnd"
@@ -143,10 +143,7 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
         }),
     }
 
-    // 3. Deprecation warnings on raw TOML keys
-    let conflicting_replacements = semantic::check_deprecated_fields(&toml_value, &mut diagnostics);
-
-    // 4. Type check and semantic checks on the parsed config
+    // 3. Type check and semantic checks on the parsed config
     match toml::from_str::<ChelixConfig>(toml_str) {
         Ok(config) => {
             if config.tools.execute_command.terminal_size.is_none() {
@@ -160,18 +157,12 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
             semantic::check_semantic_warnings(&config, &mut diagnostics);
         },
         Err(error) => {
-            let message = format!("type error: {error}");
-            if !semantic::should_suppress_deprecated_conflict_type_error(
-                &message,
-                &conflicting_replacements,
-            ) {
-                diagnostics.push(Diagnostic {
-                    severity: Severity::Error,
-                    category: "type-error",
-                    path: String::new(),
-                    message,
-                });
-            }
+            diagnostics.push(Diagnostic {
+                severity: Severity::Error,
+                category: "type-error",
+                path: String::new(),
+                message: format!("type error: {error}"),
+            });
         },
     }
 

@@ -2,6 +2,7 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { TextField } from "../../components/forms/FormField";
 import {
 	SaveButton,
 	SectionHeading,
@@ -17,7 +18,7 @@ import { rerender } from "./_shared";
 interface MemoryStatus {
 	total_files?: number;
 	total_chunks?: number;
-	embedding_model?: string;
+	embedding_url?: string;
 	db_size_display?: string;
 }
 
@@ -25,7 +26,9 @@ interface MemoryConfig {
 	style?: string;
 	agent_write_mode?: string;
 	user_profile_write_mode?: string;
-	provider?: string;
+	url?: string;
+	dimensions?: number | null;
+	api_key_configured?: boolean;
 	citations?: string;
 	llm_reranking?: boolean;
 	search_merge_strategy?: string;
@@ -116,7 +119,7 @@ function MemoryStatusCard({ status }: { status: MemoryStatus | null }): VNode | 
 	const items = [
 		{ label: "Files", value: status.total_files || 0 },
 		{ label: "Chunks", value: status.total_chunks || 0 },
-		{ label: "Model", value: status.embedding_model || "none", mono: true },
+		{ label: "URL", value: status.embedding_url || "none", mono: true },
 		{ label: "DB Size", value: status.db_size_display || "0 B" },
 	];
 	return (
@@ -211,7 +214,10 @@ export function MemorySection(): VNode {
 	const [style, setStyle] = useState("hybrid");
 	const [agentWriteMode, setAgentWriteMode] = useState("hybrid");
 	const [userProfileWriteMode, setUserProfileWriteMode] = useState("explicit-and-auto");
-	const [provider, setProvider] = useState("none");
+	const [embeddingUrl, setEmbeddingUrl] = useState("");
+	const [embeddingApiKey, setEmbeddingApiKey] = useState("");
+	const [embeddingDimensions, setEmbeddingDimensions] = useState("");
+	const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
 	const [citations, setCitations] = useState("auto");
 	const [llmReranking, setLlmReranking] = useState(false);
 	const [searchMergeStrategy, setSearchMergeStrategy] = useState("rrf");
@@ -224,7 +230,10 @@ export function MemorySection(): VNode {
 		setStyle(configString(config.style, "hybrid"));
 		setAgentWriteMode(configString(config.agent_write_mode, "hybrid"));
 		setUserProfileWriteMode(configString(config.user_profile_write_mode, "explicit-and-auto"));
-		setProvider(configString(config.provider, "none"));
+		setEmbeddingUrl(config.url ?? "");
+		setEmbeddingApiKey("");
+		setEmbeddingDimensions(config.dimensions == null ? "" : String(config.dimensions));
+		setApiKeyConfigured(Boolean(config.api_key_configured));
 		setCitations(configString(config.citations, "auto"));
 		setLlmReranking(configBoolean(config.llm_reranking, false));
 		setSearchMergeStrategy(configString(config.search_merge_strategy, "rrf"));
@@ -257,11 +266,12 @@ export function MemorySection(): VNode {
 		save.setError(null);
 		save.setSaving(true);
 
-		sendRpc("memory.config.update", {
+		const update: Record<string, unknown> = {
 			style,
 			agent_write_mode: agentWriteMode,
 			user_profile_write_mode: userProfileWriteMode,
-			provider,
+			url: embeddingUrl,
+			dimensions: embeddingDimensions.trim() === "" ? null : Number(embeddingDimensions),
 			citations,
 			llm_reranking: llmReranking,
 			search_merge_strategy: searchMergeStrategy,
@@ -269,7 +279,9 @@ export function MemorySection(): VNode {
 			enable_prefetch: enablePrefetch,
 			prefetch_limit: prefetchLimit,
 			enable_self_improvement: enableSelfImprovement,
-		}).then((res: RpcResponse) => {
+		};
+		if (embeddingApiKey !== "") update.api_key = embeddingApiKey;
+		sendRpc("memory.config.update", update).then((res: RpcResponse) => {
 			save.setSaving(false);
 			if (res?.ok) {
 				save.flashSaved();
@@ -284,7 +296,9 @@ export function MemorySection(): VNode {
 	const setPromptMemoryModeAndRender = (value: string): void => updateMemorySetting(setPromptMemoryMode, value);
 	const setAgentWriteModeAndRender = (value: string): void => updateMemorySetting(setAgentWriteMode, value);
 	const setUserProfileWriteModeAndRender = (value: string): void => updateMemorySetting(setUserProfileWriteMode, value);
-	const setProviderAndRender = (value: string): void => updateMemorySetting(setProvider, value);
+	const setEmbeddingUrlAndRender = (value: string): void => updateMemorySetting(setEmbeddingUrl, value);
+	const setEmbeddingApiKeyAndRender = (value: string): void => updateMemorySetting(setEmbeddingApiKey, value);
+	const setEmbeddingDimensionsAndRender = (value: string): void => updateMemorySetting(setEmbeddingDimensions, value);
 	const setCitationsAndRender = (value: string): void => updateMemorySetting(setCitations, value);
 	const setSearchMergeStrategyAndRender = (value: string): void => updateMemorySetting(setSearchMergeStrategy, value);
 	const setLlmRerankingAndRender = (value: boolean): void => updateMemorySetting(setLlmReranking, value);
@@ -378,15 +392,32 @@ export function MemorySection(): VNode {
 					]}
 					onChange={setUserProfileWriteModeAndRender}
 				/>
-				<MemorySelectSetting
-					title="Embedding Provider"
-					description="Use the local embedding sidecar for RAG, or keyword-only search."
-					value={provider}
-					options={[
-						["none", "Keyword-only"],
-						["local", "Local"],
-					]}
-					onChange={setProviderAndRender}
+				<TextField
+					label="Embedding URL"
+					value={embeddingUrl}
+					onInput={setEmbeddingUrlAndRender}
+					placeholder="http://127.0.0.1:8080"
+					help="Leave URL and dimensions empty for keyword-only search."
+					monospace
+				/>
+				<TextField
+					label="Embedding API key"
+					type="password"
+					value={embeddingApiKey}
+					onInput={setEmbeddingApiKeyAndRender}
+					autoComplete="off"
+					help={
+						apiKeyConfigured
+							? "A key is already stored. Leave this blank to keep it."
+							: "Bearer token sent to the embedding provider."
+					}
+				/>
+				<TextField
+					label="Embedding dimensions"
+					type="number"
+					value={embeddingDimensions}
+					onInput={setEmbeddingDimensionsAndRender}
+					help="Vector width returned by the provider."
 				/>
 				<MemorySelectSetting
 					title="Citations"

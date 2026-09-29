@@ -305,11 +305,6 @@ install_binary() {
         chmod +x "$INSTALL_DIR/$linux_tools_service"
     fi
 
-    if [ -f "$tmpdir/chelix-embedding-service" ]; then
-        mv "$tmpdir/chelix-embedding-service" "$INSTALL_DIR/chelix-embedding-service"
-        chmod +x "$INSTALL_DIR/chelix-embedding-service"
-    fi
-
     if [ -d "$tmpdir/share/chelix" ]; then
         install_shared_assets "$tmpdir/share/chelix"
     elif [ -d "$tmpdir/share/web" ]; then

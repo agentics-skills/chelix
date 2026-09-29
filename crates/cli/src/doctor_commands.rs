@@ -260,10 +260,7 @@ fn check_config(config_dir: Option<&Path>) -> Section {
 }
 
 fn config_validation_status(diagnostic: &chelix_config::Diagnostic) -> Option<Status> {
-    if diagnostic.category != "security"
-        && diagnostic.category != "unknown-provider"
-        && diagnostic.category != "deprecated-field"
-    {
+    if diagnostic.category != "security" && diagnostic.category != "unknown-provider" {
         return None;
     }
 

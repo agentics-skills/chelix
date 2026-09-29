@@ -259,7 +259,7 @@ impl AgentTool for CodebaseStatusTool {
                 "total_files": status.total_files,
                 "total_chunks": status.total_chunks,
                 "last_sync_ms": status.last_sync_ms,
-                "embedding_model": status.embedding_model,
+                "embedding_url": status.embedding_url,
                 "backend": status.backend,
             })),
             Err(Error::BackendUnavailable(msg)) => Ok(json!({

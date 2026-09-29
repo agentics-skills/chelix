@@ -486,10 +486,9 @@ terminal_size = "115x58"             # 115 chars x 58
 # [memory]
 # style = "hybrid"                  # "hybrid" | "prompt-only" | "search-only" | "off"
 # agent_write_mode = "hybrid"       # "hybrid" | "prompt-only" | "search-only" | "off"
-# provider = "local"                # managed sidecar; omit for keyword-only
-# model = "google/embeddinggemma-300m"  # HF id or local snapshot directory
-# base_url = "/path/to/model-cache" # Cache directory when provider = "local"
-# huggingface_api_key = "hf_..."    # Optional; first-time HF download only
+# url = "http://127.0.0.1:8080"     # Remote embedding provider; omit with the other two for keyword-only
+# api_key = "..."                   # Bearer token sent to that provider
+# dimensions = 768                  # Vector width returned by that provider
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHONE (Telephony Providers)

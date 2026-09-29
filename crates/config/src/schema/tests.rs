@@ -400,36 +400,39 @@ fn memory_config_default_style_is_hybrid() {
 }
 
 #[test]
-fn memory_huggingface_api_key_parses_and_debug_redacts_secret() {
-    let cfg: MemoryEmbeddingConfig =
-        toml::from_str("huggingface_api_key = \"hf_secret_token_value\"").unwrap();
+fn memory_api_key_parses_and_debug_redacts_secret() {
+    let cfg: MemoryEmbeddingConfig = toml::from_str("api_key = \"embed_secret_token_value\"")
+        .unwrap_or_else(|error| panic!("parse failed: {error}"));
     assert_eq!(
-        cfg.huggingface_api_key
+        cfg.api_key
             .as_ref()
             .map(secrecy::ExposeSecret::expose_secret)
             .map(String::as_str),
-        Some("hf_secret_token_value")
+        Some("embed_secret_token_value")
     );
     let debug = format!("{cfg:?}");
     assert!(
-        !debug.contains("hf_secret_token_value"),
-        "debug leaked huggingface token: {debug}"
+        !debug.contains("embed_secret_token_value"),
+        "debug leaked embedding api key: {debug}"
     );
 }
 
 #[test]
-fn memory_huggingface_api_key_accepts_env_style_alias() {
+fn memory_embedding_endpoint_requires_all_three_fields() {
     let cfg: MemoryEmbeddingConfig =
-        toml::from_str("HUGGINGFACE_API_KEY = \"hf_alias_token_value\"").unwrap();
-    assert_eq!(
-        cfg.huggingface_api_key
-            .as_ref()
-            .map(secrecy::ExposeSecret::expose_secret)
-            .map(String::as_str),
-        Some("hf_alias_token_value")
-    );
-    let debug = format!("{cfg:?}");
-    assert!(!debug.contains("hf_alias_token_value"));
+        toml::from_str("url = \"http://127.0.0.1:8080\"\napi_key = \"secret\"\ndimensions = 3")
+            .unwrap_or_else(|error| panic!("parse failed: {error}"));
+    let endpoint = cfg
+        .embedding_endpoint()
+        .unwrap_or_else(|error| panic!("endpoint should be valid: {error}"))
+        .unwrap_or_else(|| panic!("endpoint should be present"));
+    assert_eq!(endpoint.url, "http://127.0.0.1:8080");
+    assert_eq!(endpoint.dimensions, 3);
+    assert_eq!(endpoint.api_key.expose_secret(), "secret");
+
+    let partial: MemoryEmbeddingConfig = toml::from_str("url = \"http://127.0.0.1:8080\"")
+        .unwrap_or_else(|error| panic!("parse failed: {error}"));
+    assert!(partial.embedding_endpoint().is_err());
 }
 
 #[test]
@@ -482,9 +485,10 @@ fn memory_config_toml_parses_user_profile_write_mode() {
 }
 
 #[test]
-fn memory_config_toml_parses_provider() {
-    let cfg: MemoryEmbeddingConfig = toml::from_str("provider = \"local\"").unwrap();
-    assert_eq!(cfg.provider, Some(MemoryProvider::Local));
+fn memory_config_toml_parses_dimensions() {
+    let cfg: MemoryEmbeddingConfig =
+        toml::from_str("dimensions = 768").unwrap_or_else(|error| panic!("parse failed: {error}"));
+    assert_eq!(cfg.dimensions, Some(768));
 }
 
 #[test]
@@ -783,26 +787,28 @@ url = "http://192.168.0.9:11434"
 }
 
 #[test]
-fn memory_embedding_legacy_aliases_map_to_current_fields() {
+fn memory_embedding_fields_parse_on_full_config() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [memory]
-embedding_provider = "local"
-embedding_base_url = "http://chelix-embeddings:7997/v1"
-embedding_model = "intfloat/multilingual-e5-small"
+url = "http://127.0.0.1:8080"
+api_key = "secret"
+dimensions = 768
 "#,
     )
-    .unwrap();
+    .unwrap_or_else(|error| panic!("parse failed: {error}"));
 
-    assert_eq!(config.memory.provider, Some(MemoryProvider::Local));
+    assert_eq!(config.memory.url.as_deref(), Some("http://127.0.0.1:8080"));
     assert_eq!(
-        config.memory.base_url.as_deref(),
-        Some("http://chelix-embeddings:7997/v1")
+        config
+            .memory
+            .api_key
+            .as_ref()
+            .map(secrecy::ExposeSecret::expose_secret)
+            .map(String::as_str),
+        Some("secret")
     );
-    assert_eq!(
-        config.memory.model.as_deref(),
-        Some("intfloat/multilingual-e5-small")
-    );
+    assert_eq!(config.memory.dimensions, Some(768));
 }
 
 #[test]

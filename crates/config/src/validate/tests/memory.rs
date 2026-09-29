@@ -27,19 +27,6 @@ search_merge_strategy = "blend"
 }
 
 #[test]
-fn unknown_memory_provider_is_parse_error() {
-    let toml = r#"
-[memory]
-provider = "pinecone"
-"#;
-    let result = validate_toml_str(toml);
-    assert!(
-        result.has_errors(),
-        "expected parse error for unknown memory provider"
-    );
-}
-
-#[test]
 fn memory_disable_rag_is_valid_field() {
     let toml = r#"
 [memory]
@@ -108,118 +95,17 @@ user_profile_write_mode = "explicit-only"
 }
 
 #[test]
-fn legacy_memory_embedding_fields_warn_but_do_not_error() {
-    let toml = r#"
-[agents]
-default = "main"
-
-[agents.main]
-name = "Chelix"
-model = "test::model"
-reasoning_effort = "off"
-max_tools_threshold = 128
-compaction_reminder = true
-prepend_sender_badge = true
-
-[memory]
-embedding_provider = "local"
-embedding_model = "intfloat/multilingual-e5-small"
-embedding_base_url = "http://chelix-embeddings:7997/v1"
-embedding_dimensions = 384
-
-[tools.execute_command]
-terminal_size = "115x58"
-"#;
-    let result = validate_toml_str(toml);
-
-    let unknown: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.category == "unknown-field" && d.path.starts_with("memory.embedding_"))
-        .collect();
-    assert!(
-        unknown.is_empty(),
-        "legacy embedding fields should not be unknown: {:?}",
-        result.diagnostics
-    );
-
-    let deprecated: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.category == "deprecated-field")
-        .collect();
-    assert_eq!(
-        deprecated.len(),
-        4,
-        "expected deprecation warnings for all legacy fields: {:?}",
-        result.diagnostics
-    );
-    assert!(
-        deprecated
-            .iter()
-            .any(|d| d.path == "memory.embedding_provider"
-                && d.message.contains("memory.provider")),
-        "expected replacement warning for embedding_provider"
-    );
-    assert!(
-        deprecated
-            .iter()
-            .any(|d| d.path == "memory.embedding_base_url"
-                && d.message.contains("memory.base_url")),
-        "expected replacement warning for embedding_base_url"
-    );
-    assert!(
-        deprecated
-            .iter()
-            .any(|d| d.path == "memory.embedding_model" && d.message.contains("memory.model")),
-        "expected replacement warning for embedding_model"
-    );
-    assert!(
-        deprecated
-            .iter()
-            .any(|d| d.path == "memory.embedding_dimensions" && d.message.contains("ignored")),
-        "expected ignored warning for embedding_dimensions"
-    );
-    assert!(
-        !result.has_errors(),
-        "legacy embedding fields should remain usable: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn conflicting_legacy_and_modern_memory_field_reports_targeted_error() {
+fn partial_memory_embedding_fields_are_invalid() {
     let toml = r#"
 [memory]
-provider = "local"
-embedding_provider = "local"
+url = "http://127.0.0.1:8080"
 "#;
     let result = validate_toml_str(toml);
-
-    let conflict = result
-        .diagnostics
-        .iter()
-        .find(|d| {
-            d.category == "deprecated-field"
-                && d.severity == Severity::Error
-                && d.path == "memory.embedding_provider"
-        })
-        .unwrap_or_else(|| panic!("expected targeted conflict error: {:?}", result.diagnostics));
     assert!(
-        conflict
-            .message
-            .contains("remove \"memory.embedding_provider\""),
-        "expected removal guidance, got: {}",
-        conflict.message
-    );
-
-    let type_error = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "type-error");
-    assert!(
-        type_error.is_none(),
-        "expected duplicate-field type error to be suppressed: {:?}",
+        result.diagnostics.iter().any(|d| {
+            d.category == "invalid-value" && d.severity == Severity::Error && d.path == "memory"
+        }),
+        "expected invalid embedding endpoint: {:?}",
         result.diagnostics
     );
 }
@@ -294,16 +180,4 @@ fn memory_lifecycle_fields_default_to_true() {
         config.skills.enable_self_improvement,
         "enable_self_improvement should default true"
     );
-}
-
-#[test]
-fn duplicate_field_suppression_matches_only_conflicting_replacements() {
-    assert!(should_suppress_deprecated_conflict_type_error(
-        "type error: duplicate field `provider`",
-        &["provider"]
-    ));
-    assert!(!should_suppress_deprecated_conflict_type_error(
-        "type error: duplicate field `base_url`",
-        &["provider"]
-    ));
 }

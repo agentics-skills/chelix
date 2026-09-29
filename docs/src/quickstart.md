@@ -109,8 +109,9 @@ Enable long-term memory for context across sessions:
 ```toml
 # In chelix.toml
 [memory]
-provider = "local"
-model = "google/embeddinggemma-300m"
+url = "http://127.0.0.1:8080"
+api_key = "replace-me"
+dimensions = 768
 ```
 
 Add knowledge by writing `~/.chelix/MEMORY.md` or agent notes under

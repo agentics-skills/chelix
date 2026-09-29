@@ -33,8 +33,8 @@ writes to memory via file-writing tools (either dedicated or general-purpose).
 
 | Provider            | Chelix                              | OpenClaw                      |
 | ------------------- | ----------------------------------- | ----------------------------- |
-| **Local embeddings** | EmbeddingGemma-300M via managed sidecar (mistral.rs Q8) | Auto-download GGUF (~0.6 GB)  |
-| **Offline support** | Yes (local embeddings)              | Yes (local embeddings)        |
+| **Embeddings** | Remote HTTP provider (`url`, `api_key`, `dimensions`) | Auto-download GGUF (~0.6 GB)  |
+| **Offline support** | When the configured provider is reachable locally | Yes (local embeddings)        |
 
 ### Memory Files
 
@@ -146,7 +146,7 @@ Chelix does not run a separate memory-flush turn before compaction. OpenClaw:
 
 | Setting              | Chelix (`chelix.toml`)         | OpenClaw (`openclaw.json`)                |
 | -------------------- | ------------------------------ | ----------------------------------------- |
-| **Provider**         | `memory.provider = "local"`    | Auto-detect from available keys           |
+| **Provider**         | `memory.url`, `api_key`, `dimensions` | Auto-detect from available keys      |
 | **Citations**        | `memory.citations = "auto"`    | `memory.citations = "auto"`               |
 | **UI configuration** | Settings > Memory page         | Config file only                          |
 

@@ -16,17 +16,16 @@ embeddings for semantic search:
 | Feature                 | Built-in                                            |
 | ----------------------- | --------------------------------------------------- |
 | **Search Type**         | Hybrid (vector + FTS5 keyword)                      |
-| **Local Embeddings**    | Managed mistral.rs sidecar (EmbeddingGemma-300M Q8) |
+| **Embeddings**          | Remote HTTP provider                                |
 | **Embedding Cache**     | SQLite with LRU eviction                            |
 | **LLM Reranking**       | Optional (configurable)                             |
 | **File Watching**       | Real-time sync via notify                           |
-| **External Dependency** | Bundled managed sidecar for local embeddings        |
-| **Offline Support**     | Yes (with local embeddings)                         |
+| **External Dependency** | An embedding provider reachable at the configured URL |
+| **Offline Support**     | When that provider is reachable without the network |
 
 Key properties:
 
-- **Managed local inference**: Chelix starts and stops the separately built
-  `chelix-embedding-service` sidecar when the local provider is selected
+- **Remote embeddings**: Chelix sends `POST /v1/embed` with `Authorization: Bearer <api_key>`
 - **Embedding cache**: Avoids re-embedding unchanged content
 
 ## Features
@@ -74,14 +73,13 @@ agent_write_mode = "hybrid"
 # Managed USER.md write policy: "explicit-and-auto", "explicit-only", or "off"
 user_profile_write_mode = "explicit-and-auto"
 
-# Embedding provider. Only "local". Omit for keyword-only search.
-provider = "local"
+# Remote embedding provider. Omit url, api_key, and dimensions together for keyword-only search.
+url = "http://127.0.0.1:8080"
+api_key = "replace-me"
+dimensions = 768
 
 # Disable RAG embeddings and force keyword-only search
 disable_rag = false
-
-# Cache directory for the local embedding sidecar
-base_url = "/path/to/model-cache"
 
 # Citation mode: "on", "off", or "auto"
 citations = "auto"
@@ -98,7 +96,7 @@ Real defaults, if you leave the fields unset:
 - `style = "hybrid"`
 - `agent_write_mode = "hybrid"`
 - `user_profile_write_mode = "explicit-and-auto"`
-- `provider` unset (keyword-only, not `local`)
+- `url`, `api_key`, and `dimensions` unset (keyword-only)
 - `disable_rag = false`
 - `citations = "auto"`
 - `llm_reranking = false`
@@ -160,40 +158,12 @@ Common combinations:
 | Keep `USER.md` from silent enrichment | `user_profile_write_mode = "explicit-only"`                                     |
 | Keep user profile only in config      | `user_profile_write_mode = "off"`                                               |
 
-## Embedding Providers
+## Embedding provider
 
-The memory system has one embedding provider:
-
-| Provider | Model               | Dimensions | Notes                    |
-| -------- | ------------------- | ---------- | ------------------------ |
-| Local    | EmbeddingGemma-300M | 768        | Offline, managed sidecar |
-
-Unset `provider` uses keyword-only search. `provider = "local"` fails gateway
-startup if the sidecar cannot start.
-
-### Local embedding sidecar
-
-`chelix-embedding-service` is a managed loopback sidecar. On first start it
-downloads `google/embeddinggemma-300m` (unless a local snapshot directory is
-configured), quantizes to Q8, and writes UQFF artifacts. Later starts load the
-UQFF only. Warm starts load those artifacts without the original snapshot, network,
-or token. Set `[memory] huggingface_api_key` (or `HUGGINGFACE_API_KEY` / `HF_TOKEN`)
-for the first download only; the token is passed to the sidecar as `HF_TOKEN`.
-An explicit `provider = "local"` fails gateway startup if the sidecar cannot start.
-
-Chelix launches the sidecar on a random loopback HTTP port, reads model
-metadata during startup, and stops the process with the gateway. The loopback
-API has no authentication and is not exposed on non-loopback interfaces.
-
-Build the two binaries separately:
-
-```bash
-cargo build -p chelix --no-default-features --features full
-cargo build -p chelix-embedding-service
-```
-
-Place `chelix-embedding-service` next to `chelix`. For custom layouts, set
-`CHELIX_EMBEDDING_SERVICE` to the sidecar path.
+Set `url`, `api_key`, and `dimensions` together. Chelix posts `{ "text", "priority" }`
+to `{url}/v1/embed` with `Authorization: Bearer <api_key>` and requires the
+returned vector length to equal `dimensions`. Gateway startup fails if that
+probe does not succeed. Leave all three unset for keyword-only search.
 
 ## Memory Directories
 
@@ -380,7 +350,7 @@ is removed. It is the low-level exact-delete primitive that powers
 ├──────────────────────────────────────────────────────────────────┤
 │                    Embedding Provider                            │
 │  ┌─────────┐                                                     │
-│  │  Local  │                                                     │
+│  │  HTTP   │                                                     │
 │  │         │                                                     │
 │  └─────────┘                                                     │
 └──────────────────────────────────────────────────────────────────┘
@@ -391,10 +361,8 @@ is removed. It is the low-level exact-delete primitive that powers
 ### Memory not working
 
 1. Check status in Settings > Memory
-2. For semantic search, set `provider = "local"`. That requires the
-   `local-embeddings` client feature and the separately built
-   `chelix-embedding-service` binary. With `provider` unset, search is
-   keyword-only.
+2. For semantic search, set `url`, `api_key`, and `dimensions`. With those
+   fields unset, search is keyword-only.
 
 ### Search returns no results
 

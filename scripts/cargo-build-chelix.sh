@@ -32,16 +32,6 @@ done
 cargo build -p chelix --no-default-features --features "$features" "$@"
 cargo build -p chelix-tools-service "$@"
 
-# Keep the embedding sidecar out of the main binary's dependency graph. Build
-# the managed sidecar in a separate Cargo invocation only when the selected
-# Chelix feature set enables local embeddings.
-normalized_features=",${features// /,},"
-case "$normalized_features" in
-	*,full,*|*,local-embeddings,*)
-		cargo build -p chelix-embedding-service "$@"
-		;;
-esac
-
 is_macos_target=false
 if [[ "$target" == *-apple-darwin ]]; then
 	is_macos_target=true
