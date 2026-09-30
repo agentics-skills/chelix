@@ -843,6 +843,7 @@ async fn to_shared_message(
     }))
 }
 
+mod batch;
 mod initialization;
 mod maintenance;
 mod service;

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::*;
 
 impl LiveSessionService {
@@ -18,45 +16,30 @@ impl LiveSessionService {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        let delete_order = self.collect_session_delete_order(key).await?;
-        let mut reservation_keys = delete_order.clone();
-        reservation_keys.sort();
-        let mut reservations = Vec::with_capacity(reservation_keys.len());
-        for session_key in &reservation_keys {
-            reservations.push(self.session_mutations.reserve_mutation(session_key).await);
-        }
-        let mut mutation_permits = Vec::with_capacity(reservations.len());
-        for reservation in reservations {
-            mutation_permits.push(reservation.acquire().await.map_err(ServiceError::message)?);
-        }
+        let reservation = self.session_mutations.reserve_mutation(key).await;
+        let mutation_permit = reservation.acquire().await.map_err(ServiceError::message)?;
 
-        let mut entries = Vec::with_capacity(delete_order.len());
-        for session_key in &delete_order {
-            let entry = self
-                .metadata
-                .get(session_key)
-                .await
-                .map_err(ServiceError::message)?
-                .ok_or_else(|| {
-                    ServiceError::message(format!("session '{session_key}' not found"))
-                })?;
-            self.preflight_session_delete(&entry, force).await?;
-            entries.push(entry);
-        }
-
-        let deleted_entries = self
+        let entry = self
             .metadata
-            .remove_session_tree(key, &delete_order)
+            .get(key)
+            .await
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))?;
+        self.preflight_session_delete(&entry, force).await?;
+
+        let removed = self
+            .metadata
+            .remove(key)
             .await
             .map_err(ServiceError::message)?;
-        debug_assert_eq!(deleted_entries.len(), entries.len());
+        let Some(removed) = removed else {
+            return Err(ServiceError::message(format!("session '{key}' not found")));
+        };
 
         let mut cleanup_errors = Vec::new();
-        for entry in &deleted_entries {
-            self.cleanup_deleted_session(entry, &mut cleanup_errors)
-                .await;
-        }
-        drop(mutation_permits);
+        self.cleanup_deleted_session(&removed, &mut cleanup_errors)
+            .await;
+        drop(mutation_permit);
 
         if cleanup_errors.is_empty() {
             Ok(serde_json::json!({ "ok": true }))
@@ -134,34 +117,7 @@ impl LiveSessionService {
         }))
     }
 
-    async fn collect_session_delete_order(
-        &self,
-        root_key: &str,
-    ) -> Result<Vec<String>, ServiceError> {
-        let mut order = Vec::new();
-        let mut seen = HashSet::new();
-        let mut stack = vec![root_key.to_string()];
-
-        while let Some(key) = stack.pop() {
-            if !seen.insert(key.clone()) {
-                continue;
-            }
-            order.push(key.clone());
-            for child in self
-                .metadata
-                .list_children(&key)
-                .await
-                .map_err(ServiceError::message)?
-            {
-                stack.push(child.key);
-            }
-        }
-
-        order.reverse();
-        Ok(order)
-    }
-
-    async fn preflight_session_delete(
+    pub(super) async fn preflight_session_delete(
         &self,
         entry: &chelix_sessions::metadata::SessionEntry,
         force: bool,
@@ -486,7 +442,7 @@ impl LiveSessionService {
 
             // Reuse delete logic via params.
             let params = serde_json::json!({ "key": entry.key, "force": true });
-            if let Err(error) = self.delete_impl(params).await {
+            if let Err(error) = self.delete(params).await {
                 warn!(session = %entry.key, %error, "clear_all: failed to delete session");
                 failures.push(format!("session '{}': {error}", entry.key));
                 continue;

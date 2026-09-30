@@ -36,7 +36,7 @@ async fn is_current_channel_session(
     Ok(active_key == entry.key)
 }
 
-async fn is_archivable_entry(
+pub(super) async fn is_archivable_entry(
     metadata: &SqliteSessionMetadata,
     entry: &chelix_sessions::metadata::SessionEntry,
 ) -> Result<bool, ServiceError> {
@@ -392,6 +392,111 @@ impl LiveSessionService {
             },
         }
     }
+
+    pub(super) async fn patch_one(&self, params: Value) -> ServiceResult {
+        let p: PatchParams = parse_params(params)?;
+        let key = p.key.clone();
+        let _mutation_permit = if p.is_tool_permission_only() || p.is_label_only() {
+            None
+        } else {
+            let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
+            Some(
+                mutation_reservation
+                    .acquire()
+                    .await
+                    .map_err(ServiceError::message)?,
+            )
+        };
+
+        let entry = self
+            .metadata
+            .get(&key)
+            .await
+            .map_err(ServiceError::message)?
+            .ok_or_else(|| format!("session '{key}' not found"))?;
+        if p.archived == Some(true) && !is_archivable_entry(&self.metadata, &entry).await? {
+            return Err(ServiceError::message(format!(
+                "session '{key}' cannot be archived"
+            )));
+        }
+        if p.parent_session_key.is_some()
+            && entry.prompt_profile == chelix_sessions::metadata::PromptProfile::Subagent
+        {
+            return Err(ServiceError::message(format!(
+                "session '{key}' is a sub-agent session and cannot be reparented"
+            )));
+        }
+
+        let resolved_model = if p.model.is_some() || p.reasoning_effort.is_some() {
+            if p.model.is_some() && p.reasoning_effort.is_none() {
+                return Err(ServiceError::message(
+                    "model and reasoningEffort must be provided together",
+                ));
+            }
+            let model = match p.model.as_ref() {
+                Some(model) => model.as_deref(),
+                None => entry.model(),
+            }
+            .ok_or_else(|| ServiceError::message("model is required"))?
+            .to_string();
+            let reasoning_effort = p.reasoning_effort.as_ref().and_then(Option::as_ref);
+            Some(
+                self.model_service
+                    .resolve_model_reasoning(&model, reasoning_effort)
+                    .await?,
+            )
+        } else {
+            None
+        };
+
+        if let Some(Some(parent_key)) = p.parent_session_key.as_ref()
+            && !parent_key.is_empty()
+        {
+            self.validate_parent_assignment(&key, parent_key).await?;
+        }
+
+        let metadata_patch = chelix_sessions::metadata::SessionMetadataPatch {
+            label: p.label,
+            model_reasoning: resolved_model,
+            archived: p.archived,
+            project_id: p
+                .project_id
+                .map(|value| value.filter(|project_id| !project_id.is_empty())),
+            worktree_branch: p
+                .worktree_branch
+                .map(|value| value.filter(|branch| !branch.is_empty())),
+            parent_session_key: p
+                .parent_session_key
+                .map(|value| value.filter(|parent| !parent.is_empty())),
+            tool_permission_mode: p.tool_permission_mode,
+            tool_permission_type: p.tool_permission_type,
+        };
+        let entry = self
+            .metadata
+            .patch_session(&key, metadata_patch)
+            .await
+            .map_err(ServiceError::message)?;
+        let model = entry.model().map(str::to_string);
+        let reasoning_effort = entry
+            .reasoning_effort()
+            .map(|effort| effort.as_str().to_string());
+        Ok(serde_json::json!({
+            "id": entry.id,
+            "key": entry.key,
+            "label": entry.label,
+            "model": model,
+            "reasoningEffort": reasoning_effort,
+            "archived": entry.archived,
+            "worktree_branch": entry.worktree_branch,
+            "parentSessionKey": entry.parent_session_key,
+            "forkPoint": entry.fork_point,
+            "agent_id": entry.agent_id,
+            "agentId": entry.agent_id,
+            "toolPermissionMode": entry.tool_permission_mode,
+            "toolPermissionType": entry.tool_permission_type,
+            "version": entry.version,
+        }))
+    }
 }
 
 #[async_trait]
@@ -413,7 +518,7 @@ impl SessionService for LiveSessionService {
     }
 
     async fn delete(&self, params: Value) -> ServiceResult {
-        self.delete_impl(params).await
+        batch::SessionBatch::new(self).delete(params).await
     }
 
     async fn truncate_tail(&self, params: Value) -> ServiceResult {
@@ -703,108 +808,10 @@ impl SessionService for LiveSessionService {
     }
 
     async fn patch(&self, params: Value) -> ServiceResult {
-        let p: PatchParams = parse_params(params)?;
-        let key = p.key.clone();
-        let _mutation_permit = if p.is_tool_permission_only() || p.is_label_only() {
-            None
-        } else {
-            let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
-            Some(
-                mutation_reservation
-                    .acquire()
-                    .await
-                    .map_err(ServiceError::message)?,
-            )
-        };
-
-        let entry = self
-            .metadata
-            .get(&key)
-            .await
-            .map_err(ServiceError::message)?
-            .ok_or_else(|| format!("session '{key}' not found"))?;
-        if p.archived == Some(true) && !is_archivable_entry(&self.metadata, &entry).await? {
-            return Err(ServiceError::message(format!(
-                "session '{key}' cannot be archived"
-            )));
+        if params.get("archived").and_then(Value::as_bool) == Some(true) {
+            return batch::SessionBatch::new(self).archive(params).await;
         }
-        if p.parent_session_key.is_some()
-            && entry.prompt_profile == chelix_sessions::metadata::PromptProfile::Subagent
-        {
-            return Err(ServiceError::message(format!(
-                "session '{key}' is a sub-agent session and cannot be reparented"
-            )));
-        }
-
-        let resolved_model = if p.model.is_some() || p.reasoning_effort.is_some() {
-            if p.model.is_some() && p.reasoning_effort.is_none() {
-                return Err(ServiceError::message(
-                    "model and reasoningEffort must be provided together",
-                ));
-            }
-            let model = match p.model.as_ref() {
-                Some(model) => model.as_deref(),
-                None => entry.model(),
-            }
-            .ok_or_else(|| ServiceError::message("model is required"))?
-            .to_string();
-            let reasoning_effort = p.reasoning_effort.as_ref().and_then(Option::as_ref);
-            Some(
-                self.model_service
-                    .resolve_model_reasoning(&model, reasoning_effort)
-                    .await?,
-            )
-        } else {
-            None
-        };
-
-        if let Some(Some(parent_key)) = p.parent_session_key.as_ref()
-            && !parent_key.is_empty()
-        {
-            self.validate_parent_assignment(&key, parent_key).await?;
-        }
-
-        let metadata_patch = chelix_sessions::metadata::SessionMetadataPatch {
-            label: p.label,
-            model_reasoning: resolved_model,
-            archived: p.archived,
-            project_id: p
-                .project_id
-                .map(|value| value.filter(|project_id| !project_id.is_empty())),
-            worktree_branch: p
-                .worktree_branch
-                .map(|value| value.filter(|branch| !branch.is_empty())),
-            parent_session_key: p
-                .parent_session_key
-                .map(|value| value.filter(|parent| !parent.is_empty())),
-            tool_permission_mode: p.tool_permission_mode,
-            tool_permission_type: p.tool_permission_type,
-        };
-        let entry = self
-            .metadata
-            .patch_session(&key, metadata_patch)
-            .await
-            .map_err(ServiceError::message)?;
-        let model = entry.model().map(str::to_string);
-        let reasoning_effort = entry
-            .reasoning_effort()
-            .map(|effort| effort.as_str().to_string());
-        Ok(serde_json::json!({
-            "id": entry.id,
-            "key": entry.key,
-            "label": entry.label,
-            "model": model,
-            "reasoningEffort": reasoning_effort,
-            "archived": entry.archived,
-            "worktree_branch": entry.worktree_branch,
-            "parentSessionKey": entry.parent_session_key,
-            "forkPoint": entry.fork_point,
-            "agent_id": entry.agent_id,
-            "agentId": entry.agent_id,
-            "toolPermissionMode": entry.tool_permission_mode,
-            "toolPermissionType": entry.tool_permission_type,
-            "version": entry.version,
-        }))
+        self.patch_one(params).await
     }
 
     async fn reset(&self, params: Value) -> ServiceResult {

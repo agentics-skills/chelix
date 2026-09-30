@@ -102,9 +102,10 @@ These fields drive the tree rendering in the sidebar. Sessions with a parent
 appear indented under it; deeply nested forks indent further.
 
 ```admonish warning title="Deleting a parent"
-Deleting a parent session cascades to all of its fork descendants. The delete
-operation removes each descendant before the parent, and also clears active
-channel mappings that pointed at any deleted session.
+Deleting a parent session deletes every descendant linked by
+`parent_session_key`. That includes forks, sessions created with
+`sessions_create`, and sub-agent sessions. Descendants are removed before the
+parent. Active channel mappings for each deleted session are cleared.
 ```
 
 Session deletion also removes session-specific memory export Markdown files and
@@ -132,7 +133,15 @@ channel-bound chats, except when the session is the current active session for
 its bound channel chat. That prevents hiding the live Telegram, or
 similar chat out from under the channel router.
 
+Archiving a parent also archives descendants linked by `parent_session_key`
+that can be archived: forks, sessions created with `sessions_create`, and
+sub-agent sessions. A descendant that is already archived, or that cannot be
+archived, is left unchanged. The parent is checked before any descendant is
+archived. If the parent cannot be archived, the request fails and no descendant
+is archived. Unarchiving a parent does not change its descendants.
+
 ```admonish info title="Independence"
-A forked session is fully independent after creation. Changes to the parent
-do not propagate to the fork, and vice versa.
+After creation, later changes to one session's history and fields do not
+propagate to the other. Deleting or archiving a parent does apply to
+descendants linked by `parent_session_key`.
 ```
