@@ -403,58 +403,6 @@ async fn empty_patch_is_a_no_op_without_event_or_version_bump() {
 }
 
 #[tokio::test]
-async fn session_tree_delete_rolls_back_rows_and_mappings() {
-    let pool = sqlite_pool().await;
-    let metadata = SqliteSessionMetadata::new(pool.clone());
-    let model_reasoning = pair("test::delete", "off");
-    metadata
-        .create_llm_session("session:root", None, &model_reasoning, Some("main"))
-        .await
-        .unwrap();
-    metadata
-        .create_llm_session("session:child", None, &model_reasoning, Some("main"))
-        .await
-        .unwrap();
-    metadata
-        .set_parent("session:child", Some("session:root"), None)
-        .await
-        .unwrap();
-    metadata
-        .set_active_session("telegram", "account", "chat", None, "session:child")
-        .await
-        .unwrap();
-    sqlx::query(
-        r#"CREATE TRIGGER reject_session_delete
-           BEFORE DELETE ON sessions
-           WHEN OLD.key = 'session:root'
-           BEGIN
-               SELECT RAISE(ABORT, 'delete rejected');
-           END"#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    let result = metadata
-        .remove_session_tree("session:root", &[
-            "session:child".to_string(),
-            "session:root".to_string(),
-        ])
-        .await;
-    assert!(result.is_err());
-    assert!(metadata.get("session:root").await.unwrap().is_some());
-    assert!(metadata.get("session:child").await.unwrap().is_some());
-    assert_eq!(
-        metadata
-            .get_active_session("telegram", "account", "chat", None)
-            .await
-            .unwrap()
-            .as_deref(),
-        Some("session:child")
-    );
-}
-
-#[tokio::test]
 async fn label_update_never_creates_a_session() {
     let metadata = SqliteSessionMetadata::new(sqlite_pool().await);
     let llm_pair = pair("test::model", "none");

@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashSet};
+use std::cmp::Ordering;
 
 use {
     chelix_common::{ReasoningEffort, ResolvedModelReasoning},
@@ -1372,71 +1372,6 @@ impl SqliteSessionMetadata {
         )
     }
 
-    pub async fn remove_session_tree(
-        &self,
-        root_key: &str,
-        expected_keys: &[String],
-    ) -> Result<Vec<SessionEntry>> {
-        let expected: HashSet<&str> = expected_keys.iter().map(String::as_str).collect();
-        if expected.len() != expected_keys.len() || !expected.contains(root_key) {
-            return Err(Error::message("invalid expected session delete set"));
-        }
-
-        let mut transaction = self.pool.begin().await?;
-        let actual_entries = decode_rows(
-            sqlx::query_as::<_, SessionRow>(
-                r#"WITH RECURSIVE descendants(key) AS (
-                       SELECT key FROM sessions WHERE key = ?
-                       UNION
-                       SELECT sessions.key
-                       FROM sessions
-                       JOIN descendants ON sessions.parent_session_key = descendants.key
-                   )
-                   SELECT sessions.*
-                   FROM sessions
-                   JOIN descendants ON sessions.key = descendants.key"#,
-            )
-            .bind(root_key)
-            .fetch_all(&mut *transaction)
-            .await?,
-        )?;
-        let actual: HashSet<&str> = actual_entries
-            .iter()
-            .map(|entry| entry.key.as_str())
-            .collect();
-        if actual != expected {
-            return Err(Error::message(format!(
-                "session delete tree changed before commit: expected {expected:?}, found {actual:?}"
-            )));
-        }
-
-        let mut deleted_entries = Vec::with_capacity(expected_keys.len());
-        for key in expected_keys {
-            let entry = actual_entries
-                .iter()
-                .find(|entry| entry.key == *key)
-                .cloned()
-                .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
-            sqlx::query("DELETE FROM channel_sessions WHERE session_key = ?")
-                .bind(key)
-                .execute(&mut *transaction)
-                .await?;
-            let result = sqlx::query("DELETE FROM sessions WHERE key = ?")
-                .bind(key)
-                .execute(&mut *transaction)
-                .await?;
-            require_existing_row(key, result.rows_affected())?;
-            deleted_entries.push(entry);
-        }
-        transaction.commit().await?;
-        for entry in &deleted_entries {
-            self.emit(crate::session_events::SessionEvent::Deleted {
-                session_key: entry.key.clone(),
-            });
-        }
-        Ok(deleted_entries)
-    }
-
     pub async fn remove(&self, key: &str) -> Result<Option<SessionEntry>> {
         let mut transaction = self.pool.begin().await?;
         let entry = Self::fetch_entry_in_transaction(&mut transaction, key).await?;
@@ -1444,6 +1379,10 @@ impl SqliteSessionMetadata {
             transaction.commit().await?;
             return Ok(None);
         }
+        sqlx::query("DELETE FROM channel_sessions WHERE session_key = ?")
+            .bind(key)
+            .execute(&mut *transaction)
+            .await?;
         sqlx::query("DELETE FROM sessions WHERE key = ?")
             .bind(key)
             .execute(&mut *transaction)
