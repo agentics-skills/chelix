@@ -359,7 +359,7 @@ fn ensure_non_empty_strings(
     if values.iter().any(|value| value.as_str().is_empty()) {
         return Err(ModelMetadataError::EmptyString(field));
     }
-    Ok(())
+    ensure_unique(values, field)
 }
 
 fn ensure_unique<T>(values: &[T], field: &'static str) -> Result<(), ModelMetadataError>
@@ -510,18 +510,13 @@ mod tests {
     }
 
     #[test]
-    fn reasoning_efforts_preserve_duplicates_and_order() {
+    fn reasoning_efforts_reject_duplicates() {
         let mut partial = complete_partial();
         partial.reasoning_supported_efforts =
             Some(vec!["high".into(), "low".into(), "high".into()]);
-        let resolved = partial.resolve().unwrap();
         assert_eq!(
-            resolved
-                .reasoning_supported_efforts
-                .iter()
-                .map(ReasoningEffort::as_str)
-                .collect::<Vec<_>>(),
-            vec!["high", "low", "high"]
+            partial.resolve().unwrap_err(),
+            ModelMetadataError::DuplicateValues("reasoning_supported_efforts")
         );
     }
 

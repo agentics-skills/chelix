@@ -138,10 +138,10 @@ See `docs/metrics-and-tracing.md`.
 ## Web UI (TypeScript + Preact + Vite)
 
 TypeScript/TSX source in `crates/web/ui/src/`, built with Vite to `crates/web/src/assets/dist/`.
-CSS and static assets in `crates/web/src/assets/`. Release mode embeds via `include_dir!`.
+CSS and static assets in `crates/web/src/assets/`. UI assets are always embedded via `include_dir!`.
 Generated assets (`dist/`, `css/style.css`, `style.css`, `sw.js`) are gitignored.
 Run `just build-web-assets` to generate them (requires Node.js).
-A `build.rs` check warns (debug) or fails (release/embedded-assets) if they are missing.
+A `build.rs` check fails the build if they are missing.
 See `docs/src/frontend.md` for the full architecture guide.
 
 ### Build Commands

@@ -54,9 +54,8 @@ home-assistant = ["chelix-gateway/home-assistant"]
 # even when the underlying implementation remains feature-gated in lower crates.
 #
 # `full` is the portable production feature set used by release, packaging, and
-# container builds. It intentionally excludes build-mode toggles (`embedded-*`)
-# and accelerator-specific features that require host SDKs/toolchains not
-# present on every target.
+# container builds. It intentionally excludes accelerator-specific features that
+# require host SDKs/toolchains not present on every target.
 bundled-skills = ["chelix-gateway/bundled-skills", "chelix-web?/bundled-skills"]
 default = ["full"]
 full = [
@@ -111,7 +110,6 @@ code-index-builtin = ["chelix-gateway/code-index-builtin"]
 code-splitter      = ["chelix-memory/code-splitter"]
 context7           = ["chelix-gateway/context7"]
 duckduckgo         = ["chelix-gateway/duckduckgo"]
-embedded-assets    = ["chelix-web?/embedded-assets"]
 exa                = ["chelix-gateway/exa"]
 felo               = ["chelix-gateway/felo"]
 file-watcher       = ["chelix-gateway/file-watcher"]

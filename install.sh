@@ -307,8 +307,6 @@ install_binary() {
 
     if [ -d "$tmpdir/share/chelix" ]; then
         install_shared_assets "$tmpdir/share/chelix"
-    elif [ -d "$tmpdir/share/web" ]; then
-        install_shared_assets "$tmpdir/share"
     fi
 
     success "Chelix installed to $INSTALL_DIR/$BINARY_NAME"

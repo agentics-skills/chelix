@@ -3,8 +3,8 @@
 import { navigate, sessionPath } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
+import { showToast } from "../toast";
 import type { SessionMeta } from "../types/session";
-import { showToast } from "../ui";
 
 import { clearSessionHistoryCache } from "./session-history";
 

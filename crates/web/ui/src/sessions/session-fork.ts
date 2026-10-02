@@ -1,6 +1,6 @@
 import { sendRpc } from "../helpers";
+import { showToast } from "../toast";
 import type { UiHistoryTarget } from "../types/ui-history";
-import { showToast } from "../ui";
 
 interface ForkRequest {
 	key: string;

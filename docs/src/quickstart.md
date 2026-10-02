@@ -28,11 +28,7 @@ credentials to chat.
 
 ### Configure Models and Credentials
 
-1. Declare each model in `chelix.toml` under a complete
-   `[providers.<name>.models."<model-id>"]` table. See
-   [Providers](providers.md) for the required fields and supported providers.
-
-2. Provide the provider credentials using either method:
+1. Provide the provider credentials using either method:
 
    - Set an API key as an environment variable and restart Chelix:
 
@@ -40,10 +36,17 @@ credentials to chat.
      export OPENAI_API_KEY="sk-..."          # OpenAI
      ```
 
-   - After the complete model records are declared, use **Settings** →
-     **Providers** to save the credentials. Credentials saved through provider
-     setup are persisted in `~/.config/chelix/provider_keys.json` and loaded for
-     matching providers declared in the service configuration.
+   - Save the credentials in onboarding or **Settings** → **Providers**.
+     Credentials stay in `~/.config/chelix/provider_keys.json` and are not
+     written into the model tables. Saving credentials does not require model
+     records.
+
+2. Add, edit, or delete models for a configured provider in onboarding or
+   **Settings** → **Providers**. The model editor is shown only for a
+   configured provider. The UI writes complete
+   `[providers.<name>.models."<raw-id>"]` tables in the user TOML config.
+   A provider may have zero models. See
+   [Providers](providers.md) for the required fields.
 
 3. Complete the onboarding identity step. Chelix creates no incomplete starter
    agents: select a registered canonical model and one of its supported

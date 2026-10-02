@@ -45,9 +45,6 @@
           inherit src;
           doCheck = false;
 
-          buildFeatures = [
-            "embedded-assets"
-          ];
           cargoLock = {
             lockFile = ./Cargo.lock;
             allowBuiltinFetchGit = true;

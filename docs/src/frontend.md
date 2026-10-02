@@ -228,12 +228,8 @@ Reusable components in `components/forms/`:
 
 ## Asset Serving
 
-The Rust `chelix-web` crate serves assets with three-tier resolution:
-
-1. **Dev filesystem** — `CHELIX_ASSETS_DIR` env var or auto-detected from the
-   crate source tree (`cargo run` dev mode)
-2. **External share dir** — `share_dir()/web/` for packaged deployments
-3. **Embedded fallback** — `include_dir!` compiled into the binary
+The Rust `chelix-web` crate serves UI assets only from bytes embedded
+by `include_dir!`. A missing asset is a 404.
 
 HTML templates are rendered by [Askama](https://github.com/djc/askama) with
 server-injected data (`window.__CHELIX__`, the "gon" pattern).

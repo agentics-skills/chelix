@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { addChannel, parseChannelConfigPatch } from "../../../channel-utils";
 import { sendRpc } from "../../../helpers";
+import { showToast } from "../../../toast";
 import { targetValue } from "../../../typed-events";
 import { ChannelType } from "../../../types/channel";
-import { Modal, showToast } from "../../../ui";
+import { Modal } from "../../../ui";
 import {
 	type Channel,
 	type ChannelConfig,

@@ -3,12 +3,14 @@
 import { signal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { sendRpc } from "../helpers";
 import { t } from "../i18n";
 import { fetchModels } from "../models";
 import { updateNavCount } from "../nav-counts";
 import { openModelSelectorForProvider } from "../providers/auth-flow";
+import { showCustomProviderEditor } from "../providers/openai-compatible";
+import { ProviderModels } from "../providers/provider-models";
 import { openProviderModal } from "../providers/shared";
 import { connected } from "../signals";
 import * as S from "../state";
@@ -39,7 +41,7 @@ function fetchProviders(): Promise<void> {
 			const providerMeta = new Map<string, ProviderInfo>();
 			if (providersRes?.ok) {
 				for (const provider of providersRes.payload || []) {
-					if (provider.configured) providerMeta.set(provider.name, provider);
+					if (provider.configured || provider.isCustom) providerMeta.set(provider.name, provider);
 				}
 			}
 			providerMetaSig.value = providerMeta;
@@ -64,12 +66,23 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 	}
 
 	for (const row of models) {
+		let attached = false;
+		for (const provider of metaMap.values()) {
+			const aliasMatch =
+				typeof provider.alias === "string" && provider.alias.length > 0 && provider.alias === row.provider;
+			const nameMatch = provider.name === row.provider;
+			if (aliasMatch || nameMatch) {
+				groups.get(provider.name)?.models.push(row);
+				attached = true;
+				break;
+			}
+		}
+		if (attached) continue;
 		const key = row.provider;
 		if (!groups.has(key)) {
-			const provider = metaMap.get(key);
 			groups.set(key, {
 				provider: key,
-				providerDisplayName: provider?.displayName || key,
+				providerDisplayName: key,
 				models: [],
 			});
 		}
@@ -90,52 +103,30 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 	return result;
 }
 
-const DEFAULT_VISIBLE_MODELS = 3;
-
-function recordValue(value: string | number | boolean | null | undefined): string {
-	return value === null || value === undefined ? "null" : String(value);
-}
-
-function ModelRecord({ model }: { model: ModelInfo }): VNode {
-	const fields: Array<[string, string]> = [
-		["id", model.id],
-		["provider", model.provider],
-		["preferred", recordValue(model.preferred)],
-		["disabled", recordValue(model.disabled)],
-		["context_length", recordValue(model.context_length)],
-		["max_input_tokens", recordValue(model.max_input_tokens)],
-		["max_output_tokens", recordValue(model.max_output_tokens)],
-		["input_modalities", JSON.stringify(model.input_modalities)],
-		["output_modalities", JSON.stringify(model.output_modalities)],
-		["tool_calling", recordValue(model.tool_calling)],
-		["zeroDataRetentionEnabled", recordValue(model.zeroDataRetentionEnabled)],
-		["reasoning_supported_efforts", JSON.stringify(model.reasoning_supported_efforts)],
-		["reasoning_summary", recordValue(model.reasoning_summary)],
-		["reasoning_include", model.reasoning_include === undefined ? "null" : JSON.stringify(model.reasoning_include)],
-	];
-
-	return (
-		<dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
-			{fields.map(([name, value]) => (
-				<div key={name} className="flex min-w-0 gap-2">
-					<dt className="shrink-0 font-mono text-[var(--muted)]">{name}:</dt>
-					<dd className="min-w-0 break-all text-[var(--text)]">{value}</dd>
-				</div>
-			))}
-		</dl>
-	);
-}
-
 interface ProviderActionsProps {
 	hasModels: boolean;
 	isDeleting: boolean;
+	isCustom: boolean;
 	onSelectModels: () => void;
+	onEdit: () => void;
 	onDelete: () => void;
 }
 
-function ProviderActions({ hasModels, isDeleting, onSelectModels, onDelete }: ProviderActionsProps): VNode {
+function ProviderActions({
+	hasModels,
+	isDeleting,
+	isCustom,
+	onSelectModels,
+	onEdit,
+	onDelete,
+}: ProviderActionsProps): VNode {
 	return (
 		<div className="flex gap-2 shrink-0">
+			{isCustom ? (
+				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onEdit}>
+					Edit
+				</button>
+			) : null}
 			{hasModels ? (
 				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onSelectModels}>
 					{t("providers:preferredModels.button")}
@@ -153,93 +144,20 @@ function ProviderActions({ hasModels, isDeleting, onSelectModels, onDelete }: Pr
 	);
 }
 
-function ProviderModelBadges({ model }: { model: ModelInfo }): VNode {
-	return (
-		<>
-			{model.preferred ? <span className="recommended-badge">{t("providers:preferred")}</span> : null}
-			{model.tool_calling ? null : <span className="provider-item-badge warning">{t("providers:chatOnly")}</span>}
-			{model.disabled ? <span className="provider-item-badge muted">{t("providers:disabled")}</span> : null}
-		</>
-	);
-}
-
-interface ProviderModelRowProps {
-	model: ModelInfo;
-	onToggle: (model: ModelInfo) => void;
-}
-
-function ProviderModelRow({ model, onToggle }: ProviderModelRowProps): VNode {
-	return (
-		<div className="flex items-start justify-between gap-3 py-1">
-			<div className="min-w-0 flex-1">
-				<div className="flex items-center gap-2 min-w-0">
-					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.id}</div>
-					<ProviderModelBadges model={model} />
-				</div>
-				<ModelRecord model={model} />
-			</div>
-			<button
-				type="button"
-				className="provider-btn provider-btn-secondary provider-btn-sm"
-				onClick={() => onToggle(model)}
-			>
-				{model.disabled ? t("common:actions.enable") : t("common:actions.disable")}
-			</button>
-		</div>
-	);
-}
-
-interface ProviderModelListProps {
-	models: ModelInfo[];
-	hasMore: boolean;
-	expanded: boolean;
-	hiddenCount: number;
-	onToggleModel: (model: ModelInfo) => void;
-	onToggleExpanded: () => void;
-}
-
-function ProviderModelList({
-	models,
-	hasMore,
-	expanded,
-	hiddenCount,
-	onToggleModel,
-	onToggleExpanded,
-}: ProviderModelListProps): VNode {
-	if (models.length === 0) {
-		return <div className="mt-2 text-xs text-[var(--muted)]">{t("providers:noActiveModels")}</div>;
-	}
-	return (
-		<div className="mt-2 flex flex-col gap-2">
-			{models.map((model) => (
-				<ProviderModelRow key={model.id} model={model} onToggle={onToggleModel} />
-			))}
-			{hasMore ? (
-				<button
-					type="button"
-					className="text-xs text-[var(--accent)] cursor-pointer bg-transparent border-none py-1 text-left hover:underline"
-					onClick={onToggleExpanded}
-				>
-					{expanded ? t("providers:showFewerModels") : t("providers:showAllModels", { count: hiddenCount })}
-				</button>
-			) : null}
-		</div>
-	);
-}
-
 function ProviderSection({ group }: { group: ProviderGroup }): VNode {
-	const [expanded, setExpanded] = useState(false);
-	const hasMore = group.models.length > DEFAULT_VISIBLE_MODELS;
-	const visibleModels = expanded || !hasMore ? group.models : group.models.slice(0, DEFAULT_VISIBLE_MODELS);
-	const hiddenCount = group.models.length - DEFAULT_VISIBLE_MODELS;
-
 	function onDeleteProvider(): void {
 		if (deletingProvider.value) return;
 		requestConfirm(t("providers:removeProviderConfirm", { name: group.providerDisplayName })).then((yes) => {
 			if (!yes) return;
 			deletingProvider.value = group.provider;
 			providerActionError.value = "";
-			sendRpc("providers.remove_key", { provider: group.provider })
+			const method = providerMetaSig.value.get(group.provider)?.isCustom
+				? "providers.delete_custom"
+				: "providers.remove_key";
+			const params = providerMetaSig.value.get(group.provider)?.isCustom
+				? { name: group.provider }
+				: { provider: group.provider };
+			sendRpc(method, params)
 				.then((res) => {
 					if (res?.ok) {
 						configuredModels.value = configuredModels.value.filter((entry) => entry.provider !== group.provider);
@@ -275,7 +193,8 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 	}
 
 	function onSelectModels(): void {
-		openModelSelectorForProvider(group.provider, group.providerDisplayName);
+		const registryProvider = group.models[0]?.provider || group.provider;
+		openModelSelectorForProvider(registryProvider, group.providerDisplayName);
 	}
 
 	const isDeleting = deletingProvider.value === group.provider;
@@ -289,18 +208,22 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 				<ProviderActions
 					hasModels={group.models.length > 0}
 					isDeleting={isDeleting}
+					isCustom={providerMetaSig.value.get(group.provider)?.isCustom === true}
 					onSelectModels={onSelectModels}
+					onEdit={() => showCustomProviderEditor(providerMetaSig.value.get(group.provider) || null)}
 					onDelete={onDeleteProvider}
 				/>
 			</div>
 			<div className="mt-2 border-b border-[var(--border)]" />
-			<ProviderModelList
-				models={visibleModels}
-				hasMore={hasMore}
-				expanded={expanded}
-				hiddenCount={hiddenCount}
+			<ProviderModels
+				providerName={group.provider}
+				models={group.models}
+				editable={providerMetaSig.value.has(group.provider)}
 				onToggleModel={onToggleModel}
-				onToggleExpanded={() => setExpanded(!expanded)}
+				onChanged={() => {
+					void fetchProviders();
+					fetchModels();
+				}}
 			/>
 		</div>
 	);
@@ -340,14 +263,14 @@ function ProvidersPageComponent(): VNode {
 
 				{(() => {
 					const groups = groupProviderRows(configuredModels.value, providerMetaSig.value);
-					if (loading.value && configuredModels.value.length === 0) {
+					if (loading.value && groups.length === 0) {
 						return (
 							<div id="providersLoadingState" className="text-xs text-[var(--muted)]">
 								{t("common:status.loading")}
 							</div>
 						);
 					}
-					if (configuredModels.value.length === 0) {
+					if (groups.length === 0) {
 						return (
 							<div id="providersEmptyState" className="text-xs text-[var(--muted)]" style={{ padding: "12px 0" }}>
 								{t("providers:noProvidersConfigured")}

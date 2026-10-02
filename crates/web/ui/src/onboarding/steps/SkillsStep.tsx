@@ -10,8 +10,8 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { TabBar } from "../../components/forms/Tabs";
 import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
+import { showToast } from "../../toast";
 import { type BundledCategory, CATEGORY_META, categoryLabel } from "../../types/skill-source";
-import { showToast } from "../../ui";
 
 // ── Types ────────────────────────────────────────────────────
 

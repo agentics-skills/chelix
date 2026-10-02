@@ -23,7 +23,7 @@ chelix-tools      = { workspace = true }
 chrono            = { features = ["serde"], workspace = true }
 futures           = { workspace = true }
 gix               = { workspace = true }
-include_dir       = { optional = true, workspace = true }
+include_dir       = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }
 sysinfo           = { workspace = true }
@@ -40,8 +40,6 @@ tempfile = { workspace = true }
 [features]
 agent              = ["chelix-gateway/agent"]
 bundled-skills     = ["chelix-skills/bundled-skills"]
-default            = ["embedded-assets"]
-embedded-assets    = ["dep:include_dir"]
 mdns               = ["chelix-httpd/mdns"]
 metrics            = ["chelix-httpd/metrics"]
 push-notifications = ["chelix-httpd/push-notifications"]

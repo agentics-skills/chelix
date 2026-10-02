@@ -1,7 +1,7 @@
 import * as S from "../state";
 import { applyHistoryPage, getHistoryWindow, getSessionHistory } from "../stores/session-history-cache";
+import { showToast } from "../toast";
 import type { UiSnapshot } from "../types/ui-history";
-import { showToast } from "../ui";
 import { subscribeHistoryWindow } from "./history-subscription";
 import { fetchSessionHistoryViaHttp, SESSION_HISTORY_PAGE_LIMIT } from "./session-history";
 import { reconcileSessionHistory, renderHistory, type SearchContext } from "./session-render";

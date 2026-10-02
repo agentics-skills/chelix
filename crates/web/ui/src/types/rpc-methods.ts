@@ -109,10 +109,19 @@ export interface RpcMethodMap {
 	"projects.upsert": unknown;
 
 	// ── Providers ───────────────────────────────────────────────
+	"providers.delete_custom": { ok: boolean; removedModelIds?: string[] };
+	"providers.upsert_custom": {
+		ok: boolean;
+		providerName: string;
+		displayName: string;
+		renamedModelIds?: { from: string; to: string }[];
+	};
 	"providers.available": ProviderInfo[];
+	"providers.delete_model": { ok: boolean };
 	"providers.remove_key": unknown;
 	"providers.save_key": unknown;
 	"providers.set_model_preferences": unknown;
+	"providers.upsert_model": { ok: boolean };
 
 	// ── Sessions ────────────────────────────────────────────────
 	"sessions.clear_all": unknown;

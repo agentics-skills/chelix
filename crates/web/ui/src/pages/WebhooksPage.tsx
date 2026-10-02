@@ -4,11 +4,12 @@ import { signal, useSignal } from "@preact/signals";
 import type { VNode } from "preact";
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { copyToClipboard } from "../clipboard";
 import * as gon from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import { models as modelsSig } from "../stores/model-store";
 import type { ModelOverride } from "../types/gon";
-import { ComboSelect, ConfirmDialog, copyToClipboard, Modal, ModelSelect, requestConfirm } from "../ui";
+import { ComboSelect, ConfirmDialog, Modal, ModelSelect, requestConfirm } from "../ui";
 
 // ── Types ───────────────────────────────────────────────────
 

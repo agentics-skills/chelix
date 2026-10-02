@@ -11,7 +11,7 @@ use {
         cookie::{Cookie, SameSite},
     },
     chelix_httpd::AppState,
-    tracing::warn,
+    tracing::{error, warn},
 };
 
 use crate::templates::ShareAccessQuery;
@@ -266,7 +266,13 @@ pub async fn share_social_image_handler(
                 .into_response();
         },
     };
-    let svg = crate::share_render::render_share_og_svg(&snapshot, &identity);
+    let svg = match crate::share_render::render_share_og_svg(&snapshot, &identity) {
+        Ok(svg) => svg,
+        Err(error) => {
+            error!(share_id, %error, "failed to render share social image");
+            return (StatusCode::INTERNAL_SERVER_ERROR, error).into_response();
+        },
+    };
     serve_static_share_svg(svg)
 }
 

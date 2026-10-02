@@ -47,6 +47,7 @@ impl LiveProviderSetupService {
 
             let entry = active_config.get(provider.name);
             let base_url = entry.and_then(|config| config.base_url.clone());
+            let alias = entry.and_then(|config| config.alias.clone());
 
             providers.push((
                 offered_rank.get(&normalized_name).copied(),
@@ -57,6 +58,7 @@ impl LiveProviderSetupService {
                     "configured": configured,
                     "defaultBaseUrl": provider.default_base_url,
                     "baseUrl": base_url,
+                    "alias": alias,
                     "requiresModel": provider.requires_model,
                     "keyOptional": provider.key_optional,
                 }),
@@ -76,11 +78,12 @@ impl LiveProviderSetupService {
             let saved = saved_configs.get(name);
             let display_name = saved
                 .and_then(|config| config.display_name.clone())
-                .unwrap_or_else(|| format!("OpenAI Compatible ({name})"));
+                .unwrap_or_else(|| name.clone());
             let base_url = entry
                 .base_url
                 .clone()
                 .or_else(|| saved.and_then(|config| config.base_url.clone()));
+            let alias = entry.alias.clone();
             let configured = entry
                 .api_key
                 .as_ref()
@@ -95,9 +98,20 @@ impl LiveProviderSetupService {
                     "configured": configured,
                     "defaultBaseUrl": base_url,
                     "baseUrl": base_url,
+                    "alias": alias,
                     "requiresModel": true,
                     "keyOptional": false,
                     "isCustom": true,
+                    "enabled": entry.enabled,
+                    "wireApi": match entry.wire_api {
+                        chelix_config::schema::WireApi::ChatCompletions => "chat-completions",
+                        chelix_config::schema::WireApi::Responses => "responses",
+                    },
+                    "toolMode": match entry.tool_mode {
+                        chelix_config::schema::ToolMode::Native => "native",
+                        chelix_config::schema::ToolMode::Text => "text",
+                        chelix_config::schema::ToolMode::Off => "off",
+                    },
                 }),
             ));
         }

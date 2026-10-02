@@ -21,6 +21,7 @@ import { ProviderStep } from "./onboarding/steps/ProviderStep";
 import { SkillsStep } from "./onboarding/steps/SkillsStep";
 import { VoiceStep } from "./onboarding/steps/VoiceStep";
 import type { IdentityInfo } from "./onboarding/types";
+import { Toasts } from "./toast";
 import type { SandboxGonInfo } from "./types/gon";
 import { fetchVoiceProviders } from "./voice-utils";
 
@@ -671,7 +672,13 @@ export function mountOnboarding(container: HTMLElement): void {
 	containerRef = container;
 	container.style.cssText =
 		"display:flex;align-items:flex-start;justify-content:center;min-height:100vh;padding:max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));box-sizing:border-box;width:100%;max-width:100vw;overflow-x:hidden;overflow-y:auto;";
-	render(<OnboardingPage />, container);
+	render(
+		<>
+			<OnboardingPage />
+			<Toasts />
+		</>,
+		container,
+	);
 }
 
 export function unmountOnboarding(): void {

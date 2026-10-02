@@ -2,10 +2,10 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { copyToClipboard } from "../../clipboard";
 import { t } from "../../i18n";
 import { detectPasskeyName } from "../../passkey-detect";
 import { targetValue } from "../../typed-events";
-import { copyToClipboard } from "../../ui";
 import { prepareCreationOptions } from "../../webauthn-helpers";
 import { bufferToBase64, ErrorPanel, ensureWsConnected } from "../shared";
 

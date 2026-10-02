@@ -17,6 +17,14 @@ pub(crate) enum ProviderBaseUrlError {
 
 #[must_use]
 pub(crate) fn provider_base_url_error(base_url: &str) -> Option<ProviderBaseUrlError> {
+    provider_base_url_error_with(base_url, false)
+}
+
+#[must_use]
+pub(crate) fn provider_base_url_error_with(
+    base_url: &str,
+    allow_responses_suffix: bool,
+) -> Option<ProviderBaseUrlError> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return None;
@@ -31,9 +39,12 @@ pub(crate) fn provider_base_url_error(base_url: &str) -> Option<ProviderBaseUrlE
     }
 
     let lower = trimmed.to_ascii_lowercase();
-    let suffix = COMPLETION_ENDPOINT_SUFFIXES
-        .iter()
-        .find(|suffix| lower.ends_with(**suffix))?;
+    let suffixes: &[&str] = if allow_responses_suffix {
+        &["/chat/completions"]
+    } else {
+        COMPLETION_ENDPOINT_SUFFIXES
+    };
+    let suffix = suffixes.iter().find(|suffix| lower.ends_with(**suffix))?;
     let base = trimmed
         .get(..trimmed.len().saturating_sub(suffix.len()))
         .filter(|base| !base.is_empty())
@@ -120,6 +131,9 @@ mod tests {
                 base_url: "https://api.example.com/v1/responses".into(),
                 suggested_base_url: "https://api.example.com/v1".into(),
             })
+        );
+        assert!(
+            provider_base_url_error_with("https://api.example.com/v1/responses", true).is_none()
         );
     }
 }

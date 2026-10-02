@@ -1,5 +1,89 @@
 use super::*;
 
+async fn finish_custom_provider(
+    ctx: &MethodContext,
+    result: serde_json::Value,
+) -> Result<serde_json::Value, ErrorShape> {
+    let removed_ids = string_array(result.get("removedModelIds"));
+    if !removed_ids.is_empty() {
+        ctx.state
+            .services
+            .model
+            .forget_disabled(&removed_ids)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "failed to save disabled-models.json after provider delete");
+                ErrorShape::from(error)
+            })?;
+    }
+    let renamed = result
+        .get("renamedModelIds")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| {
+                    let from = value.get("from")?.as_str()?.to_string();
+                    let to = value.get("to")?.as_str()?.to_string();
+                    Some((from, to))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !renamed.is_empty() {
+        ctx.state
+            .services
+            .model
+            .rename_disabled(&renamed)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "failed to save disabled-models.json after provider rename");
+                ErrorShape::from(error)
+            })?;
+    }
+    Ok(result)
+}
+
+fn string_array(value: Option<&serde_json::Value>) -> Vec<String> {
+    value
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn finish_model_edit(
+    ctx: &MethodContext,
+    result: serde_json::Value,
+) -> Result<serde_json::Value, ErrorShape> {
+    let removed_ids = result
+        .get("removedModelIds")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !removed_ids.is_empty() {
+        ctx.state
+            .services
+            .model
+            .forget_disabled(&removed_ids)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "failed to save disabled-models.json after model change");
+                ErrorShape::from(error)
+            })?;
+    }
+    Ok(serde_json::json!({ "ok": true }))
+}
+
 pub(super) fn register(reg: &mut MethodRegistry) {
     // Skills
     reg.register(
@@ -811,6 +895,36 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
+        "providers.upsert_custom",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let result = ctx
+                    .state
+                    .services
+                    .provider_setup
+                    .upsert_custom(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)?;
+                finish_custom_provider(&ctx, result).await
+            })
+        }),
+    );
+    reg.register(
+        "providers.delete_custom",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let result = ctx
+                    .state
+                    .services
+                    .provider_setup
+                    .delete_custom(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)?;
+                finish_custom_provider(&ctx, result).await
+            })
+        }),
+    );
+    reg.register(
         "providers.save_key",
         Box::new(|ctx| {
             Box::pin(async move {
@@ -846,6 +960,36 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .remove_key(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)
+            })
+        }),
+    );
+    reg.register(
+        "providers.upsert_model",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let result = ctx
+                    .state
+                    .services
+                    .provider_setup
+                    .upsert_model(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)?;
+                finish_model_edit(&ctx, result).await
+            })
+        }),
+    );
+    reg.register(
+        "providers.delete_model",
+        Box::new(|ctx| {
+            Box::pin(async move {
+                let result = ctx
+                    .state
+                    .services
+                    .provider_setup
+                    .delete_model(ctx.params.clone())
+                    .await
+                    .map_err(ErrorShape::from)?;
+                finish_model_edit(&ctx, result).await
             })
         }),
     );

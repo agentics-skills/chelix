@@ -167,12 +167,14 @@ reasoning_include = ["encrypted_content"]
 priority_models = ["custom-ai-example::muse-flash-0.9"]
 ```
 
-The service configuration is the only source of model composition and model
-parameters. A provider may declare no models regardless of its status, and saving
-provider credentials does not require model records. Every model table that is
-present must be complete: a missing mandatory parameter, an invalid value, or an
-unknown model setting refuses service load. `reasoning_supported_efforts` must be
-a non-empty array without empty strings; `["low"]` is valid without `off`. Exact
+Model records are added, edited, and deleted in onboarding and in Settings →
+Providers. The UI writes `[providers.<name>.models."<raw-id>"]` tables in the
+user TOML file. A provider may have zero models, and saving provider credentials
+does not require model records. Credentials stay in `provider_keys.json`. Every
+model table that is present must be complete: a missing mandatory parameter, an
+invalid value, or an unknown model setting refuses service load.
+`reasoning_supported_efforts` must be a non-empty array without empty strings or
+duplicates; a config with duplicate efforts does not load. `["low"]` is valid without `off`. Exact
 `["off"]` is the only non-reasoning API path, and `reasoning_summary` and
 `reasoning_include` remain valid configuration for it. Use `chat.priority_models`
 only for cross-provider selector ordering.

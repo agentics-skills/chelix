@@ -12,6 +12,7 @@ import {
 	normalizeMatrixAuthMode,
 	normalizeMatrixOwnershipMode,
 } from "../channel-utils";
+import { copyToClipboard } from "../clipboard";
 import { TabBar } from "../components/forms/Tabs";
 import { onEvent } from "../events";
 import { get as getGon } from "../gon";
@@ -19,7 +20,8 @@ import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
 import { connected } from "../signals";
 import * as S from "../state";
-import { ConfirmDialog, copyToClipboard, requestConfirm, showToast } from "../ui";
+import { showToast } from "../toast";
+import { ConfirmDialog, requestConfirm } from "../ui";
 import { AddMatrixModal } from "./channels/modals/AddMatrixModal";
 import { AddSignalModal } from "./channels/modals/AddSignalModal";
 // ── Sub-module imports (modals + shared fields) ──────────────

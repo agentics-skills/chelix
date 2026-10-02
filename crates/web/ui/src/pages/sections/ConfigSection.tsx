@@ -4,8 +4,8 @@ import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Loading } from "../../components/forms/ListItem";
 import { clearAllSessions } from "../../sessions";
+import { showToast } from "../../toast";
 import { targetValue } from "../../typed-events";
-import { showToast } from "../../ui";
 import { rerender } from "./_shared";
 
 export function ConfigSection(): VNode {

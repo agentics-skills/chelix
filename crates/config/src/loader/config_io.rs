@@ -13,7 +13,7 @@ use {
 /// This prevents corruption when two processes (e.g. CLI + server) write
 /// the config concurrently — `rename` is atomic on POSIX filesystems so
 /// readers always see either the old or new content, never a partial mix.
-fn atomic_write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
+pub(super) fn atomic_write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<()> {
     use std::io::Write;
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
@@ -295,13 +295,14 @@ pub fn find_or_default_config_path() -> PathBuf {
 }
 
 /// Lock guarding config read-modify-write cycles.
-struct ConfigSaveState {
-    target_path: Option<PathBuf>,
+pub(super) struct ConfigSaveState {
+    pub(super) target_path: Option<PathBuf>,
 }
 
 /// Lock guarding config read-modify-write cycles and the target config path
 /// being synchronized.
-static CONFIG_SAVE_LOCK: Mutex<ConfigSaveState> = Mutex::new(ConfigSaveState { target_path: None });
+pub(super) static CONFIG_SAVE_LOCK: Mutex<ConfigSaveState> =
+    Mutex::new(ConfigSaveState { target_path: None });
 
 /// Atomically load the current config, apply `f`, and save only the user
 /// override file.
@@ -354,6 +355,239 @@ pub fn update_config_checked(
     }
 
     save_user_config_to_path(&target_path, &config)
+}
+
+/// Edit one provider model table in the user TOML file.
+///
+/// Existing model items are moved unchanged. Only the inserted or replaced
+/// record is serialized. The callback runs before the file is written and
+/// must stay synchronous.
+pub fn update_provider_model_toml(
+    provider: &str,
+    previous_id: Option<&str>,
+    model_id: &str,
+    metadata: Option<&crate::schema::PartialModelMetadata>,
+    remove_priority_id: Option<&str>,
+    validate: impl FnOnce(&crate::schema::ModelConfigMap) -> crate::Result<()>,
+) -> crate::Result<crate::schema::ModelConfigMap> {
+    let mut guard = CONFIG_SAVE_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let path = find_or_default_config_path();
+    guard.target_path = Some(path.clone());
+    let is_toml = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
+    if !is_toml {
+        return Err(crate::Error::message(
+            "model records can only be edited in a TOML config",
+        ));
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let raw = if path.exists() {
+        std::fs::read_to_string(&path).map_err(|source| {
+            crate::Error::external(format!("failed to read {}", path.display()), source)
+        })?
+    } else {
+        String::new()
+    };
+    let mut document = if raw.trim().is_empty() {
+        toml_edit::DocumentMut::new()
+    } else {
+        raw.parse::<toml_edit::DocumentMut>().map_err(|source| {
+            crate::Error::external(format!("failed to parse {}", path.display()), source)
+        })?
+    };
+    let models = edit_provider_models_document(
+        document.as_table_mut(),
+        provider,
+        previous_id,
+        model_id,
+        metadata,
+        remove_priority_id,
+        validate,
+    )?;
+    atomic_write(&path, document.to_string()).map_err(|source| {
+        crate::Error::external(format!("failed to write {}", path.display()), source)
+    })?;
+    Ok(models)
+}
+
+fn edit_provider_models_document(
+    root: &mut toml_edit::Table,
+    provider: &str,
+    previous_id: Option<&str>,
+    model_id: &str,
+    metadata: Option<&crate::schema::PartialModelMetadata>,
+    remove_priority_id: Option<&str>,
+    validate: impl FnOnce(&crate::schema::ModelConfigMap) -> crate::Result<()>,
+) -> crate::Result<crate::schema::ModelConfigMap> {
+    let providers = nested_table(root, "providers", true)?;
+    let provider_table = nested_table(providers, provider, false)?;
+    let (mut models, mut items) = read_model_items(provider, provider_table.get("models"))?;
+    apply_model_map_edit(&mut models, &mut items, previous_id, model_id, metadata)?;
+    validate(&models)?;
+    if models.is_empty() {
+        provider_table.remove("models");
+    } else {
+        let mut models_table = toml_edit::Table::new();
+        for (id, _) in &models {
+            let Some(item) = items.remove(id) else {
+                return Err(crate::Error::message(format!(
+                    "missing TOML item for model `{id}`"
+                )));
+            };
+            models_table.insert(id, item);
+        }
+        provider_table.insert("models", toml_edit::Item::Table(models_table));
+    }
+    if let Some(priority_id) = remove_priority_id
+        && let Some(chat) = root.get_mut("chat").and_then(toml_edit::Item::as_table_mut)
+        && let Some(priority) = chat
+            .get_mut("priority_models")
+            .and_then(toml_edit::Item::as_array_mut)
+    {
+        priority.retain(|value| value.as_str() != Some(priority_id));
+    }
+    Ok(models)
+}
+
+fn read_model_items(
+    provider: &str,
+    models_item: Option<&toml_edit::Item>,
+) -> crate::Result<(
+    crate::schema::ModelConfigMap,
+    std::collections::HashMap<String, toml_edit::Item>,
+)> {
+    let mut models = crate::schema::ModelConfigMap::new();
+    let mut items = std::collections::HashMap::new();
+    let Some(models_item) = models_item else {
+        return Ok((models, items));
+    };
+    let Some(table) = models_item.as_table() else {
+        return Err(crate::Error::message(format!(
+            "providers.{provider}.models is not a TOML table"
+        )));
+    };
+    for (key, item) in table.iter() {
+        let model_table = item
+            .as_table()
+            .ok_or_else(|| crate::Error::message(format!("model `{key}` is not a TOML table")))?;
+        let metadata =
+            toml::from_str::<crate::schema::PartialModelMetadata>(&model_table.to_string())
+                .map_err(|source| crate::Error::external(format!("parse model `{key}`"), source))?;
+        models.insert(key.to_string(), metadata);
+        items.insert(key.to_string(), item.clone());
+    }
+    Ok((models, items))
+}
+
+fn apply_model_map_edit(
+    models: &mut crate::schema::ModelConfigMap,
+    items: &mut std::collections::HashMap<String, toml_edit::Item>,
+    previous_id: Option<&str>,
+    model_id: &str,
+    metadata: Option<&crate::schema::PartialModelMetadata>,
+) -> crate::Result<()> {
+    match metadata {
+        None => {
+            if models.shift_remove(model_id).is_none() {
+                return Err(crate::Error::message(format!(
+                    "model `{model_id}` is not configured"
+                )));
+            }
+            items.remove(model_id);
+        },
+        Some(metadata) => {
+            let item = model_item(previous_id, model_id, metadata, items)?;
+            match previous_id {
+                Some(previous) if previous != model_id => {
+                    let Some(index) = models.get_index_of(previous) else {
+                        return Err(crate::Error::message(format!(
+                            "model `{previous}` is not configured"
+                        )));
+                    };
+                    if models.contains_key(model_id) {
+                        return Err(crate::Error::message(format!(
+                            "model `{model_id}` is already configured"
+                        )));
+                    }
+                    models.shift_remove(previous);
+                    models.shift_insert(index, model_id.to_string(), metadata.clone());
+                    items.remove(previous);
+                },
+                Some(_) => {
+                    if !models.contains_key(model_id) {
+                        return Err(crate::Error::message(format!(
+                            "model `{model_id}` is not configured"
+                        )));
+                    }
+                    models.insert(model_id.to_string(), metadata.clone());
+                },
+                None => {
+                    if models.contains_key(model_id) {
+                        return Err(crate::Error::message(format!(
+                            "model `{model_id}` is already configured"
+                        )));
+                    }
+                    models.insert(model_id.to_string(), metadata.clone());
+                },
+            }
+            items.insert(model_id.to_string(), item);
+        },
+    }
+    Ok(())
+}
+
+fn model_item(
+    previous_id: Option<&str>,
+    model_id: &str,
+    metadata: &crate::schema::PartialModelMetadata,
+    items: &std::collections::HashMap<String, toml_edit::Item>,
+) -> crate::Result<toml_edit::Item> {
+    let text = toml::to_string(metadata)
+        .map_err(|source| crate::Error::external("serialize model metadata", source))?;
+    let document = text
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|source| crate::Error::external("parse model metadata", source))?;
+    let source_key = previous_id.unwrap_or(model_id);
+    let mut item = items
+        .get(source_key)
+        .cloned()
+        .unwrap_or_else(|| toml_edit::Item::Table(toml_edit::Table::new()));
+    let table = item.as_table_mut().ok_or_else(|| {
+        crate::Error::message(format!("model `{source_key}` is not a TOML table"))
+    })?;
+    let stale = table
+        .iter()
+        .map(|(key, _)| key.to_string())
+        .collect::<Vec<_>>();
+    for key in stale {
+        table.remove(&key);
+    }
+    for (key, value) in document.as_table().iter() {
+        table.insert(key, value.clone());
+    }
+    Ok(item)
+}
+
+pub(super) fn nested_table<'a>(
+    parent: &'a mut toml_edit::Table,
+    key: &str,
+    implicit: bool,
+) -> crate::Result<&'a mut toml_edit::Table> {
+    if !parent.contains_key(key) {
+        let mut table = toml_edit::Table::new();
+        table.set_implicit(implicit);
+        parent.insert(key, toml_edit::Item::Table(table));
+    }
+    parent
+        .get_mut(key)
+        .and_then(toml_edit::Item::as_table_mut)
+        .ok_or_else(|| crate::Error::message(format!("`{key}` is not a TOML table")))
 }
 
 /// Serialize `config` to TOML and write it to the user-global config path.
@@ -757,7 +991,7 @@ pub(super) fn write_default_config(path: &Path, config: &ChelixConfig) -> crate:
 /// The config is serialized to a JSON value, env overrides are merged in,
 /// then deserialized back. Only env vars with the `CHELIX_` prefix are
 /// considered. `CHELIX_CONFIG_DIR`, `CHELIX_DATA_DIR`, `CHELIX_SHARE_DIR`,
-/// `CHELIX_ASSETS_DIR`, `CHELIX_TOKEN`, `CHELIX_PASSWORD`, `CHELIX_TAILSCALE`,
+/// `CHELIX_TOKEN`, `CHELIX_PASSWORD`, `CHELIX_TAILSCALE`,
 /// `CHELIX_WEBAUTHN_RP_ID`, and `CHELIX_WEBAUTHN_ORIGIN` are excluded
 /// (they are handled separately).
 pub fn apply_env_overrides(config: ChelixConfig) -> crate::Result<ChelixConfig> {
@@ -775,25 +1009,51 @@ pub(super) fn apply_env_overrides_with(
         .unwrap_or_else(|error| panic!("test env override must be valid: {error}"))
 }
 
+const ENV_OVERRIDE_EXCLUDED: &[&str] = &[
+    "CHELIX_CONFIG_DIR",
+    "CHELIX_DATA_DIR",
+    "CHELIX_SHARE_DIR",
+    "CHELIX_TOKEN",
+    "CHELIX_PASSWORD",
+    "CHELIX_TAILSCALE",
+    "CHELIX_WEBAUTHN_RP_ID",
+    "CHELIX_WEBAUTHN_ORIGIN",
+    "CHELIX_EXTERNAL_URL",
+];
+
+fn env_override_path(key: &str) -> Option<Vec<String>> {
+    if !key.starts_with("CHELIX_") || ENV_OVERRIDE_EXCLUDED.contains(&key) || !key.contains("__") {
+        return None;
+    }
+    let path_parts: Vec<String> = key["CHELIX_".len()..]
+        .split("__")
+        .map(|segment| match segment.to_ascii_lowercase().as_str() {
+            "exec" => "execute_command".to_string(),
+            normalized => normalized.to_string(),
+        })
+        .collect();
+    if path_parts.is_empty() {
+        None
+    } else {
+        Some(path_parts)
+    }
+}
+
+/// True when the process environment overrides `providers.offered`.
+pub fn providers_offered_env_is_set() -> bool {
+    std::env::vars().any(|(key, _)| {
+        env_override_path(&key).is_some_and(|parts| {
+            parts.len() == 2 && parts[0] == "providers" && parts[1] == "offered"
+        })
+    })
+}
+
 pub(super) fn apply_env_overrides_with_options(
     config: ChelixConfig,
     vars: impl Iterator<Item = (String, String)>,
     apply_third_party_aliases: bool,
 ) -> crate::Result<ChelixConfig> {
     use serde_json::Value;
-
-    const EXCLUDED: &[&str] = &[
-        "CHELIX_CONFIG_DIR",
-        "CHELIX_DATA_DIR",
-        "CHELIX_SHARE_DIR",
-        "CHELIX_ASSETS_DIR",
-        "CHELIX_TOKEN",
-        "CHELIX_PASSWORD",
-        "CHELIX_TAILSCALE",
-        "CHELIX_WEBAUTHN_RP_ID",
-        "CHELIX_WEBAUTHN_ORIGIN",
-        "CHELIX_EXTERNAL_URL",
-    ];
 
     let mut root: Value = serde_json::to_value(config).map_err(|source| {
         crate::Error::external("failed to serialize config for env override", source)
@@ -827,28 +1087,10 @@ pub(super) fn apply_env_overrides_with_options(
             continue;
         }
 
-        if !key.starts_with("CHELIX_") {
-            continue;
-        }
-        if EXCLUDED.contains(&key.as_str()) {
-            continue;
-        }
-        if !key.contains("__") {
-            continue;
-        }
-
         // CHELIX_AUTH__DISABLED → ["auth", "disabled"]
-        let path_parts: Vec<String> = key["CHELIX_".len()..]
-            .split("__")
-            .map(|segment| match segment.to_ascii_lowercase().as_str() {
-                "exec" => "execute_command".to_string(),
-                normalized => normalized.to_string(),
-            })
-            .collect();
-
-        if path_parts.is_empty() {
+        let Some(path_parts) = env_override_path(&key) else {
             continue;
-        }
+        };
 
         // Navigate to the parent object and set the leaf value.
         let parsed_val = parse_env_value(&val);

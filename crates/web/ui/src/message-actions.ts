@@ -6,15 +6,16 @@
 // Icons use CSS mask-image classes (icon-*) backed by SVG files on disk.
 
 import { isChatAtBottom, scrollChatToBottom } from "./chat-ui";
+import { copyToClipboard } from "./clipboard";
 import * as gon from "./gon";
 import { sendRpc } from "./helpers";
 import { renderPersistedAudio } from "./message-voice";
 import { selectedModelSelection } from "./models";
 import { requestSessionFork } from "./sessions/session-fork";
 import * as S from "./state";
+import { showToast } from "./toast";
 import type { ChatSendRequest } from "./types/chat";
 import type { UiHistoryTarget } from "./types/ui-history";
-import { copyToClipboard, showToast } from "./ui";
 
 // ── Icon helper ──────────────────────────────────────────────
 

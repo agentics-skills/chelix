@@ -6,7 +6,10 @@ import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
 import { providerApiKeyHelp } from "../../provider-key-help";
 import { providerBaseUrlError, saveProviderKey } from "../../provider-validation";
+import { CustomProviderForm } from "../../providers/custom-provider-form";
+import { ProviderModels } from "../../providers/provider-models";
 import { targetValue } from "../../typed-events";
+import type { RpcResponse } from "../../types/rpc";
 import { ErrorPanel } from "../shared";
 import type { KeyHelp, ModelSelectorRow, ProviderInfo, RawModelRow } from "../types";
 
@@ -30,15 +33,16 @@ export function sortProviders(list: ProviderInfo[]): ProviderInfo[] {
 	return list;
 }
 
-function modelBelongsToProvider(providerName: string, mdl: ModelSelectorRow): boolean {
-	return mdl.provider === providerName;
+function modelBelongsToProvider(provider: ProviderInfo, mdl: ModelSelectorRow): boolean {
+	return (
+		(typeof provider.alias === "string" && provider.alias.length > 0 && provider.alias === mdl.provider) ||
+		mdl.provider === provider.name
+	);
 }
 
 function toModelSelectorRow(modelRow: RawModelRow): ModelSelectorRow {
 	return modelRow;
 }
-
-// ── ModelSelectCard ─────────────────────────────────────────
 
 export function ModelSelectCard({
 	model,
@@ -77,21 +81,40 @@ interface OnboardingProviderRowProps {
 	setEndpoint: (v: string) => void;
 	savingModels: boolean;
 	error: string | null;
+	catalogModels: ModelSelectorRow[];
 	onStartConfigure: (name: string) => void;
+	onEditCustom: (provider: ProviderInfo) => void;
+	onDeleteCustom: (provider: ProviderInfo) => void;
+	onOpenModels: (name: string) => void;
+	onChoosePreferred: (name: string) => void;
+	onChangedModels: () => void;
 	onCancelConfigure: () => void;
 	onSaveKey: (e: Event) => void;
 	onToggleModel: (id: string) => void;
 	onSaveModels: () => void;
+	actionsDisabled: boolean;
 }
 
 function ProviderRowHeader({
 	provider,
 	expanded,
+	hasModels,
 	onConfigure,
+	onOpenModels,
+	onChoosePreferred,
+	onEdit,
+	onDelete,
+	actionsDisabled,
 }: {
 	provider: ProviderInfo;
 	expanded: boolean;
+	hasModels: boolean;
 	onConfigure: () => void;
+	onOpenModels: () => void;
+	onChoosePreferred: () => void;
+	onEdit: () => void;
+	onDelete: () => void;
+	actionsDisabled: boolean;
 }): VNode {
 	return (
 		<div className="flex items-center gap-3">
@@ -102,9 +125,57 @@ function ProviderRowHeader({
 				</div>
 			</div>
 			{!expanded && (
-				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onConfigure}>
-					{provider.configured ? "Choose Model" : "Configure"}
-				</button>
+				<div className="flex gap-2">
+					{provider.configured ? (
+						<button
+							type="button"
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={onOpenModels}
+							disabled={actionsDisabled}
+						>
+							{t("providers:modelsForProvider")}
+						</button>
+					) : (
+						<button
+							type="button"
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={provider.isCustom ? onEdit : onConfigure}
+							disabled={actionsDisabled}
+						>
+							{provider.isCustom ? "Edit" : "Configure"}
+						</button>
+					)}
+					{provider.isCustom && provider.configured ? (
+						<button
+							type="button"
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={onEdit}
+							disabled={actionsDisabled}
+						>
+							Edit
+						</button>
+					) : null}
+					{provider.isCustom ? (
+						<button
+							type="button"
+							className="provider-btn provider-btn-danger provider-btn-sm"
+							onClick={onDelete}
+							disabled={actionsDisabled}
+						>
+							Delete
+						</button>
+					) : null}
+					{provider.configured && hasModels ? (
+						<button
+							type="button"
+							className="provider-btn provider-btn-secondary provider-btn-sm"
+							onClick={onChoosePreferred}
+							disabled={actionsDisabled}
+						>
+							Choose Model
+						</button>
+					) : null}
+				</div>
 			)}
 		</div>
 	);
@@ -292,7 +363,13 @@ function ProviderModelForm(props: ProviderModelFormProps): VNode {
 export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode {
 	const apiKeyForm = props.configuring === props.provider.name && (props.phase === "form" || props.phase === "saving");
 	const modelForm = props.configuring === props.provider.name && props.phase === "selectModel";
-	const expanded = apiKeyForm || modelForm;
+	const recordForm = props.configuring === props.provider.name && props.phase === "modelRecords";
+	const expanded = apiKeyForm || modelForm || recordForm;
+	const providerRecords = props.catalogModels.filter(
+		(model) =>
+			(props.provider.alias != null && props.provider.alias !== "" && props.provider.alias === model.provider) ||
+			model.provider === props.provider.name,
+	);
 	const rowRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		if (expanded) rowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -302,7 +379,13 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 			<ProviderRowHeader
 				provider={props.provider}
 				expanded={expanded}
+				hasModels={providerRecords.length > 0}
 				onConfigure={() => props.onStartConfigure(props.provider.name)}
+				onOpenModels={() => props.onOpenModels(props.provider.name)}
+				onChoosePreferred={() => props.onChoosePreferred(props.provider.name)}
+				onEdit={() => props.onEditCustom(props.provider)}
+				onDelete={() => props.onDeleteCustom(props.provider)}
+				actionsDisabled={props.actionsDisabled}
 			/>
 			{apiKeyForm && (
 				<ProviderApiKeyForm
@@ -316,6 +399,24 @@ export function OnboardingProviderRow(props: OnboardingProviderRowProps): VNode 
 					onSave={props.onSaveKey}
 					onCancel={props.onCancelConfigure}
 				/>
+			)}
+			{recordForm && (
+				<>
+					{props.error && <ErrorPanel message={props.error} />}
+					<ProviderModels
+						providerName={props.provider.name}
+						models={providerRecords}
+						editable
+						onChanged={props.onChangedModels}
+					/>
+					<button
+						type="button"
+						className="provider-btn provider-btn-secondary provider-btn-sm"
+						onClick={props.onCancelConfigure}
+					>
+						Close
+					</button>
+				</>
 			)}
 			{modelForm && (
 				<ProviderModelForm
@@ -350,8 +451,13 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 	const [modelSelectProvider, setModelSelectProvider] = useState<string | null>(null);
 	const [apiKey, setApiKey] = useState("");
 	const [endpoint, setEndpoint] = useState("");
+	const [catalogModels, setCatalogModels] = useState<ModelSelectorRow[]>([]);
+	const [customOpen, setCustomOpen] = useState(false);
+	const [customProvider, setCustomProvider] = useState<ProviderInfo | null>(null);
+	const [customSaving, setCustomSaving] = useState(false);
+	const customRequestRef = useRef(0);
 
-	function refreshProviders(): Promise<unknown> {
+	function refreshProviders(): Promise<RpcResponse<ProviderInfo[]> | null> {
 		return sendRpc<ProviderInfo[]>("providers.available", {}).then((res) => {
 			if (res?.ok) setProviders(sortProviders(res.payload || []));
 			return res;
@@ -367,6 +473,14 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				if (cancelled) return;
 				if (res?.ok) {
 					setProviders(sortProviders(res.payload || []));
+					void sendRpc<RawModelRow[]>("models.list_all", {}).then((modelsRes) => {
+						if (cancelled) return;
+						if (!modelsRes?.ok) {
+							setError(modelsRes?.error?.message || "Failed to load models.");
+							return;
+						}
+						setCatalogModels((modelsRes.payload || []).map(toModelSelectorRow));
+					});
 					setLoading(false);
 					return;
 				}
@@ -385,10 +499,15 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		loadProviders();
 		return () => {
 			cancelled = true;
+			customRequestRef.current += 1;
 		};
 	}, []);
 
 	function closeAll(): void {
+		customRequestRef.current += 1;
+		setCustomOpen(false);
+		setCustomProvider(null);
+		setCustomSaving(false);
 		setConfiguring(null);
 		setModelSelectProvider(null);
 		setPhase("form");
@@ -401,15 +520,44 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setError(null);
 	}
 
-	async function loadModelsForProvider(providerName: string): Promise<ModelSelectorRow[]> {
+	function openCustomForm(provider: ProviderInfo | null = null): void {
+		closeAll();
+		setCustomProvider(provider);
+		setCustomOpen(true);
+	}
+
+	function onDeleteCustom(provider: ProviderInfo): void {
+		if (!window.confirm(`Delete ${provider.displayName}?`)) return;
+		void sendRpc("providers.delete_custom", { name: provider.name }).then((response) => {
+			if (!response?.ok) {
+				setError(response?.error?.message || "Failed to delete provider.");
+				return;
+			}
+			closeAll();
+			void refreshProviders();
+			void refreshCatalog();
+		});
+	}
+
+	function openAddedProviderModels(providerName: string): void {
+		setCustomOpen(false);
+		setCustomProvider(null);
+		setCustomSaving(false);
+		setConfiguring(providerName);
+		setPhase("modelRecords");
+		void refreshProviders();
+		void refreshCatalog();
+	}
+
+	async function loadModelsForProvider(provider: ProviderInfo): Promise<ModelSelectorRow[]> {
 		const modelsRes = await sendRpc<RawModelRow[]>("models.list", {});
 		const allModels = modelsRes?.ok ? modelsRes.payload || [] : [];
-		return allModels.filter((m) => modelBelongsToProvider(providerName, toModelSelectorRow(m))).map(toModelSelectorRow);
+		return allModels.filter((m) => modelBelongsToProvider(provider, toModelSelectorRow(m))).map(toModelSelectorRow);
 	}
 
 	async function openModelSelectForConfiguredProvider(provider: ProviderInfo): Promise<boolean> {
 		if (!provider.configured) return false;
-		const existingModels = await loadModelsForProvider(provider.name);
+		const existingModels = await loadModelsForProvider(provider);
 		if (existingModels.length === 0) return false;
 		const saved = new Set(existingModels.filter((model) => model.preferred).map((model) => model.id));
 		setModelSelectProvider(provider.name);
@@ -420,14 +568,37 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		return true;
 	}
 
-	async function onStartConfigure(name: string): Promise<void> {
+	async function refreshCatalog(): Promise<void> {
+		const modelsRes = await sendRpc<RawModelRow[]>("models.list_all", {});
+		if (!modelsRes?.ok) {
+			setError(modelsRes?.error?.message || "Failed to load models.");
+			return;
+		}
+		setCatalogModels((modelsRes.payload || []).map(toModelSelectorRow));
+	}
+
+	function onStartConfigure(name: string): void {
+		closeAll();
+		const p = providers.find((pr) => pr.name === name);
+		if (!p || p.configured) return;
+		setEndpoint(p.baseUrl || "");
+		setConfiguring(name);
+		setPhase("form");
+	}
+
+	async function onChoosePreferred(name: string): Promise<void> {
 		closeAll();
 		const p = providers.find((pr) => pr.name === name);
 		if (!p) return;
-		setEndpoint(p.baseUrl || "");
-		if (await openModelSelectForConfiguredProvider(p)) return;
+		const opened = await openModelSelectForConfiguredProvider(p);
+		if (!opened) setError("No selectable models for this provider.");
+	}
+
+	async function onOpenModels(name: string): Promise<void> {
+		closeAll();
+		await refreshCatalog();
 		setConfiguring(name);
-		setPhase("form");
+		setPhase("modelRecords");
 	}
 
 	function onSaveKey(e: Event): void {
@@ -458,6 +629,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				}
 				closeAll();
 				refreshProviders();
+				void refreshCatalog();
 			})
 			.catch((err: Error) => {
 				setPhase("form");
@@ -474,9 +646,11 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		});
 	}
 
-	async function saveSelectedModelPreferences(providerName: string): Promise<string | null> {
+	async function saveSelectedModelPreferences(): Promise<string | null> {
+		const registryProvider = providerModels.find((model) => selectedModels.has(model.id))?.provider;
+		if (!registryProvider) return "Failed to save model preferences.";
 		const response = await sendRpc("providers.set_model_preferences", {
-			provider: providerName,
+			provider: registryProvider,
 			modelIds: Array.from(selectedModels),
 		});
 		return response?.ok ? null : response?.error?.message || "Failed to save model preferences.";
@@ -495,7 +669,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 		setSavingModels(true);
 		setError(null);
 		try {
-			const errorMessage = await saveSelectedModelPreferences(providerName);
+			const errorMessage = await saveSelectedModelPreferences();
 			if (errorMessage) {
 				setError(errorMessage);
 				return false;
@@ -545,11 +719,21 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 				setEndpoint={setEndpoint}
 				savingModels={savingModels}
 				error={configuring === p.name ? error : null}
+				catalogModels={catalogModels}
 				onStartConfigure={onStartConfigure}
+				onEditCustom={openCustomForm}
+				onDeleteCustom={onDeleteCustom}
+				onOpenModels={onOpenModels}
+				onChoosePreferred={onChoosePreferred}
+				onChangedModels={() => {
+					void refreshCatalog();
+					void refreshProviders();
+				}}
 				onCancelConfigure={closeAll}
 				onSaveKey={onSaveKey}
 				onToggleModel={onToggleModel}
 				onSaveModels={onSaveSelectedModels}
+				actionsDisabled={customSaving}
 			/>
 		);
 	}
@@ -582,6 +766,23 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 					</div>
 				</div>
 			) : null}
+			{customOpen ? (
+				<CustomProviderForm
+					key={customProvider?.name ?? "new"}
+					provider={customProvider}
+					onCancel={closeAll}
+					onSavingChange={setCustomSaving}
+					onSaved={openAddedProviderModels}
+				/>
+			) : (
+				<button
+					type="button"
+					className="provider-btn provider-btn-secondary self-start"
+					onClick={() => openCustomForm(null)}
+				>
+					OpenAI Compatible
+				</button>
+			)}
 			<div className="flex flex-col gap-2">
 				<div className="text-xs font-medium text-[var(--text)] uppercase tracking-wide">Recommended</div>
 				{recommendedProviders.map(renderProviderRow)}
@@ -608,7 +809,7 @@ export function ProviderStep({ onNext, onBack }: { onNext: () => void; onBack?: 
 					type="button"
 					className="provider-btn"
 					onClick={onContinue}
-					disabled={phase === "saving" || savingModels}
+					disabled={phase === "saving" || savingModels || customSaving}
 				>
 					{t("common:actions.continue")}
 				</button>

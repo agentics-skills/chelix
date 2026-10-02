@@ -12,7 +12,7 @@ use {
     tracing::warn,
 };
 
-use crate::assets::{asset_content_hash, is_dev_assets};
+use crate::assets::asset_content_hash;
 
 // ── SPA routes ───────────────────────────────────────────────────────────────
 
@@ -781,16 +781,8 @@ fn spa_identity_name(identity: Option<&chelix_config::ResolvedIdentity>) -> &str
 }
 
 fn build_asset_prefix() -> String {
-    if is_dev_assets() {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        format!("/assets/v/{ts}/")
-    } else {
-        static HASH: std::sync::LazyLock<String> = std::sync::LazyLock::new(asset_content_hash);
-        format!("/assets/v/{}/", *HASH)
-    }
+    static HASH: std::sync::LazyLock<String> = std::sync::LazyLock::new(asset_content_hash);
+    format!("/assets/v/{}/", *HASH)
 }
 
 fn build_nonce() -> String {
@@ -890,11 +882,7 @@ pub(crate) async fn render_spa_template(
     gateway: &GatewayState,
     template: SpaTemplate,
 ) -> axum::response::Response {
-    let build_ts = if is_dev_assets() {
-        "dev".to_owned()
-    } else {
-        asset_content_hash()
-    };
+    let build_ts = asset_content_hash();
     let asset_prefix = build_asset_prefix();
     let nonce = build_nonce();
 

@@ -20,8 +20,9 @@ import {
 } from "../sessions";
 import { requestSessionFork } from "../sessions/session-fork";
 import { sessionStore } from "../stores/session-store";
+import { showToast } from "../toast";
 import type { RpcResponse } from "../types/rpc";
-import { ComboSelect, confirmDialog, shareLinkDialog, shareVisibilityDialog, showToast } from "../ui";
+import { ComboSelect, confirmDialog, shareLinkDialog, shareVisibilityDialog } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────
 

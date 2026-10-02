@@ -30,6 +30,7 @@ import { getHistoryWindow } from "../stores/session-history-cache";
 import { sessionStore } from "../stores/session-store";
 import { appendTerminalMetadata, terminalMetadataData } from "../terminal-metadata";
 import { terminalContextTokens } from "../terminal-usage";
+import { showToast } from "../toast";
 import { isToolLifecycleEvent, reduceToolInvocation } from "../tool-lifecycle";
 import type { RpcResponse } from "../types/rpc";
 import type { HistoryMessage } from "../types/session";
@@ -41,7 +42,6 @@ import type {
 	ToolLifecycleEvent,
 } from "../types/ws-events";
 import { hasVisibleReasoning } from "../types/ws-events";
-import { showToast } from "../ui";
 import { setSafeMarkdownHtml } from "../ws/shared";
 import { renderToolLifecycleSnapshot } from "../ws/tool-helpers";
 import { confirmPendingSend } from "./pending-send";

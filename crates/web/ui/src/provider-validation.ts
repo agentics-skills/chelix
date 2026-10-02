@@ -3,7 +3,7 @@ import type { RpcResponse } from "./types/rpc";
 
 const COMPLETION_ENDPOINT_SUFFIXES = ["/chat/completions", "/responses"];
 
-export function providerBaseUrlError(baseUrl: string | null | undefined): string | null {
+export function providerBaseUrlError(baseUrl: string | null | undefined, allowResponsesSuffix = false): string | null {
 	const trimmed = baseUrl?.trim().replace(/\/+$/, "") || "";
 	if (!trimmed) return null;
 	try {
@@ -15,7 +15,8 @@ export function providerBaseUrlError(baseUrl: string | null | undefined): string
 		return "Endpoint URL must be a valid HTTP(S) URL, such as 'https://api.example.com/v1'.";
 	}
 	const lower = trimmed.toLowerCase();
-	const suffix = COMPLETION_ENDPOINT_SUFFIXES.find((value) => lower.endsWith(value));
+	const suffixes = allowResponsesSuffix ? ["/chat/completions"] : COMPLETION_ENDPOINT_SUFFIXES;
+	const suffix = suffixes.find((value) => lower.endsWith(value));
 	if (!suffix) return null;
 	const suggested = trimmed.slice(0, -suffix.length) || trimmed;
 	return `Endpoint URL should be the API base URL, not the completion path. Use '${suggested}' instead of '${trimmed}'.`;

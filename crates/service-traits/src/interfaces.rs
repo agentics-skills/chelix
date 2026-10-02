@@ -869,6 +869,8 @@ pub trait ModelService: Send + Sync {
     ) -> Result<ResolvedModelReasoning, ServiceError>;
     async fn disable(&self, params: Value) -> ServiceResult;
     async fn enable(&self, params: Value) -> ServiceResult;
+    async fn forget_disabled(&self, model_ids: &[String]) -> ServiceResult;
+    async fn rename_disabled(&self, pairs: &[(String, String)]) -> ServiceResult;
 }
 
 pub struct NoopModelService;
@@ -907,6 +909,14 @@ impl ModelService for NoopModelService {
 
     async fn enable(&self, _params: Value) -> ServiceResult {
         Err(model_service_not_configured_error("models.enable"))
+    }
+
+    async fn forget_disabled(&self, _model_ids: &[String]) -> ServiceResult {
+        Err(model_service_not_configured_error("models.forget_disabled"))
+    }
+
+    async fn rename_disabled(&self, _pairs: &[(String, String)]) -> ServiceResult {
+        Err(model_service_not_configured_error("models.rename_disabled"))
     }
 }
 
@@ -1002,6 +1012,10 @@ pub trait ProviderSetupService: Send + Sync {
     async fn save_key(&self, params: Value) -> ServiceResult;
     async fn remove_key(&self, params: Value) -> ServiceResult;
     async fn set_model_preferences(&self, params: Value) -> ServiceResult;
+    async fn upsert_model(&self, params: Value) -> ServiceResult;
+    async fn delete_model(&self, params: Value) -> ServiceResult;
+    async fn upsert_custom(&self, params: Value) -> ServiceResult;
+    async fn delete_custom(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopProviderSetupService;
@@ -1021,6 +1035,22 @@ impl ProviderSetupService for NoopProviderSetupService {
     }
 
     async fn set_model_preferences(&self, _p: Value) -> ServiceResult {
+        Err("provider setup not configured".into())
+    }
+
+    async fn upsert_model(&self, _params: Value) -> ServiceResult {
+        Err("provider setup not configured".into())
+    }
+
+    async fn delete_model(&self, _params: Value) -> ServiceResult {
+        Err("provider setup not configured".into())
+    }
+
+    async fn upsert_custom(&self, _params: Value) -> ServiceResult {
+        Err("provider setup not configured".into())
+    }
+
+    async fn delete_custom(&self, _params: Value) -> ServiceResult {
         Err("provider setup not configured".into())
     }
 }
