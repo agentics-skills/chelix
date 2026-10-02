@@ -399,6 +399,25 @@ where
     Ok(opt.map(Secret::new))
 }
 
+fn serialize_secret_vec<S: serde::Serializer>(
+    secrets: &[Secret<String>],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let plain: Vec<&str> = secrets
+        .iter()
+        .map(|secret| secret.expose_secret().as_str())
+        .collect();
+    plain.serialize(serializer)
+}
+
+fn deserialize_secret_vec<'de, D>(deserializer: D) -> Result<Vec<Secret<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let plain: Vec<String> = Vec::deserialize(deserializer)?;
+    Ok(plain.into_iter().map(Secret::new).collect())
+}
+
 fn serialize_secret_string_map<S: serde::Serializer>(
     values: &HashMap<String, Secret<String>>,
     serializer: S,

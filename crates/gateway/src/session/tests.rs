@@ -496,16 +496,27 @@ mod tests {
 
     #[test]
     fn redact_share_secret_values_masks_env_vars_and_api_tokens() {
-        let input = "OPENAI_API_KEY=sk-openai FIRECRAWL_API_KEY=firecrawl-secret Authorization: Bearer bearer-secret https://api.example.com/search?q=test&api_key=url-secret";
+        let input = r#"OPENAI_API_KEY=sk-openai FIRECRAWL_API_KEY=firecrawl-secret Authorization: Bearer bearer-secret https://api.example.com/search?q=test&api_key=url-secret token = ["ctx7-a", "ctx7-b"] {"password":"[s3cr3t]"} PASSWORD=[bare-secret] token = [ # user's keys ]
+  "ctx7sk-primary",
+  "ctx7sk-reserve"
+]"#;
         let redacted = redact_share_secret_values(input);
 
         assert!(!redacted.contains("sk-openai"));
         assert!(!redacted.contains("firecrawl-secret"));
         assert!(!redacted.contains("bearer-secret"));
         assert!(!redacted.contains("url-secret"));
+        assert!(!redacted.contains("ctx7-a"));
+        assert!(!redacted.contains("ctx7-b"));
+        assert!(!redacted.contains("s3cr3t"));
+        assert!(!redacted.contains("bare-secret"));
+        assert!(!redacted.contains("ctx7sk-primary"));
+        assert!(!redacted.contains("ctx7sk-reserve"));
         assert!(redacted.contains("OPENAI_API_KEY=[REDACTED]"));
         assert!(redacted.contains("FIRECRAWL_API_KEY=[REDACTED]"));
         assert!(redacted.contains("Bearer [REDACTED]"));
+        assert!(redacted.contains("token = [\"[REDACTED]\", \"[REDACTED]\"]"));
+        assert!(redacted.contains("{\"password\":\"[REDACTED]\"}"));
     }
 
     #[test]

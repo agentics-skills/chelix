@@ -283,19 +283,26 @@ The result mirrors the limits, a summary (`filesWithMatches`, `matchCount`,
 
 ## Context7 tools
 
-The `context7_*` tools call the Context7 API through one shared client. The
-optional API token is read from `tools.context7.token`:
+The `context7_*` tools call the Context7 API through one shared client. API
+tokens are read from `tools.context7.token` in priority order. A missing field
+or an empty array sends requests without authorization:
 
 ```toml
 [tools.context7]
-token = "ctx7sk-..."
+token = ["ctx7sk-...", "ctx7sk-..."]
 request_timeout_secs = 300
 ```
 
-Every request sends `X-Context7-Source: chelix` and sends the configured token as
-`Authorization: Bearer <token>`. Every request has the finite HTTP deadline
-configured by `tools.context7.request_timeout_secs` (default `300`, minimum `1`).
-A `401` or `403` response is returned as an explicit authorization error.
+Every request sends `X-Context7-Source: chelix` and, when a token is selected,
+sends it as `Authorization: Bearer <token>`. Every request has the finite HTTP
+deadline configured by `tools.context7.request_timeout_secs` (default `300`,
+minimum `1`). A `401` or `403` response is returned as an explicit authorization
+error.
+
+A `429` response whose JSON field `error` is exactly `Quota Exceeded` rotates
+to the next configured token and retries the request before the shared cooldown.
+That rotation runs once for each token after the first (`N - 1`). The response
+that remains is handled by the rules below.
 
 A `429` response with a numeric `Retry-After` header starts or extends one shared
 cooldown for all Context7 calls across concurrent sessions. The client adds a

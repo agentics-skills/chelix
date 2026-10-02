@@ -1,7 +1,7 @@
 //! Context7 tool set for Chelix.
 //!
-//! Exposes the `context7_*` agent tools backed by one shared HTTP client. The
-//! optional API token comes from `tools.context7.token`, and every Context7
+//! Exposes the `context7_*` agent tools backed by one shared HTTP client. API
+//! tokens come from `tools.context7.token` in priority order. Every Context7
 //! request has the finite deadline configured by
 //! `tools.context7.request_timeout_secs`.
 
@@ -10,6 +10,7 @@ mod error;
 mod metrics;
 mod rate_limit;
 mod registration;
+mod tokens;
 mod tools;
 
 pub use {

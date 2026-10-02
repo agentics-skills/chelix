@@ -254,7 +254,7 @@ mod tests {
     use super::*;
 
     fn tool(base_url: String) -> Context7ResolveLibraryIdTool {
-        Context7ResolveLibraryIdTool::new(Arc::new(Context7Client::for_test(base_url, None)))
+        Context7ResolveLibraryIdTool::new(Arc::new(Context7Client::for_test(base_url, Vec::new())))
     }
 
     #[test]

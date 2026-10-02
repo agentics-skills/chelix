@@ -1867,7 +1867,6 @@ dependencies = [
  "async-trait",
  "chelix-common",
  "chelix-config",
- "chelix-metrics",
  "serde",
  "serde_json",
  "tempfile",
