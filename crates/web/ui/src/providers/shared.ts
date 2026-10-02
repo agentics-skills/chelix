@@ -32,6 +32,7 @@ export function openProviderModal(): void {
 
 export function closeProviderModal(): void {
 	els().modal.classList.add("hidden");
+	import("./openai-compatible").then((module) => module.unmountCustomProviderEditor());
 }
 
 export function setFormError(errorPanel: HTMLElement | null, message: string | null): void {

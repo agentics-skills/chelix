@@ -10,10 +10,10 @@ import {
 	MAX_WINDOW_MESSAGES,
 	retainSessionHistory,
 } from "../stores/session-history-cache";
+import { showToast } from "../toast";
 import { isToolLifecycleEvent } from "../tool-lifecycle";
 import type { UiHistoryBatch, UiHistoryEvent, UiHistoryPage, UiHistoryRange, UiSnapshot } from "../types/ui-history";
 import type { ContextBudgetMetadata } from "../types/ws-events";
-import { showToast } from "../ui";
 import { SESSION_HISTORY_PAGE_LIMIT, syncHistoryState } from "./session-history";
 import { reconcileSessionHistory } from "./session-render";
 

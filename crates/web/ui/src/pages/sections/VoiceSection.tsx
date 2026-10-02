@@ -8,8 +8,8 @@ import * as gon from "../../gon";
 import { sendRpc } from "../../helpers";
 import { connected } from "../../signals";
 import * as S from "../../state";
+import { showToast } from "../../toast";
 import { targetChecked, targetValue } from "../../typed-events";
-import { showToast } from "../../ui";
 import { getPttKey, getVadSensitivity, setPttKey, setVadSensitivity } from "../../voice-input";
 import {
 	decodeBase64Safe,

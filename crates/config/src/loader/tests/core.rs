@@ -996,6 +996,7 @@ fn save_soul_for_agent_none_clears() {
 
 #[test]
 fn share_dir_override_takes_precedence() {
+    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
     set_share_dir(dir.path().to_path_buf());
 
@@ -1007,6 +1008,7 @@ fn share_dir_override_takes_precedence() {
 
 #[test]
 fn share_dir_returns_none_when_no_source() {
+    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     clear_share_dir();
     // Without an override, env var, or existing directories, share_dir
     // should return None (unless /usr/share/chelix or ~/.chelix/share

@@ -6,6 +6,8 @@ mod support;
 
 mod available;
 mod credentials;
+mod custom;
+mod provider_models;
 mod service;
 
 pub use service::*;

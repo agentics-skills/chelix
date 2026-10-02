@@ -2,11 +2,11 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { copyToClipboard } from "../../clipboard";
 import { DangerZone, EmptyState, ListItem, Loading } from "../../components/forms/ListItem";
 import { refresh as refreshGon } from "../../gon";
 import { detectPasskeyName } from "../../passkey-detect";
 import { targetValue } from "../../typed-events";
-import { copyToClipboard } from "../../ui";
 import { prepareCreationOptions } from "../../webauthn-helpers";
 import { rerender } from "./_shared";
 

@@ -70,7 +70,7 @@ pub fn render_share_html(
 pub fn render_share_og_svg(
     snapshot: &ShareSnapshot,
     identity: &chelix_config::ResolvedIdentity,
-) -> String {
+) -> Result<String, String> {
     build_share_social_image_svg(snapshot, identity)
 }
 
@@ -388,22 +388,12 @@ pub(crate) fn map_share_message_views(
 // Social-image SVG rendering
 // ---------------------------------------------------------------------------
 
-static SHARE_SOCIAL_BRAND_ICON_DATA_URL: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| {
-        let png_bytes = crate::assets::read_asset_bytes("icons/favicon-compact-512.png")
-            .unwrap_or_else(|| {
-                #[cfg(feature = "embedded-assets")]
-                {
-                    include_bytes!("assets/icons/favicon-compact-512.png").to_vec()
-                }
-                #[cfg(not(feature = "embedded-assets"))]
-                {
-                    Vec::new()
-                }
-            });
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
-        format!("data:image/png;base64,{encoded}")
-    });
+fn brand_icon_data_url() -> Result<String, String> {
+    let png_bytes = crate::assets::read_asset_bytes("icons/favicon-compact-512.png")
+        .ok_or_else(|| "embedded asset icons/favicon-compact-512.png is missing".to_string())?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+    Ok(format!("data:image/png;base64,{encoded}"))
+}
 
 fn escape_svg_text(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -507,7 +497,7 @@ fn build_share_social_text_lines(
 fn build_share_social_image_svg(
     snapshot: &ShareSnapshot,
     identity: &chelix_config::ResolvedIdentity,
-) -> String {
+) -> Result<String, String> {
     const MAX_CHARS_PER_LINE: usize = 64;
     const MAX_LINES: usize = 6;
     const WIDTH: usize = 1200;
@@ -537,7 +527,8 @@ fn build_share_social_image_svg(
         ));
     }
 
-    format!(
+    let icon = brand_icon_data_url()?;
+    Ok(format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{WIDTH}\" height=\"{HEIGHT}\" viewBox=\"0 0 {WIDTH} {HEIGHT}\">\
 <defs>\
   <linearGradient id=\"bg\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\">\
@@ -568,11 +559,11 @@ fn build_share_social_image_svg(
 {}\
 <text x=\"1122\" y=\"584\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"22\" font-family=\"Inter, system-ui, sans-serif\">By Chelix</text>\
 </svg>",
-        SHARE_SOCIAL_BRAND_ICON_DATA_URL.as_str(),
+        icon,
         escape_svg_text(&title),
         escape_svg_text(&subtitle),
         conversation_lines
-    )
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -660,7 +651,8 @@ mod tests {
     fn render_share_og_svg_produces_svg() {
         let snapshot = minimal_snapshot();
         let identity = default_identity();
-        let svg = render_share_og_svg(&snapshot, &identity);
+        let svg =
+            render_share_og_svg(&snapshot, &identity).unwrap_or_else(|error| panic!("{error}"));
 
         assert!(svg.starts_with("<svg"));
         assert!(svg.contains("My chat"));
@@ -810,7 +802,8 @@ mod tests {
             ],
         };
 
-        let svg = render_share_og_svg(&snapshot, &identity);
+        let svg =
+            render_share_og_svg(&snapshot, &identity).unwrap_or_else(|error| panic!("{error}"));
         assert!(svg.contains("Release checklist"));
         assert!(svg.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
         assert!(!svg.contains("Need to validate <script>alert(1)</script> path"));

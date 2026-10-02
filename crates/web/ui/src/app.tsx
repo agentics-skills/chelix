@@ -32,11 +32,12 @@ import * as modelStore from "./stores/model-store";
 import * as projectStore from "./stores/project-store";
 import { insertSessionInOrder, sessionStore } from "./stores/session-store";
 import { initTheme, injectMarkdownStyles } from "./theme";
+import { Toasts } from "./toast";
 import { syncToolPermissionToolbar } from "./tool-permission";
 import type { SandboxGonInfo, VaultStatus } from "./types/gon";
 import type { ModelInfo } from "./types/model";
 import type { SessionMeta } from "./types/session";
-import { GlobalDialogs, Toasts } from "./ui";
+import { GlobalDialogs } from "./ui";
 import { connect } from "./websocket";
 
 // Import page modules to register their routes

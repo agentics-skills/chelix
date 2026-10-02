@@ -2,12 +2,13 @@
 
 import type { VNode } from "preact";
 import { useEffect, useState } from "preact/hooks";
+import { copyToClipboard } from "../../clipboard";
 import { Badge, EmptyState, Loading } from "../../components/forms/ListItem";
 import { TabBar } from "../../components/forms/Tabs";
 import * as gon from "../../gon";
 import { localizedApiErrorMessage } from "../../helpers";
+import { showToast } from "../../toast";
 import { targetChecked, targetValue } from "../../typed-events";
-import { copyToClipboard, showToast } from "../../ui";
 import { rerender } from "./_shared";
 
 interface SshKeyEntry {

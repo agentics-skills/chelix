@@ -225,4 +225,20 @@ impl ProviderSetupService for LiveProviderSetupService {
     async fn set_model_preferences(&self, params: Value) -> ServiceResult {
         self.set_model_preferences_inner(params).await
     }
+
+    async fn upsert_model(&self, params: Value) -> ServiceResult {
+        self.upsert_model_inner(params).await
+    }
+
+    async fn delete_model(&self, params: Value) -> ServiceResult {
+        self.delete_model_inner(params).await
+    }
+
+    async fn upsert_custom(&self, params: Value) -> ServiceResult {
+        self.upsert_custom_inner(params).await
+    }
+
+    async fn delete_custom(&self, params: Value) -> ServiceResult {
+        self.delete_custom_inner(params).await
+    }
 }

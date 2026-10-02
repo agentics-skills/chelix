@@ -6,10 +6,10 @@ import { showModelNotice } from "./pages/ChatPage";
 import * as S from "./state";
 import { modelStore } from "./stores/model-store";
 import { sessionStore } from "./stores/session-store";
+import { showToast } from "./toast";
 import type { ModelInfo } from "./types/model";
 import type { RpcResponse } from "./types/rpc";
 import type { SessionModelSelection, SessionPatchPayload } from "./types/session";
-import { showToast } from "./ui";
 
 type ConfirmedSessionModelPayload = SessionPatchPayload & SessionModelSelection;
 

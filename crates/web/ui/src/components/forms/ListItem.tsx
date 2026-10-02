@@ -83,7 +83,7 @@ export function Loading({ message = "Loading\u2026", className }: LoadingProps):
 // ── Copy button ─────────────────────────────────────────────
 
 import { useCallback, useState } from "preact/hooks";
-import { copyToClipboard } from "../../ui";
+import { copyToClipboard } from "../../clipboard";
 
 interface CopyButtonProps {
 	/** Text to copy to clipboard */

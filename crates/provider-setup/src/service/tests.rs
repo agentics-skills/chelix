@@ -369,7 +369,7 @@ async fn available_includes_config_declared_custom_provider_without_saved_creden
 
     assert_eq!(
         custom.get("displayName").and_then(|value| value.as_str()),
-        Some("OpenAI Compatible (custom-ai-example)")
+        Some("custom-ai-example")
     );
     assert_eq!(
         custom.get("configured").and_then(|value| value.as_bool()),

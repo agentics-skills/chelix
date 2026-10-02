@@ -81,13 +81,13 @@ build-release:
     ./scripts/cargo-build-chelix.sh --release
 
 # Run local dev server with workspace-local config/data dirs.
-dev-server:
+dev-server: build-web-assets
     cargo build --bin chelix
     just codesign-debug
     CHELIX_CONFIG_DIR=.chelix/config CHELIX_DATA_DIR=.chelix/ cargo run --bin chelix
 
 # Run all CI checks (format, lint, build, test)
-ci: format-check lint i18n-check build-web-assets build test
+ci: format-check build-web-assets lint i18n-check build test
 
 # Compile once, then run Rust tests.
 # Uses the same nightly toolchain as clippy/local-validate so the build cache
@@ -147,7 +147,7 @@ ship commit_message='' pr_title='' pr_body='':
 # On macOS: build and nextest use the default features.
 # On Linux: nextest uses --all-features.
 # Builds first so codesign can run before test execution (prevents Little Snitch prompts).
-test:
+test: build-web-assets
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "$(uname -s)" = "Darwin" ]; then

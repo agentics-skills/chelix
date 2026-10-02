@@ -108,11 +108,15 @@ port = {port}                           # Port number (auto-generated for this i
 #   tool_mode - Tool calling mode: "native", "text", or "off" (default: "native")
 #   policy    - Per-provider tool policy override (allow/deny lists)
 #
+# Models are added, edited, and deleted in onboarding and in Settings → Providers.
+# Those actions write [providers.<name>.models."<raw-model-id>"] tables here.
+# API keys stay in provider_keys.json and are not written into model tables.
 # Declare every model only as [providers.<name>.models."<raw-model-id>"]
 # with a complete metadata record. Tables are evaluated in declaration order.
 # A provider may declare no models regardless of status. Every present model must
 # contain all mandatory valid fields; metadata is never discovered or defaulted.
-# reasoning_supported_efforts must be non-empty and contain no empty strings.
+# reasoning_supported_efforts must be non-empty, contain no empty strings, and contain
+# no duplicates. A config with duplicate efforts does not load.
 # ["off"] is the only non-reasoning API path; ["low"] is valid without "off".
 
 # [providers]

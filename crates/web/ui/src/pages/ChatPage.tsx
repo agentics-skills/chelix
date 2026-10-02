@@ -16,6 +16,7 @@ import {
 	setComposerStopButton,
 	smartScrollToBottom,
 } from "../chat-ui";
+import { copyToClipboard } from "../clipboard";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
 import { SessionHeader } from "../components/SessionHeader";
 import * as gon from "../gon";
@@ -31,9 +32,9 @@ import { updateSandboxUI } from "../sandbox";
 import { setSessionActiveRunId, setSessionReplying, switchSession } from "../sessions";
 import * as S from "../state";
 import { modelStore } from "../stores/model-store";
+import { showToast } from "../toast";
 import { mountToolPermissionToolbar } from "../tool-permission";
 import type { ChatContextMessage, ChatFullContextPayload, PromptMemoryData } from "../types/chat";
-import { copyToClipboard, showToast } from "../ui";
 import { initVadButton, initVoiceInput, teardownVoiceInput } from "../voice-input";
 import {
 	chatAutoResize,

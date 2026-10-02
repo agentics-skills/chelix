@@ -1957,6 +1957,14 @@ mod tests {
         async fn enable(&self, _params: Value) -> ServiceResult {
             Ok(serde_json::json!({}))
         }
+
+        async fn forget_disabled(&self, _model_ids: &[String]) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn rename_disabled(&self, _pairs: &[(String, String)]) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
     }
 
     struct DataDirTestGuard {

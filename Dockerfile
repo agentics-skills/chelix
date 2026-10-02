@@ -93,7 +93,7 @@ COPY --from=web-builder /build/crates/web/src/assets ./crates/web/src/assets
 
 ARG CHELIX_VERSION
 ENV CHELIX_VERSION=${CHELIX_VERSION}
-RUN CHELIX_BUILD_FEATURES="full,embedded-assets" ./scripts/cargo-build-chelix.sh --release
+RUN CHELIX_BUILD_FEATURES="full" ./scripts/cargo-build-chelix.sh --release
 
 # Runtime software is independent from all application build stages. The
 # official Node image replaces the repeated NodeSource repository bootstrap.

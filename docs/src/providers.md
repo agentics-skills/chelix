@@ -45,7 +45,7 @@ is sent as `reasoning.encrypted_content`.
 
 - `context_length`, `max_input_tokens`, `max_output_tokens` — greater than zero
 - `input_modalities`, `output_modalities` — non-empty, without duplicates
-- `reasoning_supported_efforts` — a non-empty array without empty strings
+- `reasoning_supported_efforts` — a non-empty array without empty strings or duplicates. A config with duplicate efforts does not load.
 - `reasoning_include` — without duplicates
 
 ### Non-Reasoning Model
@@ -261,9 +261,21 @@ into an opaque provider `400` or a model that keeps calling a tool wrong.
 Use **Settings** → **Providers** to save credentials for a provider. This flow
 does not require model records to be declared before credentials are saved.
 
-The **OpenAI Compatible** entry lists config-declared `custom-*` providers. Select
-one to save its API key and API base URL. This flow does not discover models and
-does not write model metadata to `provider_keys.json`.
+The **OpenAI Compatible** form on the onboarding provider step and in
+**Settings** → **Providers** → **Add LLM** creates a `custom-<name>` provider.
+The name is the part after `custom-`. The form sets the endpoint, API key,
+`wire_api` (`chat-completions` or `responses`), `tool_mode`, and `enabled`.
+`stream_transport` is `sse`. A base URL ending in `/responses` is accepted only
+when `wire_api` is `responses`. A URL ending in `/chat/completions` is rejected.
+The key is stored in `provider_keys.json` and is not written into the model
+tables. The same form edits an existing custom provider. Delete removes the
+TOML section and the saved key. Creating or editing appends the section name to a
+non-empty `providers.offered` only when `CHELIX_PROVIDERS__OFFERED` is not set.
+An empty `providers.offered` is left unchanged. If that variable is set and the
+effective list does not contain the section name, saving fails and tells you to
+add the name to `CHELIX_PROVIDERS__OFFERED`. Delete does not remove the offered
+entry. Model records are added from that provider's row.
+This flow does not discover models.
 
 ### Via Configuration Files
 
@@ -318,13 +330,17 @@ Each provider supports these options:
 
 ### OpenAI
 
-1. Declare complete model records under
-   `[providers.openai.models."<model-id>"]` in the service configuration.
-2. Get an API key from [platform.openai.com](https://platform.openai.com/).
-3. Set `OPENAI_API_KEY` in your environment, or save the credentials through
-   **Settings** → **Providers**. Credentials saved through provider setup are
-   persisted in `~/.config/chelix/provider_keys.json` and loaded for the
-   matching provider declared in the service configuration.
+1. Get an API key from [platform.openai.com](https://platform.openai.com/).
+2. Set `OPENAI_API_KEY` in your environment, or save the credentials in
+   onboarding or through **Settings** → **Providers**. Credentials saved through
+   provider setup are persisted in `~/.config/chelix/provider_keys.json` and are
+   not stored in the model tables.
+3. Add, edit, or delete model records for that configured provider in onboarding
+   or **Settings** → **Providers**. The model editor is shown only for a
+   configured provider. Those actions write
+   `[providers.<name>.models."<raw-id>"]` tables in the user TOML config.
+   A provider may have zero models. The same tables can be edited directly in
+   `chelix.toml`.
 
 ## Switching Models
 

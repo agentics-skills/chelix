@@ -82,6 +82,15 @@ impl DisabledModelsStore {
         self.disabled.remove(model_id)
     }
 
+    /// Keep a disabled flag when its canonical id changes.
+    pub fn rename(&mut self, from: &str, to: &str) -> bool {
+        if self.disabled.remove(from) {
+            self.disabled.insert(to.to_string());
+            return true;
+        }
+        false
+    }
+
     /// Check if a model is disabled.
     pub fn is_disabled(&self, model_id: &str) -> bool {
         self.disabled.contains(model_id)
@@ -272,10 +281,7 @@ impl ModelService for LiveModelService {
         let disabled = self.disabled.read().await;
         let order = self.priority_order().await;
         let all_models = reg.list_models();
-        let prioritized = Self::prioritize_models(
-            &order,
-            all_models.iter().filter(|model| model.supports_text_chat()),
-        );
+        let prioritized = Self::prioritize_models(&order, all_models.iter());
         info!(model_count = prioritized.len(), "models.list_all response");
         let models: Vec<_> = prioritized
             .iter()
@@ -371,6 +377,54 @@ impl ModelService for LiveModelService {
             "ok": true,
             "modelId": model_id,
         }))
+    }
+
+    async fn forget_disabled(&self, model_ids: &[String]) -> ServiceResult {
+        if model_ids.is_empty() {
+            return Ok(serde_json::json!({ "ok": true }));
+        }
+        let path = Self::disabled_store_path();
+        let mut disabled = self.disabled.write().await;
+        for model_id in model_ids {
+            disabled.enable(model_id);
+        }
+        if let Err(error) = disabled.save() {
+            let location = path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "disabled-models.json".to_string());
+            return Err(ServiceError::message(format!(
+                "failed to save {location}: {error}"
+            )));
+        }
+        Ok(serde_json::json!({ "ok": true }))
+    }
+
+    async fn rename_disabled(&self, pairs: &[(String, String)]) -> ServiceResult {
+        if pairs.is_empty() {
+            return Ok(serde_json::json!({ "ok": true }));
+        }
+        let path = Self::disabled_store_path();
+        let mut disabled = self.disabled.write().await;
+        for (from, to) in pairs {
+            disabled.rename(from, to);
+        }
+        if let Err(error) = disabled.save() {
+            let location = path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "disabled-models.json".to_string());
+            return Err(ServiceError::message(format!(
+                "failed to save {location}: {error}"
+            )));
+        }
+        Ok(serde_json::json!({ "ok": true }))
+    }
+}
+
+impl LiveModelService {
+    fn disabled_store_path() -> Option<PathBuf> {
+        DisabledModelsStore::config_path()
     }
 }
 

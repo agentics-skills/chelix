@@ -8,12 +8,12 @@ import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import prettyBytes from "pretty-bytes";
 import uPlot from "uplot";
+import { copyToClipboard } from "../clipboard";
 import { TabBar } from "../components/forms/Tabs";
 import { onEvent } from "../events";
 import { t } from "../i18n";
 import { registerPrefix } from "../router";
 import { routes } from "../routes";
-import { copyToClipboard } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────────
 

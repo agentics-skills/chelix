@@ -4,11 +4,11 @@ import { signal, useSignal } from "@preact/signals";
 import type { RefObject, VNode } from "preact";
 import { render } from "preact";
 import { useEffect, useRef } from "preact/hooks";
+import { copyToClipboard } from "../clipboard";
 import { Loading } from "../components/forms/ListItem";
 import { onEvent } from "../events";
 import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
-import { copyToClipboard } from "../ui";
 
 // ── Types ───────────────────────────────────────────────────
 

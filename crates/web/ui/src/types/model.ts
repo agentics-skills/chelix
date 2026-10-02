@@ -33,5 +33,9 @@ export interface ProviderInfo {
 	requiresModel: boolean;
 	keyOptional: boolean;
 	isCustom?: boolean;
+	alias?: string | null;
+	enabled?: boolean;
+	wireApi?: "chat-completions" | "responses";
+	toolMode?: "native" | "text" | "off";
 	uiOrder?: number;
 }

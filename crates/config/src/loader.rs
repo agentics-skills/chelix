@@ -9,10 +9,12 @@ use std::{
 
 #[path = "loader/config_io.rs"]
 mod config_io;
+#[path = "loader/custom_provider_toml.rs"]
+mod custom_provider_toml;
 #[path = "loader/workspace.rs"]
 mod workspace;
 
-pub use {config_io::*, workspace::*};
+pub use {config_io::*, custom_provider_toml::*, workspace::*};
 
 /// Generate a random available port by binding to port 0 and reading the assigned port.
 fn generate_random_port() -> u16 {
@@ -122,14 +124,14 @@ fn share_dir_override() -> Option<PathBuf> {
         .clone()
 }
 
-/// Returns the share directory for external web assets.
+/// Returns the share directory for documentation and other share files.
 ///
 /// Resolution order:
 /// 1. Programmatic override via `set_share_dir()`
 /// 2. `CHELIX_SHARE_DIR` env var
 /// 3. `/usr/share/chelix/` (Linux system packages) - only if it exists
 /// 4. `data_dir()/share/` (`~/.chelix/share/`) - only if it exists
-/// 5. `None` (fall back to embedded assets)
+/// 5. `None`
 pub fn share_dir() -> Option<PathBuf> {
     if let Some(dir) = share_dir_override() {
         return Some(dir);

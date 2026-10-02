@@ -1,10 +1,10 @@
 import { sendRpc } from "./helpers";
 import * as S from "./state";
 import { sessionStore } from "./stores/session-store";
+import { showToast } from "./toast";
 import { renderToolCardResult, setToolCardStatus, type ToolResultRenderOptions } from "./tool-call-card";
 import { isTerminalToolLifecycle } from "./tool-lifecycle";
 import type { ToolLifecycleEvent } from "./types/ws-events";
-import { showToast } from "./ui";
 
 export type ToolPermissionMode = "auto" | "moderated";
 export type ToolPermissionType = "manual";

@@ -7,7 +7,7 @@
 import { sendRpc } from "../helpers";
 import type { RpcResponse } from "../types/rpc";
 import { showApiKeyForm } from "./auth-flow";
-import { showOpenAiCompatibleForm } from "./openai-compatible";
+import { showCustomProviderEditor } from "./openai-compatible";
 import { els } from "./shared";
 import type { ProviderInfo } from "./types";
 
@@ -58,7 +58,10 @@ export function openProviderModalImpl(): void {
 			}
 			item.appendChild(badges);
 
-			item.addEventListener("click", () => showApiKeyForm(p));
+			item.addEventListener("click", () => {
+				if (p.isCustom) showCustomProviderEditor(p);
+				else showApiKeyForm(p);
+			});
 			m.body.appendChild(item);
 		});
 
@@ -82,7 +85,7 @@ export function openProviderModalImpl(): void {
 		compatibleBadges.appendChild(endpointBadge);
 		compatibleItem.appendChild(compatibleBadges);
 
-		compatibleItem.addEventListener("click", () => showOpenAiCompatibleForm(providers));
+		compatibleItem.addEventListener("click", () => showCustomProviderEditor(null));
 		m.body.appendChild(compatibleItem);
 	});
 }
