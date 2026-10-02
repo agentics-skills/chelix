@@ -2,6 +2,12 @@ use crate::{UserProfile, schema::ChelixConfig};
 
 use super::*;
 
+fn config_with_sandbox_retention() -> ChelixConfig {
+    let mut config = ChelixConfig::default();
+    config.sandbox.archived_session_retention_days = Some(3);
+    config
+}
+
 #[test]
 fn parse_env_value_bool() {
     assert_eq!(parse_env_value("true"), serde_json::Value::Bool(true));
@@ -56,7 +62,7 @@ fn set_nested_overwrites_existing() {
 #[test]
 fn apply_env_overrides_auth_disabled() {
     let vars = vec![("CHELIX_AUTH__DISABLED".into(), "true".into())];
-    let config = ChelixConfig::default();
+    let config = config_with_sandbox_retention();
     assert!(!config.auth.disabled);
     assert!(config.auth.vault_enabled);
     let config = apply_env_overrides_with(config, vars.into_iter());
@@ -66,7 +72,7 @@ fn apply_env_overrides_auth_disabled() {
 #[test]
 fn apply_env_overrides_tools_agent_timeout() {
     let vars = vec![("CHELIX_TOOLS__AGENT_TIMEOUT_SECS".into(), "120".into())];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert_eq!(config.tools.agent_timeout_secs, 120);
 }
 
@@ -82,7 +88,7 @@ fn apply_env_overrides_rejects_tools_agent_max_iterations() {
 fn apply_env_overrides_ignores_excluded() {
     // CHELIX_CONFIG_DIR should not be treated as a config field override.
     let vars = vec![("CHELIX_CONFIG_DIR".into(), "/tmp/test".into())];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert!(!config.auth.disabled);
 }
 
@@ -94,7 +100,7 @@ fn apply_env_overrides_ignores_external_url() {
         "CHELIX_EXTERNAL_URL".into(),
         "https://test.example.com".into(),
     )];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert!(
         config.server.external_url.is_none(),
         "CHELIX_EXTERNAL_URL should be excluded from generic env overrides"
@@ -108,7 +114,7 @@ fn apply_env_overrides_multiple() {
         ("CHELIX_TOOLS__AGENT_TIMEOUT_SECS".into(), "300".into()),
         ("CHELIX_MEMORY__DISABLE_RAG".into(), "true".into()),
     ];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert!(config.auth.disabled);
     assert_eq!(config.tools.agent_timeout_secs, 300);
     assert!(config.memory.disable_rag);
@@ -120,14 +126,14 @@ fn apply_env_overrides_deep_nesting() {
         "CHELIX_TOOLS__EXEC__DEFAULT_TIMEOUT_SECS".into(),
         "60".into(),
     )];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert_eq!(config.tools.execute_command.default_timeout_secs, 60);
 }
 
 #[test]
 fn apply_env_overrides_mcp_request_timeout() {
     let vars = vec![("CHELIX_MCP__REQUEST_TIMEOUT_SECS".into(), "90".into())];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert_eq!(config.mcp.request_timeout_secs, 90);
 }
 
@@ -137,7 +143,7 @@ fn apply_env_overrides_providers_offered_array() {
         "CHELIX_PROVIDERS__OFFERED".into(),
         "[\"openai\",\"openrouter\"]".into(),
     )];
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     assert_eq!(config.providers.offered, vec!["openai", "openrouter"]);
 }
 
@@ -246,7 +252,7 @@ fn parse_config_rejects_unknown_channel_types() {
 #[test]
 fn parse_config_accepts_matrix_accounts_in_extra() {
     let config = parse_config(
-        "[channels]\noffered = ['matrix']\n[channels.matrix.bot]\naccess_token = 'test'\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[channels]\noffered = ['matrix']\n[channels.matrix.bot]\naccess_token = 'test'\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
         std::path::Path::new("chelix.toml"),
     )
     .expect("known channel config must load");
@@ -291,7 +297,7 @@ fn parse_config_rejects_noncanonical_offered_provider_names() {
 #[test]
 fn apply_env_overrides_providers_offered_empty_array() {
     let vars = vec![("CHELIX_PROVIDERS__OFFERED".into(), "[]".into())];
-    let mut base = ChelixConfig::default();
+    let mut base = config_with_sandbox_retention();
     base.providers.offered = vec!["openai".into()];
     let config = apply_env_overrides_with(base, vars.into_iter());
     assert!(
@@ -301,8 +307,8 @@ fn apply_env_overrides_providers_offered_empty_array() {
 }
 
 #[test]
-fn layered_candidate_applies_env_overrides_missing_from_raw_parse() {
-    let raw = "[providers]\noffered = [\"deepinfra\"]\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n";
+fn layered_candidate_validates_sandbox_retention_and_applies_env_overrides() {
+    let raw = "[providers]\noffered = [\"deepinfra\"]\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n";
     let direct = toml::from_str::<ChelixConfig>(raw).expect("raw candidate should parse");
     let layered =
         load_layered_config_toml_source(raw, std::path::Path::new("chelix.toml"), true, vec![(
@@ -313,6 +319,56 @@ fn layered_candidate_applies_env_overrides_missing_from_raw_parse() {
 
     assert_eq!(direct.providers.offered, vec!["deepinfra"]);
     assert_eq!(layered.providers.offered, vec!["openai"]);
+    assert_eq!(layered.sandbox.archived_session_retention_days, Some(3));
+
+    let path = std::path::Path::new("chelix.toml");
+    let terminal = "[tools.execute_command]\nterminal_size = \"115x58\"\n";
+    for sandbox in ["", "\n[sandbox]\nmode = \"On\"\n"] {
+        let missing = format!("{terminal}{sandbox}");
+        let error = parse_config(&missing, path).expect_err("On requires explicit retention");
+        assert!(
+            error
+                .to_string()
+                .contains("sandbox.archived_session_retention_days")
+        );
+        let error = load_layered_config_toml_source(&missing, path, true, [(
+            "CHELIX_SANDBOX__ARCHIVED_SESSION_RETENTION_DAYS".into(),
+            "3".into(),
+        )])
+        .expect_err("environment overrides must not bypass file validation");
+        assert!(
+            error
+                .to_string()
+                .contains("sandbox.archived_session_retention_days")
+        );
+    }
+
+    let off = format!("{terminal}\n[sandbox]\nmode = \"Off\"\n");
+    let config = parse_config(&off, path).expect("Off allows missing retention");
+    assert_eq!(config.sandbox.archived_session_retention_days, None);
+    let error = apply_env_overrides_with_options(
+        config,
+        [("CHELIX_SANDBOX__MODE".into(), "On".into())].into_iter(),
+        true,
+    )
+    .expect_err("switching to On requires retention");
+    assert!(
+        error
+            .to_string()
+            .contains("sandbox.archived_session_retention_days")
+    );
+    let loaded = load_layered_config_toml_source(&off, path, true, std::iter::empty())
+        .expect("layered Off allows missing retention");
+    assert_eq!(loaded.sandbox.archived_session_retention_days, None);
+
+    for days in [0, 3] {
+        let valid = format!("{terminal}\n[sandbox]\narchived_session_retention_days = {days}\n");
+        let parsed = parse_config(&valid, path).expect("explicit retention must parse");
+        assert_eq!(parsed.sandbox.archived_session_retention_days, Some(days));
+        let loaded = load_layered_config_toml_source(&valid, path, true, std::iter::empty())
+            .expect("layered load preserves explicit retention");
+        assert_eq!(loaded.sandbox.archived_session_retention_days, Some(days));
+    }
 }
 
 #[test]
@@ -377,7 +433,7 @@ fn apply_env_overrides_accepts_all_nested_profile_and_voice_fields() {
         ),
     ];
 
-    let config = apply_env_overrides_with(ChelixConfig::default(), vars.into_iter());
+    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
     let location = config
         .user
         .location
@@ -466,7 +522,7 @@ fn write_default_config_writes_template_to_requested_path() {
         "generated template should include selected server port"
     );
     // The override-only template has most settings commented out.
-    // Port and terminal_size are the active values.
+    // Port, terminal_size, and sandbox retention are the active values.
     assert!(
         raw.contains("# prompt_memory_mode"),
         "generated template should document prompt memory mode as commented example"
@@ -495,6 +551,7 @@ fn write_default_config_writes_template_to_requested_path() {
         parsed.server.port, 23456,
         "parsed config should have the correct port"
     );
+    assert!(parsed.sandbox.archived_session_retention_days.is_some());
     assert!(matches!(
         parsed.agents.resolve_state(),
         Ok(crate::AgentsConfigState::Setup)
@@ -558,6 +615,9 @@ prepend_sender_badge = true
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
     )
     .expect("write seed config");

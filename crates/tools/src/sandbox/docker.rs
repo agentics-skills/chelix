@@ -18,15 +18,16 @@ use {
 use {
     super::{
         containers::{
-            current_sandbox_image_tag, install_tools_service_in_build_context,
-            sandbox_image_dockerfile, sandbox_image_exists,
+            TOOLS_SERVICE_INSTALL_PATH, current_sandbox_image_tag,
+            install_tools_service_in_build_context, sandbox_image_dockerfile, sandbox_image_exists,
+            sandbox_tools_service_artifact,
         },
         paths::resolved_sandbox_mount_plan,
         provision::provision_packages,
         types::{
             BuildImageResult, Sandbox, SandboxBackendId, SandboxConfig, SandboxId,
             SharedSandboxImage, ToolsServiceEndpoint, ToolsServiceInstance, WorkspaceSysmount,
-            canonical_sandbox_packages, shared_sandbox_image, tail_lines,
+            canonical_sandbox_packages, sanitize_path_component, shared_sandbox_image, tail_lines,
             truncate_output_for_display,
         },
     },
@@ -46,6 +47,32 @@ pub(crate) enum BackendKind {
 
 const DEFAULT_OCI_CPU_QUOTA: f64 = 1.0;
 const TOOLS_SERVICE_HEALTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ToolsHealthStatus {
+    Ready,
+    ProtocolMismatch,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct OciContainerInspect {
+    state: OciContainerState,
+    config: OciContainerConfig,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct OciContainerState {
+    running: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct OciContainerConfig {
+    image: String,
+    env: Vec<String>,
+}
 
 /// Docker/Podman-based sandbox implementation.
 ///
@@ -165,16 +192,70 @@ impl DockerSandbox {
         }
     }
 
-    async fn is_container_running(&self, name: &str) -> bool {
-        let check = tokio::process::Command::new(self.cli)
-            .args(["inspect", "--format", "{{.State.Running}}", name])
+    async fn inspect_container(&self, name: &str) -> Result<Option<OciContainerInspect>> {
+        let output = tokio::process::Command::new(self.cli)
+            .args(["inspect", "--format", "{{json .}}", name])
             .output()
-            .await;
+            .await?;
+        if !output.status.success() {
+            let prefix = format!("{}-", self.container_prefix());
+            let id = name
+                .strip_prefix(&prefix)
+                .ok_or_else(|| Error::message(format!("invalid managed container name: {name}")))?;
+            if self
+                .existing_container_ids()
+                .await?
+                .iter()
+                .any(|existing| existing == id)
+            {
+                return Err(Error::message(format!(
+                    "{} inspect failed for container {name}: {}",
+                    self.cli,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+            return Ok(None);
+        }
+        let container = serde_json::from_slice(&output.stdout).map_err(|error| {
+            Error::message(format!("invalid {} inspect JSON: {error}", self.cli))
+        })?;
+        Ok(Some(container))
+    }
 
-        let Ok(output) = check else {
-            return false;
-        };
-        String::from_utf8_lossy(&output.stdout).trim() == "true"
+    async fn container_command(&self, command: &str, name: &str) -> Result<()> {
+        let output = tokio::process::Command::new(self.cli)
+            .args([command, name])
+            .output()
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "{} {command} failed for container {name}: {}",
+                self.cli,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(())
+    }
+
+    pub(super) async fn update_tools_service(
+        &self,
+        name: &str,
+        artifact: &std::path::Path,
+    ) -> Result<()> {
+        let output = tokio::process::Command::new(self.cli)
+            .arg("cp")
+            .arg(artifact)
+            .arg(format!("{name}:{TOOLS_SERVICE_INSTALL_PATH}"))
+            .output()
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "{} cp failed for container {name}: {}",
+                self.cli,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        self.container_command("restart", name).await
     }
 
     pub(crate) fn resource_args(&self) -> Vec<String> {
@@ -356,56 +437,7 @@ impl DockerSandbox {
         Ok(())
     }
 
-    async fn ensure_ready_locked(&self, id: &SandboxId) -> Result<()> {
-        let name = self.container_name(id);
-
-        if self.is_container_running(&name).await {
-            let cached_endpoint = self.tools_endpoints.lock().await.get(&name).cloned();
-            if let Some(endpoint) = cached_endpoint {
-                if probe_tools_health(&self.tools_http_client, &endpoint)
-                    .await
-                    .is_ok()
-                {
-                    debug!(container = %name, "sandbox container already running");
-                    return Ok(());
-                }
-
-                warn!(
-                    container = %name,
-                    "sandbox container has a stale tools endpoint, rediscovering"
-                );
-                match self
-                    .discover_tools_service_endpoint(&name, endpoint.token)
-                    .await
-                {
-                    Ok(endpoint) => {
-                        self.tools_endpoints
-                            .lock()
-                            .await
-                            .insert(name.clone(), endpoint);
-                        return Ok(());
-                    },
-                    Err(error) => {
-                        warn!(
-                            container = %name,
-                            %error,
-                            "sandbox container tools endpoint recovery failed, recreating"
-                        );
-                    },
-                }
-            } else {
-                warn!(container = %name, "sandbox container has no runtime tools endpoint, recreating");
-            }
-
-            self.provisioned.lock().await.remove(&name);
-            self.tools_endpoints.lock().await.remove(&name);
-            force_remove_container(self.cli, &name).await?;
-        }
-
-        self.provisioned.lock().await.remove(&name);
-        self.tools_endpoints.lock().await.remove(&name);
-
-        // Resolve image first so we know whether it's prebuilt (affects hardening).
+    async fn create_container(&self, id: &SandboxId, name: &str) -> Result<(String, String)> {
         let effective_image = self.effective_image.read().await.clone();
         let image = self.resolve_local_image(&effective_image).await?;
         let is_prebuilt = image.starts_with(&format!("{}:", self.image_repo()));
@@ -416,8 +448,9 @@ impl DockerSandbox {
         let mut args = vec![
             "run".to_string(),
             "-d".to_string(),
+            "--restart=no".to_string(),
             "--name".to_string(),
-            name.clone(),
+            name.to_string(),
         ];
 
         args.extend(self.network_run_args());
@@ -449,7 +482,7 @@ impl DockerSandbox {
             .config
             .terminal_size
             .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
-        args.push(image);
+        args.push(image.clone());
         args.extend([
             "chelix-tools-service".to_string(),
             "--listen".to_string(),
@@ -468,67 +501,85 @@ impl DockerSandbox {
             .await?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if is_container_name_conflict(&stderr) {
-                warn!(
-                    container = %name,
-                    "{} run reported a name conflict, recreating container",
-                    self.cli
-                );
-                self.provisioned.lock().await.remove(&name);
-                self.tools_endpoints.lock().await.remove(&name);
-                let _ = tokio::process::Command::new(self.cli)
-                    .args(["rm", "-f", &name])
-                    .output()
-                    .await;
-
-                let retry_output = tokio::process::Command::new(self.cli)
-                    .args(&args)
-                    .output()
-                    .await?;
-                if !retry_output.status.success() {
-                    let retry_stderr = String::from_utf8_lossy(&retry_output.stderr);
-                    return Err(Error::message(format!(
-                        "{} run failed after removing stale container '{}': {}",
-                        self.cli,
-                        name,
-                        retry_stderr.trim()
-                    )));
-                }
-            } else {
-                return Err(Error::message(format!(
-                    "{} run failed: {}",
-                    self.cli,
-                    stderr.trim()
-                )));
-            }
+            return Err(Error::message(format!(
+                "{} run failed for container {name}: {}",
+                self.cli,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
         }
+        Ok((image, tools_token))
+    }
 
-        let endpoint = match self
-            .discover_tools_service_endpoint(&name, tools_token)
-            .await
-        {
-            Ok(endpoint) => endpoint,
-            Err(error) => {
+    async fn ensure_ready_locked(&self, id: &SandboxId) -> Result<()> {
+        let name = self.container_name(id);
+        let (image, tools_token, cached_endpoint) = match self.inspect_container(&name).await? {
+            Some(container) => {
+                let token_prefix = format!("{TOOLS_SERVICE_TOKEN_ENV}=");
+                let token = container
+                    .config
+                    .env
+                    .iter()
+                    .find_map(|value| {
+                        value
+                            .strip_prefix(&token_prefix)
+                            .filter(|token| !token.is_empty())
+                    })
+                    .ok_or_else(|| {
+                        Error::message(format!("container {name} has no tools service token"))
+                    })?
+                    .to_string();
+                let cached = if container.state.running {
+                    self.tools_endpoints.lock().await.get(&name).cloned()
+                } else {
+                    self.container_command("start", &name).await?;
+                    None
+                };
+                (container.config.image, token, cached)
+            },
+            None => {
                 self.provisioned.lock().await.remove(&name);
                 self.tools_endpoints.lock().await.remove(&name);
-                if let Err(cleanup_error) = force_remove_container(self.cli, &name).await {
-                    warn!(
-                        container = %name,
-                        error = %cleanup_error,
-                        "failed to remove sandbox container after tools service readiness failure"
-                    );
-                }
-                return Err(error);
+                let (image, token) = self.create_container(id, &name).await?;
+                (image, token, None)
             },
         };
+        let readiness = if let Some(endpoint) = cached_endpoint {
+            match probe_tools_health(&self.tools_http_client, &endpoint).await {
+                Ok(ToolsHealthStatus::Ready) => return Ok(()),
+                Ok(ToolsHealthStatus::ProtocolMismatch) => {
+                    (endpoint, ToolsHealthStatus::ProtocolMismatch)
+                },
+                Err(error) => {
+                    warn!(container = %name, %error, "rediscovering sandbox tools endpoint");
+                    self.discover_tools_service_endpoint(&name, tools_token.clone())
+                        .await?
+                },
+            }
+        } else {
+            self.discover_tools_service_endpoint(&name, tools_token.clone())
+                .await?
+        };
+        let (mut endpoint, health) = readiness;
+        if health == ToolsHealthStatus::ProtocolMismatch {
+            let artifact = sandbox_tools_service_artifact()?;
+            self.update_tools_service(&name, &artifact).await?;
+            let (updated_endpoint, updated_health) = self
+                .discover_tools_service_endpoint(&name, tools_token)
+                .await?;
+            if updated_health == ToolsHealthStatus::ProtocolMismatch {
+                return Err(Error::message(format!(
+                    "tools service protocol mismatch in container {name} after update"
+                )));
+            }
+            endpoint = updated_endpoint;
+        }
         self.tools_endpoints
             .lock()
             .await
             .insert(name.clone(), endpoint);
+        let is_prebuilt = image.starts_with(&format!("{}:", self.image_repo()));
 
-        // Skip provisioning if the image is a pre-built instance sandbox image
-        // (packages are already baked in — including /home/sandbox from the Dockerfile).
+        // Prebuilt images already contain the configured packages.
         if !is_prebuilt {
             let needs_provisioning = {
                 let mut provisioned = self.provisioned.lock().await;
@@ -559,7 +610,7 @@ impl DockerSandbox {
         &self,
         name: &str,
         token: String,
-    ) -> Result<ToolsServiceEndpoint> {
+    ) -> Result<(ToolsServiceEndpoint, ToolsHealthStatus)> {
         const MAX_ATTEMPTS: usize = 50;
         const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
         let candidates = self.tools_service_endpoint_candidates(name, &token).await?;
@@ -569,15 +620,11 @@ impl DockerSandbox {
             match select_reachable_tools_service_endpoint(&self.tools_http_client, &candidates)
                 .await
             {
-                Ok(endpoint) => {
-                    debug!(
-                        container = %name,
-                        base_url = %endpoint.base_url,
-                        "sandbox tools service endpoint ready"
-                    );
-                    return Ok(endpoint);
+                Ok((endpoint, health)) => return Ok((endpoint, health)),
+                Err(error) => {
+                    warn!(container = %name, attempt, %error, "sandbox tools health retry");
+                    last_error = error;
                 },
-                Err(error) => last_error = error,
             }
             if attempt + 1 < MAX_ATTEMPTS {
                 tokio::time::sleep(RETRY_DELAY).await;
@@ -609,17 +656,27 @@ impl DockerSandbox {
             .output()
             .await?;
 
-        let published = if published_output.status.success() {
-            String::from_utf8_lossy(&published_output.stdout).into_owned()
-        } else {
-            String::new()
-        };
-        let addresses = if inspect_output.status.success() {
-            String::from_utf8_lossy(&inspect_output.stdout).into_owned()
-        } else {
-            String::new()
-        };
-        let candidates = tools_service_endpoint_candidates(&published, &addresses, token);
+        if !published_output.status.success() {
+            return Err(Error::message(format!(
+                "{} port failed for container {name}: {}",
+                self.cli,
+                String::from_utf8_lossy(&published_output.stderr).trim()
+            )));
+        }
+        if !inspect_output.status.success() {
+            return Err(Error::message(format!(
+                "{} inspect failed for container {name}: {}",
+                self.cli,
+                String::from_utf8_lossy(&inspect_output.stderr).trim()
+            )));
+        }
+        let published = std::str::from_utf8(&published_output.stdout).map_err(|error| {
+            Error::message(format!("invalid {} port output: {error}", self.cli))
+        })?;
+        let addresses = std::str::from_utf8(&inspect_output.stdout).map_err(|error| {
+            Error::message(format!("invalid {} inspect output: {error}", self.cli))
+        })?;
+        let candidates = tools_service_endpoint_candidates(published, addresses, token);
         if candidates.is_empty() {
             let published_error = String::from_utf8_lossy(&published_output.stderr);
             let inspect_error = String::from_utf8_lossy(&inspect_output.stderr);
@@ -643,13 +700,13 @@ pub(super) fn tools_service_inspect_template(kind: BackendKind) -> &'static str 
 
 pub(super) async fn force_remove_container(cli: &str, name: &str) -> Result<()> {
     let cleanup = tokio::process::Command::new(cli)
-        .args(["rm", "-f", name])
+        .args(["rm", "-fv", name])
         .output()
         .await?;
     if !cleanup.status.success() {
         let stderr = String::from_utf8_lossy(&cleanup.stderr);
         return Err(Error::message(format!(
-            "{cli} rm -f failed for container {name}: {}",
+            "{cli} rm -fv failed for container {name}: {}",
             stderr.trim()
         )));
     }
@@ -701,21 +758,21 @@ fn parse_published_port(output: &str) -> Option<u16> {
 pub(super) async fn select_reachable_tools_service_endpoint(
     client: &reqwest::Client,
     candidates: &[ToolsServiceEndpoint],
-) -> std::result::Result<ToolsServiceEndpoint, String> {
+) -> std::result::Result<(ToolsServiceEndpoint, ToolsHealthStatus), String> {
     let mut errors = Vec::new();
     for endpoint in candidates {
         match probe_tools_health(client, endpoint).await {
-            Ok(()) => return Ok(endpoint.clone()),
+            Ok(health) => return Ok((endpoint.clone(), health)),
             Err(error) => errors.push(format!("{}: {error}", endpoint.base_url)),
         }
     }
     Err(errors.join("; "))
 }
 
-async fn probe_tools_health(
+pub(super) async fn probe_tools_health(
     client: &reqwest::Client,
     endpoint: &ToolsServiceEndpoint,
-) -> Result<()> {
+) -> Result<ToolsHealthStatus> {
     let response = client
         .get(format!(
             "{}{}",
@@ -733,12 +790,9 @@ async fn probe_tools_health(
     }
     let health = response.json::<ToolsServiceHealth>().await?;
     if health.protocol_version != TOOLS_SERVICE_PROTOCOL_VERSION {
-        return Err(Error::message(format!(
-            "tools service protocol mismatch: expected {}, got {}",
-            TOOLS_SERVICE_PROTOCOL_VERSION, health.protocol_version
-        )));
+        return Ok(ToolsHealthStatus::ProtocolMismatch);
     }
-    Ok(())
+    Ok(ToolsHealthStatus::Ready)
 }
 
 #[async_trait]
@@ -797,6 +851,42 @@ impl Sandbox for DockerSandbox {
             .collect::<Vec<_>>();
         instances.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(instances)
+    }
+
+    async fn existing_container_ids(&self) -> Result<Vec<String>> {
+        let prefix = format!("{}-", self.container_prefix());
+        let output = tokio::process::Command::new(self.cli)
+            .args([
+                "ps",
+                "-a",
+                "--filter",
+                &format!("name={prefix}"),
+                "--format",
+                "{{.Names}}",
+            ])
+            .output()
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "{} ps failed: {}",
+                self.cli,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let stdout = std::str::from_utf8(&output.stdout)
+            .map_err(|error| Error::message(format!("invalid {} ps output: {error}", self.cli)))?;
+        stdout
+            .lines()
+            .filter_map(|name| name.strip_prefix(&prefix))
+            .map(|id| {
+                if id.is_empty() || sanitize_path_component(id) != id {
+                    return Err(Error::message(format!(
+                        "invalid managed container ID: {id}"
+                    )));
+                }
+                Ok(id.to_string())
+            })
+            .collect()
     }
 
     async fn build_image(
@@ -944,23 +1034,12 @@ impl Sandbox for DockerSandbox {
 
     async fn cleanup(&self, id: &SandboxId) -> Result<()> {
         let name = self.container_name(id);
+        force_remove_container(self.cli, &name).await?;
         self.provisioned.lock().await.remove(&name);
         self.startup_gates.lock().await.remove(&name);
         self.tools_endpoints.lock().await.remove(&name);
-        let _ = tokio::process::Command::new(self.cli)
-            .args(["rm", "-f", &name])
-            .output()
-            .await;
         Ok(())
     }
-}
-
-pub(crate) fn is_container_name_conflict(stderr: &str) -> bool {
-    let lower = stderr.to_ascii_lowercase();
-    lower.contains("already in use")
-        && (lower.contains("container name")
-            || lower.contains("the name \"")
-            || lower.contains("the name '"))
 }
 
 /// No-op sandbox that passes through to direct execution.

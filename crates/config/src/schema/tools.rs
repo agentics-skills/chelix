@@ -719,6 +719,10 @@ impl std::fmt::Display for SandboxBackend {
 #[serde(default, deny_unknown_fields)]
 pub struct SandboxConfig {
     pub mode: SandboxMode,
+    /// Archived owner container retention in days, required when mode is On.
+    /// Zero removes the container on the first reconciliation scan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_session_retention_days: Option<u32>,
     pub scope: String,
     /// Root filesystem and privilege-hardening mode for sandbox containers:
     /// `"ro"` keeps Docker/Podman rootfs read-only for prebuilt images and
@@ -934,6 +938,7 @@ impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
             mode: SandboxMode::On,
+            archived_session_retention_days: None,
             scope: "session".into(),
             workspace_sysmount: "ro".into(),
             host_data_dir: None,

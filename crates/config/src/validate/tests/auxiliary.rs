@@ -4,7 +4,7 @@ use super::*;
 fn auxiliary_title_pair_accepts_complete_configuration() {
     for effort in ["low", "off"] {
         let input = format!(
-            "[auxiliary.title_generation]\nmodel = \"test::title\"\nreasoning_effort = \"{effort}\"\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n"
+            "[auxiliary.title_generation]\nmodel = \"test::title\"\nreasoning_effort = \"{effort}\"\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n"
         );
         let result = validate_toml_str(&input);
         assert!(!result.has_errors(), "{:?}", result.diagnostics);

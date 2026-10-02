@@ -31,6 +31,9 @@ timeout = 7
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 {env_config}"#
         ),
     )
@@ -64,7 +67,7 @@ async fn discover_hooks_registers_builtin_handlers() {
     std::env::set_current_dir(project_dir.path()).unwrap();
     std::fs::write(
         config_dir.path().join("chelix.toml"),
-        "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .unwrap();
     chelix_config::set_config_dir(config_dir.path().to_path_buf());
@@ -160,6 +163,9 @@ timeout = 7
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
     )
     .unwrap();
@@ -210,6 +216,9 @@ timeout = 7
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#
         ),
     )

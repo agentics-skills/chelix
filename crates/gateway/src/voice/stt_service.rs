@@ -498,6 +498,9 @@ base_url = "http://127.0.0.1:8001/"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
         );
 
@@ -533,6 +536,9 @@ endpoint = "http://127.0.0.1:9001/"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
         );
 
@@ -552,7 +558,7 @@ terminal_size = "115x58"
     #[tokio::test]
     async fn test_live_stt_service_status() {
         let _guard = VoiceConfigTestGuard::with_config(
-            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
         );
         let service = LiveSttService::new(SttServiceConfig::default());
         let status = service.status().await.unwrap();
@@ -569,7 +575,7 @@ terminal_size = "115x58"
     #[tokio::test]
     async fn test_live_stt_service_providers() {
         let _guard = VoiceConfigTestGuard::with_config(
-            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
         );
         let service = LiveSttService::new(SttServiceConfig::default());
         let providers = service.providers().await.unwrap();

@@ -158,6 +158,7 @@ pub struct ResourceLimits {
 pub struct SandboxConfig {
     pub mode: SandboxMode,
     pub scope: SandboxScope,
+    pub archived_session_retention_days: Option<u32>,
     /// Root filesystem and privilege-hardening mode for sandbox containers.
     pub workspace_sysmount: WorkspaceSysmount,
     /// Host-visible path for Chelix `data_dir()` when running container-backed
@@ -194,6 +195,7 @@ impl Default for SandboxConfig {
         Self {
             mode: SandboxMode::default(),
             scope: SandboxScope::default(),
+            archived_session_retention_days: None,
             workspace_sysmount: WorkspaceSysmount::default(),
             host_data_dir: None,
             home_persistence: HomePersistence::default(),
@@ -230,6 +232,7 @@ impl From<&chelix_config::schema::SandboxConfig> for SandboxConfig {
                 "shared" => SandboxScope::Shared,
                 _ => SandboxScope::Session,
             },
+            archived_session_retention_days: cfg.archived_session_retention_days,
             workspace_sysmount: match cfg.workspace_sysmount.as_str() {
                 "rw" => WorkspaceSysmount::Rw,
                 _ => WorkspaceSysmount::Ro,
@@ -350,6 +353,11 @@ pub trait Sandbox: Send + Sync {
 
     /// Return only tools-service instances already started and registered by this backend.
     async fn tools_service_instances(&self) -> Result<Vec<ToolsServiceInstance>> {
+        Ok(Vec::new())
+    }
+
+    /// Return sanitized owner IDs for containers present in this backend.
+    async fn existing_container_ids(&self) -> Result<Vec<String>> {
         Ok(Vec::new())
     }
 

@@ -859,8 +859,8 @@ pub async fn prepare_gateway_core(
             .await
             .map_err(|error| anyhow::anyhow!("failed to start managed tools service: {error}"))?;
 
-    // Spawn non-critical startup container garbage collection.
-    sandbox::spawn_sandbox_background_tasks(&sandbox_router);
+    // Start daily retention checks for archived session sandboxes.
+    sandbox::spawn_sandbox_background_tasks(&sandbox_router, &session_metadata)?;
 
     // Periodic cron session retention pruning.
     if let Some(retention_days) = config.cron.session_retention_days

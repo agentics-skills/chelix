@@ -6,29 +6,30 @@ use std::collections::HashMap;
 #[cfg(target_os = "macos")]
 use async_trait::async_trait;
 #[cfg(target_os = "macos")]
-use chelix_protocol::{
-    TOOLS_SERVICE_HEALTH_PATH, TOOLS_SERVICE_PROTOCOL_VERSION, ToolsServiceHealth,
-};
+use chelix_protocol::{TOOLS_SERVICE_CONTAINER_PORT, TOOLS_SERVICE_TOKEN_ENV};
 use tracing::{debug, info, warn};
 
 #[cfg(target_os = "macos")]
 use tokio::sync::RwLock;
 
 #[cfg(target_os = "macos")]
-use super::containers::{
-    apple_container_exec_args, apple_container_run_args, apple_container_status_from_inspect,
-    current_sandbox_image_tag, install_tools_service_in_build_context,
-    is_apple_container_daemon_stale_error, is_apple_container_exists_error,
-    is_apple_container_service_error, sandbox_image_dockerfile, sandbox_image_exists,
-    unmark_zombie,
-};
-#[cfg(target_os = "macos")]
 use super::paths::resolved_sandbox_mount_plan;
 #[cfg(target_os = "macos")]
 use super::types::{
     BuildImageResult, Sandbox, SandboxBackendId, SandboxConfig, SandboxId, SharedSandboxImage,
-    ToolsServiceEndpoint, ToolsServiceInstance, canonical_sandbox_packages, shared_sandbox_image,
-    tail_lines, truncate_output_for_display,
+    ToolsServiceEndpoint, ToolsServiceInstance, canonical_sandbox_packages,
+    sanitize_path_component, shared_sandbox_image, tail_lines, truncate_output_for_display,
+};
+#[cfg(target_os = "macos")]
+use super::{
+    containers::{
+        AppleContainerState, AppleManagedContainer, ApplePublishProtocol,
+        TOOLS_SERVICE_INSTALL_PATH, apple_container_exec_args, apple_container_run_args,
+        current_sandbox_image_tag, install_tools_service_in_build_context,
+        sandbox_image_dockerfile, sandbox_image_exists, sandbox_tools_service_artifact,
+        unmark_zombie,
+    },
+    docker::{ToolsHealthStatus, probe_tools_health},
 };
 #[cfg(target_os = "macos")]
 use crate::command::{CommandOptions, CommandOutput};
@@ -40,7 +41,6 @@ use crate::error::{Error, Result};
 pub struct AppleContainerSandbox {
     pub config: SandboxConfig,
     effective_image: SharedSandboxImage,
-    name_generations: RwLock<HashMap<String, u32>>,
     tools_endpoints: RwLock<HashMap<String, ToolsServiceEndpoint>>,
 }
 
@@ -58,7 +58,6 @@ impl AppleContainerSandbox {
         Self {
             config,
             effective_image,
-            name_generations: RwLock::new(HashMap::new()),
             tools_endpoints: RwLock::new(HashMap::new()),
         }
     }
@@ -70,42 +69,8 @@ impl AppleContainerSandbox {
             .unwrap_or("chelix-sandbox")
     }
 
-    fn base_container_name(&self, id: &SandboxId) -> String {
+    pub(crate) fn container_name(&self, id: &SandboxId) -> String {
         format!("{}-{}", self.container_prefix(), id.key)
-    }
-
-    pub(crate) async fn container_name(&self, id: &SandboxId) -> String {
-        let base = self.base_container_name(id);
-        let generation = self
-            .name_generations
-            .read()
-            .await
-            .get(&id.key)
-            .copied()
-            .unwrap_or(0);
-        if generation == 0 {
-            base
-        } else {
-            format!("{base}-g{generation}")
-        }
-    }
-
-    pub(crate) async fn bump_container_generation(&self, id: &SandboxId) -> String {
-        let next_generation = {
-            let mut generations = self.name_generations.write().await;
-            let entry = generations.entry(id.key.clone()).or_insert(0);
-            *entry += 1;
-            *entry
-        };
-        let base = self.base_container_name(id);
-        let next_name = format!("{base}-g{next_generation}");
-        warn!(
-            session_key = %id.key,
-            generation = next_generation,
-            name = %next_name,
-            "rotating apple container name generation after stale container conflict"
-        );
-        next_name
     }
 
     fn image_repo(&self) -> &str {
@@ -167,162 +132,106 @@ impl AppleContainerSandbox {
             .is_ok_and(|o| o.status.success())
     }
 
-    async fn container_exists(name: &str) -> Result<bool> {
+    async fn list_containers() -> Result<Vec<AppleManagedContainer>> {
+        let output = tokio::process::Command::new("container")
+            .args(["list", "--all", "--format", "json"])
+            .output()
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "container list failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        serde_json::from_slice(&output.stdout)
+            .map_err(|error| Error::message(format!("invalid container list JSON: {error}")))
+    }
+
+    async fn inspect_container(name: &str) -> Result<AppleManagedContainer> {
         let output = tokio::process::Command::new("container")
             .args(["inspect", name])
             .output()
             .await?;
         if !output.status.success() {
-            return Ok(false);
+            return Err(Error::message(format!(
+                "container inspect failed for {name}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
         }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(!(stdout.trim().is_empty() || stdout.trim() == "[]"))
+        let entries: Vec<AppleManagedContainer> = serde_json::from_slice(&output.stdout)
+            .map_err(|error| Error::message(format!("invalid container inspect JSON: {error}")))?;
+        entries
+            .into_iter()
+            .find(|container| container.id == name)
+            .ok_or_else(|| {
+                Error::message(format!("container inspect returned no record for {name}"))
+            })
     }
 
-    async fn remove_container_force(name: &str) {
-        let remove = tokio::process::Command::new("container")
-            .args(["rm", "-f", name])
+    async fn container_command(command: &str, name: &str) -> Result<()> {
+        let output = tokio::process::Command::new("container")
+            .args([command, name])
             .output()
-            .await;
-
-        match remove {
-            Ok(output) if output.status.success() => {
-                info!(name, "removed stale apple container");
-            },
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                debug!(name, %stderr, "failed to remove stale apple container");
-            },
-            Err(e) => {
-                debug!(name, error = %e, "failed to run apple container remove command");
-            },
-        }
-    }
-
-    async fn wait_for_container_absent(name: &str) {
-        const MAX_WAIT_ITERS: usize = 20;
-        const WAIT_MS: u64 = 100;
-
-        for _ in 0..MAX_WAIT_ITERS {
-            match Self::container_exists(name).await {
-                Ok(false) => return,
-                Ok(true) => tokio::time::sleep(std::time::Duration::from_millis(WAIT_MS)).await,
-                Err(e) => {
-                    debug!(name, error = %e, "failed while waiting for container removal");
-                    return;
-                },
-            }
-        }
-    }
-
-    async fn wait_for_container_running(name: &str) -> Result<()> {
-        const MAX_WAIT_ITERS: usize = 20;
-        const WAIT_MS: u64 = 100;
-
-        for attempt in 0..MAX_WAIT_ITERS {
-            let output = tokio::process::Command::new("container")
-                .args(["inspect", name])
-                .output()
-                .await;
-
-            match output {
-                Ok(output) if output.status.success() => {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    match apple_container_status_from_inspect(&stdout) {
-                        Some("running") => return Ok(()),
-                        Some("stopped") => {
-                            return Err(Error::message(format!(
-                                "container {name} failed to stay running after startup"
-                            )));
-                        },
-                        _ => {},
-                    }
-
-                    // `container run -d` can return before inspect status flips to
-                    // "running". Keep polling briefly before we declare failure.
-                    if attempt + 1 < MAX_WAIT_ITERS {
-                        tokio::time::sleep(std::time::Duration::from_millis(WAIT_MS)).await;
-                        continue;
-                    }
-
-                    return Err(Error::message(format!(
-                        "container {name} did not report running state after startup"
-                    )));
-                },
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    if attempt + 1 < MAX_WAIT_ITERS {
-                        debug!(
-                            name,
-                            attempt,
-                            %stderr,
-                            "container inspect failed while waiting for running state, retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(WAIT_MS)).await;
-                        continue;
-                    }
-                    return Err(Error::message(format!(
-                        "container inspect failed for {name} while waiting for running state: {}",
-                        stderr.trim()
-                    )));
-                },
-                Err(e) => {
-                    if attempt + 1 < MAX_WAIT_ITERS {
-                        debug!(
-                            name,
-                            attempt,
-                            error = %e,
-                            "container inspect command failed while waiting for running state, retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(WAIT_MS)).await;
-                        continue;
-                    }
-                    return Err(e.into());
-                },
-            }
-        }
-
-        Err(Error::message(format!(
-            "container {name} did not become running after startup"
-        )))
-    }
-
-    async fn force_remove_and_wait(name: &str) {
-        Self::remove_container_force(name).await;
-        Self::wait_for_container_absent(name).await;
-    }
-
-    /// Inspect the container and return its current state.
-    async fn inspect_container_state(name: &str) -> ContainerState {
-        let output = match tokio::process::Command::new("container")
-            .args(["inspect", name])
-            .output()
-            .await
-        {
-            Ok(o) => o,
-            Err(_) => return ContainerState::Unknown,
-        };
-
+            .await?;
         if !output.status.success() {
-            return ContainerState::NotFound;
+            return Err(Error::message(format!(
+                "container {command} failed for {name}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
         }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.is_empty() || trimmed == "[]" {
-            return ContainerState::NotFound;
-        }
-
-        match apple_container_status_from_inspect(&stdout) {
-            Some("running") => ContainerState::Running,
-            Some("stopped") => ContainerState::Stopped,
-            _ => ContainerState::Unknown,
-        }
+        Ok(())
     }
 
-    /// Try to create and start a container. Classifies errors into
-    /// `CreateError` variants so the caller can decide the right recovery.
+    fn endpoint_from_inspect(container: &AppleManagedContainer) -> Result<ToolsServiceEndpoint> {
+        if container.status.state != AppleContainerState::Running {
+            return Err(Error::message(format!(
+                "container {} is not running: {:?}",
+                container.id, container.status.state
+            )));
+        }
+        let token_prefix = format!("{TOOLS_SERVICE_TOKEN_ENV}=");
+        let token = container
+            .configuration
+            .init_process
+            .environment
+            .iter()
+            .find_map(|value| {
+                value
+                    .strip_prefix(&token_prefix)
+                    .filter(|token| !token.is_empty())
+            })
+            .ok_or_else(|| {
+                Error::message(format!(
+                    "container {} has no tools service token",
+                    container.id
+                ))
+            })?;
+        let port = container
+            .configuration
+            .published_ports
+            .iter()
+            .find(|port| {
+                port.container_port == TOOLS_SERVICE_CONTAINER_PORT
+                    && port.proto == ApplePublishProtocol::Tcp
+                    && port.count == 1
+                    && port.host_port != 0
+            })
+            .ok_or_else(|| {
+                Error::message(format!(
+                    "container {} has no published tools service port",
+                    container.id
+                ))
+            })?;
+        let host = match port.host_address {
+            std::net::IpAddr::V4(address) => address.to_string(),
+            std::net::IpAddr::V6(address) => format!("[{address}]"),
+        };
+        Ok(ToolsServiceEndpoint {
+            base_url: format!("http://{host}:{}", port.host_port),
+            token: token.to_string(),
+        })
+    }
+
     async fn run_container(
         name: &str,
         image: &str,
@@ -331,12 +240,12 @@ impl AppleContainerSandbox {
         endpoint: &ToolsServiceEndpoint,
         terminal_cols: u16,
         terminal_rows: u16,
-    ) -> std::result::Result<(), CreateError> {
+    ) -> Result<()> {
         let port = endpoint
             .base_url
             .rsplit_once(':')
             .and_then(|(_, port)| port.parse::<u16>().ok())
-            .ok_or_else(|| CreateError::Other("invalid tools service endpoint port".into()))?;
+            .ok_or_else(|| Error::message("invalid tools service endpoint port"))?;
         let args = apple_container_run_args(
             name,
             image,
@@ -347,25 +256,53 @@ impl AppleContainerSandbox {
             terminal_cols,
             terminal_rows,
         );
-
         let output = tokio::process::Command::new("container")
             .args(&args)
             .output()
-            .await
-            .map_err(|e| CreateError::Other(format!("failed to run container command: {e}")))?;
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "container run failed for {name}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(())
+    }
 
-        if output.status.success() {
-            return Ok(());
+    async fn update_tools_service(name: &str) -> Result<()> {
+        let artifact = sandbox_tools_service_artifact()?;
+        let temporary = format!("{TOOLS_SERVICE_INSTALL_PATH}.{}", uuid::Uuid::new_v4());
+        let output = tokio::process::Command::new("container")
+            .arg("cp")
+            .arg(&artifact)
+            .arg(format!("{name}:{temporary}"))
+            .output()
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "container cp failed for {name}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
         }
-
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if is_apple_container_service_error(&stderr) {
-            return Err(CreateError::ServiceDown);
+        let output = tokio::process::Command::new("container")
+            .args([
+                "exec",
+                name,
+                "mv",
+                "-f",
+                &temporary,
+                TOOLS_SERVICE_INSTALL_PATH,
+            ])
+            .output()
+            .await?;
+        if !output.status.success() {
+            return Err(Error::message(format!(
+                "container exec mv failed for {name}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
         }
-        if is_apple_container_exists_error(&stderr) {
-            return Err(CreateError::AlreadyExists);
-        }
-        Err(CreateError::Other(stderr))
+        Self::container_command("stop", name).await?;
+        Self::container_command("start", name).await
     }
 
     fn allocate_tools_endpoint() -> Result<ToolsServiceEndpoint> {
@@ -382,37 +319,22 @@ impl AppleContainerSandbox {
         })
     }
 
-    async fn wait_for_tools_health(endpoint: &ToolsServiceEndpoint) -> Result<()> {
+    async fn wait_for_tools_health(endpoint: &ToolsServiceEndpoint) -> Result<ToolsHealthStatus> {
         const MAX_ATTEMPTS: usize = 50;
         const RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(2))
-            .build()?;
+        let client = reqwest::Client::new();
         let mut last_error = String::new();
-        for _ in 0..MAX_ATTEMPTS {
-            match client
-                .get(format!(
-                    "{}{}",
-                    endpoint.base_url, TOOLS_SERVICE_HEALTH_PATH
-                ))
-                .bearer_auth(&endpoint.token)
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    let health = response.json::<ToolsServiceHealth>().await?;
-                    if health.protocol_version == TOOLS_SERVICE_PROTOCOL_VERSION {
-                        return Ok(());
-                    }
-                    last_error = format!(
-                        "protocol mismatch: expected {}, got {}",
-                        TOOLS_SERVICE_PROTOCOL_VERSION, health.protocol_version
-                    );
+        for attempt in 0..MAX_ATTEMPTS {
+            match probe_tools_health(&client, endpoint).await {
+                Ok(health) => return Ok(health),
+                Err(error) => {
+                    warn!(attempt, %error, "apple container tools health retry");
+                    last_error = error.to_string();
                 },
-                Ok(response) => last_error = format!("health returned {}", response.status()),
-                Err(error) => last_error = error.to_string(),
             }
-            tokio::time::sleep(RETRY_DELAY).await;
+            if attempt + 1 < MAX_ATTEMPTS {
+                tokio::time::sleep(RETRY_DELAY).await;
+            }
         }
         Err(Error::message(format!(
             "apple container tools service did not become ready: {last_error}"
@@ -425,112 +347,6 @@ impl AppleContainerSandbox {
             .await
             .insert(name.to_string(), endpoint);
     }
-
-    /// Capture the last N lines of container logs (stdout + stderr).
-    /// Returns `None` if logs cannot be retrieved.
-    async fn capture_container_logs(name: &str, max_lines: usize) -> Option<String> {
-        let output = tokio::process::Command::new("container")
-            .args(["logs", name])
-            .output()
-            .await
-            .ok()?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let mut combined = String::new();
-        if !stdout.trim().is_empty() {
-            combined.push_str(&stdout);
-        }
-        if !stderr.trim().is_empty() {
-            if !combined.is_empty() {
-                combined.push('\n');
-            }
-            combined.push_str(&stderr);
-        }
-        if combined.trim().is_empty() {
-            return None;
-        }
-
-        // Keep only the last N lines.
-        let lines: Vec<&str> = combined.lines().collect();
-        let tail = if lines.len() > max_lines {
-            &lines[lines.len() - max_lines..]
-        } else {
-            &lines
-        };
-        Some(tail.join("\n"))
-    }
-
-    /// Collect diagnostic information when all recovery attempts have failed.
-    async fn diagnose_container_failure(name: &str) -> String {
-        let mut diagnostics = Vec::new();
-
-        // Check how many containers are currently running.
-        let list_output = tokio::process::Command::new("container")
-            .args(["list", "--format", "json"])
-            .output()
-            .await;
-        match list_output {
-            Ok(output) if output.status.success() => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let count = stdout.lines().count();
-                diagnostics.push(format!("running containers: {count}"));
-            },
-            _ => diagnostics.push("running containers: unknown (list failed)".to_string()),
-        }
-
-        // Check the state of the target container.
-        let state = Self::inspect_container_state(name).await;
-        diagnostics.push(format!("container '{name}' state: {state:?}"));
-
-        // Capture container logs — this is the most useful piece: it shows
-        // WHY the entrypoint exited (e.g. missing binary, image issues).
-        match Self::capture_container_logs(name, 10).await {
-            Some(logs) => diagnostics.push(format!("container logs: {logs}")),
-            None => diagnostics.push("container logs: (empty or unavailable)".to_string()),
-        }
-
-        // Check the service health.
-        let service_ok = tokio::process::Command::new("container")
-            .args(["system", "status"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await
-            .is_ok_and(|s| s.success());
-        diagnostics.push(format!(
-            "container service: {}",
-            if service_ok {
-                "running"
-            } else {
-                "not running"
-            }
-        ));
-
-        diagnostics.join("; ")
-    }
-}
-
-/// State of an Apple Container as observed via `container inspect`.
-#[cfg(any(target_os = "macos", test))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ContainerState {
-    Running,
-    Stopped,
-    NotFound,
-    Unknown,
-}
-
-/// Classification of container creation errors for recovery decisions.
-#[cfg(target_os = "macos")]
-#[derive(Debug)]
-enum CreateError {
-    /// The container name is already taken (stale metadata).
-    AlreadyExists,
-    /// The container service itself is down — retrying won't help.
-    ServiceDown,
-    /// Any other creation error.
-    Other(String),
 }
 
 /// Check whether the Apple Container system service is running.
@@ -586,59 +402,6 @@ pub fn ensure_apple_container_service() -> bool {
     try_start_apple_container_service()
 }
 
-/// Restart the Apple Container daemon by stopping then starting it.
-/// Used when the daemon is alive but its Virtualization.framework state is stale
-/// (e.g. after an interrupted macOS restart/sleep). Returns `true` on success.
-#[cfg(target_os = "macos")]
-fn restart_apple_container_service() -> bool {
-    tracing::warn!("apple container service unhealthy, restarting automatically");
-
-    let stop = std::process::Command::new("container")
-        .args(["system", "stop"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .status();
-    match stop {
-        Ok(status) if status.success() => {
-            tracing::info!("apple container service stopped");
-        },
-        Ok(status) => {
-            tracing::warn!(
-                exit_code = status.code(),
-                "failed to stop apple container service"
-            );
-            // Continue to try start anyway — stop may fail if already stopped.
-        },
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to stop apple container service");
-        },
-    }
-
-    try_start_apple_container_service()
-}
-
-/// Returns `true` when a freshly created container stopped immediately and
-/// produced no meaningful logs. This indicates the VM never fully booted —
-/// a broader symptom than the specific daemon-stale EINVAL signature. It can
-/// occur after macOS sleep/wake cycles, resource exhaustion, or
-/// Virtualization.framework glitches. The appropriate recovery is a full
-/// service restart, same as for daemon-stale errors.
-#[cfg(any(target_os = "macos", test))]
-pub(crate) fn is_apple_container_boot_failure(logs: Option<&str>) -> bool {
-    match logs {
-        None => true,
-        Some(text) => {
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
-                return true;
-            }
-            // Log-retrieval errors about a missing stdio.log mean
-            // the VM never produced any output.
-            trimmed.contains("stdio.log") && trimmed.contains("doesn't exist")
-        },
-    }
-}
-
 #[cfg(target_os = "macos")]
 #[async_trait]
 impl Sandbox for AppleContainerSandbox {
@@ -651,130 +414,64 @@ impl Sandbox for AppleContainerSandbox {
     }
 
     async fn ensure_ready(&self, id: &SandboxId) -> Result<()> {
-        let mut name = self.container_name(id).await;
-        let effective_image = self.effective_image.read().await.clone();
-        let image = self.resolve_local_image(&effective_image).await?;
-        let tz = self.config.timezone.as_deref();
-        let mounts = self.mount_specs(id)?;
-        let terminal_size = self
-            .config
-            .terminal_size
-            .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
-
-        const MAX_ATTEMPTS: usize = 3;
-        let mut daemon_restarted = false;
-
-        for attempt in 0..MAX_ATTEMPTS {
-            let is_last = attempt + 1 >= MAX_ATTEMPTS;
-            match Self::inspect_container_state(&name).await {
-                ContainerState::Running => {
-                    let endpoint = self.tools_endpoints.read().await.get(&name).cloned();
-                    if let Some(endpoint) = endpoint
-                        && Self::wait_for_tools_health(&endpoint).await.is_ok()
-                    {
-                        unmark_zombie(&name);
-                        return Ok(());
-                    }
-                    warn!(
-                        name,
-                        attempt,
-                        "apple container has no healthy runtime tools endpoint, recreating"
-                    );
-                    Self::force_remove_and_wait(&name).await;
-                    self.tools_endpoints.write().await.remove(&name);
+        let name = self.container_name(id);
+        let exists = Self::list_containers()
+            .await?
+            .iter()
+            .any(|container| container.id == name);
+        let mut endpoint = if exists {
+            let container = Self::inspect_container(&name).await?;
+            match container.status.state {
+                AppleContainerState::Running => Self::endpoint_from_inspect(&container)?,
+                AppleContainerState::Stopped => {
+                    Self::container_command("start", &name).await?;
+                    Self::endpoint_from_inspect(&Self::inspect_container(&name).await?)?
                 },
-                ContainerState::Stopped | ContainerState::Unknown => {
-                    Self::force_remove_and_wait(&name).await;
-                    self.tools_endpoints.write().await.remove(&name);
+                AppleContainerState::Unknown | AppleContainerState::Stopping => {
+                    return Err(Error::message(format!(
+                        "container {name} cannot be prepared in state {:?}",
+                        container.status.state
+                    )));
                 },
-                ContainerState::NotFound => {},
             }
-
+        } else {
+            let effective_image = self.effective_image.read().await.clone();
+            let image = self.resolve_local_image(&effective_image).await?;
+            let mounts = self.mount_specs(id)?;
+            let terminal_size = self
+                .config
+                .terminal_size
+                .ok_or_else(|| Error::message("tools.execute_command.terminal_size is required"))?;
             let endpoint = Self::allocate_tools_endpoint()?;
-            info!(name, image = %image, attempt, "creating apple tools service container");
-            match Self::run_container(
+            Self::run_container(
                 &name,
                 &image,
-                tz,
+                self.config.timezone.as_deref(),
                 &mounts,
                 &endpoint,
                 terminal_size.cols,
                 terminal_size.rows,
             )
-            .await
+            .await?;
+            Self::endpoint_from_inspect(&Self::inspect_container(&name).await?)?
+        };
+        if Self::wait_for_tools_health(&endpoint).await? == ToolsHealthStatus::ProtocolMismatch {
+            Self::update_tools_service(&name).await?;
+            endpoint = Self::endpoint_from_inspect(&Self::inspect_container(&name).await?)?;
+            if Self::wait_for_tools_health(&endpoint).await? == ToolsHealthStatus::ProtocolMismatch
             {
-                Ok(()) => {
-                    let readiness = async {
-                        Self::wait_for_container_running(&name).await?;
-                        Self::wait_for_tools_health(&endpoint).await
-                    }
-                    .await;
-                    match readiness {
-                        Ok(()) => {
-                            self.remember_tools_endpoint(&name, endpoint).await;
-                            unmark_zombie(&name);
-                            info!(name, image = %image, "apple tools service container ready");
-                            return Ok(());
-                        },
-                        Err(error) => {
-                            let logs = Self::capture_container_logs(&name, 5).await;
-                            Self::force_remove_and_wait(&name).await;
-                            self.tools_endpoints.write().await.remove(&name);
-                            if !daemon_restarted
-                                && is_apple_container_boot_failure(logs.as_deref())
-                                && restart_apple_container_service()
-                            {
-                                daemon_restarted = true;
-                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                                continue;
-                            }
-                            if is_last {
-                                let diagnostics = Self::diagnose_container_failure(&name).await;
-                                return Err(Error::message(format!(
-                                    "apple tools service container {name} did not become ready: {error:#}; diagnostics: {diagnostics}"
-                                )));
-                            }
-                        },
-                    }
-                },
-                Err(CreateError::AlreadyExists) => {
-                    Self::force_remove_and_wait(&name).await;
-                    self.tools_endpoints.write().await.remove(&name);
-                    name = self.bump_container_generation(id).await;
-                },
-                Err(CreateError::ServiceDown) => {
-                    return Err(Error::message(
-                        "apple container service is not running. Start it with `container system start` and restart chelix",
-                    ));
-                },
-                Err(CreateError::Other(error)) => {
-                    Self::force_remove_and_wait(&name).await;
-                    self.tools_endpoints.write().await.remove(&name);
-                    if is_apple_container_daemon_stale_error(&error)
-                        && !daemon_restarted
-                        && restart_apple_container_service()
-                    {
-                        daemon_restarted = true;
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        continue;
-                    }
-                    if is_last {
-                        let diagnostics = Self::diagnose_container_failure(&name).await;
-                        return Err(Error::message(format!(
-                            "container run failed for {name} (image={image}): {error}; diagnostics: {diagnostics}"
-                        )));
-                    }
-                },
+                return Err(Error::message(format!(
+                    "tools service protocol mismatch in container {name} after update"
+                )));
             }
         }
-
-        Err(Error::message(format!(
-            "apple tools service container {name} failed after {MAX_ATTEMPTS} attempts"
-        )))
+        self.remember_tools_endpoint(&name, endpoint).await;
+        unmark_zombie(&name);
+        Ok(())
     }
 
     async fn tools_service_endpoint(&self, id: &SandboxId) -> Result<ToolsServiceEndpoint> {
-        let name = self.container_name(id).await;
+        let name = self.container_name(id);
         self.tools_endpoints
             .read()
             .await
@@ -803,13 +500,30 @@ impl Sandbox for AppleContainerSandbox {
         Ok(instances)
     }
 
+    async fn existing_container_ids(&self) -> Result<Vec<String>> {
+        let prefix = format!("{}-", self.container_prefix());
+        Self::list_containers()
+            .await?
+            .into_iter()
+            .filter_map(|container| container.id.strip_prefix(&prefix).map(str::to_string))
+            .map(|id| {
+                if id.is_empty() || sanitize_path_component(&id) != id {
+                    return Err(Error::message(format!(
+                        "invalid managed container ID: {id}"
+                    )));
+                }
+                Ok(id)
+            })
+            .collect()
+    }
+
     async fn run_command(
         &self,
         id: &SandboxId,
         command: &str,
         opts: &CommandOptions,
     ) -> Result<CommandOutput> {
-        let name = self.container_name(id).await;
+        let name = self.container_name(id);
         info!(
             name,
             command = %opts.log_policy.for_log(command),
@@ -954,33 +668,25 @@ impl Sandbox for AppleContainerSandbox {
     }
 
     async fn cleanup(&self, id: &SandboxId) -> Result<()> {
-        let base = self.base_container_name(id);
-        let max_generation = self
-            .name_generations
-            .read()
-            .await
-            .get(&id.key)
-            .copied()
-            .unwrap_or(0);
-
-        for generation in 0..=max_generation {
-            let name = if generation == 0 {
-                base.clone()
-            } else {
-                format!("{base}-g{generation}")
-            };
-            info!(name, "cleaning up apple container");
-            let _ = tokio::process::Command::new("container")
-                .args(["stop", &name])
+        let name = self.container_name(id);
+        if Self::list_containers()
+            .await?
+            .iter()
+            .any(|container| container.id == name)
+        {
+            let output = tokio::process::Command::new("container")
+                .args(["rm", "--force", &name])
                 .output()
-                .await;
-            let _ = tokio::process::Command::new("container")
-                .args(["rm", &name])
-                .output()
-                .await;
-            self.tools_endpoints.write().await.remove(&name);
+                .await?;
+            if !output.status.success() {
+                return Err(Error::message(format!(
+                    "container rm --force failed for {name}: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
         }
-        self.name_generations.write().await.remove(&id.key);
+        self.tools_endpoints.write().await.remove(&name);
+        unmark_zombie(&name);
         Ok(())
     }
 }

@@ -188,6 +188,9 @@ CUSTOM_VAR = "some-value"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#;
     let result = validate_toml_str(toml);
     let errors: Vec<_> = result

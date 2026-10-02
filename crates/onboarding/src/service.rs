@@ -284,6 +284,7 @@ mod tests {
 
     fn write_config(path: &std::path::Path, default_id: &str) {
         let mut config = ChelixConfig::default();
+        config.sandbox.archived_session_retention_days = Some(3);
         config.tools.execute_command.terminal_size =
             Some(chelix_config::schema::TerminalSizeConfig {
                 cols: 115,
@@ -407,6 +408,7 @@ mod tests {
         chelix_config::set_data_dir(dir.path().to_path_buf());
         let config_path = dir.path().join("chelix.toml");
         let mut config = ChelixConfig::default();
+        config.sandbox.archived_session_retention_days = Some(3);
         config.tools.execute_command.terminal_size =
             Some(chelix_config::schema::TerminalSizeConfig {
                 cols: 115,

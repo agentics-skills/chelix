@@ -9,8 +9,9 @@
 
 /// Generate the default config template with a specific port.
 ///
-/// The template is override-only: the installation-specific port and
-/// `tools.execute_command.terminal_size` are active values. All other settings
+/// The template is override-only: the installation-specific port,
+/// `tools.execute_command.terminal_size`, and
+/// `sandbox.archived_session_retention_days` are active values. All other settings
 /// are commented out with documentation so users can see what's available
 /// without accidentally freezing defaults.
 pub fn default_config_template(port: u16) -> String {
@@ -242,7 +243,8 @@ port = {port}                           # Port number (auto-generated for this i
 # ══════════════════════════════════════════════════════════════════════════════
 # Agent sessions and command execution can run inside isolated containers for security.
 
-# [sandbox]
+[sandbox]
+archived_session_retention_days = 7  # Days from owner metadata updated_at; required for On; 0 = first scan
 # mode = "On"                       # "On" | "Off"; global for every session
 # scope = "session"                 # "session" | "agent" | "shared"
 # backend = "docker"                # "docker" | "podman" | "apple-container"

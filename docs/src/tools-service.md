@@ -444,14 +444,21 @@ chelix-tools-service --listen 0.0.0.0:43271 --terminal-cols 115 --terminal-rows 
 ```
 
 The backend generates a token for each container and passes it through
-`CHELIX_TOOLS_SERVICE_TOKEN`. Chelix keeps the selected endpoint and token in the
-backend's in-memory runtime map. `ToolsServiceEndpoint` redacts the token from
-its `Debug` output.
+`CHELIX_TOOLS_SERVICE_TOKEN`. Chelix caches the selected endpoint and token in
+memory and restores them from container `inspect` after a container-runtime
+reboot. `ToolsServiceEndpoint` redacts the token from its `Debug` output.
+
+Session containers persist across stops. Chelix reuses a stopped container with
+`start` and checks authenticated protocol health before accepting its endpoint.
+On a protocol mismatch, it copies the current Linux tools-service binary to
+`/usr/local/bin/chelix-tools-service`, restarts the container, and checks health
+again. Copy, restart, and final health errors propagate to the caller.
 
 ### Docker and Podman
 
-Docker and Podman publish container port `43271` to a random port bound to the
-container host's loopback interface:
+Docker and Podman launch persistent session sandboxes with explicit `--restart=no`.
+They publish container port `43271` to a random port bound to
+the container host's loopback interface:
 
 ```text
 127.0.0.1::43271
@@ -463,7 +470,7 @@ Chelix then obtains two transport classes from the OCI runtime:
 2. the container IPv4 address from backend-specific `inspect` fields (Docker's
    per-network endpoint data or Podman's native network settings).
 
-Candidates are discovered once for each container generation and tried in that
+Candidates are discovered on container creation or recovery and tried in that
 order. Readiness retries repeat only the authenticated `/v1/health` probes;
 they do not respawn `docker port` or `docker inspect` on every attempt. Chelix
 selects the first endpoint whose health response reports protocol version `18`.
@@ -482,17 +489,19 @@ See Docker's documentation for
 [bridge networks](https://docs.docker.com/engine/network/drivers/bridge/) and
 [port publishing](https://docs.docker.com/engine/network/port-publishing/).
 
-If no candidate passes the authenticated readiness check, startup of that
-sandbox fails and Chelix runs `docker rm -f` or `podman rm -f` for the container
-instead of retaining an unready sandbox.
+If no candidate passes the authenticated readiness check, sandbox preparation
+returns the final health error and retains the container.
 
 Before each tools-service call in global `On` mode, the router prepares the
-container lifecycle instance again. Docker and Podman verify both that the
-container is running and that the cached endpoint still passes authenticated
-health. A stopped, removed, or OOM-killed container is recreated with a new
-token, published port, and container address. If the container is still running
-but its network endpoint changed, Chelix performs fresh endpoint discovery
-before deciding to recreate it.
+container lifecycle instance again. Docker and Podman verify container state
+and authenticated endpoint health. Existing stopped containers are started
+rather than recreated; token and endpoint recovery uses `inspect`. A missing
+container is created on demand.
+
+Prebuilt sandbox images retain the read-only root filesystem hardening when
+`workspace_sysmount = "ro"`. Docker `cp` cannot replace the tools-service binary
+in that read-only root filesystem; its explicit copy error is returned and the
+container is retained.
 
 A container can also disappear after this preflight check and before or during
 the HTTP request. For that race, an availability, authentication, or protocol
@@ -505,7 +514,29 @@ remains fail-closed and never reroutes a sandbox call to the host service.
 The Apple Container backend reserves an available host loopback port before
 launch, publishes it explicitly to container port `43271`, and waits for the
 same authenticated protocol-version health check. The service remains the
-container workload.
+container workload. Session sandboxes persist across stops and are reused
+with `start`; token and endpoint recovery uses `inspect` after a runtime reboot.
+
+For a protocol mismatch, Apple Container copies the current binary to a
+temporary file next to `/usr/local/bin/chelix-tools-service`, uses `exec mv` to
+replace the installed binary, and performs `stop`/`start`. Copy, replacement,
+restart, and final health failures propagate to the caller.
+
+### Archived owners and deletion
+
+`sandbox.archived_session_retention_days` sets archived-owner container
+retention in days. It is mandatory only in global `On` mode, has no runtime
+default, and accepts `0` for deletion at the first reconciliation scan. The
+configuration template and documentation examples explicitly use `7`.
+
+Archiving retains the container until the configured period has elapsed from
+the owner's existing session metadata `updated_at`. Archive and other metadata
+edits update that timestamp. The gateway launches the first reconciliation scan
+in the background at startup, then repeats it every 24 hours. Only containers
+matching existing archived owner sessions are eligible. Deleting an owner
+session issues one `rm -fv` for Docker/Podman. Apple Container checks existence
+with `list --all`, then issues one `rm --force`. Delegated children use that
+same container.
 
 ## Deterministic image identity
 
@@ -592,6 +623,7 @@ docker network create chelix-sandbox-net
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 network = "chelix-sandbox-net"
 ```
 

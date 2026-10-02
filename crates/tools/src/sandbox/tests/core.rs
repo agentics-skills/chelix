@@ -194,12 +194,22 @@ fn test_sandbox_config_serde() {
         "scope": "session",
         "workspace_sysmount": "rw",
         "network": "custom-net",
+        "archived_session_retention_days": 30,
         "resource_limits": {"memory_limit": "1G"}
     }"#;
     let config: SandboxConfig = serde_json::from_str(json).unwrap();
     assert_eq!(config.mode, SandboxMode::On);
     assert_eq!(config.workspace_sysmount, WorkspaceSysmount::Rw);
     assert_eq!(config.network, "custom-net");
+    assert_eq!(config.archived_session_retention_days, Some(30));
+    let service_config = chelix_config::schema::SandboxConfig {
+        archived_session_retention_days: Some(30),
+        ..Default::default()
+    };
+    assert_eq!(
+        SandboxConfig::from(&service_config).archived_session_retention_days,
+        Some(30)
+    );
     assert_eq!(config.resource_limits.memory_limit.as_deref(), Some("1G"));
 }
 
@@ -438,18 +448,45 @@ async fn test_provisioning_guard_skips_second_call() {
     }
 }
 
+#[cfg(unix)]
 #[tokio::test]
-async fn test_provisioning_guard_cleared_on_cleanup_entry() {
-    let docker = DockerSandbox::new(SandboxConfig::default());
-    let name = "chelix-sandbox-test-cleanup";
+async fn test_provisioning_guard_cleared_only_after_successful_cleanup() {
+    use std::os::unix::fs::PermissionsExt;
 
-    // Mark as provisioned.
-    docker.provisioned.lock().await.insert(name.to_string());
-    assert!(docker.provisioned.lock().await.contains(name));
+    let directory = tempfile::tempdir().unwrap();
+    let cli = directory.path().join("container-cli");
+    let allow_removal = directory.path().join("container-cli.allow-removal");
+    std::fs::write(
+        &cli,
+        r#"#!/bin/sh
+if [ "$1" != rm ] || [ "$2" != -fv ] || [ "$3" != chelix-sandbox-test-cleanup ]; then exit 64; fi
+if [ ! -f "${0}.allow-removal" ]; then
+  printf 'cleanup denied\n' >&2
+  exit 23
+fi
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
+    let docker = DockerSandbox::with_cli(SandboxConfig::default(), cli);
+    let id = SandboxId {
+        scope: SandboxScope::Session,
+        key: "test-cleanup".into(),
+    };
+    let name = docker.container_name(&id);
+    let gate = docker.startup_gate_for(&name).await;
+    docker.provisioned.lock().await.insert(name.clone());
 
-    // Simulate cleanup clearing the entry.
-    docker.provisioned.lock().await.remove(name);
-    assert!(!docker.provisioned.lock().await.contains(name));
+    let error = docker.cleanup(&id).await.unwrap_err();
+    assert!(error.to_string().contains("cleanup denied"));
+    assert!(docker.provisioned.lock().await.contains(&name));
+    assert!(Arc::ptr_eq(&gate, &docker.startup_gate_for(&name).await));
+
+    std::fs::write(allow_removal, "").unwrap();
+    docker.cleanup(&id).await.unwrap();
+    assert!(!docker.provisioned.lock().await.contains(&name));
+    assert!(!Arc::ptr_eq(&gate, &docker.startup_gate_for(&name).await));
 }
 
 #[tokio::test]

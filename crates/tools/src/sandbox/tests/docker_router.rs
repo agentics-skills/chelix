@@ -92,24 +92,6 @@ async fn test_docker_startup_gate_allows_different_containers() {
     let _second_permit = second.try_acquire().unwrap();
 }
 
-#[test]
-fn test_container_name_conflict_detection() {
-    assert!(is_container_name_conflict(
-        "docker: Error response from daemon: Conflict. The container name \
-         \"/chelix-myagent-sandbox-cron-57120844\" is already in use by container \
-         \"7587022e73ff\"."
-    ));
-    assert!(is_container_name_conflict(
-        "Error: creating container storage: the name \"chelix-sandbox-main\" is already in use"
-    ));
-    assert!(!is_container_name_conflict(
-        "Error response from daemon: pull access denied for image"
-    ));
-    assert!(!is_container_name_conflict(
-        "Error: creating container storage: the namespace \"chelix-sandbox-main\" is already in use"
-    ));
-}
-
 /// Helper: build a `SandboxRouter` with a deterministic backend so tests
 /// don't depend on the host having Docker / Apple Container installed.
 fn router_with_real_backend(config: SandboxConfig) -> SandboxRouter {
@@ -386,12 +368,40 @@ async fn test_select_reachable_tools_service_endpoint_skips_unreachable_candidat
         .build()
         .unwrap();
 
-    let selected = select_reachable_tools_service_endpoint(&client, &candidates)
+    let (selected, status) = select_reachable_tools_service_endpoint(&client, &candidates)
         .await
         .unwrap();
 
+    assert_eq!(status, ToolsHealthStatus::Ready);
     assert_eq!(selected.base_url, server.url());
     health.assert_async().await;
+
+    let mut mismatch_server = mockito::Server::new_async().await;
+    let mismatch = mismatch_server
+        .mock("GET", TOOLS_SERVICE_HEALTH_PATH)
+        .match_header("authorization", "Bearer test-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(format!(
+            "{{\"protocolVersion\":{}}}",
+            TOOLS_SERVICE_PROTOCOL_VERSION + 1
+        ))
+        .expect(1)
+        .create_async()
+        .await;
+    let candidates = vec![
+        ToolsServiceEndpoint {
+            base_url: mismatch_server.url(),
+            token: "test-token".into(),
+        },
+        candidates[1].clone(),
+    ];
+    let (selected, status) = select_reachable_tools_service_endpoint(&client, &candidates)
+        .await
+        .unwrap();
+    assert_eq!(status, ToolsHealthStatus::ProtocolMismatch);
+    assert_eq!(selected.base_url, mismatch_server.url());
+    mismatch.assert_async().await;
 }
 
 #[cfg(unix)]
@@ -450,15 +460,50 @@ async fn test_discover_tools_service_endpoint_runs_oci_discovery_once() {
     let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
     let sandbox = DockerSandbox::with_cli(SandboxConfig::default(), cli);
 
-    let endpoint = sandbox
+    let (endpoint, status) = sandbox
         .discover_tools_service_endpoint("sandbox-name", "test-token".into())
         .await
         .unwrap();
 
+    assert_eq!(status, ToolsHealthStatus::Ready);
     assert_eq!(endpoint.base_url, format!("http://127.0.0.1:{port}"));
     assert_eq!(health_requests.load(Ordering::SeqCst), 3);
-    assert_eq!(std::fs::read_to_string(calls).unwrap(), "port\ninspect\n");
+    assert_eq!(std::fs::read_to_string(&calls).unwrap(), "port\ninspect\n");
     server.await.unwrap();
+
+    let mut mismatch_server = mockito::Server::new_async().await;
+    let mismatch = mismatch_server
+        .mock("GET", TOOLS_SERVICE_HEALTH_PATH)
+        .match_header("authorization", "Bearer test-token")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(format!(
+            "{{\"protocolVersion\":{}}}",
+            TOOLS_SERVICE_PROTOCOL_VERSION + 1
+        ))
+        .expect(1)
+        .create_async()
+        .await;
+    let mismatch_port = mismatch_server
+        .url()
+        .rsplit_once(':')
+        .unwrap()
+        .1
+        .parse::<u16>()
+        .unwrap();
+    std::fs::write(cli, format!(
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"${{0}}.calls\"\ncase \"$1\" in\n  port) printf '127.0.0.1:{mismatch_port}\\n' ;;\n  inspect) printf '\\n' ;;\n  *) exit 64 ;;\nesac\n"
+    )).unwrap();
+    let (_, status) = sandbox
+        .discover_tools_service_endpoint("sandbox-name", "test-token".into())
+        .await
+        .unwrap();
+    assert_eq!(status, ToolsHealthStatus::ProtocolMismatch);
+    assert_eq!(
+        std::fs::read_to_string(calls).unwrap(),
+        "port\ninspect\nport\ninspect\n"
+    );
+    mismatch.assert_async().await;
 }
 
 #[cfg(unix)]
@@ -485,7 +530,7 @@ async fn spawn_single_health_server() -> (u16, tokio::task::JoinHandle<()>) {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_ensure_ready_recreates_stopped_container_with_fresh_endpoint() {
+async fn test_ensure_ready_starts_stopped_container_and_restores_endpoint() {
     use std::os::unix::fs::PermissionsExt;
 
     let (first_port, first_health) = spawn_single_health_server().await;
@@ -495,42 +540,122 @@ async fn test_ensure_ready_recreates_stopped_container_with_fresh_endpoint() {
     let state = directory.path().join("container-cli.state");
     let generation = directory.path().join("container-cli.generation");
     let removals = directory.path().join("container-cli.removals");
+    let starts = directory.path().join("container-cli.starts");
+    let token = directory.path().join("container-cli.token");
     std::fs::write(&state, "missing\n").unwrap();
     std::fs::write(&generation, "0\n").unwrap();
     std::fs::write(&removals, "0\n").unwrap();
+    std::fs::write(&starts, "0\n").unwrap();
     std::fs::write(
         &cli,
         format!(
-            "#!/bin/sh\nstate_file=\"${{0}}.state\"\ngeneration_file=\"${{0}}.generation\"\nremovals_file=\"${{0}}.removals\"\ncase \"$1\" in\n  image) exit 0 ;;\n  inspect)\n    if [ \"$3\" = '{{{{.State.Running}}}}' ]; then\n      if [ \"$(cat \"$state_file\")\" = running ]; then printf 'true\\n'; else printf 'false\\n'; fi\n    else\n      printf '\\n'\n    fi\n    ;;\n  run)\n    if [ \"$(cat \"$state_file\")\" != missing ]; then\n      printf 'Error response from daemon: the container name is already in use\\n' >&2\n      exit 125\n    fi\n    next=$(( $(cat \"$generation_file\") + 1 ))\n    printf '%s\\n' \"$next\" > \"$generation_file\"\n    printf 'running\\n' > \"$state_file\"\n    ;;\n  port)\n    if [ \"$(cat \"$generation_file\")\" = 1 ]; then printf '127.0.0.1:{first_port}\\n'; else printf '127.0.0.1:{second_port}\\n'; fi\n    ;;\n  rm)\n    next=$(( $(cat \"$removals_file\") + 1 ))\n    printf '%s\\n' \"$next\" > \"$removals_file\"\n    printf 'missing\\n' > \"$state_file\"\n    ;;\n  *) exit 64 ;;\nesac\n"
+            r#"#!/bin/sh
+state_file="${{0}}.state"
+generation_file="${{0}}.generation"
+removals_file="${{0}}.removals"
+starts_file="${{0}}.starts"
+token_file="${{0}}.token"
+case "$1" in
+  image) exit 0 ;;
+  ps)
+    if [ -f "${{0}}.fail-list" ]; then printf 'listing denied\n' >&2; exit 23; fi
+    if [ "$(cat "$state_file")" != missing ]; then
+      printf 'chelix-sandbox-oom-recovery\n'
+      printf 'other-chelix-sandbox-session\n'
+    fi
+    ;;
+  inspect)
+    if [ -f "${{0}}.fail-inspect" ]; then printf 'inspection denied\n' >&2; exit 23; fi
+    if [ "$3" = '{{{{json .}}}}' ]; then
+      if [ "$(cat "$state_file")" = missing ]; then exit 1; fi
+      running=false
+      if [ "$(cat "$state_file")" = running ]; then running=true; fi
+      printf '{{"State":{{"Running":%s}},"Config":{{"Image":"test-image:latest","Env":["CHELIX_TOOLS_SERVICE_TOKEN=%s"]}}}}\n' "$running" "$(cat "$token_file")"
+    else
+      printf '\n'
+    fi
+    ;;
+  run)
+    if [ "$3" != --restart=no ]; then exit 64; fi
+    if [ "$(cat "$state_file")" != missing ]; then exit 125; fi
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        CHELIX_TOOLS_SERVICE_TOKEN=*) printf '%s\n' "${{1#CHELIX_TOOLS_SERVICE_TOKEN=}}" > "$token_file" ;;
+        --rm) exit 64 ;;
+      esac
+      shift
+    done
+    next=$(( $(cat "$generation_file") + 1 ))
+    printf '%s\n' "$next" > "$generation_file"
+    printf 'running\n' > "$state_file"
+    ;;
+  start)
+    if [ -f "${{0}}.fail-start" ]; then printf 'start denied\n' >&2; exit 23; fi
+    if [ "$2" != chelix-sandbox-oom-recovery ]; then exit 64; fi
+    next=$(( $(cat "$starts_file") + 1 ))
+    printf '%s\n' "$next" > "$starts_file"
+    printf 'running\n' > "$state_file"
+    ;;
+  port)
+    if [ "$(cat "$starts_file")" = 0 ]; then printf '127.0.0.1:{first_port}\n'; else printf '127.0.0.1:{second_port}\n'; fi
+    ;;
+  rm)
+    if [ "$2" != -fv ]; then exit 64; fi
+    next=$(( $(cat "$removals_file") + 1 ))
+    printf '%s\n' "$next" > "$removals_file"
+    printf 'missing\n' > "$state_file"
+    ;;
+  *) exit 64 ;;
+esac
+"#
         ),
     )
     .unwrap();
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
     let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
-    let sandbox = DockerSandbox::with_cli(
-        SandboxConfig {
-            home_persistence: HomePersistence::Off,
-            host_data_dir: Some(directory.path().join("data")),
-            image: Some("test-image:latest".into()),
-            terminal_size: Some(chelix_config::schema::TerminalSizeConfig {
-                cols: 115,
-                rows: 58,
-            }),
-            ..Default::default()
-        },
-        cli,
-    );
+    let config = SandboxConfig {
+        home_persistence: HomePersistence::Off,
+        host_data_dir: Some(directory.path().join("data")),
+        image: Some("test-image:latest".into()),
+        terminal_size: Some(chelix_config::schema::TerminalSizeConfig {
+            cols: 115,
+            rows: 58,
+        }),
+        ..Default::default()
+    };
+    let sandbox = DockerSandbox::with_cli(config.clone(), cli);
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "oom-recovery".into(),
     };
 
+    let fail_list = directory.path().join("container-cli.fail-list");
+    std::fs::write(&fail_list, "").unwrap();
+    let error = sandbox.ensure_ready(&id).await.unwrap_err();
+    assert!(error.to_string().contains("listing denied"));
+    assert_eq!(std::fs::read_to_string(&generation).unwrap(), "0\n");
+    std::fs::remove_file(&fail_list).unwrap();
+
     sandbox.ensure_ready(&id).await.unwrap();
     let first_endpoint = sandbox.tools_service_endpoint(&id).await.unwrap();
     std::fs::write(&state, "stopped\n").unwrap();
 
-    sandbox.ensure_ready(&id).await.unwrap();
-    let second_endpoint = sandbox.tools_service_endpoint(&id).await.unwrap();
+    // Recover after process-local endpoint metadata has been lost.
+    let recovered = DockerSandbox::with_cli(config, cli);
+    let fail_inspect = directory.path().join("container-cli.fail-inspect");
+    std::fs::write(&fail_inspect, "").unwrap();
+    let error = recovered.ensure_ready(&id).await.unwrap_err();
+    assert!(error.to_string().contains("inspection denied"));
+    std::fs::remove_file(fail_inspect).unwrap();
+    let fail_start = directory.path().join("container-cli.fail-start");
+    std::fs::write(&fail_start, "").unwrap();
+    let error = recovered.ensure_ready(&id).await.unwrap_err();
+    assert!(error.to_string().contains("start denied"));
+    assert_eq!(std::fs::read_to_string(&generation).unwrap(), "1\n");
+    assert_eq!(std::fs::read_to_string(&removals).unwrap(), "0\n");
+    std::fs::remove_file(fail_start).unwrap();
+    recovered.ensure_ready(&id).await.unwrap();
+    let second_endpoint = recovered.tools_service_endpoint(&id).await.unwrap();
 
     assert_eq!(
         first_endpoint.base_url,
@@ -540,12 +665,84 @@ async fn test_ensure_ready_recreates_stopped_container_with_fresh_endpoint() {
         second_endpoint.base_url,
         format!("http://127.0.0.1:{second_port}")
     );
-    assert_ne!(first_endpoint.token, second_endpoint.token);
-    assert_eq!(std::fs::read_to_string(generation).unwrap(), "2\n");
-    assert_eq!(std::fs::read_to_string(removals).unwrap(), "1\n");
+    assert_eq!(first_endpoint.token, second_endpoint.token);
+    assert_eq!(
+        std::fs::read_to_string(token).unwrap().trim(),
+        first_endpoint.token
+    );
+    assert_eq!(std::fs::read_to_string(generation).unwrap(), "1\n");
+    assert_eq!(std::fs::read_to_string(starts).unwrap(), "1\n");
+    assert_eq!(std::fs::read_to_string(&removals).unwrap(), "0\n");
+    assert_eq!(recovered.existing_container_ids().await.unwrap(), vec![
+        "oom-recovery"
+    ]);
     first_health.await.unwrap();
     second_health.await.unwrap();
-    sandbox.cleanup(&id).await.unwrap();
+    recovered.cleanup(&id).await.unwrap();
+    assert_eq!(std::fs::read_to_string(removals).unwrap(), "1\n");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_tools_service_update_copies_restarts_and_propagates_errors() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let cli = directory.path().join("container-cli");
+    let calls = directory.path().join("container-cli.calls");
+    let artifact = directory.path().join("chelix-tools-service");
+    std::fs::write(&artifact, "current tools service").unwrap();
+    std::fs::write(
+        &cli,
+        r#"#!/bin/sh
+printf '%s\n' "$@" >> "${0}.calls"
+case "$1" in
+  cp)
+    if [ -f "${0}.fail-copy" ]; then printf 'copy denied\n' >&2; exit 23; fi
+    ;;
+  restart)
+    if [ -f "${0}.fail-restart" ]; then printf 'restart denied\n' >&2; exit 23; fi
+    ;;
+  *) exit 64 ;;
+esac
+"#,
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let cli: &'static str = Box::leak(cli.to_string_lossy().into_owned().into_boxed_str());
+    let sandbox = DockerSandbox::with_cli(SandboxConfig::default(), cli);
+    let copy_arguments = format!(
+        "cp\n{}\nsandbox-name:{}\n",
+        artifact.display(),
+        TOOLS_SERVICE_INSTALL_PATH
+    );
+    let all_arguments = format!("{copy_arguments}restart\nsandbox-name\n");
+
+    sandbox
+        .update_tools_service("sandbox-name", &artifact)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&calls).unwrap(), all_arguments);
+
+    std::fs::write(&calls, "").unwrap();
+    let fail_copy = directory.path().join("container-cli.fail-copy");
+    std::fs::write(&fail_copy, "").unwrap();
+    let error = sandbox
+        .update_tools_service("sandbox-name", &artifact)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("copy denied"));
+    assert_eq!(std::fs::read_to_string(&calls).unwrap(), copy_arguments);
+
+    std::fs::remove_file(fail_copy).unwrap();
+    std::fs::write(&calls, "").unwrap();
+    std::fs::write(directory.path().join("container-cli.fail-restart"), "").unwrap();
+    let error = sandbox
+        .update_tools_service("sandbox-name", &artifact)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("restart denied"));
+    assert_eq!(std::fs::read_to_string(calls).unwrap(), all_arguments);
 }
 
 #[cfg(unix)]
@@ -565,7 +762,7 @@ async fn test_force_remove_container_uses_rm_force_arguments() {
 
     assert_eq!(
         std::fs::read_to_string(arguments).unwrap(),
-        "rm\n-f\nsandbox-name\n"
+        "rm\n-fv\nsandbox-name\n"
     );
 }
 

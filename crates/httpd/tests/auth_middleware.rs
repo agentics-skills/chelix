@@ -39,10 +39,14 @@ compaction_reminder = true
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#;
 
 fn test_config() -> chelix_config::ChelixConfig {
     let mut config = chelix_config::ChelixConfig::default();
+    config.sandbox.archived_session_retention_days = Some(3);
     config.agents.default = "main".to_owned();
     config.agents.entries.insert(
         "main".to_owned(),
