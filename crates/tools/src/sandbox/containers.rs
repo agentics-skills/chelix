@@ -4,7 +4,7 @@ use std::{collections::HashSet, io::Read, path::PathBuf};
 
 use {
     chelix_protocol::TOOLS_SERVICE_LINUX_BINARY_ENV,
-    serde::Serialize,
+    serde::{Deserialize, Serialize},
     sha2::{Digest, Sha256},
     tracing::warn,
 };
@@ -20,7 +20,7 @@ use {
 /// Only filtered when `nodejs` is in the package list.
 const NODESOURCE_SUPERSEDED_PACKAGES: &[&str] = &["npm"];
 const TOOLS_SERVICE_IMAGE_BINARY: &str = "chelix-tools-service";
-const TOOLS_SERVICE_INSTALL_PATH: &str = "/usr/local/bin/chelix-tools-service";
+pub(crate) const TOOLS_SERVICE_INSTALL_PATH: &str = "/usr/local/bin/chelix-tools-service";
 
 /// Packages installed from third-party repos that must be excluded from the
 /// main `apt-get install` (they are installed by their own repo setup block).
@@ -513,6 +513,84 @@ pub async fn clean_sandbox_images() -> Result<usize> {
 
 // ── Running container management ─────────────────────────────────────────────
 
+#[derive(Deserialize)]
+pub(crate) struct AppleManagedContainer {
+    pub id: String,
+    pub configuration: AppleContainerConfiguration,
+    pub status: AppleContainerStatus,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppleContainerConfiguration {
+    #[cfg(target_os = "macos")]
+    pub init_process: AppleInitProcess,
+    #[cfg(target_os = "macos")]
+    pub published_ports: Vec<ApplePublishedPort>,
+    pub image: AppleContainerImage,
+    pub resources: AppleContainerResources,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Deserialize)]
+pub(crate) struct AppleInitProcess {
+    pub environment: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ApplePublishedPort {
+    pub host_address: std::net::IpAddr,
+    pub host_port: u16,
+    pub container_port: u16,
+    pub proto: ApplePublishProtocol,
+    pub count: u16,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ApplePublishProtocol {
+    Tcp,
+    Udp,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct AppleContainerImage {
+    pub reference: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppleContainerResources {
+    pub cpus: u32,
+    pub memory_in_bytes: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppleContainerStatus {
+    pub state: AppleContainerState,
+    pub networks: Vec<AppleContainerNetwork>,
+    pub started_date: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AppleContainerNetwork {
+    pub ipv4_address: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum AppleContainerState {
+    Unknown,
+    Stopped,
+    Running,
+    Stopping,
+}
+
 /// State of a running/stopped container.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -602,68 +680,56 @@ pub async fn list_running_containers(container_prefix: &str) -> Result<Vec<Runni
     let mut containers = Vec::new();
     let mut seen = HashSet::new();
 
-    // Apple Container: `container list --format json` outputs a JSON array.
-    // Each element has nested fields: configuration.id, status,
-    // configuration.image.reference, configuration.resources, networks[].
+    // Apple Container lists ManagedContainer records, including stopped containers.
     if is_cli_available("container") {
         let output = tokio::process::Command::new("container")
-            .args(["list", "--format", "json"])
+            .args(["list", "--all", "--format", "json"])
             .output()
             .await;
         if let Ok(output) = output
             && output.status.success()
         {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let entries: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap_or_default();
+            let entries: Vec<AppleManagedContainer> = serde_json::from_slice(&output.stdout)
+                .map_err(|error| Error::message(format!("invalid container list JSON: {error}")))?;
             for entry in entries {
-                let name = entry
-                    .pointer("/configuration/id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                if !name.starts_with(container_prefix) || !seen.insert(name.to_string()) {
+                let name = entry.id;
+                if !name.starts_with(container_prefix) || !seen.insert(name.clone()) {
                     continue;
                 }
-                let state_str = entry
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let state = match state_str {
-                    "running" => ContainerRunState::Running,
-                    "stopped" => ContainerRunState::Stopped,
-                    "exited" => ContainerRunState::Exited,
-                    _ => ContainerRunState::Unknown,
+                let state = match entry.status.state {
+                    AppleContainerState::Running => ContainerRunState::Running,
+                    AppleContainerState::Stopped => ContainerRunState::Stopped,
+                    AppleContainerState::Unknown | AppleContainerState::Stopping => {
+                        ContainerRunState::Unknown
+                    },
                 };
-                let image = entry
-                    .pointer("/configuration/image/reference")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let cpus = entry
-                    .pointer("/configuration/resources/cpus")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32);
-                let memory_mb = entry
-                    .pointer("/configuration/resources/memoryInBytes")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v / (1024 * 1024));
-                // startedDate is a Core Foundation absolute time (seconds since 2001-01-01).
-                // Store as unix timestamp string; the frontend formats for display.
-                let started =
-                    entry
-                        .get("startedDate")
-                        .and_then(|v| v.as_f64())
-                        .map(|cf_timestamp| {
-                            // CF absolute time epoch: 2001-01-01T00:00:00Z = 978307200 unix seconds.
-                            let unix_secs = cf_timestamp as i64 + 978_307_200;
-                            unix_secs.to_string()
-                        });
+                let image = entry.configuration.image.reference;
+                let cpus = Some(entry.configuration.resources.cpus);
+                let memory_mb = Some(entry.configuration.resources.memory_in_bytes / (1024 * 1024));
+                let started = entry
+                    .status
+                    .started_date
+                    .as_deref()
+                    .map(|value| {
+                        time::OffsetDateTime::parse(
+                            value,
+                            &time::format_description::well_known::Rfc3339,
+                        )
+                        .map(|started| started.unix_timestamp().to_string())
+                    })
+                    .transpose()
+                    .map_err(|error| {
+                        Error::external("invalid Apple container startedDate", error)
+                    })?;
                 let addr = entry
-                    .pointer("/networks/0/ipv4Address")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
+                    .status
+                    .networks
+                    .into_iter()
+                    .next()
+                    .and_then(|network| network.ipv4_address);
 
                 containers.push(RunningContainer {
-                    name: name.to_string(),
+                    name,
                     image,
                     state,
                     backend: ContainerBackend::AppleContainer,
@@ -937,14 +1003,14 @@ pub async fn remove_container(name: &str) -> Result<()> {
 
         // rm failed — inspect to classify the ghost container.
         let inspect = tokio::process::Command::new("container")
-            .args(["inspect", name, "--format", "json"])
+            .args(["inspect", name])
             .output()
             .await;
         match inspect {
             Ok(ref ins) if ins.status.success() => {
                 let stdout = String::from_utf8_lossy(&ins.stdout);
-                let status = apple_container_status_from_inspect(&stdout);
-                if status == Some("running") {
+                let status = apple_container_status_from_inspect(&stdout)?;
+                if status == Some(AppleContainerState::Running) {
                     // Container is genuinely running — return the rm error.
                     let stderr = output
                         .as_ref()
@@ -955,7 +1021,7 @@ pub async fn remove_container(name: &str) -> Result<()> {
                         stderr.trim()
                     )));
                 }
-                // Stopped/exited/unknown — ghost container, mark as zombie.
+                // Stopped/stopping/unknown — ghost container, mark as zombie.
                 tracing::warn!(
                     name,
                     ?status,
@@ -1044,40 +1110,12 @@ pub async fn restart_container_daemon() -> Result<()> {
     ))
 }
 
-pub(crate) fn apple_container_status_from_inspect(stdout: &str) -> Option<&'static str> {
-    let inspect = stdout.trim();
-    if inspect.is_empty() || inspect == "[]" {
-        return None;
-    }
-
-    if inspect.contains(r#""status":"running""#) {
-        return Some("running");
-    }
-
-    if inspect.contains(r#""status":"stopped""#) || inspect.contains(r#""status":"exited""#) {
-        return Some("stopped");
-    }
-
-    None
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn is_apple_container_service_error(stderr: &str) -> bool {
-    stderr.contains("XPC connection error") || stderr.contains("Connection invalid")
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn is_apple_container_exists_error(stderr: &str) -> bool {
-    stderr.contains("already exists") || stderr.contains("exists: \"container with id")
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn is_apple_container_daemon_stale_error(text: &str) -> bool {
-    // Both patterns are required — `NSPOSIXErrorDomain` alone can appear in
-    // benign log-fetching errors (Code=2 "No such file or directory") when a
-    // container vanishes. The stale-daemon signature is specifically EINVAL:
-    // `NSPOSIXErrorDomain Code=22 "Invalid argument"`.
-    text.contains("NSPOSIXErrorDomain") && text.contains("Invalid argument")
+pub(crate) fn apple_container_status_from_inspect(
+    stdout: &str,
+) -> Result<Option<AppleContainerState>> {
+    let entries: Vec<AppleManagedContainer> = serde_json::from_str(stdout)
+        .map_err(|error| Error::message(format!("invalid container inspect JSON: {error}")))?;
+    Ok(entries.first().map(|entry| entry.status.state))
 }
 
 pub(crate) fn should_use_docker_backend(

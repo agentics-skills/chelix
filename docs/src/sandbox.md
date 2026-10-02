@@ -23,6 +23,7 @@ Configure in `chelix.toml`:
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 mode = "On"
 backend = "docker"        # default
 # backend = "podman"      # Podman (daemonless, rootless)
@@ -144,6 +145,7 @@ work against a writable root filesystem.
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 workspace_sysmount = "rw"   # default: "ro"
 ```
 
@@ -165,6 +167,7 @@ Sandbox execution is controlled only by the exact global value in
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 mode = "On" # or "Off"
 ```
 
@@ -196,6 +199,37 @@ inaccessible to the parent and sibling sessions.
 A persisted owner key that references a missing session is an explicit routing
 error and does not fall back to the child's own key.
 
+## Session container lifecycle
+
+Session sandboxes are persistent containers. Docker and Podman launch them with
+`--restart=no`. A stopped container is reused with `start`;
+after a container-runtime reboot, Chelix restores the tools-service token and
+endpoint from `inspect` and checks authenticated protocol health.
+
+On a protocol mismatch, Chelix copies the current tools-service binary to
+`/usr/local/bin/chelix-tools-service` and restarts the container. Apple Container
+copies to a temporary file next to the binary, uses `exec mv` to replace it, then
+performs `stop`/`start`. Copy, restart, and final health failures are returned to
+the caller. Docker `cp` into a prebuilt
+read-only root filesystem fails explicitly; the existing read-only hardening
+remains active.
+
+### Archived session retention
+
+`sandbox.archived_session_retention_days` is a retention period in days and is
+mandatory only when `mode = "On"`. It has no runtime default; the template and
+examples explicitly use `7`. `0` is valid and removes an eligible archived
+owner's container at the first reconciliation scan.
+
+Archiving retains the container until that period expires. The period is
+measured from the owner session's existing metadata `updated_at`, which changes
+on archive and other metadata edits. The gateway starts the first scan in the
+background at startup and repeats it every 24 hours. It removes only containers
+matching existing archived owner sessions. Deleting an owner session removes
+its Docker/Podman container with one `rm -fv` command. Apple Container checks
+existence with `list --all`, then issues one `rm --force`. Delegated children
+share that owner container.
+
 ## Shared data directory
 
 Every isolated backend mounts Chelix's `data_dir()` read-write at the identical
@@ -206,6 +240,9 @@ both the host process and sandbox runtime.
 Additional mounts are declarative:
 
 ```toml
+[sandbox]
+archived_session_retention_days = 7
+
 [[sandbox.mounts]]
 host = "/srv/reference"
 guest = "/mnt/reference"
@@ -222,6 +259,7 @@ auth/config files survive container recreation. You can change this with
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 home_persistence = "session"   # "off", "session", or "shared" (default)
 # shared_home_dir = "/path/to/shared-home"  # optional, used when mode is "shared"
 ```
@@ -242,6 +280,7 @@ that lookup fails or you want to pin the value explicitly, set `host_data_dir`:
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 host_data_dir = "/srv/chelix/data"
 ```
 
@@ -266,9 +305,10 @@ exclusive.
 Docker and Podman endpoint readiness is checked from Chelix's own network
 namespace. Chelix tries the random host-loopback publication and inspect-derived
 container addresses, then retains the first endpoint that passes authenticated
-protocol health. If no endpoint becomes ready, Chelix removes the failed
-container. See [Managed Tools Service](tools-service.md) for the protocol,
-process lifecycle, deterministic image identity, and troubleshooting commands.
+protocol health. Endpoint readiness failures return the final error.
+See [Managed Tools Service](tools-service.md) for the
+protocol, process lifecycle, deterministic image identity, and troubleshooting
+commands.
 
 ## Container network
 
@@ -278,6 +318,7 @@ default is `bridge`, and Chelix passes the value to the container runtime as
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 network = "bridge"
 ```
 
@@ -286,6 +327,7 @@ network created outside Chelix:
 
 ```toml
 [sandbox]
+archived_session_retention_days = 7
 network = "chelix-sandbox-net"
 ```
 
@@ -297,6 +339,9 @@ Chelix no longer has sandbox-specific network policy modes.
 ## Resource limits
 
 ```toml
+[sandbox]
+archived_session_retention_days = 7
+
 [sandbox.resource_limits]
 memory_limit = "512M"
 cpu_quota = 1.0

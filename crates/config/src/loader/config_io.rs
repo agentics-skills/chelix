@@ -337,6 +337,7 @@ pub fn update_config_checked(
     let mut config = try_discover_and_load_readonly_with_options(false)?;
     f(&mut config)?;
     validate_agent_ids(&config.agents, "configuration update")?;
+    validate_sandbox_archived_session_retention(&config, "configuration update")?;
 
     let serialized = toml::to_string_pretty(&config)
         .map_err(|source| crate::Error::external("serialize config", source))?;
@@ -628,6 +629,7 @@ pub fn save_raw_config(toml_str: &str) -> crate::Result<PathBuf> {
 /// serialized values into the current document structure before writing.
 pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<PathBuf> {
     validate_agent_ids(&config.agents, "configuration write")?;
+    validate_sandbox_archived_session_retention(config, "configuration write")?;
     let mut guard = CONFIG_SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     guard.target_path = Some(path.to_path_buf());
     if let Some(parent) = path.parent() {
@@ -661,6 +663,7 @@ pub fn save_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<
 /// For new files, writes only non-default values.
 pub fn save_user_config_to_path(path: &Path, config: &ChelixConfig) -> crate::Result<PathBuf> {
     validate_agent_ids(&config.agents, "user configuration write")?;
+    validate_sandbox_archived_session_retention(config, "user configuration write")?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -1104,6 +1107,7 @@ pub(super) fn apply_env_overrides_with_options(
     validate_context7_request_timeout(&config, "environment overrides")?;
     validate_linkup_request_timeout(&config, "environment overrides")?;
     validate_search_request_timeouts(&config, "environment overrides")?;
+    validate_sandbox_archived_session_retention(&config, "environment overrides")?;
     Ok(config)
 }
 
@@ -1237,7 +1241,22 @@ pub(super) fn parse_config(raw: &str, path: &Path) -> crate::Result<ChelixConfig
     validate_linkup_request_timeout(&config, &context)?;
     validate_search_request_timeouts(&config, &context)?;
     validate_execute_command_terminal_size(&config, &context)?;
+    validate_sandbox_archived_session_retention(&config, &context)?;
     Ok(config)
+}
+
+fn validate_sandbox_archived_session_retention(
+    config: &ChelixConfig,
+    context: &str,
+) -> crate::Result<()> {
+    if config.sandbox.mode == crate::schema::SandboxMode::On
+        && config.sandbox.archived_session_retention_days.is_none()
+    {
+        return Err(crate::Error::message(format!(
+            "invalid {context}: sandbox.archived_session_retention_days is required when sandbox.mode is On"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_execute_command_terminal_size(

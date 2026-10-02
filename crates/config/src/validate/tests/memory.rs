@@ -130,6 +130,9 @@ prefetch_limit = 5
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#;
     let result = validate_toml_str(toml);
     let unknown: Vec<_> = result

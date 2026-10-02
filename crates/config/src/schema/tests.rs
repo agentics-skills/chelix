@@ -616,6 +616,11 @@ fn channels_config_explicit_offered() {
 fn sandbox_defaults_are_expected() {
     let sandbox = SandboxConfig::default();
     assert_eq!(sandbox.mode, SandboxMode::On);
+    assert_eq!(sandbox.archived_session_retention_days, None);
+    let parsed: SandboxConfig = toml::from_str("").unwrap();
+    assert_eq!(parsed.archived_session_retention_days, None);
+    let serialized = toml::to_string(&sandbox).unwrap();
+    assert!(!serialized.contains("archived_session_retention_days"));
     assert_eq!(sandbox.home_persistence, HomePersistenceConfig::Shared);
     assert!(sandbox.host_data_dir.is_none());
     assert!(sandbox.mounts.is_empty());
@@ -642,6 +647,7 @@ host_data_dir = "/host/chelix-data"
 
     assert_eq!(config.sandbox.mode, SandboxMode::Off);
     assert_eq!(config.sandbox.backend, SandboxBackend::Podman);
+    assert_eq!(config.sandbox.archived_session_retention_days, None);
     assert_eq!(
         config.sandbox.host_data_dir.as_deref(),
         Some("/host/chelix-data")

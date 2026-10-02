@@ -89,7 +89,9 @@ allowed_models = ["legacy-model"]
 
 #[test]
 fn empty_config_is_valid_agent_setup_state() {
-    let result = validate_toml_str("[tools.execute_command]\nterminal_size = \"115x58\"\n");
+    let result = validate_toml_str(
+        "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
+    );
     assert!(
         result
             .diagnostics
@@ -142,6 +144,7 @@ terminal_size = "115x58"
 
 [sandbox]
 mode = "On"
+archived_session_retention_days = 3
 backend = "docker"
 
 [memory]
@@ -177,7 +180,8 @@ rate_limit_max = 10
 
 #[test]
 fn schema_drift_guard() {
-    let config = ChelixConfig::default();
+    let mut config = ChelixConfig::default();
+    config.sandbox.archived_session_retention_days = Some(3);
     let toml_value = toml::Value::try_from(&config).expect("serialize default config");
     let schema = build_schema_map();
     let mut missing = Vec::new();

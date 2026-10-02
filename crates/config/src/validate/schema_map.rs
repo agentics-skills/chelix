@@ -82,6 +82,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
     let sandbox = || {
         Struct(HashMap::from([
             ("mode", Leaf),
+            ("archived_session_retention_days", Leaf),
             ("scope", Leaf),
             ("workspace_sysmount", Leaf),
             ("host_data_dir", Leaf),

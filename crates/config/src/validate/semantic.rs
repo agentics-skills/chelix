@@ -121,6 +121,18 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
 
+    if config.sandbox.mode == SandboxMode::On
+        && config.sandbox.archived_session_retention_days.is_none()
+    {
+        diagnostics.push(Diagnostic {
+            severity: Severity::Error,
+            category: "missing-field",
+            path: "sandbox.archived_session_retention_days".into(),
+            message: "sandbox.archived_session_retention_days is required when sandbox.mode is On"
+                .into(),
+        });
+    }
+
     let valid_sandbox_scopes = ["session", "agent", "shared"];
     if !valid_sandbox_scopes.contains(&config.sandbox.scope.as_str()) {
         diagnostics.push(Diagnostic {

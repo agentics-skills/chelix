@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn merge_voice_keys_populates_config_from_key_store() {
         let guard = VoiceConfigTestGuard::with_config(
-            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
         );
 
         // Save a key to the store via the public save_config method.
@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn migrate_voice_keys_moves_config_keys_to_key_store() {
         let guard = VoiceConfigTestGuard::with_config(
-            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
         );
 
         // Build a config with voice keys as if they came from TOML.
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn migrate_voice_keys_skips_env_var_references() {
         let guard = VoiceConfigTestGuard::with_config(
-            "[tools.execute_command]\nterminal_size = \"115x58\"\n",
+            "[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
         );
 
         let mut cfg = chelix_config::ChelixConfig::default();

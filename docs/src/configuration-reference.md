@@ -342,6 +342,7 @@ loading the configuration.
 | Key                      | Type                                   | Default           | Description                                                                                                                                                                          |
 | ------------------------ | -------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `mode`                   | enum: `"On"`, `"Off"`                | `"On"`            | Global sandbox policy. `"On"` requires filesystem isolation and fails startup without it; `"Off"` is the only direct host execution path. Values are case-sensitive.               |
+| `archived_session_retention_days` | optional integer (`u32`) | unset; required for `"On"` | Archived owner container retention in days. Mandatory only when `mode = "On"`; no runtime default. `0` removes an eligible archived owner's container at the first reconciliation scan. |
 | `scope`                  | string                                 | `"session"`       | Container lifetime (`"session"`, `"agent"`, or `"shared"`).                                                                                                                          |
 | `workspace_sysmount`     | string                                 | `"ro"`            | Sandbox hardening mode for rootfs/capabilities (`"ro"` keeps `--cap-drop ALL`, `--security-opt no-new-privileges`, and `--read-only` for prebuilt images; `"rw"` skips those flags). |
 | `host_data_dir`          | optional string                        | `null`            | Host-visible path for Chelix `data_dir()` when creating sandbox or browser containers from inside another container.                                                                 |
@@ -357,6 +358,31 @@ loading the configuration.
 Chelix always mounts `data_dir()` read-write at the identical absolute path
 inside the sandbox. This invariant is not configurable. Add other mounts with
 `[[sandbox.mounts]]`; secret-bearing config files must not be mounted.
+
+```toml
+[sandbox]
+mode = "On"
+archived_session_retention_days = 7
+```
+
+The template and this example explicitly choose `7` days. Archiving retains a
+session container until the configured period has elapsed from the owner's
+existing metadata `updated_at`, updated on archive and other metadata edits.
+The first scan runs in the background at gateway startup, then every 24 hours;
+only containers matching existing archived owner sessions are eligible.
+Deleting an owner session issues one `rm -fv` for Docker/Podman. Apple Container
+checks existence with `list --all`, then issues one `rm --force`.
+
+Session containers persist across stops and are reused with `start`.
+Docker/Podman session sandboxes use explicit `--restart=no`. After a runtime
+reboot, token and endpoint recovery uses `inspect`. Protocol mismatch copies the current binary to
+`/usr/local/bin/chelix-tools-service` and restarts the container; Apple Container
+copies to a temporary file next to the binary, replaces it with `exec mv`, then
+uses `stop`/`start`. Copy, restart, and final health errors propagate to the
+caller. Prebuilt read-only rootfs hardening remains active:
+Docker `cp` into that rootfs fails explicitly. See
+[Sandbox Backends](sandbox.md#session-container-lifecycle) and
+[Managed Tools Service](tools-service.md#container-sandbox-lifecycle).
 
 ### `sandbox.resource_limits` — ResourceLimitsConfig
 

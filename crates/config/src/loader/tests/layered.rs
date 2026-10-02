@@ -27,6 +27,9 @@ api_key = "${{MY_API_KEY}}"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#
         ),
     )
@@ -84,6 +87,9 @@ api_key = "${{{var}}}"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#
         ),
     )
@@ -149,6 +155,9 @@ api_key = "${{{var}}}"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#
         ),
     )
@@ -199,6 +208,9 @@ api_key = "${{{var}}}"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#
         ),
     )
@@ -311,7 +323,7 @@ fn save_user_config_does_not_materialize_defaults() {
     // Start with a minimal user config.
     std::fs::write(
         &path,
-        "[server]\nport = 12345\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[server]\nport = 12345\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .expect("write seed");
 
@@ -337,6 +349,24 @@ fn save_user_config_does_not_materialize_defaults() {
     assert!(
         !saved.contains("max_tools_threshold"),
         "defaults should not be materialized into user config"
+    );
+    let reloaded = parse_config(&saved, &path).expect("reload explicit retention");
+    assert_eq!(reloaded.sandbox.archived_session_retention_days, Some(3));
+    config.sandbox.archived_session_retention_days = Some(0);
+    save_user_config_to_path(&path, &config).expect("save zero retention");
+    let saved_zero = std::fs::read_to_string(&path).expect("read zero retention");
+    let reloaded = parse_config(&saved_zero, &path).expect("reload zero retention");
+    assert_eq!(reloaded.sandbox.archived_session_retention_days, Some(0));
+    config.sandbox.archived_session_retention_days = None;
+    let error = save_user_config_to_path(&path, &config).expect_err("On requires retention");
+    assert!(
+        error
+            .to_string()
+            .contains("sandbox.archived_session_retention_days")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read unchanged config"),
+        saved_zero
     );
 }
 
@@ -379,7 +409,7 @@ fn update_config_preserves_override_boundary() {
     // Seed a minimal user config.
     std::fs::write(
         &config_path,
-        "[server]\nport = 54321\n\n[auth]\ndisabled = true\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[server]\nport = 54321\n\n[auth]\ndisabled = true\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .expect("write seed");
 
@@ -403,6 +433,20 @@ fn update_config_preserves_override_boundary() {
         !saved.contains("agent_timeout_secs"),
         "update_config should not materialize defaults"
     );
+    let error = update_config_checked(|config| {
+        config.sandbox.archived_session_retention_days = None;
+        Ok(())
+    })
+    .expect_err("checked update must preserve required retention");
+    assert!(
+        error
+            .to_string()
+            .contains("sandbox.archived_session_retention_days")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&result_path).expect("read unchanged config"),
+        saved
+    );
 
     clear_config_dir();
 }
@@ -419,7 +463,7 @@ fn layered_load_user_override_wins_over_defaults() {
     // Write user config with an override.
     std::fs::write(
         &config_path,
-        "[server]\nport = 11111\n\n[tools]\nagent_timeout_secs = 999\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[server]\nport = 11111\n\n[tools]\nagent_timeout_secs = 999\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .expect("write user config");
 
@@ -446,7 +490,7 @@ fn upgrade_adds_new_defaults_automatically() {
     // Write a minimal user config (no tools section).
     std::fs::write(
         &config_path,
-        "[server]\nport = 22222\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[server]\nport = 22222\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .expect("write user config");
 
@@ -473,7 +517,7 @@ fn user_override_survives_defaults_refresh() {
     // User overrides timeout.
     std::fs::write(
         &config_path,
-        "[server]\nport = 33333\n\n[tools]\nagent_timeout_secs = 42\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n",
+        "[server]\nport = 33333\n\n[tools]\nagent_timeout_secs = 42\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .expect("write user config");
 
@@ -545,6 +589,9 @@ endpoint = "http://localhost:5002"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
     )
     .expect("write config");
@@ -583,6 +630,9 @@ endpoint = "http://localhost:5002"
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
     )
     .expect("write config");
@@ -873,6 +923,9 @@ prepend_sender_badge = true
 
 [tools.execute_command]
 terminal_size = "115x58"
+
+[sandbox]
+archived_session_retention_days = 3
 "#,
     )
     .expect("write seed");

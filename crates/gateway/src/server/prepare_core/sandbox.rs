@@ -1,13 +1,13 @@
 //! Sandbox initialization helpers: router construction, deterministic image
-//! preparation, and startup container garbage collection.
+//! preparation, and archived session sandbox retention.
 
 use std::sync::Arc;
 
 use {
     async_trait::async_trait,
     chelix_sessions::metadata::SqliteSessionMetadata,
-    chelix_tools::sandbox::{SandboxBackendId, SandboxConfig, SandboxMode, SandboxOwnerResolver},
-    tracing::{debug, info},
+    chelix_tools::sandbox::{SandboxConfig, SandboxMode, SandboxOwnerResolver, SandboxRouter},
+    tracing::{debug, error, info},
 };
 
 pub(super) struct SessionSandboxOwnerResolver {
@@ -60,7 +60,7 @@ pub(super) fn build_sandbox_router(
     container_prefix: &str,
     timezone: Option<&str>,
     session_metadata: Arc<SqliteSessionMetadata>,
-) -> anyhow::Result<chelix_tools::sandbox::SandboxRouter> {
+) -> anyhow::Result<SandboxRouter> {
     let mut config = sandbox_config.clone();
     config.container_prefix = Some(container_prefix.to_string());
     config.timezone = timezone.map(ToOwned::to_owned);
@@ -68,13 +68,13 @@ pub(super) fn build_sandbox_router(
 
     let owner_resolver: Arc<dyn SandboxOwnerResolver> =
         Arc::new(SessionSandboxOwnerResolver::new(session_metadata));
-    chelix_tools::sandbox::SandboxRouter::new(config, Some(owner_resolver))
+    SandboxRouter::new(config, Some(owner_resolver))
         .map_err(|error| anyhow::anyhow!("failed to initialize sandbox: {error}"))
 }
 
 /// Build and register the one deterministic global sandbox image before startup continues.
 pub(super) async fn prepare_sandbox_images(
-    sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
+    sandbox_router: &Arc<SandboxRouter>,
 ) -> anyhow::Result<()> {
     if !should_prepare_sandbox_images(sandbox_router.mode()) {
         debug!("sandbox image preparation skipped because sandbox mode is off");
@@ -128,26 +128,73 @@ fn should_prepare_sandbox_images(mode: &SandboxMode) -> bool {
     matches!(mode, SandboxMode::On)
 }
 
-/// Spawn non-critical startup container garbage collection.
+/// Check archived owner sandbox retention at startup and every day.
 pub(super) fn spawn_sandbox_background_tasks(
-    sandbox_router: &Arc<chelix_tools::sandbox::SandboxRouter>,
-) {
-    // Startup GC: remove orphaned session containers.
-    if sandbox_router.backend_id() != SandboxBackendId::None {
-        let prefix = sandbox_router.config().container_prefix.clone();
-        tokio::spawn(async move {
-            if let Some(prefix) = prefix {
-                match chelix_tools::sandbox::clean_all_containers(&prefix).await {
-                    Ok(0) => {},
-                    Ok(n) => info!(
-                        removed = n,
-                        "startup GC: cleaned orphaned session containers"
-                    ),
-                    Err(e) => debug!("startup GC: container cleanup skipped: {e}"),
-                }
-            }
-        });
+    sandbox_router: &Arc<SandboxRouter>,
+    session_metadata: &Arc<SqliteSessionMetadata>,
+) -> anyhow::Result<()> {
+    if !sandbox_router.enabled() {
+        return Ok(());
     }
+    let retention_days = sandbox_router
+        .config()
+        .archived_session_retention_days
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "sandbox.archived_session_retention_days is required when sandbox.mode is On"
+            )
+        })?;
+    let sandbox_router = Arc::clone(sandbox_router);
+    let session_metadata = Arc::clone(session_metadata);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(time::Duration::days(1).unsigned_abs());
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            if let Err(error) =
+                prune_archived_sandboxes(&sandbox_router, &session_metadata, retention_days).await
+            {
+                error!(%error, "archived session sandbox retention failed");
+            }
+        }
+    });
+    Ok(())
+}
+
+async fn prune_archived_sandboxes(
+    sandbox_router: &SandboxRouter,
+    session_metadata: &SqliteSessionMetadata,
+    retention_days: u32,
+) -> anyhow::Result<()> {
+    let container_ids = sandbox_router.backend().existing_container_ids().await?;
+    let sessions = session_metadata.list().await?;
+    let cutoff_ms = (time::OffsetDateTime::now_utc()
+        - time::OffsetDateTime::UNIX_EPOCH
+        - time::Duration::days(i64::from(retention_days)))
+    .whole_milliseconds();
+    for session in sessions.iter().filter(|session| {
+        session.archived
+            && i128::from(session.updated_at) <= cutoff_ms
+            && session
+                .sandbox_owner_key
+                .as_deref()
+                .is_none_or(|owner| owner == session.key)
+    }) {
+        let id = sandbox_router.sandbox_id_for(&session.key);
+        if !container_ids
+            .iter()
+            .any(|container_id| container_id == &id.key)
+        {
+            continue;
+        }
+        match sandbox_router.cleanup_owner_sandbox(&session.key).await {
+            Ok(()) => info!(session = %session.key, "removed expired archived session sandbox"),
+            Err(error) => {
+                error!(session = %session.key, %error, "archived session sandbox cleanup failed")
+            },
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -158,7 +205,7 @@ mod tests {
         async_trait::async_trait,
         chelix_tools::{
             command::{CommandOptions, CommandOutput},
-            sandbox::{Sandbox, SandboxId, SandboxRouter},
+            sandbox::{Sandbox, SandboxBackendId, SandboxId, SandboxRouter},
         },
     };
 
@@ -179,6 +226,7 @@ mod tests {
 
     struct RecordingBuildSandbox {
         build_calls: AtomicUsize,
+        cleanup_calls: AtomicUsize,
     }
 
     #[async_trait]
@@ -202,8 +250,22 @@ mod tests {
             ))
         }
 
-        async fn cleanup(&self, _id: &SandboxId) -> chelix_tools::error::Result<()> {
+        async fn cleanup(&self, id: &SandboxId) -> chelix_tools::error::Result<()> {
+            assert_eq!(id.key, "session-expired");
+            self.cleanup_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
+        }
+
+        async fn existing_container_ids(&self) -> chelix_tools::error::Result<Vec<String>> {
+            Ok([
+                "session-expired",
+                "session-active",
+                "session-recent",
+                "session-child",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect())
         }
 
         async fn build_image(
@@ -253,9 +315,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn archived_sandbox_retention_removes_only_expired_matching_owners() -> anyhow::Result<()>
+    {
+        let metadata = sqlite_metadata().await;
+        let model_reasoning = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )?;
+        for (key, archived, owner, expired) in [
+            ("session:expired", true, None, true),
+            ("session:active", false, None, true),
+            ("session:recent", true, None, false),
+            ("session:child", true, Some("session:expired"), true),
+            ("session:no-container", true, None, true),
+        ] {
+            metadata
+                .create_llm_session(key, None, &model_reasoning, Some("main"))
+                .await?;
+            metadata.set_archived(key, archived).await?;
+            if let Some(owner) = owner {
+                metadata.set_sandbox_owner_key(key, Some(owner)).await?;
+            }
+            if expired {
+                metadata.set_timestamps_and_counts(key, 0, 0, 0, 0).await?;
+            }
+        }
+        let backend = Arc::new(RecordingBuildSandbox {
+            build_calls: AtomicUsize::new(0),
+            cleanup_calls: AtomicUsize::new(0),
+        });
+        let sandbox_backend: Arc<dyn Sandbox> = backend.clone();
+        let resolver: Arc<dyn SandboxOwnerResolver> =
+            Arc::new(SessionSandboxOwnerResolver::new(Arc::clone(&metadata)));
+        let router = SandboxRouter::with_backend(
+            SandboxConfig {
+                mode: SandboxMode::On,
+                archived_session_retention_days: Some(1),
+                ..Default::default()
+            },
+            sandbox_backend,
+            Some(resolver),
+        )?;
+
+        prune_archived_sandboxes(&router, &metadata, 1).await?;
+        assert_eq!(backend.cleanup_calls.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn sandbox_mode_off_skips_backend_image_build() {
         let backend = Arc::new(RecordingBuildSandbox {
             build_calls: AtomicUsize::new(0),
+            cleanup_calls: AtomicUsize::new(0),
         });
         let sandbox_backend: Arc<dyn Sandbox> = backend.clone();
         let router = Arc::new(

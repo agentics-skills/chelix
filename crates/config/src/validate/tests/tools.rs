@@ -1,14 +1,32 @@
 use super::*;
 
 #[test]
-fn sandbox_mode_off_warned() {
+fn sandbox_mode_requires_retention_only_when_on() {
     let toml = r#"
 [sandbox]
 mode = "Off"
+
+[tools.execute_command]
+terminal_size = "115x58"
 "#;
     let result = validate_toml_str(toml);
     let warning = result.diagnostics.iter().find(|d| d.path == "sandbox.mode");
     assert!(warning.is_some(), "expected warning for sandbox mode off");
+    assert!(!result.has_errors(), "{:?}", result.diagnostics);
+
+    for sandbox in ["", "[sandbox]\nmode = \"On\"\n"] {
+        let input = format!("[tools.execute_command]\nterminal_size = \"115x58\"\n{sandbox}");
+        let result = validate_toml_str(&input);
+        assert!(
+            result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.path == "sandbox.archived_session_retention_days"
+                    && diagnostic.category == "missing-field"
+                    && diagnostic.severity == Severity::Error
+            }),
+            "{:?}",
+            result.diagnostics
+        );
+    }
 }
 
 #[test]
@@ -29,6 +47,7 @@ port = 0
 fn podman_sandbox_backend_accepted() {
     let toml = r#"
 [sandbox]
+archived_session_retention_days = 3
 backend = "podman"
 "#;
     let result = validate_toml_str(toml);

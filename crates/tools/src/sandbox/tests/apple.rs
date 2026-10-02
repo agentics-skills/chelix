@@ -25,22 +25,15 @@ fn test_sandbox_router_explicit_apple_container_backend() {
 }
 
 #[cfg(target_os = "macos")]
-#[tokio::test]
-async fn test_apple_container_name_generation_rotation() {
+#[test]
+fn test_apple_container_name_is_stable() {
     let sandbox = AppleContainerSandbox::new(SandboxConfig::default());
     let id = SandboxId {
         scope: SandboxScope::Session,
         key: "session-abc".into(),
     };
 
-    let first_name = sandbox.container_name(&id).await;
-    assert_eq!(first_name, "chelix-sandbox-session-abc");
-
-    let rotated_name = sandbox.bump_container_generation(&id).await;
-    assert_eq!(rotated_name, "chelix-sandbox-session-abc-g1");
-
-    let current_name = sandbox.container_name(&id).await;
-    assert_eq!(current_name, "chelix-sandbox-session-abc-g1");
+    assert_eq!(sandbox.container_name(&id), "chelix-sandbox-session-abc");
 }
 
 /// When both Docker and Apple Container are available, test that we can
@@ -77,30 +70,6 @@ fn test_select_backend_explicit_choices() {
         let backend = select_backend(config).unwrap();
         assert_eq!(backend.backend_id(), SandboxBackendId::AppleContainer);
     }
-}
-
-#[test]
-fn test_is_apple_container_service_error() {
-    assert!(is_apple_container_service_error(
-        "Error: internalError: \"XPC connection error\""
-    ));
-    assert!(is_apple_container_service_error(
-        "Error: Connection invalid while contacting service"
-    ));
-    assert!(!is_apple_container_service_error(
-        "Error: something else happened"
-    ));
-}
-
-#[test]
-fn test_is_apple_container_exists_error() {
-    assert!(is_apple_container_exists_error(
-        "Error: exists: \"container with id chelix-sandbox-main already exists\""
-    ));
-    assert!(is_apple_container_exists_error(
-        "Error: container already exists"
-    ));
-    assert!(!is_apple_container_exists_error("Error: no such container"));
 }
 
 #[test]
@@ -304,59 +273,46 @@ fn test_container_exec_shell_args_docker_keeps_standard_exec_shape() {
 
 #[test]
 fn test_apple_container_status_from_inspect() {
+    let running = r#"[{
+        "id": "abc",
+        "configuration": {
+            "initProcess": {"environment": ["CHELIX_TOOLS_SERVICE_TOKEN=test-token"]},
+            "publishedPorts": [{
+                "hostAddress": "127.0.0.1", "hostPort": 43123,
+                "containerPort": 43271, "proto": "tcp", "count": 1
+            }],
+            "image": {"reference": "ubuntu:26.04"},
+            "resources": {"cpus": 4, "memoryInBytes": 1073741824}
+        },
+        "status": {
+            "state": "running",
+            "networks": [],
+            "startedDate": "2026-10-02T00:00:00Z"
+        }
+    }]"#;
+    let parsed: Vec<crate::sandbox::containers::AppleManagedContainer> =
+        serde_json::from_str(running).unwrap();
     assert_eq!(
-        apple_container_status_from_inspect(
-            r#"[{"id":"abc","status":"running","configuration":{}}]"#
-        ),
-        Some("running")
+        parsed[0].status.started_date.as_deref(),
+        Some("2026-10-02T00:00:00Z")
     );
     assert_eq!(
-        apple_container_status_from_inspect(r#"[{"id":"abc","status":"stopped"}]"#),
-        Some("stopped")
+        apple_container_status_from_inspect(running).unwrap(),
+        Some(AppleContainerState::Running)
     );
-    assert_eq!(apple_container_status_from_inspect("[]"), None);
-    assert_eq!(apple_container_status_from_inspect(""), None);
-}
-
-#[test]
-fn test_is_apple_container_daemon_stale_error() {
-    // Full EINVAL pattern from container logs
-    assert!(is_apple_container_daemon_stale_error(
-        "Error: internalError: \" Error Domain=NSPOSIXErrorDomain Code=22 \"Invalid argument\"\""
-    ));
-    // Both patterns required — neither alone should match
-    assert!(!is_apple_container_daemon_stale_error(
-        "NSPOSIXErrorDomain Code=22"
-    ));
-    assert!(!is_apple_container_daemon_stale_error("Invalid argument"));
-    // Log-fetching errors with NSPOSIXErrorDomain Code=2 must NOT match
-    assert!(!is_apple_container_daemon_stale_error(
-        "Error Domain=NSPOSIXErrorDomain Code=2 \"No such file or directory\""
-    ));
-    assert!(!is_apple_container_daemon_stale_error(
-        "container is not running"
-    ));
-    assert!(!is_apple_container_daemon_stale_error("permission denied"));
-}
-
-#[cfg(target_os = "macos")]
-#[test]
-fn test_is_apple_container_boot_failure() {
-    // No logs at all — VM never booted
-    assert!(is_apple_container_boot_failure(None));
-    // Empty logs
-    assert!(is_apple_container_boot_failure(Some("")));
-    assert!(is_apple_container_boot_failure(Some("  \n  ")));
-    // stdio.log doesn't exist — VM never produced output
-    assert!(is_apple_container_boot_failure(Some(
-        r#"Error: invalidArgument: "failed to fetch container logs: internalError: "failed to open container logs: Error Domain=NSCocoaErrorDomain Code=4 "The file "stdio.log" doesn't exist."""#
-    )));
-    // Real logs present — not a boot failure
-    assert!(!is_apple_container_boot_failure(Some(
-        "sleep: invalid time interval 'infinity'"
-    )));
-    // Daemon-stale EINVAL is NOT a boot failure (different handler)
-    assert!(!is_apple_container_boot_failure(Some(
-        "Error Domain=NSPOSIXErrorDomain Code=22 \"Invalid argument\""
-    )));
+    assert_eq!(
+        apple_container_status_from_inspect(&running.replace("running", "stopped")).unwrap(),
+        Some(AppleContainerState::Stopped)
+    );
+    assert_eq!(
+        apple_container_status_from_inspect(&running.replace("running", "stopping")).unwrap(),
+        Some(AppleContainerState::Stopping)
+    );
+    assert_eq!(
+        apple_container_status_from_inspect(&running.replace("running", "unknown")).unwrap(),
+        Some(AppleContainerState::Unknown)
+    );
+    assert_eq!(apple_container_status_from_inspect("[]").unwrap(), None);
+    assert!(apple_container_status_from_inspect("").is_err());
+    assert!(apple_container_status_from_inspect(r#"[{"id":"abc","status":"running"}]"#).is_err());
 }
