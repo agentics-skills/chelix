@@ -325,11 +325,12 @@ terminal_size = "115x58"             # 115 chars x 58
 # base_url = "https://api.firecrawl.dev"
 
 # ── Context7 (context7_* tools) ───────────────────────────────────────────────
-# Every context7_* tool calls the Context7 API with this optional token.
+# Every context7_* tool calls the Context7 API with these tokens, in order.
+# A missing or empty array sends requests without authorization.
 
 # [tools.context7]
-# token = "ctx7sk-..."               # Context7 API token
-# request_timeout_secs = 300         # Per-request HTTP timeout; must be at least 1
+# token = ["ctx7sk-...", "ctx7sk-..."]  # Context7 API tokens, highest priority first
+# request_timeout_secs = 300             # Per-request HTTP timeout; must be at least 1
 
 # ── Linkup Search ─────────────────────────────────────────────────────────────
 # linkup_search calls the Linkup API with this token.

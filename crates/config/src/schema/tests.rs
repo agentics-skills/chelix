@@ -115,6 +115,7 @@ fn context7_request_timeout_defaults_to_five_minutes() {
         DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS
     );
     assert_eq!(DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS, 300);
+    assert!(config.tools.context7.token.is_empty());
 }
 
 #[test]
@@ -122,7 +123,7 @@ fn context7_config_parses_token_and_timeout_without_exposing_the_token() {
     let config: ChelixConfig = toml::from_str(
         r#"
 [tools.context7]
-token = "ctx7-secret"
+token = ["ctx7-secret", "ctx7-reserve"]
 request_timeout_secs = 45
 "#,
     )
@@ -133,14 +134,38 @@ request_timeout_secs = 45
             .tools
             .context7
             .token
-            .as_ref()
+            .iter()
             .map(ExposeSecret::expose_secret)
-            .map(String::as_str),
-        Some("ctx7-secret")
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec!["ctx7-secret", "ctx7-reserve"]
+    );
+    let serialized = toml::to_string(&config).unwrap();
+    let restored: ChelixConfig = toml::from_str(&serialized).unwrap();
+    assert_eq!(
+        restored
+            .tools
+            .context7
+            .token
+            .iter()
+            .map(ExposeSecret::expose_secret)
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        vec!["ctx7-secret", "ctx7-reserve"]
     );
     let debug = format!("{:?}", config.tools.context7);
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains("ctx7-secret"));
+    assert!(!debug.contains("ctx7-reserve"));
+
+    let empty: ChelixConfig = toml::from_str(
+        r#"
+[tools.context7]
+token = []
+"#,
+    )
+    .unwrap();
+    assert!(empty.tools.context7.token.is_empty());
 }
 
 #[test]

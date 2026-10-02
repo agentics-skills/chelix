@@ -177,20 +177,21 @@ impl Default for FirecrawlConfig {
 
 /// Context7 tool set configuration.
 ///
-/// The `context7_*` tools call the Context7 API with the optional configured
-/// API token.
+/// The `context7_*` tools call the Context7 API with the configured API tokens,
+/// in array order. A missing or empty list sends requests without authorization.
 pub const DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS: u64 = 300;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Context7Config {
-    /// Context7 API token used by every `context7_*` tool.
+    /// Context7 API tokens used by every `context7_*` tool, highest priority first.
     #[serde(
         default,
-        serialize_with = "serialize_option_secret",
-        skip_serializing_if = "Option::is_none"
+        serialize_with = "serialize_secret_vec",
+        deserialize_with = "deserialize_secret_vec",
+        skip_serializing_if = "Vec::is_empty"
     )]
-    pub token: Option<Secret<String>>,
+    pub token: Vec<Secret<String>>,
     /// Maximum duration of each Context7 HTTP request in seconds. Must be positive.
     pub request_timeout_secs: u64,
 }
@@ -198,7 +199,10 @@ pub struct Context7Config {
 impl std::fmt::Debug for Context7Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Context7Config")
-            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "token",
+                &self.token.iter().map(|_| "[REDACTED]").collect::<Vec<_>>(),
+            )
             .field("request_timeout_secs", &self.request_timeout_secs)
             .finish()
     }
@@ -207,7 +211,7 @@ impl std::fmt::Debug for Context7Config {
 impl Default for Context7Config {
     fn default() -> Self {
         Self {
-            token: None,
+            token: Vec::new(),
             request_timeout_secs: DEFAULT_CONTEXT7_REQUEST_TIMEOUT_SECS,
         }
     }

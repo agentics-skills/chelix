@@ -149,7 +149,7 @@ mod tests {
     use super::*;
 
     fn tool(base_url: String) -> Context7GetLibraryDocsTool {
-        Context7GetLibraryDocsTool::new(Arc::new(Context7Client::for_test(base_url, None)))
+        Context7GetLibraryDocsTool::new(Arc::new(Context7Client::for_test(base_url, Vec::new())))
     }
 
     #[test]

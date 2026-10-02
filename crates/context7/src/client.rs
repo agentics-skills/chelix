@@ -1,8 +1,11 @@
 //! Authenticated Context7 HTTP client shared by every `context7_*` tool.
 //!
-//! The optional token comes from `tools.context7.token`. A request sent with a
-//! configured token that Context7 answers with `401` or `403` is an explicit
-//! authorization error; the client never prompts for another token.
+//! Tokens come from `tools.context7.token` in priority order. A missing or empty
+//! list sends requests without authorization. A `429` response whose JSON field
+//! `error` is `Quota Exceeded` rotates to the next token and retries before the
+//! shared cooldown. A request sent with a configured token that Context7 answers
+//! with `401` or `403` is an explicit authorization error; the client never
+//! prompts for another token.
 
 use {
     reqwest::{StatusCode, header::HeaderValue},
@@ -13,6 +16,7 @@ use {
 use crate::{
     error::{Error, Result},
     rate_limit::{CONTEXT7_MAX_RATE_LIMIT_COOLDOWN_MS, RateLimitCoordinator},
+    tokens::Context7Tokens,
 };
 
 /// Context7 API root used by every tool.
@@ -78,6 +82,14 @@ impl Context7Response {
         self.status == StatusCode::TOO_MANY_REQUESTS
     }
 
+    /// `429` whose JSON field `error` is exactly `Quota Exceeded`.
+    #[must_use]
+    fn is_quota_exceeded(&self) -> bool {
+        self.is_rate_limited()
+            && serde_json::from_str::<QuotaExceededBody>(&self.body)
+                .is_ok_and(|body| body.error == "Quota Exceeded")
+    }
+
     /// Cooldown derived from the documented `Retry-After` seconds.
     #[must_use]
     pub fn rate_limit_cooldown_ms(&self) -> Option<u64> {
@@ -92,11 +104,16 @@ impl Context7Response {
     }
 }
 
-/// HTTP client bound to one optional Context7 API token.
+#[derive(serde::Deserialize)]
+struct QuotaExceededBody {
+    error: String,
+}
+
+/// HTTP client bound to the configured Context7 API tokens.
 pub struct Context7Client {
     http: reqwest::Client,
     base_url: String,
-    token: Option<Secret<String>>,
+    tokens: Context7Tokens,
     request_timeout: Option<Duration>,
     rate_limit: RateLimitCoordinator,
 }
@@ -104,11 +121,11 @@ pub struct Context7Client {
 impl Context7Client {
     /// Build a client for the public Context7 API.
     #[must_use]
-    pub fn new(token: Option<Secret<String>>, request_timeout_secs: u64) -> Self {
+    pub fn new(tokens: Vec<Secret<String>>, request_timeout_secs: u64) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url: CONTEXT7_API_BASE_URL.to_string(),
-            token,
+            tokens: Context7Tokens::new(tokens),
             request_timeout: Some(Duration::from_secs(request_timeout_secs)),
             rate_limit: RateLimitCoordinator::default(),
         }
@@ -116,11 +133,27 @@ impl Context7Client {
 
     /// Build a client pointed at a test double without a wall-clock deadline.
     #[cfg(test)]
-    pub(crate) fn for_test(base_url: String, token: Option<Secret<String>>) -> Self {
+    pub(crate) fn for_test(base_url: String, tokens: Vec<Secret<String>>) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url,
-            token,
+            tokens: Context7Tokens::new(tokens),
+            request_timeout: None,
+            rate_limit: RateLimitCoordinator::default(),
+        }
+    }
+
+    /// Test client whose connection pool does not arm an idle timer.
+    #[cfg(test)]
+    fn for_paused_clock_test(base_url: String, tokens: Vec<Secret<String>>) -> Self {
+        let http = reqwest::Client::builder()
+            .pool_idle_timeout(None)
+            .build()
+            .unwrap_or_else(|error| panic!("paused-clock test HTTP client: {error}"));
+        Self {
+            http,
+            base_url,
+            tokens: Context7Tokens::new(tokens),
             request_timeout: None,
             rate_limit: RateLimitCoordinator::default(),
         }
@@ -129,13 +162,13 @@ impl Context7Client {
     #[cfg(test)]
     fn for_test_with_timeout(
         base_url: String,
-        token: Option<Secret<String>>,
+        tokens: Vec<Secret<String>>,
         request_timeout: Duration,
     ) -> Self {
         Self {
             http: chelix_common::http_client::build_default_http_client(),
             base_url,
-            token,
+            tokens: Context7Tokens::new(tokens),
             request_timeout: Some(request_timeout),
             rate_limit: RateLimitCoordinator::default(),
         }
@@ -164,13 +197,56 @@ impl Context7Client {
     }
 
     /// Perform one authenticated `GET` and read the complete response.
+    ///
+    /// A `429` body whose `error` field is `Quota Exceeded` rotates the token and
+    /// retries before the shared cooldown, once for each token after the first.
     pub async fn get(&self, url: &url::Url, options: RequestOptions) -> Result<Context7Response> {
         let rate_limit_permit = self.rate_limit.acquire().await;
+        let response = self.get_rotating_on_quota(url).await?;
+        rate_limit_permit.complete(
+            response.is_rate_limited(),
+            response.rate_limit_cooldown_ms(),
+        );
+
+        if options.return_rate_limit_response && response.is_rate_limited() {
+            return Ok(response);
+        }
+
+        if matches!(
+            response.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        ) {
+            return Err(Error::authorization(response.failure_message()));
+        }
+
+        Ok(response)
+    }
+
+    async fn get_rotating_on_quota(&self, url: &url::Url) -> Result<Context7Response> {
+        let (mut token, count) = self.tokens.current();
+        let mut response = self.send_get(url, token).await?;
+        for _ in 0..count.saturating_sub(1) {
+            if !response.is_quota_exceeded() {
+                break;
+            }
+            #[cfg(feature = "tracing")]
+            tracing::warn!("Context7 quota exceeded; rotating API token and retrying the request");
+            token = self.tokens.rotate();
+            response = self.send_get(url, token).await?;
+        }
+        Ok(response)
+    }
+
+    async fn send_get(
+        &self,
+        url: &url::Url,
+        token: Option<&Secret<String>>,
+    ) -> Result<Context7Response> {
         let mut request = self
             .http
             .get(url.as_str())
             .header("X-Context7-Source", CONTEXT7_SOURCE);
-        if let Some(token) = &self.token {
+        if let Some(token) = token {
             let mut authorization =
                 HeaderValue::try_from(format!("Bearer {}", token.expose_secret()))
                     .map_err(|error| Error::message(format!("invalid Context7 token: {error}")))?;
@@ -191,28 +267,14 @@ impl Context7Client {
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|value| value.to_str().ok())
             .map(str::to_string);
-        let response = Context7Response {
+        Ok(Context7Response {
             status,
             retry_after,
             body: raw
                 .text()
                 .await
                 .map_err(|error| self.map_request_error(error))?,
-        };
-        rate_limit_permit.complete(
-            response.is_rate_limited(),
-            response.rate_limit_cooldown_ms(),
-        );
-
-        if options.return_rate_limit_response && response.is_rate_limited() {
-            return Ok(response);
-        }
-
-        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
-            return Err(Error::authorization(response.failure_message()));
-        }
-
-        Ok(response)
+        })
     }
 }
 
@@ -226,7 +288,7 @@ mod tests {
     ) -> Result<Context7Response> {
         let url = url::Url::parse(&format!("{}/probe", server.url()))
             .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
-        Context7Client::for_test(server.url(), None)
+        Context7Client::for_test(server.url(), Vec::new())
             .get(&url, options)
             .await
     }
@@ -246,7 +308,7 @@ mod tests {
         let url = url::Url::parse(&format!("{}/probe", server.url()))
             .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
         let client =
-            Context7Client::for_test(server.url(), Some(Secret::new("api-token".to_string())));
+            Context7Client::for_test(server.url(), vec![Secret::new("api-token".to_string())]);
 
         let response = client
             .get(&url, RequestOptions::default())
@@ -317,7 +379,7 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        let client = Context7Client::for_test(server.url(), None);
+        let client = Context7Client::for_test(server.url(), Vec::new());
         let url = url::Url::parse(&format!("{}/probe", server.url()))
             .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
 
@@ -385,7 +447,7 @@ mod tests {
         let base_url = format!("http://{address}");
         let client = Context7Client::for_test_with_timeout(
             base_url.clone(),
-            None,
+            Vec::new(),
             Duration::from_millis(50),
         );
         client.rate_limit.acquire().await.complete(true, Some(0));
@@ -404,5 +466,108 @@ mod tests {
         permit.complete(false, None);
         server.abort();
         let _ = server.await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn quota_exceeded_rotates_before_cooldown_and_keeps_the_next_token() {
+        let mut server = mockito::Server::new_async().await;
+        let recovered = server
+            .mock("GET", "/probe")
+            .match_header("authorization", "Bearer second")
+            .with_status(200)
+            .with_body("ok")
+            .expect(1)
+            .create_async()
+            .await;
+        let again = server
+            .mock("GET", "/probe")
+            .match_header("authorization", "Bearer second")
+            .with_status(200)
+            .with_body("again")
+            .expect(1)
+            .create_async()
+            .await;
+        let limited = server
+            .mock("GET", "/probe")
+            .match_header("authorization", "Bearer first")
+            .with_status(429)
+            .with_header("retry-after", "7")
+            .with_body(r#"{"error":"Quota Exceeded"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let client = Context7Client::for_paused_clock_test(server.url(), vec![
+            Secret::new("first".to_string()),
+            Secret::new("second".to_string()),
+        ]);
+        let url = url::Url::parse(&format!("{}/probe", server.url()))
+            .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
+        let started = tokio::time::Instant::now();
+
+        let response = client
+            .get(&url, RequestOptions::default())
+            .await
+            .unwrap_or_else(|error| panic!("rotated request failed: {error}"));
+        assert_eq!(response.body(), "ok");
+
+        let response = client
+            .get(&url, RequestOptions::default())
+            .await
+            .unwrap_or_else(|error| panic!("follow-up request failed: {error}"));
+        assert_eq!(response.body(), "again");
+        assert_eq!(
+            tokio::time::Instant::now().duration_since(started),
+            Duration::ZERO
+        );
+        limited.assert_async().await;
+        recovered.assert_async().await;
+        again.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn quota_exceeded_returns_the_last_response_after_rotating_the_other_tokens() {
+        let mut server = mockito::Server::new_async().await;
+        let first = server
+            .mock("GET", "/probe")
+            .match_header("authorization", "Bearer first")
+            .with_status(429)
+            .with_body(r#"{"error":"Quota Exceeded"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let second = server
+            .mock("GET", "/probe")
+            .match_header("authorization", "Bearer second")
+            .with_status(429)
+            .with_body(r#"{"error":"Quota Exceeded"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let third = server
+            .mock("GET", "/probe")
+            .match_header("authorization", "Bearer third")
+            .with_status(429)
+            .with_body(r#"{"error":"Quota Exceeded"}"#)
+            .expect(1)
+            .create_async()
+            .await;
+        let client = Context7Client::for_test(server.url(), vec![
+            Secret::new("first".to_string()),
+            Secret::new("second".to_string()),
+            Secret::new("third".to_string()),
+        ]);
+        let url = url::Url::parse(&format!("{}/probe", server.url()))
+            .unwrap_or_else(|error| panic!("probe URL is invalid: {error}"));
+
+        let response = client
+            .get(&url, RequestOptions::default())
+            .await
+            .unwrap_or_else(|error| panic!("quota request failed: {error}"));
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.body(), r#"{"error":"Quota Exceeded"}"#);
+        first.assert_async().await;
+        second.assert_async().await;
+        third.assert_async().await;
     }
 }

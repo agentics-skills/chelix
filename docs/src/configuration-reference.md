@@ -446,7 +446,7 @@ Docker `cp` into that rootfs fails explicitly. See
 
 | Key                   | Type            | Default | Description                                                        |
 | --------------------- | --------------- | ------- | ------------------------------------------------------------------ |
-| token                 | optional string | —       | Context7 API token used by every `context7_*` tool.                |
+| token                 | array of strings | `[]`    | Context7 API tokens in priority order. Missing or empty sends requests without authorization. |
 | request_timeout_secs  | integer         | `300`   | Per-request Context7 HTTP timeout in seconds. Must be at least `1`. |
 
 ### `tools.linkup` — LinkupConfig

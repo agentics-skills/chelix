@@ -154,7 +154,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
 
     let context7 = || {
         Struct(HashMap::from([
-            ("token", Leaf),
+            ("token", Array(Box::new(Leaf))),
             ("request_timeout_secs", Leaf),
         ]))
     };

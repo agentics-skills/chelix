@@ -527,6 +527,88 @@ fn assignment_value_bounds(text: &str, separator_idx: usize, key: &str) -> Optio
     (value_end > redact_start).then_some((redact_start, value_end))
 }
 
+fn end_after_hash_comment(text: &str, hash_idx: usize) -> usize {
+    let bytes = text.as_bytes();
+    let mut idx = hash_idx + 1;
+    while idx < bytes.len() && bytes[idx] != b'\n' {
+        idx += 1;
+    }
+    if idx < bytes.len() {
+        idx + 1
+    } else {
+        text.len()
+    }
+}
+
+fn bracketed_value_contains_quote(text: &str, array_start: usize) -> bool {
+    let bytes = text.as_bytes();
+    if bytes.get(array_start) != Some(&b'[') {
+        return false;
+    }
+    let mut idx = array_start + 1;
+    let mut depth = 1usize;
+    while idx < bytes.len() && depth > 0 {
+        match bytes[idx] {
+            b'#' => idx = end_after_hash_comment(text, idx),
+            b'[' => {
+                depth += 1;
+                idx += 1;
+            },
+            b']' => {
+                depth -= 1;
+                idx += 1;
+            },
+            b'"' | b'\'' => return true,
+            _ => idx += 1,
+        }
+    }
+    false
+}
+
+fn redact_array_elements(text: &mut String, array_start: usize) -> Option<usize> {
+    if text.as_bytes().get(array_start) != Some(&b'[') {
+        return None;
+    }
+    let mut idx = array_start + 1;
+    let mut depth = 1usize;
+    while idx < text.len() && depth > 0 {
+        match text.as_bytes()[idx] {
+            b'#' => idx = end_after_hash_comment(text, idx),
+            b'[' => {
+                depth += 1;
+                idx += 1;
+            },
+            b']' => {
+                depth -= 1;
+                idx += 1;
+            },
+            quote @ (b'"' | b'\'') => {
+                let value_start = idx + 1;
+                let mut value_end = value_start;
+                while value_end < text.len() && text.as_bytes()[value_end] != quote {
+                    value_end += 1;
+                }
+                if value_end >= text.len() {
+                    return Some(text.len());
+                }
+                if value_end > value_start && &text[value_start..value_end] != SHARE_REDACTED_VALUE
+                {
+                    text.replace_range(value_start..value_end, SHARE_REDACTED_VALUE);
+                    idx = value_start + SHARE_REDACTED_VALUE.len() + 1;
+                } else {
+                    idx = value_end + 1;
+                }
+            },
+            _ => idx += 1,
+        }
+    }
+    Some(if depth == 0 {
+        idx
+    } else {
+        text.len()
+    })
+}
+
 fn redact_assignment_values(text: &str) -> String {
     let mut redacted = text.to_string();
     let mut idx = 0usize;
@@ -555,6 +637,19 @@ fn redact_assignment_values(text: &str) -> String {
             idx = separator_idx + 1;
             continue;
         };
+        let inside_quotes = value_start > 0
+            && matches!(
+                redacted.as_bytes().get(value_start - 1).copied(),
+                Some(b'"' | b'\'')
+            );
+        if !inside_quotes
+            && redacted.as_bytes().get(value_start) == Some(&b'[')
+            && bracketed_value_contains_quote(&redacted, value_start)
+            && let Some(array_end) = redact_array_elements(&mut redacted, value_start)
+        {
+            idx = array_end;
+            continue;
+        }
         if redacted[value_start..value_end].trim().is_empty()
             || &redacted[value_start..value_end] == SHARE_REDACTED_VALUE
         {
