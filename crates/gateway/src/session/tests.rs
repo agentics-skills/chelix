@@ -1137,7 +1137,7 @@ mod tests {
 
     fn test_model_reasoning() -> chelix_common::ResolvedModelReasoning {
         chelix_common::ResolvedModelReasoning::try_new(
-            "custom-patch::reasoning".to_string(),
+            "example-patch::reasoning".to_string(),
             chelix_common::ReasoningEffort::from("low"),
         )
         .unwrap()
@@ -1153,11 +1153,11 @@ mod tests {
     fn patch_model_service(disabled_models: &[&str]) -> Arc<dyn ModelService> {
         let config: chelix_config::ChelixConfig = toml::from_str(
             r#"
-[providers.custom-patch]
+[providers.example-patch]
 api_key = "test-key"
 base_url = "https://patch.example.invalid/v1"
 
-[providers.custom-patch.models.reasoning]
+[providers.example-patch.models.reasoning]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -1167,7 +1167,7 @@ tool_calling = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low", "high"]
 
-[providers.custom-patch.models.off]
+[providers.example-patch.models.off]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -1425,8 +1425,8 @@ reasoning_supported_efforts = ["off"]
     #[tokio::test]
     async fn patch_model_reasoning_persists_validated_pair_atomically() {
         const KEY: &str = "session:model-patch";
-        const REASONING_MODEL: &str = "custom-patch::reasoning";
-        const OFF_MODEL: &str = "custom-patch::off";
+        const REASONING_MODEL: &str = "example-patch::reasoning";
+        const OFF_MODEL: &str = "example-patch::off";
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1500,7 +1500,7 @@ reasoning_supported_efforts = ["off"]
     #[tokio::test]
     async fn patch_late_foreign_key_error_rolls_back_the_complete_entry() {
         const KEY: &str = "session:atomic-patch";
-        const REASONING_MODEL: &str = "custom-patch::reasoning";
+        const REASONING_MODEL: &str = "example-patch::reasoning";
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1552,8 +1552,8 @@ reasoning_supported_efforts = ["off"]
     #[tokio::test]
     async fn patch_model_reasoning_rejects_invalid_pair_without_mutation() {
         const KEY: &str = "session:model-patch-errors";
-        const REASONING_MODEL: &str = "custom-patch::reasoning";
-        const OFF_MODEL: &str = "custom-patch::off";
+        const REASONING_MODEL: &str = "example-patch::reasoning";
+        const OFF_MODEL: &str = "example-patch::off";
 
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1609,7 +1609,7 @@ reasoning_supported_efforts = ["off"]
                 "unknown model",
                 serde_json::json!({
                     "key": KEY,
-                    "model": "custom-patch::missing",
+                    "model": "example-patch::missing",
                     "reasoningEffort": "low",
                 }),
                 "is not registered",

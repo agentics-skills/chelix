@@ -32,7 +32,7 @@ export interface ProviderInfo {
 	baseUrl?: string | null;
 	requiresModel: boolean;
 	keyOptional: boolean;
-	isCustom?: boolean;
+	isOpenAiCompatible?: boolean;
 	alias?: string | null;
 	enabled?: boolean;
 	wireApi?: "chat-completions" | "responses";

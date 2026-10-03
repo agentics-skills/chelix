@@ -209,7 +209,7 @@ User profile collected during onboarding.
 
 | Key                | Type   | Default  | Description                                                               |
 | ------------------ | ------ | -------- | ------------------------------------------------------------------------- |
-| `model`            | string | required | Exact canonical registry model ID from `models.list`, such as `openai::gpt-5.2`. |
+| `model`            | string | required | Exact canonical registry model ID from `models.list`, such as `example::gpt-5.2`. |
 | `reasoning_effort` | string | required | Non-empty effort from the selected model's `reasoning_supported_efforts`. |
 
 Both auxiliary tables reject additional fields. A partial title pair is a config
@@ -238,7 +238,7 @@ must reference a configured agent.
 | `emoji`                 | optional string                                                           | `null`   | Agent emoji identifier.                                                                                                                                                                                                      |
 | `description`           | optional string                                                           | `null`   | Short agent description.                                                                                                                                                                                                     |
 | `voice_persona_id`      | optional string                                                           | `null`   | Voice persona identifier.                                                                                                                                                                                                    |
-| `model`                 | string                                                                    | required | Canonical model ID from the live model registry, such as `openai::gpt-5.2`.                                                                                                                                                   |
+| `model`                 | string                                                                    | required | Canonical model ID from the live model registry, such as `example::gpt-5.2`.                                                                                                                                                   |
 | `tools.allow`           | array                                                                     | `[]`     | Tool whitelist. An empty list allows every tool not denied by another policy entry.                                                                                                                                          |
 | `tools.deny`            | array                                                                     | `[]`     | Tool deny list, applied after `allow`.                                                                                                                                                                                        |
 | `tools.preload`         | array                                                                     | `[]`     | Tool schemas exposed immediately in lazy registry mode. Names are resolved after effective policy filtering and do not grant access.                                                                                         |
@@ -728,14 +728,13 @@ Both keys are required whenever `[heartbeat.model_override]` is present.
 | Key                 | Type                                    | Default              | Description                                                    |
 | ------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------------- |
 | `enabled`           | bool                                    | `true`               | Whether this provider is enabled.                              |
-| `api_key`           | optional string (secret)                | —                    | Override the API key. Env var takes precedence if set.         |
+| `api_key`           | optional string (secret)                | —                    | API key for this provider. A `${ENV_VAR}` substitution is explicit. |
 | `base_url`          | optional string                         | —                    | Override the base URL.                                         |
 | `models.<model_id>` | `PartialModelMetadata` table            | —                    | Ordered complete model record.                                 |
 | `stream_transport`  | enum (`sse`, `websocket`, `auto`)       | `"sse"`              | Streaming transport for this provider.                         |
 | `wire_api`          | enum (`chat-completions`, `responses`)  | `"chat-completions"` | Wire format for this provider's HTTP API.                      |
 | `alias`             | optional string                         | —                    | Alias used in metrics labels instead of the provider name.     |
 | `tool_mode`         | enum (`native`, `text`, `off`)          | `"native"`           | How tool calling is handled for this provider.                 |
-| `cache_retention`   | enum (`none`, `short`, `long`)          | `"short"`            | Prompt cache retention policy.                                 |
 | `policy`            | optional `ToolPolicyConfig` (see below) | —                    | Tool policy override merged on top of global `[tools.policy]`. |
 
 ### `providers.<name>.models.<model_id>` — PartialModelMetadata

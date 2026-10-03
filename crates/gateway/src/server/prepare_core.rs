@@ -120,32 +120,6 @@ pub async fn prepare_gateway_core(
     let effective_providers =
         crate::provider_setup::config_with_saved_keys(&base_provider_config, &key_store)?;
 
-    let has_explicit_provider_settings =
-        crate::provider_setup::has_explicit_provider_settings(&config.providers);
-    let auto_detected_provider_sources = if has_explicit_provider_settings {
-        Vec::new()
-    } else {
-        crate::provider_setup::detect_auto_provider_sources_with_overrides(
-            &config.providers,
-            deploy_platform.as_deref(),
-            &config_env_overrides,
-        )?
-    };
-
-    if !has_explicit_provider_settings {
-        if auto_detected_provider_sources.is_empty() {
-            info!("llm auto-detect: no providers detected from env/files");
-        } else {
-            for detected in &auto_detected_provider_sources {
-                info!(
-                    provider = %detected.provider,
-                    source = %detected.source,
-                    "llm auto-detected provider source"
-                );
-            }
-        }
-    }
-
     let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_config(
         &effective_providers,
         &config_env_overrides,
@@ -241,7 +215,6 @@ pub async fn prepare_gateway_core(
     let mut provider_setup = LiveProviderSetupService::new(
         Arc::clone(&registry),
         config.providers.clone(),
-        deploy_platform.clone(),
         crate::provider_setup::ProviderConfigPersistence::Filesystem,
     )
     .with_env_overrides(config_env_overrides.clone())

@@ -28,18 +28,11 @@ credentials to chat.
 
 ### Configure Models and Credentials
 
-1. Provide the provider credentials using either method:
-
-   - Set an API key as an environment variable and restart Chelix:
-
-     ```bash
-     export OPENAI_API_KEY="sk-..."          # OpenAI
-     ```
-
-   - Save the credentials in onboarding or **Settings** → **Providers**.
-     Credentials stay in `~/.config/chelix/provider_keys.json` and are not
-     written into the model tables. Saving credentials does not require model
-     records.
+1. Add an OpenAI Compatible provider in onboarding or **Settings** → **Providers**.
+   Enter the endpoint and API key. Credentials stay in
+   `~/.config/chelix/provider_keys.json` and are not written into the model
+   tables. Saving credentials does not require model records. The same values
+   can be written as `[providers.<name>]` with `base_url` and `api_key`.
 
 2. Add, edit, or delete models for a configured provider in onboarding or
    **Settings** → **Providers**. The model editor is shown only for a

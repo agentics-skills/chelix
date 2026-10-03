@@ -127,7 +127,7 @@ or sandbox endpoint.
         │        │                        │
         │  ┌─────▼─────────────────────┐  │
         │  │    Provider Registry      │  │
-        │  │       OpenAI API          │  │
+        │  │    OpenAI Compatible      │  │
         │  └───────────────────────────┘  │
         ├─────────────────────────────────┤
         │  Sessions  │ Memory  │  Hooks   │
@@ -187,8 +187,8 @@ docker run -d \
 ```
 
 Open `https://localhost:13131` and complete the setup. For unattended Docker
-deployments, set `CHELIX_PASSWORD`, `CHELIX_PROVIDER`, and `CHELIX_API_KEY`
-before first boot to skip the setup wizard. See [Docker docs](docs/src/docker.md)
+auth, set `CHELIX_PASSWORD` before first boot. The LLM provider is configured
+as `[providers.<name>]` with `base_url` and `api_key`. See [Docker docs](docs/src/docker.md)
 for Podman, OrbStack, TLS trust, and persistence details.
 
 ### Cloud Deployment

@@ -211,15 +211,13 @@ impl OpenAiProvider {
         options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         Box::pin(async_stream::stream! {
-            let mut openai_messages = self.serialize_messages_for_request(&messages);
-            self.apply_openrouter_cache_control(&mut openai_messages);
+            let openai_messages = self.serialize_messages_for_request(&messages);
             let mut body = serde_json::json!({
                 "model": self.model,
                 "messages": openai_messages,
                 "stream": true,
                 "stream_options": { "include_usage": true },
             });
-            self.apply_system_prompt_rewrite(&mut body);
 
             if !tools.is_empty() {
                 match self.prepare_chat_tools(&tools) {
@@ -407,10 +405,11 @@ mod tests {
         });
 
         let provider = configure_reasoning(
-            OpenAiProvider::new(
+            OpenAiProvider::new_with_name(
                 Secret::new("test-key".to_string()),
                 "gpt-5.4".to_string(),
                 format!("http://{addr}"),
+                "example".to_string(),
             )
             .with_wire_api(chelix_config::schema::WireApi::Responses),
             vec!["off".into()],
@@ -447,10 +446,11 @@ mod tests {
         });
 
         let provider = configure_reasoning(
-            OpenAiProvider::new(
+            OpenAiProvider::new_with_name(
                 Secret::new("test-key".to_string()),
                 "gpt-5.4".to_string(),
                 format!("http://{addr}"),
+                "example".to_string(),
             )
             .with_wire_api(chelix_config::schema::WireApi::Responses),
             vec!["off".into()],
@@ -540,10 +540,11 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
         let provider = configure_reasoning(
-            OpenAiProvider::new(
+            OpenAiProvider::new_with_name(
                 Secret::new("test-key".to_string()),
                 "gpt-5.4".to_string(),
                 format!("http://{addr}"),
+                "example".to_string(),
             )
             .with_wire_api(chelix_config::schema::WireApi::Responses),
             vec!["off".into()],

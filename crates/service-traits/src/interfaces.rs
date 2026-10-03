@@ -1014,8 +1014,8 @@ pub trait ProviderSetupService: Send + Sync {
     async fn set_model_preferences(&self, params: Value) -> ServiceResult;
     async fn upsert_model(&self, params: Value) -> ServiceResult;
     async fn delete_model(&self, params: Value) -> ServiceResult;
-    async fn upsert_custom(&self, params: Value) -> ServiceResult;
-    async fn delete_custom(&self, params: Value) -> ServiceResult;
+    async fn upsert_openai_compatible(&self, params: Value) -> ServiceResult;
+    async fn delete_openai_compatible(&self, params: Value) -> ServiceResult;
 }
 
 pub struct NoopProviderSetupService;
@@ -1046,11 +1046,11 @@ impl ProviderSetupService for NoopProviderSetupService {
         Err("provider setup not configured".into())
     }
 
-    async fn upsert_custom(&self, _params: Value) -> ServiceResult {
+    async fn upsert_openai_compatible(&self, _params: Value) -> ServiceResult {
         Err("provider setup not configured".into())
     }
 
-    async fn delete_custom(&self, _params: Value) -> ServiceResult {
+    async fn delete_openai_compatible(&self, _params: Value) -> ServiceResult {
         Err("provider setup not configured".into())
     }
 }

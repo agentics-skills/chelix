@@ -10,10 +10,6 @@ pub enum Error {
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Tungstenite(Box<tokio_tungstenite::tungstenite::Error>),
-    #[error(transparent)]
-    InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
     #[error("{message}")]
     Message { message: String },
     #[error("{context}: {source}")]
@@ -41,12 +37,6 @@ impl Error {
             context: context.into(),
             source: Box::new(source),
         }
-    }
-}
-
-impl From<tokio_tungstenite::tungstenite::Error> for Error {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::Tungstenite(Box::new(err))
     }
 }
 

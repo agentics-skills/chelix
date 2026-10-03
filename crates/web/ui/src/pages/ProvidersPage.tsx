@@ -8,8 +8,8 @@ import { sendRpc } from "../helpers";
 import { t } from "../i18n";
 import { fetchModels } from "../models";
 import { updateNavCount } from "../nav-counts";
-import { openModelSelectorForProvider } from "../providers/auth-flow";
-import { showCustomProviderEditor } from "../providers/openai-compatible";
+import { openModelSelectorForProvider } from "../providers/model-selector";
+import { showOpenAiCompatibleEditor } from "../providers/openai-compatible";
 import { ProviderModels } from "../providers/provider-models";
 import { openProviderModal } from "../providers/shared";
 import { connected } from "../signals";
@@ -41,7 +41,7 @@ function fetchProviders(): Promise<void> {
 			const providerMeta = new Map<string, ProviderInfo>();
 			if (providersRes?.ok) {
 				for (const provider of providersRes.payload || []) {
-					if (provider.configured || provider.isCustom) providerMeta.set(provider.name, provider);
+					if (provider.configured || provider.isOpenAiCompatible) providerMeta.set(provider.name, provider);
 				}
 			}
 			providerMetaSig.value = providerMeta;
@@ -68,10 +68,7 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 	for (const row of models) {
 		let attached = false;
 		for (const provider of metaMap.values()) {
-			const aliasMatch =
-				typeof provider.alias === "string" && provider.alias.length > 0 && provider.alias === row.provider;
-			const nameMatch = provider.name === row.provider;
-			if (aliasMatch || nameMatch) {
+			if (provider.name === row.provider) {
 				groups.get(provider.name)?.models.push(row);
 				attached = true;
 				break;
@@ -106,7 +103,7 @@ function groupProviderRows(models: ModelInfo[], metaMap: Map<string, ProviderInf
 interface ProviderActionsProps {
 	hasModels: boolean;
 	isDeleting: boolean;
-	isCustom: boolean;
+	isOpenAiCompatible: boolean;
 	onSelectModels: () => void;
 	onEdit: () => void;
 	onDelete: () => void;
@@ -115,14 +112,14 @@ interface ProviderActionsProps {
 function ProviderActions({
 	hasModels,
 	isDeleting,
-	isCustom,
+	isOpenAiCompatible,
 	onSelectModels,
 	onEdit,
 	onDelete,
 }: ProviderActionsProps): VNode {
 	return (
 		<div className="flex gap-2 shrink-0">
-			{isCustom ? (
+			{isOpenAiCompatible ? (
 				<button type="button" className="provider-btn provider-btn-secondary provider-btn-sm" onClick={onEdit}>
 					Edit
 				</button>
@@ -151,13 +148,7 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 			if (!yes) return;
 			deletingProvider.value = group.provider;
 			providerActionError.value = "";
-			const method = providerMetaSig.value.get(group.provider)?.isCustom
-				? "providers.delete_custom"
-				: "providers.remove_key";
-			const params = providerMetaSig.value.get(group.provider)?.isCustom
-				? { name: group.provider }
-				: { provider: group.provider };
-			sendRpc(method, params)
+			sendRpc("providers.delete_openai_compatible", { name: group.provider })
 				.then((res) => {
 					if (res?.ok) {
 						configuredModels.value = configuredModels.value.filter((entry) => entry.provider !== group.provider);
@@ -208,9 +199,9 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 				<ProviderActions
 					hasModels={group.models.length > 0}
 					isDeleting={isDeleting}
-					isCustom={providerMetaSig.value.get(group.provider)?.isCustom === true}
+					isOpenAiCompatible={providerMetaSig.value.get(group.provider)?.isOpenAiCompatible === true}
 					onSelectModels={onSelectModels}
-					onEdit={() => showCustomProviderEditor(providerMetaSig.value.get(group.provider) || null)}
+					onEdit={() => showOpenAiCompatibleEditor(providerMetaSig.value.get(group.provider) || null)}
 					onDelete={onDeleteProvider}
 				/>
 			</div>

@@ -571,23 +571,6 @@ fn providers_config_offered_matches_canonical_names_case_insensitively() {
 }
 
 #[test]
-fn providers_config_invalid_names_match_runtime_behavior() {
-    let config = ProvidersConfig {
-        offered: vec!["claude".into(), "unsupported".into(), "openai-codex".into()],
-        ..ProvidersConfig::default()
-    };
-    assert_eq!(config.invalid_provider_names(), vec![
-        ("providers.offered[0]".into(), "claude".into()),
-        ("providers.offered[1]".into(), "unsupported".into()),
-        ("providers.offered[2]".into(), "openai-codex".into()),
-    ]);
-    assert!(!config.is_enabled("claude"));
-    assert!(!config.is_enabled("unsupported"));
-    assert!(!config.is_enabled("openrouter"));
-    assert!(!config.is_enabled("openai-codex"));
-}
-
-#[test]
 fn providers_config_enabled_flag_still_applies_with_offered_allowlist() {
     let mut config = ProvidersConfig {
         offered: vec!["openai".into()],
@@ -892,12 +875,12 @@ fn wire_api_default_is_chat_completions() {
 #[test]
 fn provider_entry_wire_api_from_toml() {
     let toml_str = r#"
-[providers.custom-mn]
+[providers.example-mn]
 enabled = true
 base_url = "https://gmn.example.com/v1"
 wire_api = "responses"
 
-[providers.custom-mn.models."gpt-5.3"]
+[providers.example-mn.models."gpt-5.3"]
 context_length = 400000
 max_input_tokens = 272000
 max_output_tokens = 128000
@@ -908,7 +891,7 @@ zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low", "medium", "high"]
 "#;
     let config: ChelixConfig = toml::from_str(toml_str).unwrap();
-    let entry = config.providers.get("custom-mn").unwrap();
+    let entry = config.providers.get("example-mn").unwrap();
     assert_eq!(entry.wire_api, WireApi::Responses);
 }
 

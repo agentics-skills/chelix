@@ -20,11 +20,8 @@ pub use super::support::ErrorParser;
 use {
     super::support::default_error_parser,
     crate::{
-        config_helpers::{
-            config_with_saved_keys, env_value_with_overrides, set_provider_enabled_in_config,
-        },
+        config_helpers::{config_with_saved_keys, set_provider_enabled_in_config},
         key_store::KeyStore,
-        known_providers::KnownProvider,
     },
 };
 
@@ -41,9 +38,6 @@ pub struct LiveProviderSetupService {
     pub(crate) config: Arc<Mutex<ProvidersConfig>>,
     pub(crate) config_persistence: ProviderConfigPersistence,
     pub(crate) key_store: KeyStore,
-    /// When set, local-only providers are hidden from
-    /// the available list because they cannot run on cloud VMs.
-    pub(crate) deploy_platform: Option<String>,
     /// Shared priority models list from `LiveModelService`. Updated when the
     /// ordered model selection changes so the dropdown reflects that order.
     pub(crate) priority_models: Option<Arc<RwLock<Vec<String>>>>,
@@ -59,7 +53,6 @@ impl LiveProviderSetupService {
     pub fn new(
         registry: Arc<RwLock<ProviderRegistry>>,
         config: ProvidersConfig,
-        deploy_platform: Option<String>,
         config_persistence: ProviderConfigPersistence,
     ) -> Self {
         Self {
@@ -67,7 +60,6 @@ impl LiveProviderSetupService {
             config: Arc::new(Mutex::new(config)),
             config_persistence,
             key_store: KeyStore::new(),
-            deploy_platform,
             priority_models: None,
             agents_config: None,
             env_overrides: HashMap::new(),
@@ -114,40 +106,6 @@ impl LiveProviderSetupService {
             .or_default()
             .enabled = enabled;
         Ok(())
-    }
-
-    pub(crate) fn is_provider_configured(
-        &self,
-        provider: &KnownProvider,
-        active_config: &ProvidersConfig,
-    ) -> ServiceResult<bool> {
-        if !active_config.is_enabled(provider.name) {
-            return Ok(false);
-        }
-
-        if env_value_with_overrides(&self.env_overrides, provider.env_key).is_some() {
-            return Ok(true);
-        }
-        if chelix_config::generic_provider_api_key_from_env(provider.name, &self.env_overrides)
-            .is_some()
-        {
-            return Ok(true);
-        }
-        // Check config file
-        if let Some(entry) = active_config.get(provider.name)
-            && entry
-                .api_key
-                .as_ref()
-                .is_some_and(|key| !key.expose_secret().is_empty())
-        {
-            return Ok(true);
-        }
-        // Check persisted key store
-        Ok(self
-            .key_store
-            .load(provider.name)
-            .map_err(ServiceError::message)?
-            .is_some())
     }
 
     /// Build a ProvidersConfig that includes saved keys for registry rebuild.
@@ -234,11 +192,11 @@ impl ProviderSetupService for LiveProviderSetupService {
         self.delete_model_inner(params).await
     }
 
-    async fn upsert_custom(&self, params: Value) -> ServiceResult {
-        self.upsert_custom_inner(params).await
+    async fn upsert_openai_compatible(&self, params: Value) -> ServiceResult {
+        self.upsert_openai_compatible_inner(params).await
     }
 
-    async fn delete_custom(&self, params: Value) -> ServiceResult {
-        self.delete_custom_inner(params).await
+    async fn delete_openai_compatible(&self, params: Value) -> ServiceResult {
+        self.delete_openai_compatible_inner(params).await
     }
 }

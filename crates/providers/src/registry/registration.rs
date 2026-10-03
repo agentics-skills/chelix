@@ -1,4 +1,4 @@
-//! Atomic config-only provider registry construction.
+//! Config-only provider registry construction.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -10,49 +10,14 @@ use {
     secrecy::ExposeSecret,
 };
 
-use crate::{
-    config_helpers::{env_value, resolve_api_key},
-    model_capabilities::ModelInfo,
-    model_catalogs::{OPENAI_COMPAT_PROVIDERS, OpenAiCompatDef},
-    openai,
-};
+use crate::{model_capabilities::ModelInfo, openai};
 
 use super::ProviderRegistry;
-
-const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 
 #[derive(Debug, Clone)]
 struct ConfiguredModel {
     id: String,
     metadata: ModelMetadata,
-}
-
-fn resolve_openai_base_url(
-    config: &ProvidersConfig,
-    env_overrides: &HashMap<String, String>,
-) -> (String, bool) {
-    if let Some(base_url) = config
-        .get("openai")
-        .and_then(|entry| entry.base_url.clone())
-    {
-        return (base_url, true);
-    }
-    if let Some(base_url) = env_value(env_overrides, "OPENAI_BASE_URL") {
-        return (base_url, true);
-    }
-    (OPENAI_DEFAULT_BASE_URL.into(), false)
-}
-
-pub(crate) fn openai_builtin_capabilities(
-    base_url_overridden: bool,
-) -> openai::OpenAiProviderCapabilities {
-    if base_url_overridden {
-        return openai::OpenAiProviderCapabilities::DEFAULT;
-    }
-    openai::OpenAiProviderCapabilities {
-        responses_websocket_policy: openai::ResponsesWebSocketPolicy::OpenAiPlatform,
-        ..openai::OpenAiProviderCapabilities::DEFAULT
-    }
 }
 
 fn resolve_model(
@@ -95,34 +60,15 @@ fn models_for<'a>(
     resolved.get(provider_name).map_or(&[], Vec::as_slice)
 }
 
-fn resolve_compatible_api_key(
-    config: &ProvidersConfig,
-    definition: &OpenAiCompatDef,
-    env_overrides: &HashMap<String, String>,
-) -> Option<secrecy::Secret<String>> {
-    let key = resolve_api_key(
-        config,
-        definition.config_name,
-        definition.env_key,
-        env_overrides,
-    );
-    if definition.requires_api_key {
-        return key;
-    }
-    key.or_else(|| Some(secrecy::Secret::new(definition.config_name.into())))
-}
-
 impl ProviderRegistry {
     /// Build and validate the complete registry without network I/O.
     pub fn from_config(
         config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
+        _env_overrides: &HashMap<String, String>,
     ) -> Result<Self> {
         let resolved = resolve_configured_models(config)?;
         let mut registry = Self::empty();
-        registry.register_openai(config, env_overrides, models_for(&resolved, "openai"));
-        registry.register_openai_compatible(config, env_overrides, &resolved);
-        registry.register_custom(config, &resolved);
+        registry.register_openai_compatible(config, &resolved);
         Ok(registry)
     }
 
@@ -154,100 +100,7 @@ impl ProviderRegistry {
         count
     }
 
-    fn register_openai(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        models: &[ConfiguredModel],
-    ) -> usize {
-        let Some(entry) = config.get("openai").filter(|_| config.is_enabled("openai")) else {
-            return 0;
-        };
-        let Some(key) = resolve_api_key(config, "openai", "OPENAI_API_KEY", env_overrides) else {
-            return 0;
-        };
-        let (base_url, base_url_overridden) = resolve_openai_base_url(config, env_overrides);
-        let capabilities = openai_builtin_capabilities(base_url_overridden);
-        let provider_name = provider_label(config, "openai");
-        let entry = entry.clone();
-        let transport_provider_name = provider_name.clone();
-
-        self.register_configured(&provider_name, models, move |model| {
-            Arc::new(configure_openai_transport(
-                openai::OpenAiProvider::new_with_name(
-                    key.clone(),
-                    model.id.clone(),
-                    base_url.clone(),
-                    transport_provider_name.clone(),
-                )
-                .with_capabilities(capabilities)
-                .with_reasoning_metadata(&model.metadata),
-                &entry,
-            ))
-        })
-    }
-
     fn register_openai_compatible(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        resolved: &HashMap<String, Vec<ConfiguredModel>>,
-    ) -> usize {
-        OPENAI_COMPAT_PROVIDERS
-            .iter()
-            .map(|definition| {
-                self.register_one_openai_compatible(
-                    config,
-                    env_overrides,
-                    definition,
-                    models_for(resolved, definition.config_name),
-                )
-            })
-            .sum()
-    }
-
-    fn register_one_openai_compatible(
-        &mut self,
-        config: &ProvidersConfig,
-        env_overrides: &HashMap<String, String>,
-        definition: &OpenAiCompatDef,
-        models: &[ConfiguredModel],
-    ) -> usize {
-        let Some(entry) = config
-            .get(definition.config_name)
-            .filter(|_| config.is_enabled(definition.config_name))
-        else {
-            return 0;
-        };
-        let Some(key) = resolve_compatible_api_key(config, definition, env_overrides) else {
-            return 0;
-        };
-        let base_url = entry
-            .base_url
-            .clone()
-            .or_else(|| env_value(env_overrides, definition.env_base_url_key))
-            .unwrap_or_else(|| definition.default_base_url.into());
-        let entry = entry.clone();
-        let provider_name = provider_label(config, definition.config_name);
-        let capabilities = definition.capabilities;
-        let transport_provider_name = provider_name.clone();
-
-        self.register_configured(&provider_name, models, move |model| {
-            Arc::new(configure_openai_transport(
-                openai::OpenAiProvider::new_with_name(
-                    key.clone(),
-                    model.id.clone(),
-                    base_url.clone(),
-                    transport_provider_name.clone(),
-                )
-                .with_capabilities(capabilities)
-                .with_reasoning_metadata(&model.metadata),
-                &entry,
-            ))
-        })
-    }
-
-    fn register_custom(
         &mut self,
         config: &ProvidersConfig,
         resolved: &HashMap<String, Vec<ConfiguredModel>>,
@@ -255,12 +108,13 @@ impl ProviderRegistry {
         config
             .providers
             .keys()
-            .filter(|name| name.starts_with("custom-"))
-            .map(|name| self.register_one_custom(config, name, models_for(resolved, name)))
+            .map(|name| {
+                self.register_one_openai_compatible(config, name, models_for(resolved, name))
+            })
             .sum()
     }
 
-    fn register_one_custom(
+    fn register_one_openai_compatible(
         &mut self,
         config: &ProvidersConfig,
         name: &str,
@@ -296,20 +150,12 @@ impl ProviderRegistry {
     }
 }
 
-fn provider_label(config: &ProvidersConfig, provider_name: &str) -> String {
-    config
-        .get(provider_name)
-        .and_then(|entry| entry.alias.clone())
-        .unwrap_or_else(|| provider_name.to_string())
-}
-
 fn configure_openai_transport(
     mut provider: openai::OpenAiProvider,
     entry: &ProviderEntry,
 ) -> openai::OpenAiProvider {
     provider = provider
         .with_stream_transport(entry.stream_transport)
-        .with_cache_retention(entry.cache_retention)
         .with_tool_mode(entry.tool_mode);
     if !matches!(entry.wire_api, chelix_config::WireApi::ChatCompletions) {
         provider = provider.with_wire_api(entry.wire_api);

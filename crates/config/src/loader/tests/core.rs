@@ -151,7 +151,7 @@ fn apply_env_overrides_providers_offered_array() {
 fn apply_env_overrides_rejects_unknown_offered_provider() {
     let vars = vec![(
         "CHELIX_PROVIDERS__OFFERED".into(),
-        "[\"openai\",\"unsupported-provider\"]".into(),
+        "[\"openai\",\"voice-openai\"]".into(),
     )];
     let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
         .expect_err("unknown offered provider must fail");
@@ -213,13 +213,7 @@ fn apply_env_overrides_rejects_zero_linkup_request_timeout() {
 
 #[test]
 fn apply_env_overrides_rejects_noncanonical_offered_provider_names() {
-    for name in [
-        "claude",
-        "google",
-        "alibaba",
-        "openai_codex",
-        "openai-codex",
-    ] {
+    for name in ["voice-openai", "offered", "bad_name"] {
         let vars = vec![("CHELIX_PROVIDERS__OFFERED".into(), format!("[\"{name}\"]"))];
         let error =
             apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
@@ -265,25 +259,19 @@ fn parse_config_accepts_matrix_accounts_in_extra() {
 #[test]
 fn parse_config_rejects_unknown_provider_section() {
     let error = parse_config(
-        "[providers.unsupported-provider]\nenabled = true\n",
+        "[providers.voice-openai]\nenabled = true\n",
         std::path::Path::new("chelix.toml"),
     )
     .expect_err("unknown provider section must fail");
     assert!(
-        error.to_string().contains("providers.unsupported-provider"),
+        error.to_string().contains("providers.voice-openai"),
         "error should identify the unsupported provider: {error}"
     );
 }
 
 #[test]
 fn parse_config_rejects_noncanonical_offered_provider_names() {
-    for name in [
-        "claude",
-        "google",
-        "alibaba",
-        "openai_codex",
-        "openai-codex",
-    ] {
+    for name in ["voice-openai", "offered", "bad_name"] {
         let raw = format!("[providers]\noffered = [\"{name}\"]\n");
         let error = parse_config(&raw, std::path::Path::new("chelix.toml"))
             .expect_err("noncanonical offered provider must fail");

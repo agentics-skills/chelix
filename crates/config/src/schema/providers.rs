@@ -5,29 +5,38 @@ use {
     std::collections::HashMap,
 };
 
-/// Canonical list of known LLM provider names and accepted config-key aliases.
+/// Validate an OpenAI Compatible provider section name.
 ///
-/// This is the **single source of truth** for provider name validation.
-/// Config validation (`semantic.rs`) uses this to detect typos, and
-/// `chelix-providers` cross-validates its registrations against it.
-///
-/// The list includes both canonical provider names (used in registration)
-/// and config-key aliases that users may write in `[providers.<name>]`
-/// sections.
-///
-/// When adding a new provider, add its config name here.  A compile-time
-/// test in `chelix-providers` will fail if a registered provider is
-/// missing from this list.
-pub const KNOWN_PROVIDER_NAMES: &[&str] = &[
-    // Built-in providers (always available)
-    "openai",
-    // OpenAI-compatible providers (table-driven)
-    "alibaba-coding",
-    "deepinfra",
-    "openrouter",
-    "zai",
-    "zai-code",
-];
+/// The name is the user-specified slug: lowercase ASCII letters, digits, and
+/// hyphens. `offered` is the providers table field, and `voice-*` is the
+/// voice credential namespace in the shared key store.
+pub fn openai_compatible_provider_name_error(name: &str) -> Option<&'static str> {
+    let slug_ok = !name.is_empty()
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-');
+    if !slug_ok {
+        return Some("provider name must contain only lowercase letters, digits, and hyphens");
+    }
+    if name == "offered" {
+        return Some("provider name 'offered' is reserved");
+    }
+    if name.starts_with("voice-") {
+        return Some("provider name must not use the voice- prefix");
+    }
+    None
+}
+
+/// Lowercase a requested provider name and accept it when it is a valid slug.
+pub fn parse_openai_compatible_provider_name(raw: &str) -> Result<String, &'static str> {
+    let name = raw.trim().to_ascii_lowercase();
+    match openai_compatible_provider_name_error(&name) {
+        Some(error) => Err(error),
+        None => Ok(name),
+    }
+}
 
 /// LLM provider configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -39,8 +48,7 @@ pub struct ProvidersConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub offered: Vec<String>,
 
-    /// Provider-specific settings keyed by provider name.
-    /// See [`KNOWN_PROVIDER_NAMES`] for the full list of recognised names.
+    /// Provider-specific settings keyed by the OpenAI Compatible provider name.
     #[serde(flatten)]
     pub providers: HashMap<String, ProviderEntry>,
 }
@@ -62,10 +70,6 @@ const fn is_default_tool_mode(v: &ToolMode) -> bool {
     matches!(v, ToolMode::Native)
 }
 
-const fn is_default_cache_retention(v: &CacheRetention) -> bool {
-    matches!(v, CacheRetention::Short)
-}
-
 /// Wire format for provider HTTP API.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -75,26 +79,6 @@ pub enum WireApi {
     ChatCompletions,
     /// OpenAI Responses API format (`/responses`).
     Responses,
-}
-
-/// Prompt cache retention policy for OpenRouter models that support
-/// client-controlled caching.
-///
-/// - `none`: disable prompt caching (no `cache_control` breakpoints sent).
-/// - `short`: use ephemeral caching.
-/// - `long`: currently equivalent to `short`, but signals intent for longer
-///   retention when upstream providers add TTL tiers.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CacheRetention {
-    /// No prompt caching — skip `cache_control` breakpoints entirely.
-    None,
-    /// Short-lived ephemeral cache.
-    #[default]
-    Short,
-    /// Long-lived cache. Currently equivalent to `short` (ephemeral), but
-    /// reserved for future provider support of extended TTL tiers.
-    Long,
 }
 
 /// Streaming transport for provider response streams.
@@ -161,17 +145,6 @@ pub struct ProviderEntry {
     #[serde(default, skip_serializing_if = "is_default_tool_mode")]
     pub tool_mode: ToolMode,
 
-    /// Prompt cache retention policy.
-    ///
-    /// - `none`: disable prompt caching entirely.
-    /// - `short` (default): ephemeral caching.
-    /// - `long`: same as `short` today, reserved for future extended TTL.
-    ///
-    /// Only affects OpenRouter models that support client-controlled caching.
-    /// Has no effect on providers with automatic server-side caching.
-    #[serde(default, skip_serializing_if = "is_default_cache_retention")]
-    pub cache_retention: CacheRetention,
-
     /// Tool policy override for this provider. When set, these allow/deny
     /// rules are merged on top of the global `[tools.policy]` for requests
     /// routed through this provider.
@@ -190,7 +163,6 @@ impl std::fmt::Debug for ProviderEntry {
             .field("wire_api", &self.wire_api)
             .field("alias", &self.alias)
             .field("tool_mode", &self.tool_mode)
-            .field("cache_retention", &self.cache_retention)
             .field("policy", &self.policy)
             .finish()
     }
@@ -207,7 +179,6 @@ impl Default for ProviderEntry {
             wire_api: WireApi::ChatCompletions,
             alias: None,
             tool_mode: ToolMode::Native,
-            cache_retention: CacheRetention::Short,
             policy: None,
         }
     }
@@ -215,7 +186,7 @@ impl Default for ProviderEntry {
 
 impl ProvidersConfig {
     pub(crate) fn is_supported_name(name: &str) -> bool {
-        name.starts_with("custom-") || KNOWN_PROVIDER_NAMES.contains(&name)
+        openai_compatible_provider_name_error(name).is_none()
     }
 
     fn canonical_offered_name(value: &str) -> Option<String> {

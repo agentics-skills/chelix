@@ -17,12 +17,11 @@ docker run -d \
   ghcr.io/agentics-skills/chelix:latest
 ```
 
-Open <https://localhost:13131> in your browser and configure your LLM provider
-to start chatting.
+Open <https://localhost:13131> in your browser and configure your OpenAI Compatible
+provider to start chatting.
 
-For unattended bootstraps, add `CHELIX_TOKEN`, `CHELIX_PROVIDER`, and
-`CHELIX_API_KEY` before first start. That pre-configures auth plus one LLM
-provider so you can skip the browser setup wizard entirely.
+For unattended auth, set `CHELIX_TOKEN` before first start. The LLM provider is
+a `[providers.<name>]` section with `base_url` and `api_key`.
 
 ### Ports
 
@@ -324,38 +323,22 @@ docker run -d \
 
 ### API Keys and the `[env]` Section
 
-Features like web search (Brave), embeddings, and LLM provider API calls read
-keys from process environment variables (`std::env::var`). In Docker, there are
-three ways to provide these:
+Features like web search (Brave) and embeddings read keys from process
+environment variables (`std::env::var`). An LLM provider is configured
+separately. In Docker, there are three ways to provide these:
 
-**Option 1: Generic first-run LLM bootstrap** (best for one provider)
+**Option 1: OpenAI Compatible provider in config**
 
-Use this when you want a minimal `docker compose` file with one chat provider
-and no manual setup:
+Declare `[providers.<name>]` with `base_url` and store the API key in
+`provider_keys.json` or in that section's `api_key`. The name is the slug you
+choose. `api_key = "${LLM_API_KEY}"` is an explicit substitution.
 
-```yaml
-services:
-  chelix:
-    image: ghcr.io/agentics-skills/chelix:latest
-    environment:
-      CHELIX_TOKEN: "change-me"
-      CHELIX_PROVIDER: "openai"
-      CHELIX_API_KEY: "sk-..."
-```
-
-`CHELIX_PROVIDER` must be a Chelix provider name such as `openai`, `openrouter`,
-or `zai`. The shorter aliases `PROVIDER` and
-`API_KEY` also work, but the `CHELIX_*` names are preferred because they are
-less likely to collide with other containers.
-
-**Option 2: Provider-specific `docker -e` flags** (takes precedence for that
-provider)
+**Option 2: Other feature keys via `docker -e` flags**
 
 ```bash
 docker run -d \
   --name chelix \
   -e FIRECRAWL_API_KEY=fc-... \
-  -e OPENROUTER_API_KEY=sk-or-... \
   ...
   ghcr.io/agentics-skills/chelix:latest
 ```
@@ -368,7 +351,6 @@ the Chelix process at startup, making them available to all features:
 ```toml
 [env]
 FIRECRAWL_API_KEY = "fc-..."
-OPENROUTER_API_KEY = "sk-or-..."
 ```
 
 If a variable is set both via `docker -e` and `[env]`, the Docker/host

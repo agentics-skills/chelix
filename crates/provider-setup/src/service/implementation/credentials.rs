@@ -14,10 +14,7 @@ use {
 
 use {
     super::{LiveProviderSetupService, support::ProviderSetupTiming},
-    crate::{
-        config_helpers::is_custom_provider, known_providers::known_providers,
-        provider_base_url::validate_provider_base_url,
-    },
+    crate::provider_base_url::validate_provider_base_url,
 };
 
 impl LiveProviderSetupService {
@@ -35,23 +32,14 @@ impl LiveProviderSetupService {
             return Err("unknown 'models' parameter; model records must be configured in the service configuration".into());
         }
 
-        // API key is optional for some providers (e.g., local backends).
         let api_key = params.get("apiKey").and_then(|value| value.as_str());
         let base_url = params.get("baseUrl").and_then(|value| value.as_str());
-
-        // Custom providers bypass known_providers() validation.
-        let is_custom = is_custom_provider(provider_name);
-        if !is_custom {
-            let known = known_providers();
-            let provider = known
-                .iter()
-                .find(|provider| provider.name == provider_name)
-                .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
-
-            if !provider.key_optional && api_key.is_none() {
-                return Err("missing 'apiKey' parameter".into());
-            }
-        } else if api_key.is_none() {
+        if let Some(error) =
+            chelix_config::schema::openai_compatible_provider_name_error(provider_name)
+        {
+            return Err(error.into());
+        }
+        if api_key.is_none() {
             return Err("missing 'apiKey' parameter".into());
         }
 
@@ -150,27 +138,15 @@ impl LiveProviderSetupService {
             )));
         }
 
-        if is_custom_provider(provider_name) {
-            // Custom provider: remove key store entry + disable.
-            self.key_store
-                .remove(provider_name)
-                .map_err(ServiceError::message)?;
-            self.set_provider_enabled(provider_name, false)?;
-        } else {
-            let providers = known_providers();
-            providers
-                .iter()
-                .find(|provider| provider.name == provider_name)
-                .ok_or_else(|| format!("unknown provider: {provider_name}"))?;
-
-            self.key_store
-                .remove(provider_name)
-                .map_err(ServiceError::message)?;
-
-            // Persist explicit disable so auto-detected/global credentials do not
-            // immediately re-enable the provider on next rebuild.
-            self.set_provider_enabled(provider_name, false)?;
+        if let Some(error) =
+            chelix_config::schema::openai_compatible_provider_name_error(provider_name)
+        {
+            return Err(ServiceError::message(error.to_string()));
         }
+        self.key_store
+            .remove(provider_name)
+            .map_err(ServiceError::message)?;
+        self.set_provider_enabled(provider_name, false)?;
 
         let mut reg = self.registry.write().await;
         *reg = new_registry;

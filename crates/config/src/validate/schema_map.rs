@@ -55,7 +55,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("wire_api", Leaf),
             ("alias", Leaf),
             ("tool_mode", Leaf),
-            ("cache_retention", Leaf),
             ("policy", tool_policy_entry()),
         ]))
     };

@@ -6,7 +6,7 @@ mod support;
 
 mod available;
 mod credentials;
-mod custom;
+mod openai_compatible;
 mod provider_models;
 mod service;
 
@@ -14,7 +14,7 @@ pub use service::*;
 
 // Re-export items needed by tests via `super::*`.
 #[cfg(test)]
-use {crate::known_providers::known_providers, secrecy::Secret};
+use secrecy::Secret;
 
 #[cfg(test)]
 #[path = "../tests.rs"]

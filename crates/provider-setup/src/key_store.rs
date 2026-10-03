@@ -500,14 +500,14 @@ mod tests {
 
         store
             .save_config_with_display_name(
-                "custom-together-ai",
+                "together-ai",
                 Some("sk-test".into()),
                 Some("https://api.together.ai/v1".into()),
                 Some("together.ai".into()),
             )
             .unwrap();
 
-        let config = store.load_config("custom-together-ai").unwrap().unwrap();
+        let config = store.load_config("together-ai").unwrap().unwrap();
         assert_eq!(config.api_key.as_deref(), Some("sk-test"));
         assert_eq!(
             config.base_url.as_deref(),

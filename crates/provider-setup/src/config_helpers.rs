@@ -1,9 +1,4 @@
-//! Configuration merging, auto-detection, and directory helpers.
-
-use std::{
-    collections::{BTreeSet, HashMap},
-    path::PathBuf,
-};
+//! Configuration merging helpers.
 
 use secrecy::{ExposeSecret, Secret};
 
@@ -12,29 +7,12 @@ use {
     chelix_service_traits::{ServiceError, ServiceResult},
 };
 
-use crate::{key_store::KeyStore, known_providers::known_providers};
-
-// ── Config directory helpers ───────────────────────────────────────────────
-
-pub(crate) fn current_config_dir() -> PathBuf {
-    chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".config/chelix"))
-}
+use crate::key_store::KeyStore;
 
 // ── Provider name helpers ──────────────────────────────────────────────────
 
-pub(crate) fn is_custom_provider(name: &str) -> bool {
-    name.starts_with("custom-")
-}
-
 pub(crate) fn normalize_provider_name(value: &str) -> String {
     chelix_config::normalize_provider_name(value).unwrap_or_default()
-}
-
-pub(crate) fn env_value_with_overrides(
-    env_overrides: &HashMap<String, String>,
-    key: &str,
-) -> Option<String> {
-    chelix_config::env_value_with_overrides(env_overrides, key)
 }
 
 pub(crate) fn set_provider_enabled_in_config(provider: &str, enabled: bool) -> ServiceResult<()> {
@@ -66,11 +44,6 @@ pub(crate) fn ui_offered_provider_order(config: &ProvidersConfig) -> Vec<String>
         ordered.push(normalized);
     }
     ordered
-}
-
-pub(crate) fn ui_offered_provider_set(offered_order: &[String]) -> Option<BTreeSet<String>> {
-    let offered: BTreeSet<String> = offered_order.iter().cloned().collect();
-    (!offered.is_empty()).then_some(offered)
 }
 
 // ── Merge saved keys into config ───────────────────────────────────────────
@@ -129,74 +102,6 @@ pub fn has_explicit_provider_settings(config: &ProvidersConfig) -> bool {
     })
 }
 
-// ── Auto-detected provider source ──────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AutoDetectedProviderSource {
-    pub provider: String,
-    pub source: String,
-}
-
-pub fn detect_auto_provider_sources_with_overrides(
-    config: &ProvidersConfig,
-    deploy_platform: Option<&str>,
-    env_overrides: &HashMap<String, String>,
-) -> ServiceResult<Vec<AutoDetectedProviderSource>> {
-    let is_cloud = deploy_platform.is_some();
-    let key_store = KeyStore::new();
-    let config_dir = current_config_dir();
-    let provider_keys_path = config_dir.join("provider_keys.json");
-
-    let mut seen = BTreeSet::new();
-    let mut detected = Vec::new();
-
-    for provider in known_providers().into_iter().filter(|p| {
-        if is_cloud {
-            return !p.is_local_only();
-        }
-        true
-    }) {
-        let mut sources = Vec::new();
-
-        let env_key = provider.env_key;
-        if env_value_with_overrides(env_overrides, env_key).is_some() {
-            sources.push(format!("env:{env_key}"));
-        }
-        if let Some(source) =
-            chelix_config::generic_provider_env_source_for_provider(provider.name, env_overrides)
-        {
-            sources.push(source);
-        }
-
-        if config
-            .get(provider.name)
-            .and_then(|entry| entry.api_key.as_ref())
-            .is_some_and(|k| !k.expose_secret().trim().is_empty())
-        {
-            sources.push(format!("config:[providers.{}].api_key", provider.name));
-        }
-
-        if key_store
-            .load(provider.name)
-            .map_err(ServiceError::message)?
-            .is_some()
-        {
-            sources.push(format!("file:{}", provider_keys_path.display()));
-        }
-
-        for source in sources {
-            if seen.insert((provider.name.to_string(), source.clone())) {
-                detected.push(AutoDetectedProviderSource {
-                    provider: provider.name.to_string(),
-                    source,
-                });
-            }
-        }
-    }
-
-    Ok(detected)
-}
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -206,12 +111,6 @@ mod tests {
             ModelConfigMap, ModelModality, PartialModelMetadata, ProviderEntry,
         },
     };
-
-    #[test]
-    fn custom_provider_prefix_is_explicit() {
-        assert!(is_custom_provider("custom-example"));
-        assert!(!is_custom_provider("openai"));
-    }
 
     fn model_metadata() -> PartialModelMetadata {
         PartialModelMetadata {
@@ -319,25 +218,5 @@ mod tests {
                 ..Default::default()
             });
         assert!(has_explicit_provider_settings(&model_only));
-    }
-
-    #[test]
-    fn detect_auto_provider_sources_includes_generic_provider_env() {
-        let detected = detect_auto_provider_sources_with_overrides(
-            &ProvidersConfig::default(),
-            None,
-            &HashMap::from([
-                ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
-                (
-                    "CHELIX_API_KEY".to_string(),
-                    "sk-test-openai-generic".to_string(),
-                ),
-            ]),
-        )
-        .expect("detect provider sources");
-
-        assert!(detected.iter().any(|source| {
-            source.provider == "openai" && source.source == "env:CHELIX_PROVIDER+CHELIX_API_KEY"
-        }));
     }
 }

@@ -91,7 +91,7 @@ exchange and defaults to `true`. Title generation requires a complete
 
 ```toml
 [auxiliary.title_generation]
-model = "openai::gpt-5.2"
+model = "example::gpt-5.2"
 reasoning_effort = "low"
 ```
 
@@ -123,7 +123,7 @@ default = "main"
 
 [agents.main]
 name = "Chelix"                 # Agent display name
-model = "openai::gpt-5.2"       # Required canonical registry model ID
+model = "example::gpt-5.2"       # Required canonical registry model ID
 reasoning_effort = "medium"     # Required effort supported by this model
 max_tools_threshold = 128       # Required LLM-emitted tool-call budget
 compaction_reminder = true
@@ -141,17 +141,18 @@ agent and every agent must include both fields.
 
 ## LLM Providers
 
-Configure providers through the web UI or directly in `chelix.toml`. API keys
-can be set via environment variables (e.g. `OPENAI_API_KEY` or
-`OPENROUTER_API_KEY`) or in the config file.
+Configure providers through the web UI or directly in `chelix.toml`. The API key
+is the section `api_key` or the value saved from the UI into `provider_keys.json`.
+An environment variable is used only when `api_key` explicitly substitutes it,
+for example `api_key = "${LLM_API_KEY}"`.
 
 ```toml
-[providers.custom-ai-example]
+[providers.example]
 enabled = true
 base_url = "https://ai.example.invalid/v1"
 wire_api = "responses"
 
-[providers.custom-ai-example.models."muse-flash-0.9"]
+[providers.example.models."muse-flash-0.9"]
 context_length = 262144
 max_input_tokens = 196608
 max_output_tokens = 65536
@@ -164,7 +165,7 @@ reasoning_summary = "detailed"
 reasoning_include = ["encrypted_content"]
 
 [chat]
-priority_models = ["custom-ai-example::muse-flash-0.9"]
+priority_models = ["example::muse-flash-0.9"]
 ```
 
 Model records are added, edited, and deleted in onboarding and in Settings →
@@ -442,7 +443,6 @@ the host environment.
 ```toml
 [env]
 FIRECRAWL_API_KEY = "fc-..."
-OPENROUTER_API_KEY = "sk-or-..."
 ELEVENLABS_API_KEY = "..."
 ```
 
@@ -486,7 +486,7 @@ default = "main"
 
 [agents.main]
 name = "Atlas"
-model = "openai::gpt-5.2"
+model = "example::gpt-5.2"
 reasoning_effort = "medium"
 max_tools_threshold = 128
 compaction_reminder = true
@@ -496,7 +496,7 @@ prepend_sender_badge = true
 agent_timeout_secs = 600
 
 [providers]
-offered = ["openai", "openrouter"]
+offered = ["example"]
 
 [sandbox]
 mode = "On"
