@@ -20,24 +20,24 @@ api_ky = "sk-test"
 }
 
 #[test]
-fn misspelled_provider_name_rejected_with_suggestion() {
+fn reserved_voice_provider_name_is_rejected() {
     let toml = r#"
-[providers.opnai]
+[providers.voice-openai]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
     let diagnostic = result
         .diagnostics
         .iter()
-        .find(|d| d.category == "unknown-provider" && d.path == "providers.opnai");
+        .find(|d| d.category == "unknown-provider" && d.path == "providers.voice-openai");
     assert!(
         diagnostic.is_some(),
-        "expected unknown-provider for 'opnai', got: {:?}",
+        "expected unknown-provider for 'voice-openai', got: {:?}",
         result.diagnostics
     );
     let d = diagnostic.unwrap();
     assert_eq!(d.severity, Severity::Error);
-    assert!(d.message.contains("openai"));
+    assert!(d.message.contains("voice- prefix"));
 }
 
 #[test]
@@ -62,7 +62,7 @@ offered = ["openai", "openrouter"]
 fn unknown_offered_provider_is_rejected() {
     let toml = r#"
 [providers]
-offered = ["openai", "unsupported-provider"]
+offered = ["openai", "voice-unsupported"]
 "#;
     let result = validate_toml_str(toml);
     let diagnostic = result
@@ -75,13 +75,7 @@ offered = ["openai", "unsupported-provider"]
 
 #[test]
 fn noncanonical_offered_provider_names_are_rejected() {
-    for name in [
-        "claude",
-        "google",
-        "alibaba",
-        "openai_codex",
-        "openai-codex",
-    ] {
+    for name in ["voice-openai", "offered", "bad_name"] {
         let toml = format!(
             r#"
 [providers]
@@ -104,7 +98,7 @@ offered = ["{name}"]
 }
 
 #[test]
-fn provider_without_custom_prefix_is_rejected() {
+fn provider_section_name_with_underscore_is_rejected() {
     let toml = r#"
 [providers.my_custom_llm]
 enabled = true
@@ -117,54 +111,7 @@ enabled = true
     assert!(diagnostic.is_some());
     let d = diagnostic.unwrap();
     assert_eq!(d.severity, Severity::Error);
-    assert!(d.message.contains("custom-"));
-}
-
-#[test]
-fn valid_known_providers_are_accepted() {
-    let toml = r#"
-[providers.zai]
-enabled = true
-
-[providers.openai]
-enabled = true
-
-[providers.openrouter]
-enabled = true
-"#;
-    let result = validate_toml_str(toml);
-    let warnings: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.category == "unknown-provider")
-        .collect();
-    assert!(
-        warnings.is_empty(),
-        "known providers should not be warned about: {warnings:?}"
-    );
-}
-
-#[test]
-fn all_canonical_providers_are_accepted() {
-    use crate::schema::KNOWN_PROVIDER_NAMES;
-    for name in KNOWN_PROVIDER_NAMES {
-        let toml = format!(
-            r#"
-[providers.{name}]
-enabled = true
-"#
-        );
-        let result = validate_toml_str(&toml);
-        let warnings: Vec<_> = result
-            .diagnostics
-            .iter()
-            .filter(|d| d.category == "unknown-provider")
-            .collect();
-        assert!(
-            warnings.is_empty(),
-            "canonical provider \"{name}\" triggered unknown-provider warning: {warnings:?}"
-        );
-    }
+    assert!(d.message.contains("lowercase letters, digits, and hyphens"));
 }
 
 #[test]
@@ -214,9 +161,9 @@ archived_session_retention_days = 3
 }
 
 #[test]
-fn custom_provider_prefix_is_accepted() {
+fn openai_compatible_provider_name_is_accepted() {
     let toml = r#"
-[providers.custom-together-ai]
+[providers.together-ai]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
@@ -227,14 +174,14 @@ enabled = true
         .collect();
     assert!(
         unknown_providers.is_empty(),
-        "custom- prefix should not trigger unknown-provider warning: {unknown_providers:?}"
+        "slug should not trigger unknown-provider warning: {unknown_providers:?}"
     );
 }
 
 #[test]
-fn non_custom_unknown_provider_is_rejected() {
+fn invalid_provider_name_is_rejected() {
     let toml = r#"
-[providers.typo-provider]
+[providers.voice-typo]
 enabled = true
 "#;
     let result = validate_toml_str(toml);
@@ -282,47 +229,6 @@ tool_mode = "{mode}"
         assert!(
             type_error.is_none(),
             "tool_mode = \"{mode}\" should parse without type error, got: {:?}",
-            result.diagnostics
-        );
-    }
-}
-
-#[test]
-fn cache_retention_field_accepted_in_provider_entry() {
-    let toml = r#"
-[providers.openrouter]
-enabled = true
-cache_retention = "short"
-"#;
-    let result = validate_toml_str(toml);
-    let unknown = result
-        .diagnostics
-        .iter()
-        .find(|d| d.category == "unknown-field" && d.path.contains("cache_retention"));
-    assert!(
-        unknown.is_none(),
-        "cache_retention should be a known field, got: {:?}",
-        result.diagnostics
-    );
-}
-
-#[test]
-fn cache_retention_all_values_parse_correctly() {
-    for mode in ["none", "short", "long"] {
-        let toml = format!(
-            r#"
-[providers.openrouter]
-cache_retention = "{mode}"
-"#
-        );
-        let result = validate_toml_str(&toml);
-        let type_error = result
-            .diagnostics
-            .iter()
-            .find(|d| d.category == "type-error");
-        assert!(
-            type_error.is_none(),
-            "cache_retention = \"{mode}\" should parse without type error, got: {:?}",
             result.diagnostics
         );
     }

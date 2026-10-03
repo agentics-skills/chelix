@@ -6,8 +6,7 @@
 
 import { sendRpc } from "../helpers";
 import type { RpcResponse } from "../types/rpc";
-import { showApiKeyForm } from "./auth-flow";
-import { showCustomProviderEditor } from "./openai-compatible";
+import { showOpenAiCompatibleEditor } from "./openai-compatible";
 import { els } from "./shared";
 import type { ProviderInfo } from "./types";
 
@@ -50,17 +49,16 @@ export function openProviderModalImpl(): void {
 				badges.appendChild(check);
 			}
 
-			if (p.isCustom) {
-				const customBadge = document.createElement("span");
-				customBadge.className = "provider-item-badge api-key";
-				customBadge.textContent = "Custom";
-				badges.appendChild(customBadge);
+			if (p.isOpenAiCompatible) {
+				const compatibleBadge = document.createElement("span");
+				compatibleBadge.className = "provider-item-badge api-key";
+				compatibleBadge.textContent = "OpenAI Compatible";
+				badges.appendChild(compatibleBadge);
 			}
 			item.appendChild(badges);
 
 			item.addEventListener("click", () => {
-				if (p.isCustom) showCustomProviderEditor(p);
-				else showApiKeyForm(p);
+				showOpenAiCompatibleEditor(p);
 			});
 			m.body.appendChild(item);
 		});
@@ -85,7 +83,7 @@ export function openProviderModalImpl(): void {
 		compatibleBadges.appendChild(endpointBadge);
 		compatibleItem.appendChild(compatibleBadges);
 
-		compatibleItem.addEventListener("click", () => showCustomProviderEditor(null));
+		compatibleItem.addEventListener("click", () => showOpenAiCompatibleEditor(null));
 		m.body.appendChild(compatibleItem);
 	});
 }

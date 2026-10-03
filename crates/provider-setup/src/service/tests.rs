@@ -19,14 +19,8 @@ use {
 fn live_provider_setup_service(
     registry: Arc<RwLock<ProviderRegistry>>,
     config: ProvidersConfig,
-    deploy_platform: Option<String>,
 ) -> LiveProviderSetupService {
-    LiveProviderSetupService::new(
-        registry,
-        config,
-        deploy_platform,
-        ProviderConfigPersistence::MemoryOnly,
-    )
+    LiveProviderSetupService::new(registry, config, ProviderConfigPersistence::MemoryOnly)
 }
 
 fn complete_model_metadata() -> PartialModelMetadata {
@@ -62,9 +56,9 @@ async fn remove_key_rejects_unknown_provider() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
     let result = svc
-        .remove_key(serde_json::json!({"provider": "nonexistent"}))
+        .remove_key(serde_json::json!({"provider": "voice-openai"}))
         .await;
     assert!(result.is_err());
 }
@@ -74,7 +68,7 @@ async fn remove_key_rejects_missing_params() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
     assert!(svc.remove_key(serde_json::json!({})).await.is_err());
 }
 
@@ -83,6 +77,7 @@ async fn remove_key_rejects_provider_alias_used_by_configured_agent_before_mutat
     let mut config = ProvidersConfig::default();
     config.providers.insert("openai".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
+        base_url: Some("https://api.example.invalid/v1".into()),
         models: complete_model_map(&["gpt-5"]),
         alias: Some("oai".into()),
         ..Default::default()
@@ -96,9 +91,9 @@ async fn remove_key_rejects_provider_alias_used_by_configured_agent_before_mutat
     };
     agents.entries.insert(
         "main".into(),
-        AgentConfig::new("Main", "oai::gpt-5", ReasoningEffort::from("low")),
+        AgentConfig::new("Main", "openai::gpt-5", ReasoningEffort::from("low")),
     );
-    let svc = live_provider_setup_service(Arc::clone(&registry), config, None)
+    let svc = live_provider_setup_service(Arc::clone(&registry), config)
         .with_agents_config(Arc::new(RwLock::new(agents)));
 
     let error = svc
@@ -109,30 +104,7 @@ async fn remove_key_rejects_provider_alias_used_by_configured_agent_before_mutat
 
     assert!(error.contains("main"));
     assert!(svc.config_snapshot().is_enabled("openai"));
-    assert!(registry.read().await.get("oai::gpt-5").is_some());
-}
-
-#[tokio::test]
-async fn disabled_provider_is_not_reported_configured() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let provider = known_providers()
-        .into_iter()
-        .find(|p| p.name == "openai")
-        .expect("openai should exist");
-
-    let mut config = ProvidersConfig::default();
-    config.providers.insert("openai".into(), ProviderEntry {
-        enabled: false,
-        ..Default::default()
-    });
-
-    assert!(
-        !svc.is_provider_configured(&provider, &config)
-            .expect("provider configuration status")
-    );
+    assert!(registry.read().await.get("openai::gpt-5").is_some());
 }
 
 #[tokio::test]
@@ -140,88 +112,28 @@ async fn live_service_lists_providers() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
     let result = svc.available().await.unwrap();
     let arr = result.as_array().unwrap();
-    assert!(!arr.is_empty());
-    // Check that we have expected fields
-    let first = &arr[0];
-    assert!(first.get("name").is_some());
-    assert!(first.get("displayName").is_some());
-    assert!(first.get("configured").is_some());
-    // New fields for endpoint and model configuration
-    assert!(first.get("defaultBaseUrl").is_some());
-    assert!(first.get("requiresModel").is_some());
-    assert!(first.get("uiOrder").is_some());
-}
-
-#[tokio::test]
-async fn available_marks_provider_configured_from_generic_provider_env() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None)
-        .with_env_overrides(HashMap::from([
-            ("CHELIX_PROVIDER".to_string(), "openai".to_string()),
-            (
-                "CHELIX_API_KEY".to_string(),
-                "sk-test-openai-generic".to_string(),
-            ),
-        ]));
-
-    let result = svc.available().await.unwrap();
-    let arr = result
-        .as_array()
-        .expect("providers.available should return array");
-    let openai = arr
-        .iter()
-        .find(|provider| provider.get("name").and_then(|v| v.as_str()) == Some("openai"))
-        .expect("openai should be present");
-
-    assert_eq!(
-        openai.get("configured").and_then(|v| v.as_bool()),
-        Some(true)
-    );
-}
-
-#[tokio::test]
-async fn available_hides_unconfigured_providers_not_in_offered_list() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let config = ProvidersConfig {
-        offered: vec!["openai".into()],
-        ..ProvidersConfig::default()
-    };
-    let svc = live_provider_setup_service(registry, config, None);
-
-    let result = svc.available().await.unwrap();
-    let arr = result.as_array().unwrap();
-    for provider in arr {
-        let configured = provider
-            .get("configured")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let name = provider.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        if !configured {
-            assert_eq!(
-                name, "openai",
-                "only offered providers should be shown when unconfigured"
-            );
-        }
-    }
+    assert!(arr.is_empty());
 }
 
 #[tokio::test]
 async fn available_respects_offered_order() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let config = ProvidersConfig {
+    let mut config = ProvidersConfig {
         offered: vec!["openrouter".into(), "openai".into(), "zai".into()],
         ..ProvidersConfig::default()
     };
-    let svc = live_provider_setup_service(registry, config, None);
+    for name in ["openrouter", "openai", "zai"] {
+        config.providers.insert(name.into(), ProviderEntry {
+            base_url: Some(format!("https://{name}.example.invalid/v1")),
+            ..Default::default()
+        });
+    }
+    let registry = Arc::new(RwLock::new(
+        ProviderRegistry::from_config(&config, &HashMap::new()).unwrap(),
+    ));
+    let svc = live_provider_setup_service(registry, config);
     let result = svc.available().await.unwrap();
     let arr = result
         .as_array()
@@ -251,47 +163,12 @@ async fn available_respects_offered_order() {
 }
 
 #[tokio::test]
-async fn available_hides_configured_provider_outside_offered() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let mut config = ProvidersConfig {
-        offered: vec!["openai".into()],
-        ..ProvidersConfig::default()
-    };
-    config.providers.insert("openrouter".into(), ProviderEntry {
-        api_key: Some(Secret::new("sk-test".into())),
-        ..Default::default()
-    });
-    let svc = live_provider_setup_service(registry, config, None);
-    let result = svc.available().await.unwrap();
-    let arr = result
-        .as_array()
-        .expect("providers.available should return array");
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .collect();
-
-    let openai_idx = names
-        .iter()
-        .position(|name| *name == "openai")
-        .expect("openai should be present");
-
-    assert!(
-        !names.contains(&"openrouter"),
-        "providers outside offered should be hidden even when configured, got: {names:?}"
-    );
-    assert_eq!(openai_idx, 0);
-}
-
-#[tokio::test]
-async fn available_includes_configured_custom_provider_outside_offered() {
+async fn available_includes_configured_openai_compatible_provider_outside_offered() {
     let dir = tempfile::tempdir().expect("temp dir");
     let key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
     key_store
         .save_config_with_display_name(
-            "custom-openrouter-ai",
+            "openrouter-ai",
             Some("sk-test".into()),
             Some("https://openrouter.ai/api/v1".into()),
             Some("openrouter.ai".into()),
@@ -304,7 +181,7 @@ async fn available_includes_configured_custom_provider_outside_offered() {
     };
     config
         .providers
-        .insert("custom-openrouter-ai".into(), ProviderEntry {
+        .insert("openrouter-ai".into(), ProviderEntry {
             enabled: true,
             models: complete_model_map(&["gpt-5.2"]),
             ..Default::default()
@@ -313,98 +190,99 @@ async fn available_includes_configured_custom_provider_outside_offered() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let mut svc = live_provider_setup_service(registry, config, None);
+    let mut svc = live_provider_setup_service(registry, config);
     svc.key_store = key_store;
 
     let result = svc.available().await.expect("providers.available");
     let arr = result
         .as_array()
         .expect("providers.available should return array");
-    let custom = arr
+    let provider = arr
         .iter()
-        .find(|v| v.get("name").and_then(|n| n.as_str()) == Some("custom-openrouter-ai"))
-        .expect("custom provider should be visible");
+        .find(|v| v.get("name").and_then(|n| n.as_str()) == Some("openrouter-ai"))
+        .expect("provider should be visible");
 
     assert_eq!(
-        custom.get("configured").and_then(|v| v.as_bool()),
+        provider.get("configured").and_then(|v| v.as_bool()),
         Some(true)
     );
-    assert_eq!(custom.get("isCustom").and_then(|v| v.as_bool()), Some(true));
     assert_eq!(
-        custom.get("displayName").and_then(|v| v.as_str()),
+        provider.get("isOpenAiCompatible").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        provider.get("displayName").and_then(|v| v.as_str()),
         Some("openrouter.ai")
     );
-    assert!(custom.get("models").is_none());
+    assert!(provider.get("models").is_none());
 }
 
 #[tokio::test]
-async fn available_includes_config_declared_custom_provider_without_saved_credentials() {
+async fn available_includes_config_declared_openai_compatible_provider_without_saved_credentials() {
     let mut config = ProvidersConfig {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
     };
-    config
-        .providers
-        .insert("custom-ai-example".into(), ProviderEntry {
-            enabled: true,
-            base_url: Some("https://ai.example.invalid/v1".into()),
-            models: complete_model_map(&["model-1"]),
-            ..Default::default()
-        });
+    config.providers.insert("ai-example".into(), ProviderEntry {
+        enabled: true,
+        base_url: Some("https://ai.example.invalid/v1".into()),
+        models: complete_model_map(&["model-1"]),
+        ..Default::default()
+    });
 
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, config, None);
+    let svc = live_provider_setup_service(registry, config);
 
     let result = svc.available().await.expect("providers.available");
-    let custom = result
+    let provider = result
         .as_array()
         .and_then(|providers| {
             providers.iter().find(|provider| {
-                provider.get("name").and_then(|value| value.as_str()) == Some("custom-ai-example")
+                provider.get("name").and_then(|value| value.as_str()) == Some("ai-example")
             })
         })
-        .expect("config-declared custom provider should be visible");
+        .expect("config-declared provider should be visible");
 
     assert_eq!(
-        custom.get("displayName").and_then(|value| value.as_str()),
-        Some("custom-ai-example")
+        provider.get("displayName").and_then(|value| value.as_str()),
+        Some("ai-example")
     );
     assert_eq!(
-        custom.get("configured").and_then(|value| value.as_bool()),
+        provider.get("configured").and_then(|value| value.as_bool()),
         Some(false)
     );
     assert_eq!(
-        custom.get("baseUrl").and_then(|value| value.as_str()),
+        provider.get("baseUrl").and_then(|value| value.as_str()),
         Some("https://ai.example.invalid/v1")
     );
     assert_eq!(
-        custom.get("isCustom").and_then(|value| value.as_bool()),
+        provider
+            .get("isOpenAiCompatible")
+            .and_then(|value| value.as_bool()),
         Some(true)
     );
-    assert!(custom.get("models").is_none());
+    assert!(provider.get("models").is_none());
 }
 
 #[tokio::test]
-async fn save_key_configures_declared_custom_provider_without_mutating_models() {
+async fn save_key_configures_declared_openai_compatible_provider_without_mutating_models() {
     let dir = tempfile::tempdir().expect("temp dir");
     let mut config = ProvidersConfig::default();
-    config
-        .providers
-        .insert("custom-ai-example".into(), ProviderEntry {
-            enabled: true,
-            models: complete_model_map(&["model-1"]),
-            ..Default::default()
-        });
+    config.providers.insert("ai-example".into(), ProviderEntry {
+        enabled: true,
+        models: complete_model_map(&["model-1"]),
+        ..Default::default()
+    });
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
     ));
-    let mut svc = live_provider_setup_service(Arc::clone(&registry), config, None);
+    let mut svc = live_provider_setup_service(Arc::clone(&registry), config);
     svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
 
     svc.save_key(serde_json::json!({
-        "provider": "custom-ai-example",
+        "provider": "ai-example",
         "apiKey": "sk-compatible",
         "baseUrl": "https://ai.example.invalid/v1",
     }))
@@ -413,7 +291,7 @@ async fn save_key_configures_declared_custom_provider_without_mutating_models() 
 
     let saved = svc
         .key_store
-        .load_config("custom-ai-example")
+        .load_config("ai-example")
         .expect("load custom provider credentials")
         .expect("saved custom provider credentials");
     assert_eq!(saved.api_key.as_deref(), Some("sk-compatible"));
@@ -425,37 +303,8 @@ async fn save_key_configures_declared_custom_provider_without_mutating_models() 
     let registry_guard = registry.read().await;
     let models = registry_guard.list_models();
     assert_eq!(models.len(), 1);
-    assert_eq!(models[0].id, "custom-ai-example::model-1");
-    assert_eq!(models[0].provider, "custom-ai-example");
-}
-
-#[tokio::test]
-async fn available_includes_default_base_urls() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc.available().await.unwrap();
-    let arr = result.as_array().unwrap();
-
-    // Check specific providers have correct default base URLs
-    let openai = arr
-        .iter()
-        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("openai"))
-        .expect("openai not found");
-    assert_eq!(
-        openai.get("defaultBaseUrl").and_then(|u| u.as_str()),
-        Some("https://api.openai.com/v1")
-    );
-
-    let openrouter = arr
-        .iter()
-        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("openrouter"))
-        .expect("openrouter not found");
-    assert_eq!(
-        openrouter.get("defaultBaseUrl").and_then(|u| u.as_str()),
-        Some("https://openrouter.ai/api/v1")
-    );
+    assert_eq!(models[0].id, "ai-example::model-1");
+    assert_eq!(models[0].provider, "ai-example");
 }
 
 #[tokio::test]
@@ -463,9 +312,9 @@ async fn save_key_rejects_unknown_provider() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
     let result = svc
-        .save_key(serde_json::json!({"provider": "nonexistent", "apiKey": "test"}))
+        .save_key(serde_json::json!({"provider": "voice-openai", "apiKey": "test"}))
         .await;
     assert!(result.is_err());
 }
@@ -475,7 +324,7 @@ async fn save_key_rejects_missing_params() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
     assert!(svc.save_key(serde_json::json!({})).await.is_err());
     assert!(
         svc.save_key(serde_json::json!({"provider": "openai"}))
@@ -500,7 +349,7 @@ async fn save_key_rejects_invalid_candidate_before_mutating_state() {
         models: invalid_models.clone(),
         ..Default::default()
     });
-    let mut svc = live_provider_setup_service(Arc::clone(&registry), config, None);
+    let mut svc = live_provider_setup_service(Arc::clone(&registry), config);
     svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
 
     let error = svc
@@ -536,13 +385,14 @@ async fn set_model_preferences_replaces_unique_raw_priority_without_mutating_reg
     let mut config = ProvidersConfig::default();
     config.providers.insert("openai".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
+        base_url: Some("https://api.example.invalid/v1".into()),
         models: complete_model_map(&["gpt-5", "gpt-4o"]),
         ..Default::default()
     });
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
     ));
-    let mut svc = live_provider_setup_service(Arc::clone(&registry), config, None);
+    let mut svc = live_provider_setup_service(Arc::clone(&registry), config);
     svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
     let priorities = Arc::new(RwLock::new(vec![
         "gpt-4o".to_string(),
@@ -580,6 +430,7 @@ async fn set_model_preferences_rejects_ambiguous_raw_priority_without_mutating_o
     for provider in ["openai", "openrouter"] {
         config.providers.insert(provider.into(), ProviderEntry {
             api_key: Some(Secret::new(format!("{provider}-key"))),
+            base_url: Some("https://api.example.invalid/v1".into()),
             models: complete_model_map(&["shared-model"]),
             ..Default::default()
         });
@@ -587,7 +438,7 @@ async fn set_model_preferences_rejects_ambiguous_raw_priority_without_mutating_o
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
     ));
-    let mut svc = live_provider_setup_service(registry, config, None);
+    let mut svc = live_provider_setup_service(registry, config);
     let priorities = Arc::new(RwLock::new(vec![
         "shared-model".to_string(),
         "other::model".to_string(),
@@ -615,13 +466,14 @@ async fn set_model_preferences_rejects_noncanonical_model_without_mutating_order
     let mut config = ProvidersConfig::default();
     config.providers.insert("openai".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
+        base_url: Some("https://api.example.invalid/v1".into()),
         models: complete_model_map(&["gpt-5"]),
         ..Default::default()
     });
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
     ));
-    let mut svc = live_provider_setup_service(registry, config, None);
+    let mut svc = live_provider_setup_service(registry, config);
     let priorities = Arc::new(RwLock::new(vec!["openai::gpt-5".to_string()]));
     svc.set_priority_models(Arc::clone(&priorities));
 
@@ -643,7 +495,7 @@ async fn save_key_rejects_completion_endpoint_base_url_for_any_provider() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
 
     let error = svc
         .save_key(serde_json::json!({
@@ -664,7 +516,7 @@ async fn save_key_rejects_invalid_base_url_for_any_provider() {
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
+    let svc = live_provider_setup_service(registry, ProvidersConfig::default());
 
     let error = svc
         .save_key(serde_json::json!({
@@ -677,43 +529,4 @@ async fn save_key_rejects_invalid_base_url_for_any_provider() {
         .to_string();
 
     assert!(error.contains("valid HTTP(S) URL"));
-}
-
-#[tokio::test]
-async fn save_key_accepts_new_providers() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let _svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-
-    let providers = known_providers();
-    for name in ["openrouter", "zai", "zai-code"] {
-        let known = providers.iter().find(|p| p.name == name);
-        assert!(
-            known.is_some(),
-            "{name} should be a recognized api-key provider"
-        );
-    }
-}
-
-#[tokio::test]
-async fn available_includes_new_providers() {
-    let registry = Arc::new(RwLock::new(
-        ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
-    ));
-    let svc = live_provider_setup_service(registry, ProvidersConfig::default(), None);
-    let result = svc.available().await.unwrap();
-    let arr = result.as_array().unwrap();
-
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-        .collect();
-
-    for expected in ["openrouter", "zai", "zai-code"] {
-        assert!(
-            names.contains(&expected),
-            "{expected} not found in available providers: {names:?}"
-        );
-    }
 }

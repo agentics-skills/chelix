@@ -7,9 +7,10 @@ export CHELIX_IDENTITY__NAME="chelix"          # bot display name
 export CHELIX_IDENTITY__EMOJI=""               # bot emoji
 export CHELIX_USER__NAME=""                    # your name
 
-# ── LLM Provider API keys ────────────────────────────────────────
-export OPENAI_API_KEY=""
-export OPENROUTER_API_KEY=""
+# ── LLM provider ─────────────────────────────────────────────────
+# Named OpenAI Compatible section. Models stay in chelix.toml.
+export CHELIX_PROVIDERS__EXAMPLE__API_KEY=""
+export CHELIX_PROVIDERS__EXAMPLE__BASE_URL="https://api.example.invalid/v1"
 
 # ── Voice: TTS ───────────────────────────────────────────────────
 export ELEVENLABS_API_KEY=""
@@ -23,7 +24,7 @@ export DEEPGRAM_API_KEY=""
 # ── Web search ───────────────────────────────────────────────────
 
 # ── Restrict offered providers (optional) ────────────────────────
-# export CHELIX_PROVIDERS__OFFERED='["openai","openrouter"]'
+# export CHELIX_PROVIDERS__OFFERED='["example"]'
 
 # ── Skip onboarding entirely (optional) ─────────────────────────
 # export SKIP_ONBOARDING=1

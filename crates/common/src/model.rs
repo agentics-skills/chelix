@@ -396,12 +396,12 @@ mod tests {
     #[test]
     fn resolved_model_reasoning_preserves_complete_values() {
         let resolved = ResolvedModelReasoning::try_new(
-            "custom-example::model".to_string(),
+            "example::model".to_string(),
             ReasoningEffort::from("low"),
         )
         .unwrap();
 
-        assert_eq!(resolved.model_id(), "custom-example::model");
+        assert_eq!(resolved.model_id(), "example::model");
         assert_eq!(resolved.reasoning_effort().as_str(), "low");
     }
 
@@ -414,7 +414,7 @@ mod tests {
                 ResolvedModelReasoningError::EmptyModelId,
             ),
             (
-                "custom-example::model",
+                "example::model",
                 ReasoningEffort::from(""),
                 ResolvedModelReasoningError::EmptyReasoningEffort,
             ),

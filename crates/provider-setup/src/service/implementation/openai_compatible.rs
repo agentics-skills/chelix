@@ -1,4 +1,4 @@
-//! Create, edit, and delete `custom-*` providers.
+//! Create, edit, and delete OpenAI Compatible providers.
 
 use std::collections::HashSet;
 
@@ -9,9 +9,10 @@ use {
 
 use {
     chelix_config::{
-        CustomProviderTomlUpdate, delete_custom_provider_toml, providers_offered_env_is_set,
+        OpenAiCompatibleProviderTomlUpdate, delete_openai_compatible_provider_toml,
+        providers_offered_env_is_set,
         schema::{ProviderEntry, ProviderStreamTransport, ProvidersConfig, ToolMode, WireApi},
-        upsert_custom_provider_toml,
+        upsert_openai_compatible_provider_toml,
     },
     chelix_providers::model_id::namespaced_model_id,
     chelix_service_traits::{ServiceError, ServiceResult},
@@ -27,7 +28,7 @@ use {
     },
 };
 
-struct CustomUpsert {
+struct OpenAiCompatibleUpsert {
     name: String,
     previous_name: Option<String>,
     base_url: String,
@@ -40,8 +41,8 @@ struct CustomUpsert {
 }
 
 impl LiveProviderSetupService {
-    pub(super) async fn upsert_custom_inner(&self, params: Value) -> ServiceResult {
-        let _timing = ProviderSetupTiming::start("providers.upsert_custom", None);
+    pub(super) async fn upsert_openai_compatible_inner(&self, params: Value) -> ServiceResult {
+        let _timing = ProviderSetupTiming::start("providers.upsert_openai_compatible", None);
         let update = parse_upsert(&params)?;
         let agents = self.agent_entries().await;
         let mut registry = self.registry.write().await;
@@ -89,7 +90,7 @@ impl LiveProviderSetupService {
             )));
         }
         if self.config_persistence == ProviderConfigPersistence::Filesystem {
-            upsert_custom_provider_toml(&CustomProviderTomlUpdate {
+            upsert_openai_compatible_provider_toml(&OpenAiCompatibleProviderTomlUpdate {
                 name: update.name.clone(),
                 previous_name: update.previous_name.clone(),
                 base_url: update.base_url.clone(),
@@ -118,8 +119,8 @@ impl LiveProviderSetupService {
         }))
     }
 
-    pub(super) async fn delete_custom_inner(&self, params: Value) -> ServiceResult {
-        let _timing = ProviderSetupTiming::start("providers.delete_custom", None);
+    pub(super) async fn delete_openai_compatible_inner(&self, params: Value) -> ServiceResult {
+        let _timing = ProviderSetupTiming::start("providers.delete_openai_compatible", None);
         let name = existing_section_name(required_str(&params, "name")?)?;
         let agents = self.agent_entries().await;
         let mut registry = self.registry.write().await;
@@ -141,7 +142,7 @@ impl LiveProviderSetupService {
             )));
         }
         if self.config_persistence == ProviderConfigPersistence::Filesystem {
-            delete_custom_provider_toml(&name).map_err(ServiceError::message)?;
+            delete_openai_compatible_provider_toml(&name).map_err(ServiceError::message)?;
         }
         *self
             .config
@@ -167,12 +168,12 @@ struct ModelIdChange {
     renamed: Vec<(String, String)>,
 }
 
-fn parse_upsert(params: &Value) -> Result<CustomUpsert, ServiceError> {
+fn parse_upsert(params: &Value) -> Result<OpenAiCompatibleUpsert, ServiceError> {
     if let Some(transport) = params.get("streamTransport").and_then(Value::as_str)
         && transport != "sse"
     {
         return Err(ServiceError::message(
-            "custom providers only support stream_transport sse".to_string(),
+            "OpenAI Compatible providers only support stream_transport sse".to_string(),
         ));
     }
     let wire_api_toml = params
@@ -195,9 +196,7 @@ fn parse_upsert(params: &Value) -> Result<CustomUpsert, ServiceError> {
         .transpose()?;
     let raw_name = required_str(params, "name")?;
     let name = match previous_name.as_deref() {
-        Some(previous) if raw_name == previous || format!("custom-{raw_name}") == previous => {
-            previous.to_string()
-        },
+        Some(previous) if raw_name == previous => previous.to_string(),
         _ => section_name(raw_name)?,
     };
     let api_key = params
@@ -211,7 +210,7 @@ fn parse_upsert(params: &Value) -> Result<CustomUpsert, ServiceError> {
             "missing 'apiKey' parameter".to_string(),
         ));
     }
-    Ok(CustomUpsert {
+    Ok(OpenAiCompatibleUpsert {
         name,
         previous_name,
         base_url,
@@ -238,31 +237,15 @@ fn required_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ServiceErro
 
 fn existing_section_name(raw: &str) -> Result<String, ServiceError> {
     let name = raw.trim();
-    if name.starts_with("custom-") && name.len() > "custom-".len() {
-        return Ok(name.to_string());
+    match chelix_config::schema::openai_compatible_provider_name_error(name) {
+        Some(error) => Err(ServiceError::message(error.to_string())),
+        None => Ok(name.to_string()),
     }
-    Err(ServiceError::message(
-        "provider name must start with custom-".to_string(),
-    ))
 }
 
 fn section_name(raw: &str) -> Result<String, ServiceError> {
-    let mut slug = raw.trim().to_ascii_lowercase();
-    if let Some(rest) = slug.strip_prefix("custom-") {
-        slug = rest.to_string();
-    }
-    let valid = !slug.is_empty()
-        && !slug.starts_with('-')
-        && !slug.ends_with('-')
-        && slug
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-');
-    if !valid {
-        return Err(ServiceError::message(
-            "provider name must contain only letters, digits, and hyphens".to_string(),
-        ));
-    }
-    Ok(format!("custom-{slug}"))
+    chelix_config::schema::parse_openai_compatible_provider_name(raw)
+        .map_err(|error| ServiceError::message(error.to_string()))
 }
 
 fn parse_wire_api(value: &str) -> Result<WireApi, ServiceError> {
@@ -282,7 +265,10 @@ fn parse_tool_mode(value: &str) -> Result<ToolMode, ServiceError> {
     }
 }
 
-fn ensure_target_free(config: &ProvidersConfig, update: &CustomUpsert) -> Result<(), ServiceError> {
+fn ensure_target_free(
+    config: &ProvidersConfig,
+    update: &OpenAiCompatibleUpsert,
+) -> Result<(), ServiceError> {
     let current = update.previous_name.as_deref().unwrap_or(&update.name);
     if update.previous_name.is_some() && !config.providers.contains_key(current) {
         return Err(ServiceError::message(format!(
@@ -329,7 +315,7 @@ fn append_offered(offered: &mut Vec<String>, name: &str) {
 
 fn apply_upsert_memory(
     config: &mut ProvidersConfig,
-    update: &CustomUpsert,
+    update: &OpenAiCompatibleUpsert,
     sync_offered: bool,
 ) -> Result<(), ServiceError> {
     if let Some(previous) = update.previous_name.as_deref()
@@ -375,7 +361,7 @@ fn reject_toml_api_key(
     Ok(())
 }
 
-fn fill_entry(entry: &mut ProviderEntry, update: &CustomUpsert) {
+fn fill_entry(entry: &mut ProviderEntry, update: &OpenAiCompatibleUpsert) {
     entry.enabled = update.enabled;
     entry.base_url = Some(update.base_url.clone());
     entry.wire_api = update.wire_api;
@@ -385,7 +371,7 @@ fn fill_entry(entry: &mut ProviderEntry, update: &CustomUpsert) {
 
 fn inject_registry_key(
     config: &mut ProvidersConfig,
-    update: &CustomUpsert,
+    update: &OpenAiCompatibleUpsert,
     saved: &std::collections::HashMap<String, crate::key_store::ProviderConfig>,
 ) {
     let source = update
@@ -408,7 +394,7 @@ fn inject_registry_key(
     }
 }
 
-fn model_id_change(config: &ProvidersConfig, update: &CustomUpsert) -> ModelIdChange {
+fn model_id_change(config: &ProvidersConfig, update: &OpenAiCompatibleUpsert) -> ModelIdChange {
     let Some(previous) = update
         .previous_name
         .as_deref()
@@ -453,7 +439,7 @@ fn removed_ids(config: &ProvidersConfig, name: &str) -> Vec<String> {
 
 fn write_key_store(
     service: &LiveProviderSetupService,
-    update: &CustomUpsert,
+    update: &OpenAiCompatibleUpsert,
     saved: &std::collections::HashMap<String, crate::key_store::ProviderConfig>,
 ) -> Result<(), ServiceError> {
     let previous = update

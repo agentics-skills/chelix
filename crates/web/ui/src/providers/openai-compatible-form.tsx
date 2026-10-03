@@ -8,23 +8,26 @@ import type { ProviderInfo } from "../types/model";
 type WireApi = "chat-completions" | "responses";
 type ToolMode = "native" | "text" | "off";
 
-function slugFromName(name: string): string {
-	return name.startsWith("custom-") ? name.slice("custom-".length) : name;
+function normalizedSlug(raw: string): string {
+	return raw.trim().toLowerCase();
 }
 
-function normalizedSlug(raw: string): string {
-	let slug = raw.trim().toLowerCase();
-	if (slug.startsWith("custom-")) slug = slug.slice("custom-".length);
-	return slug;
+function providerNameError(raw: string): string | null {
+	const name = normalizedSlug(raw);
+	const slugOk = name.length > 0 && !name.startsWith("-") && !name.endsWith("-") && /^[a-z0-9-]+$/.test(name);
+	if (!slugOk) return "provider name must contain only lowercase letters, digits, and hyphens";
+	if (name === "offered") return "provider name 'offered' is reserved";
+	if (name.startsWith("voice-")) return "provider name must not use the voice- prefix";
+	return null;
 }
 
 function storedNamePreview(provider: ProviderInfo | null, raw: string): string {
-	if (provider && (raw === slugFromName(provider.name) || raw === provider.name)) return provider.name;
+	if (provider && raw.trim() === provider.name) return provider.name;
 	const slug = normalizedSlug(raw);
-	return slug ? `custom-${slug}` : "custom-name";
+	return slug || "name";
 }
 
-export function CustomProviderForm(props: {
+export function OpenAiCompatibleForm(props: {
 	provider: ProviderInfo | null;
 	onCancel: () => void;
 	onSaved: (providerName: string) => void;
@@ -37,7 +40,7 @@ export function CustomProviderForm(props: {
 			alive.current = false;
 		};
 	}, []);
-	const [name, setName] = useState(props.provider ? slugFromName(props.provider.name) : "");
+	const [name, setName] = useState(props.provider?.name ?? "");
 	const [baseUrl, setBaseUrl] = useState(props.provider?.baseUrl || "");
 	const [apiKey, setApiKey] = useState("");
 	const [wireApi, setWireApi] = useState<WireApi>(props.provider?.wireApi || "chat-completions");
@@ -56,6 +59,11 @@ export function CustomProviderForm(props: {
 			setError("Name is required.");
 			return;
 		}
+		const nameError = providerNameError(trimmedName);
+		if (nameError) {
+			setError(nameError);
+			return;
+		}
 		if (!trimmedUrl) {
 			setError("Endpoint URL is required.");
 			return;
@@ -72,7 +80,7 @@ export function CustomProviderForm(props: {
 		setSaving(true);
 		props.onSavingChange?.(true);
 		setError(null);
-		void sendRpc<{ ok: boolean; providerName: string }>("providers.upsert_custom", {
+		void sendRpc<{ ok: boolean; providerName: string }>("providers.upsert_openai_compatible", {
 			name: trimmedName,
 			previousName: props.provider?.name,
 			baseUrl: trimmedUrl,
@@ -105,7 +113,7 @@ export function CustomProviderForm(props: {
 			<label>
 				<span className="text-xs text-[var(--muted)] mb-1 block">Name</span>
 				<input
-					id="customProviderName"
+					id="openaiCompatibleProviderName"
 					className="provider-key-input w-full"
 					value={name}
 					onInput={(event) => setName(targetValue(event))}
@@ -117,7 +125,7 @@ export function CustomProviderForm(props: {
 			<label>
 				<span className="text-xs text-[var(--muted)] mb-1 block">Endpoint URL</span>
 				<input
-					id="customProviderEndpoint"
+					id="openaiCompatibleProviderEndpoint"
 					className="provider-key-input w-full"
 					value={baseUrl}
 					onInput={(event) => setBaseUrl(targetValue(event))}
@@ -128,7 +136,7 @@ export function CustomProviderForm(props: {
 			<label>
 				<span className="text-xs text-[var(--muted)] mb-1 block">API Key</span>
 				<input
-					id="customProviderApiKey"
+					id="openaiCompatibleProviderApiKey"
 					type="password"
 					className="provider-key-input w-full"
 					value={apiKey}
@@ -140,7 +148,7 @@ export function CustomProviderForm(props: {
 			<label>
 				<span className="text-xs text-[var(--muted)] mb-1 block">wire_api</span>
 				<select
-					id="customProviderWireApi"
+					id="openaiCompatibleProviderWireApi"
 					className="provider-key-input w-full"
 					value={wireApi}
 					disabled={saving}
@@ -153,7 +161,7 @@ export function CustomProviderForm(props: {
 			<label>
 				<span className="text-xs text-[var(--muted)] mb-1 block">tool_mode</span>
 				<select
-					id="customProviderToolMode"
+					id="openaiCompatibleProviderToolMode"
 					className="provider-key-input w-full"
 					value={toolMode}
 					disabled={saving}

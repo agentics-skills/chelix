@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use {
-    super::{ModelResolutionError, ProviderRegistry, registration::openai_builtin_capabilities},
-    crate::openai::ResponsesWebSocketPolicy,
+    super::{ModelResolutionError, ProviderRegistry},
     chelix_agents::model::ReasoningEffort,
     chelix_config::{ChelixConfig, ToolMode},
 };
@@ -10,11 +9,11 @@ use {
 fn resolution_registry() -> ProviderRegistry {
     let config: ChelixConfig = toml::from_str(
         r#"
-[providers.custom-alpha]
+[providers.alpha]
 api_key = "test-key"
 base_url = "https://alpha.example.invalid/v1"
 
-[providers.custom-alpha.models.shared]
+[providers.alpha.models.shared]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -24,7 +23,7 @@ tool_calling = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 
-[providers.custom-alpha.models.reasoning]
+[providers.alpha.models.reasoning]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -34,7 +33,7 @@ tool_calling = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low", "high"]
 
-[providers.custom-alpha.models.none-only]
+[providers.alpha.models.none-only]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -44,7 +43,7 @@ tool_calling = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["none"]
 
-[providers.custom-alpha.models.off-only]
+[providers.alpha.models.off-only]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -54,11 +53,11 @@ tool_calling = true
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 
-[providers.custom-beta]
+[providers.beta]
 api_key = "test-key"
 base_url = "https://beta.example.invalid/v1"
 
-[providers.custom-beta.models.shared]
+[providers.beta.models.shared]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -76,31 +75,15 @@ reasoning_supported_efforts = ["low"]
 }
 
 #[test]
-fn openai_default_base_url_enables_responses_websocket() {
-    assert_eq!(
-        openai_builtin_capabilities(false).responses_websocket_policy,
-        ResponsesWebSocketPolicy::OpenAiPlatform,
-    );
-}
-
-#[test]
-fn openai_custom_base_url_disables_responses_websocket() {
-    assert_eq!(
-        openai_builtin_capabilities(true).responses_websocket_policy,
-        ResponsesWebSocketPolicy::Unsupported,
-    );
-}
-
-#[test]
 fn custom_model_config_preserves_metadata_for_runtime_provider() {
-    const MODEL_ID: &str = "custom-ai-example::Combos/z.ai/glm";
+    const MODEL_ID: &str = "ai-example::Combos/z.ai/glm";
     let config: ChelixConfig = toml::from_str(
         r#"
-[providers.custom-ai-example]
+[providers.ai-example]
 api_key = "test-key"
 base_url = "https://example.invalid/v1"
 
-[providers.custom-ai-example.models."Combos/z.ai/glm"]
+[providers.ai-example.models."Combos/z.ai/glm"]
 context_length = 400000
 max_input_tokens = 272000
 max_output_tokens = 128000
@@ -113,9 +96,7 @@ reasoning_summary = "detailed"
 reasoning_include = ["encrypted_content"]
 "#,
     )
-    .unwrap_or_else(|error| {
-        panic!("production custom-provider config should deserialize: {error}")
-    });
+    .unwrap_or_else(|error| panic!("production provider config should deserialize: {error}"));
 
     let registry = ProviderRegistry::from_config(&config.providers, &HashMap::new())
         .unwrap_or_else(|error| panic!("complete model config should build: {error}"));
@@ -154,15 +135,15 @@ reasoning_include = ["encrypted_content"]
 
 #[test]
 fn model_tool_capability_remains_separate_from_native_mode() {
-    const CHAT_ONLY_MODEL_ID: &str = "custom-ai-capability::chat-only";
-    const TOOL_MODEL_ID: &str = "custom-ai-capability::tool-capable";
+    const CHAT_ONLY_MODEL_ID: &str = "ai-capability::chat-only";
+    const TOOL_MODEL_ID: &str = "ai-capability::tool-capable";
     let config: ChelixConfig = toml::from_str(
         r#"
-[providers.custom-ai-capability]
+[providers.ai-capability]
 api_key = "test-key"
 base_url = "https://example.invalid/v1"
 
-[providers.custom-ai-capability.models.chat-only]
+[providers.ai-capability.models.chat-only]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -172,7 +153,7 @@ tool_calling = false
 zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["low"]
 
-[providers.custom-ai-capability.models.tool-capable]
+[providers.ai-capability.models.tool-capable]
 context_length = 128000
 max_input_tokens = 96000
 max_output_tokens = 32000
@@ -202,8 +183,8 @@ reasoning_supported_efforts = ["low"]
 
 #[test]
 fn registry_lookup_and_unregister_require_exact_canonical_ids() {
-    const ALPHA_MODEL_ID: &str = "custom-alpha::shared";
-    const BETA_MODEL_ID: &str = "custom-beta::shared";
+    const ALPHA_MODEL_ID: &str = "alpha::shared";
+    const BETA_MODEL_ID: &str = "beta::shared";
     let mut registry = resolution_registry();
 
     assert_eq!(
@@ -237,29 +218,29 @@ fn resolver_returns_typed_applied_reasoning_efforts() {
     let registry = resolution_registry();
     let low = ReasoningEffort::from("low");
     let shared = registry
-        .resolve_model_reasoning(Some("custom-alpha::shared"), Some(&low))
+        .resolve_model_reasoning(Some("alpha::shared"), Some(&low))
         .unwrap_or_else(|error| panic!("single-effort model should resolve: {error}"));
-    assert_eq!(shared.model_reasoning().model_id(), "custom-alpha::shared");
+    assert_eq!(shared.model_reasoning().model_id(), "alpha::shared");
     assert_eq!(shared.model_reasoning().reasoning_effort(), &low);
     assert_eq!(shared.provider().reasoning_effort(), Some(low));
 
     let high = ReasoningEffort::from("high");
     let reasoning = registry
-        .resolve_model_reasoning(Some("custom-alpha::reasoning"), Some(&high))
+        .resolve_model_reasoning(Some("alpha::reasoning"), Some(&high))
         .unwrap_or_else(|error| panic!("multi-effort model should resolve: {error}"));
     assert_eq!(reasoning.model_reasoning().reasoning_effort(), &high);
     assert_eq!(reasoning.provider().reasoning_effort(), Some(high));
 
     let none = ReasoningEffort::from("none");
     let none_only = registry
-        .resolve_model_reasoning(Some("custom-alpha::none-only"), Some(&none))
+        .resolve_model_reasoning(Some("alpha::none-only"), Some(&none))
         .unwrap_or_else(|error| panic!("provider-defined none effort should resolve: {error}"));
     assert_eq!(none_only.model_reasoning().reasoning_effort(), &none);
     assert_eq!(none_only.provider().reasoning_effort(), Some(none));
 
     let off = ReasoningEffort::from("off");
     let off_only = registry
-        .resolve_model_reasoning(Some("custom-alpha::off-only"), Some(&off))
+        .resolve_model_reasoning(Some("alpha::off-only"), Some(&off))
         .unwrap_or_else(|error| panic!("provider-defined off effort should resolve: {error}"));
     assert_eq!(off_only.model_reasoning().reasoning_effort(), &off);
     assert_eq!(off_only.provider().reasoning_effort(), Some(off));
@@ -271,24 +252,24 @@ fn resolver_rejects_invalid_model_reasoning_selections() {
     let cases = vec![
         (None, None, ModelResolutionError::MissingModel),
         (
-            Some("custom-alpha::reasoning"),
+            Some("alpha::reasoning"),
             None,
             ModelResolutionError::MissingReasoningEffort {
-                model_id: "custom-alpha::reasoning".to_string(),
+                model_id: "alpha::reasoning".to_string(),
             },
         ),
         (
-            Some("custom-alpha::reasoning"),
+            Some("alpha::reasoning"),
             Some(ReasoningEffort::from("")),
             ModelResolutionError::EmptyReasoningEffort {
-                model_id: "custom-alpha::reasoning".to_string(),
+                model_id: "alpha::reasoning".to_string(),
             },
         ),
         (
-            Some("custom-alpha::missing"),
+            Some("alpha::missing"),
             None,
             ModelResolutionError::UnknownModel {
-                model_id: "custom-alpha::missing".to_string(),
+                model_id: "alpha::missing".to_string(),
             },
         ),
         (
@@ -296,7 +277,7 @@ fn resolver_rejects_invalid_model_reasoning_selections() {
             Some(ReasoningEffort::from("high")),
             ModelResolutionError::NonCanonicalModelId {
                 model_id: "reasoning".to_string(),
-                canonical_model_id: "custom-alpha::reasoning".to_string(),
+                canonical_model_id: "alpha::reasoning".to_string(),
             },
         ),
         (
@@ -304,17 +285,14 @@ fn resolver_rejects_invalid_model_reasoning_selections() {
             None,
             ModelResolutionError::AmbiguousModelId {
                 model_id: "shared".to_string(),
-                canonical_model_ids: vec![
-                    "custom-alpha::shared".to_string(),
-                    "custom-beta::shared".to_string(),
-                ],
+                canonical_model_ids: vec!["alpha::shared".to_string(), "beta::shared".to_string()],
             },
         ),
         (
-            Some("custom-alpha::reasoning"),
+            Some("alpha::reasoning"),
             Some(ReasoningEffort::from("medium")),
             ModelResolutionError::UnsupportedReasoningEffort {
-                model_id: "custom-alpha::reasoning".to_string(),
+                model_id: "alpha::reasoning".to_string(),
                 reasoning_effort: "medium".to_string(),
             },
         ),
@@ -338,6 +316,7 @@ offered = ["openai"]
 
 [providers.openai]
 api_key = "test-key"
+base_url = "https://openai.example.invalid/v1"
 
 [providers.openai.models.selected]
 context_length = 128000
@@ -351,6 +330,7 @@ reasoning_supported_efforts = ["low"]
 
 [providers.openrouter]
 api_key = "test-key"
+base_url = "https://openrouter.example.invalid/v1"
 
 [providers.openrouter.models.excluded]
 context_length = 128000

@@ -19,12 +19,9 @@ pub(super) fn check_semantic_warnings(config: &ChelixConfig, diagnostics: &mut V
         });
     }
     for (path, name) in config.providers.invalid_provider_names() {
-        let suggestion = suggest(&name, crate::schema::KNOWN_PROVIDER_NAMES, 3);
-        let message = if let Some(suggestion) = suggestion {
-            format!("unknown provider name (did you mean \"{suggestion}\"?)")
-        } else {
-            "unknown provider name (custom providers must use the \"custom-\" prefix)".into()
-        };
+        let message = crate::schema::openai_compatible_provider_name_error(&name)
+            .unwrap_or("unknown provider name")
+            .to_string();
         diagnostics.push(Diagnostic {
             severity: Severity::Error,
             category: "unknown-provider",
@@ -647,7 +644,7 @@ fn validate_model_metadata(
 
 /// Warn about literal (non-env-var) API keys stored directly in the config.
 ///
-/// API keys should be supplied via environment variables (e.g. `${{OPENAI_API_KEY}}`)
+/// API keys should be supplied via environment variables (e.g. `${{LLM_API_KEY}}`)
 /// or stored in the credential store (`provider_keys.json`), not hard-coded in
 /// `chelix.toml`.  The config file may be backed up, synced, or accidentally
 /// committed to version control.

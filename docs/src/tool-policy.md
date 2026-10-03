@@ -80,7 +80,7 @@ that provider, the policy is merged on top of the global layer.
 policy.deny = ["execute_command"]
 ```
 
-This denies `execute_command` whenever OpenAI is the active provider, regardless
+This denies `execute_command` whenever that provider is active, regardless
 of what the global layer allows. Other providers are unaffected.
 
 ## Layer 3 — Per-Agent
@@ -176,7 +176,7 @@ This layer is skipped entirely when global sandbox mode is `Off`.
 policy.deny = ["execute_command"]
 ```
 
-When using OpenAI, the agent cannot run shell commands. All other providers
+When using that provider, the agent cannot run shell commands. All other providers
 retain their normal tool access.
 
 ### Restrict group chats on Telegram

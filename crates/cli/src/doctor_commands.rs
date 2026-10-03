@@ -109,12 +109,6 @@ fn print_report(sections: &[Section]) -> (usize, usize) {
 
 // ── Provider → env var mapping ──────────────────────────────────────────────
 
-/// (provider_name, env_var, is_key_optional)
-const PROVIDER_ENV_MAP: &[(&str, &str, bool)] = &[
-    ("openai", "OPENAI_API_KEY", false),
-    ("openrouter", "OPENROUTER_API_KEY", false),
-];
-
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 pub async fn handle_doctor() -> Result<()> {
@@ -520,27 +514,13 @@ fn check_providers(config: &ChelixConfig) -> Section {
             .as_ref()
             .is_some_and(|k| !k.expose_secret().is_empty());
 
-        let env_info = PROVIDER_ENV_MAP
-            .iter()
-            .find(|(pname, ..)| *pname == name.as_str());
-
-        let has_env_key = env_info.is_some_and(|(_, env, _)| std::env::var(env).is_ok());
-        let is_optional = env_info.is_some_and(|(_, _, opt)| *opt);
-
-        if has_config_key || has_env_key {
+        if has_config_key {
             section.push(Status::Ok, format!("{name}: API key available"));
-        } else if is_optional {
-            section.push(
-                Status::Info,
-                format!("{name}: no key required (local server)"),
-            );
         } else {
-            let hint = env_info
-                .map(|(_, env, _)| {
-                    format!("{name}: no API key found (set {env} or configure in provider setup)")
-                })
-                .unwrap_or_else(|| format!("{name}: no API key found (unknown provider)"));
-            section.push(Status::Warn, hint);
+            section.push(
+                Status::Warn,
+                format!("{name}: no API key found (unknown provider)"),
+            );
         }
     }
 

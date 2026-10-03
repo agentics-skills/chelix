@@ -109,8 +109,8 @@ export interface RpcMethodMap {
 	"projects.upsert": unknown;
 
 	// ── Providers ───────────────────────────────────────────────
-	"providers.delete_custom": { ok: boolean; removedModelIds?: string[] };
-	"providers.upsert_custom": {
+	"providers.delete_openai_compatible": { ok: boolean; removedModelIds?: string[] };
+	"providers.upsert_openai_compatible": {
 		ok: boolean;
 		providerName: string;
 		displayName: string;

@@ -109,7 +109,7 @@ Both RPC methods accept an optional complete `modelOverride` object:
 ```json
 {
   "modelOverride": {
-    "model": "openai::gpt-5.2",
+    "model": "example::gpt-5.2",
     "reasoningEffort": "medium"
   }
 }
@@ -160,7 +160,7 @@ field is applicable.
 ### Example: reasoning model
 
 ```toml
-[providers.custom-meta.models."muse-spark-1.2"]
+[providers.example-meta.models."muse-spark-1.2"]
 context_length = 1048576
 max_input_tokens = 983040
 max_output_tokens = 65536
@@ -176,7 +176,7 @@ reasoning_include = ["encrypted_content"]
 ### Example: non-reasoning model
 
 ```toml
-[providers.custom-meta.models."muse-flash-0.9"]
+[providers.example-meta.models."muse-flash-0.9"]
 context_length = 262144
 max_input_tokens = 196608
 max_output_tokens = 65536
@@ -194,27 +194,20 @@ configuration used by title generation.
 
 ## Available Providers
 
-### API Key Providers
+### OpenAI Compatible
 
-| Provider             | Config Name  | Env Variable         | Features                                                         |
-| -------------------- | ------------ | -------------------- | ---------------------------------------------------------------- |
-| **OpenAI**           | `openai`     | `OPENAI_API_KEY`     | Streaming, tools, vision                        |
-| **OpenRouter**       | `openrouter` | `OPENROUTER_API_KEY` | Streaming, tools                                |
-| **Z.AI (Zhipu)**     | `zai`        | `Z_API_KEY`          | Streaming, tools                                |
-| **Z.AI Coding Plan** | `zai-code`   | `Z_CODE_API_KEY`     | Streaming, tools (Coding plan billing endpoint) |
-
-### Custom OpenAI-Compatible
-
-Any OpenAI-compatible endpoint can be added with a `custom-` prefix. This is
-the canonical complete-record format:
+Every LLM provider is an OpenAI-compatible endpoint. The config section name is
+the name you choose: lowercase letters, digits, and hyphens, with no prefix.
+`offered` and names starting with `voice-` are reserved. This is the canonical
+complete-record format:
 
 ```toml
-[providers.custom-ai-example]
+[providers.example]
 enabled = true
 base_url = "https://ai.example.invalid/v1"
 wire_api = "responses"
 
-[providers.custom-ai-example.models."Combos/cx/gpt-sol"]
+[providers.example.models."Combos/cx/gpt-sol"]
 context_length = 400000
 max_input_tokens = 272000
 max_output_tokens = 128000
@@ -262,13 +255,13 @@ Use **Settings** → **Providers** to save credentials for a provider. This flow
 does not require model records to be declared before credentials are saved.
 
 The **OpenAI Compatible** form on the onboarding provider step and in
-**Settings** → **Providers** → **Add LLM** creates a `custom-<name>` provider.
-The name is the part after `custom-`. The form sets the endpoint, API key,
+**Settings** → **Providers** → **Add LLM** creates an OpenAI Compatible provider.
+The stored name is the name you enter. The form sets the endpoint, API key,
 `wire_api` (`chat-completions` or `responses`), `tool_mode`, and `enabled`.
 `stream_transport` is `sse`. A base URL ending in `/responses` is accepted only
 when `wire_api` is `responses`. A URL ending in `/chat/completions` is rejected.
 The key is stored in `provider_keys.json` and is not written into the model
-tables. The same form edits an existing custom provider. Delete removes the
+tables. The same form edits an existing provider. Delete removes the
 TOML section and the saved key. Creating or editing appends the section name to a
 non-empty `providers.offered` only when `CHELIX_PROVIDERS__OFFERED` is not set.
 An empty `providers.offered` is left unchanged. If that variable is set and the
@@ -282,12 +275,12 @@ This flow does not discover models.
 Configure providers in `chelix.toml`:
 
 ```toml
-[providers.custom-ai-example]
+[providers.example]
 enabled = true
 base_url = "https://ai.example.invalid/v1"
 wire_api = "responses"
 
-[providers.custom-ai-example.models."muse-flash-0.9"]
+[providers.example.models."muse-flash-0.9"]
 context_length = 262144
 max_input_tokens = 196608
 max_output_tokens = 65536
@@ -298,7 +291,7 @@ zeroDataRetentionEnabled = false
 reasoning_supported_efforts = ["off"]
 
 [chat]
-priority_models = ["custom-ai-example::muse-flash-0.9"]
+priority_models = ["example::muse-flash-0.9"]
 ```
 
 ### Model Metadata Resolution
@@ -328,13 +321,10 @@ Each provider supports these options:
 
 ## Provider Setup
 
-### OpenAI
-
-1. Get an API key from [platform.openai.com](https://platform.openai.com/).
-2. Set `OPENAI_API_KEY` in your environment, or save the credentials in
-   onboarding or through **Settings** → **Providers**. Credentials saved through
-   provider setup are persisted in `~/.config/chelix/provider_keys.json` and are
-   not stored in the model tables.
+1. Open **Settings** → **Providers** → **Add LLM** and choose **OpenAI Compatible**.
+2. Enter the endpoint and API key. Credentials saved through provider setup are
+   persisted in `~/.config/chelix/provider_keys.json` and are not stored in the
+   model tables.
 3. Add, edit, or delete model records for that configured provider in onboarding
    or **Settings** → **Providers**. The model editor is shown only for a
    configured provider. Those actions write

@@ -3,7 +3,7 @@ use {
     crate::loader::find_or_default_config_path,
 };
 
-pub struct CustomProviderTomlUpdate {
+pub struct OpenAiCompatibleProviderTomlUpdate {
     pub name: String,
     pub previous_name: Option<String>,
     pub base_url: String,
@@ -15,18 +15,18 @@ pub struct CustomProviderTomlUpdate {
     pub write_base_url: bool,
 }
 
-pub struct CustomProviderTomlResult {
+pub struct OpenAiCompatibleProviderTomlResult {
     pub removed_model_ids: Vec<String>,
     pub renamed_model_ids: Vec<(String, String)>,
 }
 
-pub fn upsert_custom_provider_toml(
-    update: &CustomProviderTomlUpdate,
-) -> crate::Result<CustomProviderTomlResult> {
+pub fn upsert_openai_compatible_provider_toml(
+    update: &OpenAiCompatibleProviderTomlUpdate,
+) -> crate::Result<OpenAiCompatibleProviderTomlResult> {
     with_provider_document(|root| apply_upsert(root, update))
 }
 
-pub fn delete_custom_provider_toml(name: &str) -> crate::Result<Vec<String>> {
+pub fn delete_openai_compatible_provider_toml(name: &str) -> crate::Result<Vec<String>> {
     with_provider_document(|root| {
         let removed = {
             let providers = providers_table(root)?;
@@ -56,7 +56,7 @@ fn with_provider_document<T>(
         .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"));
     if !is_toml {
         return Err(crate::Error::message(
-            "custom providers can only be edited in a TOML config",
+            "OpenAI Compatible providers can only be edited in a TOML config",
         ));
     }
     if let Some(parent) = path.parent() {
@@ -85,8 +85,8 @@ fn with_provider_document<T>(
 
 fn apply_upsert(
     root: &mut toml_edit::Table,
-    update: &CustomProviderTomlUpdate,
-) -> crate::Result<CustomProviderTomlResult> {
+    update: &OpenAiCompatibleProviderTomlUpdate,
+) -> crate::Result<OpenAiCompatibleProviderTomlResult> {
     let previous = update
         .previous_name
         .as_deref()
@@ -152,7 +152,7 @@ fn apply_upsert(
     table.insert("wire_api", toml_edit::value(&update.wire_api));
     table.insert("stream_transport", toml_edit::value("sse"));
     table.insert("tool_mode", toml_edit::value(&update.tool_mode));
-    Ok(CustomProviderTomlResult {
+    Ok(OpenAiCompatibleProviderTomlResult {
         removed_model_ids: Vec::new(),
         renamed_model_ids: renamed,
     })

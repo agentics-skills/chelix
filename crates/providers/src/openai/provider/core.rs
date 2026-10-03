@@ -12,18 +12,9 @@ use {
 
 use chelix_agents::model::{ChatMessage, CompletionOptions, LlmProvider, StreamEvent, ToolChoice};
 
-use super::super::{OpenAiProvider, OpenAiProviderCapabilities, OpenAiReasoningMetadata};
+use super::super::{OpenAiProvider, OpenAiReasoningMetadata};
 
 impl OpenAiProvider {
-    pub fn new(api_key: secrecy::Secret<String>, model: String, base_url: String) -> Self {
-        Self::new_with_name(api_key, model, base_url, "openai".into()).with_capabilities(
-            OpenAiProviderCapabilities {
-                responses_websocket_policy: super::super::ResponsesWebSocketPolicy::OpenAiPlatform,
-                ..OpenAiProviderCapabilities::DEFAULT
-            },
-        )
-    }
-
     pub fn new_with_name(
         api_key: secrecy::Secret<String>,
         model: String,
@@ -41,21 +32,7 @@ impl OpenAiProvider {
             tool_mode: chelix_config::ToolMode::default(),
             reasoning_metadata: None,
             reasoning_request: None,
-            cache_retention: chelix_config::CacheRetention::Short,
-            capabilities: OpenAiProviderCapabilities::DEFAULT,
         }
-    }
-
-    #[must_use]
-    pub(crate) fn with_capabilities(mut self, capabilities: OpenAiProviderCapabilities) -> Self {
-        self.capabilities = capabilities;
-        self
-    }
-
-    #[must_use]
-    pub fn with_cache_retention(mut self, cache_retention: chelix_config::CacheRetention) -> Self {
-        self.cache_retention = cache_retention;
-        self
     }
 
     #[must_use]
@@ -118,9 +95,21 @@ impl OpenAiProvider {
             tool_mode: self.tool_mode,
             reasoning_metadata: self.reasoning_metadata.clone(),
             reasoning_request: self.reasoning_request.clone(),
-            cache_retention: self.cache_retention,
-            capabilities: self.capabilities,
         }
+    }
+
+    fn unsupported_websocket_message(&self) -> String {
+        format!(
+            "websocket mode is not supported for this provider (base_url: {})",
+            self.base_url
+        )
+    }
+
+    fn unsupported_websocket_stream(&self) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
+        let message = self.unsupported_websocket_message();
+        Box::pin(async_stream::stream! {
+            yield StreamEvent::Error(message);
+        })
     }
 
     pub(crate) async fn send_chat_completions_request(
@@ -285,30 +274,28 @@ impl LlmProvider for OpenAiProvider {
         options: CompletionOptions,
     ) -> Pin<Box<dyn Stream<Item = StreamEvent> + Send + '_>> {
         match (self.wire_api, self.stream_transport) {
-            (WireApi::Responses, ProviderStreamTransport::Sse) => {
+            (WireApi::Responses, ProviderStreamTransport::Sse)
+            | (WireApi::Responses, ProviderStreamTransport::Auto) => {
+                if matches!(self.stream_transport, ProviderStreamTransport::Auto) {
+                    tracing::debug!(
+                        error = %self.unsupported_websocket_message(),
+                        "websocket setup failed, falling back to sse"
+                    );
+                }
                 self.stream_responses_sse(messages, tools, options)
             },
-            (WireApi::Responses, _) => {
-                // WebSocket / Auto both go through the WS path which already
-                // uses the responses format.
-                self.stream_with_tools_websocket(
-                    messages,
-                    tools,
-                    matches!(self.stream_transport, ProviderStreamTransport::Auto),
-                    options,
-                    true,
-                )
-            },
-            (WireApi::ChatCompletions, ProviderStreamTransport::Sse) => {
+            (WireApi::ChatCompletions, ProviderStreamTransport::Sse)
+            | (WireApi::ChatCompletions, ProviderStreamTransport::Auto) => {
+                if matches!(self.stream_transport, ProviderStreamTransport::Auto) {
+                    tracing::debug!(
+                        error = %self.unsupported_websocket_message(),
+                        "websocket setup failed, falling back to sse"
+                    );
+                }
                 self.stream_with_tools_sse(messages, tools, options)
             },
-            (WireApi::ChatCompletions, ProviderStreamTransport::Websocket) => {
-                // WebSocket always uses Responses wire format; SSE fallback
-                // uses Chat Completions SSE.
-                self.stream_with_tools_websocket(messages, tools, false, options, false)
-            },
-            (WireApi::ChatCompletions, ProviderStreamTransport::Auto) => {
-                self.stream_with_tools_websocket(messages, tools, true, options, false)
+            (WireApi::Responses | WireApi::ChatCompletions, ProviderStreamTransport::Websocket) => {
+                self.unsupported_websocket_stream()
             },
         }
     }

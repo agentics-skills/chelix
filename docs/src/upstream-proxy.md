@@ -33,7 +33,7 @@ upstream_proxy = "http://user:password@proxy.corp.example.com:8080"
 
 When `upstream_proxy` is set, the following traffic routes through the proxy:
 
-- **LLM provider API calls** (OpenAI, OpenRouter, Z.AI, etc.)
+- **LLM provider API calls** (the configured OpenAI Compatible endpoint)
 - **Tool HTTP requests** (web fetch, web search, Firecrawl)
 - **OAuth flows** (authorization and token exchange)
 - **MCP server auth** (OAuth for remote MCP servers)

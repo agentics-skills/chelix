@@ -1,6 +1,6 @@
 use super::*;
 
-async fn finish_custom_provider(
+async fn finish_openai_compatible_provider(
     ctx: &MethodContext,
     result: serde_json::Value,
 ) -> Result<serde_json::Value, ErrorShape> {
@@ -895,32 +895,32 @@ pub(super) fn register(reg: &mut MethodRegistry) {
         }),
     );
     reg.register(
-        "providers.upsert_custom",
+        "providers.upsert_openai_compatible",
         Box::new(|ctx| {
             Box::pin(async move {
                 let result = ctx
                     .state
                     .services
                     .provider_setup
-                    .upsert_custom(ctx.params.clone())
+                    .upsert_openai_compatible(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)?;
-                finish_custom_provider(&ctx, result).await
+                finish_openai_compatible_provider(&ctx, result).await
             })
         }),
     );
     reg.register(
-        "providers.delete_custom",
+        "providers.delete_openai_compatible",
         Box::new(|ctx| {
             Box::pin(async move {
                 let result = ctx
                     .state
                     .services
                     .provider_setup
-                    .delete_custom(ctx.params.clone())
+                    .delete_openai_compatible(ctx.params.clone())
                     .await
                     .map_err(ErrorShape::from)?;
-                finish_custom_provider(&ctx, result).await
+                finish_openai_compatible_provider(&ctx, result).await
             })
         }),
     );

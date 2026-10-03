@@ -10,7 +10,6 @@ mod sse_lines;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use provider::responses_protocol_error;
 pub use {
     provider::{
         ChatCompletionsFunction, ChatCompletionsTool, ResponsesApiTool, ResponsesEventResult,

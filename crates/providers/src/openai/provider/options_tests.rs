@@ -4,19 +4,15 @@ use {
     axum::{
         Json, Router,
         body::Body,
-        extract::{
-            State,
-            ws::{Message, WebSocketUpgrade},
-        },
+        extract::State,
         http::{Uri, header::CONTENT_TYPE},
-        response::{IntoResponse, Response},
-        routing::{get, post},
+        response::Response,
+        routing::post,
     },
     chelix_agents::model::{
         ChatMessage, CompletionOptions, LlmProvider, ToolChoice, collect_stream,
     },
     chelix_config::schema::{ProviderStreamTransport, WireApi},
-    futures::StreamExt,
     secrecy::Secret,
     tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
 };
@@ -53,35 +49,11 @@ async fn capture_sse(
         .unwrap()
 }
 
-async fn capture_websocket(
-    State(sender): State<UnboundedSender<CapturedRequest>>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |mut socket| async move {
-        while let Some(Ok(Message::Text(text))) = socket.next().await {
-            let create: serde_json::Value = serde_json::from_str(&text).unwrap();
-            assert_eq!(create["type"], "response.create");
-            sender
-                .send(("websocket".into(), create["response"].clone()))
-                .unwrap();
-            socket
-                .send(Message::Text(completed_response().to_string().into()))
-                .await
-                .unwrap();
-        }
-    })
-}
-
-async fn capture_server(websocket: bool) -> (String, UnboundedReceiver<CapturedRequest>) {
+async fn capture_server() -> (String, UnboundedReceiver<CapturedRequest>) {
     let (sender, receiver) = unbounded_channel();
-    let responses = if websocket {
-        get(capture_websocket).post(capture_sse)
-    } else {
-        post(capture_sse)
-    };
     let app = Router::new()
         .route("/v1/chat/completions", post(capture_sse))
-        .route("/v1/responses", responses)
+        .route("/v1/responses", post(capture_sse))
         .with_state(sender);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -94,32 +66,21 @@ async fn capture_server(websocket: bool) -> (String, UnboundedReceiver<CapturedR
 #[tokio::test]
 async fn streaming_options_follow_the_actual_wire_format() {
     for wire_api in [WireApi::ChatCompletions, WireApi::Responses] {
-        for (transport, ws_capable, accept_ws) in [
-            (ProviderStreamTransport::Sse, true, true),
-            (ProviderStreamTransport::Websocket, true, true),
-            (ProviderStreamTransport::Auto, true, true),
-            (ProviderStreamTransport::Auto, false, true),
-            (ProviderStreamTransport::Auto, true, false),
+        for transport in [
+            ProviderStreamTransport::Sse,
+            ProviderStreamTransport::Auto,
+            ProviderStreamTransport::Websocket,
         ] {
-            let (base_url, mut captured) = capture_server(accept_ws).await;
-            let provider = if ws_capable {
-                OpenAiProvider::new(
-                    Secret::new("test-key".into()),
-                    "test-model".into(),
-                    base_url,
-                )
-            } else {
+            let (base_url, mut captured) = capture_server().await;
+            let provider = configure_reasoning(
                 OpenAiProvider::new_with_name(
                     Secret::new("test-key".into()),
                     "test-model".into(),
                     base_url,
-                    "test-provider".into(),
+                    "example".into(),
                 )
-            };
-            let provider = configure_reasoning(
-                provider
-                    .with_wire_api(wire_api)
-                    .with_stream_transport(transport),
+                .with_wire_api(wire_api)
+                .with_stream_transport(transport),
                 vec!["off".into()],
                 "off".into(),
             );
@@ -127,6 +88,23 @@ async fn streaming_options_follow_the_actual_wire_format() {
                 "name":"execute_command", "description":"Execute a command",
                 "parameters":{"type":"object","properties":{"command":{"type":"string"},"terminalId":{"type":"string"}},"required":["command"]}
             })]] {
+                if matches!(transport, ProviderStreamTransport::Websocket) {
+                    let error = collect_stream(provider.stream_with_tools_and_options(
+                        vec![ChatMessage::user("hello")],
+                        tools.clone(),
+                        CompletionOptions::default(),
+                    ))
+                    .await
+                    .unwrap_err();
+                    assert!(
+                        error
+                            .to_string()
+                            .contains("websocket mode is not supported"),
+                        "{error}"
+                    );
+                    assert!(captured.try_recv().is_err());
+                    continue;
+                }
                 let mut ordinary = None;
                 for limit in [None, Some(12_800)] {
                     let options = CompletionOptions {
@@ -146,14 +124,10 @@ async fn streaming_options_follow_the_actual_wire_format() {
                     assert_eq!(result.usage.output_tokens, 7);
                     assert_eq!(result.usage.cache_read_tokens, 3);
                     let (path, mut body) = captured.recv().await.unwrap();
-                    let is_ws =
-                        ws_capable && accept_ws && transport != ProviderStreamTransport::Sse;
-                    let responses_format = is_ws || wire_api == WireApi::Responses;
+                    let responses_format = wire_api == WireApi::Responses;
                     assert_eq!(
                         path,
-                        if is_ws {
-                            "websocket"
-                        } else if responses_format {
+                        if responses_format {
                             "/v1/responses"
                         } else {
                             "/v1/chat/completions"

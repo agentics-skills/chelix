@@ -9,7 +9,7 @@ to your agent from anywhere.
 - A VPS with at least 1 GB RAM and 10 GB disk (any provider: Hetzner, Linode,
   Vultr, etc.)
 - SSH access to the server
-- An API key from at least one LLM provider (OpenAI, OpenRouter, etc.)
+- An API key for an OpenAI-compatible LLM endpoint
 
 ## Option A: Docker (recommended)
 

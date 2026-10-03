@@ -23,16 +23,14 @@ export function els(): ProviderModalElements {
 	return _els;
 }
 
-export const OPENAI_COMPATIBLE_PROVIDERS: string[] = ["openai", "openrouter"];
-
-// Dynamic import breaks the dependency cycle with auth-flow.ts.
+// Dynamic import breaks the dependency cycle with the provider modal.
 export function openProviderModal(): void {
 	import("./open-modal").then((module) => module.openProviderModalImpl());
 }
 
 export function closeProviderModal(): void {
 	els().modal.classList.add("hidden");
-	import("./openai-compatible").then((module) => module.unmountCustomProviderEditor());
+	import("./openai-compatible").then((module) => module.unmountOpenAiCompatibleEditor());
 }
 
 export function setFormError(errorPanel: HTMLElement | null, message: string | null): void {

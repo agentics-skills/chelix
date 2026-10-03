@@ -4,8 +4,8 @@
 #   docker compose up -d
 #   open https://localhost:13131
 #
-# For an unattended first boot, set CHELIX_PASSWORD, CHELIX_PROVIDER, and
-# CHELIX_API_KEY in the service environment below.
+# For unattended auth, set CHELIX_PASSWORD in the service environment below.
+# The LLM provider is a [providers.<name>] section with base_url and api_key.
 #
 # On first launch, a setup code is printed to the logs:
 #   docker compose logs chelix
@@ -25,10 +25,8 @@ services:
       - "13131:13131"
       - "13132:13132"
     environment:
-      # Uncomment for unattended setup.
+      # Uncomment for unattended auth.
       # CHELIX_PASSWORD: change-me
-      # CHELIX_PROVIDER: openai
-      # CHELIX_API_KEY: sk-...
     volumes:
       # Configuration files (editable from host)
       - ./config:/home/chelix/.config/chelix

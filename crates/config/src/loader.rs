@@ -9,12 +9,12 @@ use std::{
 
 #[path = "loader/config_io.rs"]
 mod config_io;
-#[path = "loader/custom_provider_toml.rs"]
-mod custom_provider_toml;
+#[path = "loader/openai_compatible_provider_toml.rs"]
+mod openai_compatible_provider_toml;
 #[path = "loader/workspace.rs"]
 mod workspace;
 
-pub use {config_io::*, custom_provider_toml::*, workspace::*};
+pub use {config_io::*, openai_compatible_provider_toml::*, workspace::*};
 
 /// Generate a random available port by binding to port 0 and reading the assigned port.
 fn generate_random_port() -> u16 {

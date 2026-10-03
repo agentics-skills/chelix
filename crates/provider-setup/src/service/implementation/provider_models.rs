@@ -9,10 +9,7 @@ use {
 
 use {
     super::service::{LiveProviderSetupService, ProviderConfigPersistence},
-    crate::{
-        config_helpers::{config_with_saved_keys, is_custom_provider},
-        known_providers::known_providers,
-    },
+    crate::config_helpers::config_with_saved_keys,
 };
 
 struct ModelWrite {
@@ -61,11 +58,7 @@ impl LiveProviderSetupService {
             )));
         }
         let agents = self.agent_entries().await;
-        let removed_model_id = {
-            let base = self.config_snapshot();
-            let entry = base.get(&write.provider).cloned().unwrap_or_default();
-            removed_canonical_id(&write, &entry)
-        };
+        let removed_model_id = removed_canonical_id(&write);
         let mut registry = self.registry.write().await;
         let models = if self.config_persistence == ProviderConfigPersistence::Filesystem {
             let base = self.config_snapshot();
@@ -160,10 +153,7 @@ impl LiveProviderSetupService {
 }
 
 fn provider_name_allowed(name: &str) -> bool {
-    is_custom_provider(name)
-        || known_providers()
-            .iter()
-            .any(|provider| provider.name == name)
+    chelix_config::schema::openai_compatible_provider_name_error(name).is_none()
 }
 
 fn required_provider(params: &Value) -> Result<String, ServiceError> {
@@ -266,7 +256,7 @@ fn upsert_metadata(
     Ok(())
 }
 
-fn removed_canonical_id(write: &ModelWrite, entry: &ProviderEntry) -> Option<String> {
+fn removed_canonical_id(write: &ModelWrite) -> Option<String> {
     let raw = if write.metadata.is_none() {
         Some(write.model_id.as_str())
     } else {
@@ -275,16 +265,11 @@ fn removed_canonical_id(write: &ModelWrite, entry: &ProviderEntry) -> Option<Str
             .as_deref()
             .filter(|previous| *previous != write.model_id)
     }?;
-    Some(canonical_model_id(entry, &write.provider, raw))
+    Some(canonical_model_id(&write.provider, raw))
 }
 
-fn canonical_model_id(entry: &ProviderEntry, provider: &str, model_id: &str) -> String {
-    let label = if is_custom_provider(provider) {
-        provider.to_string()
-    } else {
-        entry.alias.clone().unwrap_or_else(|| provider.to_string())
-    };
-    namespaced_model_id(&label, model_id)
+fn canonical_model_id(provider: &str, model_id: &str) -> String {
+    namespaced_model_id(provider, model_id)
 }
 
 pub(super) fn blocked_agents(

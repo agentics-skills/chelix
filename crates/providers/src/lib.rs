@@ -1,16 +1,13 @@
 //! LLM provider implementations and registry.
 
 mod client;
-pub mod config_helpers;
 pub mod error;
 pub mod http;
 pub mod model_capabilities;
-pub mod model_catalogs;
 pub mod model_id;
 pub mod openai;
 pub mod openai_compat;
 pub mod registry;
-pub mod ws_pool;
 
 #[cfg(test)]
 pub mod contract;

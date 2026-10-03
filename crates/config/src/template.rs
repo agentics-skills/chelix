@@ -29,7 +29,7 @@ pub fn default_config_template(port: u16) -> String {
 #     settings you intentionally want to control.
 #
 # Environment variable substitution is supported: ${{ENV_VAR}}
-# Example: api_key = "${{OPENAI_API_KEY}}"
+# Example: api_key = "${{LLM_API_KEY}}"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SERVER
@@ -101,7 +101,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Each provider supports:
 #   enabled   - Whether to use this provider (default: true)
-#   api_key   - API key (or use env var like OPENAI_API_KEY)
+#   api_key   - API key (stored in provider_keys.json when set from the UI)
 #   base_url  - Override API endpoint
 #   models.<model_id> - Ordered complete model metadata record when present
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
@@ -121,45 +121,31 @@ port = {port}                           # Port number (auto-generated for this i
 # ["off"] is the only non-reasoning API path; ["low"] is valid without "off".
 
 # [providers]
-# offered = ["openai", "openrouter", "zai"]
+# offered = ["example"]
                                     # Enabled providers and those shown in onboarding/picker UI ([] = enable/show all)
-# All available providers (canonical list in schema/providers.rs):
-#   "openai", "deepinfra",
-#   "openrouter", "zai", "zai-code", "alibaba-coding"
+# Each [providers.<name>] section is an OpenAI Compatible endpoint.
+# <name> is lowercase letters, digits, and hyphens. It is not prefixed.
 
 # Provider snippets are examples; model tables can be added independently.
-# ── OpenAI ────────────────────────────────────────────────────
-# [providers.openai]
-# enabled = false
-# api_key = "sk-..."                          # Or set OPENAI_API_KEY env var
-# stream_transport = "sse"                     # "sse" | "websocket" | "auto"
-# base_url = "https://api.openai.com/v1"     # API endpoint (change for Azure, etc.)
-# alias = "openai"
-
-# ── DeepInfra ─────────────────────────────────────────────────
-# [providers.deepinfra]
-# enabled = false
-# api_key = "..."                             # Or set DEEPINFRA_API_KEY env var
-# base_url = "https://api.deepinfra.com/v1/openai"
-# alias = "deepinfra"
-
-# ── OpenRouter (multi-provider gateway) ───────────────────────
-# [providers.openrouter]
-# enabled = false
-# api_key = "..."                             # Or set OPENROUTER_API_KEY env var
-# base_url = "https://openrouter.ai/api/v1"
+# ── OpenAI Compatible ─────────────────────────────────────────
+# [providers.example]
+# enabled = true
+# base_url = "https://api.example.invalid/v1"
+# wire_api = "chat-completions"              # "chat-completions" | "responses"
+# stream_transport = "sse"                   # "sse" | "websocket" | "auto"
+# tool_mode = "native"                       # "native" | "text" | "off"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MODEL METADATA EXAMPLE
 # ══════════════════════════════════════════════════════════════════════════════
 # Every configured model uses this complete table format.
 #
-# [providers.custom-ai-example]
+# [providers.example]
 # enabled = true
 # base_url = "https://ai.example.invalid/v1"
 # wire_api = "responses"
 #
-# [providers.custom-ai-example.models."Combos/cx/gpt-sol"]
+# [providers.example.models."Combos/cx/gpt-sol"]
 # context_length = 400000
 # max_input_tokens = 272000
 # max_output_tokens = 128000
@@ -191,7 +177,7 @@ port = {port}                           # Port number (auto-generated for this i
 # reasoning_supported_efforts. The values below are examples.
 #
 # [auxiliary.title_generation]
-# model = "openai::gpt-5.2"
+# model = "example::gpt-5.2"
 # reasoning_effort = "low"
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -222,7 +208,7 @@ port = {port}                           # Port number (auto-generated for this i
 # name = "Chelix"
 # emoji = "🤖"
 # description = "General-purpose assistant"
-# model = "openai::gpt-5.2"
+# model = "example::gpt-5.2"
 # reasoning_effort = "medium"
 # max_tools_threshold = {max_tools_threshold}
 # compaction_reminder = {compaction_reminder}
@@ -448,7 +434,7 @@ terminal_size = "115x58"             # 115 chars x 58
 # wake_cooldown = "5m"              # Min duration between command-triggered heartbeat wakes (0 to disable)
 
 # [heartbeat.model_override]
-# model = "openai::gpt-5.2"
+# model = "example::gpt-5.2"
 # reasoning_effort = "medium"
 
 # [heartbeat.active_hours]
@@ -582,7 +568,7 @@ terminal_size = "115x58"             # 115 chars x 58
 # Variables injected into the Chelix process at startup.
 
 # [env]
-# OPENROUTER_API_KEY = "sk-or-..."
+# FIRECRAWL_API_KEY = "fc-..."
 "##,
         max_tools_threshold = crate::schema::DEFAULT_MAX_TOOLS_THRESHOLD,
         compaction_reminder = crate::schema::DEFAULT_COMPACTION_REMINDER,

@@ -93,15 +93,13 @@ fn check_providers_missing_key_warns() {
         chelix_config::schema::ProviderEntry::default(),
     );
 
-    if std::env::var("OPENROUTER_API_KEY").is_err() {
-        let section = check_providers(&config);
-        let item = section
-            .items
-            .iter()
-            .find(|i| i.message.contains("openrouter"));
-        assert!(item.is_some());
-        assert_eq!(item.unwrap().status, Status::Warn);
-    }
+    let section = check_providers(&config);
+    let item = section
+        .items
+        .iter()
+        .find(|i| i.message.contains("openrouter"));
+    assert!(item.is_some());
+    assert_eq!(item.unwrap().status, Status::Warn);
 }
 
 #[test]
