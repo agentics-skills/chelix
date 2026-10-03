@@ -135,7 +135,6 @@ export function DangerZone({ title = "Danger Zone", children }: DangerZoneProps)
 	return (
 		<div
 			style={{
-				maxWidth: "600px",
 				marginTop: "24px",
 				borderTop: "1px solid var(--border)",
 				paddingTop: "16px",

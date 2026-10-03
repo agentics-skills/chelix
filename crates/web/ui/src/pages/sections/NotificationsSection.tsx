@@ -34,7 +34,6 @@ function NotificationsNotice({ title, detail }: { title: string; detail: VNode |
 		<NotificationsShell>
 			<div
 				style={{
-					maxWidth: "600px",
 					padding: "12px 16px",
 					borderRadius: "6px",
 					border: "1px solid var(--border)",
@@ -75,7 +74,7 @@ interface PushControlProps {
 
 function PushControl(props: PushControlProps): VNode {
 	return (
-		<div style={{ maxWidth: "600px" }}>
+		<div>
 			<div className="provider-item" style={{ marginBottom: 0 }}>
 				<div style={{ flex: 1, minWidth: 0 }}>
 					<div className="provider-item-name" style={{ fontSize: ".9rem" }}>
@@ -104,7 +103,6 @@ function PushGuidance({ needsInstall, permission }: { needsInstall: boolean; per
 		return (
 			<div
 				style={{
-					maxWidth: "600px",
 					padding: "12px 16px",
 					borderRadius: "6px",
 					border: "1px solid var(--border)",
@@ -126,7 +124,6 @@ function PushGuidance({ needsInstall, permission }: { needsInstall: boolean; per
 	return (
 		<div
 			style={{
-				maxWidth: "600px",
 				padding: "12px 16px",
 				borderRadius: "6px",
 				border: "1px solid var(--error)",
@@ -187,7 +184,7 @@ function SubscribedDevices({
 }): VNode {
 	const subscriptions = status.subscriptions || [];
 	return (
-		<div style={{ maxWidth: "600px", borderTop: "1px solid var(--border)", paddingTop: "16px", marginTop: "8px" }}>
+		<div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px", marginTop: "8px" }}>
 			<SubHeading title={`Subscribed Devices (${status.subscription_count || 0})`} />
 			{subscriptions.length ? (
 				<div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -216,7 +213,7 @@ interface NotificationsContentProps extends PushControlProps {
 function NotificationsContent(props: NotificationsContentProps): VNode {
 	return (
 		<NotificationsShell>
-			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ maxWidth: "600px", margin: 0 }}>
+			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
 				Receive push notifications when the agent completes a task or needs your attention.
 			</p>
 			<PushControl {...props} />

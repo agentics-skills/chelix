@@ -217,7 +217,7 @@ function ExecutionRuntimeSummary({ sandbox }: { sandbox: ResolvedToolsSandbox })
 function ToolCallingWarning({ supportsTools }: { supportsTools: boolean }): VNode | null {
 	if (supportsTools) return null;
 	return (
-		<div className="rounded border border-[var(--warn)] bg-[var(--surface2)] p-3 max-w-[1100px]">
+		<div className="rounded border border-[var(--warn)] bg-[var(--surface2)] p-3">
 			<div className="text-xs text-[var(--muted)] leading-relaxed">
 				Tools are unavailable because the configured tool mode is off.
 			</div>
@@ -256,7 +256,7 @@ function ToolGroupOverview({ group }: { group: ToolGroup }): VNode {
 
 function RegisteredTools({ groups, toolCount }: { groups: ToolGroup[]; toolCount: number }): VNode {
 	return (
-		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4 max-w-[1100px]">
+		<div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
 			<div className="flex items-center justify-between gap-2 flex-wrap">
 				<h3 className="text-sm font-medium text-[var(--text-strong)] m-0">Registered Tools</h3>
 				<span className="provider-item-badge muted">{toolCount}</span>
@@ -308,10 +308,10 @@ export function ToolsSection(): VNode {
 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
-			<div className="flex items-start justify-between gap-3 flex-wrap max-w-[1100px]">
+			<div className="flex items-start justify-between gap-3 flex-wrap">
 				<div className="min-w-0">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Tools</h2>
-					<p className="text-xs text-[var(--muted)] mt-1 max-w-[900px] leading-relaxed">
+					<p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
 						This page shows the effective tool inventory for the active session and model. Change the current LLM, and
 						the inventory here will change with it.
 					</p>
@@ -326,11 +326,11 @@ export function ToolsSection(): VNode {
 				</button>
 			</div>
 
-			{toolsErr ? <div className="text-xs text-[var(--error)] max-w-[1100px]">{toolsErr}</div> : null}
+			{toolsErr ? <div className="text-xs text-[var(--error)]">{toolsErr}</div> : null}
 
 			{toolData ? (
 				<>
-					<div className="grid gap-4 md:grid-cols-2 max-w-[1100px]">
+					<div className="settings-columns">
 						<ToolCallingSummary supportsTools={toolData.supportsTools} toolCount={toolData.tools.length} />
 						<ActiveModelSummary session={toolData.session} />
 						<ExecutionRuntimeSummary sandbox={toolData.sandbox} />

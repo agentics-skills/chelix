@@ -550,10 +550,6 @@ html {
 /* ── Forms Mobile Styles ── */
 
 @media (max-width: 767px) {
-  .max-w-form {
-    max-width: 100%;
-  }
-
   .terminal-toolbar {
     padding: 10px 12px;
   }

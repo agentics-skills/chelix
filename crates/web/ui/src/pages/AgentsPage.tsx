@@ -277,7 +277,7 @@ function AgentForm({
 
 	return (
 		<div className="flex-1 overflow-y-auto p-4">
-			<div className="backend-card max-w-[680px] flex flex-col gap-4">
+			<div className="backend-card w-full flex flex-col gap-4">
 				<div className="flex items-center justify-between gap-3">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">
 						{agent ? `Edit ${agent.name}` : "Create Agent"}
@@ -287,7 +287,7 @@ function AgentForm({
 					</button>
 				</div>
 
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+				<div className="settings-columns">
 					<label className="flex flex-col gap-1">
 						<span className="text-xs text-[var(--muted)]">ID</span>
 						<input
@@ -393,7 +393,7 @@ function AgentForm({
 					<span>Prepend sender badge to sessions_send and sub_agent messages.</span>
 				</label>
 
-				<div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+				<div className="settings-columns">
 					<label className="flex flex-col gap-1">
 						<span className="text-xs text-[var(--muted)]">Soul</span>
 						<textarea
@@ -653,7 +653,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 					New Agent
 				</button>
 			</div>
-			<p className="text-xs text-[var(--muted)] max-w-[680px]" style={{ margin: 0 }}>
+			<p className="text-xs text-[var(--muted)]" style={{ margin: 0 }}>
 				Every agent can be selected in chat. Soul is used in chat; Sub-Agent system prompt is used by
 				<code>sub_agent</code> for delegated child sessions.
 			</p>
@@ -665,7 +665,7 @@ function AgentsPageComponent({ subPath }: { subPath?: string }): VNode {
 			{isLoading ? (
 				<Loading message="Loading agents…" />
 			) : (
-				<section className="grid grid-cols-1 xl:grid-cols-2 gap-3 max-w-[1100px]" aria-label="Agents list">
+				<section className="settings-columns" aria-label="Agents list">
 					{agents.map((agent) => (
 						<AgentCard
 							key={agent.id}

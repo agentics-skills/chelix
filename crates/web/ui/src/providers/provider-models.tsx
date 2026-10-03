@@ -40,10 +40,10 @@ function ModelRecord({ model }: { model: ModelInfo }): VNode {
 	];
 
 	return (
-		<dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+		<dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs">
 			{fields.map(([name, value]) => (
 				<div key={name} className="flex min-w-0 gap-2">
-					<dt className="shrink-0 font-mono text-[var(--muted)]">{name}:</dt>
+					<dt className="min-w-0 break-all font-mono text-[var(--muted)]">{name}:</dt>
 					<dd className="min-w-0 break-all text-[var(--text)]">{value}</dd>
 				</div>
 			))}
@@ -73,15 +73,15 @@ function ProviderModelRow({
 	editDisabled: boolean;
 }): VNode {
 	return (
-		<div className="flex items-start justify-between gap-3 py-1">
-			<div className="min-w-0 flex-1">
+		<div className="flex flex-wrap items-start gap-3 py-1">
+			<div className="min-w-0 w-full">
 				<div className="flex items-center gap-2 min-w-0">
 					<div className="text-sm font-medium text-[var(--text-strong)] truncate">{model.id}</div>
 					<ProviderModelBadges model={model} />
 				</div>
 				<ModelRecord model={model} />
 			</div>
-			<div className="flex gap-2 shrink-0">
+			<div className="flex flex-wrap gap-2">
 				{onToggle ? (
 					<button
 						type="button"

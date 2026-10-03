@@ -526,7 +526,7 @@ function WebhookModal(): VNode | null {
 			}}
 			title={isEdit ? "Edit Webhook" : "Create Webhook"}
 		>
-			<form onSubmit={onSave} className="provider-key-form" style={{ maxWidth: "460px" }}>
+			<form onSubmit={onSave} className="provider-key-form">
 				{error.value && <div className="text-xs text-[var(--error)] mb-2">{error.value}</div>}
 
 				<label className="text-xs text-[var(--muted)]" htmlFor="webhookName">

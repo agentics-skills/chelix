@@ -386,16 +386,16 @@ function ProjectsPageComponent(): VNode {
 					{clearing.value ? t("projects:clearing") : t("projects:clearAll")}
 				</button>
 			</div>
-			<p className="text-xs text-[var(--muted)] max-w-form">
+			<p className="text-xs text-[var(--muted)]">
 				Clear All only removes repository entries from Chelix, it does not delete anything from disk.
 			</p>
-			<p className="text-sm text-[var(--muted)]" style={{ maxWidth: "600px", margin: 0 }}>
+			<p className="text-sm text-[var(--muted)]" style={{ margin: 0 }}>
 				Projects bind sessions to a codebase directory. When a session is linked to a project, context files (CLAUDE.md,
 				AGENTS.md, .cursorrules, and rule directories) are loaded automatically, scanned for risky prompt-injection
 				patterns, and injected into the system prompt. Enable auto-worktree to give each session its own git branch for
 				isolated work.
 			</p>
-			<p className="text-sm text-[var(--muted)]" style={{ maxWidth: "600px", margin: 0 }}>
+			<p className="text-sm text-[var(--muted)]" style={{ margin: 0 }}>
 				<strong className="text-[var(--text)]">Auto-detect</strong> scans common directories under your home folder (
 				<code className="font-mono text-xs">~/Projects</code>, <code className="font-mono text-xs">~/Developer</code>,{" "}
 				<code className="font-mono text-xs">~/src</code>, <code className="font-mono text-xs">~/code</code>,{" "}
@@ -406,7 +406,7 @@ function ProjectsPageComponent(): VNode {
 			<div className="project-form-row">
 				<PathInput onAdd={onAdd} />
 			</div>
-			<div style={{ maxWidth: "600px", marginTop: "8px" }}>
+			<div>
 				{list.length === 0 && (
 					<div className="text-sm text-[var(--muted)]" style={{ padding: "12px 0" }}>
 						No projects configured. Add a directory above or use auto-detect.

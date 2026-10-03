@@ -246,7 +246,6 @@ function EnvVaultNotice({ vaultStatus, authHasPassword }: EnvVaultNoticeProps): 
 		<div
 			className="text-xs"
 			style={{
-				maxWidth: "600px",
 				padding: "8px 12px",
 				borderRadius: "6px",
 				border: "1px solid var(--border)",
@@ -450,7 +449,7 @@ export function EnvironmentSection(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<SectionHeading title="Environment Variables" />
-			<p className="text-xs text-[var(--muted)] leading-relaxed max-w-form m-0">
+			<p className="text-xs text-[var(--muted)] leading-relaxed m-0">
 				Enabled variables are injected into sandbox command execution. Secret values are masked in this list and in
 				command output; non-secret values remain visible.
 			</p>
@@ -459,7 +458,7 @@ export function EnvironmentSection(): VNode {
 
 			<EnvironmentLoadState loading={envLoading} loaded={envLoaded}>
 				{/* Existing variables */}
-				<div className="max-w-form">
+				<div>
 					{envVars.length > 0 ? (
 						<div className="flex flex-col gap-1.5 mb-3">
 							{envVars.map((variable) => (
@@ -484,7 +483,7 @@ export function EnvironmentSection(): VNode {
 				</div>
 
 				{/* Add variable */}
-				<div className="max-w-form border-t border-[var(--border)] pt-4">
+				<div className="border-t border-[var(--border)] pt-4">
 					<SubHeading title="Add Variable" />
 					<form aria-label="Add environment variable" onSubmit={(event) => void onAdd(event)}>
 						<div className="flex gap-2 flex-wrap">

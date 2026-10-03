@@ -329,7 +329,7 @@ function FeatureUnavailable({ title, message }: { title: string; message: VNode 
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-y-auto">
 			<h2 className="text-base font-medium text-[var(--text-strong)]">{title}</h2>
-			<div className="text-xs text-[var(--muted)] max-w-form">{message}</div>
+			<div className="text-xs text-[var(--muted)]">{message}</div>
 		</div>
 	);
 }

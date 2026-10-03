@@ -220,15 +220,9 @@ export function ConnectionModeHint({ type }: ConnectionModeHintProps): VNode | n
 	);
 }
 
-interface ChannelStorageNoticeProps {
-	compact?: boolean;
-}
-
-function ChannelStorageNotice({ compact = false }: ChannelStorageNoticeProps): VNode {
+function ChannelStorageNotice(): VNode {
 	return (
-		<div
-			className={`rounded-md border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs text-[var(--muted)] ${compact ? "" : "max-w-3xl"}`}
-		>
+		<div className="rounded-md border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-xs text-[var(--muted)]">
 			<span className="font-medium text-[var(--text-strong)]">Storage note.</span> {channelStorageNote()}
 		</div>
 	);

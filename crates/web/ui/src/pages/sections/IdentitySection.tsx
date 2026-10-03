@@ -130,7 +130,7 @@ export function IdentitySection(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<SectionHeading title="User Profile" />
-			<div style={{ maxWidth: "600px", display: "flex", flexDirection: "column", gap: "16px" }}>
+			<div className="settings-columns">
 				{/* User name */}
 				<div>
 					<SubHeading title="Your Name" />
@@ -140,8 +140,7 @@ export function IdentitySection(): VNode {
 					<div className="flex items-center gap-2">
 						<input
 							type="text"
-							className="provider-key-input"
-							style={{ width: "100%", maxWidth: "280px" }}
+							className="provider-key-input w-full"
 							value={userName}
 							onFocus={() => {
 								userNameEditingRef.current = true;
@@ -167,8 +166,7 @@ export function IdentitySection(): VNode {
 						</label>
 						<select
 							id="identityLanguageSelect"
-							className="provider-key-input"
-							style={{ maxWidth: "220px" }}
+							className="provider-key-input w-full"
 							value={uiLanguage}
 							onChange={(e: Event) => {
 								setUiLanguage(targetValue(e));

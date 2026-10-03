@@ -489,7 +489,7 @@ function MetricsGrid({
 				<h3 className="text-sm font-medium text-[var(--muted)] uppercase tracking-wide mb-5">
 					{t("metrics:sections.system")}
 				</h3>
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+				<div className="settings-columns">
 					<MetricCard title={t("metrics:cards.uptime")} value={formatUptime(system?.uptime_seconds)} />
 					<MetricCard title={t("metrics:cards.connectedClients")} value={formatNumber(system?.connected_clients)} />
 					<MetricCard title={t("metrics:cards.activeSessions")} value={formatNumber(system?.active_sessions)} />
@@ -503,7 +503,7 @@ function MetricsGrid({
 				<h3 className="text-sm font-medium text-[var(--muted)] uppercase tracking-wide mb-5">
 					{t("metrics:sections.llmUsage")}
 				</h3>
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+				<div className="settings-columns">
 					<MetricCard
 						title={t("metrics:cards.completions")}
 						value={formatNumber(llm?.completions_total)}
@@ -524,7 +524,7 @@ function MetricsGrid({
 				<h3 className="text-sm font-medium text-[var(--muted)] uppercase tracking-wide mb-5">
 					{t("metrics:sections.toolsMcp")}
 				</h3>
-				<div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+				<div className="settings-columns">
 					<MetricCard
 						title={t("metrics:cards.toolExecutions")}
 						value={formatNumber(tools?.total)}
@@ -586,7 +586,7 @@ function ChartsSection({
 	return (
 		<div className="space-y-8">
 			<TimeRangeSelector value={timeRange} onChange={onTimeRangeChange} />
-			<div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+			<div className="settings-columns">
 				{tokenData && (
 					<TimeSeriesChart
 						title={t("metrics:charts.tokenUsageTotal")}
@@ -678,7 +678,7 @@ function ProviderTable({ byProvider }: { byProvider?: Record<string, ProviderSta
 			<h3 className="text-sm font-medium text-[var(--muted)] uppercase tracking-wide mb-5">
 				{t("metrics:sections.byProvider")}
 			</h3>
-			<div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg overflow-hidden">
+			<div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg overflow-x-auto">
 				<table className="w-full text-sm">
 					<thead>
 						<tr className="border-b border-[var(--border)] bg-[var(--surface2)]">
@@ -824,7 +824,7 @@ function InsightsTab(): VNode {
 			</div>
 
 			{/* Summary cards */}
-			<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+			<div className="settings-columns">
 				<InsightCard label="LLM Completions" value={formatNumber(data.completions)} />
 				<InsightCard label="Total Tokens" value={formatNumber(data.total_tokens)} />
 				<InsightCard label="Input Tokens" value={formatNumber(data.input_tokens)} />
@@ -839,7 +839,7 @@ function InsightsTab(): VNode {
 			{providers.length > 0 && (
 				<div>
 					<h3 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wider mb-4">Usage by Provider</h3>
-					<div className="border border-[var(--border)] rounded-lg overflow-hidden">
+					<div className="border border-[var(--border)] rounded-lg overflow-x-auto">
 						<table className="w-full text-sm">
 							<thead>
 								<tr className="bg-[var(--bg-secondary)] text-[var(--muted)]">
@@ -934,7 +934,7 @@ function MonitoringPage({ initialTab }: { initialTab: string }): VNode {
 	if (error.value) {
 		return (
 			<div className="p-10">
-				<div className="max-w-3xl mx-auto space-y-10">
+				<div className="space-y-10">
 					<div className="p-6 bg-[var(--error-bg)] border border-[var(--error)] rounded-lg text-[var(--error)]">
 						{error.value}
 					</div>
@@ -946,7 +946,7 @@ function MonitoringPage({ initialTab }: { initialTab: string }): VNode {
 
 	return (
 		<div className="p-10 overflow-y-auto">
-			<div className="max-w-7xl mx-auto">
+			<div>
 				<div className="flex items-center justify-between mb-10">
 					<div className="flex items-center gap-4">
 						<h2 className="text-xl font-semibold">{t("metrics:title")}</h2>

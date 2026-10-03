@@ -661,7 +661,7 @@ export function SshSection(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">SSH</h2>
-			<p className="text-xs text-[var(--muted)] leading-relaxed max-w-[760px]" style={{ margin: 0 }}>
+			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
 				Manage outbound SSH deploy keys and named targets. Current auth path:
 				<strong className="text-[var(--text)]">{sshVaultStatusDescription(vaultStatus)}</strong>
 			</p>
@@ -671,7 +671,7 @@ export function SshSection(): VNode {
 			<TabBar tabs={sshTabs} active={sshTab} onChange={setSshTab} />
 
 			{sshTab === "keys" && (
-				<div className="flex flex-col gap-4 max-w-[760px]">
+				<div className="flex flex-col gap-4">
 					<p className="text-xs text-[var(--muted)] m-0">
 						Generate a new keypair for a host, or import an existing private key. Passphrase-protected imports are
 						decrypted once and then stored under Chelix control.
@@ -681,55 +681,57 @@ export function SshSection(): VNode {
 						host&apos;s <code className="text-[var(--text)]">~/.ssh/authorized_keys</code>, then pin the host key with
 						<code className="text-[var(--text)]">ssh-keyscan -H host</code> when creating the target.
 					</div>
-					<form onSubmit={onGenerateKey} className="flex flex-col gap-2 mb-4">
-						<label className="text-xs text-[var(--muted)]" htmlFor="sshGenerateKeyName">
-							Generate deploy key
-						</label>
-						<div className="flex gap-2 flex-wrap">
-							<input
-								id="sshGenerateKeyName"
-								className="provider-key-input flex-1 min-w-[180px]"
-								type="text"
-								value={generateName}
-								onInput={(e: Event) => setGenerateName(targetValue(e))}
-								placeholder="production-box"
-							/>
-							<button type="submit" className="provider-btn" disabled={busyAction === "generate-key"}>
-								{busyAction === "generate-key" ? "Generating\u2026" : "Generate"}
-							</button>
-						</div>
-					</form>
+					<div className="settings-columns">
+						<form onSubmit={onGenerateKey} className="flex flex-col gap-2">
+							<label className="text-xs text-[var(--muted)]" htmlFor="sshGenerateKeyName">
+								Generate deploy key
+							</label>
+							<div className="flex gap-2 flex-wrap">
+								<input
+									id="sshGenerateKeyName"
+									className="provider-key-input flex-1 min-w-[180px]"
+									type="text"
+									value={generateName}
+									onInput={(e: Event) => setGenerateName(targetValue(e))}
+									placeholder="production-box"
+								/>
+								<button type="submit" className="provider-btn" disabled={busyAction === "generate-key"}>
+									{busyAction === "generate-key" ? "Generating\u2026" : "Generate"}
+								</button>
+							</div>
+						</form>
 
-					<form onSubmit={onImportKey} className="flex flex-col gap-2">
-						<label>
-							<span className="text-xs text-[var(--muted)]">Import private key</span>
+						<form onSubmit={onImportKey} className="flex flex-col gap-2">
+							<label>
+								<span className="text-xs text-[var(--muted)]">Import private key</span>
+								<input
+									className="provider-key-input"
+									type="text"
+									value={importName}
+									onInput={(e: Event) => setImportName(targetValue(e))}
+									placeholder="existing-deploy-key"
+								/>
+							</label>
+							<textarea
+								className="provider-key-input min-h-[140px] font-mono text-xs"
+								value={importPrivateKey}
+								onInput={(e: Event) => setImportPrivateKey(targetValue(e))}
+								placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+							/>
 							<input
 								className="provider-key-input"
-								type="text"
-								value={importName}
-								onInput={(e: Event) => setImportName(targetValue(e))}
-								placeholder="existing-deploy-key"
+								type="password"
+								value={importPassphrase}
+								onInput={(e: Event) => setImportPassphrase(targetValue(e))}
+								placeholder="Optional import passphrase"
 							/>
-						</label>
-						<textarea
-							className="provider-key-input min-h-[140px] font-mono text-xs"
-							value={importPrivateKey}
-							onInput={(e: Event) => setImportPrivateKey(targetValue(e))}
-							placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-						/>
-						<input
-							className="provider-key-input"
-							type="password"
-							value={importPassphrase}
-							onInput={(e: Event) => setImportPassphrase(targetValue(e))}
-							placeholder="Optional import passphrase"
-						/>
-						<button type="submit" className="provider-btn self-start" disabled={busyAction === "import-key"}>
-							{busyAction === "import-key" ? "Importing\u2026" : "Import Key"}
-						</button>
-					</form>
+							<button type="submit" className="provider-btn self-start" disabled={busyAction === "import-key"}>
+								{busyAction === "import-key" ? "Importing\u2026" : "Import Key"}
+							</button>
+						</form>
+					</div>
 
-					<div className="mt-4 flex flex-col gap-2">
+					<div className="flex flex-col gap-2">
 						<SshKeyList
 							loading={loadingSsh}
 							keys={keys}
@@ -743,7 +745,7 @@ export function SshSection(): VNode {
 			)}
 
 			{sshTab === "targets" && (
-				<div className="flex flex-col gap-4 max-w-[760px]">
+				<div className="flex flex-col gap-4">
 					<p className="text-xs text-[var(--muted)] m-0">
 						Add named hosts for remote execution. Targets can use your system OpenSSH setup or one of the managed keys.
 					</p>
