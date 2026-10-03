@@ -151,13 +151,13 @@ function HookCardHeader({ hook, expanded, onToggle }: { hook: Hook; expanded: bo
 	return (
 		<button
 			type="button"
-			className="flex w-full items-center gap-3 border-0 bg-transparent px-4 py-3 text-left font-[inherit] cursor-pointer hover:bg-[var(--bg-hover)]"
+			className="flex w-full flex-wrap items-center gap-3 border-0 bg-transparent px-4 py-3 text-left font-[inherit] cursor-pointer hover:bg-[var(--bg-hover)]"
 			onClick={onToggle}
 		>
 			{hook.emoji && <span className="text-base">{hook.emoji}</span>}
-			<span className="flex-1 min-w-0">
-				<span className="flex items-center gap-2">
-					<span className="text-sm font-medium text-[var(--text-strong)]">{hook.name}</span>
+			<span className="flex-auto min-w-0">
+				<span className="flex flex-wrap items-center gap-2">
+					<span className="text-sm font-medium text-[var(--text-strong)] min-w-0 break-all">{hook.name}</span>
 					<StatusBadge hook={hook} />
 					<SourceBadge source={hook.source} />
 				</span>
@@ -165,7 +165,7 @@ function HookCardHeader({ hook, expanded, onToggle }: { hook: Hook; expanded: bo
 					<span className="block text-xs text-[var(--muted)] mt-0.5 truncate">{hook.description}</span>
 				)}
 			</span>
-			<span className="flex items-center gap-2 text-xs text-[var(--muted)] shrink-0">
+			<span className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
 				<HookStats hook={hook} />
 				<span className={`icon icon-chevron-down transition-transform ${expanded ? "rotate-180" : ""}`} />
 			</span>
@@ -190,9 +190,9 @@ function HookMetadata({ hook, missingInfo }: { hook: Hook; missingInfo: string[]
 				))}
 			</div>
 			{hook.command && (
-				<div className="flex items-center gap-2 text-xs">
+				<div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
 					<span className="text-[var(--muted)]">Command:</span>
-					<code className="font-mono text-[var(--text)]">{hook.command}</code>
+					<code className="font-mono text-[var(--text)] min-w-0 break-all">{hook.command}</code>
 				</div>
 			)}
 			<div className="flex items-center gap-2 text-xs text-[var(--muted)]">
@@ -462,7 +462,7 @@ function HooksPageComponent(): VNode {
 					</button>
 				</div>
 
-				<div className="max-w-[600px] bg-[var(--surface2)] border border-[var(--border)] rounded-[var(--radius)] px-5 py-4 leading-relaxed">
+				<div className="bg-[var(--surface2)] border border-[var(--border)] rounded-[var(--radius)] px-5 py-4 leading-relaxed">
 					<p className="text-sm text-[var(--text)] mb-2.5">
 						<strong className="text-[var(--text-strong)]">Hooks</strong> run shell commands in response to lifecycle
 						events (tool calls, messages, sessions, etc.). They live in{" "}
@@ -483,14 +483,14 @@ function HooksPageComponent(): VNode {
 				</div>
 
 				{hooks.value.length === 0 && !loading.value ? (
-					<div className="max-w-[600px] text-sm text-[var(--muted)] px-1">
+					<div className="text-sm text-[var(--muted)] px-1">
 						No hooks discovered. Create a <code className="font-mono text-xs">HOOK.md</code> file in{" "}
 						<code className="font-mono text-xs">.chelix/hooks/my-hook/</code> or{" "}
 						<code className="font-mono text-xs">~/.chelix/hooks/my-hook/</code> to get started.
 					</div>
 				) : null}
 
-				<div className="max-w-[900px] flex flex-col gap-3">
+				<div className="settings-columns">
 					{hooks.value.map((h) => (
 						<HookCard key={h.name} hook={h} />
 					))}

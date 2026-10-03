@@ -373,7 +373,7 @@ export function VaultSection(): VNode {
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<SectionHeading title="Encryption" />
 
-			<div style={{ maxWidth: "600px" }}>
+			<div>
 				<VaultIntro />
 				<VaultStatusRow vaultStatus={vaultStatus} hasPassword={hasPassword} />
 

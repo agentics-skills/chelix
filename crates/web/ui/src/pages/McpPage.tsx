@@ -535,7 +535,7 @@ function InstallBox(): VNode {
 	}
 
 	return (
-		<div className="max-w-[600px] border-t border-[var(--border)] pt-4">
+		<div className="border-t border-[var(--border)] pt-4">
 			<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Add Custom MCP Server</h3>
 			<div className="flex gap-2 mb-3">
 				<button
@@ -1225,7 +1225,7 @@ function ConfiguredServersSection(): VNode {
 
 function ConfigSection(): VNode {
 	return (
-		<div className="max-w-[600px] bg-[var(--surface2)] border border-[var(--border)] rounded-[var(--radius)] px-5 py-4">
+		<div className="bg-[var(--surface2)] border border-[var(--border)] rounded-[var(--radius)] px-5 py-4">
 			<div className="flex items-center justify-between gap-3 mb-2">
 				<h3 className="text-sm font-medium text-[var(--text-strong)]">Request Timeout</h3>
 				<button
@@ -1287,7 +1287,7 @@ function McpPageComponent(): VNode {
 					Refresh
 				</button>
 			</div>
-			<div className="max-w-[600px] bg-[var(--surface2)] border border-[var(--border)] rounded-[var(--radius)] px-5 py-4 leading-relaxed">
+			<div className="bg-[var(--surface2)] border border-[var(--border)] rounded-[var(--radius)] px-5 py-4 leading-relaxed">
 				<p className="text-sm text-[var(--text)] mb-2.5">
 					<strong className="text-[var(--text-strong)]">MCP (Model Context Protocol)</strong> tools extend the AI agent
 					with external capabilities.
@@ -1306,7 +1306,7 @@ function McpPageComponent(): VNode {
 					<strong>remote Streamable HTTP/SSE servers</strong>.
 				</p>
 			</div>
-			<div className="skills-warn max-w-[600px]">
+			<div className="skills-warn">
 				<div className="skills-warn-title">{"\u26a0\ufe0f"} Review MCP trust boundaries before enabling</div>
 				<div>
 					Local stdio servers run with <strong>your full system privileges</strong>.

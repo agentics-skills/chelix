@@ -137,7 +137,7 @@ function passwordButtonLabel(hasPassword: boolean, saving: boolean): string {
 
 function PasswordPanel(props: PasswordPanelProps): VNode {
 	return (
-		<div className="max-w-form">
+		<div>
 			<h3 className="text-sm font-medium text-[var(--text-strong)] mb-2">
 				{props.hasPassword ? "Change Password" : "Set Password"}
 			</h3>
@@ -259,7 +259,7 @@ function PasskeyList({ props }: { props: PasskeyPanelProps }): VNode {
 
 function PasskeyPanel(props: PasskeyPanelProps): VNode {
 	return (
-		<div className="max-w-form border-t border-[var(--border)] pt-4">
+		<div className="border-t border-[var(--border)] pt-4">
 			<h3 className="text-sm font-medium text-[var(--text-strong)] mb-2">Passkeys</h3>
 			{props.origins.length > 1 && (
 				<div className="text-xs text-[var(--muted)] mb-2">
@@ -268,7 +268,7 @@ function PasskeyPanel(props: PasskeyPanelProps): VNode {
 				</div>
 			)}
 			{props.hasPasskeys && props.hostUpdateHosts.length > 0 && (
-				<div className="alert-warning-text max-w-form mb-2">
+				<div className="alert-warning-text mb-2">
 					<span className="alert-label-warning">Passkey update needed: </span>
 					New host detected ({props.hostUpdateHosts.join(", ")}). Sign in with your password on that host, then register
 					a new passkey there.
@@ -382,7 +382,7 @@ function canCreateApiKey(props: ApiKeysPanelProps): boolean {
 
 function ApiKeysPanel(props: ApiKeysPanelProps): VNode {
 	return (
-		<div className="max-w-form border-t border-[var(--border)] pt-4">
+		<div className="border-t border-[var(--border)] pt-4">
 			<h3 className="text-sm font-medium text-[var(--text-strong)] mb-1">API Keys</h3>
 			<p className="text-xs text-[var(--muted)] leading-relaxed mt-0 mb-3">
 				API keys authenticate external tools and scripts connecting to chelix over the WebSocket protocol. Pass the key
@@ -430,7 +430,7 @@ function AuthenticationDisabledView(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">Authentication</h2>
-			<div className="max-w-form py-3 px-4 rounded-md border border-[var(--error)] bg-[color-mix(in_srgb,var(--error)_5%,transparent)]">
+			<div className="py-3 px-4 rounded-md border border-[var(--error)] bg-[color-mix(in_srgb,var(--error)_5%,transparent)]">
 				<strong className="text-[var(--error)]">Authentication is disabled</strong>
 				<p className="text-xs text-[var(--muted)] mt-2 mb-0">
 					Anyone with network access can control chelix and your computer. Set up a password to protect your instance.
@@ -457,7 +457,7 @@ function SecurityNotices({
 	return (
 		<>
 			{authDisabled && localhostOnly && (
-				<div className="max-w-form py-3 px-4 rounded-md border border-[var(--error)] bg-[color-mix(in_srgb,var(--error)_5%,transparent)]">
+				<div className="py-3 px-4 rounded-md border border-[var(--error)] bg-[color-mix(in_srgb,var(--error)_5%,transparent)]">
 					<strong className="text-[var(--error)]">Authentication is disabled</strong>
 					<p className="text-xs text-[var(--muted)] mt-2 mb-0">
 						Localhost-only access is safe, but localhost bypass is active. Until you add a password or passkey, this
@@ -467,7 +467,7 @@ function SecurityNotices({
 				</div>
 			)}
 			{localhostOnly && !hasPassword && !hasPasskeys && !authDisabled && (
-				<div className="alert-info-text max-w-form">
+				<div className="alert-info-text">
 					<span className="alert-label-info">Note: </span>
 					Localhost bypass is active. Until you add a password or passkey, this browser has full access and Sign out has
 					no effect. Add credentials to require login on localhost and before exposing Chelix to your network.
@@ -950,58 +950,60 @@ export function SecuritySection(): VNode {
 				hasPassword={hasPassword}
 				hasPasskeys={hasPasskeys}
 			/>
-			<PasswordPanel
-				hasPassword={hasPassword}
-				currentPassword={curPw}
-				newPassword={newPw}
-				confirmation={confirmPw}
-				message={pwMsg}
-				error={pwErr}
-				saving={pwSaving}
-				recoveryKey={pwRecoveryKey}
-				recoveryCopied={pwRecoveryCopied}
-				awaitingReauth={pwAwaitingReauth}
-				onCurrentPassword={setCurPw}
-				onNewPassword={setNewPw}
-				onConfirmation={setConfirmPw}
-				onSubmit={onChangePw}
-				onCopyRecovery={onCopyRecoveryKey}
-				onContinueToLogin={continueToLogin}
-			/>
-			<PasskeyPanel
-				hasPasskeys={hasPasskeys}
-				origins={passkeyOrigins}
-				hostUpdateHosts={passkeyHostUpdateHosts}
-				loading={pkLoading}
-				passkeys={passkeys}
-				name={pkName}
-				message={pkMsg}
-				editingId={editingPk}
-				editingName={editingPkName}
-				onName={setPkName}
-				onEditingName={setEditingPkName}
-				onAdd={onAddPasskey}
-				onStartRename={onStartRename}
-				onCancelRename={onCancelRename}
-				onConfirmRename={onConfirmRename}
-				onRemove={onRemovePasskey}
-			/>
-			<ApiKeysPanel
-				loading={akLoading}
-				apiKeys={apiKeys}
-				newKey={akNew}
-				label={akLabel}
-				fullAccess={akFullAccess}
-				scopes={akScopes}
-				onLabel={setAkLabel}
-				onFullAccess={() => {
-					setAkFullAccess(!akFullAccess);
-					rerender();
-				}}
-				onToggleScope={toggleScope}
-				onCreate={onCreateApiKey}
-				onRevoke={onRevokeApiKey}
-			/>
+			<div className="settings-columns">
+				<PasswordPanel
+					hasPassword={hasPassword}
+					currentPassword={curPw}
+					newPassword={newPw}
+					confirmation={confirmPw}
+					message={pwMsg}
+					error={pwErr}
+					saving={pwSaving}
+					recoveryKey={pwRecoveryKey}
+					recoveryCopied={pwRecoveryCopied}
+					awaitingReauth={pwAwaitingReauth}
+					onCurrentPassword={setCurPw}
+					onNewPassword={setNewPw}
+					onConfirmation={setConfirmPw}
+					onSubmit={onChangePw}
+					onCopyRecovery={onCopyRecoveryKey}
+					onContinueToLogin={continueToLogin}
+				/>
+				<PasskeyPanel
+					hasPasskeys={hasPasskeys}
+					origins={passkeyOrigins}
+					hostUpdateHosts={passkeyHostUpdateHosts}
+					loading={pkLoading}
+					passkeys={passkeys}
+					name={pkName}
+					message={pkMsg}
+					editingId={editingPk}
+					editingName={editingPkName}
+					onName={setPkName}
+					onEditingName={setEditingPkName}
+					onAdd={onAddPasskey}
+					onStartRename={onStartRename}
+					onCancelRename={onCancelRename}
+					onConfirmRename={onConfirmRename}
+					onRemove={onRemovePasskey}
+				/>
+				<ApiKeysPanel
+					loading={akLoading}
+					apiKeys={apiKeys}
+					newKey={akNew}
+					label={akLabel}
+					fullAccess={akFullAccess}
+					scopes={akScopes}
+					onLabel={setAkLabel}
+					onFullAccess={() => {
+						setAkFullAccess(!akFullAccess);
+						rerender();
+					}}
+					onToggleScope={toggleScope}
+					onCreate={onCreateApiKey}
+					onRevoke={onRevokeApiKey}
+				/>
+			</div>
 			<SecurityDangerZone
 				visible={setupComplete}
 				confirming={resetConfirm}

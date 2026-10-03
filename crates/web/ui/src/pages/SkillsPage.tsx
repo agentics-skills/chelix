@@ -990,7 +990,7 @@ function BundledCategoriesSection(): VNode | null {
 				</h3>
 			</div>
 			<p className="text-xs text-[var(--muted)] mb-3">{t("skills:bundledDescription")}</p>
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+			<div className="settings-columns">
 				{cats.map((cat) => {
 					const meta = CATEGORY_META[cat.name];
 					const icon = meta?.icon || "\uD83D\uDCE6";

@@ -502,7 +502,7 @@ function RunningContainersSection(): VNode {
 	const list = containers.value;
 
 	return (
-		<div className="max-w-form">
+		<div>
 			<div className="flex items-center gap-3 mb-2">
 				<h3 className="text-sm font-medium text-[var(--text-strong)]">
 					Running Containers{list.length > 0 ? ` (${list.length})` : ""}
@@ -646,7 +646,7 @@ function SandboxBanner(): VNode | null {
 	}
 
 	return (
-		<div className="max-w-form">
+		<div>
 			<div className="mb-4">
 				<h3 className="mb-2 text-sm font-medium text-[var(--text-strong)]">Sandbox mode</h3>
 				<output
@@ -704,7 +704,7 @@ function DefaultImageSelector(): VNode {
 	const current = sandboxInfo.value?.default_image || "";
 
 	return (
-		<div className="max-w-form" style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+		<div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 			<h3 className="text-sm font-medium text-[var(--text-strong)]" style={{ marginBottom: "8px" }}>
 				Default image
 			</h3>
@@ -720,7 +720,7 @@ function SharedHomeSection(): VNode {
 	const modeLabel = sharedHomeMode.value === "shared" ? "enabled" : `disabled (${sharedHomeMode.value})`;
 
 	return (
-		<div className="max-w-form" style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+		<div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 			<h3 className="text-sm font-medium text-[var(--text-strong)]" style={{ marginBottom: "8px" }}>
 				Shared home folder
 			</h3>
@@ -853,7 +853,7 @@ function ImagesPage(): VNode {
 					Sandboxes
 				</h2>
 				{!sandboxRuntimeAvailable() && (
-					<div className="alert-warning-text max-w-form" style={{ marginBottom: "8px" }}>
+					<div className="alert-warning-text" style={{ marginBottom: "8px" }}>
 						<span className="alert-label-warn">Warning: </span>
 						{SANDBOX_OFF_HINT}
 					</div>
@@ -877,11 +877,11 @@ function ImagesPage(): VNode {
 
 function GeneralTabContent(): VNode {
 	return (
-		<>
+		<div className="settings-columns">
 			<SandboxBanner />
 			<DefaultImageSelector />
 			<SharedHomeSection />
-		</>
+		</div>
 	);
 }
 
@@ -902,7 +902,7 @@ function ContainersTabContent(): VNode {
 				</button>
 			</div>
 			{sbInfo?.backend === "apple-container" && (
-				<p className="text-xs text-[var(--muted)] leading-relaxed max-w-form" style={{ margin: 0 }}>
+				<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
 					Apple Container provides VM-isolated execution but does not support building images. Docker (or OrbStack) is
 					required alongside Apple Container to build and cache custom images.
 				</p>
@@ -910,7 +910,7 @@ function ContainersTabContent(): VNode {
 			<RunningContainersSection />
 
 			{/* Cached images list */}
-			<div className="max-w-form">
+			<div>
 				{loading.value && <div className="text-xs text-[var(--muted)]">Loading&hellip;</div>}
 				{!loading.value && images.value.length === 0 && (
 					<div className="text-xs text-[var(--muted)]" style={{ padding: "12px 0" }}>
@@ -923,10 +923,7 @@ function ContainersTabContent(): VNode {
 			</div>
 
 			{/* Build custom image */}
-			<div
-				className="max-w-form"
-				style={{ marginTop: "8px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}
-			>
+			<div style={{ marginTop: "8px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 				<h3 className="text-sm font-medium text-[var(--text-strong)]" style={{ marginBottom: "12px" }}>
 					Build custom image
 				</h3>

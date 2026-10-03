@@ -123,7 +123,7 @@ export function PhoneSection(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-y-auto">
 			<h2 className="text-base font-medium text-[var(--text-strong)]">Phone</h2>
-			<p className="text-xs text-[var(--muted)] max-w-form leading-relaxed">
+			<p className="text-xs text-[var(--muted)] leading-relaxed">
 				Configure telephony providers for making and receiving phone calls. Enable a provider, add your credentials, and
 				agents can initiate calls via the <code>voice_call</code> tool.
 			</p>
@@ -131,7 +131,7 @@ export function PhoneSection(): VNode {
 			{msg && <div className="text-xs text-green-600">{msg}</div>}
 			{err && <div className="text-xs text-red-500">{err}</div>}
 
-			<div className="flex flex-col gap-2 max-w-form">
+			<div className="settings-columns">
 				{providers.map((p) => (
 					<PhoneProviderCard
 						key={p.id}

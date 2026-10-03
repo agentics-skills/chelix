@@ -332,7 +332,7 @@ function HeartbeatSection(): VNode {
 	const promptSourceText = heartbeatPromptSourceText(promptSource);
 
 	return (
-		<form className="heartbeat-form" style={{ maxWidth: "600px" }} onSubmit={onSave}>
+		<form className="heartbeat-form" onSubmit={onSave}>
 			<div className="flex items-center justify-between mb-2">
 				<div className="flex items-center gap-3">
 					<h2 className="text-lg font-medium text-[var(--text-strong)]">Heartbeat</h2>
@@ -357,7 +357,7 @@ function HeartbeatSection(): VNode {
 			</p>
 			{heartbeatError.value && <div className="text-xs text-[var(--error)] mb-4">{heartbeatError.value}</div>}
 			{runBlockedReason && (
-				<div className="alert-info-text max-w-form mb-4">
+				<div className="alert-info-text mb-4">
 					<span className="alert-label-info">Heartbeat inactive:</span> {runBlockedReason}
 				</div>
 			)}
@@ -366,7 +366,7 @@ function HeartbeatSection(): VNode {
 			{/* Schedule */}
 			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Schedule</h3>
-				<div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+				<div className="settings-columns">
 					<div>
 						<label>
 							<span className="block text-xs text-[var(--muted)] mb-1">Interval</span>
@@ -425,7 +425,7 @@ function HeartbeatSection(): VNode {
 				<p className="text-xs text-[var(--muted)] mt-1">
 					Effective prompt source: <span className="text-[var(--text)]">{promptSourceText}</span>
 				</p>
-				<div className="grid gap-4 mt-3" style={{ gridTemplateColumns: "1fr" }}>
+				<div className="settings-columns mt-3">
 					<div>
 						<label>
 							<span className="block text-xs text-[var(--muted)] mb-1">Max Response Characters</span>
@@ -452,7 +452,7 @@ function HeartbeatSection(): VNode {
 					</label>
 					<span className="text-sm text-[var(--text)]">Deliver to channel</span>
 				</div>
-				<div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+				<div className="settings-columns">
 					<div>
 						<label>
 							<span className="block text-xs text-[var(--muted)] mb-1">Channel Account</span>
@@ -476,7 +476,7 @@ function HeartbeatSection(): VNode {
 			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
 				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Active Hours</h3>
 				<p className="text-xs text-[var(--muted)] mb-3">Only run heartbeat during these hours.</p>
-				<div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+				<div className="settings-columns">
 					<div>
 						<label>
 							<span className="block text-xs text-[var(--muted)] mb-1">Start</span>

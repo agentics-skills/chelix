@@ -69,7 +69,7 @@ function MemorySelectSetting(props: MemorySelectSettingProps): VNode {
 			<SubHeading title={props.title} />
 			<p className="text-xs text-[var(--muted)] mt-0 mb-2">{props.description}</p>
 			<select
-				className="provider-key-input min-w-[180px] w-auto"
+				className="provider-key-input w-full"
 				value={props.value}
 				disabled={props.disabled}
 				onChange={(event) => props.onChange(targetValue(event))}
@@ -123,7 +123,7 @@ function MemoryStatusCard({ status }: { status: MemoryStatus | null }): VNode | 
 		{ label: "DB Size", value: status.db_size_display || "0 B" },
 	];
 	return (
-		<div className="max-w-form py-3 px-4 rounded-md border border-[var(--border)] bg-[var(--bg)]">
+		<div className="py-3 px-4 rounded-md border border-[var(--border)] bg-[var(--bg)]">
 			<SubHeading title="Status" />
 			<div className="grid grid-cols-2 gap-y-2 gap-x-4 text-[.8rem]">
 				{items.map((item) => (
@@ -319,12 +319,12 @@ export function MemorySection(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<SectionHeading title="Memory" />
-			<p className="text-xs text-[var(--muted)] leading-relaxed max-w-form m-0">
+			<p className="text-xs text-[var(--muted)] leading-relaxed m-0">
 				Configure how the agent stores and retrieves long-term memory. Memory enables the agent to recall past
 				conversations, notes, and context across sessions.
 			</p>
 			<MemoryStatusCard status={memStatus} />
-			<form onSubmit={onSave} className="max-w-form flex flex-col gap-4">
+			<form onSubmit={onSave} className="settings-columns">
 				<MemorySelectSetting
 					title="Memory Style"
 					description={
@@ -454,7 +454,7 @@ export function MemorySection(): VNode {
 					onPrefetch={setEnablePrefetchAndRender}
 					onPrefetchLimit={setPrefetchLimitAndRender}
 				/>
-				<div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
+				<div className="settings-span flex items-center gap-2 pt-2 border-t border-[var(--border)]">
 					<SaveButton saving={save.saving} saved={save.saved} type="submit" />
 					<StatusMessage error={save.error} success={save.saved ? "Saved" : null} />
 				</div>

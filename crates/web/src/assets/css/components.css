@@ -830,7 +830,6 @@
   display: flex;
   align-items: flex-end;
   gap: 12px;
-  max-width: 600px;
 }
 
 .project-dir-group {
@@ -947,7 +946,7 @@
 .skills-table-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .skills-warn {
@@ -1125,6 +1124,32 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.settings-columns {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem 1.25rem;
+  align-items: start;
+}
+
+.settings-columns > * {
+  min-width: 0;
+}
+
+.settings-span {
+  grid-column: 1 / -1;
+}
+
+.settings-content-wrap .skills-install-box {
+  width: 100%;
+}
+
+.settings-content-wrap .skills-install-input {
+  max-width: none;
+  min-width: 0;
 }
 
 .settings-mobile-controls {
@@ -1390,8 +1415,6 @@
 .alert-label-warn { font-weight: 500; color: var(--warn); }
 .alert-label-info { font-weight: 500; color: var(--accent); }
 
-/* Max width for form-like sections */
-.max-w-form { max-width: 600px; }
 .ml-2 { margin-left: 8px; }
 
 .settings-alert-error {
@@ -1614,14 +1637,13 @@
 .info-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 24px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface2);
   font-size: 0.75rem;
-  max-width: 600px;
-  white-space: nowrap;
 }
 
 .info-bar .info-field {

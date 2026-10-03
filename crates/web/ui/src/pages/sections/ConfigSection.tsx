@@ -253,7 +253,7 @@ export function ConfigSection(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 p-4 gap-4 overflow-y-auto">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">Configuration</h2>
-			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ maxWidth: "700px", margin: 0 }}>
+			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
 				Edit the full chelix configuration. This includes server, tools, LLM providers, auth, and all other settings.
 				Test your changes before saving. Changes require a restart to take effect.{" "}
 				<a
@@ -271,7 +271,7 @@ export function ConfigSection(): VNode {
 				</div>
 			) : null}
 
-			<form onSubmit={onSave} style={{ maxWidth: "800px" }}>
+			<form onSubmit={onSave}>
 				<div style={{ marginBottom: "12px" }}>
 					<textarea
 						className="provider-key-input"
@@ -384,7 +384,7 @@ export function ConfigSection(): VNode {
 				) : null}
 			</form>
 
-			<div style={{ maxWidth: "800px", marginTop: "8px", paddingTop: "16px", borderTop: "1px solid var(--border)" }}>
+			<div style={{ marginTop: "8px", paddingTop: "16px", borderTop: "1px solid var(--border)" }}>
 				<p className="text-xs text-[var(--muted)] leading-relaxed">
 					<strong>Tip:</strong> Click "Load Template" to see all available configuration options with documentation.
 					This replaces the editor content with a fully documented template - copy your current values first if needed.
@@ -418,7 +418,6 @@ function DeleteAllSessionsCard(): VNode {
 	return (
 		<div
 			style={{
-				maxWidth: "800px",
 				marginTop: "16px",
 				paddingTop: "16px",
 				borderTop: "1px solid var(--border)",

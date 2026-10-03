@@ -234,7 +234,7 @@ function PersonaBindingBadges({ persona }: { persona: VoicePersonaResponse }): V
 			{persona.persona.provider_bindings.map((binding) => (
 				<span
 					key={binding.provider}
-					className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-alt)] text-[var(--muted)]"
+					className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-alt)] text-[var(--muted)] break-all"
 				>
 					{binding.provider}
 					{binding.voice_id ? `: ${binding.voice_id}` : ""}
@@ -246,7 +246,7 @@ function PersonaBindingBadges({ persona }: { persona: VoicePersonaResponse }): V
 
 function PersonaDetails({ persona }: { persona: VoicePersonaResponse }): VNode {
 	return (
-		<div className="flex-1 min-w-0">
+		<div className="min-w-0 w-full">
 			<div className="flex items-center gap-2 flex-wrap">
 				<span className="text-sm font-medium text-[var(--text-strong)]">{persona.persona.label}</span>
 				{persona.isActive && (
@@ -276,7 +276,7 @@ interface PersonaActionsProps {
 function PersonaActions(props: PersonaActionsProps): VNode {
 	const personaId = props.persona.persona.id;
 	return (
-		<div className="flex items-center gap-1.5">
+		<div className="flex flex-wrap items-center gap-1.5">
 			<button
 				type="button"
 				className="provider-btn provider-btn-secondary text-xs !py-1 !px-2.5"
@@ -315,7 +315,7 @@ interface PersonaRowProps extends PersonaActionsProps {}
 function PersonaRow(props: PersonaRowProps): VNode {
 	return (
 		<div
-			className={`flex items-center gap-3 p-3 rounded border ${props.persona.isActive ? "border-[var(--accent)]" : "border-[var(--border)]"}`}
+			className={`flex flex-wrap items-center gap-3 p-3 rounded border ${props.persona.isActive ? "border-[var(--accent)]" : "border-[var(--border)]"}`}
 			style={{ background: "var(--surface)" }}
 		>
 			<PersonaDetails persona={props.persona} />
@@ -350,7 +350,7 @@ function VoicePersonasPanel(props: VoicePersonasPanelProps): VNode {
 			{props.personas.length === 0 ? (
 				<p className="text-xs text-[var(--muted)] italic">No personas configured yet.</p>
 			) : (
-				<div className="flex flex-col gap-2">
+				<div className="settings-columns">
 					{props.personas.map((persona) => (
 						<PersonaRow
 							key={persona.persona.id}
@@ -577,7 +577,7 @@ export function VoiceSection(): VNode {
 
 			<TabBar tabs={voiceTabs} active={activeTab} onChange={setActiveTab} />
 
-			<div style={{ maxWidth: "700px", display: "flex", flexDirection: "column", gap: "16px" }}>
+			<div className="flex flex-col gap-4 min-w-0">
 				{(activeTab === "tts" || activeTab === "personas") && (
 					<TextAreaField label="Test text" id="voice-test-text" value={testText} onInput={setTestText} />
 				)}
@@ -592,7 +592,7 @@ export function VoiceSection(): VNode {
 								<code>chelix.toml</code>). Provider configuration is shown for reference.
 							</div>
 						)}
-						<div className="flex flex-col gap-2">
+						<div className="settings-columns">
 							{allProviders.stt.map((prov) => {
 								const testState = voiceTesting?.id === prov.id && voiceTesting?.type === "stt" ? voiceTesting : null;
 								const testResult = voiceTestResults[prov.id] || null;
@@ -626,7 +626,7 @@ export function VoiceSection(): VNode {
 								<code>chelix.toml</code>). Provider configuration is shown for reference.
 							</div>
 						)}
-						<div className="flex flex-col gap-2">
+						<div className="settings-columns">
 							{allProviders.tts.map((prov) => {
 								const testState = voiceTesting?.id === prov.id && voiceTesting?.type === "tts" ? voiceTesting : null;
 								const testResult = voiceTestResults[prov.id] || null;
@@ -777,7 +777,7 @@ function VoiceProviderIdentity({
 	const keySource = voiceKeySourceLabel(provider.keySource);
 	return (
 		<>
-			<div className="flex items-center gap-2">
+			<div className="flex flex-wrap items-center gap-2">
 				<span className="text-sm text-[var(--text-strong)]">{meta.name}</span>
 				{preferred && (
 					<span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)] text-white">preferred</span>
@@ -794,13 +794,15 @@ function VoiceProviderMetadata({ provider, type }: Pick<VoiceProviderRowProps, "
 	return (
 		<>
 			{provider.settingsSummary && (
-				<span className="text-xs text-[var(--muted)]">
+				<span className="text-xs text-[var(--muted)] break-all">
 					{type === "tts" ? "Voice" : "Settings"}: {provider.settingsSummary}
 				</span>
 			)}
-			{provider.binaryPath && <span className="text-xs text-[var(--muted)]">Found at: {provider.binaryPath}</span>}
+			{provider.binaryPath && (
+				<span className="text-xs text-[var(--muted)] break-all">Found at: {provider.binaryPath}</span>
+			)}
 			{!provider.available && provider.statusMessage && (
-				<span className="text-xs text-[var(--muted)]">{provider.statusMessage}</span>
+				<span className="text-xs text-[var(--muted)] break-all">{provider.statusMessage}</span>
 			)}
 		</>
 	);
@@ -849,7 +851,7 @@ function VoiceTestFeedback({ result }: { result: VoiceTestResult | null }): VNod
 function VoiceProviderActions(props: VoiceProviderRowProps): VNode {
 	const button = voiceTestButtonState(props.testState);
 	return (
-		<div className="flex items-center gap-2">
+		<div className="flex flex-wrap items-center gap-2">
 			{props.onSetPreferred && props.provider.enabled && !props.preferred && (
 				<button
 					type="button"
@@ -902,8 +904,8 @@ function VoiceProviderToggle({
 
 function VoiceProviderRow(props: VoiceProviderRowProps): VNode {
 	return (
-		<div className="provider-card flex items-center gap-3 py-2.5 px-3.5 rounded-lg">
-			<div className="flex-1 flex flex-col gap-0.5">
+		<div className="provider-card flex flex-wrap items-center gap-3 py-2.5 px-3.5 rounded-lg">
+			<div className="min-w-0 w-full flex flex-col gap-0.5">
 				<VoiceProviderIdentity provider={props.provider} meta={props.meta} preferred={props.preferred} />
 				<VoiceProviderMetadata provider={props.provider} type={props.type} />
 				<VoiceTestProgress state={props.testState} type={props.type} />

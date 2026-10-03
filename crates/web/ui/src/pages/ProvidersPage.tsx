@@ -200,7 +200,7 @@ function ProviderSection({ group }: { group: ProviderGroup }): VNode {
 	const isDeleting = deletingProvider.value === group.provider;
 
 	return (
-		<div id={`provider-${group.provider}`} className="max-w-form py-1">
+		<div id={`provider-${group.provider}`} className="py-1 min-w-0">
 			<div className="flex items-center justify-between gap-3">
 				<div className="flex items-center gap-2 min-w-0">
 					<h3 className="text-base font-semibold text-[var(--text-strong)] truncate">{group.providerDisplayName}</h3>
@@ -254,11 +254,11 @@ function ProvidersPageComponent(): VNode {
 						{t("providers:addLlm")}
 					</button>
 				</div>
-				<p className="text-xs text-[var(--muted)] leading-relaxed max-w-form" style={{ margin: 0 }}>
+				<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: 0 }}>
 					{t("providers:description")}
 				</p>
 				{providerActionError.value ? (
-					<div className="text-xs text-[var(--danger,#ef4444)] max-w-form">{providerActionError.value}</div>
+					<div className="text-xs text-[var(--danger,#ef4444)]">{providerActionError.value}</div>
 				) : null}
 
 				{(() => {
@@ -278,7 +278,7 @@ function ProvidersPageComponent(): VNode {
 						);
 					}
 					return (
-						<div id="providersConfiguredList" style={{ maxWidth: "600px" }}>
+						<div id="providersConfiguredList">
 							{groups.length > 1 ? (
 								<div className="flex flex-wrap gap-1 mb-3">
 									{groups.map((g) => (
@@ -301,14 +301,7 @@ function ProvidersPageComponent(): VNode {
 									))}
 								</div>
 							) : null}
-							<div
-								style={{
-									display: "flex",
-									flexDirection: "column",
-									gap: "6px",
-									marginBottom: "12px",
-								}}
-							>
+							<div className="settings-columns">
 								{groups.map((g) => (
 									<ProviderSection key={g.provider} group={g} />
 								))}
