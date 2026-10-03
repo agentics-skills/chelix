@@ -114,7 +114,7 @@ impl AgentTool for ReadFileTool {
                 "includeLineNumbers": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Whether to include source line numbers in the result."
+                    "description": "Prefix numbered lines with <line number><TAB>. When editing, remove the number and exactly one separator tab; preserve all following whitespace."
                 },
                 "numberBlankLines": {
                     "type": "boolean",
