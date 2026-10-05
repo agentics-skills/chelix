@@ -1929,7 +1929,6 @@ dependencies = [
  "chelix-config",
  "chelix-providers",
  "chelix-service-traits",
- "chelix-vault",
  "reqwest 0.13.2",
  "secrecy",
  "serde",

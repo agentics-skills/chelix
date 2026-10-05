@@ -308,7 +308,7 @@ fn test_data_mount_exposes_agent_state_paths_in_sandbox_namespace() {
     );
 
     if let Some(config_dir) = chelix_config::config_dir() {
-        for secret in ["credentials.json", "provider_keys.json"] {
+        for secret in ["credentials.json", "chelix.toml"] {
             assert!(
                 mounts
                     .iter()

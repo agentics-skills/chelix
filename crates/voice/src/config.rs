@@ -120,7 +120,7 @@ pub struct ElevenLabsConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OpenAiTtsConfig {
-    /// API key (from OPENAI_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -293,7 +293,7 @@ impl Default for SttConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WhisperConfig {
-    /// API key (from OPENAI_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

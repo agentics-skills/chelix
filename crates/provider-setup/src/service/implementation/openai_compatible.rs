@@ -2,15 +2,11 @@
 
 use std::collections::HashSet;
 
-use {
-    secrecy::{ExposeSecret, Secret},
-    serde_json::Value,
-};
+use {secrecy::Secret, serde_json::Value};
 
 use {
     chelix_config::{
         OpenAiCompatibleProviderTomlUpdate, delete_openai_compatible_provider_toml,
-        providers_offered_env_is_set,
         schema::{ProviderEntry, ProviderStreamTransport, ProvidersConfig, ToolMode, WireApi},
         upsert_openai_compatible_provider_toml,
     },
@@ -23,9 +19,7 @@ use {
         LiveProviderSetupService, provider_models::blocked_agents,
         service::ProviderConfigPersistence, support::ProviderSetupTiming,
     },
-    crate::{
-        config_helpers::config_with_saved_keys, provider_base_url::provider_base_url_error_with,
-    },
+    crate::provider_base_url::provider_base_url_error_with,
 };
 
 struct OpenAiCompatibleUpsert {
@@ -47,23 +41,9 @@ impl LiveProviderSetupService {
         let agents = self.agent_entries().await;
         let mut registry = self.registry.write().await;
         let mut snapshot = self.config_snapshot();
-        let saved = self
-            .key_store
-            .load_all_configs()
-            .map_err(ServiceError::message)?;
         ensure_target_free(&snapshot, &update)?;
         let filesystem = self.config_persistence == ProviderConfigPersistence::Filesystem;
-        let offered_env = filesystem && providers_offered_env_is_set();
-        if offered_env
-            && !snapshot.offered.is_empty()
-            && !offered_contains(&snapshot.offered, &update.name)
-        {
-            return Err(ServiceError::message(format!(
-                "providers.offered is set outside the TOML file; add '{}' to CHELIX_PROVIDERS__OFFERED",
-                update.name
-            )));
-        }
-        let sync_memory_offered = !offered_env && !snapshot.offered.is_empty();
+        let sync_memory_offered = !snapshot.offered.is_empty();
         let write_base_url = match update.previous_name.as_deref() {
             Some(previous) => {
                 let current = snapshot
@@ -77,11 +57,7 @@ impl LiveProviderSetupService {
         };
         let model_change = model_id_change(&snapshot, &update);
         apply_upsert_memory(&mut snapshot, &update, sync_memory_offered)?;
-        let mut registry_config = snapshot.clone();
-        inject_registry_key(&mut registry_config, &update, &saved);
-        let registry_config = config_with_saved_keys(&registry_config, &self.key_store)
-            .map_err(ServiceError::message)?;
-        let candidate = self.build_registry(&registry_config)?;
+        let candidate = self.build_registry(&snapshot)?;
         let blocked = blocked_agents(&candidate, &agents);
         if !blocked.is_empty() {
             return Err(ServiceError::message(format!(
@@ -94,11 +70,11 @@ impl LiveProviderSetupService {
                 name: update.name.clone(),
                 previous_name: update.previous_name.clone(),
                 base_url: update.base_url.clone(),
+                api_key: update.api_key.clone(),
                 wire_api: update.wire_api_toml.clone(),
                 tool_mode: update.tool_mode_toml.clone(),
                 enabled: update.enabled,
-                reject_when_toml_has_api_key: update.api_key.is_some(),
-                sync_offered: filesystem && !offered_env,
+                sync_offered: filesystem && sync_memory_offered,
                 write_base_url,
             })
             .map_err(ServiceError::message)?;
@@ -106,11 +82,9 @@ impl LiveProviderSetupService {
         *self
             .config
             .lock()
-            .unwrap_or_else(|error| error.into_inner()) = snapshot;
-        write_key_store(self, &update, &saved)?;
+            .unwrap_or_else(|error| error.into_inner()) = snapshot.clone();
         rewrite_priority(self, &model_change).await;
-        let effective = self.effective_config()?;
-        *registry = self.build_registry(&effective)?;
+        *registry = self.build_registry(&snapshot)?;
         Ok(serde_json::json!({
             "ok": true,
             "providerName": update.name,
@@ -131,9 +105,7 @@ impl LiveProviderSetupService {
                 "provider '{name}' is not configured"
             )));
         }
-        let registry_config =
-            config_with_saved_keys(&snapshot, &self.key_store).map_err(ServiceError::message)?;
-        let candidate = self.build_registry(&registry_config)?;
+        let candidate = self.build_registry(&snapshot)?;
         let blocked = blocked_agents(&candidate, &agents);
         if !blocked.is_empty() {
             return Err(ServiceError::message(format!(
@@ -147,16 +119,12 @@ impl LiveProviderSetupService {
         *self
             .config
             .lock()
-            .unwrap_or_else(|error| error.into_inner()) = snapshot;
-        self.key_store
-            .remove(&name)
-            .map_err(ServiceError::message)?;
+            .unwrap_or_else(|error| error.into_inner()) = snapshot.clone();
         if let Some(priority) = self.priority_models.as_ref() {
             let prefix = format!("{name}::");
             priority.write().await.retain(|id| !id.starts_with(&prefix));
         }
-        let effective = self.effective_config()?;
-        *registry = self.build_registry(&effective)?;
+        *registry = self.build_registry(&snapshot)?;
         Ok(serde_json::json!({
             "ok": true,
             "removedModelIds": removed,
@@ -329,12 +297,10 @@ fn apply_upsert_memory(
                 "provider '{previous}' is not configured"
             )));
         };
-        reject_toml_api_key(previous, &entry, update.api_key.is_some())?;
         fill_entry(&mut entry, update);
         config.providers.insert(update.name.clone(), entry);
     } else {
         let entry = config.providers.entry(update.name.clone()).or_default();
-        reject_toml_api_key(&update.name, entry, update.api_key.is_some())?;
         fill_entry(entry, update);
     }
     if sync_offered {
@@ -343,55 +309,15 @@ fn apply_upsert_memory(
     Ok(())
 }
 
-fn reject_toml_api_key(
-    name: &str,
-    entry: &ProviderEntry,
-    replacing_key: bool,
-) -> Result<(), ServiceError> {
-    if replacing_key
-        && entry
-            .api_key
-            .as_ref()
-            .is_some_and(|key| !key.expose_secret().trim().is_empty())
-    {
-        return Err(ServiceError::message(format!(
-            "provider '{name}' already has an api_key in the service configuration"
-        )));
-    }
-    Ok(())
-}
-
 fn fill_entry(entry: &mut ProviderEntry, update: &OpenAiCompatibleUpsert) {
     entry.enabled = update.enabled;
     entry.base_url = Some(update.base_url.clone());
+    if let Some(api_key) = update.api_key.as_ref() {
+        entry.api_key = Some(Secret::new(api_key.clone()));
+    }
     entry.wire_api = update.wire_api;
     entry.stream_transport = ProviderStreamTransport::Sse;
     entry.tool_mode = update.tool_mode;
-}
-
-fn inject_registry_key(
-    config: &mut ProvidersConfig,
-    update: &OpenAiCompatibleUpsert,
-    saved: &std::collections::HashMap<String, crate::key_store::ProviderConfig>,
-) {
-    let source = update
-        .previous_name
-        .as_deref()
-        .filter(|name| *name != update.name)
-        .unwrap_or(update.name.as_str());
-    let key = update
-        .api_key
-        .clone()
-        .or_else(|| saved.get(source).and_then(|config| config.api_key.clone()));
-    if let Some(entry) = config.providers.get_mut(&update.name)
-        && entry
-            .api_key
-            .as_ref()
-            .is_none_or(|value| value.expose_secret().trim().is_empty())
-        && let Some(key) = key
-    {
-        entry.api_key = Some(Secret::new(key));
-    }
 }
 
 fn model_id_change(config: &ProvidersConfig, update: &OpenAiCompatibleUpsert) -> ModelIdChange {
@@ -435,44 +361,6 @@ fn removed_ids(config: &ProvidersConfig, name: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn write_key_store(
-    service: &LiveProviderSetupService,
-    update: &OpenAiCompatibleUpsert,
-    saved: &std::collections::HashMap<String, crate::key_store::ProviderConfig>,
-) -> Result<(), ServiceError> {
-    let previous = update
-        .previous_name
-        .as_deref()
-        .filter(|name| *name != update.name);
-    if update.previous_name.is_none() || previous.is_some() {
-        service
-            .key_store
-            .remove(&update.name)
-            .map_err(ServiceError::message)?;
-    }
-    let carried = previous.and_then(|name| saved.get(name));
-    let api_key = update
-        .api_key
-        .clone()
-        .or_else(|| carried.and_then(|config| config.api_key.clone()));
-    service
-        .key_store
-        .save_config_with_display_name(
-            &update.name,
-            api_key,
-            Some(update.base_url.clone()),
-            Some(update.name.clone()),
-        )
-        .map_err(ServiceError::message)?;
-    if let Some(previous) = previous {
-        service
-            .key_store
-            .remove(previous)
-            .map_err(ServiceError::message)?;
-    }
-    Ok(())
 }
 
 async fn rewrite_priority(service: &LiveProviderSetupService, change: &ModelIdChange) {

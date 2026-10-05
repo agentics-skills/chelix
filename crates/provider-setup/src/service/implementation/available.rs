@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use {secrecy::ExposeSecret, serde_json::Value};
 
-use chelix_service_traits::{ServiceError, ServiceResult};
+use chelix_service_traits::ServiceResult;
 
 use {super::LiveProviderSetupService, crate::config_helpers::ui_offered_provider_order};
 
@@ -18,20 +18,10 @@ impl LiveProviderSetupService {
             .map(|(idx, provider)| (provider.clone(), idx))
             .collect();
 
-        let saved_configs = self
-            .key_store
-            .load_all_configs()
-            .map_err(ServiceError::message)?;
         let mut providers: Vec<(Option<usize>, Value)> = Vec::new();
         for (name, entry) in &active_config.providers {
-            let saved = saved_configs.get(name);
-            let display_name = saved
-                .and_then(|config| config.display_name.clone())
-                .unwrap_or_else(|| name.clone());
-            let base_url = entry
-                .base_url
-                .clone()
-                .or_else(|| saved.and_then(|config| config.base_url.clone()));
+            let display_name = name.clone();
+            let base_url = entry.base_url.clone();
             let alias = entry.alias.clone();
             let configured = entry
                 .api_key

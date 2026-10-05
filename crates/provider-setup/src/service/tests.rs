@@ -2,7 +2,6 @@
 
 use {
     super::*,
-    crate::KeyStore,
     chelix_config::{
         AgentConfig, AgentsConfig,
         schema::{
@@ -12,6 +11,7 @@ use {
     },
     chelix_providers::ProviderRegistry,
     chelix_service_traits::{NoopProviderSetupService, ProviderSetupService},
+    secrecy::{ExposeSecret, Secret},
     std::{collections::HashMap, sync::Arc},
     tokio::sync::RwLock,
 };
@@ -35,6 +35,7 @@ fn complete_model_metadata() -> PartialModelMetadata {
         reasoning_supported_efforts: Some(vec!["low".into()]),
         reasoning_summary: None,
         reasoning_include: None,
+        enabled: true,
     }
 }
 
@@ -164,17 +165,6 @@ async fn available_respects_offered_order() {
 
 #[tokio::test]
 async fn available_includes_configured_openai_compatible_provider_outside_offered() {
-    let dir = tempfile::tempdir().expect("temp dir");
-    let key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
-    key_store
-        .save_config_with_display_name(
-            "openrouter-ai",
-            Some("sk-test".into()),
-            Some("https://openrouter.ai/api/v1".into()),
-            Some("openrouter.ai".into()),
-        )
-        .expect("save custom provider");
-
     let mut config = ProvidersConfig {
         offered: vec!["openai".into()],
         ..ProvidersConfig::default()
@@ -183,6 +173,8 @@ async fn available_includes_configured_openai_compatible_provider_outside_offere
         .providers
         .insert("openrouter-ai".into(), ProviderEntry {
             enabled: true,
+            api_key: Some(Secret::new("sk-test".into())),
+            base_url: Some("https://openrouter.ai/api/v1".into()),
             models: complete_model_map(&["gpt-5.2"]),
             ..Default::default()
         });
@@ -190,8 +182,7 @@ async fn available_includes_configured_openai_compatible_provider_outside_offere
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
-    let mut svc = live_provider_setup_service(registry, config);
-    svc.key_store = key_store;
+    let svc = live_provider_setup_service(registry, config);
 
     let result = svc.available().await.expect("providers.available");
     let arr = result
@@ -212,7 +203,7 @@ async fn available_includes_configured_openai_compatible_provider_outside_offere
     );
     assert_eq!(
         provider.get("displayName").and_then(|v| v.as_str()),
-        Some("openrouter.ai")
+        Some("openrouter-ai")
     );
     assert!(provider.get("models").is_none());
 }
@@ -268,7 +259,6 @@ async fn available_includes_config_declared_openai_compatible_provider_without_s
 
 #[tokio::test]
 async fn save_key_configures_declared_openai_compatible_provider_without_mutating_models() {
-    let dir = tempfile::tempdir().expect("temp dir");
     let mut config = ProvidersConfig::default();
     config.providers.insert("ai-example".into(), ProviderEntry {
         enabled: true,
@@ -278,8 +268,7 @@ async fn save_key_configures_declared_openai_compatible_provider_without_mutatin
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
     ));
-    let mut svc = live_provider_setup_service(Arc::clone(&registry), config);
-    svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
+    let svc = live_provider_setup_service(Arc::clone(&registry), config);
 
     svc.save_key(serde_json::json!({
         "provider": "ai-example",
@@ -290,11 +279,17 @@ async fn save_key_configures_declared_openai_compatible_provider_without_mutatin
     .expect("custom provider credentials should be saved");
 
     let saved = svc
-        .key_store
-        .load_config("ai-example")
-        .expect("load custom provider credentials")
-        .expect("saved custom provider credentials");
-    assert_eq!(saved.api_key.as_deref(), Some("sk-compatible"));
+        .config_snapshot()
+        .get("ai-example")
+        .expect("saved custom provider credentials")
+        .clone();
+    assert_eq!(
+        saved
+            .api_key
+            .as_ref()
+            .map(|key| key.expose_secret().as_str()),
+        Some("sk-compatible")
+    );
     assert_eq!(
         saved.base_url.as_deref(),
         Some("https://ai.example.invalid/v1")
@@ -335,7 +330,6 @@ async fn save_key_rejects_missing_params() {
 
 #[tokio::test]
 async fn save_key_rejects_invalid_candidate_before_mutating_state() {
-    let dir = tempfile::tempdir().expect("temp dir");
     let registry = Arc::new(RwLock::new(
         ProviderRegistry::from_config(&ProvidersConfig::default(), &HashMap::new()).unwrap(),
     ));
@@ -349,8 +343,7 @@ async fn save_key_rejects_invalid_candidate_before_mutating_state() {
         models: invalid_models.clone(),
         ..Default::default()
     });
-    let mut svc = live_provider_setup_service(Arc::clone(&registry), config);
-    svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
+    let svc = live_provider_setup_service(Arc::clone(&registry), config);
 
     let error = svc
         .save_key(serde_json::json!({
@@ -363,12 +356,6 @@ async fn save_key_rejects_invalid_candidate_before_mutating_state() {
 
     assert!(error.contains("reasoning_supported_efforts"));
     assert!(error.contains("must not be empty"));
-    assert!(
-        svc.key_store
-            .load_config("openai")
-            .expect("load provider credentials")
-            .is_none()
-    );
     let snapshot = svc.config_snapshot();
     let openai = snapshot
         .get("openai")
@@ -379,9 +366,7 @@ async fn save_key_rejects_invalid_candidate_before_mutating_state() {
 }
 
 #[tokio::test]
-async fn set_model_preferences_replaces_unique_raw_priority_without_mutating_registry_or_key_store()
-{
-    let dir = tempfile::tempdir().expect("temp dir");
+async fn set_model_preferences_replaces_unique_raw_priority_without_mutating_registry() {
     let mut config = ProvidersConfig::default();
     config.providers.insert("openai".into(), ProviderEntry {
         api_key: Some(Secret::new("sk-test".into())),
@@ -393,7 +378,6 @@ async fn set_model_preferences_replaces_unique_raw_priority_without_mutating_reg
         ProviderRegistry::from_config(&config, &HashMap::new()).expect("configured registry"),
     ));
     let mut svc = live_provider_setup_service(Arc::clone(&registry), config);
-    svc.key_store = KeyStore::with_path(dir.path().join("provider_keys.json"));
     let priorities = Arc::new(RwLock::new(vec![
         "gpt-4o".to_string(),
         "other::model".to_string(),
@@ -411,12 +395,6 @@ async fn set_model_preferences_replaces_unique_raw_priority_without_mutating_reg
         "openai::gpt-5",
         "other::model"
     ]);
-    assert!(
-        svc.key_store
-            .load_config("openai")
-            .expect("load provider credentials")
-            .is_none()
-    );
     let registry_guard = registry.read().await;
     let models = registry_guard.list_models();
     assert_eq!(models.len(), 2);

@@ -27,14 +27,8 @@ const MAX_IMPORT_SIZE: usize = 2 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct ExportQuery {
-    #[serde(default = "default_true")]
-    pub include_provider_keys: bool,
     #[serde(default)]
     pub include_media: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -76,7 +70,6 @@ async fn export_handler(Query(query): Query<ExportQuery>) -> impl IntoResponse {
     let data_dir = chelix_config::data_dir();
 
     let opts = ExportOptions {
-        include_provider_keys: query.include_provider_keys,
         include_media: query.include_media,
     };
 

@@ -46,7 +46,6 @@ export function ChelixDataSection(): VNode {
 // ── Export ────────────────────────────────────────────────────
 
 function ExportSection(): VNode {
-	const [includeKeys, setIncludeKeys] = useState(true);
 	const [includeMedia, setIncludeMedia] = useState(false);
 	const [exporting, setExporting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -55,7 +54,6 @@ function ExportSection(): VNode {
 		setExporting(true);
 		setError(null);
 		const params = new URLSearchParams();
-		params.set("include_provider_keys", String(includeKeys));
 		params.set("include_media", String(includeMedia));
 
 		fetch(`/api/data/export?${params.toString()}`)
@@ -89,14 +87,6 @@ function ExportSection(): VNode {
 				Download a backup of your Chelix config, databases, sessions, and workspace files.
 			</p>
 			<div className="flex flex-col gap-2">
-				<CheckboxField
-					label="Include provider API keys"
-					checked={includeKeys}
-					onChange={(checked) => {
-						setIncludeKeys(checked);
-						rerender();
-					}}
-				/>
 				<CheckboxField
 					label="Include session media (audio, images)"
 					checked={includeMedia}

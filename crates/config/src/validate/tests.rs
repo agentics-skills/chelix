@@ -1,5 +1,5 @@
 use super::{
-    ChelixConfig, Severity, check_shadowed_defaults, levenshtein,
+    ChelixConfig, Severity, levenshtein,
     schema_map::{KnownKeys, build_schema_map},
     suggest, validate_toml_str,
 };
@@ -12,8 +12,6 @@ mod auxiliary;
 mod channels;
 #[path = "tests/common.rs"]
 mod common;
-#[path = "tests/defaults.rs"]
-mod defaults;
 #[path = "tests/memory.rs"]
 mod memory;
 #[path = "tests/providers.rs"]

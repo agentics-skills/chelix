@@ -201,8 +201,8 @@ States: `.selected`, `.disabled`, default. Badges: `.recommended-badge`, `.tier-
 
 ### Provider Config Storage
 
-Provider keys in `~/.config/chelix/provider_keys.json` via `KeyStore` in `provider_setup.rs`.
-When adding fields, update: `ProviderConfig` struct, `available()` response, `save_key()`.
+Provider keys live in `chelix.toml` on each provider entry (`api_key`, `base_url`, `models`).
+When adding fields, update `ProviderEntry` and the `available()` response.
 
 ### Server-Injected Data (gon pattern)
 

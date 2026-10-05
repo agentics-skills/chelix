@@ -200,7 +200,6 @@ pub(super) async fn vault_disable_handler(
                     "ssh_keys": report.ssh_keys,
                     "channels": report.channels,
                     "webhooks": report.webhooks,
-                    "provider_keys": report.provider_keys,
                 }
             }))
             .into_response()

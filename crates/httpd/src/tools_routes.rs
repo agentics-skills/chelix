@@ -250,28 +250,6 @@ pub async fn config_template(State(state): State<crate::server::AppState>) -> im
     .into_response()
 }
 
-/// Get user configuration keys that shadow managed defaults.
-pub async fn config_provenance(State(state): State<crate::server::AppState>) -> impl IntoResponse {
-    if let Err(resp) = require_config_access(&state, None, false).await {
-        return resp.into_response();
-    }
-
-    // Shadowed defaults (keys in user config that shadow built-ins)
-    let path = chelix_config::find_or_default_config_path();
-    let shadowed = if path.exists() {
-        std::fs::read_to_string(&path)
-            .map(|raw| chelix_config::defaults::find_shadowed_defaults(&raw))
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-
-    Json(serde_json::json!({
-        "shadowed_keys": shadowed,
-    }))
-    .into_response()
-}
-
 /// Save configuration from TOML.
 pub async fn config_save(
     identity: Option<axum::Extension<AuthIdentity>>,

@@ -104,24 +104,8 @@ pub async fn prepare_gateway_core(
             "CHELIX_ALLOW_TLS_BEHIND_PROXY=true is set; ensure your proxy uses HTTPS upstream or TLS passthrough to avoid redirect loops"
         );
     }
-    let base_provider_config = config.providers.clone();
-
-    // Migrate voice API keys from chelix.toml to the credential store on
-    // first run after upgrade.  This is idempotent — once keys are in the
-    // store the TOML entries are cleared and subsequent runs are a no-op.
-    #[cfg(feature = "voice")]
-    crate::voice::migrate_voice_keys_to_key_store(&config)?;
-    #[cfg(feature = "telephony")]
-    crate::methods::phone::merge_phone_keys(&mut config)?;
-
-    // Merge any previously saved API keys into the provider config so they
-    // survive gateway restarts without requiring env vars.
-    let key_store = crate::provider_setup::KeyStore::new();
-    let effective_providers =
-        crate::provider_setup::config_with_saved_keys(&base_provider_config, &key_store)?;
-
     let registry = Arc::new(tokio::sync::RwLock::new(ProviderRegistry::from_config(
-        &effective_providers,
+        &config.providers,
         &config_env_overrides,
     )?));
     let (provider_summary, providers_available_at_startup) = {
@@ -131,26 +115,20 @@ pub async fn prepare_gateway_core(
     };
     if !providers_available_at_startup {
         let config_path = chelix_config::find_or_default_config_path();
-        let provider_keys_path = chelix_config::config_dir()
-            .unwrap_or_else(|| PathBuf::from(".chelix"))
-            .join("provider_keys.json");
         match config.agents.resolve_state() {
             Ok(chelix_config::AgentsConfigState::Setup) => warn!(
                 provider_summary = %provider_summary,
                 config_path = %config_path.display(),
-                provider_keys_path = %provider_keys_path.display(),
                 "no LLM providers resolved during setup; model/chat services remain active for provider configuration"
             ),
             Ok(chelix_config::AgentsConfigState::Configured { .. }) => warn!(
                 provider_summary = %provider_summary,
                 config_path = %config_path.display(),
-                provider_keys_path = %provider_keys_path.display(),
                 "no LLM providers resolved; configured agent registry validation will fail"
             ),
             Err(error) => warn!(
                 provider_summary = %provider_summary,
                 config_path = %config_path.display(),
-                provider_keys_path = %provider_keys_path.display(),
                 %error,
                 "agent registry is structurally invalid; configured agent registry validation will fail"
             ),
@@ -195,7 +173,7 @@ pub async fn prepare_gateway_core(
 
     let agents_config = Arc::new(tokio::sync::RwLock::new(config.agents.clone()));
     let model_store = Arc::new(tokio::sync::RwLock::new(
-        crate::chat::DisabledModelsStore::load()?,
+        crate::chat::DisabledModelsStore::from_config(&config),
     ));
 
     let live_model_service = Arc::new(

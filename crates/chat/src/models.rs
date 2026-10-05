@@ -3,7 +3,6 @@
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -36,40 +35,16 @@ pub struct DisabledModelsStore {
 }
 
 impl DisabledModelsStore {
-    fn config_path() -> Option<PathBuf> {
-        chelix_config::config_dir().map(|d| d.join("disabled-models.json"))
-    }
-
-    /// Load disabled models from config file.
-    pub fn load() -> crate::error::Result<Self> {
-        let path = Self::config_path().ok_or(crate::error::Error::NoConfigDirectory)?;
-        let absolute_path = std::path::absolute(&path).unwrap_or_else(|_| path.clone());
-        let content = match std::fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Self::default());
-            },
-            Err(error) => {
-                return Err(crate::error::Error::external(
-                    format!("failed to read {}", absolute_path.display()),
-                    error,
-                ));
-            },
-        };
-        serde_json::from_str(&content).map_err(|error| {
-            crate::error::Error::external(
-                format!("failed to parse {}", absolute_path.display()),
-                error,
-            )
-        })
-    }
-
-    /// Save disabled models to config file.
-    pub fn save(&self) -> crate::error::Result<()> {
-        let path = Self::config_path().ok_or(crate::error::Error::NoConfigDirectory)?;
-        let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
-        Ok(())
+    pub fn from_config(config: &chelix_config::ChelixConfig) -> Self {
+        let mut disabled = HashSet::new();
+        for (provider, entry) in &config.providers.providers {
+            for (model_id, metadata) in &entry.models {
+                if !metadata.enabled {
+                    disabled.insert(format!("{provider}::{model_id}"));
+                }
+            }
+        }
+        Self { disabled }
     }
 
     /// Disable a model by ID.
@@ -340,11 +315,13 @@ impl ModelService for LiveModelService {
 
         info!(model = %model_id, "disabling model");
 
+        let (provider, raw_id) = model_id.split_once("::").ok_or_else(|| {
+            ServiceError::message(format!("model '{model_id}' is not a provider model id"))
+        })?;
+        chelix_config::set_model_enabled_in_toml(provider, raw_id, false)
+            .map_err(|error| ServiceError::message(format!("failed to save: {error}")))?;
         let mut disabled = self.disabled.write().await;
         disabled.disable(model_id);
-        disabled
-            .save()
-            .map_err(|e| format!("failed to save: {e}"))?;
         drop(disabled);
 
         self.broadcast_model_visibility_update(model_id, true).await;
@@ -363,11 +340,13 @@ impl ModelService for LiveModelService {
 
         info!(model = %model_id, "enabling model");
 
+        let (provider, raw_id) = model_id.split_once("::").ok_or_else(|| {
+            ServiceError::message(format!("model '{model_id}' is not a provider model id"))
+        })?;
+        chelix_config::set_model_enabled_in_toml(provider, raw_id, true)
+            .map_err(|error| ServiceError::message(format!("failed to save: {error}")))?;
         let mut disabled = self.disabled.write().await;
         disabled.enable(model_id);
-        disabled
-            .save()
-            .map_err(|e| format!("failed to save: {e}"))?;
         drop(disabled);
 
         self.broadcast_model_visibility_update(model_id, false)
@@ -383,19 +362,9 @@ impl ModelService for LiveModelService {
         if model_ids.is_empty() {
             return Ok(serde_json::json!({ "ok": true }));
         }
-        let path = Self::disabled_store_path();
         let mut disabled = self.disabled.write().await;
         for model_id in model_ids {
             disabled.enable(model_id);
-        }
-        if let Err(error) = disabled.save() {
-            let location = path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "disabled-models.json".to_string());
-            return Err(ServiceError::message(format!(
-                "failed to save {location}: {error}"
-            )));
         }
         Ok(serde_json::json!({ "ok": true }))
     }
@@ -404,27 +373,11 @@ impl ModelService for LiveModelService {
         if pairs.is_empty() {
             return Ok(serde_json::json!({ "ok": true }));
         }
-        let path = Self::disabled_store_path();
         let mut disabled = self.disabled.write().await;
         for (from, to) in pairs {
             disabled.rename(from, to);
         }
-        if let Err(error) = disabled.save() {
-            let location = path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "disabled-models.json".to_string());
-            return Err(ServiceError::message(format!(
-                "failed to save {location}: {error}"
-            )));
-        }
         Ok(serde_json::json!({ "ok": true }))
-    }
-}
-
-impl LiveModelService {
-    fn disabled_store_path() -> Option<PathBuf> {
-        DisabledModelsStore::config_path()
     }
 }
 

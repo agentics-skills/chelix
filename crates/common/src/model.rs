@@ -189,7 +189,7 @@ pub struct ResponsesReasoningItem {
 }
 
 /// Model metadata accepted at the configuration boundary before validation.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PartialModelMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -216,6 +216,38 @@ pub struct PartialModelMetadata {
     pub reasoning_summary: Option<ReasoningSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_include: Option<Vec<ReasoningInclude>>,
+    /// When false, the model stays configured but is hidden from selectors.
+    #[serde(
+        default = "default_model_enabled",
+        skip_serializing_if = "is_model_enabled"
+    )]
+    pub enabled: bool,
+}
+
+fn default_model_enabled() -> bool {
+    true
+}
+
+fn is_model_enabled(enabled: &bool) -> bool {
+    *enabled
+}
+
+impl Default for PartialModelMetadata {
+    fn default() -> Self {
+        Self {
+            context_length: None,
+            max_input_tokens: None,
+            max_output_tokens: None,
+            input_modalities: None,
+            output_modalities: None,
+            tool_calling: None,
+            zero_data_retention_enabled: None,
+            reasoning_supported_efforts: None,
+            reasoning_summary: None,
+            reasoning_include: None,
+            enabled: true,
+        }
+    }
 }
 
 impl PartialModelMetadata {
@@ -304,6 +336,7 @@ impl From<&ModelMetadata> for PartialModelMetadata {
             reasoning_supported_efforts: Some(metadata.reasoning_supported_efforts.clone()),
             reasoning_summary: metadata.reasoning_summary,
             reasoning_include: metadata.reasoning_include.clone(),
+            enabled: true,
         }
     }
 }
@@ -390,6 +423,7 @@ mod tests {
             reasoning_supported_efforts: Some(vec!["low".into(), "ultra".into()]),
             reasoning_summary: Some(ReasoningSummary::Detailed),
             reasoning_include: Some(vec![ReasoningInclude::EncryptedContent]),
+            enabled: true,
         }
     }
 

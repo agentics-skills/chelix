@@ -272,7 +272,6 @@ pub(crate) fn log_startup_config_storage_diagnostics() {
     let config_dir = chelix_config::config_dir().unwrap_or_else(|| PathBuf::from(".chelix"));
     let discovered_config = chelix_config::loader::find_config_file();
     let expected_config = chelix_config::find_or_default_config_path();
-    let provider_keys_path = config_dir.join("provider_keys.json");
 
     let discovered_display = discovered_config
         .as_ref()
@@ -284,7 +283,6 @@ pub(crate) fn log_startup_config_storage_diagnostics() {
         config_dir = %config_dir.display(),
         discovered_config = %discovered_display,
         expected_config = %expected_config.display(),
-        provider_keys_path = %provider_keys_path.display(),
         "startup configuration storage diagnostics"
     );
 
@@ -303,40 +301,6 @@ pub(crate) fn log_startup_config_storage_diagnostics() {
         warn!(
             path = %expected_config.display(),
             "no config file detected on startup; Chelix is running with in-memory defaults until config is persisted"
-        );
-    }
-
-    if provider_keys_path.exists() {
-        log_path_diagnostics("provider-keys", &provider_keys_path);
-        match std::fs::read_to_string(&provider_keys_path) {
-            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
-                Ok(_) => {
-                    info!(
-                        path = %provider_keys_path.display(),
-                        bytes = content.len(),
-                        "provider key store file is readable JSON"
-                    );
-                },
-                Err(error) => {
-                    warn!(
-                        path = %provider_keys_path.display(),
-                        error = %error,
-                        "provider key store file contains invalid JSON"
-                    );
-                },
-            },
-            Err(error) => {
-                warn!(
-                    path = %provider_keys_path.display(),
-                    error = %error,
-                    "provider key store file exists but is not readable"
-                );
-            },
-        }
-    } else {
-        info!(
-            path = %provider_keys_path.display(),
-            "provider key store file not found yet; it will be created after the first providers.save_key"
         );
     }
 }

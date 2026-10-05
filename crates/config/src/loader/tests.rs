@@ -9,7 +9,6 @@ use super::{
     config_io::{
         apply_env_overrides_with, find_config_file_from_dirs, load_layered_config_toml_source,
         parse_config, parse_env_value, resubstitute_config, save_user_config_to_path, set_nested,
-        strip_default_values,
     },
     *,
 };

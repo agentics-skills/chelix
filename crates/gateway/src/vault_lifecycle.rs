@@ -164,25 +164,6 @@ pub async fn run_vault_env_migration(credential_store: &CredentialStore) {
                 tracing::warn!(%error, "ssh key migration failed");
             },
         }
-
-        if let Some(config_dir) = chelix_config::config_dir() {
-            let provider_keys_path = config_dir.join("provider_keys.json");
-            match chelix_vault::migration::encrypt_json_file(
-                vault,
-                &provider_keys_path,
-                "provider_keys",
-            )
-            .await
-            {
-                Ok(true) => {
-                    tracing::info!("encrypted provider_keys.json to vault storage");
-                },
-                Ok(false) => {},
-                Err(error) => {
-                    tracing::warn!(%error, "provider_keys.json encryption failed");
-                },
-            }
-        }
     }
 }
 
@@ -192,7 +173,6 @@ pub struct VaultDisableReport {
     pub ssh_keys: usize,
     pub channels: usize,
     pub webhooks: usize,
-    pub provider_keys: bool,
 }
 
 /// Decrypt all known vault-backed data and disable vault use in config.
@@ -213,7 +193,6 @@ pub async fn disable_vault_and_decrypt_all(
         ssh_keys: decrypt_ssh_keys(vault, pool).await?,
         channels: decrypt_channels(vault, pool).await?,
         webhooks: decrypt_webhooks(vault, pool).await?,
-        provider_keys: decrypt_provider_keys(vault).await?,
     };
 
     chelix_config::update_config(|config| {
@@ -409,65 +388,6 @@ async fn decrypt_webhooks(
         }
     }
     Ok(changed)
-}
-
-async fn decrypt_provider_keys(vault: &chelix_vault::Vault) -> anyhow::Result<bool> {
-    let Some(config_dir) = chelix_config::config_dir() else {
-        return Ok(false);
-    };
-    let path = config_dir.join("provider_keys.json");
-    let enc_path = path.with_extension("json.enc");
-    if !enc_path.exists() {
-        return Ok(false);
-    }
-    let encrypted = tokio::fs::read_to_string(&enc_path)
-        .await
-        .with_context(|| format!("failed to read {}", enc_path.display()))?;
-    let plaintext = vault.decrypt_string(&encrypted, "provider_keys").await?;
-    write_secret_file(&path, &plaintext).await?;
-    tokio::fs::remove_file(&enc_path)
-        .await
-        .with_context(|| format!("failed to remove {}", enc_path.display()))?;
-    Ok(true)
-}
-
-async fn write_secret_file(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
-    let path = path.to_path_buf();
-    let content = content.to_owned();
-    tokio::task::spawn_blocking(move || write_secret_file_blocking(&path, &content))
-        .await
-        .context("secret file write task failed")?
-}
-
-fn write_secret_file_blocking(path: &std::path::Path, content: &str) -> anyhow::Result<()> {
-    use std::io::Write;
-
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).truncate(true).write(true);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        options.mode(0o600);
-        let mut file = options
-            .open(path)
-            .with_context(|| format!("failed to open {}", path.display()))?;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))
-            .with_context(|| format!("failed to chmod {}", path.display()))?;
-        file.write_all(content.as_bytes())
-            .with_context(|| format!("failed to write {}", path.display()))?;
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    {
-        let mut file = options
-            .open(path)
-            .with_context(|| format!("failed to open {}", path.display()))?;
-        file.write_all(content.as_bytes())
-            .with_context(|| format!("failed to write {}", path.display()))?;
-        Ok(())
-    }
 }
 
 fn webhook_auth_secret_fields(auth_mode: &str) -> &'static [&'static str] {

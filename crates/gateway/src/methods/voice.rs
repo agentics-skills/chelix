@@ -333,54 +333,24 @@ pub(super) struct VoiceProvidersResponse {
     stt: Vec<VoiceProviderInfo>,
 }
 
-fn openai_provider_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
-    config
-        .providers
-        .get("openai")
-        .and_then(|provider| provider.base_url.as_deref())
-}
-
 fn openai_tts_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
-    config
-        .voice
-        .tts
-        .openai
-        .base_url
-        .as_deref()
-        .or_else(|| openai_provider_base_url(config))
+    config.voice.tts.openai.base_url.as_deref()
 }
 
 fn whisper_base_url(config: &chelix_config::ChelixConfig) -> Option<&str> {
-    config
-        .voice
-        .stt
-        .whisper
-        .base_url
-        .as_deref()
-        .or_else(|| openai_provider_base_url(config))
+    config.voice.stt.whisper.base_url.as_deref()
 }
 
 /// Detect all available voice providers with their availability status.
 pub(super) async fn detect_voice_providers(
     config: &chelix_config::ChelixConfig,
 ) -> serde_json::Value {
-    use secrecy::ExposeSecret;
-
     // Check for API keys from environment variables
-    let env_openai_key = std::env::var("OPENAI_API_KEY").ok();
     let env_elevenlabs_key = std::env::var("ELEVENLABS_API_KEY").ok();
     let env_google_key = std::env::var("GOOGLE_API_KEY")
         .or_else(|_| std::env::var("GOOGLE_CLOUD_API_KEY"))
         .ok();
     let env_deepgram_key = std::env::var("DEEPGRAM_API_KEY").ok();
-
-    // Check for API keys from LLM providers config
-    let llm_openai_key = config
-        .providers
-        .get("openai")
-        .and_then(|p| p.api_key.as_ref())
-        .map(|k| k.expose_secret().to_string());
-    let llm_openai_base_url = openai_provider_base_url(config);
 
     // Check for local binaries
     let whisper_cli_available = check_binary_available("whisper-cpp")
@@ -417,24 +387,17 @@ pub(super) async fn detect_voice_providers(
             "OpenAI TTS",
             "tts",
             "cloud",
-            config.voice.tts.openai.api_key.is_some()
-                || config.voice.tts.openai.base_url.is_some()
-                || env_openai_key.is_some()
-                || llm_openai_key.is_some()
-                || llm_openai_base_url.is_some(),
+            config.voice.tts.openai.api_key.is_some() || config.voice.tts.openai.base_url.is_some(),
             config.voice.tts.openai.enabled
                 && config.voice.tts.enabled
                 && (config.voice.tts.openai.api_key.is_some()
-                    || config.voice.tts.openai.base_url.is_some()
-                    || env_openai_key.is_some()
-                    || llm_openai_key.is_some()
-                    || llm_openai_base_url.is_some()),
+                    || config.voice.tts.openai.base_url.is_some()),
             tts_pref == Some(chelix_config::VoiceTtsProvider::OpenAi),
             key_source(
                 config.voice.tts.openai.api_key.is_some()
                     || config.voice.tts.openai.base_url.is_some(),
-                env_openai_key.is_some(),
-                llm_openai_key.is_some() || llm_openai_base_url.is_some(),
+                false,
+                false,
             ),
             None,
             None,
@@ -512,18 +475,15 @@ pub(super) async fn detect_voice_providers(
             "OpenAI Whisper",
             "stt",
             "cloud",
-            config.voice.stt.whisper.api_key.is_some()
-                || config.voice.stt.whisper.base_url.is_some()
-                || env_openai_key.is_some()
-                || llm_openai_key.is_some()
-                || llm_openai_base_url.is_some(),
+            crate::voice::whisper_key_configured(config)
+                || config.voice.stt.whisper.base_url.is_some(),
             config.voice.stt.whisper.enabled && config.voice.stt.enabled,
             false,
             key_source(
-                config.voice.stt.whisper.api_key.is_some()
+                crate::voice::whisper_key_configured(config)
                     || config.voice.stt.whisper.base_url.is_some(),
-                env_openai_key.is_some(),
-                llm_openai_key.is_some() || llm_openai_base_url.is_some(),
+                false,
+                false,
             ),
             None,
             None,

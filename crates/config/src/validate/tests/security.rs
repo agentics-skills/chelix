@@ -235,8 +235,8 @@ api_key = "sk-real-key-here"
         .iter()
         .find(|d| d.category == "security" && d.path == "providers.openai.api_key");
     assert!(
-        warning.is_some(),
-        "expected security warning for plaintext API key, got: {:?}",
+        warning.is_none(),
+        "provider api_key in chelix.toml is stored configuration, got: {:?}",
         result.diagnostics
     );
 }
@@ -278,7 +278,7 @@ api_key = "$OPENAI_API_KEY"
 }
 
 #[test]
-fn plaintext_voice_api_key_warned() {
+fn plaintext_voice_api_key_not_warned() {
     let toml = r#"
 [voice.tts.elevenlabs]
 api_key = "el-real-key"
@@ -289,8 +289,8 @@ api_key = "el-real-key"
         .iter()
         .find(|d| d.category == "security" && d.path == "voice.tts.elevenlabs.api_key");
     assert!(
-        warning.is_some(),
-        "expected security warning for plaintext voice API key, got: {:?}",
+        warning.is_none(),
+        "voice api_key in chelix.toml is stored configuration, got: {:?}",
         result.diagnostics
     );
 }

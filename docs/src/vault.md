@@ -172,7 +172,7 @@ Currently encrypted:
 | Managed SSH private keys (`ssh_keys` table)           | SQLite  | `ssh-key:{name}`                      |
 | Channel account secrets | SQLite  | `channel:{type}:{account_id}:{field}` |
 | Webhook auth/source secrets                           | SQLite  | `webhook:config:{field}`              |
-| Provider API keys (`provider_keys.json.enc`)          | File    | `provider_keys`                       |
+
 
 The `encrypted` column in `env_variables` and `ssh_keys` tracks whether each row
 is encrypted (1) or plaintext (0). When the vault is unsealed, new env vars and
@@ -182,11 +182,8 @@ hierarchy. When sealed or uninitialized, they are written as plaintext.
 
 On the first successful vault unseal after enabling the feature, Chelix also
 migrates any previously stored plaintext env vars and managed SSH private keys
-to encrypted storage in-place. Provider API keys (`provider_keys.json`) are
-encrypted to a `.enc` copy alongside the original; the plaintext file is kept
-for backward compatibility until all consumers use the vault-aware read path.
-Voice provider API keys are now stored in `provider_keys.json` (same as LLM
-keys), not in `chelix.toml`.
+to encrypted storage in-place. LLM, voice, and phone provider keys are stored
+as plaintext fields in `chelix.toml`. The vault does not encrypt them.
 
 ```admonish info title="Planned"
 TokenStore (OAuth tokens in `credentials.json`) is currently sync/file-based

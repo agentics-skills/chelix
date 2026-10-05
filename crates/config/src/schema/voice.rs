@@ -91,7 +91,7 @@ pub struct VoiceOpenAiConfig {
     /// Whether this provider is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// API key (from OPENAI_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -437,7 +437,7 @@ pub struct VoiceWhisperConfig {
     /// Whether this provider is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// API key (from OPENAI_API_KEY env or config).
+    /// API key.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

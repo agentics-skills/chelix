@@ -12,10 +12,6 @@ mod service;
 
 pub use service::*;
 
-// Re-export items needed by tests via `super::*`.
-#[cfg(test)]
-use secrecy::Secret;
-
 #[cfg(test)]
 #[path = "../tests.rs"]
 mod tests;

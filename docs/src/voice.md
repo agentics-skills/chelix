@@ -91,14 +91,7 @@ _More voice providers are coming soon._
 
 ### Configuration
 
-Set API keys via environment variables:
-
-```bash
-export ELEVENLABS_API_KEY=your-key-here
-export OPENAI_API_KEY=your-key-here
-```
-
-Or configure in `chelix.toml`:
+Configure API keys in `chelix.toml`:
 
 ```toml
 [voice.tts]
@@ -116,7 +109,6 @@ stability = 0.5
 similarity_boost = 0.75
 
 [voice.tts.openai]
-# No api_key needed if OpenAI is configured as an LLM provider or OPENAI_API_KEY is set.
 # api_key = "sk-..."
 # base_url = "http://10.1.2.30:8003"  # Override for OpenAI-compatible servers (e.g. Chatterbox)
 voice = "alloy"  # alloy, echo, fable, onyx, nova, shimmer
@@ -449,7 +441,6 @@ providers = []          # Optional UI allowlist, empty = show all STT providers
 
 # Cloud providers - API key required
 [voice.stt.whisper]
-# No api_key needed if OpenAI is configured as an LLM provider or OPENAI_API_KEY is set.
 # api_key = "sk-..."
 # base_url = "http://10.1.2.30:8001"  # Override for OpenAI-compatible servers (e.g. faster-whisper-server)
 model = "whisper-1"  # or "gpt-4o-transcribe", "gpt-4o-mini-transcribe"

@@ -245,9 +245,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
 
         reg.register(
             "phone.providers.all",
-            Box::new(|ctx| {
+            Box::new(|_ctx| {
                 Box::pin(async move {
-                    phone::detect_phone_providers(&ctx.state.config)
+                    let config = chelix_config::discover_and_load()
+                        .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
+                    phone::detect_phone_providers(&config)
                         .map_err(|error| ErrorShape::new("storage_error", error.to_string()))
                 })
             }),
@@ -304,23 +306,41 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         ));
                     }
 
-                    let store = crate::provider_setup::KeyStore::new();
-                    let store_key = phone::phone_key_store_name(provider);
-                    store
-                        .save_config(
-                            &store_key,
-                            Some(primary_credential.to_string()),
-                            Some(secondary_credential.to_string()),
-                        )
-                        .map_err(|e| ErrorShape::new("storage_error", e.to_string()))?;
-
                     chelix_config::update_config(|cfg| {
                         cfg.phone.enabled = true;
                         cfg.phone.provider = provider.to_string();
-                        phone::clear_inline_phone_credentials(cfg, provider);
                         phone::apply_phone_provider_settings(cfg, provider, &ctx.params);
                     })
                     .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
+                    let key_updates: &[(&[&str], Option<&str>)] = match provider {
+                        "twilio" => &[
+                            (
+                                &["phone", "twilio", "account_sid"],
+                                Some(primary_credential),
+                            ),
+                            (
+                                &["phone", "twilio", "auth_token"],
+                                Some(secondary_credential),
+                            ),
+                        ],
+                        "telnyx" => &[
+                            (&["phone", "telnyx", "api_key"], Some(primary_credential)),
+                            (
+                                &["phone", "telnyx", "connection_id"],
+                                Some(secondary_credential),
+                            ),
+                        ],
+                        "plivo" => &[
+                            (&["phone", "plivo", "auth_id"], Some(primary_credential)),
+                            (
+                                &["phone", "plivo", "auth_token"],
+                                Some(secondary_credential),
+                            ),
+                        ],
+                        _ => &[],
+                    };
+                    chelix_config::set_config_strings(key_updates)
+                        .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
                     phone::reload_running_phone_account(&ctx.state)
                         .await
                         .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
@@ -375,20 +395,30 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                         .as_str()
                         .ok_or_else(|| ErrorShape::new("invalid_params", "missing provider"))?;
 
-                    let store = crate::provider_setup::KeyStore::new();
-                    let store_key = phone::phone_key_store_name(provider);
-                    store
-                        .remove(&store_key)
-                        .map_err(|e| ErrorShape::new("storage_error", e.to_string()))?;
-
                     chelix_config::update_config(|cfg| {
-                        phone::clear_inline_phone_credentials(cfg, provider);
                         if cfg.phone.provider == provider {
                             cfg.phone.enabled = false;
                             cfg.phone.provider = String::new();
                         }
                     })
                     .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;
+                    let key_updates: &[(&[&str], Option<&str>)] = match provider {
+                        "twilio" => &[
+                            (&["phone", "twilio", "account_sid"], None),
+                            (&["phone", "twilio", "auth_token"], None),
+                        ],
+                        "telnyx" => &[
+                            (&["phone", "telnyx", "api_key"], None),
+                            (&["phone", "telnyx", "connection_id"], None),
+                        ],
+                        "plivo" => &[
+                            (&["phone", "plivo", "auth_id"], None),
+                            (&["phone", "plivo", "auth_token"], None),
+                        ],
+                        _ => &[],
+                    };
+                    chelix_config::set_config_strings(key_updates)
+                        .map_err(|error| ErrorShape::new("storage_error", error.to_string()))?;
                     phone::reload_running_phone_account(&ctx.state)
                         .await
                         .map_err(|e| ErrorShape::new("config_error", e.to_string()))?;

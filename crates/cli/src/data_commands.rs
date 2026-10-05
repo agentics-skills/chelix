@@ -14,9 +14,6 @@ pub enum DataAction {
         /// Include session media files (audio, images). Can make archives large.
         #[arg(long, default_value_t = false)]
         include_media: bool,
-        /// Exclude provider API keys from the export.
-        #[arg(long, default_value_t = false)]
-        no_provider_keys: bool,
     },
     /// Import data from a .tar.gz archive.
     Import {
@@ -47,8 +44,7 @@ pub async fn handle_data(action: DataAction) -> anyhow::Result<()> {
         DataAction::Export {
             output,
             include_media,
-            no_provider_keys,
-        } => handle_export(output, include_media, no_provider_keys).await,
+        } => handle_export(output, include_media).await,
         DataAction::Import {
             archive,
             dry_run,
@@ -59,19 +55,12 @@ pub async fn handle_data(action: DataAction) -> anyhow::Result<()> {
     }
 }
 
-async fn handle_export(
-    output: Option<PathBuf>,
-    include_media: bool,
-    no_provider_keys: bool,
-) -> anyhow::Result<()> {
+async fn handle_export(output: Option<PathBuf>, include_media: bool) -> anyhow::Result<()> {
     let config_dir =
         chelix_config::config_dir().ok_or_else(|| anyhow::anyhow!("config directory not set"))?;
     let data_dir = chelix_config::data_dir();
 
-    let opts = chelix_portable::ExportOptions {
-        include_provider_keys: !no_provider_keys,
-        include_media,
-    };
+    let opts = chelix_portable::ExportOptions { include_media };
 
     let output_path = output.unwrap_or_else(|| {
         let now = time::OffsetDateTime::now_utc();

@@ -12,7 +12,7 @@ async fn finish_openai_compatible_provider(
             .forget_disabled(&removed_ids)
             .await
             .map_err(|error| {
-                tracing::error!(%error, "failed to save disabled-models.json after provider delete");
+                tracing::error!(%error, "failed to update disabled model ids after provider delete");
                 ErrorShape::from(error)
             })?;
     }
@@ -37,7 +37,7 @@ async fn finish_openai_compatible_provider(
             .rename_disabled(&renamed)
             .await
             .map_err(|error| {
-                tracing::error!(%error, "failed to save disabled-models.json after provider rename");
+                tracing::error!(%error, "failed to update disabled model ids after provider rename");
                 ErrorShape::from(error)
             })?;
     }
@@ -60,16 +60,7 @@ async fn finish_model_edit(
     ctx: &MethodContext,
     result: serde_json::Value,
 ) -> Result<serde_json::Value, ErrorShape> {
-    let removed_ids = result
-        .get("removedModelIds")
-        .and_then(serde_json::Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let removed_ids = string_array(result.get("removedModelIds"));
     if !removed_ids.is_empty() {
         ctx.state
             .services
@@ -77,7 +68,32 @@ async fn finish_model_edit(
             .forget_disabled(&removed_ids)
             .await
             .map_err(|error| {
-                tracing::error!(%error, "failed to save disabled-models.json after model change");
+                tracing::error!(%error, "failed to update disabled model ids after model change");
+                ErrorShape::from(error)
+            })?;
+    }
+    let renamed = result
+        .get("renamedModelIds")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| {
+                    let from = value.get("from")?.as_str()?.to_string();
+                    let to = value.get("to")?.as_str()?.to_string();
+                    Some((from, to))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !renamed.is_empty() {
+        ctx.state
+            .services
+            .model
+            .rename_disabled(&renamed)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "failed to update disabled model ids after model rename");
                 ErrorShape::from(error)
             })?;
     }

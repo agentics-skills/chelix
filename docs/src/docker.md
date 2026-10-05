@@ -330,8 +330,8 @@ separately. In Docker, there are three ways to provide these:
 **Option 1: OpenAI Compatible provider in config**
 
 Declare `[providers.<name>]` with `base_url` and store the API key in
-`provider_keys.json` or in that section's `api_key`. The name is the slug you
-choose. `api_key = "${LLM_API_KEY}"` is an explicit substitution.
+`chelix.toml` in that section's `api_key`. The name is the slug you
+choose.
 
 **Option 2: Other feature keys via `docker -e` flags**
 

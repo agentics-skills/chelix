@@ -221,7 +221,7 @@ fn test_apple_container_mount_specs_use_resolved_plan_and_modes() {
     assert!(
         specs
             .iter()
-            .all(|spec| !spec.contains("credentials.json") && !spec.contains("provider_keys.json"))
+            .all(|spec| !spec.contains("credentials.json") && !spec.contains("chelix.toml"))
     );
 }
 

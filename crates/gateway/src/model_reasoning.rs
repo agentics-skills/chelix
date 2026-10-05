@@ -59,13 +59,9 @@ pub async fn validate_agents_config(
 
 /// Validate candidate agent pairs against the registry that the candidate config will start with.
 pub async fn validate_candidate_agents_config(config: &ChelixConfig) -> ServiceResult<()> {
-    let key_store = crate::provider_setup::KeyStore::new();
-    let effective_providers =
-        crate::provider_setup::config_with_saved_keys(&config.providers, &key_store)?;
-    let registry = ProviderRegistry::from_config(&effective_providers, &config.env)
+    let registry = ProviderRegistry::from_config(&config.providers, &config.env)
         .map_err(ServiceError::message)?;
-    let disabled = crate::chat::DisabledModelsStore::load()
-        .map_err(|error| ServiceError::message(error.to_string()))?;
+    let disabled = crate::chat::DisabledModelsStore::from_config(config);
     let model_service = crate::chat::LiveModelService::new(
         Arc::new(tokio::sync::RwLock::new(registry)),
         Arc::new(tokio::sync::RwLock::new(disabled)),

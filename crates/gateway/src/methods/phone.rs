@@ -1,52 +1,12 @@
 //! Phone provider detection and configuration helpers.
 
-use {
-    chelix_config::schema::ChelixConfig,
-    secrecy::{ExposeSecret, Secret},
-};
+use {chelix_config::schema::ChelixConfig, secrecy::ExposeSecret};
 
 #[cfg(feature = "telephony")]
 use chelix_channels::ChannelPlugin as _;
 
 const PHONE_ACCOUNT_ID: &str = "default";
 const PHONE_CHANNEL_TYPE: &str = "telephony";
-
-/// Overlay phone provider credentials from the credential store onto config.
-///
-/// Phone credentials follow the same storage model as voice credentials: the
-/// TOML file stores non-secret settings, and `KeyStore` stores secrets.
-pub(crate) fn merge_phone_keys(cfg: &mut ChelixConfig) -> anyhow::Result<()> {
-    let store = crate::provider_setup::KeyStore::new();
-
-    if let Some(stored) = store.load_config(&phone_key_store_name("twilio"))? {
-        if let Some(account_sid) = stored.api_key {
-            cfg.phone.twilio.account_sid = Some(Secret::new(account_sid));
-        }
-        if let Some(auth_token) = stored.base_url {
-            cfg.phone.twilio.auth_token = Some(Secret::new(auth_token));
-        }
-    }
-
-    if let Some(stored) = store.load_config(&phone_key_store_name("telnyx"))? {
-        if let Some(api_key) = stored.api_key {
-            cfg.phone.telnyx.api_key = Some(Secret::new(api_key));
-        }
-        if let Some(connection_id) = stored.base_url {
-            cfg.phone.telnyx.connection_id = Some(connection_id);
-        }
-    }
-
-    if let Some(stored) = store.load_config(&phone_key_store_name("plivo"))? {
-        if let Some(auth_id) = stored.api_key {
-            cfg.phone.plivo.auth_id = Some(auth_id);
-        }
-        if let Some(auth_token) = stored.base_url {
-            cfg.phone.plivo.auth_token = Some(Secret::new(auth_token));
-        }
-    }
-
-    Ok(())
-}
 
 /// Build the internal telephony channel account from `[phone]`.
 ///
@@ -131,8 +91,7 @@ pub(crate) fn phone_channel_account(config: &ChelixConfig) -> Option<(String, se
 
 /// Detect all available phone providers with their status.
 pub(super) fn detect_phone_providers(config: &ChelixConfig) -> anyhow::Result<serde_json::Value> {
-    let mut effective_config = config.clone();
-    merge_phone_keys(&mut effective_config)?;
+    let effective_config = config.clone();
     let mut providers = Vec::new();
 
     // Twilio
@@ -271,25 +230,6 @@ pub(super) fn apply_phone_provider_settings(
     }
 }
 
-/// Remove inline credentials for a provider after they are moved into KeyStore.
-pub(super) fn clear_inline_phone_credentials(cfg: &mut ChelixConfig, provider: &str) {
-    match provider {
-        "twilio" => {
-            cfg.phone.twilio.account_sid = None;
-            cfg.phone.twilio.auth_token = None;
-        },
-        "telnyx" => {
-            cfg.phone.telnyx.api_key = None;
-            cfg.phone.telnyx.connection_id = None;
-        },
-        "plivo" => {
-            cfg.phone.plivo.auth_id = None;
-            cfg.phone.plivo.auth_token = None;
-        },
-        _ => {},
-    }
-}
-
 /// Toggle a phone provider on/off.
 pub(super) fn toggle_phone_provider(provider: &str, enabled: bool) -> anyhow::Result<()> {
     chelix_config::update_config(|cfg| {
@@ -304,23 +244,16 @@ pub(super) fn toggle_phone_provider(provider: &str, enabled: bool) -> anyhow::Re
     Ok(())
 }
 
-/// Key store name for a phone provider.
-pub(super) fn phone_key_store_name(provider: &str) -> String {
-    format!("phone_{provider}")
-}
-
 /// Reconcile the in-memory telephony account with the persisted `[phone]`
 /// config after an RPC mutation.
 ///
-/// `GatewayState::config` is a startup snapshot, so this deliberately reloads
-/// the config file and overlays `KeyStore` credentials before restarting the
-/// internal telephony account.
+/// `GatewayState::config` is a startup snapshot, so this reloads `chelix.toml`
+/// before restarting the internal telephony account.
 #[cfg(feature = "telephony")]
 pub(super) async fn reload_running_phone_account(
     state: &crate::state::GatewayState,
 ) -> anyhow::Result<()> {
-    let mut config = chelix_config::discover_and_load()?;
-    merge_phone_keys(&mut config)?;
+    let config = chelix_config::discover_and_load()?;
 
     match phone_channel_account(&config) {
         Some((account_id, account_config)) => {
@@ -361,11 +294,10 @@ pub(super) async fn reload_running_phone_account(
 mod tests {
     use {
         crate::methods::phone::{
-            apply_phone_provider_settings, clear_inline_phone_credentials, detect_phone_providers,
-            phone_channel_account, phone_key_store_name,
+            apply_phone_provider_settings, detect_phone_providers, phone_channel_account,
         },
         chelix_config::schema::ChelixConfig,
-        secrecy::{ExposeSecret, Secret},
+        secrecy::Secret,
     };
 
     struct PhoneConfigTestGuard {
@@ -480,12 +412,6 @@ mod tests {
     }
 
     #[test]
-    fn phone_key_store_name_formats_correctly() {
-        assert_eq!(phone_key_store_name("twilio"), "phone_twilio");
-        assert_eq!(phone_key_store_name("telnyx"), "phone_telnyx");
-    }
-
-    #[test]
     fn phone_channel_account_maps_twilio_phone_config_to_internal_channel() {
         let mut config = ChelixConfig::default();
         config.phone.enabled = true;
@@ -510,32 +436,9 @@ mod tests {
         assert_eq!(account["allowlist"][0], "+15557654321");
     }
 
-    #[test]
-    fn clear_inline_phone_credentials_removes_selected_provider_only() {
-        let mut config = ChelixConfig::default();
-        config.phone.twilio.account_sid = Some(Secret::new("AC_test_sid".to_string()));
-        config.phone.twilio.auth_token = Some(Secret::new("test_token".to_string()));
-        config.phone.telnyx.api_key = Some(Secret::new("KEY_test".to_string()));
-        config.phone.telnyx.connection_id = Some("conn_test".to_string());
-
-        clear_inline_phone_credentials(&mut config, "telnyx");
-
-        assert!(config.phone.telnyx.api_key.is_none());
-        assert!(config.phone.telnyx.connection_id.is_none());
-        assert_eq!(
-            config
-                .phone
-                .twilio
-                .account_sid
-                .as_ref()
-                .map(|secret| secret.expose_secret().as_str()),
-            Some("AC_test_sid")
-        );
-    }
-
     #[cfg(feature = "telephony")]
     #[tokio::test]
-    async fn reload_running_phone_account_restarts_account_from_key_store() {
+    async fn reload_running_phone_account_restarts_account_from_config() {
         use {
             crate::{
                 auth::{AuthMode, ResolvedAuth},
@@ -569,19 +472,12 @@ mod tests {
             services,
         );
 
-        crate::provider_setup::KeyStore::new()
-            .save_config(
-                &phone_key_store_name("twilio"),
-                Some("AC_old".to_string()),
-                Some("old_token".to_string()),
-            )
-            .unwrap_or_else(|error| panic!("phone credentials should be stored: {error}"));
         chelix_config::update_config(|cfg| {
             cfg.phone.enabled = true;
             cfg.phone.provider = "twilio".to_string();
             cfg.phone.twilio.from_number = Some("+15550000001".to_string());
-            cfg.phone.twilio.account_sid = None;
-            cfg.phone.twilio.auth_token = None;
+            cfg.phone.twilio.account_sid = Some(Secret::new("AC_old".to_string()));
+            cfg.phone.twilio.auth_token = Some(Secret::new("old_token".to_string()));
         })
         .unwrap_or_else(|error| panic!("phone config should be stored: {error}"));
 
@@ -598,15 +494,10 @@ mod tests {
             Some("telephony")
         );
 
-        crate::provider_setup::KeyStore::new()
-            .save_config(
-                &phone_key_store_name("twilio"),
-                Some("AC_new".to_string()),
-                Some("new_token".to_string()),
-            )
-            .unwrap_or_else(|error| panic!("phone credentials should be updated: {error}"));
         chelix_config::update_config(|cfg| {
             cfg.phone.twilio.from_number = Some("+15550000002".to_string());
+            cfg.phone.twilio.account_sid = Some(Secret::new("AC_new".to_string()));
+            cfg.phone.twilio.auth_token = Some(Secret::new("new_token".to_string()));
         })
         .unwrap_or_else(|error| panic!("phone config should be updated: {error}"));
 

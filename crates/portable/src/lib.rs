@@ -32,12 +32,6 @@ mod integration_tests {
             "[server]\nport = 8080\n",
         )
         .unwrap();
-        std::fs::write(
-            src_config.path().join("provider_keys.json"),
-            r#"{"openai":{"apiKey":"sk-test"}}"#,
-        )
-        .unwrap();
-
         // Create workspace files.
         std::fs::write(src_data.path().join("SOUL.md"), "# Soul\nBe helpful.").unwrap();
         std::fs::write(src_data.path().join("IDENTITY.md"), "name: Chelix").unwrap();
@@ -53,7 +47,6 @@ mod integration_tests {
 
         // Export.
         let opts = ExportOptions {
-            include_provider_keys: true,
             include_media: false,
         };
         let mut archive_buf = Vec::new();
@@ -67,12 +60,6 @@ mod integration_tests {
                 .inventory
                 .config_files
                 .contains(&"chelix.toml".to_owned())
-        );
-        assert!(
-            manifest
-                .inventory
-                .config_files
-                .contains(&"provider_keys.json".to_owned())
         );
         assert!(
             manifest
@@ -107,7 +94,6 @@ mod integration_tests {
 
         // Verify files were created.
         assert!(dst_config.path().join("chelix.toml").exists());
-        assert!(dst_config.path().join("provider_keys.json").exists());
         assert!(dst_data.path().join("SOUL.md").exists());
         assert!(dst_data.path().join("IDENTITY.md").exists());
         assert!(!dst_data.path().join("sessions/main.jsonl").exists());

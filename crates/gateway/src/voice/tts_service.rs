@@ -43,7 +43,7 @@ impl LiveTtsService {
         }
     }
 
-    /// Load fresh TTS config from disk (with KeyStore voice keys merged).
+    /// Load fresh TTS config from disk.
     fn load_config() -> Result<TtsConfig, ServiceError> {
         let cfg = load_voice_config().map_err(ServiceError::message)?;
         Ok(TtsConfig {
@@ -59,7 +59,7 @@ impl LiveTtsService {
                 similarity_boost: None,
             },
             openai: chelix_voice::OpenAiTtsConfig {
-                api_key: resolve_openai_key(cfg.voice.tts.openai.api_key.as_ref(), &cfg),
+                api_key: resolve_openai_key(cfg.voice.tts.openai.api_key.as_ref()),
                 base_url: resolve_openai_tts_base_url(&cfg),
                 voice: cfg.voice.tts.openai.voice.clone(),
                 model: cfg.voice.tts.openai.model.clone(),

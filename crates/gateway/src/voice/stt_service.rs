@@ -15,7 +15,7 @@ use chelix_voice::{
 
 use crate::services::{ServiceResult, SttService};
 
-use super::{load_voice_config, resolve_openai_key, resolve_openai_whisper_base_url};
+use super::{load_voice_config, resolve_openai_whisper_base_url};
 
 /// Live STT service that delegates to voice providers.
 /// Reads fresh config on each operation to pick up changes.
@@ -98,7 +98,7 @@ impl LiveSttService {
         }
     }
 
-    /// Load fresh STT config from disk (with KeyStore voice keys merged) and
+    /// Load fresh STT config from disk.
     /// create provider on demand.
     fn create_provider(
         cfg: &chelix_config::ChelixConfig,
@@ -106,7 +106,7 @@ impl LiveSttService {
     ) -> Option<Box<dyn SttProvider + Send + Sync>> {
         match provider_id {
             SttProviderId::Whisper => {
-                let key = resolve_openai_key(cfg.voice.stt.whisper.api_key.as_ref(), cfg);
+                let key = super::whisper_api_key(cfg);
                 let provider = WhisperStt::with_options(
                     key,
                     resolve_openai_whisper_base_url(cfg),
@@ -222,13 +222,12 @@ impl LiveSttService {
             .map(Secret::new)
     }
 
-    /// List all providers with their configuration status (reads fresh config
-    /// with KeyStore voice keys merged).
+    /// List all providers with their configuration status from `chelix.toml`.
     fn list_providers(cfg: &chelix_config::ChelixConfig) -> Vec<(SttProviderId, bool)> {
         vec![
             (
                 SttProviderId::Whisper,
-                resolve_openai_key(cfg.voice.stt.whisper.api_key.as_ref(), cfg).is_some()
+                super::whisper_api_key(cfg).is_some()
                     || resolve_openai_whisper_base_url(cfg).is_some(),
             ),
             (
