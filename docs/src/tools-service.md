@@ -529,9 +529,11 @@ retention in days. It is mandatory only in global `On` mode, has no runtime
 default, and accepts `0` for deletion at the first reconciliation scan. The
 configuration template and documentation examples explicitly use `7`.
 
-Archiving retains the container until the configured period has elapsed from
-the owner's existing session metadata `updated_at`. Archive and other metadata
-edits update that timestamp. The gateway launches the first reconciliation scan
+Archiving a session that owns its sandbox starts a background `docker stop`,
+`podman stop`, or Apple Container `stop` for that container. The container then
+remains until the configured period has elapsed from the owner's
+existing session metadata `updated_at`. Archive and other metadata edits update
+that timestamp. The gateway launches the first reconciliation scan
 in the background at startup, then repeats it every 24 hours. Only containers
 matching existing archived owner sessions are eligible. Deleting an owner
 session issues one `rm -fv` for Docker/Podman. Apple Container checks existence

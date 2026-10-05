@@ -365,9 +365,11 @@ mode = "On"
 archived_session_retention_days = 7
 ```
 
-The template and this example explicitly choose `7` days. Archiving retains a
-session container until the configured period has elapsed from the owner's
-existing metadata `updated_at`, updated on archive and other metadata edits.
+The template and this example explicitly choose `7` days. Archiving a session
+that owns its sandbox starts a background `docker stop`, `podman stop`, or
+Apple Container `stop` for that container. The container then remains until
+the configured period has elapsed from the owner's existing metadata
+`updated_at`, updated on archive and other metadata edits.
 The first scan runs in the background at gateway startup, then every 24 hours;
 only containers matching existing archived owner sessions are eligible.
 Deleting an owner session issues one `rm -fv` for Docker/Podman. Apple Container

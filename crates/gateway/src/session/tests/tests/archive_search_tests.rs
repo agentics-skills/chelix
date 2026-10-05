@@ -57,7 +57,11 @@ async fn patch_archived_rejection_does_not_partially_mutate_session() {
         .await
         .unwrap_err();
 
-    assert!(error.to_string().contains("cannot be archived"));
+    assert!(
+        error
+            .to_string()
+            .contains("archive accepts only key and archived")
+    );
 
     let entry = metadata.get("main").await.unwrap().unwrap();
     assert_eq!(entry.label.as_deref(), Some("Main"));

@@ -221,7 +221,9 @@ mandatory only when `mode = "On"`. It has no runtime default; the template and
 examples explicitly use `7`. `0` is valid and removes an eligible archived
 owner's container at the first reconciliation scan.
 
-Archiving retains the container until that period expires. The period is
+Archiving a session that owns its sandbox starts a background `docker stop`,
+`podman stop`, or Apple Container `stop` for that container. The container then
+remains until the retention period expires. The period is
 measured from the owner session's existing metadata `updated_at`, which changes
 on archive and other metadata edits. The gateway starts the first scan in the
 background at startup and repeats it every 24 hours. It removes only containers

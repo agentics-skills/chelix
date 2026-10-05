@@ -1517,7 +1517,6 @@ reasoning_supported_efforts = ["off"]
                 "label": "Changed",
                 "model": REASONING_MODEL,
                 "reasoningEffort": "high",
-                "archived": true,
                 "projectId": "missing-project",
                 "worktreeBranch": "changed",
             }))
@@ -1702,19 +1701,16 @@ reasoning_supported_efforts = ["off"]
             Some("Renamed")
         );
 
-        let archive_fut = svc.patch(serde_json::json!({ "key": KEY, "archived": true }));
-        tokio::pin!(archive_fut);
-        match tokio::time::timeout(std::time::Duration::from_millis(300), &mut archive_fut).await {
-            Err(_) => {},
-            Ok(result) => panic!("archived patch completed during active turn: {result:?}"),
-        }
-        drop(turn);
-        let archived = tokio::time::timeout(std::time::Duration::from_secs(2), archive_fut)
-            .await
-            .expect("archived patch must complete after turn release")
-            .unwrap();
+        let archived = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            svc.patch(serde_json::json!({ "key": KEY, "archived": true })),
+        )
+        .await
+        .expect("archived patch must not wait for the active turn")
+        .unwrap();
         assert_eq!(archived["archived"], true);
         assert!(metadata.get(KEY).await.unwrap().unwrap().archived);
+        drop(turn);
     }
 
     #[tokio::test]

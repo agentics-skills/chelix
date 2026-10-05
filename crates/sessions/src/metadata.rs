@@ -1372,6 +1372,27 @@ impl SqliteSessionMetadata {
         )
     }
 
+    pub async fn snapshot_tree_leaf_to_root(&self, root_key: &str) -> Result<Vec<String>> {
+        let mut transaction = self.pool.begin().await?;
+        let keys = sqlx::query_scalar::<_, String>(
+            r#"WITH RECURSIVE tree(key, depth) AS (
+                   SELECT key, 0
+                   FROM sessions
+                   WHERE key = ?
+                   UNION ALL
+                   SELECT sessions.key, tree.depth + 1
+                   FROM sessions
+                   JOIN tree ON sessions.parent_session_key = tree.key
+               )
+               SELECT key FROM tree ORDER BY depth DESC, key ASC"#,
+        )
+        .bind(root_key)
+        .fetch_all(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(keys)
+    }
+
     pub async fn remove(&self, key: &str) -> Result<Option<SessionEntry>> {
         let mut transaction = self.pool.begin().await?;
         let entry = Self::fetch_entry_in_transaction(&mut transaction, key).await?;

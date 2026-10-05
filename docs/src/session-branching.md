@@ -133,12 +133,23 @@ channel-bound chats, except when the session is the current active session for
 its bound channel chat. That prevents hiding the live Telegram, or
 similar chat out from under the channel router.
 
-Archiving a parent also archives descendants linked by `parent_session_key`
-that can be archived: forks, sessions created with `sessions_create`, and
-sub-agent sessions. A descendant that is already archived, or that cannot be
-archived, is left unchanged. The parent is checked before any descendant is
-archived. If the parent cannot be archived, the request fails and no descendant
-is archived. Unarchiving a parent does not change its descendants.
+`sessions.patch` with `archived: true` accepts only `key` and `archived`. Any
+other field is rejected.
+
+The request archives one snapshot: the session and every descendant linked by
+`parent_session_key` at that moment, including forks, sessions created with
+`sessions_create`, and sub-agent sessions. The snapshot is one recursive SQL
+query in one transaction. The batch calls the single-session archive for each
+snapshotted session, descendants first and the parent last. A single-session
+archive sets that session's archived metadata. If one session fails, the batch
+still processes the rest of the snapshot, including the parent last, and then
+returns the collected errors.
+
+When the archived session owns its sandbox (`sandbox_owner_key` is absent or
+equal to the session key), the single-session archive starts a background
+`docker stop`, `podman stop`, or Apple Container `stop`.
+
+Unarchiving a parent does not change its descendants.
 
 ```admonish info title="Independence"
 After creation, later changes to one session's history and fields do not

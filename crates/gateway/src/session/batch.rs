@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{service::is_archivable_entry, *};
+use super::*;
 
 pub(super) struct SessionBatch<'a> {
     service: &'a LiveSessionService,
@@ -74,50 +74,44 @@ impl<'a> SessionBatch<'a> {
     }
 
     pub(super) async fn archive(&self, params: Value) -> ServiceResult {
-        let Some(key) = params.get("key").and_then(Value::as_str) else {
-            return self.service.patch_one(params).await;
+        let Some(object) = params.as_object() else {
+            return Err(ServiceError::message(
+                "archive accepts only key and archived",
+            ));
         };
+        if object.len() != 2
+            || !object.contains_key("key")
+            || object.get("archived").and_then(Value::as_bool) != Some(true)
+        {
+            return Err(ServiceError::message(
+                "archive accepts only key and archived",
+            ));
+        }
+        let parsed: PatchParams = parse_params(params)?;
+        let key = parsed.key;
+        let order = self
+            .service
+            .metadata
+            .snapshot_tree_leaf_to_root(&key)
+            .await
+            .map_err(ServiceError::message)?;
+        if order.is_empty() {
+            return Err(ServiceError::message(format!("session '{key}' not found")));
+        }
 
-        let order = self.keys_leaf_to_root(key).await?;
-        let mut descendant_keys = Vec::new();
+        let mut errors = Vec::new();
+        let mut root_result = None;
         for session_key in &order {
-            let entry = self
-                .service
-                .metadata
-                .get(session_key)
-                .await
-                .map_err(ServiceError::message)?
-                .ok_or_else(|| format!("session '{session_key}' not found"))?;
-            let archivable = is_archivable_entry(&self.service.metadata, &entry).await?;
-            if session_key != key {
-                if entry.archived || !archivable {
-                    continue;
-                }
-                descendant_keys.push(session_key.clone());
-                continue;
-            }
-            if !archivable {
-                return Err(ServiceError::message(format!(
-                    "session '{session_key}' cannot be archived"
-                )));
+            match self.service.archive_one(session_key).await {
+                Ok(value) if session_key == &key => root_result = Some(value),
+                Ok(_) => {},
+                Err(error) => errors.push(error.to_string()),
             }
         }
-
-        let result = self.service.patch_one(params).await?;
-        for session_key in descendant_keys {
-            self.service
-                .metadata
-                .patch_session(
-                    &session_key,
-                    chelix_sessions::metadata::SessionMetadataPatch {
-                        archived: Some(true),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .map_err(ServiceError::message)?;
+        if !errors.is_empty() {
+            return Err(ServiceError::message(errors.join("; ")));
         }
-        Ok(result)
+        root_result.ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))
     }
 
     async fn keys_leaf_to_root(&self, root_key: &str) -> Result<Vec<String>, ServiceError> {
