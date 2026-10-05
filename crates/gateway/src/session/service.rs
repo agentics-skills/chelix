@@ -36,13 +36,6 @@ async fn is_current_channel_session(
     Ok(active_key == entry.key)
 }
 
-pub(super) async fn is_archivable_entry(
-    metadata: &SqliteSessionMetadata,
-    entry: &chelix_sessions::metadata::SessionEntry,
-) -> Result<bool, ServiceError> {
-    Ok(entry.key != "main" && !is_current_channel_session(metadata, entry).await?)
-}
-
 /// Live session service backed by the SQLite session journal + SQLite metadata.
 pub struct LiveSessionService {
     pub(super) store: Arc<SessionStore>,
@@ -414,11 +407,6 @@ impl LiveSessionService {
             .await
             .map_err(ServiceError::message)?
             .ok_or_else(|| format!("session '{key}' not found"))?;
-        if p.archived == Some(true) && !is_archivable_entry(&self.metadata, &entry).await? {
-            return Err(ServiceError::message(format!(
-                "session '{key}' cannot be archived"
-            )));
-        }
         if p.parent_session_key.is_some()
             && entry.prompt_profile == chelix_sessions::metadata::PromptProfile::Subagent
         {
@@ -476,27 +464,51 @@ impl LiveSessionService {
             .patch_session(&key, metadata_patch)
             .await
             .map_err(ServiceError::message)?;
-        let model = entry.model().map(str::to_string);
-        let reasoning_effort = entry
-            .reasoning_effort()
-            .map(|effort| effort.as_str().to_string());
-        Ok(serde_json::json!({
-            "id": entry.id,
-            "key": entry.key,
-            "label": entry.label,
-            "model": model,
-            "reasoningEffort": reasoning_effort,
-            "archived": entry.archived,
-            "worktree_branch": entry.worktree_branch,
-            "parentSessionKey": entry.parent_session_key,
-            "forkPoint": entry.fork_point,
-            "agent_id": entry.agent_id,
-            "agentId": entry.agent_id,
-            "toolPermissionMode": entry.tool_permission_mode,
-            "toolPermissionType": entry.tool_permission_type,
-            "version": entry.version,
-        }))
+        Ok(session_patch_response(&entry))
     }
+
+    pub(super) async fn archive_one(&self, key: &str) -> ServiceResult {
+        let entry = self
+            .metadata
+            .patch_session(key, chelix_sessions::metadata::SessionMetadataPatch {
+                archived: Some(true),
+                ..Default::default()
+            })
+            .await
+            .map_err(ServiceError::message)?;
+        if entry
+            .sandbox_owner_key
+            .as_deref()
+            .is_none_or(|owner| owner == entry.key)
+        {
+            self.sandbox_router
+                .stop_owned_sandbox_background(&entry.key);
+        }
+        Ok(session_patch_response(&entry))
+    }
+}
+
+fn session_patch_response(entry: &chelix_sessions::metadata::SessionEntry) -> Value {
+    let model = entry.model().map(str::to_string);
+    let reasoning_effort = entry
+        .reasoning_effort()
+        .map(|effort| effort.as_str().to_string());
+    serde_json::json!({
+        "id": entry.id,
+        "key": entry.key,
+        "label": entry.label,
+        "model": model,
+        "reasoningEffort": reasoning_effort,
+        "archived": entry.archived,
+        "worktree_branch": entry.worktree_branch,
+        "parentSessionKey": entry.parent_session_key,
+        "forkPoint": entry.fork_point,
+        "agent_id": entry.agent_id,
+        "agentId": entry.agent_id,
+        "toolPermissionMode": entry.tool_permission_mode,
+        "toolPermissionType": entry.tool_permission_type,
+        "version": entry.version,
+    })
 }
 
 #[async_trait]

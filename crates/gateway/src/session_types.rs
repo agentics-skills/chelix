@@ -18,6 +18,8 @@ use {
 /// Params for `sessions.patch`.
 ///
 /// All fields except `key` are optional — only provided fields are updated.
+/// A request with `archived: true` contains only `key` and `archived`.
+/// Any other field is rejected.
 ///
 /// Fields with meaningful `null` values use `Option<Option<T>>`:
 /// - outer `None` → field was absent from the request (no-op)

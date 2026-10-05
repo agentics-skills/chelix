@@ -332,6 +332,15 @@ impl SandboxRouter {
         Ok(())
     }
 
+    /// Stop an owner container in the background.
+    pub fn stop_owned_sandbox_background(&self, owner_key: &str) {
+        let backend = Arc::clone(&self.backend);
+        let id = self.sandbox_id_for(owner_key);
+        drop(tokio::spawn(async move {
+            backend.stop(&id).await;
+        }));
+    }
+
     /// Prepare the sandbox for command execution.
     pub async fn prepare_command_session(
         &self,

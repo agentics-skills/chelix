@@ -689,4 +689,16 @@ impl Sandbox for AppleContainerSandbox {
         unmark_zombie(&name);
         Ok(())
     }
+
+    async fn stop(&self, id: &SandboxId) {
+        let name = self.container_name(id);
+        let _ = tokio::process::Command::new("container")
+            .args(["stop", name.as_str()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
+        self.tools_endpoints.write().await.remove(&name);
+    }
 }
