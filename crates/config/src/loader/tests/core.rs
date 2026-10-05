@@ -138,30 +138,6 @@ fn apply_env_overrides_mcp_request_timeout() {
 }
 
 #[test]
-fn apply_env_overrides_providers_offered_array() {
-    let vars = vec![(
-        "CHELIX_PROVIDERS__OFFERED".into(),
-        "[\"openai\",\"openrouter\"]".into(),
-    )];
-    let config = apply_env_overrides_with(config_with_sandbox_retention(), vars.into_iter());
-    assert_eq!(config.providers.offered, vec!["openai", "openrouter"]);
-}
-
-#[test]
-fn apply_env_overrides_rejects_unknown_offered_provider() {
-    let vars = vec![(
-        "CHELIX_PROVIDERS__OFFERED".into(),
-        "[\"openai\",\"voice-openai\"]".into(),
-    )];
-    let error = apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-        .expect_err("unknown offered provider must fail");
-    assert!(
-        error.to_string().contains("providers.offered[1]"),
-        "error should identify the unsupported provider: {error}"
-    );
-}
-
-#[test]
 fn apply_env_overrides_rejects_zero_context7_request_timeout() {
     let vars = vec![(
         "CHELIX_TOOLS__CONTEXT7__REQUEST_TIMEOUT_SECS".into(),
@@ -209,20 +185,6 @@ fn apply_env_overrides_rejects_zero_linkup_request_timeout() {
         error.to_string(),
         "invalid environment overrides: tools.linkup.request_timeout_secs must be at least 1"
     );
-}
-
-#[test]
-fn apply_env_overrides_rejects_noncanonical_offered_provider_names() {
-    for name in ["voice-openai", "offered", "bad_name"] {
-        let vars = vec![("CHELIX_PROVIDERS__OFFERED".into(), format!("[\"{name}\"]"))];
-        let error =
-            apply_env_overrides_with_options(ChelixConfig::default(), vars.into_iter(), true)
-                .expect_err("noncanonical offered provider must fail");
-        assert!(
-            error.to_string().contains("providers.offered[0]"),
-            "error should identify noncanonical provider {name:?}: {error}"
-        );
-    }
 }
 
 #[test]
@@ -283,30 +245,19 @@ fn parse_config_rejects_noncanonical_offered_provider_names() {
 }
 
 #[test]
-fn apply_env_overrides_providers_offered_empty_array() {
-    let vars = vec![("CHELIX_PROVIDERS__OFFERED".into(), "[]".into())];
-    let mut base = config_with_sandbox_retention();
-    base.providers.offered = vec!["openai".into()];
-    let config = apply_env_overrides_with(base, vars.into_iter());
-    assert!(
-        config.providers.offered.is_empty(),
-        "empty JSON array env override should clear providers.offered"
-    );
-}
-
-#[test]
 fn layered_candidate_validates_sandbox_retention_and_applies_env_overrides() {
     let raw = "[providers]\noffered = [\"deepinfra\"]\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n";
     let direct = toml::from_str::<ChelixConfig>(raw).expect("raw candidate should parse");
-    let layered =
-        load_layered_config_toml_source(raw, std::path::Path::new("chelix.toml"), true, vec![(
-            "CHELIX_PROVIDERS__OFFERED".into(),
-            "[\"openai\"]".into(),
-        )])
-        .expect("layered candidate should load");
+    let layered = load_layered_config_toml_source(
+        raw,
+        std::path::Path::new("chelix.toml"),
+        true,
+        std::iter::empty(),
+    )
+    .expect("layered candidate should load");
 
     assert_eq!(direct.providers.offered, vec!["deepinfra"]);
-    assert_eq!(layered.providers.offered, vec!["openai"]);
+    assert_eq!(layered.providers.offered, vec!["deepinfra"]);
     assert_eq!(layered.sandbox.archived_session_retention_days, Some(3));
 
     let path = std::path::Path::new("chelix.toml");
@@ -501,45 +452,28 @@ fn write_default_config_writes_template_to_requested_path() {
     let path = dir.path().join("nested").join("chelix.toml");
     let mut config = ChelixConfig::default();
     config.server.port = 23456;
+    config.tools.execute_command.terminal_size = Some(crate::schema::TerminalSizeConfig {
+        cols: 115,
+        rows: 58,
+    });
+    config.sandbox.archived_session_retention_days = Some(7);
 
     write_default_config(&path, &config).expect("write default config");
 
     let raw = std::fs::read_to_string(&path).expect("read generated config");
     assert!(
         raw.contains("port = 23456"),
-        "generated template should include selected server port"
+        "generated config should include selected server port"
     );
-    // The override-only template has most settings commented out.
-    // Port, terminal_size, and sandbox retention are the active values.
-    assert!(
-        raw.contains("# prompt_memory_mode"),
-        "generated template should document prompt memory mode as commented example"
-    );
-    assert!(
-        raw.contains("YOUR overrides only"),
-        "generated template should explain it is override-only"
-    );
-    assert!(
-        raw.contains("# [[sandbox.mounts]]")
-            && raw.contains("# host = \"/srv/reference\"")
-            && raw.contains("# guest = \"/mnt/reference\"")
-            && raw.contains("# mode = \"ro\""),
-        "generated template should document declarative sandbox mounts"
-    );
-    assert!(
-        !raw.contains("workspace_mount"),
-        "generated template must not document the removed workspace_mount setting"
-    );
-
-    assert!(!raw.contains("\n[agents.main]"));
-    assert!(!raw.contains("\n[agents.coordinator]"));
+    assert!(raw.contains("terminal_size = \"115x58\""));
+    assert!(raw.contains("archived_session_retention_days = 7"));
 
     let parsed: ChelixConfig = parse_config(&raw, &path).expect("parse generated config");
     assert_eq!(
         parsed.server.port, 23456,
         "parsed config should have the correct port"
     );
-    assert!(parsed.sandbox.archived_session_retention_days.is_some());
+    assert_eq!(parsed.sandbox.archived_session_retention_days, Some(7));
     assert!(matches!(
         parsed.agents.resolve_state(),
         Ok(crate::AgentsConfigState::Setup)
@@ -574,7 +508,7 @@ fn save_config_to_path_preserves_comment_blocks() {
 
     let saved = std::fs::read_to_string(&path).expect("read saved config");
     // Header comments from the template must survive the merge.
-    assert!(saved.contains("# Chelix User Configuration"));
+    assert!(saved.contains("# Chelix Configuration"));
     assert!(saved.contains("disabled = true"));
     assert!(saved.contains("http_request_logs = true"));
 }

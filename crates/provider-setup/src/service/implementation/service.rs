@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use secrecy::{ExposeSecret, Secret};
+use secrecy::Secret;
 
 use {async_trait::async_trait, serde_json::Value, tokio::sync::RwLock};
 
@@ -17,13 +17,7 @@ use {
 };
 
 pub use super::support::ErrorParser;
-use {
-    super::support::default_error_parser,
-    crate::{
-        config_helpers::{config_with_saved_keys, set_provider_enabled_in_config},
-        key_store::KeyStore,
-    },
-};
+use super::support::default_error_parser;
 
 // ── LiveProviderSetupService ───────────────────────────────────────────────
 
@@ -37,7 +31,6 @@ pub struct LiveProviderSetupService {
     pub(crate) registry: Arc<RwLock<ProviderRegistry>>,
     pub(crate) config: Arc<Mutex<ProvidersConfig>>,
     pub(crate) config_persistence: ProviderConfigPersistence,
-    pub(crate) key_store: KeyStore,
     /// Shared priority models list from `LiveModelService`. Updated when the
     /// ordered model selection changes so the dropdown reflects that order.
     pub(crate) priority_models: Option<Arc<RwLock<Vec<String>>>>,
@@ -59,7 +52,6 @@ impl LiveProviderSetupService {
             registry,
             config: Arc::new(Mutex::new(config)),
             config_persistence,
-            key_store: KeyStore::new(),
             priority_models: None,
             agents_config: None,
             env_overrides: HashMap::new(),
@@ -96,22 +88,8 @@ impl LiveProviderSetupService {
             .clone()
     }
 
-    pub(crate) fn set_provider_enabled(&self, provider: &str, enabled: bool) -> ServiceResult<()> {
-        if self.config_persistence == ProviderConfigPersistence::Filesystem {
-            set_provider_enabled_in_config(provider, enabled)?;
-        }
-        let mut cfg = self.config.lock().unwrap_or_else(|e| e.into_inner());
-        cfg.providers
-            .entry(provider.to_string())
-            .or_default()
-            .enabled = enabled;
-        Ok(())
-    }
-
-    /// Build a ProvidersConfig that includes saved keys for registry rebuild.
     pub(crate) fn effective_config(&self) -> ServiceResult<ProvidersConfig> {
-        let base = self.config_snapshot();
-        config_with_saved_keys(&base, &self.key_store)
+        Ok(self.config_snapshot())
     }
 
     pub(crate) fn prospective_config_with_saved_update(
@@ -121,26 +99,15 @@ impl LiveProviderSetupService {
         base_url: Option<&str>,
         enabled: Option<bool>,
     ) -> ServiceResult<ProvidersConfig> {
-        let base = self.config_snapshot();
-        let configured = base.get(provider);
-        let mut candidate = config_with_saved_keys(&base, &self.key_store)?;
+        let mut candidate = self.config_snapshot();
         let entry = candidate.providers.entry(provider.to_string()).or_default();
-
         if let Some(enabled) = enabled {
             entry.enabled = enabled;
         }
-        if configured
-            .and_then(|value| value.api_key.as_ref())
-            .is_none_or(|value| value.expose_secret().is_empty())
-            && let Some(api_key) = api_key
-        {
+        if let Some(api_key) = api_key {
             entry.api_key = Some(Secret::new(api_key.to_string()));
         }
-        if configured
-            .and_then(|value| value.base_url.as_ref())
-            .is_none()
-            && let Some(base_url) = base_url
-        {
+        if let Some(base_url) = base_url {
             entry.base_url = (!base_url.is_empty()).then(|| base_url.to_string());
         }
         Ok(candidate)
@@ -150,11 +117,10 @@ impl LiveProviderSetupService {
         &self,
         provider: &str,
     ) -> ServiceResult<ProvidersConfig> {
-        let base = self.config_snapshot();
-        let mut candidate = config_with_saved_keys(&base, &self.key_store)?;
-        let mut entry = base.get(provider).cloned().unwrap_or_default();
+        let mut candidate = self.config_snapshot();
+        let entry = candidate.providers.entry(provider.to_string()).or_default();
+        entry.api_key = None;
         entry.enabled = false;
-        candidate.providers.insert(provider.to_string(), entry);
         Ok(candidate)
     }
 

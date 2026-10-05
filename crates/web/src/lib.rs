@@ -247,10 +247,6 @@ fn build_api_routes() -> Router<AppState> {
             get(chelix_httpd::tools_routes::config_template),
         )
         .route(
-            "/api/config/provenance",
-            get(chelix_httpd::tools_routes::config_provenance),
-        )
-        .route(
             "/api/restart",
             axum::routing::post(chelix_httpd::tools_routes::restart),
         )

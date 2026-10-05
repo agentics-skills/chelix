@@ -826,7 +826,7 @@ when the policy returns a reasoning request.
 
 | Key        | Type                   | Default | Description                                                                |
 | ---------- | ---------------------- | ------- | -------------------------------------------------------------------------- |
-| `api_key`  | optional secret string | `null`  | API key (from `OPENAI_API_KEY` env or config)                              |
+| `api_key`  | optional secret string | `null`  | API key                                                                    |
 | `base_url` | optional string        | `null`  | Override the OpenAI TTS endpoint for compatible local servers              |
 | `voice`    | optional string        | `null`  | Voice to use for TTS (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`) |
 | `model`    | optional string        | `null`  | Model to use for TTS (`tts-1`, `tts-1-hd`)                                 |
@@ -896,7 +896,7 @@ when the policy returns a reasoning request.
 
 | Key        | Type                   | Default | Description                                                |
 | ---------- | ---------------------- | ------- | ---------------------------------------------------------- |
-| `api_key`  | optional secret string | `null`  | API key (from `OPENAI_API_KEY` env or config)              |
+| `api_key`  | optional secret string | `null`  | API key                                                    |
 | `base_url` | optional string        | `null`  | Override the Whisper endpoint for compatible local servers |
 | `model`    | optional string        | `null`  | Model to use (`whisper-1`)                                 |
 | `language` | optional string        | `null`  | Language hint (ISO 639-1 code)                             |

@@ -7,10 +7,7 @@ use {
     serde_json::Value,
 };
 
-use {
-    super::service::{LiveProviderSetupService, ProviderConfigPersistence},
-    crate::config_helpers::config_with_saved_keys,
-};
+use super::service::{LiveProviderSetupService, ProviderConfigPersistence};
 
 struct ModelWrite {
     provider: String,
@@ -62,7 +59,6 @@ impl LiveProviderSetupService {
         let mut registry = self.registry.write().await;
         let models = if self.config_persistence == ProviderConfigPersistence::Filesystem {
             let base = self.config_snapshot();
-            let key_store = self.key_store.clone();
             let env_overrides = self.env_overrides.clone();
             let provider_name = write.provider.clone();
             chelix_config::update_provider_model_toml(
@@ -78,10 +74,9 @@ impl LiveProviderSetupService {
                         .entry(provider_name.clone())
                         .or_default()
                         .models = file_models.clone();
-                    let merged = config_with_saved_keys(&candidate_config, &key_store)
-                        .map_err(|error| chelix_config::Error::message(error.to_string()))?;
-                    let candidate = ProviderRegistry::from_config(&merged, &env_overrides)
-                        .map_err(|error| chelix_config::Error::message(error.to_string()))?;
+                    let candidate =
+                        ProviderRegistry::from_config(&candidate_config, &env_overrides)
+                            .map_err(|error| chelix_config::Error::message(error.to_string()))?;
                     let blocked = blocked_agents(&candidate, &agents);
                     if !blocked.is_empty() {
                         return Err(chelix_config::Error::message(format!(
@@ -96,8 +91,7 @@ impl LiveProviderSetupService {
         } else {
             let mut base = self.config_snapshot();
             mutate_provider_models(&mut base, &write)?;
-            let merged = config_with_saved_keys(&base, &self.key_store)?;
-            let candidate = self.build_registry(&merged)?;
+            let candidate = self.build_registry(&base)?;
             let blocked = blocked_agents(&candidate, &agents);
             if !blocked.is_empty() {
                 return Err(ServiceError::message(format!(
@@ -114,8 +108,7 @@ impl LiveProviderSetupService {
             .entry(write.provider.clone())
             .or_default()
             .models = models;
-        let merged = config_with_saved_keys(&base, &self.key_store)?;
-        let candidate = self.build_registry(&merged)?;
+        let candidate = self.build_registry(&base)?;
         *self
             .config
             .lock()
@@ -129,13 +122,28 @@ impl LiveProviderSetupService {
                 .retain(|priority_id| priority_id != model_id);
         }
         *registry = candidate;
-        let mut removed = Vec::new();
-        if let Some(model_id) = removed_model_id {
-            removed.push(model_id);
-        }
+        let renamed = match (
+            write.metadata.is_some(),
+            write.previous_model_id.as_deref(),
+            removed_model_id.as_deref(),
+        ) {
+            (true, Some(previous), Some(from)) if previous != write.model_id => {
+                vec![serde_json::json!({
+                    "from": from,
+                    "to": canonical_model_id(&write.provider, &write.model_id),
+                })]
+            },
+            _ => Vec::new(),
+        };
+        let removed = if renamed.is_empty() {
+            removed_model_id.into_iter().collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         Ok(serde_json::json!({
             "ok": true,
             "removedModelIds": removed,
+            "renamedModelIds": renamed,
         }))
     }
 

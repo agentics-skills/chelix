@@ -1,35 +1,23 @@
 //! Default configuration template with all options documented.
 //!
-//! This template is used when creating a new config file. It contains only
-//! user overrides — built-in defaults live in `defaults.toml` (Chelix-managed)
-//! and should not be duplicated here.
-//!
-//! Uncommenting a built-in default here creates a local override that shadows
-//! future built-in updates on upgrade.
+//! This template documents `chelix.toml`. Settings are read from and written to
+//! that file.
 
 /// Generate the default config template with a specific port.
 ///
-/// The template is override-only: the installation-specific port,
+/// Documents the config file. The installation-specific port,
 /// `tools.execute_command.terminal_size`, and
-/// `sandbox.archived_session_retention_days` are active values. All other settings
-/// are commented out with documentation so users can see what's available
-/// without accidentally freezing defaults.
+/// `sandbox.archived_session_retention_days` are active values.
 pub fn default_config_template(port: u16) -> String {
     format!(
-        r##"# Chelix User Configuration
+        r##"# Chelix Configuration
 # =========================
-# This file contains YOUR overrides only. Built-in defaults are in
-# defaults.toml (Chelix-managed, regenerated on every startup).
+# Settings are stored in this file.
 #
-# Uncomment and modify settings to override the built-in defaults.
+# Uncomment and modify settings you want to change.
 # Changes require a restart to take effect.
 #
-# ⚠️  Uncommenting a built-in default here creates a local override that
-#     shadows future built-in improvements on upgrade. Only uncomment
-#     settings you intentionally want to control.
-#
-# Environment variable substitution is supported: ${{ENV_VAR}}
-# Example: api_key = "${{LLM_API_KEY}}"
+# Environment variable substitution is supported for non-provider settings: ${{ENV_VAR}}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SERVER
@@ -101,7 +89,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Each provider supports:
 #   enabled   - Whether to use this provider (default: true)
-#   api_key   - API key (stored in provider_keys.json when set from the UI)
+#   api_key   - API key stored in this file
 #   base_url  - Override API endpoint
 #   models.<model_id> - Ordered complete model metadata record when present
 #   stream_transport - Streaming transport: "sse", "websocket", or "auto" (default: "sse")
@@ -111,7 +99,7 @@ port = {port}                           # Port number (auto-generated for this i
 #
 # Models are added, edited, and deleted in onboarding and in Settings → Providers.
 # Those actions write [providers.<name>.models."<raw-model-id>"] tables here.
-# API keys stay in provider_keys.json and are not written into model tables.
+# API keys are stored on the provider entry, not inside model tables.
 # Declare every model only as [providers.<name>.models."<raw-model-id>"]
 # with a complete metadata record. Tables are evaluated in declaration order.
 # A provider may declare no models regardless of status. Every present model must
@@ -241,7 +229,7 @@ archived_session_retention_days = 7  # Days from owner metadata updated_at; requ
 # home_persistence = "shared"       # "off" | "session" | "shared"
 # shared_home_dir = "sandbox/home"  # Directory for shared /home/sandbox persistence (relative to data_dir)
 # gpus = "all"                      # GPU passthrough: "all", "device=0", "device=0,1"
-# packages = []                     # Packages installed in sandbox containers (default list lives in defaults.toml)
+# packages = []                     # Packages installed in sandbox containers
 
 # [sandbox.resource_limits]
 # memory_limit = "512M"             # Memory limit (e.g., "512M", "1G")
@@ -548,7 +536,7 @@ terminal_size = "115x58"             # 115 chars x 58
 # [channels]
 # offered = ["telegram", "whatsapp", "matrix", "signal"]
 
-# See docs or defaults.toml for full channel configuration examples
+# See the docs for full channel configuration examples
 # (WhatsApp, Telegram, Matrix, Signal).
 
 # ══════════════════════════════════════════════════════════════════════════════

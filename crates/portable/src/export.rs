@@ -26,21 +26,10 @@ impl Drop for TempFileGuard {
 }
 
 /// Options controlling what gets included in the export.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ExportOptions {
-    /// Include provider API keys (provider_keys.json). Default: true.
-    pub include_provider_keys: bool,
     /// Include session media (audio, images). Default: false.
     pub include_media: bool,
-}
-
-impl Default for ExportOptions {
-    fn default() -> Self {
-        Self {
-            include_provider_keys: true,
-            include_media: false,
-        }
-    }
 }
 
 /// Auth tables to clear from the exported chelix.db snapshot.
@@ -83,16 +72,6 @@ pub async fn export_archive<W: Write>(
         &prefix,
         &mut inventory,
     )?;
-    if opts.include_provider_keys {
-        add_config_file(
-            &mut builder,
-            config_dir,
-            "provider_keys.json",
-            &prefix,
-            &mut inventory,
-        )?;
-    }
-
     // ── Workspace markdown ───────────────────────────────────────────
     let workspace_files = [
         "SOUL.md",

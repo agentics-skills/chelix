@@ -1,5 +1,5 @@
 use {
-    super::config_io::{CONFIG_SAVE_LOCK, atomic_write, nested_table},
+    super::config_io::{nested_table, write_config_file},
     crate::loader::find_or_default_config_path,
 };
 
@@ -7,10 +7,10 @@ pub struct OpenAiCompatibleProviderTomlUpdate {
     pub name: String,
     pub previous_name: Option<String>,
     pub base_url: String,
+    pub api_key: Option<String>,
     pub wire_api: String,
     pub tool_mode: String,
     pub enabled: bool,
-    pub reject_when_toml_has_api_key: bool,
     pub sync_offered: bool,
     pub write_base_url: bool,
 }
@@ -45,11 +45,7 @@ pub fn delete_openai_compatible_provider_toml(name: &str) -> crate::Result<Vec<S
 fn with_provider_document<T>(
     edit: impl FnOnce(&mut toml_edit::Table) -> crate::Result<T>,
 ) -> crate::Result<T> {
-    let mut guard = CONFIG_SAVE_LOCK
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
     let path = find_or_default_config_path();
-    guard.target_path = Some(path.clone());
     let is_toml = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -77,7 +73,7 @@ fn with_provider_document<T>(
         })?
     };
     let result = edit(document.as_table_mut())?;
-    atomic_write(&path, document.to_string()).map_err(|source| {
+    write_config_file(&path, document.to_string()).map_err(|source| {
         crate::Error::external(format!("failed to write {}", path.display()), source)
     })?;
     Ok(result)
@@ -104,11 +100,6 @@ fn apply_upsert(
                 "provider '{previous}' is not configured"
             )));
         };
-        if update.reject_when_toml_has_api_key && item_has_api_key(&item) {
-            return Err(crate::Error::message(format!(
-                "provider '{previous}' already has an api_key in the service configuration"
-            )));
-        }
         let renamed = renamed_ids(previous, &update.name, &item);
         providers.insert(&update.name, item);
         if update.sync_offered {
@@ -139,13 +130,10 @@ fn apply_upsert(
         append_offered_name(providers, &update.name);
     }
     let table = nested_table(providers, &update.name, false)?;
-    if update.reject_when_toml_has_api_key && api_key_present(table) {
-        return Err(crate::Error::message(format!(
-            "provider '{}' already has an api_key in the service configuration",
-            update.name
-        )));
-    }
     table.insert("enabled", toml_edit::value(update.enabled));
+    if let Some(api_key) = update.api_key.as_deref() {
+        table.insert("api_key", toml_edit::value(api_key));
+    }
     if update.write_base_url {
         table.insert("base_url", toml_edit::value(&update.base_url));
     }
@@ -158,19 +146,131 @@ fn apply_upsert(
     })
 }
 
+pub fn write_provider_api_key(
+    name: &str,
+    api_key: &str,
+    base_url: Option<&str>,
+    write_base_url: bool,
+) -> crate::Result<()> {
+    with_provider_document(|root| {
+        let providers = providers_table(root)?;
+        let table = nested_table(providers, name, false)?;
+        table.insert("api_key", toml_edit::value(api_key));
+        table.insert("enabled", toml_edit::value(true));
+        if write_base_url {
+            match base_url.map(str::trim).filter(|url| !url.is_empty()) {
+                Some(url) => {
+                    table.insert("base_url", toml_edit::value(url));
+                },
+                None => {
+                    table.remove("base_url");
+                },
+            }
+        }
+        Ok(())
+    })
+}
+
+pub fn set_provider_enabled_flag(name: &str, enabled: bool) -> crate::Result<()> {
+    with_provider_document(|root| {
+        let providers = providers_table(root)?;
+        let table = nested_table(providers, name, false)?;
+        table.insert("enabled", toml_edit::value(enabled));
+        Ok(())
+    })
+}
+
+pub fn clear_provider_api_key(name: &str) -> crate::Result<()> {
+    with_provider_document(|root| {
+        let providers = providers_table(root)?;
+        if !providers.contains_key(name) {
+            return Err(crate::Error::message(format!(
+                "provider '{name}' is not configured"
+            )));
+        }
+        let table = nested_table(providers, name, false)?;
+        table.remove("api_key");
+        table.insert("enabled", toml_edit::value(false));
+        Ok(())
+    })
+}
+
+pub fn set_model_enabled_in_toml(
+    provider: &str,
+    model_id: &str,
+    enabled: bool,
+) -> crate::Result<()> {
+    with_provider_document(|root| {
+        let providers = providers_table(root)?;
+        let Some(provider_item) = providers.get_mut(provider) else {
+            return Err(crate::Error::message(format!(
+                "provider '{provider}' is not configured"
+            )));
+        };
+        let Some(provider_table) = provider_item.as_table_mut() else {
+            return Err(crate::Error::message(format!(
+                "providers.{provider} is not a table"
+            )));
+        };
+        let Some(models_item) = provider_table.get_mut("models") else {
+            return Err(crate::Error::message(format!(
+                "model '{model_id}' is not configured"
+            )));
+        };
+        let Some(models) = models_item.as_table_mut() else {
+            return Err(crate::Error::message(format!(
+                "providers.{provider}.models is not a table"
+            )));
+        };
+        let Some(model_item) = models.get_mut(model_id) else {
+            return Err(crate::Error::message(format!(
+                "model '{model_id}' is not configured"
+            )));
+        };
+        let Some(model) = model_item.as_table_mut() else {
+            return Err(crate::Error::message(format!(
+                "model '{model_id}' is not a table"
+            )));
+        };
+        model.insert("enabled", toml_edit::value(enabled));
+        Ok(())
+    })
+}
+
+pub fn set_config_strings(updates: &[(&[&str], Option<&str>)]) -> crate::Result<()> {
+    with_provider_document(|root| {
+        for (path, value) in updates {
+            set_string_path(root, path, *value)?;
+        }
+        Ok(())
+    })
+}
+
+fn set_string_path(
+    root: &mut toml_edit::Table,
+    path: &[&str],
+    value: Option<&str>,
+) -> crate::Result<()> {
+    let [head, rest @ ..] = path else {
+        return Err(crate::Error::message("config path is empty"));
+    };
+    if rest.is_empty() {
+        match value.map(str::trim).filter(|text| !text.is_empty()) {
+            Some(text) => {
+                root.insert(head, toml_edit::value(text));
+            },
+            None => {
+                root.remove(head);
+            },
+        }
+        return Ok(());
+    }
+    let child = nested_table(root, head, false)?;
+    set_string_path(child, rest, value)
+}
+
 fn providers_table(root: &mut toml_edit::Table) -> crate::Result<&mut toml_edit::Table> {
     nested_table(root, "providers", true)
-}
-
-fn api_key_present(table: &toml_edit::Table) -> bool {
-    match table.get("api_key") {
-        None => false,
-        Some(item) => item.as_str().is_none_or(|value| !value.trim().is_empty()),
-    }
-}
-
-fn item_has_api_key(item: &toml_edit::Item) -> bool {
-    item.as_table().is_some_and(api_key_present)
 }
 
 fn model_raw_ids(item: &toml_edit::Item) -> Vec<String> {

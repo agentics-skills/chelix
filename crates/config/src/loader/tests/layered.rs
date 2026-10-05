@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 use secrecy::ExposeSecret;
 
@@ -241,136 +241,6 @@ archived_session_retention_days = 3
 // ── Layered config tests ─────────────────────────────────────────────
 
 #[test]
-fn defaults_toml_is_generated_and_parseable() {
-    let content = crate::defaults::generate_defaults_toml().expect("generate defaults");
-    assert!(
-        content.contains("CHELIX-MANAGED DEFAULTS"),
-        "defaults.toml should contain ownership header"
-    );
-    let config: ChelixConfig =
-        toml::from_str(&content).expect("defaults.toml should parse as valid ChelixConfig");
-    // Verify it matches the built-in defaults.
-    assert_eq!(config.tools.agent_timeout_secs, 600);
-    assert!(config.agents.entries.is_empty());
-    assert!(config.tls.enabled);
-}
-
-#[test]
-fn defaults_toml_written_and_loaded_from_disk() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = crate::defaults::write_defaults_toml(dir.path()).expect("write defaults.toml");
-    assert!(path.exists());
-
-    let raw = std::fs::read_to_string(path).expect("read defaults.toml");
-    let config: ChelixConfig = toml::from_str(&raw).expect("parse defaults.toml");
-    assert_eq!(config.tools.agent_timeout_secs, 600);
-    assert!(config.tls.enabled);
-}
-
-#[test]
-fn merge_defaults_with_user_overrides() {
-    let defaults = crate::defaults::generate_defaults_toml().expect("generate defaults");
-    // User only overrides agent_timeout_secs.
-    let user = r#"
-[tools]
-agent_timeout_secs = 120
-"#;
-    let path = PathBuf::from("test.toml");
-    let config =
-        crate::defaults::merge_defaults_with_user_toml(&defaults, user, &path).expect("merge");
-
-    // User override applied.
-    assert_eq!(config.tools.agent_timeout_secs, 120);
-    // Defaults preserved.
-    assert!(config.agents.entries.is_empty());
-    assert!(config.tls.enabled);
-    assert!(!config.auth.disabled);
-}
-
-#[test]
-fn merge_preserves_user_only_keys() {
-    let defaults = crate::defaults::generate_defaults_toml().expect("generate defaults");
-    // User adds an agent entry that is not present in managed defaults.
-    let user = r#"
-[agents]
-default = "rex"
-
-[agents.rex]
-name = "Rex"
-model = "test::model"
-reasoning_effort = "off"
-max_tools_threshold = 128
-compaction_reminder = true
-prepend_sender_badge = true
-"#;
-    let path = PathBuf::from("test.toml");
-    let config =
-        crate::defaults::merge_defaults_with_user_toml(&defaults, user, &path).expect("merge");
-
-    assert_eq!(
-        config.agents.get("rex").map(|agent| agent.name.as_str()),
-        Some("Rex")
-    );
-    // Defaults still present.
-    assert!(config.tls.enabled);
-}
-
-#[test]
-fn save_user_config_does_not_materialize_defaults() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("chelix.toml");
-
-    // Start with a minimal user config.
-    std::fs::write(
-        &path,
-        "[server]\nport = 12345\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
-    )
-    .expect("write seed");
-
-    let raw = std::fs::read_to_string(&path).expect("read seed");
-    let mut config: ChelixConfig = parse_config(&raw, &path).expect("parse");
-    // Make one change.
-    config.auth.disabled = true;
-
-    save_user_config_to_path(&path, &config).expect("save user config");
-
-    let saved = std::fs::read_to_string(&path).expect("read saved");
-
-    // User override should be present.
-    assert!(
-        saved.contains("disabled = true"),
-        "user override should be saved"
-    );
-    // Built-in defaults should NOT be materialized.
-    assert!(
-        !saved.contains("agent_timeout_secs"),
-        "defaults should not be materialized into user config"
-    );
-    assert!(
-        !saved.contains("max_tools_threshold"),
-        "defaults should not be materialized into user config"
-    );
-    let reloaded = parse_config(&saved, &path).expect("reload explicit retention");
-    assert_eq!(reloaded.sandbox.archived_session_retention_days, Some(3));
-    config.sandbox.archived_session_retention_days = Some(0);
-    save_user_config_to_path(&path, &config).expect("save zero retention");
-    let saved_zero = std::fs::read_to_string(&path).expect("read zero retention");
-    let reloaded = parse_config(&saved_zero, &path).expect("reload zero retention");
-    assert_eq!(reloaded.sandbox.archived_session_retention_days, Some(0));
-    config.sandbox.archived_session_retention_days = None;
-    let error = save_user_config_to_path(&path, &config).expect_err("On requires retention");
-    assert!(
-        error
-            .to_string()
-            .contains("sandbox.archived_session_retention_days")
-    );
-    assert_eq!(
-        std::fs::read_to_string(&path).expect("read unchanged config"),
-        saved_zero
-    );
-}
-
-#[test]
 fn save_user_config_rejects_reserved_agent_ids_before_writing() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("chelix.toml");
@@ -428,11 +298,6 @@ fn update_config_preserves_override_boundary() {
     assert!(saved.contains("disabled = true"));
     assert!(saved.contains("port = 54321"));
 
-    // Defaults NOT materialized.
-    assert!(
-        !saved.contains("agent_timeout_secs"),
-        "update_config should not materialize defaults"
-    );
     let error = update_config_checked(|config| {
         config.sandbox.archived_session_retention_days = None;
         Ok(())
@@ -457,10 +322,6 @@ fn layered_load_user_override_wins_over_defaults() {
     let dir = tempfile::tempdir().expect("tempdir");
     let config_path = dir.path().join("chelix.toml");
 
-    // Write defaults.toml first.
-    crate::defaults::write_defaults_toml(dir.path()).expect("write defaults");
-
-    // Write user config with an override.
     std::fs::write(
         &config_path,
         "[server]\nport = 11111\n\n[tools]\nagent_timeout_secs = 999\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
@@ -482,8 +343,6 @@ fn layered_load_user_override_wins_over_defaults() {
 #[test]
 fn upgrade_adds_new_defaults_automatically() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
-    // Simulate: defaults.toml has new settings that weren't in the old version.
-    // User config only has port. After layered load, new defaults should appear.
     let dir = tempfile::tempdir().expect("tempdir");
     let config_path = dir.path().join("chelix.toml");
 
@@ -493,9 +352,6 @@ fn upgrade_adds_new_defaults_automatically() {
         "[server]\nport = 22222\n\n[tools.execute_command]\nterminal_size = \"115x58\"\n\n[sandbox]\narchived_session_retention_days = 3\n",
     )
     .expect("write user config");
-
-    // Write defaults.toml.
-    crate::defaults::write_defaults_toml(dir.path()).expect("write defaults");
 
     set_config_dir(dir.path().to_path_buf());
 
@@ -523,14 +379,9 @@ fn user_override_survives_defaults_refresh() {
 
     set_config_dir(dir.path().to_path_buf());
 
-    // First load (writes defaults.toml).
     let config1 = discover_and_load().expect("load config");
     assert_eq!(config1.tools.agent_timeout_secs, 42);
 
-    // Simulate upgrade by refreshing defaults.toml again.
-    crate::defaults::write_defaults_toml(dir.path()).expect("refresh defaults");
-
-    // Reload — user override must survive.
     let config2 = discover_and_load().expect("reload config");
     assert_eq!(
         config2.tools.agent_timeout_secs, 42,
@@ -774,7 +625,6 @@ fn discover_and_load_rejects_missing_config_without_creating_files() {
 
     assert!(error.to_string().contains("no config file found"));
     assert!(!dir.path().join("chelix.toml").exists());
-    assert!(!dir.path().join("defaults.toml").exists());
     clear_config_dir();
 }
 
@@ -842,56 +692,6 @@ fn update_config_rejects_invalid_existing_config_without_overwrite() {
 }
 
 #[test]
-fn strip_default_values_removes_matching_defaults() {
-    let effective = r#"
-[server]
-port = 18789
-bind = "127.0.0.1"
-
-[auth]
-disabled = true
-
-[tools]
-agent_timeout_secs = 600
-"#;
-    let defaults = r#"
-[server]
-port = 0
-bind = "127.0.0.1"
-
-[auth]
-disabled = false
-
-[tools]
-agent_timeout_secs = 600
-"#;
-
-    let mut eff_doc = effective.parse::<toml_edit::DocumentMut>().unwrap();
-    let def_doc = defaults.parse::<toml_edit::DocumentMut>().unwrap();
-
-    strip_default_values(eff_doc.as_table_mut(), def_doc.as_table());
-    let result = eff_doc.to_string();
-
-    // port differs → kept
-    assert!(
-        result.contains("port = 18789"),
-        "different value should be kept"
-    );
-    // bind matches default → stripped
-    assert!(!result.contains("bind"), "default value should be stripped");
-    // auth.disabled differs → kept
-    assert!(
-        result.contains("disabled = true"),
-        "different value should be kept"
-    );
-    // agent_timeout_secs matches default → stripped
-    assert!(
-        !result.contains("agent_timeout_secs"),
-        "default value should be stripped"
-    );
-}
-
-#[test]
 fn deleting_agent_does_not_restore_it_from_managed_defaults() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
@@ -938,7 +738,6 @@ archived_session_retention_days = 3
     })
     .expect("delete agent");
 
-    crate::defaults::write_defaults_toml(dir.path()).expect("refresh managed defaults");
     let saved = std::fs::read_to_string(&config_path).expect("read saved");
     assert!(!saved.contains("[agents.research]"));
     assert!(saved.contains("[agents.main]"));
@@ -949,68 +748,4 @@ archived_session_retention_days = 3
     assert!(!reloaded.agents.entries.contains_key("research"));
 
     clear_config_dir();
-}
-
-#[test]
-fn find_shadowed_defaults_detects_shadows() {
-    // User config that overrides a built-in default
-    let user = r#"
-[tools]
-agent_timeout_secs = 600
-
-[auth]
-disabled = false
-"#;
-    let shadowed = crate::defaults::find_shadowed_defaults(user);
-    assert!(
-        shadowed.contains(&"tools.agent_timeout_secs".to_string()),
-        "should detect tools.agent_timeout_secs as shadowed"
-    );
-    assert!(
-        shadowed.contains(&"auth.disabled".to_string()),
-        "should detect auth.disabled as shadowed"
-    );
-}
-
-#[test]
-fn find_shadowed_defaults_ignores_intentional_overrides() {
-    // User config where values DIFFER from defaults — these are intentional
-    // overrides, not frozen defaults, and should NOT be flagged.
-    let user = r#"
-[tools]
-agent_timeout_secs = 120
-
-[auth]
-disabled = true
-"#;
-    let shadowed = crate::defaults::find_shadowed_defaults(user);
-    assert!(
-        !shadowed.contains(&"tools.agent_timeout_secs".to_string()),
-        "intentional override (120 != default 600) should not be flagged as shadowed"
-    );
-    assert!(
-        !shadowed.contains(&"auth.disabled".to_string()),
-        "intentional override (true != default false) should not be flagged as shadowed"
-    );
-}
-
-#[test]
-fn find_shadowed_defaults_ignores_user_owned_agents() {
-    let user = r#"
-[agents]
-default = "rex"
-
-[agents.rex]
-name = "Rex"
-model = "test::model"
-reasoning_effort = "off"
-max_tools_threshold = 128
-compaction_reminder = true
-prepend_sender_badge = true
-"#;
-    let shadowed = crate::defaults::find_shadowed_defaults(user);
-    assert!(
-        shadowed.iter().all(|key| !key.starts_with("agents.rex")),
-        "user-owned agent fields must not be managed defaults: {shadowed:?}"
-    );
 }

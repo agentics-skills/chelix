@@ -413,7 +413,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Initialize config directory once for all service and mutation commands
-    // (write defaults.toml, compact, persist random port).
+    // (write chelix.toml on first run, persist random port).
     let config = chelix_config::initialize_config()?;
 
     match cli.command {
@@ -590,12 +590,6 @@ mod tests {
 
     #[test]
     fn config_mutations_remain_on_strict_startup_path() {
-        assert_eq!(
-            read_only_diagnostic(Some(&Commands::Config {
-                action: ConfigAction::Compact,
-            })),
-            None
-        );
         assert_eq!(read_only_diagnostic(Some(&Commands::Gateway)), None);
         assert_eq!(read_only_diagnostic(None), None);
     }

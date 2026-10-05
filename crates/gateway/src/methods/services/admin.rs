@@ -352,7 +352,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             "stt": {
                                 "enabled": config.voice.stt.enabled,
                                 "provider": config.voice.stt.provider,
-                                "whisper_configured": config.voice.stt.whisper.api_key.is_some(),
+                                "whisper_configured": crate::voice::whisper_key_configured(&config),
                                 "deepgram_configured": config.voice.stt.deepgram.api_key.is_some(),
                                 "google_configured": config.voice.stt.google.api_key.is_some(),
                                 "elevenlabs_configured": config.voice.stt.elevenlabs.api_key.is_some(),
@@ -368,9 +368,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             "voice.providers.all",
             Box::new(|_ctx| {
                 Box::pin(async move {
-                    let mut config =
+                    let config =
                         chelix_config::discover_and_load().map_err(ServiceError::message)?;
-                    crate::voice::merge_voice_keys(&mut config).map_err(ServiceError::message)?;
                     let providers = voice::detect_voice_providers(&config).await;
                     Ok(serde_json::json!(providers))
                 })
@@ -380,9 +379,8 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             "voice.elevenlabs.catalog",
             Box::new(|_ctx| {
                 Box::pin(async move {
-                    let mut config =
+                    let config =
                         chelix_config::discover_and_load().map_err(ServiceError::message)?;
-                    crate::voice::merge_voice_keys(&mut config).map_err(ServiceError::message)?;
                     Ok(voice::fetch_elevenlabs_catalog(&config).await)
                 })
             }),
@@ -603,28 +601,9 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             ErrorShape::new(error_codes::INVALID_REQUEST, "missing api_key")
                         })?;
 
-                    // Save the API key to the credential store (KeyStore) instead
-                    // of writing it to chelix.toml.  The key store lives in
-                    // provider_keys.json and benefits from vault encryption when
-                    // enabled.
-                    let store = crate::provider_setup::KeyStore::new();
-                    let store_key = crate::voice::voice_key_store_name(provider);
-                    store
-                        .save_config(&store_key, Some(api_key.to_string()), None)
-                        .map_err(|e| {
-                            ErrorShape::new(
-                                error_codes::UNAVAILABLE,
-                                format!("failed to save key: {e}"),
-                            )
-                        })?;
-
-                    // Update non-secret config (provider selection, enabled flags)
-                    // and clear any legacy TOML API key entries.
                     chelix_config::update_config(|cfg| {
                         match provider {
                             "elevenlabs" | "elevenlabs-stt" => {
-                                cfg.voice.tts.elevenlabs.api_key = None;
-                                cfg.voice.stt.elevenlabs.api_key = None;
                                 cfg.voice.tts.provider =
                                     Some(chelix_config::VoiceTtsProvider::ElevenLabs);
                                 cfg.voice.tts.enabled = true;
@@ -633,14 +612,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 cfg.voice.stt.enabled = true;
                             },
                             "openai" | "openai-tts" => {
-                                cfg.voice.tts.openai.api_key = None;
                                 cfg.voice.tts.provider =
                                     Some(chelix_config::VoiceTtsProvider::OpenAi);
                                 cfg.voice.tts.enabled = true;
                             },
                             "google-tts" | "google" => {
-                                cfg.voice.tts.google.api_key = None;
-                                cfg.voice.stt.google.api_key = None;
                                 cfg.voice.tts.provider =
                                     Some(chelix_config::VoiceTtsProvider::Google);
                                 cfg.voice.tts.enabled = true;
@@ -649,13 +625,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                                 cfg.voice.stt.enabled = true;
                             },
                             "whisper" => {
-                                cfg.voice.stt.whisper.api_key = None;
                                 cfg.voice.stt.provider =
                                     Some(chelix_config::VoiceSttProvider::Whisper);
                                 cfg.voice.stt.enabled = true;
                             },
                             "deepgram" => {
-                                cfg.voice.stt.deepgram.api_key = None;
                                 cfg.voice.stt.provider =
                                     Some(chelix_config::VoiceSttProvider::Deepgram);
                                 cfg.voice.stt.enabled = true;
@@ -667,6 +641,28 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     })
                     .map_err(|e| {
                         ErrorShape::new(error_codes::UNAVAILABLE, format!("failed to save: {}", e))
+                    })?;
+                    let key_updates: &[(&[&str], Option<&str>)] = match provider {
+                        "elevenlabs" | "elevenlabs-stt" => &[
+                            (&["voice", "tts", "elevenlabs", "api_key"], Some(api_key)),
+                            (&["voice", "stt", "elevenlabs", "api_key"], Some(api_key)),
+                        ],
+                        "openai" | "openai-tts" => {
+                            &[(&["voice", "tts", "openai", "api_key"], Some(api_key))]
+                        },
+                        "google" | "google-tts" => &[
+                            (&["voice", "tts", "google", "api_key"], Some(api_key)),
+                            (&["voice", "stt", "google", "api_key"], Some(api_key)),
+                        ],
+                        "whisper" => &[(&["voice", "stt", "whisper", "api_key"], Some(api_key))],
+                        "deepgram" => &[(&["voice", "stt", "deepgram", "api_key"], Some(api_key))],
+                        _ => &[],
+                    };
+                    chelix_config::set_config_strings(key_updates).map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::UNAVAILABLE,
+                            format!("failed to save key: {error}"),
+                        )
                     })?;
 
                     // Broadcast voice config change event
@@ -728,38 +724,27 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                             ErrorShape::new(error_codes::INVALID_REQUEST, "missing provider")
                         })?;
 
-                    // Remove the key from the credential store.
-                    let store = crate::provider_setup::KeyStore::new();
-                    let store_key = crate::voice::voice_key_store_name(provider);
-                    let _ = store.remove(&store_key);
-
-                    // Also clear any legacy TOML entries.
-                    chelix_config::update_config(|cfg| match provider {
-                        "elevenlabs" => {
-                            cfg.voice.tts.elevenlabs.api_key = None;
-                            cfg.voice.stt.elevenlabs.api_key = None;
-                        },
+                    let key_updates: &[(&[&str], Option<&str>)] = match provider {
+                        "elevenlabs" | "elevenlabs-stt" => &[
+                            (&["voice", "tts", "elevenlabs", "api_key"], None),
+                            (&["voice", "stt", "elevenlabs", "api_key"], None),
+                        ],
                         "openai" | "openai-tts" => {
-                            cfg.voice.tts.openai.api_key = None;
+                            &[(&["voice", "tts", "openai", "api_key"], None)]
                         },
-                        "whisper" => {
-                            cfg.voice.stt.whisper.api_key = None;
-                        },
-                        "deepgram" => {
-                            cfg.voice.stt.deepgram.api_key = None;
-                        },
-                        "google" | "google-tts" => {
-                            cfg.voice.tts.google.api_key = None;
-                            cfg.voice.stt.google.api_key = None;
-                        },
-                        "elevenlabs-stt" => {
-                            cfg.voice.tts.elevenlabs.api_key = None;
-                            cfg.voice.stt.elevenlabs.api_key = None;
-                        },
-                        _ => {},
-                    })
-                    .map_err(|e| {
-                        ErrorShape::new(error_codes::UNAVAILABLE, format!("failed to save: {}", e))
+                        "whisper" => &[(&["voice", "stt", "whisper", "api_key"], None)],
+                        "deepgram" => &[(&["voice", "stt", "deepgram", "api_key"], None)],
+                        "google" | "google-tts" => &[
+                            (&["voice", "tts", "google", "api_key"], None),
+                            (&["voice", "stt", "google", "api_key"], None),
+                        ],
+                        _ => &[],
+                    };
+                    chelix_config::set_config_strings(key_updates).map_err(|error| {
+                        ErrorShape::new(
+                            error_codes::UNAVAILABLE,
+                            format!("failed to save: {error}"),
+                        )
                     })?;
 
                     // Broadcast voice config change event

@@ -65,6 +65,7 @@ fn benchmark_model_metadata() -> chelix_common::ModelMetadata {
         reasoning_supported_efforts: Some(vec!["low".into()]),
         reasoning_summary: None,
         reasoning_include: None,
+        enabled: true,
     }
     .resolve()
     .expect("benchmark metadata must be complete")

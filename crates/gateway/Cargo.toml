@@ -159,7 +159,6 @@ telephony = ["dep:chelix-telephony"]
 tls = []
 vault = [
   "chelix-auth/vault",
-  "chelix-provider-setup/vault",
   "chelix-secret-store/vault",
   "dep:chelix-vault",
 ]

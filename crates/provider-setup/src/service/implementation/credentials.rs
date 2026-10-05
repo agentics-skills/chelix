@@ -46,41 +46,46 @@ impl LiveProviderSetupService {
         validate_provider_base_url(base_url).map_err(ServiceError::message)?;
 
         let normalized_base_url = base_url.map(String::from);
+        let api_key = api_key.ok_or_else(|| "missing 'apiKey' parameter".to_string())?;
 
-        let key_store_path = self.key_store.path();
         info!(
             provider = provider_name,
-            has_api_key = api_key.is_some(),
             has_base_url = normalized_base_url
                 .as_ref()
                 .is_some_and(|url| !url.trim().is_empty()),
-            key_store_path = %key_store_path.display(),
             "saving provider config"
         );
 
         let candidate = self.prospective_config_with_saved_update(
             provider_name,
-            api_key,
+            Some(api_key),
             normalized_base_url.as_deref(),
             Some(true),
         )?;
         let new_registry = self.build_registry(&candidate)?;
 
-        // Persist only after the complete replacement has been built successfully.
-        if let Err(error) = self.key_store.save_config(
-            provider_name,
-            api_key.map(String::from),
-            normalized_base_url,
-        ) {
+        if self.config_persistence == super::service::ProviderConfigPersistence::Filesystem
+            && let Err(error) = chelix_config::write_provider_api_key(
+                provider_name,
+                api_key,
+                normalized_base_url.as_deref(),
+                normalized_base_url.is_some(),
+            )
+        {
             warn!(
                 provider = provider_name,
-                key_store_path = %key_store_path.display(),
                 error = %error,
                 "failed to persist provider config"
             );
             return Err(ServiceError::message(error));
         }
-        self.set_provider_enabled(provider_name, true)?;
+        {
+            let mut cfg = self
+                .config
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            *cfg = candidate;
+        }
 
         let provider_summary = new_registry.provider_summary();
         let model_count = new_registry.list_models().len();
@@ -143,10 +148,16 @@ impl LiveProviderSetupService {
         {
             return Err(ServiceError::message(error.to_string()));
         }
-        self.key_store
-            .remove(provider_name)
-            .map_err(ServiceError::message)?;
-        self.set_provider_enabled(provider_name, false)?;
+        if self.config_persistence == super::service::ProviderConfigPersistence::Filesystem {
+            chelix_config::clear_provider_api_key(provider_name).map_err(ServiceError::message)?;
+        }
+        {
+            let mut cfg = self
+                .config
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            *cfg = candidate.clone();
+        }
 
         let mut reg = self.registry.write().await;
         *reg = new_registry;

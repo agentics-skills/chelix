@@ -260,14 +260,11 @@ The stored name is the name you enter. The form sets the endpoint, API key,
 `wire_api` (`chat-completions` or `responses`), `tool_mode`, and `enabled`.
 `stream_transport` is `sse`. A base URL ending in `/responses` is accepted only
 when `wire_api` is `responses`. A URL ending in `/chat/completions` is rejected.
-The key is stored in `provider_keys.json` and is not written into the model
+The key is stored in `chelix.toml` and is not written into the model
 tables. The same form edits an existing provider. Delete removes the
-TOML section and the saved key. Creating or editing appends the section name to a
-non-empty `providers.offered` only when `CHELIX_PROVIDERS__OFFERED` is not set.
-An empty `providers.offered` is left unchanged. If that variable is set and the
-effective list does not contain the section name, saving fails and tells you to
-add the name to `CHELIX_PROVIDERS__OFFERED`. Delete does not remove the offered
-entry. Model records are added from that provider's row.
+TOML section. Creating or editing appends the section name to a
+non-empty `providers.offered`. An empty `providers.offered` is left unchanged.
+Delete does not remove the offered entry. Model records are added from that provider's row.
 This flow does not discover models.
 
 ### Via Configuration Files
@@ -312,7 +309,7 @@ Each provider supports these options:
 | Option             | Default  | Description                                |
 | ------------------ | -------- | ------------------------------------------ |
 | `enabled`          | `true`   | Enable or disable the provider             |
-| `api_key`          | —        | API key (overrides env var)                |
+| `api_key`          | —        | API key stored in `chelix.toml`            |
 | `base_url`         | —        | Override API endpoint URL                  |
 | `models.<model_id>` | —       | Ordered model metadata table               |
 | `stream_transport` | `"sse"`  | `"sse"`, `"websocket"`, or `"auto"`        |
@@ -323,7 +320,7 @@ Each provider supports these options:
 
 1. Open **Settings** → **Providers** → **Add LLM** and choose **OpenAI Compatible**.
 2. Enter the endpoint and API key. Credentials saved through provider setup are
-   persisted in `~/.config/chelix/provider_keys.json` and are not stored in the
+   persisted in `chelix.toml` and are not stored in the
    model tables.
 3. Add, edit, or delete model records for that configured provider in onboarding
    or **Settings** → **Providers**. The model editor is shown only for a

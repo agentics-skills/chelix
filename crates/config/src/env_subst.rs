@@ -23,7 +23,7 @@ pub fn substitute_env_with_overrides(input: &str, overrides: &HashMap<String, St
 ///
 /// This is the implementation used by [`substitute_env`]; the separate
 /// signature makes it testable without mutating the process environment.
-fn substitute_env_with(input: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
+pub(crate) fn substitute_env_with(input: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
     if !input.contains("${") {
         return input.to_string();
     }

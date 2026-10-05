@@ -30,7 +30,7 @@ credentials to chat.
 
 1. Add an OpenAI Compatible provider in onboarding or **Settings** → **Providers**.
    Enter the endpoint and API key. Credentials stay in
-   `~/.config/chelix/provider_keys.json` and are not written into the model
+   `chelix.toml` and are not written into the model
    tables. Saving credentials does not require model records. The same values
    can be written as `[providers.<name>]` with `base_url` and `api_key`.
 
@@ -132,7 +132,7 @@ with `/model <N> <reasoning-effort>`. `/model providers` lists providers and
 | Path                                  | Contents                      |
 | ------------------------------------- | ----------------------------- |
 | `~/.config/chelix/chelix.toml`        | Configuration                 |
-| `~/.config/chelix/provider_keys.json` | API keys                      |
+| `~/.config/chelix/chelix.toml` | Configuration, including API keys |
 | `~/.chelix/`                          | Data (sessions, memory, logs) |
 
 ## Getting Help

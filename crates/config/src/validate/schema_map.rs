@@ -42,6 +42,7 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             ("reasoning_supported_efforts", Array(Box::new(Leaf))),
             ("reasoning_summary", Leaf),
             ("reasoning_include", Array(Box::new(Leaf))),
+            ("enabled", Leaf),
         ]))
     };
 

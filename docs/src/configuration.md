@@ -1,36 +1,14 @@
 # Configuration
 
-Chelix uses a **layered config model** with two files:
+Chelix stores settings in `chelix.toml`.
 
-| File            | Owner      | Purpose                                        |
-| --------------- | ---------- | ---------------------------------------------- |
-| `defaults.toml` | **Chelix** | Shipped defaults, regenerated on every startup |
-| `chelix.toml`   | **You**    | Your overrides only                            |
+On first run the file is created in `~/.config/chelix/` with the
+installation-specific port, `tools.execute_command.terminal_size`, and
+`sandbox.archived_session_retention_days`. Every other setting is part of the
+same file. Reads and writes use `chelix.toml`.
 
-On first run, both files are created in `~/.config/chelix/`. A new `chelix.toml`
-sets the installation-specific port and `tools.execute_command.terminal_size`.
-All other settings inherit from `defaults.toml` automatically.
-
-## Merge Order
-
-Settings are resolved in this order (later wins):
-
-1. **Built-in defaults** — compiled into Chelix (`ChelixConfig::default()`)
-2. **`defaults.toml`** — Chelix-managed, refreshed on every startup
-3. **`chelix.toml`** — your overrides (additive deep merge)
-4. **`CHELIX_*` environment variables** — highest precedence
-
-This means you only need to put values in `chelix.toml` that you intentionally
-want to differ from the shipped defaults. When Chelix upgrades and improves a
-default, your installation picks it up automatically — unless you've overridden
-that specific setting.
-
-```admonish tip title="Don't copy defaults into chelix.toml"
-Copying a built-in default into `chelix.toml` "freezes" it — future built-in
-improvements for that setting won't apply. The Settings UI shows **Built-in**,
-**Overridden**, and **Custom** badges so you can see which values are yours
-and which are inherited.
-```
+`CHELIX_*` environment variables can still override settings other than LLM
+providers, models, and their tokens.
 
 ## Configuration File Location
 
@@ -38,9 +16,6 @@ and which are inherited.
 | ----------- | --------------------------------------------- |
 | macOS/Linux | `~/.config/chelix/chelix.toml`                |
 | Custom      | Set via `--config-dir` or `CHELIX_CONFIG_DIR` |
-
-The `defaults.toml` file lives in the same directory. Do not edit it — your
-changes will be overwritten on the next startup.
 
 ## Strict Loading
 
@@ -61,14 +36,9 @@ not config paths.
 
 ## Checking Config
 
-`chelix config check` validates your override file (`chelix.toml`) against the
-known config schema. It also checks that Chelix-managed `defaults.toml` exists
-and can be parsed, but it does not treat `defaults.toml` as user-authored input.
+`chelix config check` validates `chelix.toml` against the known config schema.
 
-New config fields should be added to the Rust config schema and its `Default`
-implementation. Chelix regenerates `defaults.toml` from those built-in defaults
-on startup, while `chelix.toml` should contain only values you intentionally
-override.
+New config fields are added to the Rust config schema and written in `chelix.toml`.
 
 ## Agent-Readable Docs
 
@@ -142,9 +112,7 @@ agent and every agent must include both fields.
 ## LLM Providers
 
 Configure providers through the web UI or directly in `chelix.toml`. The API key
-is the section `api_key` or the value saved from the UI into `provider_keys.json`.
-An environment variable is used only when `api_key` explicitly substitutes it,
-for example `api_key = "${LLM_API_KEY}"`.
+is the section `api_key` in `chelix.toml`.
 
 ```toml
 [providers.example]
@@ -171,7 +139,7 @@ priority_models = ["example::muse-flash-0.9"]
 Model records are added, edited, and deleted in onboarding and in Settings →
 Providers. The UI writes `[providers.<name>.models."<raw-id>"]` tables in the
 user TOML file. A provider may have zero models, and saving provider credentials
-does not require model records. Credentials stay in `provider_keys.json`. Every
+does not require model records. Credentials stay in `chelix.toml`. Every
 model table that is present must be complete: a missing mandatory parameter, an
 invalid value, or an unknown model setting refuses service load.
 `reasoning_supported_efforts` must be a non-empty array without empty strings or
