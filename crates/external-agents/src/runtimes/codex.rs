@@ -93,6 +93,8 @@ struct CodexAppServerSession {
     status: ExternalAgentStatus,
     working_dir: Option<std::path::PathBuf>,
     stderr_lines: Arc<Mutex<Vec<String>>>,
+    cancel: tokio_util::sync::CancellationToken,
+    active_turn_id: Option<String>,
 }
 
 impl CodexAppServerSession {
@@ -175,13 +177,61 @@ impl CodexAppServerSession {
             status: ExternalAgentStatus::Idle,
             working_dir,
             stderr_lines,
+            cancel: tokio_util::sync::CancellationToken::new(),
+            active_turn_id: None,
         })
     }
 
     async fn consume_turn(&mut self) -> anyhow::Result<Vec<ExternalAgentEvent>> {
         let mut events = Vec::new();
+        let cancel = self.cancel.clone();
+        let mut interrupt_sent = false;
+        let mut interrupt_id = None;
         loop {
-            let line = tokio::time::timeout(self.timeout, self.lines.next_line()).await??;
+            let line = if interrupt_sent {
+                tokio::time::timeout(self.timeout, self.lines.next_line()).await
+            } else {
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => {
+                        let turn_id = self.active_turn_id.clone().ok_or_else(|| {
+                            anyhow::anyhow!("codex turn id is missing")
+                        })?;
+                        let request_id = self.next_request_id;
+                        self.next_request_id = self.next_request_id.saturating_add(1);
+                        let request = json!({
+                            "id": request_id,
+                            "method": "turn/interrupt",
+                            "params": { "threadId": self.thread_id, "turnId": turn_id }
+                        });
+                        match tokio::time::timeout(
+                            self.timeout,
+                            write_json_line(&mut self.stdin, &request),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {
+                                interrupt_sent = true;
+                                interrupt_id = Some(request_id);
+                                continue;
+                            },
+                            Ok(Err(error)) => {
+                                self.status = ExternalAgentStatus::Stopped;
+                                let _ = self.child.kill().await;
+                                let _ = self.child.wait().await;
+                                return Err(error);
+                            },
+                            Err(_) => {
+                                self.status = ExternalAgentStatus::Stopped;
+                                let _ = self.child.kill().await;
+                                let _ = self.child.wait().await;
+                                anyhow::bail!("codex turn/interrupt write timed out");
+                            },
+                        }
+                    }
+                    line = tokio::time::timeout(self.timeout, self.lines.next_line()) => line,
+                }
+            }??;
             let Some(line) = line else {
                 anyhow::bail!(
                     "codex app-server exited{}",
@@ -189,10 +239,19 @@ impl CodexAppServerSession {
                 )
             };
             let value: Value = serde_json::from_str(&line)?;
+            if interrupt_id.is_some_and(|id| value["id"].as_u64() == Some(id))
+                && value.get("error").is_some()
+            {
+                anyhow::bail!("codex turn/interrupt failed");
+            }
             if let Some(message) = extract_message(&value) {
                 events.push(ExternalAgentEvent::TextDelta(message));
             }
             match value["method"].as_str() {
+                Some("turn/completed" | "turn/cancelled") if interrupt_sent => {
+                    events.push(ExternalAgentEvent::TurnInterrupted);
+                    return Ok(events);
+                },
                 Some("turn/completed") => {
                     events.push(ExternalAgentEvent::Done {
                         usage: extract_usage(&value),
@@ -223,38 +282,67 @@ impl ExternalAgentSession for CodexAppServerSession {
         _context: Option<&ContextSnapshot>,
     ) -> anyhow::Result<Pin<Box<dyn Stream<Item = ExternalAgentEvent> + Send>>> {
         self.status = ExternalAgentStatus::Running;
+        if self.cancel.is_cancelled() {
+            self.status = ExternalAgentStatus::Idle;
+            return Ok(Box::pin(stream::iter(vec![
+                ExternalAgentEvent::TurnInterrupted,
+            ])));
+        }
         let request_id = self.next_request_id;
         self.next_request_id = self.next_request_id.saturating_add(1);
-        let result = async {
-            let mut params = json!({
-                "threadId": self.thread_id,
-                "input": [{"type": "text", "text": prompt}],
-                "title": "Chelix chat turn",
-            });
-            if let Some(working_dir) = &self.working_dir {
-                params["cwd"] = json!(working_dir);
+        let mut params = json!({
+            "threadId": self.thread_id,
+            "input": [{"type": "text", "text": prompt}],
+            "title": "Chelix chat turn",
+        });
+        if let Some(working_dir) = &self.working_dir {
+            params["cwd"] = json!(working_dir);
+        }
+        let cancel = self.cancel.clone();
+        let request = json!({
+            "id": request_id,
+            "method": "turn/start",
+            "params": params
+        });
+        let write_cancelled = tokio::select! {
+            biased;
+            () = cancel.cancelled() => true,
+            result = write_json_line(&mut self.stdin, &request) => {
+                result?;
+                false
             }
-            write_json_line(
-                &mut self.stdin,
-                &json!({
-                    "id": request_id,
-                    "method": "turn/start",
-                    "params": params
-                }),
-            )
-            .await?;
-            wait_for_response(
+        };
+        if write_cancelled {
+            self.status = ExternalAgentStatus::Stopped;
+            let _ = self.child.kill().await;
+            let _ = self.child.wait().await;
+            return Ok(Box::pin(stream::iter(vec![
+                ExternalAgentEvent::TurnInterrupted,
+            ])));
+        }
+        let started = tokio::select! {
+            biased;
+            () = cancel.cancelled() => None,
+            result = wait_for_response(
                 &mut self.child,
                 &mut self.lines,
                 request_id,
                 self.timeout,
                 &self.stderr_lines,
-            )
-            .await?;
-            self.consume_turn().await
+            ) => Some(result?),
+        };
+        let Some(started) = started else {
+            self.status = ExternalAgentStatus::Stopped;
+            let _ = self.child.kill().await;
+            let _ = self.child.wait().await;
+            return Ok(Box::pin(stream::iter(vec![
+                ExternalAgentEvent::TurnInterrupted,
+            ])));
+        };
+        if let Some(turn_id) = turn_id_from_response(&started) {
+            self.active_turn_id = Some(turn_id);
         }
-        .await;
-        match result {
+        match self.consume_turn().await {
             Ok(events) => {
                 self.status = ExternalAgentStatus::Idle;
                 Ok(Box::pin(stream::iter(events)))
@@ -280,6 +368,18 @@ impl ExternalAgentSession for CodexAppServerSession {
     fn status(&self) -> ExternalAgentStatus {
         self.status
     }
+
+    fn arm_turn_cancel(&mut self, token: &tokio_util::sync::CancellationToken) {
+        self.cancel = token.clone();
+    }
+}
+
+fn turn_id_from_response(value: &Value) -> Option<String> {
+    value["result"]["turn"]["id"]
+        .as_str()
+        .or_else(|| value["result"]["turnId"].as_str())
+        .or_else(|| value["result"]["id"].as_str())
+        .map(str::to_string)
 }
 
 async fn write_json_line(stdin: &mut ChildStdin, value: &Value) -> anyhow::Result<()> {
@@ -509,6 +609,195 @@ done
             matches!(second.first(), Some(ExternalAgentEvent::TextDelta(text)) if text == "second")
         );
         session.shutdown().await?;
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    fn codex_spec(script: &std::path::Path, timeout_secs: u64) -> ExternalAgentSpec {
+        let mut spec = ExternalAgentSpec::new(AgentTransportKind::Codex);
+        spec.binary = Some("/bin/sh".to_string());
+        spec.args = vec![script.to_string_lossy().to_string()];
+        spec.timeout_secs = Some(timeout_secs);
+        spec
+    }
+
+    #[tokio::test]
+    async fn cancel_before_turn_start_does_not_write_or_kill() -> anyhow::Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("chelix-codex-before-{unique}"));
+        fs::create_dir_all(&dir)?;
+        let log = dir.join("log");
+        let script = dir.join("fake.sh");
+        fs::write(
+            &script,
+            format!(
+                r#"#!/bin/sh
+log={}
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  case "$line" in
+    *'"id":1'*'"method":"initialize"'*) printf '%s\n' '{{"id":1,"result":{{}}}}' ;;
+    *'"method":"initialized"'*) ;;
+    *'"method":"thread/start"'*) printf '%s\n' '{{"id":2,"result":{{"thread":{{"id":"thread-1"}}}}}}' ;;
+  esac
+done
+"#,
+                log.display()
+            ),
+        )?;
+        let mut session = CodexTransport::new()
+            .start_session(&codex_spec(&script, 5))
+            .await?;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        cancel.cancel();
+        session.arm_turn_cancel(&cancel);
+        let events = session
+            .send_prompt("hello", None)
+            .await?
+            .collect::<Vec<_>>()
+            .await;
+        assert!(matches!(
+            events.first(),
+            Some(ExternalAgentEvent::TurnInterrupted)
+        ));
+        assert!(session.is_alive().await);
+        let written = fs::read_to_string(&log).unwrap_or_default();
+        assert!(!written.contains("turn/start"));
+        session.shutdown().await?;
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancel_during_turn_start_write_stops_the_process() -> anyhow::Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("chelix-codex-byte-{unique}"));
+        fs::create_dir_all(&dir)?;
+        let flag = dir.join("ready");
+        let script = dir.join("fake.sh");
+        fs::write(
+            &script,
+            format!(
+                r#"#!/bin/sh
+flag={}
+while IFS= read -r line; do
+  case "$line" in
+    *'"id":1'*'"method":"initialize"'*) printf '%s\n' '{{"id":1,"result":{{}}}}' ;;
+    *'"method":"initialized"'*) ;;
+    *'"method":"thread/start"'*)
+      printf '%s\n' '{{"id":2,"result":{{"thread":{{"id":"thread-1"}}}}}}'
+      dd bs=1 count=1 >/dev/null 2>&1
+      echo ready > "$flag"
+      sleep 30
+      exit 0
+      ;;
+  esac
+done
+"#,
+                flag.display()
+            ),
+        )?;
+        let mut session = CodexTransport::new()
+            .start_session(&codex_spec(&script, 30))
+            .await?;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        session.arm_turn_cancel(&cancel);
+        let prompt = "x".repeat(256 * 1024);
+        let send = tokio::spawn(async move {
+            let events = session
+                .send_prompt(&prompt, None)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let alive = session.is_alive().await;
+            Ok::<_, anyhow::Error>((events, alive))
+        });
+        let started = std::time::Instant::now();
+        while !flag.exists() {
+            if started.elapsed() > Duration::from_secs(2) {
+                anyhow::bail!("codex did not read the first byte");
+            }
+            tokio::task::yield_now().await;
+        }
+        cancel.cancel();
+        let (events, alive) = tokio::time::timeout(Duration::from_secs(2), send).await???;
+        assert!(matches!(
+            events.first(),
+            Some(ExternalAgentEvent::TurnInterrupted)
+        ));
+        assert!(!alive);
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancel_after_turn_start_does_not_write_interrupt() -> anyhow::Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("chelix-codex-wait-{unique}"));
+        fs::create_dir_all(&dir)?;
+        let log = dir.join("log");
+        let script = dir.join("fake.sh");
+        fs::write(
+            &script,
+            format!(
+                r#"#!/bin/sh
+log={}
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  case "$line" in
+    *'"id":1'*'"method":"initialize"'*) printf '%s\n' '{{"id":1,"result":{{}}}}' ;;
+    *'"method":"initialized"'*) ;;
+    *'"method":"thread/start"'*) printf '%s\n' '{{"id":2,"result":{{"thread":{{"id":"thread-1"}}}}}}' ;;
+    *'"method":"turn/start"'*) sleep 30 ;;
+  esac
+done
+"#,
+                log.display()
+            ),
+        )?;
+        let mut session = CodexTransport::new()
+            .start_session(&codex_spec(&script, 30))
+            .await?;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        session.arm_turn_cancel(&cancel);
+        let send = tokio::spawn(async move {
+            let events = session
+                .send_prompt("hello", None)
+                .await?
+                .collect::<Vec<_>>()
+                .await;
+            let alive = session.is_alive().await;
+            Ok::<_, anyhow::Error>((events, alive))
+        });
+        let started = std::time::Instant::now();
+        loop {
+            let written = fs::read_to_string(&log).unwrap_or_default();
+            if written.contains("turn/start") {
+                break;
+            }
+            if started.elapsed() > Duration::from_secs(2) {
+                anyhow::bail!("turn/start was not written");
+            }
+            tokio::task::yield_now().await;
+        }
+        cancel.cancel();
+        let (events, alive) = tokio::time::timeout(Duration::from_secs(2), send).await???;
+        assert!(matches!(
+            events.first(),
+            Some(ExternalAgentEvent::TurnInterrupted)
+        ));
+        assert!(!alive);
+        let written = fs::read_to_string(&log).unwrap_or_default();
+        assert!(!written.contains("turn/interrupt"));
         fs::remove_dir_all(dir)?;
         Ok(())
     }

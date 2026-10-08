@@ -34,6 +34,17 @@ impl SessionGateRegistry {
     }
 
     pub(crate) async fn finish_turn(&self, session_key: &str, terminal: SessionTerminal) {
+        self.finish_turn_locked(session_key, terminal).await;
+    }
+
+    pub(crate) fn finish_turn_blocking(&self, session_key: &str, terminal: SessionTerminal) {
+        self.last_terminal
+            .blocking_write()
+            .insert(session_key.to_string(), terminal);
+        self.version.send_modify(|version| *version += 1);
+    }
+
+    async fn finish_turn_locked(&self, session_key: &str, terminal: SessionTerminal) {
         self.last_terminal
             .write()
             .await

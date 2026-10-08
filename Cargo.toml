@@ -7,6 +7,7 @@ default-members = [
   "crates/benchmarks",
   "crates/browser",
   "crates/caldav",
+  "crates/call-bus",
   "crates/channels",
   "crates/chat",
   "crates/cli",
@@ -65,6 +66,7 @@ members = [
   "crates/benchmarks",
   "crates/browser",
   "crates/caldav",
+  "crates/call-bus",
   "crates/channels",
   "crates/chat",
   "crates/cli",
@@ -306,6 +308,7 @@ chelix-agents           = { path = "crates/agents" }
 chelix-auth             = { path = "crates/auth" }
 chelix-browser          = { path = "crates/browser" }
 chelix-caldav           = { path = "crates/caldav" }
+chelix-call-bus         = { path = "crates/call-bus" }
 chelix-channels         = { path = "crates/channels" }
 chelix-chat             = { path = "crates/chat" }
 chelix-code-index       = { path = "crates/code-index" }

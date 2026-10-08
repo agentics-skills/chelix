@@ -87,6 +87,7 @@ struct AcpSession {
     worker: Mutex<Option<JoinHandle<()>>>,
     session_id: String,
     status: Arc<Mutex<ExternalAgentStatus>>,
+    cancel: Arc<Mutex<tokio_util::sync::CancellationToken>>,
 }
 
 enum SessionCommand {
@@ -119,6 +120,7 @@ struct AcpClient {
     state: Arc<Mutex<AcpClientState>>,
     chelix_session_key: Option<String>,
     permission_handler: Option<Arc<dyn AcpPermissionHandler>>,
+    turn_cancel: Arc<Mutex<tokio_util::sync::CancellationToken>>,
 }
 
 impl AcpClient {
@@ -126,11 +128,13 @@ impl AcpClient {
         state: Arc<Mutex<AcpClientState>>,
         chelix_session_key: Option<String>,
         permission_handler: Option<Arc<dyn AcpPermissionHandler>>,
+        turn_cancel: Arc<Mutex<tokio_util::sync::CancellationToken>>,
     ) -> Self {
         Self {
             state,
             chelix_session_key,
             permission_handler,
+            turn_cancel,
         }
     }
 
@@ -193,6 +197,11 @@ impl acp::Client for AcpClient {
         &self,
         args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
+        let token = self
+            .turn_cancel
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
         if let Some(handler) = &self.permission_handler {
             let request = AcpPermissionRequest {
                 chelix_session_key: self.chelix_session_key.clone(),
@@ -208,7 +217,16 @@ impl acp::Client for AcpClient {
                     })
                     .collect(),
             };
-            let selected = handler.select_option(request).await.map_err(|error| {
+            let selected = tokio::select! {
+                biased;
+                () = token.cancelled() => {
+                    return Ok(acp::RequestPermissionResponse::new(
+                        acp::RequestPermissionOutcome::Cancelled,
+                    ));
+                }
+                selected = handler.select_option(request) => selected,
+            }
+            .map_err(|error| {
                 acp::Error::internal_error().data(format!("ACP permission bridge failed: {error}"))
             })?;
             return Ok(acp::RequestPermissionResponse::new(match selected {
@@ -445,6 +463,8 @@ impl AcpSession {
         let (startup_tx, startup_rx) = oneshot::channel();
         let status = Arc::new(Mutex::new(ExternalAgentStatus::Starting));
         let thread_status = Arc::clone(&status);
+        let cancel = Arc::new(Mutex::new(tokio_util::sync::CancellationToken::new()));
+        let thread_cancel = Arc::clone(&cancel);
         let worker = std::thread::Builder::new()
             .name("chelix-acp-session".to_string())
             .spawn(move || {
@@ -466,6 +486,7 @@ impl AcpSession {
                     command_rx,
                     startup_tx,
                     thread_status,
+                    thread_cancel,
                 )));
             })?;
 
@@ -477,6 +498,7 @@ impl AcpSession {
             worker: Mutex::new(Some(worker)),
             session_id,
             status,
+            cancel,
         })
     }
 }
@@ -534,6 +556,13 @@ impl ExternalAgentSession for AcpSession {
             .map(|status| *status)
             .unwrap_or(ExternalAgentStatus::Error)
     }
+
+    fn arm_turn_cancel(&mut self, token: &tokio_util::sync::CancellationToken) {
+        *self
+            .cancel
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = token.clone();
+    }
 }
 
 async fn run_acp_controller(
@@ -543,6 +572,7 @@ async fn run_acp_controller(
     mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
     startup_tx: oneshot::Sender<anyhow::Result<String>>,
     status: Arc<Mutex<ExternalAgentStatus>>,
+    cancel: Arc<Mutex<tokio_util::sync::CancellationToken>>,
 ) {
     let startup_result = async {
         let mut command = Command::new(binary);
@@ -570,6 +600,7 @@ async fn run_acp_controller(
             client_state,
             spec.session_key.clone(),
             permission_handler,
+            Arc::clone(&cancel),
         ));
         if let Some(stderr) = child.stderr.take() {
             tokio::task::spawn_local(forward_stderr(stderr, Arc::clone(&client)));
@@ -636,13 +667,42 @@ async fn run_acp_controller(
                 response_tx,
             } => {
                 client.clear_events();
-                let result = conn
-                    .prompt(acp::PromptRequest::new(session_id.clone(), vec![
-                        acp::ContentBlock::from(prompt),
-                    ]))
-                    .await
-                    .map_err(acp_error_to_anyhow)
-                    .and_then(|response| prompt_response_to_events(response, &client));
+                let token = cancel
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .clone();
+                if token.is_cancelled() {
+                    let _ = response_tx.send(Ok(vec![ExternalAgentEvent::TurnInterrupted]));
+                    continue;
+                }
+                let request =
+                    acp::PromptRequest::new(session_id.clone(), vec![acp::ContentBlock::from(
+                        prompt,
+                    )]);
+                let mut prompt = Box::pin(conn.prompt(request));
+                let first = std::future::poll_fn(|cx| match prompt.as_mut().poll(cx) {
+                    std::task::Poll::Ready(value) => std::task::Poll::Ready(Some(value)),
+                    std::task::Poll::Pending => {
+                        cx.waker().wake_by_ref();
+                        std::task::Poll::Ready(None)
+                    },
+                })
+                .await;
+                let result = if let Some(value) = first {
+                    value
+                } else {
+                    tokio::select! {
+                        result = prompt.as_mut() => result,
+                        () = token.cancelled() => {
+                            let _ = conn
+                                .cancel(acp::CancelNotification::new(session_id.clone()))
+                                .await;
+                            prompt.await
+                        }
+                    }
+                }
+                .map_err(acp_error_to_anyhow)
+                .and_then(|response| prompt_response_to_events(response, &client));
                 let _ = response_tx.send(result);
             },
             SessionCommand::Stop { response_tx } => {
@@ -684,7 +744,7 @@ fn prompt_response_to_events(
             Ok(events)
         },
         acp::StopReason::Cancelled => {
-            events.push(ExternalAgentEvent::Error("ACP turn cancelled".to_string()));
+            events.push(ExternalAgentEvent::TurnInterrupted);
             Ok(events)
         },
         reason => {
@@ -811,7 +871,12 @@ mod tests {
 
     fn test_client() -> (AcpClient, Arc<Mutex<AcpClientState>>) {
         let state = Arc::new(Mutex::new(AcpClientState::default()));
-        let client = AcpClient::new(Arc::clone(&state), Some("main".to_string()), None);
+        let client = AcpClient::new(
+            Arc::clone(&state),
+            Some("main".to_string()),
+            None,
+            Arc::new(Mutex::new(tokio_util::sync::CancellationToken::new())),
+        );
         client.set_session_id("session-1".to_string());
         (client, state)
     }
@@ -881,7 +946,7 @@ mod tests {
     }
 
     #[test]
-    fn prompt_response_cancelled_maps_to_error_event() {
+    fn prompt_response_cancelled_maps_to_turn_interrupted() {
         let (client, _state) = test_client();
 
         let events = prompt_response_to_events(
@@ -890,10 +955,9 @@ mod tests {
         )
         .expect("prompt response events");
 
-        assert!(matches!(
-            events.as_slice(),
-            [ExternalAgentEvent::Error(message)] if message == "ACP turn cancelled"
-        ));
+        assert!(matches!(events.as_slice(), [
+            ExternalAgentEvent::TurnInterrupted
+        ]));
     }
 
     #[test]
@@ -913,6 +977,7 @@ mod tests {
             Arc::clone(&state),
             Some("main".to_string()),
             Some(Arc::new(AllowFirstPermissionHandler)),
+            Arc::new(Mutex::new(tokio_util::sync::CancellationToken::new())),
         );
         let response = client
             .request_permission(acp::RequestPermissionRequest::new(
@@ -934,6 +999,66 @@ mod tests {
             response.outcome,
             acp::RequestPermissionOutcome::Selected(outcome) if outcome.option_id.to_string() == "allow-once"
         ));
+    }
+
+    struct WaitingPermissionHandler {
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl AcpPermissionHandler for WaitingPermissionHandler {
+        async fn select_option(
+            &self,
+            _request: AcpPermissionRequest,
+        ) -> anyhow::Result<Option<String>> {
+            self.release.notified().await;
+            Ok(Some("allow-once".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_turn_answers_permission_with_cancelled() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let client = AcpClient::new(
+            Arc::new(Mutex::new(AcpClientState::default())),
+            Some("main".to_string()),
+            Some(Arc::new(WaitingPermissionHandler {
+                release: Arc::new(tokio::sync::Notify::new()),
+            })),
+            Arc::new(Mutex::new(token.clone())),
+        );
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async move {
+                let request = tokio::task::spawn_local(async move {
+                    client
+                        .request_permission(acp::RequestPermissionRequest::new(
+                            "session-1",
+                            acp::ToolCallUpdate::new(
+                                "tool-1",
+                                acp::ToolCallUpdateFields::new().title("run tool".to_string()),
+                            ),
+                            vec![acp::PermissionOption::new(
+                                "allow-once",
+                                "Allow once",
+                                acp::PermissionOptionKind::AllowOnce,
+                            )],
+                        ))
+                        .await
+                });
+                tokio::task::yield_now().await;
+                token.cancel();
+                let response = tokio::time::timeout(Duration::from_secs(1), request)
+                    .await
+                    .expect("permission request did not return")
+                    .expect("permission task")
+                    .expect("permission response");
+                assert!(matches!(
+                    response.outcome,
+                    acp::RequestPermissionOutcome::Cancelled
+                ));
+            })
+            .await;
     }
 
     #[tokio::test]

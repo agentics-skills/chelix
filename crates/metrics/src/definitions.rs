@@ -71,6 +71,14 @@ pub mod session {
         "chelix_session_title_generation_duration_seconds";
 }
 
+/// In-process call bus metrics.
+pub mod call_bus {
+    /// Total `call` and `publish` operations, including queue subscriber failures after `Ok`.
+    pub const CALLS_TOTAL: &str = "chelix_call_bus_calls_total";
+    /// Duration of `call` and `publish` in seconds.
+    pub const CALL_DURATION_SECONDS: &str = "chelix_call_bus_call_duration_seconds";
+}
+
 /// Chat metrics
 pub mod chat {
     /// Total number of chat messages sent

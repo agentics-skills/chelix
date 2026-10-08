@@ -82,6 +82,7 @@ pub(super) struct PostStateInputs {
     pub telephony_webhook_plugin: Arc<tokio::sync::RwLock<chelix_telephony::TelephonyPlugin>>,
     #[cfg(feature = "vault")]
     pub vault: Option<Arc<chelix_vault::Vault>>,
+    pub call_bus: Arc<chelix_call_bus::CallBus>,
 }
 
 async fn build_webauthn_registry(
@@ -202,6 +203,68 @@ async fn build_webauthn_registry(
 }
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+pub(crate) fn register_stop_session(
+    call_bus: &chelix_call_bus::CallBus,
+    chat: Arc<LiveChatService>,
+    external: Arc<GatewayExternalAgentService>,
+) -> anyhow::Result<()> {
+    call_bus
+        .register(move |request: chelix_service_traits::StopSession| {
+            let chat = Arc::clone(&chat);
+            let external = Arc::clone(&external);
+            async move {
+                match request {
+                    chelix_service_traits::StopSession::Run { run_id } => {
+                        chat.stop_run(run_id).await
+                    },
+                    chelix_service_traits::StopSession::Session { key, run_id } => {
+                        let claim = external
+                            .claim_external(key.as_str(), run_id.as_deref())
+                            .await;
+                        let external_matches = matches!(
+                            claim,
+                            crate::external_agents::ExternalClaim::Captured { .. }
+                        );
+                        let mut outcome = chat
+                            .stop_current_session(key.as_str(), run_id.as_deref(), external_matches)
+                            .await?;
+                        if let crate::external_agents::ExternalClaim::Captured {
+                            run_id: external_run,
+                            token,
+                            mut done,
+                            ..
+                        } = claim
+                        {
+                            let external_cancelled = if token.is_cancelled() {
+                                false
+                            } else {
+                                token.cancel();
+                                true
+                            };
+                            loop {
+                                if let Some(result) = done.borrow().clone() {
+                                    result.map_err(chelix_service_traits::ServiceError::message)?;
+                                    break;
+                                }
+                                if done.changed().await.is_err() {
+                                    break;
+                                }
+                            }
+                            if outcome.run_id.is_none() {
+                                outcome.run_id = Some(external_run);
+                                outcome.cancelled = external_cancelled;
+                            } else if external_cancelled {
+                                outcome.cancelled = true;
+                            }
+                        }
+                        Ok(outcome)
+                    },
+                }
+            }
+        })
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
+}
+
 pub(super) async fn complete_startup(
     inputs: PostStateInputs,
 ) -> anyhow::Result<PreparedGatewayCore> {
@@ -246,6 +309,7 @@ pub(super) async fn complete_startup(
         code_index,
         #[cfg(feature = "code-index-builtin")]
         project_store,
+        call_bus,
     } = inputs;
 
     let is_localhost =
@@ -347,6 +411,10 @@ pub(super) async fn complete_startup(
     state
         .set_tools_service(Arc::clone(&tools_service))
         .map_err(|_| anyhow::anyhow!("managed tools service was already initialized"))?;
+    state
+        .call_bus
+        .set(Arc::clone(&call_bus))
+        .map_err(|_| anyhow::anyhow!("call bus was already installed"))?;
 
     // Wire the shared LLM provider registry for lightweight generation
     // (auto-title).
@@ -815,12 +883,21 @@ pub(super) async fn complete_startup(
 
         let live_chat = Arc::new(chat_service);
         let chat_with_external_agents = Arc::new(ExternalAgentChatService::new(
-            live_chat,
-            external_agent_service,
+            Arc::clone(&live_chat) as Arc<dyn crate::services::ChatService>,
+            Arc::clone(&external_agent_service),
             Arc::clone(&state),
             Arc::clone(&session_store),
             Arc::clone(&session_metadata),
+            Arc::clone(&call_bus),
         ));
+        register_stop_session(
+            &call_bus,
+            Arc::clone(&live_chat),
+            Arc::clone(&external_agent_service),
+        )?;
+        call_bus
+            .seal()
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         state.set_chat(chat_with_external_agents);
 
         live_mcp

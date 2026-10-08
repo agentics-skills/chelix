@@ -13,7 +13,7 @@ use {
     chelix_providers::ResolvedModel,
     chelix_service_traits::{
         ChatChannelMetadata, ChatExecutionContext, ChatRequestOrigin, ChatSendRequest,
-        ServiceError, ServiceResult, SessionBusyReason, SessionTurnPermit,
+        ServiceError, ServiceResult, SessionBusyReason,
     },
     chelix_sessions::{QueuedPromptContent, SessionKey},
 };
@@ -50,7 +50,9 @@ struct PreparedUserBatchPrefix {
 
 struct SessionTurnOwner {
     service: LiveChatService,
-    _permit: SessionTurnPermit,
+    #[allow(dead_code)]
+    permit: stop_gate::PermitRelease,
+    guard: stop_gate::SendGuard,
 }
 
 pub(super) struct ResolvedChatTurn {
@@ -60,11 +62,19 @@ pub(super) struct ResolvedChatTurn {
 
 impl SessionTurnOwner {
     fn start_queued_batch(
-        self,
+        mut self,
         session_id: SessionKey,
         mut prompts: Vec<QueuedPromptContent>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
         Box::pin(async move {
+            if self
+                .service
+                .stop_gate
+                .arm_next_batch(session_id.as_str(), &mut self.guard)
+                .is_err()
+            {
+                return Ok(());
+            }
             let tail = prompts
                 .pop()
                 .ok_or_else(|| ServiceError::message("queued prompt batch must not be empty"))?;
@@ -339,6 +349,7 @@ impl LiveChatService {
             "chat.send: received"
         );
 
+        let mut guard = self.stop_gate.begin_send(&session_key)?;
         let permit = match self.session_mutations.try_acquire_turn(&session_key).await {
             Ok(permit) => {
                 info!(
@@ -359,6 +370,7 @@ impl LiveChatService {
                 ));
             },
             Err(_) => {
+                self.stop_gate.begin_enqueue(&guard)?;
                 self.persist_queued_turn_settings(
                     &session_key,
                     resolved.model.model_reasoning(),
@@ -371,9 +383,12 @@ impl LiveChatService {
                     .enqueue(session_id, content)
                     .await
                     .map_err(|error| ServiceError::message(error.to_string()))?;
-                broadcast_queued_prompts_status(&self.state, &status)
-                    .await
-                    .map_err(|error| ServiceError::message(error.to_string()))?;
+                if self.stop_gate.allow_queue_broadcast(&guard) {
+                    broadcast_queued_prompts_status(&self.state, &status)
+                        .await
+                        .map_err(|error| ServiceError::message(error.to_string()))?;
+                }
+                self.stop_gate.finish_enqueue(&mut guard);
                 info!(
                     session = %session_key,
                     queued = status.prompts.len(),
@@ -387,10 +402,18 @@ impl LiveChatService {
                 }));
             },
         };
+        let permit = match self.stop_gate.attach_permit(&mut guard, permit) {
+            Ok(permit) => permit,
+            Err((permit, error)) => {
+                drop(permit);
+                return Err(error);
+            },
+        };
 
         let owner = SessionTurnOwner {
             service: self.clone(),
-            _permit: permit,
+            permit,
+            guard,
         };
         self.start_turn_impl(
             session_id,
@@ -415,8 +438,13 @@ impl LiveChatService {
         tool_choice: Option<chelix_config::schema::ToolChoice>,
         queued_batch: bool,
         resolved: ResolvedChatTurn,
-        owner: SessionTurnOwner,
+        mut owner: SessionTurnOwner,
     ) -> ServiceResult {
+        if let Some(gate) = self.before_publish_run.clone() {
+            let release = gate.release.notified();
+            gate.arrived.notify_one();
+            release.await;
+        }
         let session_key = session_id.as_str().to_string();
         let mut text = queued_message_text(&prompt);
         let mut message_content = queued_message_content(&prompt);
@@ -912,12 +940,27 @@ impl LiveChatService {
         );
         let active_event_forwarders = Arc::clone(&self.active_event_forwarders);
         let terminal_runs = Arc::clone(&self.terminal_runs);
-        let cancellation_token = CancellationToken::new();
-        self.active_runs
-            .write()
-            .await
-            .insert(run_id.clone(), cancellation_token.clone());
+        self.stop_gate.confirm_start(&mut owner.guard)?;
         self.activate_session_turn(&session_key, &run_id).await;
+        let cancellation_token = CancellationToken::new();
+        {
+            let mut active = self.active_runs.write().await;
+            self.stop_gate.publish_run(
+                &mut active,
+                &mut owner.guard,
+                &session_key,
+                &run_id,
+                cancellation_token.clone(),
+            );
+        }
+        let mut run_finish = stop_gate::RunFinishGuard::arm(
+            Arc::clone(&self.stop_gate),
+            Arc::clone(&self.session_gates),
+            Arc::clone(&self.active_runs),
+            Arc::clone(&self.active_runs_by_session),
+            session_key.clone(),
+            run_id.clone(),
+        );
 
         let _run_task = tokio::spawn(async move {
             let ctx_ref = project_context.as_deref();
@@ -1118,13 +1161,26 @@ impl LiveChatService {
             session_gates
                 .finish_turn(&session_key_clone, terminal_from_outcome(&run_outcome))
                 .await;
-            active_runs.write().await.remove(&run_id_clone);
+            let stop_detail = if matches!(run_outcome, ChatRunOutcome::Failed) {
+                state.last_run_error(&run_id_clone).await
+            } else {
+                None
+            };
+            {
+                let mut active = active_runs.write().await;
+                owner.service.stop_gate.finish_run(
+                    &mut active,
+                    &run_id_clone,
+                    stop_gate::StopGate::report_outcome(&run_outcome, stop_detail),
+                );
+            }
             let mut runs_by_session = active_runs_by_session.write().await;
             if runs_by_session.get(&session_key_clone) == Some(&run_id_clone) {
                 runs_by_session.remove(&session_key_clone);
             }
             drop(runs_by_session);
             session_gates.notify();
+            run_finish.disarm();
             let _ = tool_permissions.drop_session(&session_key_clone).await;
             active_tool_invocations
                 .write()
@@ -1138,6 +1194,9 @@ impl LiveChatService {
             active_reply_medium.write().await.remove(&session_key_clone);
 
             let session_id = SessionKey::new(session_key_clone.clone());
+            if owner.service.stop_gate.is_suppressed(&session_key_clone) {
+                return;
+            }
             let drain = match queued_prompts.drain(session_id.clone()).await {
                 Ok(drain) => drain,
                 Err(error) => {
@@ -1173,6 +1232,14 @@ impl LiveChatService {
                 return;
             }
             if drain.prompts.is_empty() {
+                return;
+            }
+            if let Some(gate) = owner.service.queue_after_drain.clone() {
+                let release = gate.release.notified();
+                gate.arrived.notify_one();
+                release.await;
+            }
+            if owner.service.stop_gate.is_suppressed(&session_key_clone) {
                 return;
             }
 

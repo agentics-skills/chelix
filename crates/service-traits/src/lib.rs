@@ -7,6 +7,7 @@ mod chat_request;
 mod error;
 mod interfaces;
 mod session_mutations;
+mod stop_session;
 
 pub use crate::{
     chat_request::{
@@ -17,6 +18,7 @@ pub use crate::{
     error::{ServiceError, ServiceResult},
     interfaces::*,
     session_mutations::{SessionBusyReason, SessionMutationCoordinator, SessionTurnPermit},
+    stop_session::{StopSession, StopSessionOutcome},
 };
 
 #[cfg(test)]

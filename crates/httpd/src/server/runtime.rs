@@ -1054,6 +1054,7 @@ pub async fn start_gateway(
     // - SIGINT  (ctrl-c): immediate exit
     {
         let browser_for_shutdown = Arc::clone(&banner.browser_for_lifecycle);
+        let call_bus_for_shutdown = state.call_bus.get().cloned();
         tokio::spawn(async move {
             #[cfg(unix)]
             let signal_name: &str = {
@@ -1091,6 +1092,11 @@ pub async fn start_gateway(
             }
 
             info!(signal = signal_name, "starting graceful shutdown");
+            if let Some(call_bus) = call_bus_for_shutdown {
+                call_bus.close().await;
+            } else {
+                tracing::error!("call bus was not installed before graceful shutdown");
+            }
 
             #[cfg(feature = "mdns")]
             if let Some(ref daemon) = _mdns_daemon {

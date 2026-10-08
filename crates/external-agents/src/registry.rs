@@ -290,6 +290,10 @@ impl ExternalAgentSession for InstrumentedSession {
     fn status(&self) -> ExternalAgentStatus {
         self.inner.status()
     }
+
+    fn arm_turn_cancel(&mut self, token: &tokio_util::sync::CancellationToken) {
+        self.inner.arm_turn_cancel(token);
+    }
 }
 
 #[cfg(test)]

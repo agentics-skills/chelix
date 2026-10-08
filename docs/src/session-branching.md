@@ -145,6 +145,7 @@ archive sets that session's archived metadata. If one session fails, the batch
 still processes the rest of the snapshot, including the parent last, and then
 returns the collected errors.
 
+After that metadata is set, `StopSession` is called. An error from `StopSession` cancels starting the background stop.
 When the archived session owns its sandbox (`sandbox_owner_key` is absent or
 equal to the session key), the single-session archive starts a background
 `docker stop`, `podman stop`, or Apple Container `stop`.

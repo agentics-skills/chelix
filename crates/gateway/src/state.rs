@@ -459,6 +459,8 @@ pub struct GatewayState {
     pub chat_override: std::sync::RwLock<Option<Arc<dyn crate::services::ChatService>>>,
 
     // ── Broadcast state (lock-free) ─────────────────────────────────────────
+    /// Process call bus. Installed once during gateway startup.
+    pub call_bus: std::sync::OnceLock<Arc<chelix_call_bus::CallBus>>,
     /// Lock-free broadcast state (sequence counter).
     pub broadcaster: Arc<Broadcaster>,
 
@@ -561,6 +563,7 @@ impl GatewayState {
             webhook_worker_tx: std::sync::OnceLock::new(),
             skill_usage_store: std::sync::OnceLock::new(),
             chat_override: std::sync::RwLock::new(None),
+            call_bus: std::sync::OnceLock::new(),
             broadcaster: Arc::new(Broadcaster::new()),
             client_registry: RwLock::new(ClientRegistryInner::new()),
             inner: RwLock::new(GatewayInner::new(hook_registry, cached_location)),

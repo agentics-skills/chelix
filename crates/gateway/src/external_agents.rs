@@ -47,6 +47,55 @@ pub struct GatewayExternalAgentService {
     agents_config: Arc<tokio::sync::RwLock<chelix_config::AgentsConfig>>,
     model_service: Arc<dyn ModelService>,
     live_sessions: Mutex<HashMap<LiveSessionKey, LiveSessionEntry>>,
+    external_runs: std::sync::Mutex<HashMap<String, ExternalTurn>>,
+}
+
+struct ExternalTurn {
+    run_id: String,
+    token: tokio_util::sync::CancellationToken,
+    done: tokio::sync::watch::Sender<Option<Result<(), String>>>,
+}
+
+pub(crate) enum ExternalClaim {
+    Absent,
+    Mismatch,
+    Captured {
+        run_id: String,
+        token: tokio_util::sync::CancellationToken,
+        done: tokio::sync::watch::Receiver<Option<Result<(), String>>>,
+    },
+}
+
+struct ExternalTurnGuard {
+    agents: Arc<GatewayExternalAgentService>,
+    session_key: String,
+    run_id: String,
+    active: bool,
+    entered: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl Drop for ExternalTurnGuard {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        if let Some(entered) = self.entered.take() {
+            let _ = entered.send(());
+        }
+        let mut runs = self
+            .agents
+            .external_runs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let matches = runs
+            .get(&self.session_key)
+            .is_some_and(|turn| turn.run_id == self.run_id);
+        if matches && let Some(turn) = runs.remove(&self.session_key) {
+            turn.done.send_replace(Some(Err(
+                "external turn ended before completion".to_string()
+            )));
+        }
+    }
 }
 
 type LiveExternalAgentSession = Arc<Mutex<Box<dyn ExternalAgentSession>>>;
@@ -155,6 +204,78 @@ impl GatewayExternalAgentService {
             agents_config,
             model_service,
             live_sessions: Mutex::new(HashMap::new()),
+            external_runs: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn current_external_run(&self, session_key: &str) -> Option<String> {
+        self.external_runs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(session_key)
+            .map(|turn| turn.run_id.clone())
+    }
+
+    pub(crate) async fn try_begin_external_turn(
+        &self,
+        session_key: &str,
+        run_id: &str,
+    ) -> Result<tokio_util::sync::CancellationToken, ()> {
+        let mut runs = self
+            .external_runs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if runs.contains_key(session_key) {
+            return Err(());
+        }
+        let (done, _rx) = tokio::sync::watch::channel(None);
+        let token = tokio_util::sync::CancellationToken::new();
+        runs.insert(session_key.to_string(), ExternalTurn {
+            run_id: run_id.to_string(),
+            token: token.clone(),
+            done,
+        });
+        Ok(token)
+    }
+
+    pub(crate) async fn finish_external_turn(
+        &self,
+        session_key: &str,
+        run_id: &str,
+        result: Result<(), String>,
+    ) {
+        let mut runs = self
+            .external_runs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let matches = runs
+            .get(session_key)
+            .is_some_and(|turn| turn.run_id == run_id);
+        if matches && let Some(turn) = runs.remove(session_key) {
+            turn.done.send_replace(Some(result));
+        }
+    }
+
+    pub(crate) async fn claim_external(
+        &self,
+        session_key: &str,
+        expected: Option<&str>,
+    ) -> ExternalClaim {
+        let runs = self
+            .external_runs
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let Some(turn) = runs.get(session_key) else {
+            return ExternalClaim::Absent;
+        };
+        if expected.is_some_and(|expected| turn.run_id != expected) {
+            return ExternalClaim::Mismatch;
+        }
+        ExternalClaim::Captured {
+            run_id: turn.run_id.clone(),
+            token: turn.token.clone(),
+            done: turn.done.subscribe(),
         }
     }
 
@@ -173,6 +294,7 @@ impl GatewayExternalAgentService {
             agents_config,
             model_service,
             live_sessions: Mutex::new(HashMap::new()),
+            external_runs: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -537,6 +659,7 @@ pub struct ExternalAgentChatService {
     state: Arc<GatewayState>,
     session_store: Arc<chelix_sessions::store::SessionStore>,
     session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
+    call_bus: Arc<chelix_call_bus::CallBus>,
 }
 
 impl ExternalAgentChatService {
@@ -546,6 +669,7 @@ impl ExternalAgentChatService {
         state: Arc<GatewayState>,
         session_store: Arc<chelix_sessions::store::SessionStore>,
         session_metadata: Arc<chelix_sessions::metadata::SqliteSessionMetadata>,
+        call_bus: Arc<chelix_call_bus::CallBus>,
     ) -> Self {
         Self {
             inner,
@@ -553,6 +677,7 @@ impl ExternalAgentChatService {
             state,
             session_store,
             session_metadata,
+            call_bus,
         }
     }
 
@@ -579,6 +704,23 @@ impl ExternalAgentChatService {
         session_key: String,
         kind: AgentTransportKind,
     ) -> ServiceResult {
+        let run_id = uuid::Uuid::new_v4().to_string();
+        let turn_token = self
+            .external_agents
+            .try_begin_external_turn(&session_key, &run_id)
+            .await
+            .map_err(|()| {
+                ServiceError::message(
+                    "External agent session is busy; please wait for the active turn to finish.",
+                )
+            })?;
+        let mut turn_guard = ExternalTurnGuard {
+            agents: Arc::clone(&self.external_agents),
+            session_key: session_key.clone(),
+            run_id: run_id.clone(),
+            active: true,
+            entered: None,
+        };
         let _session_permit = match self
             .state
             .services
@@ -587,18 +729,20 @@ impl ExternalAgentChatService {
             .await
         {
             Ok(permit) => permit,
-            Err(error) if error.reason() == SessionBusyReason::ReservedMutation => {
+            Err(error) => {
+                turn_guard.active = false;
+                self.external_agents
+                    .finish_external_turn(&session_key, &run_id, Ok(()))
+                    .await;
                 return Err(ServiceError::message(
-                    "Session history is being updated; please try again.",
-                ));
-            },
-            Err(_) => {
-                return Err(ServiceError::message(
-                    "External agent session is busy; please wait for the active turn to finish.",
+                    if error.reason() == SessionBusyReason::ReservedMutation {
+                        "Session history is being updated; please try again."
+                    } else {
+                        "External agent session is busy; please wait for the active turn to finish."
+                    },
                 ));
             },
         };
-        let run_id = uuid::Uuid::new_v4().to_string();
         let ui = self
             .session_store
             .ui_history
@@ -675,6 +819,7 @@ impl ExternalAgentChatService {
             .await
             .map_err(|error| error.to_string())?;
         let mut session = live_session.lock().await;
+        session.arm_turn_cancel(&turn_token);
         let external_session_id = session.external_session_id().map(str::to_string);
         if external_session_id.is_some() {
             self.session_metadata
@@ -685,10 +830,8 @@ impl ExternalAgentChatService {
         let mut events = match session.send_prompt(&text, Some(&context)).await {
             Ok(events) => events,
             Err(error) => {
-                let error = error.to_string();
                 drop(session);
-                self.external_agents.shutdown_binding(&session_key).await;
-                return Err(error.into());
+                return Err(error.to_string().into());
             },
         };
         let mut assistant_text = String::new();
@@ -734,6 +877,10 @@ impl ExternalAgentChatService {
             };
             let Some(event) = event else { break; };
             match event {
+                ExternalAgentEvent::TurnInterrupted => {
+                    completed = true;
+                    break;
+                },
                 ExternalAgentEvent::TextDelta(delta) => {
                     assistant_text.push_str(&delta);
                     update_seq += 1;
@@ -938,6 +1085,18 @@ impl ExternalAgentChatService {
             serde_json::json!({"runId": run_id, "sessionKey": session_key, "state": if result.is_ok() { "final" } else { "error" }}),
             BroadcastOpts::default(),
         ).await;
+        drop(_session_permit);
+        turn_guard.active = false;
+        self.external_agents
+            .finish_external_turn(
+                &session_key,
+                &run_id,
+                result
+                    .as_ref()
+                    .map(|_| ())
+                    .map_err(|error| error.to_string()),
+            )
+            .await;
         result
     }
 }
@@ -996,9 +1155,43 @@ impl ChatService for ExternalAgentChatService {
     }
 
     async fn abort(&self, params: Value) -> ServiceResult {
-        let session_key = resolve_session_key(&params, &self.state).await;
-        self.external_agents.shutdown_binding(&session_key).await;
-        self.inner.abort(params).await
+        let run_id = params
+            .get("runId")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let session_key = params
+            .get("sessionKey")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        if run_id.is_none() && session_key.is_none() {
+            return Err("missing 'runId' or 'sessionKey'".into());
+        }
+        let request = match (session_key.clone(), run_id) {
+            (Some(key), run_id) => chelix_service_traits::StopSession::Session {
+                key: chelix_sessions::SessionKey::new(key),
+                run_id,
+            },
+            (None, Some(run_id)) => chelix_service_traits::StopSession::Run { run_id },
+            (None, None) => return Err("missing 'runId' or 'sessionKey'".into()),
+        };
+        let outcome = self
+            .call_bus
+            .call(request)
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        let response_session_key = match session_key {
+            Some(key) => Value::String(key),
+            None => Value::Null,
+        };
+        Ok(serde_json::json!({
+            "aborted": outcome.cancelled,
+            "runId": outcome.run_id,
+            "sessionKey": response_session_key,
+        }))
     }
 
     async fn queued_prompts_status(
@@ -1299,11 +1492,26 @@ mod tests {
         Arc::new(tokio::sync::RwLock::new(agents))
     }
 
-    #[derive(Default)]
     struct FakeAgentState {
         starts: std::sync::atomic::AtomicUsize,
         prompts: std::sync::Mutex<Vec<String>>,
         shutdowns: std::sync::atomic::AtomicUsize,
+        hold_entered: Arc<tokio::sync::Notify>,
+        hold_cancelled: Arc<tokio::sync::Notify>,
+        hold_release: Arc<tokio::sync::Notify>,
+    }
+
+    impl Default for FakeAgentState {
+        fn default() -> Self {
+            Self {
+                starts: std::sync::atomic::AtomicUsize::new(0),
+                prompts: std::sync::Mutex::new(Vec::new()),
+                shutdowns: std::sync::atomic::AtomicUsize::new(0),
+                hold_entered: Arc::new(tokio::sync::Notify::new()),
+                hold_cancelled: Arc::new(tokio::sync::Notify::new()),
+                hold_release: Arc::new(tokio::sync::Notify::new()),
+            }
+        }
     }
 
     struct FakeTransport {
@@ -1333,6 +1541,7 @@ mod tests {
                 state: Arc::clone(&self.state),
                 external_session_id: format!("fake-session-{start_index}"),
                 alive: true,
+                cancel: tokio_util::sync::CancellationToken::new(),
             }))
         }
     }
@@ -1341,6 +1550,7 @@ mod tests {
         state: Arc<FakeAgentState>,
         external_session_id: String,
         alive: bool,
+        cancel: tokio_util::sync::CancellationToken,
     }
 
     #[async_trait]
@@ -1354,6 +1564,29 @@ mod tests {
             prompt: &str,
             _context: Option<&ContextSnapshot>,
         ) -> anyhow::Result<Pin<Box<dyn Stream<Item = ExternalAgentEvent> + Send>>> {
+            if prompt == "hold" {
+                let cancel = self.cancel.clone();
+                let seen = Arc::clone(&self.state.hold_entered);
+                let cancelled = Arc::clone(&self.state.hold_cancelled);
+                let finalize = Arc::clone(&self.state.hold_release);
+                return Ok(Box::pin(stream::unfold(false, move |started| {
+                    let cancel = cancel.clone();
+                    let seen = Arc::clone(&seen);
+                    let cancelled = Arc::clone(&cancelled);
+                    let finalize = Arc::clone(&finalize);
+                    async move {
+                        if started {
+                            return None;
+                        }
+                        let wait = finalize.notified();
+                        seen.notify_one();
+                        cancel.cancelled().await;
+                        cancelled.notify_one();
+                        wait.await;
+                        Some((ExternalAgentEvent::TurnInterrupted, true))
+                    }
+                })));
+            }
             if prompt == "fail" {
                 anyhow::bail!("fake send failure");
             }
@@ -1409,6 +1642,10 @@ mod tests {
             } else {
                 ExternalAgentStatus::Stopped
             }
+        }
+
+        fn arm_turn_cancel(&mut self, token: &tokio_util::sync::CancellationToken) {
+            self.cancel = token.clone();
         }
     }
 
@@ -1608,6 +1845,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         )
     }
 
@@ -1777,6 +2015,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         );
 
         assert_eq!(
@@ -1816,6 +2055,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         );
 
         let pending = chat
@@ -1859,6 +2099,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         );
 
         let result = chat
@@ -1895,6 +2136,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         );
 
         let result = chat
@@ -1939,6 +2181,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         );
         let mut context = test_chat_context();
         context.agent_id = Some("main".into());
@@ -1976,6 +2219,7 @@ mod tests {
             test_gateway_state(),
             session_store,
             metadata,
+            chelix_call_bus::CallBus::new(),
         );
         let mut context = test_chat_context();
         context.agent_id = Some("main".into());
@@ -2259,5 +2503,531 @@ mod tests {
 
         assert_eq!(agent_state.shutdowns.load(Ordering::SeqCst), 1);
         assert!(external_agents.live_sessions.lock().await.is_empty());
+    }
+
+    struct StopRuntime {
+        sandbox: Arc<chelix_tools::sandbox::SandboxRouter>,
+        tts: chelix_service_traits::NoopTtsService,
+        project: chelix_service_traits::NoopProjectService,
+        mcp: chelix_service_traits::NoopMcpService,
+    }
+
+    #[async_trait::async_trait]
+    impl chelix_chat::runtime::ChatRuntime for StopRuntime {
+        async fn broadcast(&self, _topic: &str, _payload: Value) {}
+
+        async fn push_channel_reply(
+            &self,
+            _session_key: &str,
+            _target: chelix_channels::ChannelReplyTarget,
+        ) {
+        }
+
+        async fn drain_channel_replies(
+            &self,
+            _session_key: &str,
+        ) -> Vec<chelix_channels::ChannelReplyTarget> {
+            Vec::new()
+        }
+
+        async fn peek_channel_replies(
+            &self,
+            _session_key: &str,
+        ) -> Vec<chelix_channels::ChannelReplyTarget> {
+            Vec::new()
+        }
+
+        async fn push_channel_status_log(&self, _session_key: &str, _message: String) {}
+
+        async fn drain_channel_status_log(&self, _session_key: &str) -> Vec<String> {
+            Vec::new()
+        }
+
+        async fn set_run_error(&self, _run_id: &str, _error: String) {}
+
+        async fn active_session_key(&self, _conn_id: &str) -> Option<String> {
+            None
+        }
+
+        async fn active_project_id(&self, _conn_id: &str) -> Option<String> {
+            None
+        }
+
+        fn hostname(&self) -> &str {
+            "test"
+        }
+
+        fn sandbox_router(&self) -> &Arc<chelix_tools::sandbox::SandboxRouter> {
+            &self.sandbox
+        }
+
+        fn memory_manager(&self) -> Option<&chelix_memory::runtime::DynMemoryRuntime> {
+            None
+        }
+
+        async fn cached_location(&self) -> Option<chelix_config::GeoLocation> {
+            None
+        }
+
+        async fn tts_overrides(
+            &self,
+            _session_key: &str,
+            _channel_key: &str,
+        ) -> (
+            Option<chelix_chat::runtime::TtsOverride>,
+            Option<chelix_chat::runtime::TtsOverride>,
+        ) {
+            (None, None)
+        }
+
+        fn channel_outbound(&self) -> Option<Arc<dyn chelix_channels::ChannelOutbound>> {
+            None
+        }
+
+        fn channel_stream_outbound(
+            &self,
+        ) -> Option<Arc<dyn chelix_channels::ChannelStreamOutbound>> {
+            None
+        }
+
+        fn tts_service(&self) -> &dyn chelix_service_traits::TtsService {
+            &self.tts
+        }
+
+        fn project_service(&self) -> &dyn chelix_service_traits::ProjectService {
+            &self.project
+        }
+
+        fn mcp_service(&self) -> &dyn chelix_service_traits::McpService {
+            &self.mcp
+        }
+
+        async fn chat_service(&self) -> Arc<dyn ChatService> {
+            Arc::new(NoopChatService)
+        }
+
+        async fn last_run_error(&self, _run_id: &str) -> Option<String> {
+            None
+        }
+
+        async fn send_push_notification(
+            &self,
+            _title: &str,
+            _body: &str,
+            _url: Option<&str>,
+            _session_key: Option<&str>,
+        ) -> chelix_chat::error::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    struct StopFixture {
+        _dir: tempfile::TempDir,
+        chat: Arc<chelix_chat::LiveChatService>,
+        external: Arc<GatewayExternalAgentService>,
+        abort: ExternalAgentChatService,
+        queued: Arc<chelix_sessions::QueuedPrompts>,
+    }
+
+    async fn stop_fixture() -> StopFixture {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        chelix_sessions::run_migrations(&pool).await.unwrap();
+        let metadata = Arc::new(SqliteSessionMetadata::new(pool.clone()));
+        create_test_session(&metadata, "main").await;
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let queued = Arc::new(chelix_sessions::QueuedPrompts::new(pool));
+        let config = chelix_config::ChelixConfig::default();
+        let runtime = Arc::new(StopRuntime {
+            sandbox: Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+            tts: chelix_service_traits::NoopTtsService,
+            project: chelix_service_traits::NoopProjectService,
+            mcp: chelix_service_traits::NoopMcpService,
+        });
+        let chat = Arc::new(chelix_chat::LiveChatService::new(
+            Arc::new(tokio::sync::RwLock::new(
+                chelix_providers::ProviderRegistry::empty(),
+            )),
+            runtime,
+            Arc::clone(&session_store),
+            Arc::clone(&metadata),
+            Arc::clone(&queued),
+            config.clone(),
+            test_agents_config(),
+            chelix_config::ToolsConfigSource::snapshot(config.tools),
+        ));
+        let external =
+            fake_external_agents(Arc::clone(&metadata), Arc::new(FakeAgentState::default()));
+        let bus = chelix_call_bus::CallBus::new();
+        bus.require::<chelix_service_traits::StopSession>().unwrap();
+        crate::server::register_stop_session(&bus, Arc::clone(&chat), Arc::clone(&external))
+            .unwrap();
+        bus.seal().unwrap();
+        let abort = ExternalAgentChatService::new(
+            Arc::clone(&chat) as Arc<dyn ChatService>,
+            Arc::clone(&external),
+            test_gateway_state(),
+            session_store,
+            metadata,
+            bus,
+        );
+        StopFixture {
+            _dir: dir,
+            chat,
+            external,
+            abort,
+            queued,
+        }
+    }
+
+    fn queued_text(text: &str) -> chelix_sessions::QueuedPromptContent {
+        chelix_sessions::QueuedPromptContent {
+            content: chelix_sessions::QueuedPromptMessageContent::Text(text.to_string()),
+            documents: Vec::new(),
+            audio: None,
+            client_sequence: None,
+            client_message_id: None,
+            input_medium: chelix_common::MessageMedium::Text,
+            reply_medium: chelix_common::MessageMedium::Text,
+            channel: None,
+            channel_reply_target: None,
+        }
+    }
+
+    fn finish_when_cancelled(
+        external: Arc<GatewayExternalAgentService>,
+        session_key: &str,
+        run_id: &str,
+        token: tokio_util::sync::CancellationToken,
+    ) {
+        let session_key = session_key.to_string();
+        let run_id = run_id.to_string();
+        tokio::spawn(async move {
+            token.cancelled().await;
+            external
+                .finish_external_turn(&session_key, &run_id, Ok(()))
+                .await;
+        });
+    }
+
+    #[tokio::test]
+    async fn abort_current_run_clears_queue_and_external_like_session_only() {
+        let fixture = stop_fixture().await;
+        fixture
+            .queued
+            .enqueue(
+                chelix_sessions::SessionKey::new("main"),
+                queued_text("later"),
+            )
+            .await
+            .unwrap();
+        let token = fixture
+            .external
+            .try_begin_external_turn("main", "run-1")
+            .await
+            .unwrap();
+        finish_when_cancelled(
+            Arc::clone(&fixture.external),
+            "main",
+            "run-1",
+            token.clone(),
+        );
+        let with_run = fixture
+            .abort
+            .abort(serde_json::json!({"sessionKey": "main", "runId": "run-1"}))
+            .await
+            .unwrap();
+        assert_eq!(with_run["aborted"], true);
+        assert_eq!(with_run["sessionKey"], "main");
+        assert!(token.is_cancelled());
+        assert!(
+            fixture
+                .chat
+                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .await
+                .unwrap()
+                .prompts
+                .is_empty()
+        );
+
+        fixture
+            .queued
+            .enqueue(
+                chelix_sessions::SessionKey::new("main"),
+                queued_text("again"),
+            )
+            .await
+            .unwrap();
+        let token = fixture
+            .external
+            .try_begin_external_turn("main", "run-2")
+            .await
+            .unwrap();
+        finish_when_cancelled(
+            Arc::clone(&fixture.external),
+            "main",
+            "run-2",
+            token.clone(),
+        );
+        let session_only = fixture
+            .abort
+            .abort(serde_json::json!({"sessionKey": "main"}))
+            .await
+            .unwrap();
+        assert_eq!(session_only["aborted"], with_run["aborted"]);
+        assert!(token.is_cancelled());
+        assert!(
+            fixture
+                .chat
+                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .await
+                .unwrap()
+                .prompts
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_run_id_only_leaves_queue_and_external_turn() {
+        let fixture = stop_fixture().await;
+        fixture
+            .queued
+            .enqueue(
+                chelix_sessions::SessionKey::new("main"),
+                queued_text("keep"),
+            )
+            .await
+            .unwrap();
+        let token = fixture
+            .external
+            .try_begin_external_turn("main", "external-run")
+            .await
+            .unwrap();
+        let response = fixture
+            .abort
+            .abort(serde_json::json!({"runId": "missing-run"}))
+            .await
+            .unwrap();
+        assert_eq!(response["aborted"], false);
+        assert_eq!(response["runId"], "missing-run");
+        assert!(response["sessionKey"].is_null());
+        assert_ne!(response["sessionKey"], "main");
+        assert!(!token.is_cancelled());
+        assert_eq!(
+            fixture
+                .chat
+                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .await
+                .unwrap()
+                .prompts
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_stale_run_leaves_queue_and_external_turn() {
+        let fixture = stop_fixture().await;
+        fixture
+            .queued
+            .enqueue(
+                chelix_sessions::SessionKey::new("main"),
+                queued_text("keep"),
+            )
+            .await
+            .unwrap();
+        let token = fixture
+            .external
+            .try_begin_external_turn("main", "current")
+            .await
+            .unwrap();
+        let response = fixture
+            .abort
+            .abort(serde_json::json!({"sessionKey": "main", "runId": "stale"}))
+            .await
+            .unwrap();
+        assert_eq!(response["aborted"], false);
+        assert_eq!(response["runId"], "stale");
+        assert!(!token.is_cancelled());
+        assert_eq!(
+            fixture
+                .chat
+                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .await
+                .unwrap()
+                .prompts
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn external_turn_guard_drop_waits_for_the_registry_lock() {
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        let external = fake_external_agents(metadata, Arc::new(FakeAgentState::default()));
+        external
+            .try_begin_external_turn("main", "run-1")
+            .await
+            .unwrap();
+        let done = {
+            let runs = external
+                .external_runs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let turn = runs.get("main").unwrap();
+            assert!(turn.done.borrow().is_none());
+            turn.done.subscribe()
+        };
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let external_for_holder = Arc::clone(&external);
+        let holder = std::thread::spawn(move || {
+            let runs = external_for_holder
+                .external_runs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            assert!(runs.contains_key("main"));
+            assert!(runs.get("main").unwrap().done.borrow().is_none());
+            held_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            drop(runs);
+        });
+        held_rx.recv().unwrap();
+        let external_for_drop = Arc::clone(&external);
+        let dropper = std::thread::spawn(move || {
+            let guard = ExternalTurnGuard {
+                agents: external_for_drop,
+                session_key: "main".to_string(),
+                run_id: "run-1".to_string(),
+                active: true,
+                entered: Some(entered_tx),
+            };
+            drop(guard);
+        });
+        entered_rx.recv().unwrap();
+        let mut finished_early = false;
+        for _ in 0..100 {
+            if dropper.is_finished() {
+                finished_early = true;
+                break;
+            }
+            std::thread::yield_now();
+        }
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        dropper.join().unwrap();
+        assert!(
+            !finished_early,
+            "drop finished while the registry lock was still held"
+        );
+        assert!(
+            external
+                .external_runs
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .get("main")
+                .is_none()
+        );
+        assert!(matches!(done.borrow().as_ref(), Some(Err(_))));
+    }
+
+    #[tokio::test]
+    async fn stop_session_returns_after_send_external_finishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
+        let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
+        create_test_session(&metadata, "main").await;
+        let agent_state = Arc::new(FakeAgentState::default());
+        let external = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
+        external
+            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .await
+            .unwrap();
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE projects (id TEXT PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        chelix_sessions::run_migrations(&pool).await.unwrap();
+        let queued = Arc::new(chelix_sessions::QueuedPrompts::new(pool.clone()));
+        let config = chelix_config::ChelixConfig::default();
+        let runtime = Arc::new(StopRuntime {
+            sandbox: Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
+            tts: chelix_service_traits::NoopTtsService,
+            project: chelix_service_traits::NoopProjectService,
+            mcp: chelix_service_traits::NoopMcpService,
+        });
+        let local = Arc::new(chelix_chat::LiveChatService::new(
+            Arc::new(tokio::sync::RwLock::new(
+                chelix_providers::ProviderRegistry::empty(),
+            )),
+            runtime,
+            Arc::clone(&session_store),
+            Arc::clone(&metadata),
+            queued,
+            config.clone(),
+            test_agents_config(),
+            chelix_config::ToolsConfigSource::snapshot(config.tools),
+        ));
+        let gateway = test_gateway_state();
+        let bus = chelix_call_bus::CallBus::new();
+        bus.require::<chelix_service_traits::StopSession>().unwrap();
+        crate::server::register_stop_session(&bus, Arc::clone(&local), Arc::clone(&external))
+            .unwrap();
+        bus.seal().unwrap();
+        let chat = Arc::new(ExternalAgentChatService::new(
+            local,
+            Arc::clone(&external),
+            Arc::clone(&gateway),
+            Arc::clone(&session_store),
+            metadata,
+            bus,
+        ));
+        let entered = agent_state.hold_entered.notified();
+        let cancel_seen = agent_state.hold_cancelled.notified();
+        let sending = Arc::clone(&chat);
+        let send = tokio::spawn(async move {
+            sending
+                .send(ChatSendRequest::text("hold"), test_chat_context())
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), entered)
+            .await
+            .expect("external turn did not start");
+        let aborting = Arc::clone(&chat);
+        let abort = tokio::spawn(async move {
+            aborting
+                .abort(serde_json::json!({"sessionKey": "main"}))
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), cancel_seen)
+            .await
+            .expect("cancel did not reach the external turn");
+        assert!(!abort.is_finished());
+        agent_state.hold_release.notify_one();
+        let response = tokio::time::timeout(std::time::Duration::from_secs(2), abort)
+            .await
+            .expect("abort did not return")
+            .unwrap()
+            .unwrap_or_else(|error| panic!("abort: {error}"));
+        assert_eq!(response["aborted"], true);
+        let history = session_store.read("main").await.unwrap();
+        assert!(history.len() >= 2);
+        gateway
+            .services
+            .session_mutations
+            .try_acquire_turn("main")
+            .await
+            .unwrap_or_else(|error| panic!("permit was not released: {error}"));
+        assert!(external.current_external_run("main").await.is_none());
+        let _ = send
+            .await
+            .unwrap()
+            .unwrap_or_else(|error| panic!("send: {error}"));
     }
 }

@@ -1208,6 +1208,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chelix-call-bus"
+version = "0.1.0"
+dependencies = [
+ "chelix-metrics",
+ "metrics 0.24.6",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "chelix-channels"
 version = "0.1.0"
 dependencies = [
@@ -1490,6 +1501,7 @@ dependencies = [
  "chelix-auth",
  "chelix-browser",
  "chelix-caldav",
+ "chelix-call-bus",
  "chelix-channels",
  "chelix-chat",
  "chelix-code-index",
@@ -1991,6 +2003,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chelix-call-bus",
  "chelix-channels",
  "chelix-common",
  "chelix-config",
@@ -10639,6 +10652,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

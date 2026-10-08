@@ -8,7 +8,7 @@ use {
 };
 
 use crate::{
-    runtimes::process::build_process_input,
+    runtimes::process::{CANCEL_READ_TIMEOUT, OutputReader, build_process_input, stop_child},
     transport::{ExternalAgentSession, ExternalAgentTransport},
     types::{
         AgentTransportKind, ContextSnapshot, ExternalAgentEvent, ExternalAgentSpec,
@@ -86,6 +86,7 @@ struct ClaudeCodeSession {
     timeout: Duration,
     session_id: Option<String>,
     status: ExternalAgentStatus,
+    cancel: tokio_util::sync::CancellationToken,
 }
 
 impl ClaudeCodeSession {
@@ -105,6 +106,7 @@ impl ClaudeCodeSession {
             timeout: Duration::from_secs(timeout_secs.unwrap_or(300)),
             session_id,
             status: ExternalAgentStatus::Idle,
+            cancel: tokio_util::sync::CancellationToken::new(),
         }
     }
 
@@ -144,12 +146,111 @@ impl ExternalAgentSession for ClaudeCodeSession {
         command.stderr(Stdio::piped());
         command.kill_on_drop(true);
 
-        let mut child = command.spawn()?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(input.as_bytes()).await?;
-            stdin.shutdown().await?;
+        if self.cancel.is_cancelled() {
+            self.status = ExternalAgentStatus::Idle;
+            return Ok(Box::pin(stream::iter(vec![
+                ExternalAgentEvent::TurnInterrupted,
+            ])));
         }
-        let output = tokio::time::timeout(self.timeout, child.wait_with_output()).await??;
+        let mut child = command.spawn()?;
+        let cancel = self.cancel.clone();
+        let write_cancelled = if let Some(mut stdin) = child.stdin.take() {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => true,
+                result = async {
+                    stdin.write_all(input.as_bytes()).await?;
+                    stdin.shutdown().await?;
+                    Ok::<(), std::io::Error>(())
+                } => {
+                    result?;
+                    false
+                }
+            }
+        } else {
+            false
+        };
+        if write_cancelled {
+            stop_child(&mut child, self.timeout).await?;
+            self.status = ExternalAgentStatus::Idle;
+            return Ok(Box::pin(stream::iter(vec![
+                ExternalAgentEvent::TurnInterrupted,
+            ])));
+        }
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("claude stdout missing"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("claude stderr missing"))?;
+        let mut stdout_reader = OutputReader::spawn(stdout);
+        let mut stderr_reader = OutputReader::spawn(stderr);
+        let cancel = self.cancel.clone();
+        let status = tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                if let Err(error) = stop_child(&mut child, self.timeout).await {
+                    stdout_reader.abort().await;
+                    stderr_reader.abort().await;
+                    return Err(error);
+                }
+                if let Err(error) = stdout_reader.read(self.timeout, CANCEL_READ_TIMEOUT).await {
+                    stdout_reader.abort().await;
+                    stderr_reader.abort().await;
+                    return Err(error);
+                }
+                if let Err(error) = stderr_reader.read(self.timeout, CANCEL_READ_TIMEOUT).await {
+                    stdout_reader.abort().await;
+                    stderr_reader.abort().await;
+                    return Err(error);
+                }
+                self.status = ExternalAgentStatus::Idle;
+                return Ok(Box::pin(stream::iter(vec![ExternalAgentEvent::TurnInterrupted])));
+            }
+            status = tokio::time::timeout(self.timeout, child.wait()) => status,
+        };
+        let status = match status {
+            Ok(Ok(status)) => status,
+            Ok(Err(error)) => {
+                stdout_reader.abort().await;
+                stderr_reader.abort().await;
+                return Err(anyhow::anyhow!(error));
+            },
+            Err(_) => {
+                stdout_reader.abort().await;
+                stderr_reader.abort().await;
+                return Err(anyhow::anyhow!("external agent did not exit"));
+            },
+        };
+        let stdout = match stdout_reader
+            .read(self.timeout, "claude output read timed out")
+            .await
+        {
+            Ok(()) => stdout_reader.take_output(),
+            Err(error) => {
+                stdout_reader.abort().await;
+                stderr_reader.abort().await;
+                return Err(error);
+            },
+        };
+        let stderr = match stderr_reader
+            .read(self.timeout, "claude output read timed out")
+            .await
+        {
+            Ok(()) => stderr_reader.take_output(),
+            Err(error) => {
+                stdout_reader.abort().await;
+                stderr_reader.abort().await;
+                return Err(error);
+            },
+        };
+        let output = std::process::Output {
+            status,
+            stdout,
+            stderr,
+        };
         if !output.status.success() {
             self.status = ExternalAgentStatus::Error;
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -186,6 +287,10 @@ impl ExternalAgentSession for ClaudeCodeSession {
 
     fn status(&self) -> ExternalAgentStatus {
         self.status
+    }
+
+    fn arm_turn_cancel(&mut self, token: &tokio_util::sync::CancellationToken) {
+        self.cancel = token.clone();
     }
 }
 
@@ -335,6 +440,100 @@ printf '%s\n' '{"result":"ok","session_id":"sid-1"}'
         let args = fs::read_to_string(&log)?;
         let lines = args.lines().collect::<Vec<_>>();
         assert_eq!(lines, vec!["", "--resume sid-1"]);
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancel_during_stdin_write_returns_turn_interrupted() -> anyhow::Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("chelix-claude-cancel-{unique}"));
+        fs::create_dir_all(&dir)?;
+        let script = dir.join("sleep.sh");
+        let pidfile = dir.join("pid");
+        fs::write(
+            &script,
+            format!("#!/bin/sh\necho $$ > {}\nsleep 30\n", pidfile.display()),
+        )?;
+        let mut spec = ExternalAgentSpec::new(AgentTransportKind::ClaudeCode);
+        spec.binary = Some("/bin/sh".to_string());
+        spec.args = vec![script.to_string_lossy().to_string()];
+        spec.timeout_secs = Some(5);
+        let mut session = ClaudeCodeTransport::new().start_session(&spec).await?;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        session.arm_turn_cancel(&cancel);
+        let prompt = "x".repeat(256 * 1024);
+        let send = tokio::spawn(async move { session.send_prompt(&prompt, None).await });
+        let started = std::time::Instant::now();
+        while !pidfile.exists() {
+            if started.elapsed() > Duration::from_secs(2) {
+                anyhow::bail!("claude test process did not start");
+            }
+            tokio::task::yield_now().await;
+        }
+        cancel.cancel();
+        let events = tokio::time::timeout(Duration::from_secs(2), send)
+            .await???
+            .collect::<Vec<_>>()
+            .await;
+        assert!(matches!(
+            events.first(),
+            Some(ExternalAgentEvent::TurnInterrupted)
+        ));
+        let pid = fs::read_to_string(&pidfile)?;
+        let status = std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .status()?;
+        assert!(!status.success());
+        fs::remove_dir_all(dir)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancel_times_out_when_a_grandchild_holds_stderr() -> anyhow::Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("chelix-claude-stderr-{unique}"));
+        fs::create_dir_all(&dir)?;
+        let ready = dir.join("ready");
+        let script = dir.join("hold.sh");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\ncat >/dev/null\nexec 1>&-\nsleep 60 >&2 &\necho ready > {}\nwait\n",
+                ready.display()
+            ),
+        )?;
+        let mut spec = ExternalAgentSpec::new(AgentTransportKind::ClaudeCode);
+        spec.binary = Some("/bin/sh".to_string());
+        spec.args = vec![script.to_string_lossy().to_string()];
+        spec.timeout_secs = Some(1);
+        let mut session = ClaudeCodeTransport::new().start_session(&spec).await?;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        session.arm_turn_cancel(&cancel);
+        let send = tokio::spawn(async move { session.send_prompt("hello", None).await });
+        let started = std::time::Instant::now();
+        while !ready.exists() {
+            if started.elapsed() > Duration::from_secs(2) {
+                anyhow::bail!("claude grandchild was not ready");
+            }
+            tokio::task::yield_now().await;
+        }
+        cancel.cancel();
+        let error = match tokio::time::timeout(Duration::from_secs(3), send).await?? {
+            Err(error) => error,
+            Ok(_) => anyhow::bail!("expected read timeout"),
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("external agent output read timed out after cancel")
+        );
         fs::remove_dir_all(dir)?;
         Ok(())
     }

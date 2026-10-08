@@ -13,6 +13,7 @@ chelix-agents           = { workspace = true }
 chelix-auth             = { workspace = true }
 chelix-browser          = { workspace = true }
 chelix-caldav           = { optional = true, workspace = true }
+chelix-call-bus         = { workspace = true }
 chelix-channels         = { workspace = true }
 chelix-chat             = { workspace = true }
 chelix-code-index       = { workspace = true }
@@ -138,6 +139,7 @@ linkup = ["dep:chelix-linkup"]
 matrix = ["dep:chelix-matrix"]
 mdns = ["dep:mdns-sd"]
 metrics = [
+  "chelix-call-bus/metrics",
   "chelix-chat/metrics",
   "chelix-context7?/metrics",
   "chelix-duckduckgo?/metrics",
@@ -167,6 +169,7 @@ web-ui = ["chelix-chat/web-ui"]
 whatsapp = ["chelix-whatsapp/metrics", "dep:chelix-whatsapp", "dep:qrcode"]
 
 [dev-dependencies]
+chelix-tools = { workspace = true, features = ["test-util"] }
 serial_test  = { workspace = true }
 tokio-stream = { workspace = true }
 
