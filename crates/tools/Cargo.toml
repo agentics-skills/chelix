@@ -8,6 +8,7 @@ bundled-skills = ["chelix-skills/bundled-skills"]
 default        = ["firecrawl", "metrics"]
 firecrawl      = []
 metrics        = ["dep:chelix-metrics"]
+test-util      = []
 
 [dependencies]
 anyhow                = { workspace = true }

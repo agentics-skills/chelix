@@ -225,6 +225,15 @@ This allows you to:
 - Create separate Grafana dashboards per provider instance
 - Monitor rate limits and quotas independently
 
+### Call bus
+
+| Metric                                  | Type      | Labels      | Description                                      |
+| --------------------------------------- | --------- | ----------- | ------------------------------------------------ |
+| `chelix_call_bus_calls_total`           | Counter   | op, result  | `call` and `publish` operations                  |
+| `chelix_call_bus_call_duration_seconds` | Histogram | op          | `call` and `publish` duration                    |
+
+`op` is `call` or `publish`. `result` is `ok` or `error`.
+
 ### MCP (Model Context Protocol) Metrics
 
 | Metric                                  | Type      | Labels                   | Description                   |

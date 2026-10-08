@@ -377,6 +377,21 @@ pub struct LiveChatService {
     pub(in crate::service) session_gates: Arc<super::session_gate::SessionGateRegistry>,
     /// Ephemeral operator permission waits for moderated tool calls.
     pub(in crate::service) tool_permissions: Arc<crate::tool_permission::ToolPermissionManager>,
+    pub(in crate::service) stop_gate: Arc<super::stop_gate::StopGate>,
+    /// Test seam after the permit is held and before the run token is published.
+    pub(in crate::service) before_publish_run: Option<Arc<TestGate>>,
+    /// Test seam after the run token is published and before the provider starts.
+    pub(in crate::service) after_publish_run: Option<Arc<TestGate>>,
+    /// Test seam between queue drain and `start_queued_batch`. Production leaves this empty.
+    pub(in crate::service) queue_after_drain: Option<Arc<TestGate>>,
+    #[cfg(test)]
+    pub(in crate::service) test_broadcasts: Arc<std::sync::Mutex<Vec<(String, Value)>>>,
+}
+
+/// One-waiter gate used only by tests. Production leaves the seams empty.
+pub(in crate::service) struct TestGate {
+    pub(in crate::service) arrived: tokio::sync::Notify,
+    pub(in crate::service) release: tokio::sync::Notify,
 }
 
 async fn runtime_config_for_agent_run(
@@ -428,6 +443,12 @@ impl LiveChatService {
             tools_config_source,
             session_gates: super::session_gate::SessionGateRegistry::new(),
             tool_permissions: Arc::new(crate::tool_permission::ToolPermissionManager::new()),
+            stop_gate: super::stop_gate::StopGate::new(),
+            before_publish_run: None,
+            after_publish_run: None,
+            queue_after_drain: None,
+            #[cfg(test)]
+            test_broadcasts: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 

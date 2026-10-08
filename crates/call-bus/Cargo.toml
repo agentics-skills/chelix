@@ -1,0 +1,23 @@
+[package]
+description       = "In-process typed call and event bus for chelix"
+edition.workspace = true
+name              = "chelix-call-bus"
+version.workspace = true
+
+[dependencies]
+chelix-metrics = { optional = true, workspace = true }
+metrics        = { optional = true, workspace = true }
+thiserror      = { workspace = true }
+tokio          = { workspace = true }
+tracing        = { optional = true, workspace = true }
+
+[features]
+default = ["tracing"]
+metrics = ["dep:metrics", "dep:chelix-metrics"]
+tracing = ["dep:tracing"]
+
+[dev-dependencies]
+tokio = { features = ["macros", "rt-multi-thread", "time"], workspace = true }
+
+[lints]
+workspace = true

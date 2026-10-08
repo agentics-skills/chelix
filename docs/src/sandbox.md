@@ -221,6 +221,7 @@ mandatory only when `mode = "On"`. It has no runtime default; the template and
 examples explicitly use `7`. `0` is valid and removes an eligible archived
 owner's container at the first reconciliation scan.
 
+An error from `StopSession` cancels starting the background stop.
 Archiving a session that owns its sandbox starts a background `docker stop`,
 `podman stop`, or Apple Container `stop` for that container. The container then
 remains until the retention period expires. The period is

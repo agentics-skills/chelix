@@ -2144,12 +2144,18 @@ reasoning_supported_efforts = ["off"]
 
     struct RecordingSandbox {
         cleanup_keys: std::sync::Mutex<Vec<String>>,
+        stops: std::sync::atomic::AtomicUsize,
+        stop_notify: Arc<tokio::sync::Notify>,
+        mark: Arc<std::sync::atomic::AtomicBool>,
     }
 
     impl RecordingSandbox {
         fn new() -> Self {
             Self {
                 cleanup_keys: std::sync::Mutex::new(Vec::new()),
+                stops: std::sync::atomic::AtomicUsize::new(0),
+                stop_notify: Arc::new(tokio::sync::Notify::new()),
+                mark: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             }
         }
 
@@ -2192,6 +2198,15 @@ reasoning_supported_efforts = ["off"]
         ) -> chelix_tools::error::Result<()> {
             self.cleanup_keys.lock().unwrap().push(id.key.clone());
             Ok(())
+        }
+
+        async fn stop(&self, _id: &chelix_tools::sandbox::SandboxId) {
+            assert!(
+                self.mark.load(Ordering::SeqCst),
+                "background stop ran before StopSession recorded its mark"
+            );
+            self.stops.fetch_add(1, Ordering::SeqCst);
+            self.stop_notify.notify_one();
         }
     }
 

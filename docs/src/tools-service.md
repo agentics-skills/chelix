@@ -529,6 +529,7 @@ retention in days. It is mandatory only in global `On` mode, has no runtime
 default, and accepts `0` for deletion at the first reconciliation scan. The
 configuration template and documentation examples explicitly use `7`.
 
+An error from `StopSession` cancels starting the background stop.
 Archiving a session that owns its sandbox starts a background `docker stop`,
 `podman stop`, or Apple Container `stop` for that container. The container then
 remains until the configured period has elapsed from the owner's

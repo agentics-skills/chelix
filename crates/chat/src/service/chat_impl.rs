@@ -223,6 +223,7 @@ impl ChatService for LiveChatService {
         if session_key.is_empty() {
             return Err(ServiceError::message("session ID must not be empty"));
         }
+        let mut guard = self.stop_gate.begin_send(&session_key)?;
         let text = request.text;
         let desired_reply_medium = crate::message::explicit_reply_medium_override(&text)
             .or(request.input_medium)
@@ -379,11 +380,31 @@ impl ChatService for LiveChatService {
         let provider_name = provider.name().to_string();
         let model_id = provider.id().to_string();
 
-        self.active_runs
-            .write()
-            .await
-            .insert(run_id.clone(), cancellation_token.clone());
+        self.stop_gate.confirm_start(&mut guard)?;
         self.activate_session_turn(&session_key, &run_id).await;
+        {
+            let mut active = self.active_runs.write().await;
+            self.stop_gate.publish_run(
+                &mut active,
+                &mut guard,
+                &session_key,
+                &run_id,
+                cancellation_token.clone(),
+            );
+        }
+        let mut run_finish = stop_gate::RunFinishGuard::arm(
+            Arc::clone(&self.stop_gate),
+            Arc::clone(&self.session_gates),
+            Arc::clone(&self.active_runs),
+            Arc::clone(&self.active_runs_by_session),
+            session_key.clone(),
+            run_id.clone(),
+        );
+        if let Some(gate) = self.after_publish_run.clone() {
+            let release = gate.release.notified();
+            gate.arrived.notify_one();
+            release.await;
+        }
         self.active_reply_medium
             .write()
             .await
@@ -499,13 +520,26 @@ impl ChatService for LiveChatService {
         self.session_gates
             .finish_turn(&session_key, terminal_from_outcome(&result))
             .await;
-        self.active_runs.write().await.remove(&run_id);
+        let stop_detail = if matches!(result, ChatRunOutcome::Failed) {
+            self.state.last_run_error(&run_id).await
+        } else {
+            None
+        };
+        {
+            let mut active = self.active_runs.write().await;
+            self.stop_gate.finish_run(
+                &mut active,
+                &run_id,
+                stop_gate::StopGate::report_outcome(&result, stop_detail),
+            );
+        }
         let mut runs_by_session = self.active_runs_by_session.write().await;
         if runs_by_session.get(&session_key) == Some(&run_id) {
             runs_by_session.remove(&session_key);
         }
         drop(runs_by_session);
         self.session_gates.notify();
+        run_finish.disarm();
         let _ = self.tool_permissions.drop_session(&session_key).await;
         self.active_tool_invocations
             .write()
@@ -1559,6 +1593,7 @@ mod tests {
         tts: NoopTtsService,
         project: NoopProjectService,
         mcp: NoopMcpService,
+        broadcasts: Arc<Mutex<Vec<(String, Value)>>>,
     }
 
     impl Default for ValidationTestRuntime {
@@ -1568,13 +1603,19 @@ mod tests {
                 tts: NoopTtsService,
                 project: NoopProjectService,
                 mcp: NoopMcpService,
+                broadcasts: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
 
     #[async_trait::async_trait]
     impl crate::runtime::ChatRuntime for ValidationTestRuntime {
-        async fn broadcast(&self, _topic: &str, _payload: Value) {}
+        async fn broadcast(&self, topic: &str, payload: Value) {
+            self.broadcasts
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push((topic.to_string(), payload));
+        }
 
         async fn push_channel_reply(
             &self,
@@ -1850,9 +1891,13 @@ mod tests {
                 }),
             );
         }
-        let runtime: Arc<dyn crate::runtime::ChatRuntime> =
-            Arc::new(ValidationTestRuntime::default());
-        let service = LiveChatService::new(
+        let broadcasts = Arc::new(Mutex::new(Vec::new()));
+        let runtime = ValidationTestRuntime {
+            broadcasts: Arc::clone(&broadcasts),
+            ..ValidationTestRuntime::default()
+        };
+        let runtime: Arc<dyn crate::runtime::ChatRuntime> = Arc::new(runtime);
+        let mut service = LiveChatService::new(
             Arc::new(RwLock::new(registry)),
             runtime,
             Arc::clone(&session_store),
@@ -1862,6 +1907,7 @@ mod tests {
             agents_config,
             chelix_config::ToolsConfigSource::snapshot(config.tools),
         );
+        service.test_broadcasts = broadcasts;
         (
             directory,
             service,
@@ -2793,5 +2839,469 @@ mod tests {
                 .map(String::as_str),
             Some("run-internal")
         );
+    }
+
+    fn queued_text(text: &str) -> chelix_sessions::QueuedPromptContent {
+        chelix_sessions::QueuedPromptContent {
+            content: chelix_sessions::QueuedPromptMessageContent::Text(text.to_string()),
+            documents: Vec::new(),
+            audio: None,
+            client_sequence: None,
+            client_message_id: None,
+            input_medium: chelix_common::MessageMedium::Text,
+            reply_medium: chelix_common::MessageMedium::Text,
+            channel: None,
+            channel_reply_target: None,
+        }
+    }
+
+    async fn publish_stop_run(
+        service: &LiveChatService,
+        session_key: &str,
+        run_id: &str,
+        token: CancellationToken,
+    ) {
+        let mut guard = service
+            .stop_gate
+            .begin_send(session_key)
+            .unwrap_or_else(|error| panic!("begin send: {error}"));
+        let mut active = service.active_runs.write().await;
+        service
+            .stop_gate
+            .publish_run(&mut active, &mut guard, session_key, run_id, token);
+    }
+
+    async fn finish_stop_run(service: &LiveChatService, run_id: &str) {
+        let mut active = service.active_runs.write().await;
+        service.stop_gate.finish_run(&mut active, run_id, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn stop_run_returns_after_the_run_finishes_not_at_cancel() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let token = CancellationToken::new();
+        publish_stop_run(&service, "main", "run-1", token.clone()).await;
+        let stopping = service.clone();
+        let stop = tokio::spawn(async move { stopping.stop_run("run-1".to_string()).await });
+        token.cancelled().await;
+        assert!(!stop.is_finished(), "stop returned at token cancellation");
+        finish_stop_run(&service, "run-1").await;
+        let outcome = stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+            .unwrap_or_else(|error| panic!("stop run: {error}"));
+        assert!(outcome.cancelled);
+        assert_eq!(outcome.run_id.as_deref(), Some("run-1"));
+    }
+
+    #[tokio::test]
+    async fn stop_run_waits_when_the_token_was_already_cancelled() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let token = CancellationToken::new();
+        publish_stop_run(&service, "main", "run-1", token.clone()).await;
+        token.cancel();
+        let stopping = service.clone();
+        let stop = tokio::spawn(async move { stopping.stop_run("run-1".to_string()).await });
+        for _ in 0..20 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            !stop.is_finished(),
+            "stop returned before the already-cancelled run finished"
+        );
+        finish_stop_run(&service, "run-1").await;
+        let outcome = stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+            .unwrap_or_else(|error| panic!("stop run: {error}"));
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.run_id.as_deref(), Some("run-1"));
+    }
+
+    #[tokio::test]
+    async fn stop_before_publish_prevents_the_provider_call() {
+        let (
+            _directory,
+            mut service,
+            _metadata,
+            _session_store,
+            _resolved_efforts,
+            captured_messages,
+        ) = validation_test_service().await;
+        let gate = Arc::new(super::super::types::TestGate {
+            arrived: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        service.before_publish_run = Some(Arc::clone(&gate));
+        let sending = service.clone();
+        let send = tokio::spawn(async move {
+            sending
+                .send(
+                    ChatSendRequest::text("hello"),
+                    ChatExecutionContext::internal(SessionKey::new("main")),
+                )
+                .await
+        });
+        gate.arrived.notified().await;
+        assert!(service.active_runs.read().await.is_empty());
+        let stopping = service.clone();
+        let stop =
+            tokio::spawn(async move { stopping.stop_current_session("main", None, false).await });
+        for _ in 0..100 {
+            if service.stop_gate.is_suppressed("main") {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(service.stop_gate.is_suppressed("main"));
+        gate.release.notify_one();
+        let send_result = send
+            .await
+            .unwrap_or_else(|error| panic!("send task: {error}"));
+        assert!(send_result.is_err());
+        let _ = stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+            .unwrap_or_else(|error| panic!("stop session: {error}"));
+        assert!(
+            captured_messages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn drained_batch_does_not_start_or_return_to_the_queue() {
+        let (
+            _directory,
+            mut service,
+            _metadata,
+            _session_store,
+            _resolved_efforts,
+            captured_messages,
+        ) = validation_test_service().await;
+        let gate = Arc::new(super::super::types::TestGate {
+            arrived: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        service.queue_after_drain = Some(Arc::clone(&gate));
+        service
+            .queued_prompts
+            .enqueue(SessionKey::new("main"), queued_text("later"))
+            .await
+            .unwrap_or_else(|error| panic!("enqueue: {error}"));
+        service
+            .send(
+                ChatSendRequest::text("now"),
+                ChatExecutionContext::internal(SessionKey::new("main")),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("send: {error}"));
+        gate.arrived.notified().await;
+        assert_eq!(
+            captured_messages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .len(),
+            1
+        );
+        let stopping = service.clone();
+        let stop =
+            tokio::spawn(async move { stopping.stop_current_session("main", None, false).await });
+        for _ in 0..100 {
+            if service.stop_gate.is_suppressed("main") {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(service.stop_gate.is_suppressed("main"));
+        gate.release.notify_one();
+        let _ = stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+            .unwrap_or_else(|error| panic!("stop session: {error}"));
+        assert_eq!(
+            captured_messages
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .len(),
+            1
+        );
+        let status = service
+            .queued_prompts
+            .status(SessionKey::new("main"))
+            .await
+            .unwrap_or_else(|error| panic!("status: {error}"));
+        assert!(status.prompts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stop_session_broadcasts_an_empty_queue_for_the_open_session() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        service
+            .queued_prompts
+            .enqueue(SessionKey::new("main"), queued_text("later"))
+            .await
+            .unwrap_or_else(|error| panic!("enqueue: {error}"));
+        let _ = service
+            .stop_current_session("main", None, false)
+            .await
+            .unwrap_or_else(|error| panic!("stop session: {error}"));
+        let events = service
+            .test_broadcasts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert!(events.iter().any(|(topic, payload)| {
+            topic == "chat"
+                && payload["state"] == "prompt_queue"
+                && payload["status"]["sessionKey"] == "main"
+                && payload["status"]["prompts"]
+                    .as_array()
+                    .is_some_and(|prompts| prompts.is_empty())
+        }));
+        let status = service
+            .queued_prompts
+            .status(SessionKey::new("main"))
+            .await
+            .unwrap_or_else(|error| panic!("status: {error}"));
+        assert!(status.prompts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stop_run_leaves_the_other_run_and_the_queue() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let token_a = CancellationToken::new();
+        let token_b = CancellationToken::new();
+        publish_stop_run(&service, "main", "run-a", token_a.clone()).await;
+        publish_stop_run(&service, "main", "run-b", token_b.clone()).await;
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .insert("main".to_string(), "run-b".to_string());
+        service
+            .queued_prompts
+            .enqueue(SessionKey::new("main"), queued_text("keep"))
+            .await
+            .unwrap_or_else(|error| panic!("enqueue: {error}"));
+        let stopping = service.clone();
+        let stop = tokio::spawn(async move { stopping.stop_run("run-a".to_string()).await });
+        token_a.cancelled().await;
+        assert!(!token_b.is_cancelled());
+        finish_stop_run(&service, "run-a").await;
+        let outcome = stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+            .unwrap_or_else(|error| panic!("stop run: {error}"));
+        assert!(outcome.cancelled);
+        assert!(!token_b.is_cancelled());
+        let status = service
+            .queued_prompts
+            .status(SessionKey::new("main"))
+            .await
+            .unwrap_or_else(|error| panic!("status: {error}"));
+        assert_eq!(status.prompts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn stop_run_without_a_token_reports_the_requested_run() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let outcome = service
+            .stop_run("missing".to_string())
+            .await
+            .unwrap_or_else(|error| panic!("stop run: {error}"));
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.run_id.as_deref(), Some("missing"));
+    }
+
+    #[tokio::test]
+    async fn stale_session_run_does_not_cancel_the_new_run_or_clear_the_queue() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let token_old = CancellationToken::new();
+        let token_new = CancellationToken::new();
+        publish_stop_run(&service, "main", "run-old", token_old).await;
+        publish_stop_run(&service, "main", "run-new", token_new.clone()).await;
+        service
+            .queued_prompts
+            .enqueue(SessionKey::new("main"), queued_text("keep"))
+            .await
+            .unwrap_or_else(|error| panic!("enqueue: {error}"));
+        let outcome = service
+            .stop_current_session("main", Some("run-old"), false)
+            .await
+            .unwrap_or_else(|error| panic!("stop session: {error}"));
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.run_id.as_deref(), Some("run-old"));
+        assert!(!token_new.is_cancelled());
+        let status = service
+            .queued_prompts
+            .status(SessionKey::new("main"))
+            .await
+            .unwrap_or_else(|error| panic!("status: {error}"));
+        assert_eq!(status.prompts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn dropped_run_finish_guard_wakes_the_waiting_stop() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let token = CancellationToken::new();
+        publish_stop_run(&service, "main", "run-1", token.clone()).await;
+        service
+            .active_runs_by_session
+            .write()
+            .await
+            .insert("main".to_string(), "run-1".to_string());
+        let guard = super::super::stop_gate::RunFinishGuard::arm(
+            Arc::clone(&service.stop_gate),
+            Arc::clone(&service.session_gates),
+            Arc::clone(&service.active_runs),
+            Arc::clone(&service.active_runs_by_session),
+            "main".to_string(),
+            "run-1".to_string(),
+        );
+        let stopping = service.clone();
+        let stop = tokio::spawn(async move { stopping.stop_run("run-1".to_string()).await });
+        token.cancelled().await;
+        drop(guard);
+        let error = match stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+        {
+            Err(error) => error,
+            Ok(outcome) => panic!("expected drop error, cancelled={}", outcome.cancelled),
+        };
+        assert!(error.to_string().contains("run dropped before completion"));
+        let outcome = service
+            .stop_run("run-1".to_string())
+            .await
+            .unwrap_or_else(|error| panic!("second stop: {error}"));
+        assert!(!outcome.cancelled);
+        service
+            .stop_current_session("main", None, false)
+            .await
+            .unwrap_or_else(|error| panic!("stop session: {error}"));
+    }
+
+    #[tokio::test]
+    async fn dropped_send_sync_wakes_the_waiting_stop() {
+        let (
+            _directory,
+            mut service,
+            _metadata,
+            _session_store,
+            _resolved_efforts,
+            _captured_messages,
+        ) = validation_test_service().await;
+        let gate = Arc::new(super::super::types::TestGate {
+            arrived: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        service.after_publish_run = Some(Arc::clone(&gate));
+        let sending = service.clone();
+        let send = tokio::spawn(async move {
+            sending
+                .send_sync(
+                    ChatSendSyncRequest::text("hello"),
+                    ChatExecutionContext::internal(SessionKey::new("main")),
+                )
+                .await
+        });
+        gate.arrived.notified().await;
+        let run_id = service
+            .active_runs
+            .read()
+            .await
+            .keys()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| panic!("run was not published"));
+        let token = service
+            .active_runs
+            .read()
+            .await
+            .get(&run_id)
+            .cloned()
+            .unwrap_or_else(|| panic!("run token missing"));
+        let stopping = service.clone();
+        let run_for_stop = run_id.clone();
+        let stop = tokio::spawn(async move { stopping.stop_run(run_for_stop).await });
+        token.cancelled().await;
+        send.abort();
+        let error = match stop
+            .await
+            .unwrap_or_else(|error| panic!("stop task: {error}"))
+        {
+            Err(error) => error,
+            Ok(outcome) => panic!("expected drop error, cancelled={}", outcome.cancelled),
+        };
+        assert!(error.to_string().contains("run dropped before completion"));
+        let outcome = service
+            .stop_run(run_id)
+            .await
+            .unwrap_or_else(|error| panic!("second stop: {error}"));
+        assert!(!outcome.cancelled);
+        service
+            .stop_current_session("main", None, false)
+            .await
+            .unwrap_or_else(|error| panic!("stop session: {error}"));
+        gate.release.notify_one();
+    }
+
+    #[tokio::test]
+    async fn session_stop_keeps_a_finished_run_error_for_every_waiter() {
+        let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
+            validation_test_service().await;
+        let token = CancellationToken::new();
+        publish_stop_run(&service, "main", "run-1", token).await;
+        let mut mapping = service.active_runs_by_session.write().await;
+        mapping.insert("main".to_string(), "run-1".to_string());
+        let first = service.clone();
+        let second = service.clone();
+        let left =
+            tokio::spawn(async move { first.stop_current_session("main", None, false).await });
+        let right =
+            tokio::spawn(async move { second.stop_current_session("main", None, false).await });
+        for _ in 0..100 {
+            if service.stop_gate.stop_depth("main") == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(service.stop_gate.stop_depth("main"), 2);
+        {
+            let mut active = service.active_runs.write().await;
+            service
+                .stop_gate
+                .finish_run(&mut active, "run-1", Err("save failed".to_string()));
+        }
+        mapping.remove("main");
+        drop(mapping);
+        let left = left
+            .await
+            .unwrap_or_else(|error| panic!("left task: {error}"));
+        let right = right
+            .await
+            .unwrap_or_else(|error| panic!("right task: {error}"));
+        match left {
+            Err(error) => assert!(error.to_string().contains("save failed")),
+            Ok(outcome) => panic!("left stop succeeded, cancelled={}", outcome.cancelled),
+        }
+        match right {
+            Err(error) => assert!(error.to_string().contains("save failed")),
+            Ok(outcome) => panic!("right stop succeeded, cancelled={}", outcome.cancelled),
+        }
+        service
+            .stop_current_session("main", None, false)
+            .await
+            .unwrap_or_else(|error| panic!("later stop: {error}"));
     }
 }

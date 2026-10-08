@@ -221,11 +221,11 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                     .session_mutations
                     .reserve_mutation(&key)
                     .await;
-                let _ = ctx
-                    .state
+                ctx.state
                     .chat()
                     .abort(serde_json::json!({ "sessionKey": key }))
-                    .await;
+                    .await
+                    .map_err(ErrorShape::from)?;
                 let _mutation_permit = mutation_reservation
                     .acquire()
                     .await
@@ -443,4 +443,166 @@ pub(super) fn register(reg: &mut MethodRegistry) {
             })
         }),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use {
+        async_trait::async_trait,
+        chelix_service_traits::{
+            ChatCompactRequest, ChatContextRequest, ChatExecutionContext, ChatFullContextRequest,
+            ChatRawPromptRequest, ChatSendRequest, ChatSendSyncRequest, ChatService, ServiceResult,
+        },
+        serde_json::Value,
+    };
+
+    use crate::{
+        auth::{AuthMode, ResolvedAuth},
+        methods::{MethodContext, MethodRegistry, MethodTransport},
+        services::GatewayServices,
+        state::GatewayState,
+    };
+
+    struct AbortFails;
+
+    #[async_trait]
+    impl ChatService for AbortFails {
+        async fn send(
+            &self,
+            _request: ChatSendRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("unused".into())
+        }
+
+        async fn send_sync(
+            &self,
+            _request: ChatSendSyncRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("unused".into())
+        }
+
+        async fn abort(&self, _params: Value) -> ServiceResult {
+            Err("stop failed".into())
+        }
+
+        async fn history(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!([]))
+        }
+
+        async fn inject(&self, _params: Value) -> ServiceResult {
+            Err("unused".into())
+        }
+
+        async fn clear(&self, _params: Value) -> ServiceResult {
+            Ok(serde_json::json!({ "ok": true }))
+        }
+
+        async fn compact(
+            &self,
+            _request: ChatCompactRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("unused".into())
+        }
+
+        async fn context(
+            &self,
+            _request: ChatContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn raw_prompt(
+            &self,
+            _request: ChatRawPromptRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Err("unused".into())
+        }
+
+        async fn full_context(
+            &self,
+            _request: ChatFullContextRequest,
+            _context: ChatExecutionContext,
+        ) -> ServiceResult {
+            Ok(serde_json::json!({}))
+        }
+    }
+
+    #[tokio::test]
+    async fn truncate_tail_returns_abort_error_before_acquire()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let dir = tempfile::tempdir()?;
+        let store = Arc::new(chelix_sessions::store::SessionStore::new(
+            dir.path().to_path_buf(),
+        ));
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await?;
+        chelix_projects::run_migrations(&pool).await?;
+        chelix_sessions::metadata::SqliteSessionMetadata::init(&pool).await?;
+        let metadata = Arc::new(chelix_sessions::metadata::SqliteSessionMetadata::new(pool));
+        let pair = chelix_common::ResolvedModelReasoning::try_new(
+            "test::model".to_string(),
+            chelix_common::ReasoningEffort::from("off"),
+        )?;
+        metadata
+            .create_llm_session("child", None, &pair, Some("main"))
+            .await?;
+        store
+            .append(
+                "child",
+                &serde_json::json!({"role": "user", "content": "keep"}),
+            )
+            .await?;
+        let session = Arc::new(crate::session::LiveSessionService::new(
+            Arc::clone(&store),
+            metadata,
+        ));
+        let mut services = GatewayServices::noop();
+        let mutations = Arc::clone(&services.session_mutations);
+        services.session = session;
+        let state = GatewayState::new(
+            ResolvedAuth {
+                mode: AuthMode::Token,
+                token: None,
+                password: None,
+            },
+            services,
+        );
+        state.set_chat(Arc::new(AbortFails));
+        let permit = mutations
+            .try_acquire_turn("child")
+            .await
+            .unwrap_or_else(|error| panic!("permit: {error}"));
+        let registry = MethodRegistry::new();
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            registry.dispatch(MethodContext {
+                request_id: "1".into(),
+                method: "sessions.truncate_tail".into(),
+                params: serde_json::json!({"key": "child"}),
+                client_conn_id: "conn".into(),
+                transport: MethodTransport::StatefulConnection,
+                client_role: "operator".into(),
+                client_scopes: vec!["operator.write".to_string()],
+                state,
+                channel: None,
+            }),
+        )
+        .await?;
+        assert!(!response.ok);
+        assert!(
+            response
+                .error
+                .as_ref()
+                .is_some_and(|error| error.message.contains("stop failed"))
+        );
+        assert_eq!(store.read("child").await?.len(), 1);
+        drop(permit);
+        Ok(())
+    }
 }

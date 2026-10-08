@@ -2,6 +2,7 @@
 
 mod chat_impl;
 mod session_gate;
+mod stop_gate;
 mod types;
 
 pub(crate) use types::{

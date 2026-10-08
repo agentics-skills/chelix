@@ -430,6 +430,18 @@ mod tests {
             Arc::new(chelix_tools::sandbox::SandboxRouter::disabled()),
             Arc::clone(&agents_config),
             Arc::clone(&model_service),
+            {
+                let bus = chelix_call_bus::CallBus::new();
+                let _ = bus.require::<chelix_service_traits::StopSession>();
+                let _ = bus.register(|_request: chelix_service_traits::StopSession| async move {
+                    Ok(chelix_service_traits::StopSessionOutcome {
+                        cancelled: false,
+                        run_id: None,
+                    })
+                });
+                let _ = bus.seal();
+                bus
+            },
         );
         let services = crate::services::GatewayServices::noop()
             .with_session(Arc::new(session_service))

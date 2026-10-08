@@ -30,6 +30,8 @@ pub enum ExternalAgentEvent {
         usage: Option<TokenUsage>,
     },
     Error(String),
+    /// The current turn was interrupted. The session binding stays in place.
+    TurnInterrupted,
 }
 
 /// Token usage reported by an external agent.

@@ -150,6 +150,27 @@ pub struct SandboxRouter {
     /// Owner keys that have already completed sandbox initialization.
     /// Used to avoid repeating first-run preparation banners on every command.
     prepared_sessions: RwLock<HashSet<String>>,
+    /// Set only by tests that need to join background stops. Ordinary routers leave this empty.
+    #[cfg(feature = "test-util")]
+    stop_watch: std::sync::Mutex<Option<Arc<StopWatch>>>,
+}
+
+/// Collects background stop tasks for one router instance.
+#[cfg(feature = "test-util")]
+pub struct StopWatch {
+    tasks: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
+}
+
+#[cfg(feature = "test-util")]
+impl StopWatch {
+    /// Wait until every stop task captured by this watch has finished.
+    pub async fn finish(&self) {
+        let tasks =
+            std::mem::take(&mut *self.tasks.lock().unwrap_or_else(|error| error.into_inner()));
+        for task in tasks {
+            let _ = task.await;
+        }
+    }
 }
 
 impl SandboxRouter {
@@ -169,6 +190,8 @@ impl SandboxRouter {
             event_tx,
             owner_resolver,
             prepared_sessions: RwLock::new(HashSet::new()),
+            #[cfg(feature = "test-util")]
+            stop_watch: std::sync::Mutex::new(None),
         })
     }
 
@@ -188,6 +211,8 @@ impl SandboxRouter {
             event_tx,
             owner_resolver: None,
             prepared_sessions: RwLock::new(HashSet::new()),
+            #[cfg(feature = "test-util")]
+            stop_watch: std::sync::Mutex::new(None),
         }
     }
 
@@ -207,7 +232,22 @@ impl SandboxRouter {
             event_tx,
             owner_resolver,
             prepared_sessions: RwLock::new(HashSet::new()),
+            #[cfg(feature = "test-util")]
+            stop_watch: std::sync::Mutex::new(None),
         })
+    }
+
+    /// Record later background stops on this router. Other routers keep dropping those tasks.
+    #[cfg(feature = "test-util")]
+    pub fn watch_background_stops(&self) -> Arc<StopWatch> {
+        let watch = Arc::new(StopWatch {
+            tasks: std::sync::Mutex::new(Vec::new()),
+        });
+        *self
+            .stop_watch
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(Arc::clone(&watch));
+        watch
     }
 
     fn require_owner_resolver(
@@ -336,9 +376,25 @@ impl SandboxRouter {
     pub fn stop_owned_sandbox_background(&self, owner_key: &str) {
         let backend = Arc::clone(&self.backend);
         let id = self.sandbox_id_for(owner_key);
-        drop(tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             backend.stop(&id).await;
-        }));
+        });
+        #[cfg(feature = "test-util")]
+        {
+            let slot = self
+                .stop_watch
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if let Some(watch) = slot.as_ref() {
+                watch
+                    .tasks
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .push(handle);
+                return;
+            }
+        }
+        drop(handle);
     }
 
     /// Prepare the sandbox for command execution.

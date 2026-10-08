@@ -54,4 +54,7 @@ pub trait ExternalAgentSession: Send + Sync {
 
     /// Current status of the session.
     fn status(&self) -> ExternalAgentStatus;
+
+    /// Replace the token observed by an in-flight `send_prompt`.
+    fn arm_turn_cancel(&mut self, _token: &tokio_util::sync::CancellationToken) {}
 }

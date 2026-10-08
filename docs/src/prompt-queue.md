@@ -93,6 +93,8 @@ gate and performs its own single drain afterward. An execution error is reported
 through the existing error paths, and the already removed batch is not inserted
 into the queue again.
 
+A successful `StopSession::Session` removes the queue, publishes an empty status through the existing `broadcast_queued_prompts_status`, and does not start the next turn. `StopSession::Run` does not change the queue.
+
 ## UI behavior
 
 The existing queued-message dock is rendered only from a complete backend

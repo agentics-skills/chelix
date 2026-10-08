@@ -34,6 +34,9 @@ use {
 };
 mod log_persistence;
 mod post_state;
+
+#[cfg(test)]
+pub(crate) use post_state::register_stop_session;
 mod sandbox;
 mod tool_registration;
 /// Prepare the core gateway: load config, run migrations, wire services,
@@ -918,6 +921,10 @@ pub async fn prepare_gateway_core(
     startup_mem_probe.checkpoint("memory_manager.initialized");
 
     // Wire live session service.
+    let call_bus = chelix_call_bus::CallBus::new();
+    call_bus
+        .require::<chelix_service_traits::StopSession>()
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     {
         let mut session_svc = LiveSessionService::from_router(
             Arc::clone(&session_store),
@@ -925,6 +932,7 @@ pub async fn prepare_gateway_core(
             Arc::clone(&sandbox_router),
             Arc::clone(&agents_config),
             Arc::clone(&services.model),
+            Arc::clone(&call_bus),
         )
         .with_tts_service(Arc::clone(&services.tts))
         .with_share_store(Arc::clone(&session_share_store))
@@ -985,6 +993,7 @@ pub async fn prepare_gateway_core(
         code_index,
         #[cfg(feature = "code-index-builtin")]
         project_store: Arc::clone(&project_store),
+        call_bus,
     })
     .await
 }
