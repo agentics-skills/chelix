@@ -1,26 +1,168 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 use super::*;
 
-#[tokio::test]
-async fn test_create_skill() {
-    let tmp = tempfile::tempdir().unwrap();
-    let tool = CreateSkillTool::new(tmp.path().to_path_buf());
+struct CheckingWriteRecorder {
+    data_dir: PathBuf,
+    store: chelix_skills::usage::SkillUsageStore,
+    expected_allow: Vec<String>,
+    expected_body: String,
+}
 
-    let result = tool
-        .execute(json!({
-            "name": "my-skill",
-            "description": "A test skill",
-            "body": "Do something useful."
-        }))
+#[async_trait::async_trait]
+impl helpers::SkillWriteRecorder for CheckingWriteRecorder {
+    async fn record_write(&self, name: &str) {
+        let dir = self.data_dir.join("skills").join(name);
+        let raw = std::fs::read_to_string(dir.join("SKILL.md")).unwrap();
+        let content = chelix_skills::parse::parse_skill(&raw, &dir).unwrap();
+        assert_eq!(content.metadata.allow, self.expected_allow);
+        assert!(content.metadata.deny.is_empty());
+        assert_eq!(content.body, self.expected_body);
+        self.store.record_write(name).await;
+    }
+}
+
+#[tokio::test]
+async fn create_and_update_publish_access_before_usage_accounting() {
+    use {
+        chelix_agents::tool_context::ToolExecutionContext, chelix_skills::usage::SkillUsageStore,
+        std::sync::Arc,
+    };
+
+    let tmp = tempfile::tempdir().unwrap();
+    let store = SkillUsageStore::open(tmp.path()).await;
+    for (name, agent_id) in [("owned", Some("agent1")), ("shared", None)] {
+        let recorder = Arc::new(CheckingWriteRecorder {
+            data_dir: tmp.path().to_path_buf(),
+            store: store.clone(),
+            expected_allow: agent_id.into_iter().map(String::from).collect(),
+            expected_body: "created body".into(),
+        });
+        let create =
+            CreateSkillTool::new(tmp.path().to_path_buf()).with_write_recorder(recorder.clone());
+        let params = json!({ "name": name, "description": "test", "body": "created body" });
+        if let Some(agent_id) = agent_id {
+            let context = ToolExecutionContext::for_session_with_agent(
+                chelix_sessions::SessionKey::new("session:test"),
+                agent_id,
+            );
+            create.execute_with_context(params, &context).await.unwrap();
+        } else {
+            create.execute(params).await.unwrap();
+        }
+        assert_eq!(recorder.store.get_all().await[name].write_count, 1);
+    }
+    let name = "updated";
+    let dir = tmp.path().join("skills").join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("SKILL.md"),
+        "---\nname: updated\nallow: [agent1]\ndeny: []\n---\nold body",
+    )
+    .unwrap();
+    let recorder = Arc::new(CheckingWriteRecorder {
+        data_dir: tmp.path().to_path_buf(),
+        store,
+        expected_allow: vec!["agent1".into()],
+        expected_body: "updated body".into(),
+    });
+    let update =
+        UpdateSkillTool::new(tmp.path().to_path_buf()).with_write_recorder(recorder.clone());
+    update
+        .execute(json!({ "name": name, "description": "test", "body": "updated body" }))
         .await
         .unwrap();
-    assert!(result["created"].as_bool().unwrap());
+    assert_eq!(recorder.store.get_all().await[name].write_count, 1);
+}
 
-    let skill_md = tmp.path().join("skills/my-skill/SKILL.md");
-    assert!(skill_md.exists());
-    let content = std::fs::read_to_string(&skill_md).unwrap();
-    assert!(content.contains("name: my-skill"));
-    assert!(content.contains("Do something useful."));
+#[tokio::test]
+async fn personal_mutations_reject_invalid_frontmatter_before_writing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("skills/demo");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("SKILL.md");
+    let original = "---\nname: demo\nallow:\n---\nbody\n";
+    std::fs::write(&path, original).unwrap();
+    let tools: Vec<Box<dyn AgentTool>> = vec![
+        Box::new(CreateSkillTool::new(tmp.path().to_path_buf())),
+        Box::new(UpdateSkillTool::new(tmp.path().to_path_buf())),
+        Box::new(PatchSkillTool::new(tmp.path().to_path_buf())),
+        Box::new(DeleteSkillTool::new(tmp.path().to_path_buf())),
+        Box::new(WriteSkillFilesTool::new(tmp.path().to_path_buf())),
+    ];
+    for tool in tools {
+        let error = tool
+            .execute(json!({
+                "name": "demo", "description": "test", "body": "changed",
+                "patches": [{ "find": "body", "replace": "changed" }],
+                "files": [{ "path": "reference.md", "content": "changed" }]
+            }))
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("frontmatter"),
+            "{}: {error}",
+            tool.name()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    }
+}
+
+#[tokio::test]
+async fn patch_and_sidecar_write_publish_empty_access_lists() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("skills/demo");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("SKILL.md");
+    let original = "---\nname: demo\ndescription: test\n---\n\noriginal body\n";
+    std::fs::write(&path, original).unwrap();
+    let patch = PatchSkillTool::new(tmp.path().to_path_buf());
+    patch
+        .execute(
+            json!({ "name": "demo", "patches": [{ "find": "original", "replace": "patched" }] }),
+        )
+        .await
+        .unwrap();
+    let patched = std::fs::read_to_string(&path).unwrap();
+    assert!(patched.contains("allow: []"));
+    assert!(patched.contains("deny: []"));
+    assert!(patched.ends_with("\n\npatched body\n"));
+    std::fs::write(&path, original).unwrap();
+    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf());
+    write.execute(json!({ "name": "demo", "files": [{ "path": "references/api.md", "content": "reference" }] })).await.unwrap();
+    let published = std::fs::read_to_string(&path).unwrap();
+    assert!(published.contains("allow: []"));
+    assert!(published.contains("deny: []"));
+    assert!(published.ends_with("\n\noriginal body\n"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn sidecar_symlink_write_preserves_link_and_updates_target() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("skills/demo");
+    std::fs::create_dir_all(dir.join("references")).unwrap();
+    std::fs::write(dir.join("SKILL.md"), "---\nname: demo\n---\nbody").unwrap();
+    let target = outside.path().join("api.md");
+    std::fs::write(&target, "original").unwrap();
+    let link = dir.join("references/api.md");
+    symlink(&target, &link).unwrap();
+    let tool = WriteSkillFilesTool::new(tmp.path().to_path_buf());
+    tool.execute(
+        json!({ "name": "demo", "files": [{ "path": "references/api.md", "content": "updated" }] }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "updated");
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
 }
 
 #[tokio::test]
@@ -30,16 +172,22 @@ async fn test_create_with_allowed_tools() {
 
     tool.execute(json!({
         "name": "git-skill",
-        "description": "Git helper",
+        "description": "Use when: X\nNext step",
         "body": "Help with git.",
-        "allowed_tools": ["Bash(git:*)", "read_file"]
+        "allowed_tools": ["Bash(git:*)", "Tool: action\nNext"]
     }))
     .await
     .unwrap();
 
     let content = std::fs::read_to_string(tmp.path().join("skills/git-skill/SKILL.md")).unwrap();
-    assert!(content.contains("allowed_tools:"));
-    assert!(content.contains("Bash(git:*)"));
+    let metadata =
+        chelix_skills::parse::parse_metadata(&content, &tmp.path().join("skills/git-skill"))
+            .unwrap();
+    assert_eq!(metadata.description, "Use when: X\nNext step");
+    assert_eq!(metadata.allowed_tools, [
+        "Bash(git:*)",
+        "Tool: action\nNext"
+    ]);
 }
 
 #[tokio::test]
@@ -125,43 +273,6 @@ async fn test_update_nonexistent_fails() {
     assert!(result.is_err());
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn test_skill_file_mutations_reject_symlink_target() {
-    use std::os::unix::fs::symlink;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let outside = tempfile::tempdir().unwrap();
-    let skill_dir = tmp.path().join("skills/my-skill");
-    std::fs::create_dir_all(&skill_dir).unwrap();
-    let outside_file = outside.path().join("SKILL.md");
-    std::fs::write(&outside_file, "outside content\n").unwrap();
-    symlink(&outside_file, skill_dir.join("SKILL.md")).unwrap();
-
-    let update = UpdateSkillTool::new(tmp.path().to_path_buf());
-    let update_result = update
-        .execute(json!({
-            "name": "my-skill",
-            "description": "updated",
-            "body": "new body"
-        }))
-        .await;
-    assert!(update_result.is_err());
-
-    let patch = PatchSkillTool::new(tmp.path().to_path_buf());
-    let patch_result = patch
-        .execute(json!({
-            "name": "my-skill",
-            "patches": [{ "find": "outside", "replace": "changed" }]
-        }))
-        .await;
-    assert!(patch_result.is_err());
-    assert_eq!(
-        std::fs::read_to_string(outside_file).unwrap(),
-        "outside content\n"
-    );
-}
-
 #[tokio::test]
 async fn test_delete_skill() {
     let tmp = tempfile::tempdir().unwrap();
@@ -193,23 +304,27 @@ async fn test_delete_nonexistent_fails() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_delete_skill_rejects_symlinked_skill_directory() {
+async fn test_delete_skill_removes_alias_and_preserves_target() {
     use std::os::unix::fs::symlink;
 
     let tmp = tempfile::tempdir().unwrap();
     let skills_dir = tmp.path().join("skills");
     let real_dir = skills_dir.join("real-skill");
     std::fs::create_dir_all(&real_dir).unwrap();
-    std::fs::write(real_dir.join("SKILL.md"), "real content\n").unwrap();
+    let original = "---\nname: real-skill\ndescription: test\n---\nreal content\n";
+    std::fs::write(real_dir.join("SKILL.md"), original).unwrap();
     let alias_dir = skills_dir.join("alias-skill");
     symlink(&real_dir, &alias_dir).unwrap();
 
     let tool = DeleteSkillTool::new(tmp.path().to_path_buf());
     let result = tool.execute(json!({ "name": "alias-skill" })).await;
 
-    assert!(result.is_err());
-    assert!(alias_dir.exists());
-    assert!(real_dir.exists());
+    assert_eq!(result.unwrap()["deleted"], true);
+    assert!(std::fs::symlink_metadata(&alias_dir).is_err());
+    assert_eq!(
+        std::fs::read_to_string(real_dir.join("SKILL.md")).unwrap(),
+        original
+    );
 }
 
 #[tokio::test]
@@ -431,63 +546,32 @@ async fn test_delete_skill_removes_sidecar_files() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_write_skill_files_rejects_symlink_escape() {
-    use std::os::unix::fs::symlink;
-
-    let tmp = tempfile::tempdir().unwrap();
-    let outside = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf());
-    let write = WriteSkillFilesTool::new(tmp.path().to_path_buf());
-
-    create
-        .execute(json!({
-            "name": "my-skill",
-            "description": "test",
-            "body": "body"
-        }))
-        .await
-        .unwrap();
-
-    symlink(outside.path(), tmp.path().join("skills/my-skill/link")).unwrap();
-
-    let result = write
-        .execute(json!({
-            "name": "my-skill",
-            "files": [{ "path": "link/escape.sh", "content": "echo nope\n" }]
-        }))
-        .await;
-
-    assert!(result.is_err());
-    assert!(!outside.path().join("escape.sh").exists());
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn test_write_skill_files_rejects_symlinked_skill_root() {
+async fn test_write_skill_files_follows_symlinked_skill_root() {
     use std::os::unix::fs::symlink;
 
     let tmp = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
 
-    // Create a real skill directory outside the skills tree, then symlink
-    // the skill name to it.  The confinement check must reject this.
     let skills_dir = tmp.path().join("skills");
     std::fs::create_dir_all(&skills_dir).unwrap();
     let real_dir = outside.path().join("real-skill");
     std::fs::create_dir_all(&real_dir).unwrap();
-    std::fs::write(real_dir.join("SKILL.md"), "---\nname: evil\n---\n").unwrap();
-    symlink(&real_dir, skills_dir.join("evil")).unwrap();
+    std::fs::write(real_dir.join("SKILL.md"), "---\nname: demo\n---\n").unwrap();
+    symlink(&real_dir, skills_dir.join("demo")).unwrap();
 
     let write = WriteSkillFilesTool::new(tmp.path().to_path_buf());
     let result = write
         .execute(json!({
-            "name": "evil",
-            "files": [{ "path": "payload.sh", "content": "echo pwned\n" }]
+            "name": "demo",
+            "files": [{ "path": "script.sh", "content": "echo example\n" }]
         }))
         .await;
 
-    assert!(result.is_err());
-    assert!(!real_dir.join("payload.sh").exists());
+    assert!(result.is_ok());
+    assert_eq!(
+        std::fs::read_to_string(real_dir.join("script.sh")).unwrap(),
+        "echo example\n"
+    );
 }
 
 // ── PatchSkillTool tests ────────────────────────────────────────────────
@@ -646,35 +730,33 @@ async fn test_patch_skill_empty_patches_fails() {
 }
 
 #[tokio::test]
-async fn test_patch_skill_updates_description() {
+async fn test_patch_skill_updates_description_after_multiline_publication() {
     let tmp = tempfile::tempdir().unwrap();
-    let create = CreateSkillTool::new(tmp.path().to_path_buf());
+    let dir = tmp.path().join("skills/my-skill");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("SKILL.md");
+    std::fs::write(&path, "---\nname: my-skill\ndescription: \"first\\nsecond\"\nallow: [agent1]\ndeny: [agent2]\n---\n\nHello world\n").unwrap();
     let patch = PatchSkillTool::new(tmp.path().to_path_buf());
-
-    create
-        .execute(json!({
-            "name": "my-skill",
-            "description": "old desc",
-            "body": "Hello world"
-        }))
-        .await
-        .unwrap();
-
     patch
-        .execute(json!({
-            "name": "my-skill",
-            "patches": [{ "find": "Hello", "replace": "Goodbye" }],
-            "description": "new desc"
-        }))
+        .execute(
+            json!({ "name": "my-skill", "patches": [{ "find": "Hello", "replace": "Welcome" }] }),
+        )
         .await
         .unwrap();
-
-    let content = std::fs::read_to_string(tmp.path().join("skills/my-skill/SKILL.md")).unwrap();
-    assert!(
-        content.contains("description: \"new desc\""),
-        "patched description should be YAML-quoted: {content}"
+    let first = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        chelix_skills::parse::parse_metadata(&first, &dir)
+            .unwrap()
+            .description,
+        "first\nsecond"
     );
-    assert!(content.contains("Goodbye world"));
+    patch.execute(json!({ "name": "my-skill", "patches": [{ "find": "Welcome", "replace": "Goodbye" }], "description": "new desc" })).await.unwrap();
+    let content = std::fs::read_to_string(path).unwrap();
+    let parsed = chelix_skills::parse::parse_skill(&content, &dir).unwrap();
+    assert_eq!(parsed.metadata.description, "new desc");
+    assert_eq!(parsed.metadata.allow, ["agent1"]);
+    assert_eq!(parsed.metadata.deny, ["agent2"]);
+    assert_eq!(parsed.body, "Goodbye world");
 }
 
 #[tokio::test]
@@ -747,50 +829,32 @@ fn test_split_frontmatter_body_no_trailing_newline() {
 }
 
 #[test]
-fn test_update_frontmatter_description_replaces() {
+fn test_update_frontmatter_description_replaces_yaml_value() {
     let fm = "---\nname: foo\ndescription: old\n---\n\n";
-    let result = update_frontmatter_description(fm, "new desc");
-    assert!(
-        result.contains("description: \"new desc\""),
-        "description should be YAML-quoted: {result}"
-    );
-    assert!(!result.contains("description: old"));
-    assert!(result.contains("name: foo"));
+    for description in [
+        "new desc",
+        "has: colons and # hashes",
+        r#"says "hello""#,
+        "first\nsecond",
+    ] {
+        let result = update_frontmatter_description(fm, description).unwrap();
+        let metadata = chelix_skills::parse::parse_metadata(&result, Path::new("foo")).unwrap();
+        assert_eq!(metadata.description, description);
+        assert_eq!(metadata.name, "foo");
+        assert!(result.ends_with("\n\n"));
+    }
 }
 
 #[test]
 fn test_update_frontmatter_description_missing_field() {
     let fm = "---\nname: foo\n---\n\n";
-    let result = update_frontmatter_description(fm, "new desc");
-    // No description line to replace — should preserve original.
-    assert!(!result.contains("new desc"));
-    assert!(result.contains("name: foo"));
-}
-
-#[test]
-fn test_update_frontmatter_description_with_yaml_special_chars() {
-    let fm = "---\nname: foo\ndescription: old\n---\n\n";
-    let result = update_frontmatter_description(fm, "has: colons and # hashes");
-    // Value should be double-quoted to prevent YAML misinterpretation.
-    assert!(
-        result.contains(r#"description: "has: colons and # hashes""#),
-        "description should be YAML-quoted: {result}"
-    );
-}
-
-#[test]
-fn test_update_frontmatter_description_escapes_quotes() {
-    let fm = "---\nname: foo\ndescription: old\n---\n\n";
-    let result = update_frontmatter_description(fm, r#"says "hello""#);
-    assert!(
-        result.contains(r#"description: "says \"hello\"""#),
-        "internal quotes should be escaped: {result}"
-    );
+    let result = update_frontmatter_description(fm, "new desc").unwrap();
+    assert_eq!(result, fm);
 }
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_patch_skill_rejects_symlinked_skill_root() {
+async fn test_patch_skill_follows_symlinked_skill_root() {
     use std::os::unix::fs::symlink;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -802,27 +866,26 @@ async fn test_patch_skill_rejects_symlinked_skill_root() {
     std::fs::create_dir_all(&real_dir).unwrap();
     std::fs::write(
         real_dir.join("SKILL.md"),
-        "---\nname: evil\ndescription: evil\n---\n\nevil body",
+        "---\nname: demo\ndescription: example\n---\n\noriginal body",
     )
     .unwrap();
-    symlink(&real_dir, skills_dir.join("evil")).unwrap();
+    symlink(&real_dir, skills_dir.join("demo")).unwrap();
 
     let patch = PatchSkillTool::new(tmp.path().to_path_buf());
     let result = patch
         .execute(json!({
-            "name": "evil",
-            "patches": [{ "find": "evil", "replace": "good" }]
+            "name": "demo",
+            "patches": [{ "find": "original", "replace": "updated" }]
         }))
         .await;
 
-    assert!(result.is_err());
-    // Original file should not be modified.
+    assert!(result.is_ok());
     let content = std::fs::read_to_string(real_dir.join("SKILL.md")).unwrap();
-    assert!(content.contains("evil body"));
+    assert!(content.contains("updated body"));
 }
 
 #[tokio::test]
-async fn test_write_skill_files_rollback_on_error() {
+async fn test_write_skill_files_keeps_first_file_on_error() {
     let tmp = tempfile::tempdir().unwrap();
     let create = CreateSkillTool::new(tmp.path().to_path_buf());
     let write = WriteSkillFilesTool::new(tmp.path().to_path_buf());
@@ -836,8 +899,7 @@ async fn test_write_skill_files_rollback_on_error() {
         .await
         .unwrap();
 
-    // Create a directory where the second file should be written,
-    // which will trigger the "target is a directory" error.
+    // The second target is a directory.
     let collision_dir = tmp.path().join("skills/my-skill/collision");
     std::fs::create_dir_all(&collision_dir).unwrap();
 
@@ -851,10 +913,12 @@ async fn test_write_skill_files_rollback_on_error() {
         }))
         .await;
 
-    assert!(result.is_err());
-    // The first file should have been rolled back.
-    assert!(
-        !tmp.path().join("skills/my-skill/first.txt").exists(),
-        "first.txt should be rolled back after batch failure"
+    assert_eq!(
+        result.unwrap_err().to_string(),
+        "target 'collision' is a directory"
+    );
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("skills/my-skill/first.txt")).unwrap(),
+        "ok\n"
     );
 }

@@ -211,7 +211,9 @@ port = {port}                           # Port number (auto-generated for this i
 # allow_servers = ["github", "memory"]
 #
 # [agents.main.skills]
+# allow = []
 # deny = ["gaming", "social-media"]
+# SKILL.md frontmatter allow / deny lists contain agent ids.
 # ══════════════════════════════════════════════════════════════════════════════
 # SANDBOX
 # ══════════════════════════════════════════════════════════════════════════════

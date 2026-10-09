@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use serde::Deserialize;
+use {serde::Deserialize, serde_yaml::Value};
 
 use crate::error::{Error, Result};
 
@@ -72,6 +72,7 @@ fn resolve_name_or_slug(meta: &mut SkillMetadata, skill_dir: &Path) -> Result<()
 /// Parse a SKILL.md file into metadata only (frontmatter).
 pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> {
     let (frontmatter, _body) = split_frontmatter(content)?;
+    parse_frontmatter_value(&frontmatter)?;
     let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
@@ -84,6 +85,7 @@ pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> 
 /// Parse a SKILL.md file into full content (metadata + body).
 pub fn parse_skill(content: &str, skill_dir: &Path) -> Result<SkillContent> {
     let (frontmatter, body) = split_frontmatter(content)?;
+    parse_frontmatter_value(&frontmatter)?;
     let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
         .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
 
@@ -128,22 +130,103 @@ pub fn read_meta_json(skill_dir: &Path) -> Option<SkillMetaJson> {
 
 /// Split SKILL.md content at `---` delimiters into (frontmatter, body).
 fn split_frontmatter(content: &str) -> Result<(String, String)> {
-    let trimmed = content.trim_start();
-    if !trimmed.starts_with("---") {
-        return Err(Error::Parse(
-            "SKILL.md must start with YAML frontmatter delimited by ---".into(),
-        ));
-    }
+    let (frontmatter, body) = split_frontmatter_raw(content)?;
+    Ok((frontmatter.trim().to_string(), body.trim().to_string()))
+}
 
-    // Skip the opening ---
-    let after_open = &trimmed[3..];
+pub(crate) fn split_frontmatter_raw(content: &str) -> Result<(&str, &str)> {
+    let after_open = content.trim_start().strip_prefix("---").ok_or_else(|| {
+        Error::Parse("SKILL.md must start with YAML frontmatter delimited by ---".into())
+    })?;
     let close_pos = after_open
         .find("\n---")
         .ok_or_else(|| Error::Parse("SKILL.md missing closing --- for frontmatter".into()))?;
+    Ok((&after_open[..close_pos], &after_open[close_pos + 4..]))
+}
 
-    let frontmatter = after_open[..close_pos].trim().to_string();
-    let body = after_open[close_pos + 4..].trim().to_string();
-    Ok((frontmatter, body))
+pub(crate) fn parse_frontmatter_value(frontmatter: &str) -> Result<Value> {
+    let value: Value = serde_yaml::from_str(frontmatter)
+        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
+    access_lists_from_value(&value)?;
+    Ok(value)
+}
+
+fn preserve_string_values(value: &mut Value, metadata: &Value) {
+    match (value, metadata) {
+        (value, Value::String(string)) => *value = Value::String(string.clone()),
+        (Value::Mapping(value), Value::Mapping(metadata)) => {
+            for (key, typed) in metadata {
+                if let Some(original) = value.get_mut(key) {
+                    preserve_string_values(original, typed);
+                }
+            }
+        },
+        (Value::Sequence(value), Value::Sequence(metadata)) => {
+            for (original, typed) in value.iter_mut().zip(metadata) {
+                preserve_string_values(original, typed);
+            }
+        },
+        _ => {},
+    }
+}
+
+pub(crate) fn metadata_frontmatter_value(frontmatter: &str) -> Result<Value> {
+    let mut value = parse_frontmatter_value(frontmatter)?;
+    let metadata: SkillMetadata = serde_yaml::from_str(frontmatter)
+        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
+    let typed = serde_yaml::to_value(metadata)?;
+    preserve_string_values(&mut value, &typed);
+    if let Some(original) = value.get_mut("allowed-tools")
+        && let Some(tools) = typed.get("allowed_tools")
+    {
+        preserve_string_values(original, tools);
+    }
+    Ok(value)
+}
+
+/// Replace an existing frontmatter description and preserve the body bytes.
+pub fn update_description(content: &str, description: &str) -> Result<String> {
+    let (frontmatter, body) = split_frontmatter_raw(content)?;
+    let mut value = metadata_frontmatter_value(frontmatter)?;
+    let mapping = value
+        .as_mapping_mut()
+        .ok_or_else(|| Error::Parse("invalid SKILL.md frontmatter: expected a mapping".into()))?;
+    let Some(current) = mapping.get_mut("description") else {
+        return Ok(content.to_string());
+    };
+    *current = Value::String(description.to_string());
+    Ok(format!("---\n{}---{body}", serde_yaml::to_string(&value)?))
+}
+
+fn access_lists_from_value(value: &Value) -> Result<(Vec<String>, Vec<String>)> {
+    let read_list = |key: &str| -> Result<Vec<String>> {
+        match value.get(key) {
+            None => Ok(Vec::new()),
+            Some(Value::Sequence(items)) => items
+                .iter()
+                .map(|item| match item {
+                    Value::String(id) => Ok(id.clone()),
+                    _ => Err(Error::Parse(format!(
+                        "invalid SKILL.md frontmatter: '{key}' must be a sequence of strings"
+                    ))),
+                })
+                .collect(),
+            Some(_) => Err(Error::Parse(format!(
+                "invalid SKILL.md frontmatter: '{key}' must be a sequence of strings"
+            ))),
+        }
+    };
+    Ok((read_list("allow")?, read_list("deny")?))
+}
+
+/// Parse agent access lists from an optional frontmatter block.
+pub fn parse_access_lists(content: &str) -> Result<(Vec<String>, Vec<String>)> {
+    if !content.trim_start().starts_with("---") {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let (frontmatter, _) = split_frontmatter_raw(content)?;
+    let value = parse_frontmatter_value(frontmatter)?;
+    access_lists_from_value(&value)
 }
 
 /// Tolerant variant of [`split_frontmatter`]: returns only the body after an
@@ -174,6 +257,32 @@ pub fn strip_optional_frontmatter(content: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn access_lists_require_sequences_of_strings() {
+        let dir = Path::new("demo");
+        let bare = "---\nname: demo\ndescription: test\n---\nbody";
+        let meta = parse_metadata(bare, dir).unwrap();
+        assert!(meta.allow.is_empty());
+        assert!(meta.deny.is_empty());
+        for key in ["allow", "deny"] {
+            for value in ["", "hello", "null", "[agent1, 2]", "{}"] {
+                let content = format!("---\nname: demo\n{key}: {value}\n---\nbody");
+                assert!(parse_metadata(&content, dir).is_err(), "{content}");
+                assert!(parse_skill(&content, dir).is_err(), "{content}");
+                assert!(parse_access_lists(&content).is_err(), "{content}");
+            }
+        }
+        let command = "---\ndescription: Review\nallow: [agent1]\ndeny: []\n---\nbody";
+        assert_eq!(
+            parse_access_lists(command).unwrap(),
+            (vec!["agent1".into()], Vec::new())
+        );
+        assert_eq!(
+            parse_access_lists("# Review").unwrap(),
+            (Vec::new(), Vec::new())
+        );
+    }
 
     use rstest::rstest;
 

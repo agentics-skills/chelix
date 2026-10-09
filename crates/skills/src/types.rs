@@ -180,6 +180,12 @@ pub struct SkillMetadata {
         deserialize_with = "deserialize_string_or_seq"
     )]
     pub allowed_tools: Vec<String>,
+    /// Agent ids granted access in place of the agent's skill policy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow: Vec<String>,
+    /// Agent ids excluded from this skill.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<String>,
     /// Provenance of a bundled or imported skill (upstream repo, commit, date).
     #[serde(default)]
     pub origin: Option<SkillOrigin>,

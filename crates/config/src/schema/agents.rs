@@ -318,22 +318,12 @@ impl Default for SessionAccessPolicyConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentSkillPolicy {
-    /// When `Some`, only these skills (by name or category) are available.
-    /// `Some(vec![])` means "no skills allowed" (deny all).
-    /// `None` (absent from config) means "no restriction".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow: Option<Vec<String>>,
-    /// Skills (by name or category) to deny from this agent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deny: Option<Vec<String>>,
-}
-
-impl AgentSkillPolicy {
-    /// Returns `true` when no skill filtering is configured.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.allow.is_none() && self.deny.is_none()
-    }
+    /// Skills to allow by name or category. An empty list admits all skills.
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Skills to deny by name or category, applied after the allow list.
+    #[serde(default)]
+    pub deny: Vec<String>,
 }
 
 /// Complete configuration for one user-owned agent.
@@ -384,10 +374,10 @@ pub struct AgentConfig {
     pub mcp: AgentMcpPolicy,
     /// Per-agent skill access control.
     ///
-    /// Controls which skills are visible to this agent. When `allow` is
-    /// non-empty, only listed skills are available. `deny` removes skills
-    /// by name or category.
-    #[serde(default, skip_serializing_if = "AgentSkillPolicy::is_empty")]
+    /// Filters names and categories when the skill's frontmatter `allow` is empty.
+    /// A non-empty frontmatter `allow` selects agent ids instead of this policy.
+    /// Frontmatter `deny` takes precedence over both.
+    #[serde(default)]
     pub skills: AgentSkillPolicy,
 }
 

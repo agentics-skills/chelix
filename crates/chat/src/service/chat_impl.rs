@@ -52,6 +52,56 @@ use crate::{
 
 use super::{session_gate::terminal_from_outcome, *};
 
+fn skills_context_entries(
+    skills: Vec<chelix_skills::types::SkillMetadata>,
+    agent_id: &str,
+    policy: &chelix_config::AgentSkillPolicy,
+) -> Vec<Value> {
+    filter_skills_for_agent(skills, agent_id, policy)
+        .iter()
+        .map(|skill| {
+            serde_json::json!({
+                "name": skill.name,
+                "description": skill.description,
+                "source": skill.source,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod skills_context_tests {
+    use {
+        super::*,
+        chelix_skills::types::{SkillMetadata, SkillSource},
+    };
+
+    #[test]
+    fn context_skills_filters_agent_access_and_serializes_fields() {
+        let entries = skills_context_entries(
+            vec![
+                SkillMetadata {
+                    name: "demo".into(),
+                    deny: vec!["agent1".into()],
+                    source: Some(SkillSource::Project),
+                    ..Default::default()
+                },
+                SkillMetadata {
+                    name: "visible".into(),
+                    description: "Visible skill".into(),
+                    source: Some(SkillSource::Personal),
+                    ..Default::default()
+                },
+            ],
+            "agent1",
+            &chelix_config::AgentSkillPolicy::default(),
+        );
+        assert_eq!(entries, [
+            serde_json::json!({ "name": "visible", "description": "Visible skill", "source": "personal" })
+        ]);
+    }
+}
+
 async fn ensure_send_sync_session_agent(
     metadata: &chelix_sessions::metadata::SqliteSessionMetadata,
     entry: chelix_sessions::metadata::SessionEntry,
@@ -987,17 +1037,11 @@ impl ChatService for LiveChatService {
         // Discover enabled skills/plugins (only if the configured mode enables tools and
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if tools_enabled {
-            discover_skills_if_enabled(&prompt_persona.config)
-                .await
-                .iter()
-                .map(|s| {
-                    serde_json::json!({
-                        "name": s.name,
-                        "description": s.description,
-                        "source": s.source,
-                    })
-                })
-                .collect()
+            skills_context_entries(
+                discover_skills_if_enabled(&prompt_persona.config).await,
+                &prompt_persona.agent_id,
+                &prompt_persona.agent.skills,
+            )
         } else {
             vec![]
         };
@@ -1093,7 +1137,11 @@ impl ChatService for LiveChatService {
         let raw_prompt_agent_id = persona.agent_id.clone();
 
         // Apply per-agent skill policy.
-        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
+        let discovered_skills = filter_skills_for_agent(
+            discovered_skills,
+            &raw_prompt_agent_id,
+            &persona.agent.skills,
+        );
 
         // Build filtered tool registry with the same preparation as the live
         // run (filter → memory tools → lazy wrap) so the debug prompt matches.
@@ -1252,7 +1300,8 @@ impl ChatService for LiveChatService {
         let full_ctx_agent_id = persona.agent_id.clone();
 
         // Apply per-agent skill policy.
-        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
+        let discovered_skills =
+            filter_skills_for_agent(discovered_skills, &full_ctx_agent_id, &persona.agent.skills);
         let policy_ctx = build_policy_context(&full_ctx_agent_id, Some(&runtime_context));
         // Same preparation as the live run so the full-context prompt reflects
         // the lazy state of the current history.

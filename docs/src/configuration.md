@@ -239,8 +239,7 @@ enable_self_improvement = true     # System prompt guidance for autonomous skill
 `enable_agent_sidecar_files` is disabled by default. When enabled, Chelix
 registers the `write_skill_files` tool so agents can write supplementary files
 such as `script.sh`, `Dockerfile`, templates, or `_meta.json` inside
-`<data_dir>/skills/<name>/`. Writes stay confined to that personal skill
-directory, reject path traversal and symlink escapes, and are recorded in
+`<data_dir>/skills/<name>/`. Writes reject path traversal and are recorded in
 `~/.chelix/logs/security-audit.jsonl`.
 
 `enable_self_improvement` (default: true) injects system prompt guidance that

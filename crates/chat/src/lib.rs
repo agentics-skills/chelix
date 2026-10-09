@@ -10,6 +10,7 @@ mod prompt;
 mod prompt_queue;
 mod run_with_tools;
 mod service;
+mod skill_tools;
 mod stream_journal;
 mod streaming;
 mod tool_permission;

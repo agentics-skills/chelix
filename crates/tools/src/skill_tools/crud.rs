@@ -1,10 +1,10 @@
 //! Create, update, and delete personal skills.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use {
     async_trait::async_trait,
-    chelix_agents::tool_registry::AgentTool,
+    chelix_agents::{tool_context::ToolExecutionContext, tool_registry::AgentTool},
     chelix_skills::usage::SkillUsageStore,
     serde_json::{Value, json},
 };
@@ -13,7 +13,9 @@ use {
 use chelix_metrics::{counter, labels, skills as skills_metrics};
 
 use {
-    super::helpers::{build_skill_md, ensure_not_symlink, write_skill},
+    super::helpers::{
+        SkillWriteRecorder, build_skill_md, validate_existing_skill_file, write_skill,
+    },
     crate::error::Error,
 };
 
@@ -22,10 +24,65 @@ use {
 /// Tool that creates a new personal skill in `<data_dir>/skills/`.
 pub struct CreateSkillTool {
     data_dir: PathBuf,
-    usage_store: Option<SkillUsageStore>,
+    usage_store: Option<Arc<dyn SkillWriteRecorder>>,
 }
 
 impl CreateSkillTool {
+    async fn create(&self, params: Value, on_create: Option<&str>) -> anyhow::Result<Value> {
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::message("missing 'name'"))?;
+        let description = params
+            .get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::message("missing 'description'"))?;
+        let body = params
+            .get("body")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::message("missing 'body'"))?;
+        let allowed_tools: Vec<String> = params
+            .get("allowed_tools")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if !chelix_skills::parse::validate_name(name) {
+            return Err(Error::message(format!(
+                "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
+            ))
+            .into());
+        }
+
+        let skill_dir = self.skills_dir().join(name);
+        validate_existing_skill_file(&skill_dir.join("SKILL.md")).await?;
+        if skill_dir.exists() {
+            return Err(Error::message(format!(
+                "skill '{name}' already exists; use update_skill to modify it"
+            ))
+            .into());
+        }
+
+        let content = build_skill_md(name, description, body, &allowed_tools)?;
+        write_skill(&skill_dir, &content, on_create).await?;
+
+        if let Some(ref store) = self.usage_store {
+            store.record_write(name).await;
+        }
+        #[cfg(feature = "metrics")]
+        counter!(skills_metrics::MODIFICATIONS_TOTAL, labels::TOOL => "create_skill".to_string())
+            .increment(1);
+
+        Ok(json!({
+            "created": true,
+            "path": skill_dir.display().to_string(),
+        }))
+    }
+
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
@@ -35,7 +92,13 @@ impl CreateSkillTool {
 
     #[must_use]
     pub fn with_usage_store(mut self, store: SkillUsageStore) -> Self {
-        self.usage_store = Some(store);
+        self.usage_store = Some(Arc::new(store));
+        self
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_write_recorder(mut self, recorder: Arc<dyn SkillWriteRecorder>) -> Self {
+        self.usage_store = Some(recorder);
         self
     }
 
@@ -83,57 +146,15 @@ impl AgentTool for CreateSkillTool {
     }
 
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
-        let name = params
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::message("missing 'name'"))?;
-        let description = params
-            .get("description")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::message("missing 'description'"))?;
-        let body = params
-            .get("body")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::message("missing 'body'"))?;
-        let allowed_tools: Vec<String> = params
-            .get("allowed_tools")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        self.create(params, None).await
+    }
 
-        if !chelix_skills::parse::validate_name(name) {
-            return Err(Error::message(format!(
-                "invalid skill name '{name}': must be 1-64 lowercase alphanumeric/hyphen chars"
-            ))
-            .into());
-        }
-
-        let skill_dir = self.skills_dir().join(name);
-        if skill_dir.exists() {
-            return Err(Error::message(format!(
-                "skill '{name}' already exists; use update_skill to modify it"
-            ))
-            .into());
-        }
-
-        let content = build_skill_md(name, description, body, &allowed_tools);
-        write_skill(&skill_dir, &content).await?;
-
-        if let Some(ref store) = self.usage_store {
-            store.record_write(name).await;
-        }
-        #[cfg(feature = "metrics")]
-        counter!(skills_metrics::MODIFICATIONS_TOTAL, labels::TOOL => "create_skill".to_string())
-            .increment(1);
-
-        Ok(json!({
-            "created": true,
-            "path": skill_dir.display().to_string(),
-        }))
+    async fn execute_with_context(
+        &self,
+        params: Value,
+        context: &ToolExecutionContext,
+    ) -> anyhow::Result<Value> {
+        self.create(params, context.sender_agent_id()).await
     }
 }
 
@@ -142,7 +163,7 @@ impl AgentTool for CreateSkillTool {
 /// Tool that updates an existing personal skill in `<data_dir>/skills/`.
 pub struct UpdateSkillTool {
     data_dir: PathBuf,
-    usage_store: Option<SkillUsageStore>,
+    usage_store: Option<Arc<dyn SkillWriteRecorder>>,
 }
 
 impl UpdateSkillTool {
@@ -155,7 +176,13 @@ impl UpdateSkillTool {
 
     #[must_use]
     pub fn with_usage_store(mut self, store: SkillUsageStore) -> Self {
-        self.usage_store = Some(store);
+        self.usage_store = Some(Arc::new(store));
+        self
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_write_recorder(mut self, recorder: Arc<dyn SkillWriteRecorder>) -> Self {
+        self.usage_store = Some(recorder);
         self
     }
 
@@ -238,8 +265,8 @@ impl AgentTool for UpdateSkillTool {
             .into());
         }
 
-        let content = build_skill_md(name, description, body, &allowed_tools);
-        write_skill(&skill_dir, &content).await?;
+        let content = build_skill_md(name, description, body, &allowed_tools)?;
+        write_skill(&skill_dir, &content, None).await?;
 
         if let Some(ref store) = self.usage_store {
             store.record_write(name).await;
@@ -316,24 +343,11 @@ impl AgentTool for DeleteSkillTool {
         }
 
         let skill_dir = self.skills_dir().join(name);
-        ensure_not_symlink(&skill_dir, "skill directory").await?;
-
-        // Only allow deleting from the personal skills directory.
-        let canonical_base = self
-            .skills_dir()
-            .canonicalize()
-            .unwrap_or_else(|_| self.skills_dir().clone());
-        let canonical_target = skill_dir
-            .canonicalize()
-            .unwrap_or_else(|_| skill_dir.clone());
-        if !canonical_target.starts_with(&canonical_base) {
-            return Err(Error::message("can only delete personal skills").into());
-        }
-
         if !skill_dir.exists() {
             return Err(Error::message(format!("skill '{name}' not found")).into());
         }
 
+        validate_existing_skill_file(&skill_dir.join("SKILL.md")).await?;
         tokio::fs::remove_dir_all(&skill_dir).await?;
 
         if let Some(ref store) = self.usage_store {

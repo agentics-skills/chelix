@@ -250,7 +250,7 @@ must reference a configured agent.
 | `sessions`              | optional `SessionAccessPolicyConfig`                                      | `null`   | Session access policy for inter-agent communication.                                                                                                                                                                         |
 | `reasoning_effort`      | string                                                                    | required | Provider-defined reasoning effort supported by the selected model. Non-reasoning models use their registered effort, such as `off`.                                                                                          |
 | `mcp`                   | optional `AgentMcpPolicy`                                                 | `null`   | MCP server allow or deny policy.                                                                                                                                                                                             |
-| `skills`                | optional `AgentSkillPolicy`                                               | `null`   | Per-agent skill visibility policy.                                                                                                                                                                                           |
+| `skills`                | `AgentSkillPolicy`                                                        | `allow = []`, `deny = []` | Per-agent skill visibility policy.                                                                                                                                                                                           |
 
 At startup, every configured model/reasoning pair is resolved through the live
 model registry. Unknown models and efforts unsupported by the selected model
@@ -280,10 +280,16 @@ all MCP servers visible.
 
 ### `agents.<id>.skills` (`AgentSkillPolicy`)
 
-| Key     | Type           | Default | Description                                                          |
-| ------- | -------------- | ------- | -------------------------------------------------------------------- |
-| `allow` | optional array | absent  | Make only skills matching the listed names or categories visible.    |
-| `deny`  | optional array | absent  | Hide skills matching the listed names or categories.                 |
+| Key     | Type  | Default | Description                                                                 |
+| ------- | ----- | ------- | --------------------------------------------------------------------------- |
+| `allow` | array | `[]`    | Select skill names or categories; an empty list admits all names/categories. |
+| `deny`  | array | `[]`    | Remove matching names or categories; an empty list keeps the selection.      |
+
+`SKILL.md` frontmatter `allow` and `deny` contain exact agent ids. A matching
+skill `deny` hides the skill first. A nonempty skill `allow` replaces the agent
+policy and selects its listed ids. With an empty skill `allow`, the agent's
+`skills.allow` selects names/categories, then `skills.deny` removes matches.
+The first discovered entry for each name is selected before these rules apply.
 
 ### `skills` — SkillsConfig
 

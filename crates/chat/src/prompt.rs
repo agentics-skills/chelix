@@ -342,37 +342,17 @@ pub(crate) async fn discover_skills_if_enabled(
 
 /// Apply per-agent skill policy to a discovered skill list.
 ///
-/// When the agent has a `skills.allow` list, only skills matching by name or
-/// category are kept. Skills in `skills.deny` are then removed.
+/// Keep the first source for each name and apply skill and agent access lists.
 pub(crate) fn filter_skills_for_agent(
     skills: Vec<chelix_skills::types::SkillMetadata>,
+    agent_id: &str,
     policy: &chelix_config::schema::AgentSkillPolicy,
 ) -> Vec<chelix_skills::types::SkillMetadata> {
-    if policy.is_empty() {
-        return skills;
-    }
+    let mut seen = std::collections::HashSet::new();
     skills
         .into_iter()
-        .filter(|s| {
-            // If allow is Some, must match by name or category.
-            // Some(vec![]) means "no skills allowed" — filters everything.
-            if let Some(ref allow) = policy.allow
-                && !allow
-                    .iter()
-                    .any(|a| a == &s.name || s.category.as_deref().is_some_and(|cat| a == cat))
-            {
-                return false;
-            }
-            // Deny by name or category (if present).
-            if let Some(ref deny) = policy.deny
-                && deny
-                    .iter()
-                    .any(|d| d == &s.name || s.category.as_deref().is_some_and(|cat| d == cat))
-            {
-                return false;
-            }
-            true
-        })
+        .filter(|skill| seen.insert(skill.name.clone()))
+        .filter(|skill| chelix_skills::visible_to_agent(agent_id, skill, policy))
         .collect()
 }
 
@@ -621,6 +601,8 @@ pub(crate) fn prepare_run_registry(
         );
     }
 
+    crate::skill_tools::install_agent_scoped_skill_tools(&mut registry, config, agent_id)?;
+
     let max_tool_result_bytes =
         config
             .agents
@@ -861,6 +843,45 @@ mod tests {
     }
 
     #[test]
+    fn skill_filter_deduplicates_before_visibility_and_keeps_input_order() {
+        use chelix_skills::types::{SkillMetadata, SkillSource};
+
+        let filtered = filter_skills_for_agent(
+            vec![
+                SkillMetadata {
+                    name: "demo".into(),
+                    deny: vec!["agent1".into()],
+                    source: Some(SkillSource::Project),
+                    ..Default::default()
+                },
+                SkillMetadata {
+                    name: "demo".into(),
+                    allow: vec!["agent1".into()],
+                    source: Some(SkillSource::Personal),
+                    ..Default::default()
+                },
+                SkillMetadata {
+                    name: "z-last".into(),
+                    ..Default::default()
+                },
+                SkillMetadata {
+                    name: "a-last".into(),
+                    ..Default::default()
+                },
+            ],
+            "agent1",
+            &chelix_config::AgentSkillPolicy::default(),
+        );
+        assert_eq!(
+            filtered
+                .iter()
+                .map(|skill| skill.name.as_str())
+                .collect::<Vec<_>>(),
+            ["z-last", "a-last"]
+        );
+    }
+
+    #[test]
     fn skill_policy_allows_then_denies_by_name_or_category() {
         let skills = vec![
             chelix_skills::types::SkillMetadata {
@@ -880,11 +901,11 @@ mod tests {
             },
         ];
         let policy = chelix_config::schema::AgentSkillPolicy {
-            allow: Some(vec!["research".into(), "writer".into()]),
-            deny: Some(vec!["writer".into()]),
+            allow: vec!["research".into(), "writer".into()],
+            deny: vec!["writer".into()],
         };
 
-        let filtered = filter_skills_for_agent(skills, &policy);
+        let filtered = filter_skills_for_agent(skills, "agent1", &policy);
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].name, "web-search");

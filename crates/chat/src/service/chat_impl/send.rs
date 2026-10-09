@@ -630,7 +630,8 @@ impl LiveChatService {
 
         // Discover enabled skills/plugins and apply the live per-agent policy.
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
-        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
+        let discovered_skills =
+            filter_skills_for_agent(discovered_skills, &session_agent_id, &persona.agent.skills);
         info!(
             session = %session_key,
             skills_len = discovered_skills.len(),
