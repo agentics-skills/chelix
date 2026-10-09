@@ -172,9 +172,37 @@ fn discover_flat(base_path: &Path, source: &SkillSource, skills: &mut Vec<SkillM
     }
 }
 
+fn discover_plugin_metadata(path: &Path, name: &str) -> Result<SkillMetadata> {
+    let (allow, deny) = if path.is_dir() && path.join("SKILL.md").is_file() {
+        let content = std::fs::read_to_string(path.join("SKILL.md"))?;
+        let metadata = parse::parse_metadata(&content, path)?;
+        (metadata.allow, metadata.deny)
+    } else if path.is_file() {
+        let content = std::fs::read_to_string(path)?;
+        parse::parse_access_lists(&content)?
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    Ok(SkillMetadata {
+        name: name.to_string(),
+        path: path.to_path_buf(),
+        source: Some(SkillSource::Plugin),
+        allow,
+        deny,
+        ..Default::default()
+    })
+}
+
+fn push_plugin_metadata(path: &Path, name: &str, skills: &mut Vec<SkillMetadata>) {
+    match discover_plugin_metadata(path, name) {
+        Ok(metadata) => skills.push(metadata),
+        Err(e) => {
+            tracing::warn!(skill_dir = ?path, %e, "failed to parse SKILL.md");
+        },
+    }
+}
+
 /// Discover enabled plugin skills using the plugins manifest.
-/// Plugin skills don't have SKILL.md — they are normalized by format adapters.
-/// This returns lightweight metadata from the manifest for prompt injection.
 fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
     let manifest_path = chelix_config::data_dir().join("plugins-manifest.json");
     let store = ManifestStore::new(manifest_path);
@@ -192,12 +220,7 @@ fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
                 continue;
             }
             let skill_dir = install_dir.join(&skill_state.relative_path);
-            skills.push(SkillMetadata {
-                name: skill_state.name.clone(),
-                path: skill_dir,
-                source: Some(SkillSource::Plugin),
-                ..Default::default()
-            });
+            push_plugin_metadata(&skill_dir, &skill_state.name, skills);
         }
     }
 }
@@ -206,8 +229,8 @@ fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
 ///
 /// Handles both formats:
 /// - `PluginFormat::Skill` → parse `SKILL.md` from disk for full metadata
-/// - Other formats → create stub metadata with `SkillSource::Plugin` (prompt_gen
-///   uses the path as-is instead of appending `/SKILL.md`)
+/// - Other formats → read access metadata with the manifest name and
+///   `SkillSource::Plugin` (prompt_gen uses the path as-is)
 fn discover_registry(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
     let manifest_path = match ManifestStore::default_path() {
         Ok(p) => p,
@@ -260,14 +283,7 @@ fn discover_registry(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
                     }
                 },
                 _ => {
-                    // Non-SKILL.md formats: stub metadata with Plugin source
-                    // so prompt_gen uses the path directly (no /SKILL.md append).
-                    skills.push(SkillMetadata {
-                        name: skill_state.name.clone(),
-                        path: skill_dir,
-                        source: Some(SkillSource::Plugin),
-                        ..Default::default()
-                    });
+                    push_plugin_metadata(&skill_dir, &skill_state.name, skills);
                 },
             }
         }
@@ -350,6 +366,76 @@ mod tests {
 
         let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)]);
         let skills = discoverer.discover().await.unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[tokio::test]
+    async fn discovery_excludes_invalid_access_lists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo");
+        std::fs::create_dir_all(&dir).unwrap();
+        let discoverer =
+            FsSkillDiscoverer::new(vec![(tmp.path().to_path_buf(), SkillSource::Personal)]);
+        for declaration in ["allow: hello", "allow:", "deny:", "deny: [2]"] {
+            std::fs::write(
+                dir.join("SKILL.md"),
+                format!("---\nname: demo\n{declaration}\n---\nbody"),
+            )
+            .unwrap();
+            assert!(discoverer.discover().await.unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn plugin_metadata_reads_access_lists_from_directory_and_commands() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("plugin");
+        std::fs::create_dir_all(&dir).unwrap();
+        let stub = discover_plugin_metadata(&dir, "manifest-name").unwrap();
+        assert!(stub.allow.is_empty());
+        std::fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: demo\ndeny: [agent1]\n---\nbody",
+        )
+        .unwrap();
+        let metadata = discover_plugin_metadata(&dir, "manifest-name").unwrap();
+        assert_eq!(metadata.name, "manifest-name");
+        assert_eq!(metadata.deny, ["agent1"]);
+        std::fs::write(dir.join("SKILL.md"), "---\nname: demo\ndeny:\n---\nbody").unwrap();
+        let mut skills = Vec::new();
+        push_plugin_metadata(&dir, "manifest-name", &mut skills);
+        assert!(skills.is_empty());
+        let command = tmp.path().join("review.md");
+        for declaration in ["", "allow: []", "allow: [agent1]"] {
+            std::fs::write(
+                &command,
+                format!("---\ndescription: Review\n{declaration}\n---\nbody"),
+            )
+            .unwrap();
+            let metadata = discover_plugin_metadata(&command, "Demo:review").unwrap();
+            assert_eq!(metadata.name, "Demo:review");
+            assert_eq!(
+                metadata.allow,
+                if declaration == "allow: [agent1]" {
+                    vec!["agent1".to_string()]
+                } else {
+                    Vec::new()
+                }
+            );
+        }
+        std::fs::write(&command, "# Review").unwrap();
+        assert!(
+            discover_plugin_metadata(&command, "Demo:review")
+                .unwrap()
+                .allow
+                .is_empty()
+        );
+        std::fs::write(
+            &command,
+            "---\ndescription: Review\nallow: hello\n---\nbody",
+        )
+        .unwrap();
+        push_plugin_metadata(&command, "Demo:review", &mut skills);
         assert!(skills.is_empty());
     }
 

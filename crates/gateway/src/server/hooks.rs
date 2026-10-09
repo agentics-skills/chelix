@@ -272,3 +272,38 @@ pub(crate) async fn discover_and_build_hooks(
 
     Ok((Some(Arc::new(registry)), info_list))
 }
+
+#[cfg(test)]
+mod skill_seed_tests {
+    use super::*;
+
+    struct DataDirGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Drop for DataDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_data_dir();
+        }
+    }
+
+    #[test]
+    fn template_seed_publishes_empty_lists_and_preserves_existing_file() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let _guard = DataDirGuard {
+            _lock: crate::config_override_test_lock(),
+        };
+        chelix_config::set_data_dir(dir.path().to_path_buf());
+        seed_example_skill();
+        let path = dir.path().join("skills/template-skill/SKILL.md");
+        let seeded = std::fs::read_to_string(&path)?;
+        assert_eq!(seeded, EXAMPLE_SKILL_MD);
+        assert!(seeded.contains("allow: []"));
+        assert!(seeded.contains("deny: []"));
+        let customized = format!("{seeded}\nCustomized instructions\n");
+        std::fs::write(&path, &customized)?;
+        seed_example_skill();
+        assert_eq!(std::fs::read_to_string(&path)?, customized);
+        Ok(())
+    }
+}

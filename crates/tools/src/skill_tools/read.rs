@@ -146,18 +146,18 @@ async fn test_read_skill_rejects_absolute_path() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_read_skill_rejects_symlink_escape_in_sidecar() {
+async fn test_read_skill_follows_sidecar_symlink_and_lists_target_bytes() {
     use std::os::unix::fs::symlink;
 
     let tmp = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
-    std::fs::write(outside.path().join("secret.txt"), "shhh\n").unwrap();
+    std::fs::write(outside.path().join("api.md"), "reference\n").unwrap();
 
     let skill_dir = seed_personal_skill(tmp.path(), "demo", "# Demo\n");
     std::fs::create_dir_all(skill_dir.join("references")).unwrap();
     symlink(
-        outside.path().join("secret.txt"),
-        skill_dir.join("references/link.txt"),
+        outside.path().join("api.md"),
+        skill_dir.join("references/api.md"),
     )
     .unwrap();
 
@@ -165,12 +165,18 @@ async fn test_read_skill_rejects_symlink_escape_in_sidecar() {
     let result = tool
         .execute(json!({
             "name": "demo",
-            "file_path": "references/link.txt"
+            "file_path": "references/api.md"
         }))
         .await;
+    let result = result.unwrap();
+    assert_eq!(result["content"], "reference\n");
+    assert_eq!(result["bytes"], 10);
+    let primary = tool.execute(json!({ "name": "demo" })).await.unwrap();
+    let linked = primary["linked_files"].as_array().unwrap();
     assert!(
-        result.is_err(),
-        "symlink escape out of the skill directory must be rejected"
+        linked
+            .iter()
+            .any(|entry| entry["path"] == "references/api.md" && entry["bytes"] == 10)
     );
 }
 
@@ -1042,11 +1048,7 @@ async fn test_read_skill_plugin_md_rejects_oversized_body() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_read_skill_primary_rejects_symlinked_skill_directory() {
-    // Parity with `read_sidecar` and `write_sidecar_files`: the primary
-    // (body) read must also reject a symlinked skill root so the
-    // canonicalise step can't silently follow it to a file outside the
-    // skills tree. Covers the `read_primary` symlink guard.
+async fn test_read_skill_primary_follows_symlinked_skill_directory() {
     use std::os::unix::fs::symlink;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -1055,43 +1057,35 @@ async fn test_read_skill_primary_rejects_symlinked_skill_directory() {
     std::fs::create_dir_all(outside.path().join("real-skill")).unwrap();
     std::fs::write(
         outside.path().join("real-skill/SKILL.md"),
-        "---\nname: evil\ndescription: trap\n---\n# evil body\n",
+        "---\nname: demo\ndescription: example\n---\n# demo body\n",
     )
     .unwrap();
 
     std::fs::create_dir_all(tmp.path().join("skills")).unwrap();
     symlink(
         outside.path().join("real-skill"),
-        tmp.path().join("skills/evil"),
+        tmp.path().join("skills/demo"),
     )
     .unwrap();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
         chelix_skills::types::SkillMetadata {
-            name: "evil".into(),
-            description: "trap".into(),
-            path: tmp.path().join("skills/evil"),
+            name: "demo".into(),
+            description: "example".into(),
+            path: tmp.path().join("skills/demo"),
             source: Some(SkillSource::Personal),
             ..Default::default()
         },
     ]));
     let tool = ReadSkillTool::new(discoverer);
 
-    let result = tool.execute(json!({ "name": "evil" })).await;
-    let err = result.expect_err("symlinked skill directory must be rejected on primary read");
-    let msg = format!("{err}");
-    assert!(
-        msg.contains("symlink"),
-        "error must mention symlink rejection: {msg}"
-    );
+    let result = tool.execute(json!({ "name": "demo" })).await.unwrap();
+    assert_eq!(result["body"], "# demo body");
 }
 
 #[cfg(unix)]
 #[tokio::test]
-async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
-    // Parity with `write_sidecar_files`: a symlinked skill root must be
-    // rejected so `canonicalize` can't silently follow the symlink to a
-    // file outside the skills tree.
+async fn test_read_skill_sidecar_follows_symlinked_skill_directory() {
     use std::os::unix::fs::symlink;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -1101,12 +1095,12 @@ async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
     std::fs::create_dir_all(outside.path().join("real-skill/references")).unwrap();
     std::fs::write(
         outside.path().join("real-skill/SKILL.md"),
-        "---\nname: evil\ndescription: trap\n---\n# evil body\n",
+        "---\nname: demo\ndescription: example\n---\n# demo body\n",
     )
     .unwrap();
     std::fs::write(
-        outside.path().join("real-skill/references/secret.md"),
-        "top secret\n",
+        outside.path().join("real-skill/references/api.md"),
+        "reference\n",
     )
     .unwrap();
 
@@ -1114,18 +1108,16 @@ async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
     std::fs::create_dir_all(tmp.path().join("skills")).unwrap();
     symlink(
         outside.path().join("real-skill"),
-        tmp.path().join("skills/evil"),
+        tmp.path().join("skills/demo"),
     )
     .unwrap();
 
-    // Construct a discoverer that returns the symlinked path verbatim
-    // (this mirrors what a real-world discoverer would do if someone
-    // symlinked a skill into place).
+    // Return the symlinked directory as the discovery path.
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
         chelix_skills::types::SkillMetadata {
-            name: "evil".into(),
-            description: "trap".into(),
-            path: tmp.path().join("skills/evil"),
+            name: "demo".into(),
+            description: "example".into(),
+            path: tmp.path().join("skills/demo"),
             source: Some(SkillSource::Personal),
             ..Default::default()
         },
@@ -1134,16 +1126,13 @@ async fn test_read_skill_sidecar_rejects_symlinked_skill_directory() {
 
     let result = tool
         .execute(json!({
-            "name": "evil",
-            "file_path": "references/secret.md"
+            "name": "demo",
+            "file_path": "references/api.md"
         }))
         .await;
-    let err = result.expect_err("symlinked skill directory must be rejected on read");
-    let msg = format!("{err}");
-    assert!(
-        msg.contains("symlink"),
-        "error must mention symlink rejection: {msg}"
-    );
+    let result = result.unwrap();
+    assert_eq!(result["content"], "reference\n");
+    assert_eq!(result["bytes"], 10);
 }
 
 // ── Bundled skill materialization ────────────────────────────────────

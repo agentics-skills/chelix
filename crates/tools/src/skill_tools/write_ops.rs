@@ -16,8 +16,8 @@ use {
     super::{
         MAX_SIDECAR_FILES_PER_CALL,
         helpers::{
-            audit_sidecar_file_write, ensure_not_symlink, split_frontmatter_body,
-            update_frontmatter_description, validate_sidecar_files, write_sidecar_files,
+            audit_sidecar_file_write, split_frontmatter_body, update_frontmatter_description,
+            validate_existing_skill_file, validate_sidecar_files, write_sidecar_files,
         },
     },
     crate::error::Error,
@@ -111,7 +111,11 @@ impl AgentTool for WriteSkillFilesTool {
             .into());
         }
 
+        let skill_md_path = skill_dir.join("SKILL.md");
+        let content = tokio::fs::read_to_string(&skill_md_path).await?;
+        chelix_skills::parse::parse_metadata(&content, &skill_dir)?;
         write_sidecar_files(&skill_dir, &validated).await?;
+        chelix_skills::publish_markdown(&skill_md_path, &content, None).await?;
         audit_sidecar_file_write(&self.data_dir, name, &validated);
 
         Ok(json!({
@@ -241,21 +245,8 @@ impl AgentTool for PatchSkillTool {
             .into());
         }
 
-        // Reject symlinked skill directories.
-        let canonical_base = self
-            .skills_dir()
-            .canonicalize()
-            .unwrap_or_else(|_| self.skills_dir().clone());
-        let canonical_target = skill_dir
-            .canonicalize()
-            .unwrap_or_else(|_| skill_dir.clone());
-        if !canonical_target.starts_with(&canonical_base) {
-            return Err(Error::message("can only patch personal skills").into());
-        }
-        ensure_not_symlink(&skill_dir, "skill directory").await?;
-
         let skill_md_path = skill_dir.join("SKILL.md");
-        ensure_not_symlink(&skill_md_path, "SKILL.md").await?;
+        validate_existing_skill_file(&skill_md_path).await?;
         let raw = tokio::fs::read_to_string(&skill_md_path)
             .await
             .map_err(|e| Error::message(format!("failed to read skill '{name}': {e}")))?;
@@ -289,7 +280,7 @@ impl AgentTool for PatchSkillTool {
         }
 
         let final_content = if let Some(desc) = new_description {
-            let updated_fm = update_frontmatter_description(frontmatter_block, desc);
+            let updated_fm = update_frontmatter_description(frontmatter_block, desc)?;
             format!("{updated_fm}{patched_body}")
         } else {
             format!("{frontmatter_block}{patched_body}")
@@ -301,7 +292,7 @@ impl AgentTool for PatchSkillTool {
             format!("{final_content}\n")
         };
 
-        tokio::fs::write(&skill_md_path, &final_content).await?;
+        chelix_skills::publish_markdown(&skill_md_path, &final_content, None).await?;
 
         let hits = chelix_skills::safety::scan_skill_body(name, &patched_body);
         let warning = if !hits.is_empty() {

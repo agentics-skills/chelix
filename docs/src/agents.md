@@ -172,3 +172,20 @@ visibility is configured independently:
 allow = ["research", "code-review"]
 deny = ["social-media"]
 ```
+
+`skills.allow = []` admits all skill names and categories. `skills.deny = []`
+keeps that selection. Nonempty lists match the skill's name or category exactly.
+
+`allow` and `deny` in `SKILL.md` frontmatter contain exact agent ids. Visibility
+is resolved in this order:
+
+1. A matching id in the skill's `deny` hides the skill.
+2. A nonempty skill `allow` selects only its listed agent ids and replaces the
+   agent's skill policy.
+3. With an empty skill `allow`, the agent's nonempty `skills.allow` selects names
+   or categories, then `skills.deny` removes matching skills.
+
+Discovery keeps the first entry of each name before applying visibility:
+project `.chelix/skills`, personal `skills`, `installed-skills`,
+`installed-plugins`, then bundled skills. A hidden first entry keeps its name
+hidden across the available-skills prompt, `chat.context`, and `read_skill`.

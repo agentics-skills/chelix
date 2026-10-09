@@ -271,6 +271,43 @@ fn save_user_config_rejects_reserved_agent_ids_before_writing() {
 }
 
 #[test]
+fn checked_agent_save_persists_empty_skill_lists() {
+    let _lock = CONFIG_DIR_TEST_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    set_config_dir(dir.path().to_path_buf());
+    std::fs::write(dir.path().join("chelix.toml"), "[tools.execute_command]\nterminal_size = \"115x58\"\n[sandbox]\narchived_session_retention_days = 3\n").unwrap();
+    let path = update_config_checked(|config| {
+        config.agents.default = "main".into();
+        config.agents.entries.insert(
+            "main".into(),
+            crate::AgentConfig::new(
+                "Main",
+                "test::model",
+                crate::schema::ReasoningEffort::from("off"),
+            ),
+        );
+        Ok(())
+    })
+    .unwrap();
+    clear_config_dir();
+    let saved = std::fs::read_to_string(path).unwrap();
+    assert!(saved.contains("[agents.main.skills]"));
+    let document: toml::Value = toml::from_str(&saved).unwrap();
+    let policy = &document["agents"]["main"]["skills"];
+    assert_eq!(
+        policy["allow"].as_array().unwrap(),
+        &Vec::<toml::Value>::new()
+    );
+    assert_eq!(
+        policy["deny"].as_array().unwrap(),
+        &Vec::<toml::Value>::new()
+    );
+    let without_table: crate::AgentConfig = toml::from_str("name = \"Main\"\nmodel = \"test::model\"\nreasoning_effort = \"off\"\nmax_tools_threshold = 128\ncompaction_reminder = true\nprepend_sender_badge = true\n").unwrap();
+    assert!(without_table.skills.allow.is_empty());
+    assert!(without_table.skills.deny.is_empty());
+}
+
+#[test]
 fn update_config_preserves_override_boundary() {
     let _guard = CONFIG_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");

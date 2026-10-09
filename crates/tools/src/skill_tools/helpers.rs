@@ -37,30 +37,15 @@ pub(crate) fn split_frontmatter_body(raw: &str) -> (&str, &str) {
     }
 }
 
-/// Replace the `description: ...` line in a frontmatter block.
-pub(crate) fn update_frontmatter_description(frontmatter: &str, new_desc: &str) -> String {
-    let mut result = String::with_capacity(frontmatter.len() + new_desc.len());
-    let mut found = false;
-    for line in frontmatter.lines() {
-        if line.starts_with("description:") && !found {
-            let quoted = yaml_quote(new_desc);
-            result.push_str(&format!("description: {quoted}"));
-            found = true;
-        } else {
-            result.push_str(line);
-        }
-        result.push('\n');
-    }
-    if frontmatter.ends_with("\n\n") && !result.ends_with("\n\n") {
-        result.push('\n');
-    }
-    result
-}
-
-/// Quote a string for safe YAML scalar emission.
-fn yaml_quote(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{escaped}\"")
+/// Replace the existing frontmatter description value.
+pub(crate) fn update_frontmatter_description(
+    frontmatter: &str,
+    new_desc: &str,
+) -> anyhow::Result<String> {
+    Ok(chelix_skills::parse::update_description(
+        frontmatter,
+        new_desc,
+    )?)
 }
 
 pub(super) fn build_skill_md(
@@ -68,11 +53,13 @@ pub(super) fn build_skill_md(
     description: &str,
     body: &str,
     allowed_tools: &[String],
-) -> String {
+) -> anyhow::Result<String> {
+    let description = serde_json::to_string(description)?;
     let mut frontmatter = format!("---\nname: {name}\ndescription: {description}\n");
     if !allowed_tools.is_empty() {
         frontmatter.push_str("allowed_tools:\n");
         for tool in allowed_tools {
+            let tool = serde_json::to_string(tool)?;
             frontmatter.push_str(&format!("  - {tool}\n"));
         }
     }
@@ -81,28 +68,46 @@ pub(super) fn build_skill_md(
     if !body.ends_with('\n') {
         frontmatter.push('\n');
     }
-    frontmatter
+    Ok(frontmatter)
+}
+
+#[async_trait::async_trait]
+pub(super) trait SkillWriteRecorder: Send + Sync {
+    async fn record_write(&self, name: &str);
+}
+
+#[async_trait::async_trait]
+impl SkillWriteRecorder for chelix_skills::usage::SkillUsageStore {
+    async fn record_write(&self, name: &str) {
+        Self::record_write(self, name).await;
+    }
 }
 
 // ── Skill I/O ───────────────────────────────────────────────
 
-pub(super) async fn ensure_not_symlink(path: &Path, target: &str) -> crate::Result<()> {
-    match tokio::fs::symlink_metadata(path).await {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            Err(Error::message(format!("{target} must not be a symlink")))
+pub(super) async fn validate_existing_skill_file(path: &Path) -> anyhow::Result<()> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(content) => {
+            let skill_dir = path
+                .parent()
+                .ok_or_else(|| Error::message("invalid skill directory"))?;
+            chelix_skills::parse::parse_metadata(&content, skill_dir)?;
+            Ok(())
         },
-        Ok(_) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error.into()),
     }
 }
 
-pub(super) async fn write_skill(skill_dir: &Path, content: &str) -> crate::Result<()> {
-    ensure_not_symlink(skill_dir, "skill directory").await?;
-    tokio::fs::create_dir_all(skill_dir).await?;
+pub(super) async fn write_skill(
+    skill_dir: &Path,
+    content: &str,
+    on_create: Option<&str>,
+) -> anyhow::Result<()> {
     let skill_file = skill_dir.join("SKILL.md");
-    ensure_not_symlink(&skill_file, "SKILL.md").await?;
-    tokio::fs::write(skill_file, content).await?;
+    validate_existing_skill_file(&skill_file).await?;
+    tokio::fs::create_dir_all(skill_dir).await?;
+    chelix_skills::publish_markdown(&skill_file, content, on_create).await?;
     Ok(())
 }
 
@@ -224,106 +229,27 @@ pub(super) async fn write_sidecar_files(
     skill_dir: &Path,
     files: &[ValidatedSkillFile],
 ) -> crate::Result<()> {
-    let skills_root = skill_dir
-        .parent()
-        .ok_or_else(|| Error::message("invalid skill directory"))?;
-    let canonical_skills_root = tokio::fs::canonicalize(skills_root).await?;
-
-    ensure_not_symlink(skill_dir, "skill directory").await?;
-
-    let canonical_base = tokio::fs::canonicalize(skill_dir).await?;
-    if !canonical_base.starts_with(&canonical_skills_root) {
-        return Err(Error::message("skill directory is outside the skills root"));
-    }
-
-    let mut written_paths: Vec<PathBuf> = Vec::new();
-
     for file in files {
         let target = skill_dir.join(&file.relative_path);
         let parent = target
             .parent()
             .ok_or_else(|| Error::message("invalid file path"))?;
-
-        validate_no_symlinks_in_ancestry(skill_dir, &file.relative_path).await?;
-
         tokio::fs::create_dir_all(parent).await?;
-
-        let canonical_parent = tokio::fs::canonicalize(parent).await?;
-        if !canonical_parent.starts_with(&canonical_base) {
-            rollback_written_files(&written_paths).await;
-            return Err(Error::message(
-                "can only write inside the personal skill directory",
-            ));
-        }
-
-        if let Ok(metadata) = tokio::fs::symlink_metadata(&target).await {
-            if metadata.file_type().is_symlink() {
-                rollback_written_files(&written_paths).await;
-                return Err(Error::message(format!(
-                    "refusing to write through symlink '{}'",
-                    file.relative_path.display()
-                )));
-            }
-            if metadata.is_dir() {
-                rollback_written_files(&written_paths).await;
+        match tokio::fs::metadata(&target).await {
+            Ok(metadata) if metadata.is_dir() => {
                 return Err(Error::message(format!(
                     "target '{}' is a directory",
                     file.relative_path.display()
                 )));
-            }
+            },
+            Ok(_) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(error.into()),
         }
-
-        let Some(file_name) = file
-            .relative_path
-            .file_name()
-            .and_then(|value| value.to_str())
-        else {
-            rollback_written_files(&written_paths).await;
-            return Err(Error::message("invalid file name"));
-        };
-        let temp_name = format!(".{file_name}.chelix-tmp-{}", uuid::Uuid::new_v4());
-        let temp_path = parent.join(temp_name);
-
-        tokio::fs::write(&temp_path, &file.content).await?;
-        if let Err(error) = tokio::fs::rename(&temp_path, &target).await {
-            let _ = tokio::fs::remove_file(&temp_path).await;
-            rollback_written_files(&written_paths).await;
-            return Err(error.into());
-        }
-        written_paths.push(target);
+        tokio::fs::write(&target, &file.content).await?;
     }
 
     Ok(())
-}
-
-/// Walk from `base` through existing intermediate components and reject symlinks.
-async fn validate_no_symlinks_in_ancestry(base: &Path, relative_path: &Path) -> crate::Result<()> {
-    let components: Vec<_> = relative_path.components().collect();
-    let parent_components = components.len().saturating_sub(1);
-    let mut current = base.to_path_buf();
-    for component in components.iter().take(parent_components) {
-        if let Component::Normal(segment) = component {
-            current.push(segment);
-            match tokio::fs::symlink_metadata(&current).await {
-                Ok(meta) if meta.file_type().is_symlink() => {
-                    return Err(Error::message(format!(
-                        "refusing to traverse symlink at '{}'",
-                        current.display()
-                    )));
-                },
-                Ok(_) => {},
-                Err(_) => break,
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Best-effort removal of already-written files when a batch fails mid-way.
-async fn rollback_written_files(paths: &[PathBuf]) {
-    for path in paths.iter().rev() {
-        let _ = tokio::fs::remove_file(path).await;
-    }
 }
 
 pub(super) fn audit_sidecar_file_write(

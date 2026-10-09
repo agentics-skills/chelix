@@ -187,18 +187,6 @@ async fn read_primary(
 ) -> anyhow::Result<Value> {
     let is_plugin = meta.source.as_ref() == Some(&SkillSource::Plugin);
 
-    match tokio::fs::symlink_metadata(&meta.path).await {
-        Ok(m) if m.file_type().is_symlink() => {
-            return Err(
-                Error::message(format!("skill '{name}' directory must not be a symlink")).into(),
-            );
-        },
-        Ok(_) => {},
-        Err(e) => {
-            return Err(Error::message(format!("skill '{name}' path not accessible: {e}")).into());
-        },
-    }
-
     let plugin_as_file = is_plugin
         && tokio::fs::metadata(&meta.path)
             .await
@@ -328,21 +316,6 @@ async fn read_primary(
 async fn read_sidecar(name: &str, skill_dir: &Path, rel: &str) -> anyhow::Result<Value> {
     let relative = normalize_relative_skill_file_path(rel)?;
 
-    match tokio::fs::symlink_metadata(skill_dir).await {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            return Err(
-                Error::message(format!("skill '{name}' directory must not be a symlink")).into(),
-            );
-        },
-        Ok(_) => {},
-        Err(e) => {
-            return Err(Error::message(format!(
-                "skill directory not accessible for '{name}': {e}"
-            ))
-            .into());
-        },
-    }
-
     let canonical_skill_dir = tokio::fs::canonicalize(skill_dir)
         .await
         .map_err(|e| Error::message(format!("skill directory not accessible for '{name}': {e}")))?;
@@ -384,14 +357,6 @@ async fn read_sidecar(name: &str, skill_dir: &Path, rel: &str) -> anyhow::Result
             relative.display()
         ))
     })?;
-
-    if !canonical_target.starts_with(&canonical_skill_dir) {
-        return Err(Error::message(format!(
-            "sidecar file '{}' is outside the skill directory",
-            relative.display()
-        ))
-        .into());
-    }
 
     let metadata = tokio::fs::metadata(&canonical_target).await?;
     if !metadata.is_file() {
@@ -490,17 +455,13 @@ async fn collect_sidecar_entries(skill_dir: &Path) -> crate::Result<Vec<SidecarE
             {
                 break;
             }
-            let file_type = match entry.file_type().await {
-                Ok(ft) => ft,
-                Err(_) => continue,
-            };
-            if !file_type.is_file() {
-                continue;
-            }
-            let meta = match entry.metadata().await {
+            let meta = match tokio::fs::metadata(entry.path()).await {
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            if !meta.is_file() {
+                continue;
+            }
             let file_name = match entry.file_name().into_string() {
                 Ok(name) => name,
                 Err(_) => continue,

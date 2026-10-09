@@ -779,12 +779,25 @@ impl SkillsService for NoopSkillsService {
 
         let skills_dir = chelix_config::data_dir().join("skills");
         let skill_dir = skills_dir.join(name);
+        let skill_md = skill_dir.join("SKILL.md");
+        match std::fs::read_to_string(&skill_md) {
+            Ok(current) => {
+                chelix_skills::parse::parse_metadata(&current, &skill_dir)
+                    .map_err(|e| ServiceError::message(e.to_string()))?;
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(ServiceError::message(error.to_string())),
+        }
 
         // Build SKILL.md content.
+        let description =
+            serde_json::to_string(description).map_err(|e| ServiceError::message(e.to_string()))?;
         let mut content = format!("---\nname: {name}\ndescription: {description}\n");
         if !allowed_tools.is_empty() {
             content.push_str("allowed_tools:\n");
             for tool in &allowed_tools {
+                let tool = serde_json::to_string(tool)
+                    .map_err(|e| ServiceError::message(e.to_string()))?;
                 content.push_str(&format!("  - {tool}\n"));
             }
         }
@@ -796,7 +809,8 @@ impl SkillsService for NoopSkillsService {
 
         std::fs::create_dir_all(&skill_dir)
             .map_err(|e| format!("failed to create skill directory: {e}"))?;
-        std::fs::write(skill_dir.join("SKILL.md"), &content)
+        chelix_skills::publish_markdown(&skill_md, &content, None)
+            .await
             .map_err(|e| format!("failed to write SKILL.md: {e}"))?;
 
         // Determine if this was a create or update for the response.
@@ -874,6 +888,65 @@ impl SkillsService for NoopSkillsService {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct SkillDataDirGuard {
+        _config: ConfigDirGuard,
+    }
+
+    impl Drop for SkillDataDirGuard {
+        fn drop(&mut self) {
+            chelix_config::clear_data_dir();
+        }
+    }
+
+    #[tokio::test]
+    async fn skill_save_publishes_and_preserves_access_lists() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let config = ConfigDirGuard::new(dir.path().to_path_buf());
+        chelix_config::set_data_dir(dir.path().to_path_buf());
+        let _guard = SkillDataDirGuard { _config: config };
+        let service = NoopSkillsService;
+        let params = serde_json::json!({
+            "name": "demo",
+            "description": "Use when: X\nNext step",
+            "body": "body",
+            "allowed_tools": ["Tool: action\nNext"]
+        });
+        service.skill_save(params.clone()).await?;
+        let path = dir.path().join("skills/demo/SKILL.md");
+        let content = std::fs::read_to_string(&path)?;
+        assert!(content.contains("allow: []"));
+        assert!(content.contains("deny: []"));
+        let metadata =
+            chelix_skills::parse::parse_metadata(&content, &dir.path().join("skills/demo"))?;
+        assert_eq!(metadata.description, "Use when: X\nNext step");
+        assert_eq!(metadata.allowed_tools, ["Tool: action\nNext"]);
+        std::fs::write(
+            &path,
+            "---\nname: demo\nallow: [agent1]\ndeny: []\n---\nold body",
+        )?;
+        service.skill_save(params.clone()).await?;
+        let saved = std::fs::read_to_string(&path)?;
+        assert_eq!(
+            chelix_skills::parse::parse_metadata(
+                &saved,
+                path.parent()
+                    .ok_or_else(|| anyhow::anyhow!("skill parent"))?
+            )?
+            .allow,
+            ["agent1"]
+        );
+        let invalid = "---\nname: demo\ndeny:\n---\nbody";
+        std::fs::write(&path, invalid)?;
+        let error = service
+            .skill_save(params)
+            .await
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("expected parse error"))?;
+        assert!(error.to_string().contains("frontmatter"));
+        assert_eq!(std::fs::read_to_string(path)?, invalid);
+        Ok(())
+    }
 
     struct ConfigDirGuard {
         _lock: std::sync::MutexGuard<'static, ()>,

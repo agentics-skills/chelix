@@ -749,7 +749,8 @@ impl LiveChatService {
 
         let discovered_skills = discover_skills_if_enabled(&persona.config).await;
         let agent_id = persona.agent_id.clone();
-        let discovered_skills = filter_skills_for_agent(discovered_skills, &persona.agent.skills);
+        let discovered_skills =
+            filter_skills_for_agent(discovered_skills, &agent_id, &persona.agent.skills);
 
         let policy_ctx = build_policy_context(&agent_id, Some(&runtime_context));
         let visible_tools = crate::active_context::visible_tools(
