@@ -612,13 +612,18 @@ impl LiveChatService {
     }
 
     /// Resolve the active session key for a connection.
-    pub(in crate::service) async fn session_key_for(&self, conn_id: Option<&str>) -> String {
+    pub(in crate::service) async fn session_key_for(
+        &self,
+        conn_id: Option<&str>,
+    ) -> Result<String, chelix_service_traits::ServiceError> {
         if let Some(cid) = conn_id
             && let Some(key) = self.state.active_session_key(cid).await
         {
-            return key;
+            return Ok(key);
         }
-        "main".to_string()
+        Err(chelix_service_traits::ServiceError::message(
+            "missing session id",
+        ))
     }
 
     /// Resolve the effective session key for chat operations.
@@ -627,17 +632,16 @@ impl LiveChatService {
     /// 1. Internal `_session_key` overrides used by runtime-owned callers.
     /// 2. Public `sessionKey` / `session_key` request parameters.
     /// 3. Connection-scoped active session derived from `_conn_id`.
-    /// 4. The default `"main"` session.
     pub(in crate::service) async fn resolve_session_key_from_params(
         &self,
         params: &Value,
-    ) -> String {
+    ) -> Result<String, chelix_service_traits::ServiceError> {
         if let Some(session_key) = params
             .get("_session_key")
             .and_then(|v| v.as_str())
             .filter(|v| !v.is_empty())
         {
-            return session_key.to_string();
+            return Ok(session_key.to_string());
         }
         if let Some(session_key) = params
             .get("sessionKey")
@@ -645,7 +649,7 @@ impl LiveChatService {
             .and_then(|v| v.as_str())
             .filter(|v| !v.is_empty())
         {
-            return session_key.to_string();
+            return Ok(session_key.to_string());
         }
         let conn_id = params.get("_conn_id").and_then(|v| v.as_str());
         self.session_key_for(conn_id).await
@@ -1110,7 +1114,7 @@ mod tests {
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
@@ -1139,10 +1143,10 @@ mod tests {
                 },
             })
             .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
-        let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
+        let drafts = Arc::new(RwLock::new(HashMap::from([("t:1".to_string(), draft)])));
         assert_eq!(
             store
-                .read("main")
+                .read("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("history count: {error}"))
                 .len(),
@@ -1150,7 +1154,7 @@ mod tests {
         );
         let drafts_guard = drafts.read().await;
         let message = drafts_guard
-            .get("main")
+            .get("t:1")
             .unwrap_or_else(|| panic!("active draft remains"))
             .to_persisted_message(None, None);
         drop(drafts_guard);
@@ -1167,7 +1171,7 @@ mod tests {
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
@@ -1185,10 +1189,10 @@ mod tests {
                 },
             })
             .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
-        let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
+        let drafts = Arc::new(RwLock::new(HashMap::from([("t:1".to_string(), draft)])));
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({
                     "role": "tool_lifecycle",
                     "toolCallId": "call-1",
@@ -1203,16 +1207,16 @@ mod tests {
             .await
             .unwrap_or_else(|error| panic!("lifecycle record persists: {error}"));
 
-        let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "main")
+        let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "t:1")
             .await
             .unwrap_or_else(|error| panic!("partial persistence succeeds: {error}"))
             .unwrap_or_else(|| panic!("visible partial is persisted"));
 
         assert_eq!(persisted_index, 2);
         assert_eq!(partial["content"], "partial");
-        assert!(!drafts.read().await.contains_key("main"));
+        assert!(!drafts.read().await.contains_key("t:1"));
         let history = store
-            .read("main")
+            .read("t:1")
             .await
             .unwrap_or_else(|error| panic!("session history reads: {error}"));
         assert_eq!(history.len(), 3);
@@ -1227,7 +1231,7 @@ mod tests {
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
@@ -1245,9 +1249,9 @@ mod tests {
                 },
             })
             .unwrap_or_else(|error| panic!("draft accepts provider update: {error}"));
-        let drafts = Arc::new(RwLock::new(HashMap::from([("main".to_string(), draft)])));
+        let drafts = Arc::new(RwLock::new(HashMap::from([("t:1".to_string(), draft)])));
 
-        let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "main")
+        let (partial, persisted_index) = persist_active_assistant_draft(&store, &drafts, "t:1")
             .await
             .unwrap_or_else(|error| panic!("opaque partial persistence succeeds: {error}"))
             .unwrap_or_else(|| panic!("opaque partial is persisted"));
@@ -1255,9 +1259,9 @@ mod tests {
         assert_eq!(persisted_index, 1);
         assert_eq!(partial["content"], "");
         assert!(partial.get("reasoning").is_none());
-        assert!(!drafts.read().await.contains_key("main"));
+        assert!(!drafts.read().await.contains_key("t:1"));
         let history = store
-            .read("main")
+            .read("t:1")
             .await
             .unwrap_or_else(|error| panic!("session history reads: {error}"));
         assert_eq!(history.len(), 2);
@@ -1270,7 +1274,7 @@ mod tests {
         let store = SessionStore::new(directory.path().to_path_buf());
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
@@ -1298,7 +1302,7 @@ mod tests {
 
         let message_index = persist_final_assistant_segment(
             &store,
-            "main",
+            "t:1",
             &assistant_output,
             "model-1",
             "provider-1",
@@ -1311,7 +1315,7 @@ mod tests {
 
         assert_eq!(message_index, 1);
         let history = store
-            .read("main")
+            .read("t:1")
             .await
             .unwrap_or_else(|error| panic!("session history reads: {error}"));
         assert_eq!(history.len(), 2);

@@ -157,7 +157,8 @@ impl AgentTool for RipgrepTool {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let input = parse_input(params)?;
         let result = self
@@ -345,7 +346,7 @@ mod tests {
             .create_async()
             .await;
         let result = RipgrepTool::new(client(server.url(), "test-token"))
-            .execute(json!({ "pattern": "needle" }))
+            .execute(json!({ "pattern": "needle", "_session_key": "session:test" }))
             .await;
         let error = match result {
             Ok(_) => panic!("expected tools service failure"),

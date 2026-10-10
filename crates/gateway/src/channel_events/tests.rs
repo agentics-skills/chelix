@@ -188,12 +188,12 @@ fn attachable_session_filter_skips_archived_and_cron_sessions() {
 #[test]
 fn format_attachable_sessions_shows_session_keys_when_labels_are_present() {
     let sessions = vec![
-        session_entry("1", "main", None, 3, false),
+        session_entry("1", "t:1", None, 3, false),
         session_entry("2", "session:abc", Some("Build Fix"), 12, false),
     ];
 
     let rendered = format_attachable_sessions_list(&sessions, "session:abc");
-    assert!(rendered.contains("1. main (3 msgs)"));
+    assert!(rendered.contains("1. t:1 (3 msgs)"));
     assert!(rendered.contains("2. Build Fix [session:abc] (12 msgs) *"));
     assert!(rendered.contains("Use /attach N to move an existing session to this chat."));
 }

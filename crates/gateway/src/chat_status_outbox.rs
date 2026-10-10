@@ -73,8 +73,8 @@ mod tests {
     async fn voice_status_survives_thinking_and_precedes_terminal_status() -> Result<(), String> {
         for run_status in ["thinking", "final", "error", "aborted"] {
             let outbox = ChatStatusOutbox::default();
-            outbox.publish("main", ChatStatusStream::Voice, 1, "voice_pending".into())?;
-            outbox.publish("main", ChatStatusStream::Run, 2, run_status.into())?;
+            outbox.publish("t:1", ChatStatusStream::Voice, 1, "voice_pending".into())?;
+            outbox.publish("t:1", ChatStatusStream::Run, 2, run_status.into())?;
             assert_eq!(outbox.next().await?, "voice_pending");
             assert_eq!(outbox.next().await?, run_status);
         }
@@ -85,14 +85,9 @@ mod tests {
     async fn slow_writer_retains_latest_independent_statuses() -> Result<(), String> {
         let outbox = ChatStatusOutbox::default();
         for sequence in 1..=1000 {
-            outbox.publish(
-                "main",
-                ChatStatusStream::Run,
-                sequence,
-                sequence.to_string(),
-            )?;
+            outbox.publish("t:1", ChatStatusStream::Run, sequence, sequence.to_string())?;
         }
-        outbox.publish("main", ChatStatusStream::Queue, 1001, "queue".into())?;
+        outbox.publish("t:1", ChatStatusStream::Queue, 1001, "queue".into())?;
         outbox.publish("other", ChatStatusStream::Run, 1002, "other".into())?;
         assert_eq!(outbox.next().await?, "1000");
         assert_eq!(outbox.next().await?, "queue");

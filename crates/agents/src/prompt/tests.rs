@@ -358,7 +358,7 @@ fn test_runtime_context_injected_when_provided() {
             today: Some("2026-02-17".into()),
             provider: Some("openai".into()),
             model: Some("gpt-5".into()),
-            session_key: Some("main".into()),
+            session_key: Some("t:1".into()),
             surface: None,
             session_kind: None,
             channel_type: None,

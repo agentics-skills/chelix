@@ -1,12 +1,11 @@
 // ── Session list: fetching, pagination, and client state ─────────
 
-import { navigate, sessionPath } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
 import { showToast } from "../toast";
 import type { SessionMeta } from "../types/session";
-
 import { clearSessionHistoryCache } from "./session-history";
+import { showUnselectedSession } from "./session-switch";
 
 interface SessionListPage {
 	sessions: SessionMeta[];
@@ -306,22 +305,15 @@ export function setSessionUnread(key: string, unread: boolean): void {
 	if (entry) entry._localUnread = unread;
 }
 
-export function removeSessionFromClientState(
-	key: string,
-	options?: { nextKey?: string; navigateIfActive?: boolean },
-): boolean {
+export function removeSessionFromClientState(key: string, options?: { navigateIfActive?: boolean }): boolean {
 	const opts = options || {};
 	if (!key) return false;
 	const removedActive = sessionStore.activeSessionKey.value === key;
 	const removed = sessionStore.remove(key);
 	if (!removed) return false;
-	const nextKey = opts.nextKey || sessionStore.activeSessionKey.value || "main";
-	if (removedActive && nextKey !== sessionStore.activeSessionKey.value) sessionStore.setActive(nextKey);
 	clearSessionHistoryCache(key);
 	S.setSessions((S.sessions as SessionMeta[]).filter((session) => session.key !== key));
 	renderSessionList();
-	if (!removedActive) return true;
-	S.setActiveSessionKey(nextKey);
-	if (opts.navigateIfActive && location.pathname.startsWith("/chats/")) navigate(sessionPath(nextKey));
+	if (removedActive && opts.navigateIfActive) showUnselectedSession();
 	return true;
 }

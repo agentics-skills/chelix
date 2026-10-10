@@ -141,7 +141,7 @@ project-specific instructions override workspace-level ones.
 Injected as compact key=value lines under a `## Runtime` heading:
 
 ```
-Host: host=chelix-devbox | os=macos | arch=aarch64 | shell=zsh | time=2026-02-17 16:18:00 CET | today=2026-02-17 | provider=openai | model=gpt-5 | session=main | sudo_non_interactive=true | timezone=Europe/Paris
+Host: host=chelix-devbox | os=macos | arch=aarch64 | shell=zsh | time=2026-02-17 16:18:00 CET | today=2026-02-17 | provider=openai | model=gpt-5 | session=chat | sudo_non_interactive=true | timezone=Europe/Paris
 Sandbox(execute_command): enabled=true | mode=all | backend=docker | scope=session | image=chelix-sandbox:abc123 | home=/home/sandbox | workspace_path=/home/chelix/.chelix | network=bridge
 ```
 

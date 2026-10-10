@@ -530,7 +530,7 @@ pub struct ChannelDocumentFile {
 pub struct SavedChannelFile {
     /// Original or generated filename used in session media storage.
     pub filename: String,
-    /// Relative media reference (e.g. `media/main/report.pdf`).
+    /// Relative media reference (e.g. `media/session_test/report.pdf`).
     pub media_ref: String,
     /// Absolute filesystem path for local tooling access.
     pub absolute_path: String,

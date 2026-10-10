@@ -7,7 +7,6 @@ import { TabBar } from "../../components/forms/Tabs";
 import * as gon from "../../gon";
 import { sendRpc } from "../../helpers";
 import { connected } from "../../signals";
-import * as S from "../../state";
 import { showToast } from "../../toast";
 import { targetChecked, targetValue } from "../../typed-events";
 import { getPttKey, getVadSensitivity, setPttKey, setVadSensitivity } from "../../voice-input";
@@ -17,10 +16,10 @@ import {
 	fetchVoiceProviders,
 	listVoicePersonas,
 	setActiveVoicePersona,
+	testStt,
 	testTts,
 	testTtsWithPersona,
 	toggleVoiceProvider,
-	transcribeAudio,
 	type VoicePersonaResponse,
 } from "../../voice-utils";
 import type { RpcResponse } from "./_shared";
@@ -95,13 +94,6 @@ interface VoiceAudioPayload {
 	content_type?: string;
 }
 
-interface SttUploadPayload {
-	ok?: boolean;
-	transcription?: { text?: string };
-	transcriptionError?: string;
-	error?: string;
-}
-
 interface SttRecordingCallbacks {
 	onTranscribing: () => void;
 	onResult: (result: VoiceTestResult) => void;
@@ -138,29 +130,9 @@ async function runTtsProviderTest(providerId: string, text: string): Promise<Voi
 	}
 }
 
-function sttUploadResult(payload: SttUploadPayload): VoiceTestResult {
-	if (payload.ok && typeof payload.transcription?.text === "string") {
-		const text = payload.transcription.text.trim();
-		return { text: text || null, error: text ? null : "No speech detected" };
-	}
-	return { text: null, error: payload.transcriptionError || payload.error || "STT test failed" };
-}
-
-function sttHttpError(body: string): string {
-	try {
-		return (JSON.parse(body) as { error?: string }).error || "STT test failed";
-	} catch (_error) {
-		return "STT test failed";
-	}
-}
-
 async function transcribeProviderAudio(providerId: string, audio: Blob): Promise<VoiceTestResult> {
 	try {
-		const response = await transcribeAudio(S.activeSessionKey, providerId, audio);
-		if (response.ok) return sttUploadResult((await response.json()) as SttUploadPayload);
-		const body = await response.text();
-		console.error("[STT] upload failed: status=%d body=%s", response.status, body);
-		return { text: null, error: `${sttHttpError(body)} (HTTP ${response.status})` };
+		return await testStt(providerId, audio);
 	} catch (caught) {
 		return { text: null, error: caught instanceof Error ? caught.message : "STT test failed" };
 	}

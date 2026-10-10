@@ -789,7 +789,7 @@ mod tests {
             soul: None,
         };
         let snapshot = ShareSnapshot {
-            session_key: "main".to_string(),
+            session_key: "t:1".to_string(),
             session_label: Some("Release checklist".to_string()),
             cutoff_message_count: 2,
             created_at: 1_770_966_600_000,
@@ -818,8 +818,8 @@ mod tests {
 
         let identity = default_identity();
         let snapshot = ShareSnapshot {
-            session_key: "main".to_string(),
-            session_label: Some("main".to_string()),
+            session_key: "t:1".to_string(),
+            session_label: Some("Test".to_string()),
             cutoff_message_count: 1,
             created_at: 1_770_966_600_000,
             messages: vec![SharedMessage {
@@ -887,8 +887,8 @@ mod tests {
         msg.tool_command = Some("curl -s https://example.com".to_string());
 
         let snapshot = ShareSnapshot {
-            session_key: "main".to_string(),
-            session_label: Some("main".to_string()),
+            session_key: "t:1".to_string(),
+            session_label: Some("Test".to_string()),
             cutoff_message_count: 1,
             created_at: 1_770_966_600_000,
             messages: vec![msg],

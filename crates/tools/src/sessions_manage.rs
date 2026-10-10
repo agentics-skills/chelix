@@ -341,8 +341,7 @@ impl AgentTool for SessionsDeleteTool {
     }
 
     fn description(&self) -> &str {
-        "Delete a chat session and its history by key. \
-         Deleting the main session is not allowed."
+        "Delete a chat session and its history by key."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -365,10 +364,6 @@ impl AgentTool for SessionsDeleteTool {
     async fn execute(&self, params: Value) -> anyhow::Result<Value> {
         let key = require_str(&params, "key")?;
         let force = bool_param(&params, "force", false);
-
-        if key == "main" {
-            return Err(Error::message("cannot delete the main session").into());
-        }
 
         if self.metadata.get(key).await?.is_none() {
             return Err(Error::message(format!("session not found: {key}")).into());
@@ -709,28 +704,6 @@ mod tests {
             .err()
             .ok_or_else(|| std::io::Error::other("expected missing-session delete to fail"))?;
         assert!(err.to_string().contains("session not found"));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn sessions_delete_rejects_main_session() -> TestResult<()> {
-        let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        create_test_session(&metadata, "main", "Main").await?;
-
-        let delete_fn: DeleteSessionFn =
-            Arc::new(move |_req| Box::pin(async move { Ok(serde_json::json!({ "ok": true })) }));
-
-        let tool = SessionsDeleteTool::new(metadata, delete_fn);
-        let result = tool
-            .execute(serde_json::json!({
-                "key": "main"
-            }))
-            .await;
-
-        let err = result
-            .err()
-            .ok_or_else(|| std::io::Error::other("expected main-session delete to fail"))?;
-        assert!(err.to_string().contains("cannot delete the main session"));
         Ok(())
     }
 }

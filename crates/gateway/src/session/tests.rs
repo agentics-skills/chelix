@@ -58,7 +58,7 @@ mod tests {
         use chelix_sessions::ui_history_types::{UiContent, UiHistoryRange, UiHistoryTarget};
         let page = store
             .ui_history
-            .page("main", UiHistoryRange::Latest, 10)
+            .page("t:1", UiHistoryRange::Latest, 10)
             .await
             .unwrap();
         let snapshot = page.history.iter().find(|snapshot| matches!(&snapshot.content,
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn media_filename_extracts_last_segment() {
-        assert_eq!(media_filename("media/main/voice.ogg"), Some("voice.ogg"));
+        assert_eq!(media_filename("media/t_1/voice.ogg"), Some("voice.ogg"));
         assert_eq!(media_filename("voice.ogg"), Some("voice.ogg"));
         assert_eq!(media_filename(""), None);
     }
@@ -243,16 +243,16 @@ mod tests {
         let store = SessionStore::new(dir.path().to_path_buf());
         let bytes = b"OggSfake".to_vec();
         store
-            .save_media("main", "voice.ogg", &bytes)
+            .save_media("t:1", "voice.ogg", &bytes)
             .await
             .expect("save media");
 
         let msg = serde_json::json!({
             "role": "assistant",
-            "audio": "media/main/voice.ogg",
+            "audio": "media/t_1/voice.ogg",
         });
 
-        let data_url = message_audio_data_url_for_share(&msg, "main", &store).await;
+        let data_url = message_audio_data_url_for_share(&msg, "t:1", &store).await;
         assert!(data_url.is_some());
         assert!(
             data_url
@@ -281,19 +281,19 @@ mod tests {
         });
 
         assert!(
-            to_shared_message(&share_snapshot(&system_msg), "main", &store)
+            to_shared_message(&share_snapshot(&system_msg), "t:1", &store)
                 .await
                 .expect("convert system message")
                 .is_none()
         );
         assert!(
-            to_shared_message(&share_snapshot(&notice_msg), "main", &store)
+            to_shared_message(&share_snapshot(&notice_msg), "t:1", &store)
                 .await
                 .expect("convert notice message")
                 .is_none()
         );
         assert!(
-            to_shared_message(&share_snapshot(&assistant_msg), "main", &store)
+            to_shared_message(&share_snapshot(&assistant_msg), "t:1", &store)
                 .await
                 .expect("convert assistant message")
                 .is_some()
@@ -305,17 +305,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
         store
-            .save_media("main", "voice-input.webm", b"RIFFfake")
+            .save_media("t:1", "voice-input.webm", b"RIFFfake")
             .await
             .expect("save media");
 
         let user_audio_msg = serde_json::json!({
             "role": "user",
             "content": "",
-            "audio": "media/main/voice-input.webm",
+            "audio": "media/t_1/voice-input.webm",
         });
 
-        let shared = to_shared_message(&share_snapshot(&user_audio_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&user_audio_msg), "t:1", &store)
             .await
             .expect("convert user message")
             .expect("shared message");
@@ -336,17 +336,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = SessionStore::new(dir.path().to_path_buf());
         store
-            .save_media("main", "voice-output.ogg", b"OggSfake")
+            .save_media("t:1", "voice-output.ogg", b"OggSfake")
             .await
             .expect("save media");
 
         let assistant_audio_msg = serde_json::json!({
             "role": "assistant",
             "content": "Here you go",
-            "audio": "media/main/voice-output.ogg",
+            "audio": "media/t_1/voice-output.ogg",
         });
 
-        let shared = to_shared_message(&share_snapshot(&assistant_audio_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&assistant_audio_msg), "t:1", &store)
             .await
             .expect("convert assistant message")
             .expect("shared message");
@@ -372,7 +372,7 @@ mod tests {
             "reasoning": "step one\nstep two",
         });
 
-        let shared = to_shared_message(&share_snapshot(&assistant_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&assistant_msg), "t:1", &store)
             .await
             .expect("convert assistant message")
             .expect("shared message");
@@ -396,7 +396,7 @@ mod tests {
             "reasoning": ["**Analyzing request**", "**Tracing response**"],
         });
 
-        let shared = to_shared_message(&share_snapshot(&assistant_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&assistant_msg), "t:1", &store)
             .await
             .expect("convert assistant message")
             .expect("shared message");
@@ -418,7 +418,7 @@ mod tests {
             .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+tmXcAAAAASUVORK5CYII=")
             .unwrap();
         store
-            .save_media("main", "call-map.png", &tiny_png)
+            .save_media("t:1", "call-map.png", &tiny_png)
             .await
             .expect("save media");
 
@@ -428,7 +428,7 @@ mod tests {
             serde_json::json!({}),
             serde_json::json!({
                 "label": "Tartine Bakery",
-                "screenshot": "media/main/call-map.png",
+                "screenshot": "media/t_1/call-map.png",
                 "map_links": {
                     "google_maps": "https://www.google.com/maps/search/?api=1&query=Tartine+Bakery",
                     "apple_maps": "javascript:alert(1)",
@@ -437,7 +437,7 @@ mod tests {
             }),
         );
 
-        let shared = to_shared_message(&share_snapshot(&tool_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&tool_msg), "t:1", &store)
             .await
             .expect("convert tool result")
             .expect("shared tool_result message");
@@ -555,7 +555,7 @@ mod tests {
             }),
         );
 
-        let shared = to_shared_message(&share_snapshot(&tool_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&tool_msg), "t:1", &store)
             .await
             .expect("convert tool result")
             .expect("shared execute_command tool result");
@@ -584,7 +584,7 @@ mod tests {
             }),
         );
 
-        let shared = to_shared_message(&share_snapshot(&tool_msg), "main", &store)
+        let shared = to_shared_message(&share_snapshot(&tool_msg), "t:1", &store)
             .await
             .expect("convert tool result")
             .expect("shared execute_command tool result");
@@ -672,20 +672,20 @@ mod tests {
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let existing_path = store
-            .save_media("main", "voice-msg-1.ogg", b"OggSreuse")
+            .save_media("t:1", "voice-msg-1.ogg", b"OggSreuse")
             .await
             .expect("save media");
 
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
             .expect("append user");
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({
                     "role": "assistant",
                     "content": "hi there",
@@ -706,13 +706,13 @@ mod tests {
 
         let result = service
             .voice_generate(
-                serde_json::json!({ "key": "main", "target": voice_target(&store, true).await }),
+                serde_json::json!({ "key": "t:1", "target": voice_target(&store, true).await }),
             )
             .await
             .expect("voice generate");
 
         assert_eq!(result["reused"], true);
-        assert_eq!(result["audio"].as_str(), Some("media/main/voice-msg-1.ogg"));
+        assert_eq!(result["audio"].as_str(), Some("media/t_1/voice-msg-1.ogg"));
         assert_eq!(result["ttsProvider"].as_str(), Some("openai"));
         assert_eq!(mock_tts.convert_calls.load(Ordering::SeqCst), 0);
     }
@@ -723,18 +723,18 @@ mod tests {
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        create_test_session(&metadata, "main", None).await;
+        create_test_session(&metadata, "t:1", None).await;
 
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
             .expect("append user");
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({
                     "role": "assistant",
                     "content": "here is the reply",
@@ -757,14 +757,14 @@ mod tests {
 
         let result = service
             .voice_generate(
-                serde_json::json!({ "key": "main", "target": voice_target(&store, true).await }),
+                serde_json::json!({ "key": "t:1", "target": voice_target(&store, true).await }),
             )
             .await
             .expect("voice generate");
 
         assert_eq!(result["reused"], false);
         let audio_path = result["audio"].as_str().unwrap_or_default().to_string();
-        assert!(audio_path.starts_with("media/main/voice-"));
+        assert!(audio_path.starts_with("media/t_1/voice-"));
         assert!(audio_path.ends_with(".mp3"));
         assert_eq!(result["ttsProvider"].as_str(), Some("openai"));
         assert_eq!(mock_tts.convert_calls.load(Ordering::SeqCst), 1);
@@ -777,15 +777,12 @@ mod tests {
         assert_eq!(convert_params["format"].as_str(), Some("mp3"));
         assert_eq!(convert_params["text"].as_str(), Some("here is the reply"));
 
-        let history = store.read("main").await.expect("read history");
+        let history = store.read("t:1").await.expect("read history");
         assert_eq!(history[1]["audio"].as_str(), Some(audio_path.as_str()));
         assert_eq!(history[1]["tts_provider"].as_str(), Some("openai"));
 
         let filename = media_filename(&audio_path).expect("filename");
-        let saved = store
-            .read_media("main", filename)
-            .await
-            .expect("read media");
+        let saved = store.read_media("t:1", filename).await.expect("read media");
         assert_eq!(saved, audio_bytes);
     }
 
@@ -795,18 +792,18 @@ mod tests {
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        create_test_session(&metadata, "main", None).await;
+        create_test_session(&metadata, "t:1", None).await;
 
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
             .expect("append user");
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({
                     "role": "assistant",
                     "content": "here is the reply",
@@ -829,14 +826,14 @@ mod tests {
 
         let result = service
             .voice_generate(
-                serde_json::json!({ "key": "main", "target": voice_target(&store, true).await }),
+                serde_json::json!({ "key": "t:1", "target": voice_target(&store, true).await }),
             )
             .await
             .expect("voice generate");
 
         assert_eq!(result["reused"], false);
         let audio_path = result["audio"].as_str().unwrap_or_default().to_string();
-        assert!(audio_path.starts_with("media/main/voice-"));
+        assert!(audio_path.starts_with("media/t_1/voice-"));
         assert!(audio_path.ends_with(".ogg"));
         assert_eq!(result["ttsProvider"].as_str(), Some("elevenlabs"));
         let convert_params = mock_tts
@@ -853,7 +850,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(directory.path().into()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main", None).await;
+        create_test_session(&metadata, "t:1", None).await;
         let tts = Arc::new(MockTtsService::new(
             serde_json::json!({"enabled": true, "provider": "openai", "maxTextLength": 8000}),
             Some(
@@ -865,28 +862,28 @@ mod tests {
         for _ in 0..2 {
             store
                 .append(
-                    "main",
+                    "t:1",
                     &serde_json::json!({"role": "user", "content": "question"}),
                 )
                 .await
                 .unwrap();
             store
                 .append(
-                    "main",
+                    "t:1",
                     &serde_json::json!({"role": "assistant", "content": "answer"}),
                 )
                 .await
                 .unwrap();
             let response = service
                 .voice_generate(
-                    serde_json::json!({"key": "main", "target": voice_target(&store, true).await}),
+                    serde_json::json!({"key": "t:1", "target": voice_target(&store, true).await}),
                 )
                 .await
                 .unwrap();
             paths.push(response["audio"].as_str().unwrap().to_owned());
             store
                 .truncate_from_user_message(
-                    "main",
+                    "t:1",
                     chelix_sessions::store::UserMessageTarget::MessageIndex(0),
                 )
                 .await
@@ -906,6 +903,7 @@ mod tests {
             metadata.touch(key, 1).await.unwrap();
             assert!(metadata.get(key).await.unwrap().unwrap().preview.is_none());
         }
+        create_test_session(&metadata, "main", None).await;
         store
             .append_typed("healthy", &PersistedMessage::user("healthy message"))
             .await
@@ -914,6 +912,7 @@ mod tests {
         let value = service.list().await.unwrap();
         let entries = value.as_array().unwrap();
         assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| entry["key"] != "main"));
         let old = entries.iter().find(|entry| entry["key"] == "old").unwrap();
         assert_eq!(old["messageCount"], 1);
         assert!(old["preview"].is_null());
@@ -939,18 +938,18 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(directory.path().into()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main", None).await;
-        metadata.touch("main", 1).await.unwrap();
+        create_test_session(&metadata, "t:1", None).await;
+        metadata.touch("t:1", 1).await.unwrap();
         assert!(
             metadata
-                .get("main")
+                .get("t:1")
                 .await
                 .unwrap()
                 .unwrap()
                 .preview
                 .is_none()
         );
-        let session = store.ui_history.session("main").await.unwrap();
+        let session = store.ui_history.session("t:1").await.unwrap();
         session.fail(&chelix_sessions::Error::message(
             "snapshot persistence failed",
         ));
@@ -974,7 +973,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(directory.path().into()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main", None).await;
+        create_test_session(&metadata, "t:1", None).await;
         let message = serde_json::json!({
             "role": "assistant", "content": "answer",
             "providerItems": [{"id": "rs-1", "position": 0, "payload": {
@@ -983,10 +982,10 @@ mod tests {
             }}],
             "llmApiResponse": {"output": [{"type": "reasoning", "encrypted_content": "private-raw-state"}]}
         });
-        store.append("main", &message).await.unwrap();
+        store.append("t:1", &message).await.unwrap();
         let service = LiveSessionService::new(Arc::clone(&store), metadata);
         let result = service
-            .resolve(serde_json::json!({"key": "main", "include_history": true}))
+            .resolve(serde_json::json!({"key": "t:1", "include_history": true}))
             .await
             .unwrap();
         let record = &result["snapshot"]["history"][0];
@@ -1000,7 +999,7 @@ mod tests {
                 .is_none()
         );
         assert!(record.get("llmApiResponse").is_none());
-        assert_eq!(store.read("main").await.unwrap(), vec![message]);
+        assert_eq!(store.read("t:1").await.unwrap(), vec![message]);
     }
 
     #[tokio::test]
@@ -1012,7 +1011,7 @@ mod tests {
 
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
@@ -1027,7 +1026,7 @@ mod tests {
 
         let error = service
             .voice_generate(
-                serde_json::json!({ "key": "main", "target": voice_target(&store, false).await }),
+                serde_json::json!({ "key": "t:1", "target": voice_target(&store, false).await }),
             )
             .await
             .expect_err("should reject non-assistant target");
@@ -1041,20 +1040,20 @@ mod tests {
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
         let existing_path = store
-            .save_media("main", "voice-msg-2.ogg", b"OggSreuse")
+            .save_media("t:1", "voice-msg-2.ogg", b"OggSreuse")
             .await
             .expect("save media");
 
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({ "role": "user", "content": "hello" }),
             )
             .await
             .expect("append user");
         store
             .append(
-                "main",
+                "t:1",
                 &completed_tool_lifecycle(
                     "call-voice-index",
                     "execute_command",
@@ -1066,7 +1065,7 @@ mod tests {
             .expect("append tool lifecycle");
         store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({
                     "role": "assistant",
                     "content": "assistant answer",
@@ -1086,7 +1085,7 @@ mod tests {
 
         let error = service
             .voice_generate(
-                serde_json::json!({ "key": "main", "runId": "run-target", "messageIndex": 1 }),
+                serde_json::json!({ "key": "t:1", "runId": "run-target", "messageIndex": 1 }),
             )
             .await
             .expect_err("obsolete runId must be rejected");
@@ -1254,7 +1253,7 @@ reasoning_supported_efforts = ["off"]
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let pool = sqlite_pool().await;
         let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        create_test_session(&metadata, "main", None).await;
+        create_test_session(&metadata, "t:1", None).await;
 
         let payloads = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut hook_registry = HookRegistry::new();
@@ -1264,7 +1263,7 @@ reasoning_supported_efforts = ["off"]
 
         let service = LiveSessionService::new(store, metadata).with_hooks(Arc::new(hook_registry));
         service
-            .resolve(serde_json::json!({ "key": "main", "include_history": false }))
+            .resolve(serde_json::json!({ "key": "t:1", "include_history": false }))
             .await
             .unwrap();
 
@@ -1881,24 +1880,6 @@ reasoning_supported_efforts = ["off"]
             Some("session:new-parent")
         );
         assert_eq!(entry.fork_point, None, "fork point must reset on re-parent");
-    }
-
-    #[tokio::test]
-    async fn patch_archived_rejects_main_session() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
-        let pool = sqlite_pool().await;
-        let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-        create_test_session(&metadata, "main", Some("Main")).await;
-
-        let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
-
-        let error = svc
-            .patch(serde_json::json!({ "key": "main", "archived": true }))
-            .await
-            .unwrap_err();
-        assert!(error.to_string().contains("cannot be archived"));
-        assert!(!metadata.get("main").await.unwrap().unwrap().archived);
     }
 
     #[tokio::test]

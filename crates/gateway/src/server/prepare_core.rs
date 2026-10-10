@@ -951,6 +951,15 @@ pub async fn prepare_gateway_core(
         }
         services.session = Arc::new(session_svc);
     }
+    if let Ok(chelix_config::AgentsConfigState::Configured { .. }) = config.agents.resolve_state() {
+        crate::session::ensure_internal_chat_session(
+            &services,
+            &SessionKey::new("main"),
+            None,
+            None,
+        )
+        .await?;
+    }
 
     // ── Code index initialization ──────────────────────────────────────
     let code_index = init_code_index::init_code_index(&data_dir, &config).await?;

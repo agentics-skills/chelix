@@ -713,7 +713,7 @@ impl ChatService for LiveChatService {
     }
 
     async fn history(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
+        let session_key = self.resolve_session_key_from_params(&params).await?;
         let history = self
             .session_store
             .ui_history
@@ -728,7 +728,7 @@ impl ChatService for LiveChatService {
     }
 
     async fn clear(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
+        let session_key = self.resolve_session_key_from_params(&params).await?;
 
         self.session_store
             .clear(&session_key)
@@ -1427,7 +1427,7 @@ impl ChatService for LiveChatService {
     }
 
     async fn refresh_prompt_memory(&self, params: Value) -> ServiceResult {
-        let session_key = self.resolve_session_key_from_params(&params).await;
+        let session_key = self.resolve_session_key_from_params(&params).await?;
         let session_entry = self
             .session_metadata
             .get(&session_key)
@@ -1541,7 +1541,8 @@ impl ChatService for LiveChatService {
         let session_key = params
             .get("sessionKey")
             .and_then(|v| v.as_str())
-            .unwrap_or("main");
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| ServiceError::message("missing session id"))?;
 
         let active = self
             .active_runs_by_session
@@ -1898,7 +1899,7 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("original test pair: {error}"));
         metadata
-            .create_llm_session("main", Some("Main"), &original_pair, Some("main"))
+            .create_llm_session("t:1", Some("Main"), &original_pair, Some("main"))
             .await
             .unwrap_or_else(|error| panic!("original session setup: {error}"));
 
@@ -1983,7 +1984,7 @@ mod tests {
         };
 
         let request_resolved = service
-            .resolve_chat_turn(&SessionKey::new("main"), Some(&explicit))
+            .resolve_chat_turn(&SessionKey::new("t:1"), Some(&explicit))
             .await
             .unwrap_or_else(|error| panic!("request pair should resolve: {error}"));
         assert_eq!(
@@ -2001,7 +2002,7 @@ mod tests {
         assert!(request_resolved.stream_only);
 
         let session_resolved = service
-            .resolve_chat_turn(&SessionKey::new("main"), None)
+            .resolve_chat_turn(&SessionKey::new("t:1"), None)
             .await
             .unwrap_or_else(|error| panic!("persisted pair should resolve: {error}"));
         assert_eq!(
@@ -2024,14 +2025,14 @@ mod tests {
         let (_directory, service, _metadata, session_store, resolved_efforts, _captured_messages) =
             validation_test_service().await;
         session_store
-            .append("main", &PersistedMessage::user("hello").to_value())
+            .append("t:1", &PersistedMessage::user("hello").to_value())
             .await
             .unwrap_or_else(|error| panic!("seed auxiliary history: {error}"));
 
         let context_payload = service
             .context(
                 ChatContextRequest::default(),
-                ChatExecutionContext::internal(SessionKey::new("main")),
+                ChatExecutionContext::internal(SessionKey::new("t:1")),
             )
             .await
             .unwrap_or_else(|error| panic!("chat.context should succeed: {error}"));
@@ -2043,7 +2044,7 @@ mod tests {
         let raw_prompt = service
             .raw_prompt(
                 ChatRawPromptRequest::default(),
-                ChatExecutionContext::internal(SessionKey::new("main")),
+                ChatExecutionContext::internal(SessionKey::new("t:1")),
             )
             .await
             .unwrap_or_else(|error| panic!("chat.raw_prompt should succeed: {error}"));
@@ -2053,7 +2054,7 @@ mod tests {
         let full_context = service
             .full_context(
                 ChatFullContextRequest::default(),
-                ChatExecutionContext::internal(SessionKey::new("main")),
+                ChatExecutionContext::internal(SessionKey::new("t:1")),
             )
             .await
             .unwrap_or_else(|error| panic!("chat.full_context should succeed: {error}"));
@@ -2062,7 +2063,7 @@ mod tests {
         service
             .compact(
                 ChatCompactRequest::default(),
-                ChatExecutionContext::internal(SessionKey::new("main")),
+                ChatExecutionContext::internal(SessionKey::new("t:1")),
             )
             .await
             .unwrap_or_else(|error| panic!("chat.compact should succeed: {error}"));
@@ -2161,7 +2162,7 @@ mod tests {
         let cases = [
             (
                 "empty model",
-                SessionKey::new("main"),
+                SessionKey::new("t:1"),
                 Some(ModelOverride {
                     model: String::new(),
                     reasoning_effort: chelix_common::ReasoningEffort::from("off"),
@@ -2169,7 +2170,7 @@ mod tests {
             ),
             (
                 "empty effort",
-                SessionKey::new("main"),
+                SessionKey::new("t:1"),
                 Some(ModelOverride {
                     model: "test::model".to_string(),
                     reasoning_effort: chelix_common::ReasoningEffort::from(""),
@@ -2177,7 +2178,7 @@ mod tests {
             ),
             (
                 "unknown model",
-                SessionKey::new("main"),
+                SessionKey::new("t:1"),
                 Some(ModelOverride {
                     model: "test::missing".to_string(),
                     reasoning_effort: chelix_common::ReasoningEffort::from("off"),
@@ -2185,7 +2186,7 @@ mod tests {
             ),
             (
                 "noncanonical model",
-                SessionKey::new("main"),
+                SessionKey::new("t:1"),
                 Some(ModelOverride {
                     model: "model".to_string(),
                     reasoning_effort: chelix_common::ReasoningEffort::from("off"),
@@ -2193,7 +2194,7 @@ mod tests {
             ),
             (
                 "unsupported effort",
-                SessionKey::new("main"),
+                SessionKey::new("t:1"),
                 Some(ModelOverride {
                     model: "test::model".to_string(),
                     reasoning_effort: chelix_common::ReasoningEffort::from("high"),
@@ -2231,12 +2232,12 @@ mod tests {
 
         for (name, model_override) in cases {
             let before = metadata
-                .get("main")
+                .get("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: load entry before: {error}"))
                 .unwrap_or_else(|| panic!("{name}: entry exists before"));
             let history_before = session_store
-                .read("main")
+                .read("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history before: {error}"));
 
@@ -2245,18 +2246,18 @@ mod tests {
             let result = service
                 .send(
                     request,
-                    ChatExecutionContext::internal(SessionKey::new("main")),
+                    ChatExecutionContext::internal(SessionKey::new("t:1")),
                 )
                 .await;
             assert!(result.is_err(), "{name} unexpectedly succeeded");
 
             let after = metadata
-                .get("main")
+                .get("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: load entry after: {error}"))
                 .unwrap_or_else(|| panic!("{name}: entry exists after"));
             let history_after = session_store
-                .read("main")
+                .read("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history after: {error}"));
             assert_eq!(after.agent_id, before.agent_id, "{name}: agent changed");
@@ -2291,12 +2292,12 @@ mod tests {
 
         for (name, model_override) in cases {
             let before = metadata
-                .get("main")
+                .get("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: load entry before: {error}"))
                 .unwrap_or_else(|| panic!("{name}: entry exists before"));
             let history_before = session_store
-                .read("main")
+                .read("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history before: {error}"));
 
@@ -2306,18 +2307,18 @@ mod tests {
                 tool_choice: None,
                 input_medium: None,
             };
-            let mut context = ChatExecutionContext::internal(SessionKey::new("main"));
+            let mut context = ChatExecutionContext::internal(SessionKey::new("t:1"));
             context.agent_id = Some("other".to_string());
             let result = service.send_sync(request, context).await;
             assert!(result.is_err(), "{name} unexpectedly succeeded");
 
             let after = metadata
-                .get("main")
+                .get("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: load entry after: {error}"))
                 .unwrap_or_else(|| panic!("{name}: entry exists after"));
             let history_after = session_store
-                .read("main")
+                .read("t:1")
                 .await
                 .unwrap_or_else(|error| panic!("{name}: read history after: {error}"));
             assert_eq!(after.agent_id, before.agent_id, "{name}: agent changed");
@@ -2337,7 +2338,7 @@ mod tests {
             validation_test_service().await;
         session_store
             .append(
-                "main",
+                "t:1",
                 &serde_json::json!({
                     "role": "provider_update",
                     "segmentId": "seg-1",
@@ -2358,7 +2359,7 @@ mod tests {
                     tool_choice: None,
                     input_medium: None,
                 },
-                ChatExecutionContext::internal(SessionKey::new("main")),
+                ChatExecutionContext::internal(SessionKey::new("t:1")),
             )
             .await
             .unwrap_or_else(|error| panic!("send_sync: {error}"));
@@ -2440,7 +2441,7 @@ mod tests {
 
         let existing_permit = service
             .session_mutations
-            .try_acquire_turn("main")
+            .try_acquire_turn("t:1")
             .await
             .unwrap_or_else(|error| panic!("existing active turn setup: {error}"));
         let mut override_request = ChatSendRequest::text("queued with override");
@@ -2448,7 +2449,7 @@ mod tests {
             model: "test::other".to_string(),
             reasoning_effort: chelix_common::ReasoningEffort::from("off"),
         });
-        let mut existing_context = ChatExecutionContext::internal(SessionKey::new("main"));
+        let mut existing_context = ChatExecutionContext::internal(SessionKey::new("t:1"));
         existing_context.agent_id = Some("other".to_string());
         let override_result = service
             .send(override_request, existing_context)
@@ -2456,7 +2457,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("override queued send: {error}"));
         assert_eq!(override_result["queued"], true);
         let existing_entry = metadata
-            .get("main")
+            .get("t:1")
             .await
             .unwrap_or_else(|error| panic!("existing entry load: {error}"))
             .unwrap_or_else(|| panic!("existing entry should exist"));
@@ -2470,7 +2471,7 @@ mod tests {
         );
         let existing_status = service
             .queued_prompts
-            .status(SessionKey::new("main"))
+            .status(SessionKey::new("t:1"))
             .await
             .unwrap_or_else(|error| panic!("existing queue status: {error}"));
         assert_eq!(existing_status.prompts.len(), 1);
@@ -2936,7 +2937,7 @@ mod tests {
         let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let token = CancellationToken::new();
-        publish_stop_run(&service, "main", "run-1", token.clone()).await;
+        publish_stop_run(&service, "t:1", "run-1", token.clone()).await;
         let stopping = service.clone();
         let stop = tokio::spawn(async move { stopping.stop_run("run-1".to_string()).await });
         token.cancelled().await;
@@ -2955,7 +2956,7 @@ mod tests {
         let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let token = CancellationToken::new();
-        publish_stop_run(&service, "main", "run-1", token.clone()).await;
+        publish_stop_run(&service, "t:1", "run-1", token.clone()).await;
         token.cancel();
         let stopping = service.clone();
         let stop = tokio::spawn(async move { stopping.stop_run("run-1".to_string()).await });
@@ -2995,7 +2996,7 @@ mod tests {
             sending
                 .send(
                     ChatSendRequest::text("hello"),
-                    ChatExecutionContext::internal(SessionKey::new("main")),
+                    ChatExecutionContext::internal(SessionKey::new("t:1")),
                 )
                 .await
         });
@@ -3003,14 +3004,14 @@ mod tests {
         assert!(service.active_runs.read().await.is_empty());
         let stopping = service.clone();
         let stop =
-            tokio::spawn(async move { stopping.stop_current_session("main", None, false).await });
+            tokio::spawn(async move { stopping.stop_current_session("t:1", None, false).await });
         for _ in 0..100 {
-            if service.stop_gate.is_suppressed("main") {
+            if service.stop_gate.is_suppressed("t:1") {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert!(service.stop_gate.is_suppressed("main"));
+        assert!(service.stop_gate.is_suppressed("t:1"));
         gate.release.notify_one();
         let send_result = send
             .await
@@ -3045,13 +3046,13 @@ mod tests {
         service.queue_after_drain = Some(Arc::clone(&gate));
         service
             .queued_prompts
-            .enqueue(SessionKey::new("main"), queued_text("later"))
+            .enqueue(SessionKey::new("t:1"), queued_text("later"))
             .await
             .unwrap_or_else(|error| panic!("enqueue: {error}"));
         service
             .send(
                 ChatSendRequest::text("now"),
-                ChatExecutionContext::internal(SessionKey::new("main")),
+                ChatExecutionContext::internal(SessionKey::new("t:1")),
             )
             .await
             .unwrap_or_else(|error| panic!("send: {error}"));
@@ -3065,14 +3066,14 @@ mod tests {
         );
         let stopping = service.clone();
         let stop =
-            tokio::spawn(async move { stopping.stop_current_session("main", None, false).await });
+            tokio::spawn(async move { stopping.stop_current_session("t:1", None, false).await });
         for _ in 0..100 {
-            if service.stop_gate.is_suppressed("main") {
+            if service.stop_gate.is_suppressed("t:1") {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert!(service.stop_gate.is_suppressed("main"));
+        assert!(service.stop_gate.is_suppressed("t:1"));
         gate.release.notify_one();
         let _ = stop
             .await
@@ -3087,7 +3088,7 @@ mod tests {
         );
         let status = service
             .queued_prompts
-            .status(SessionKey::new("main"))
+            .status(SessionKey::new("t:1"))
             .await
             .unwrap_or_else(|error| panic!("status: {error}"));
         assert!(status.prompts.is_empty());
@@ -3099,11 +3100,11 @@ mod tests {
             validation_test_service().await;
         service
             .queued_prompts
-            .enqueue(SessionKey::new("main"), queued_text("later"))
+            .enqueue(SessionKey::new("t:1"), queued_text("later"))
             .await
             .unwrap_or_else(|error| panic!("enqueue: {error}"));
         let _ = service
-            .stop_current_session("main", None, false)
+            .stop_current_session("t:1", None, false)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
         let events = service
@@ -3114,14 +3115,14 @@ mod tests {
         assert!(events.iter().any(|(topic, payload)| {
             topic == "chat"
                 && payload["state"] == "prompt_queue"
-                && payload["status"]["sessionKey"] == "main"
+                && payload["status"]["sessionKey"] == "t:1"
                 && payload["status"]["prompts"]
                     .as_array()
                     .is_some_and(|prompts| prompts.is_empty())
         }));
         let status = service
             .queued_prompts
-            .status(SessionKey::new("main"))
+            .status(SessionKey::new("t:1"))
             .await
             .unwrap_or_else(|error| panic!("status: {error}"));
         assert!(status.prompts.is_empty());
@@ -3133,16 +3134,16 @@ mod tests {
             validation_test_service().await;
         let token_a = CancellationToken::new();
         let token_b = CancellationToken::new();
-        publish_stop_run(&service, "main", "run-a", token_a.clone()).await;
-        publish_stop_run(&service, "main", "run-b", token_b.clone()).await;
+        publish_stop_run(&service, "t:1", "run-a", token_a.clone()).await;
+        publish_stop_run(&service, "t:1", "run-b", token_b.clone()).await;
         service
             .active_runs_by_session
             .write()
             .await
-            .insert("main".to_string(), "run-b".to_string());
+            .insert("t:1".to_string(), "run-b".to_string());
         service
             .queued_prompts
-            .enqueue(SessionKey::new("main"), queued_text("keep"))
+            .enqueue(SessionKey::new("t:1"), queued_text("keep"))
             .await
             .unwrap_or_else(|error| panic!("enqueue: {error}"));
         let stopping = service.clone();
@@ -3158,7 +3159,7 @@ mod tests {
         assert!(!token_b.is_cancelled());
         let status = service
             .queued_prompts
-            .status(SessionKey::new("main"))
+            .status(SessionKey::new("t:1"))
             .await
             .unwrap_or_else(|error| panic!("status: {error}"));
         assert_eq!(status.prompts.len(), 1);
@@ -3182,15 +3183,15 @@ mod tests {
             validation_test_service().await;
         let token_old = CancellationToken::new();
         let token_new = CancellationToken::new();
-        publish_stop_run(&service, "main", "run-old", token_old).await;
-        publish_stop_run(&service, "main", "run-new", token_new.clone()).await;
+        publish_stop_run(&service, "t:1", "run-old", token_old).await;
+        publish_stop_run(&service, "t:1", "run-new", token_new.clone()).await;
         service
             .queued_prompts
-            .enqueue(SessionKey::new("main"), queued_text("keep"))
+            .enqueue(SessionKey::new("t:1"), queued_text("keep"))
             .await
             .unwrap_or_else(|error| panic!("enqueue: {error}"));
         let outcome = service
-            .stop_current_session("main", Some("run-old"), false)
+            .stop_current_session("t:1", Some("run-old"), false)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
         assert!(!outcome.cancelled);
@@ -3198,7 +3199,7 @@ mod tests {
         assert!(!token_new.is_cancelled());
         let status = service
             .queued_prompts
-            .status(SessionKey::new("main"))
+            .status(SessionKey::new("t:1"))
             .await
             .unwrap_or_else(|error| panic!("status: {error}"));
         assert_eq!(status.prompts.len(), 1);
@@ -3209,18 +3210,18 @@ mod tests {
         let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let token = CancellationToken::new();
-        publish_stop_run(&service, "main", "run-1", token.clone()).await;
+        publish_stop_run(&service, "t:1", "run-1", token.clone()).await;
         service
             .active_runs_by_session
             .write()
             .await
-            .insert("main".to_string(), "run-1".to_string());
+            .insert("t:1".to_string(), "run-1".to_string());
         let guard = super::super::stop_gate::RunFinishGuard::arm(
             Arc::clone(&service.stop_gate),
             Arc::clone(&service.session_gates),
             Arc::clone(&service.active_runs),
             Arc::clone(&service.active_runs_by_session),
-            "main".to_string(),
+            "t:1".to_string(),
             "run-1".to_string(),
         );
         let stopping = service.clone();
@@ -3241,7 +3242,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("second stop: {error}"));
         assert!(!outcome.cancelled);
         service
-            .stop_current_session("main", None, false)
+            .stop_current_session("t:1", None, false)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
     }
@@ -3266,7 +3267,7 @@ mod tests {
             sending
                 .send_sync(
                     ChatSendSyncRequest::text("hello"),
-                    ChatExecutionContext::internal(SessionKey::new("main")),
+                    ChatExecutionContext::internal(SessionKey::new("t:1")),
                 )
                 .await
         });
@@ -3305,7 +3306,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("second stop: {error}"));
         assert!(!outcome.cancelled);
         service
-            .stop_current_session("main", None, false)
+            .stop_current_session("t:1", None, false)
             .await
             .unwrap_or_else(|error| panic!("stop session: {error}"));
         gate.release.notify_one();
@@ -3316,29 +3317,29 @@ mod tests {
         let (_directory, service, _metadata, _session_store, _resolved_efforts, _captured_messages) =
             validation_test_service().await;
         let token = CancellationToken::new();
-        publish_stop_run(&service, "main", "run-1", token).await;
+        publish_stop_run(&service, "t:1", "run-1", token).await;
         let mut mapping = service.active_runs_by_session.write().await;
-        mapping.insert("main".to_string(), "run-1".to_string());
+        mapping.insert("t:1".to_string(), "run-1".to_string());
         let first = service.clone();
         let second = service.clone();
         let left =
-            tokio::spawn(async move { first.stop_current_session("main", None, false).await });
+            tokio::spawn(async move { first.stop_current_session("t:1", None, false).await });
         let right =
-            tokio::spawn(async move { second.stop_current_session("main", None, false).await });
+            tokio::spawn(async move { second.stop_current_session("t:1", None, false).await });
         for _ in 0..100 {
-            if service.stop_gate.stop_depth("main") == 2 {
+            if service.stop_gate.stop_depth("t:1") == 2 {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(service.stop_gate.stop_depth("main"), 2);
+        assert_eq!(service.stop_gate.stop_depth("t:1"), 2);
         {
             let mut active = service.active_runs.write().await;
             service
                 .stop_gate
                 .finish_run(&mut active, "run-1", Err("save failed".to_string()));
         }
-        mapping.remove("main");
+        mapping.remove("t:1");
         drop(mapping);
         let left = left
             .await
@@ -3355,7 +3356,7 @@ mod tests {
             Ok(outcome) => panic!("right stop succeeded, cancelled={}", outcome.cancelled),
         }
         service
-            .stop_current_session("main", None, false)
+            .stop_current_session("t:1", None, false)
             .await
             .unwrap_or_else(|error| panic!("later stop: {error}"));
     }

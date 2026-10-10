@@ -141,7 +141,8 @@ impl AgentTool for ReadFileTool {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let input = parse_input(params)?;
         let result = self.service.read_file(&session_key, input).await;
@@ -398,7 +399,8 @@ mod tests {
         let result = ReadFileTool::new(client(server.url(), "test-token"))
             .execute(json!({
                 "filePath": "/workspace/missing.txt",
-                "read": { "offset": 1, "limit": 2000 }
+                "read": { "offset": 1, "limit": 2000 },
+                "_session_key": "session:test"
             }))
             .await;
         let error = match result {

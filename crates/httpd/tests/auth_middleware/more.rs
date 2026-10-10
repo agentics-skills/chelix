@@ -627,7 +627,7 @@ pub(super) async fn sealed_vault_allows_session_history() {
         start_localhost_server_with_vault_and_session_store().await;
     session_store
         .append(
-            "main",
+            "t:1",
             &serde_json::json!({"role": "user", "content": "hello"}),
         )
         .await
@@ -641,7 +641,7 @@ pub(super) async fn sealed_vault_allows_session_history() {
         .unwrap();
     assert_eq!(blocked_resp.status(), 423);
 
-    let resp = reqwest::get(format!("http://{addr}/api/sessions/main/history"))
+    let resp = reqwest::get(format!("http://{addr}/api/sessions/t:1/history"))
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);

@@ -640,26 +640,26 @@ mod tests {
     async fn append_assigns_indexes_and_pointers() {
         let (store, _dir) = temp_store();
         let first = store
-            .append_with_index("main", &PersistedMessage::user("first").to_value())
+            .append_with_index("t:1", &PersistedMessage::user("first").to_value())
             .await
             .unwrap();
         let second = store
-            .append_with_index("main", &PersistedMessage::user("second").to_value())
+            .append_with_index("t:1", &PersistedMessage::user("second").to_value())
             .await
             .unwrap();
         assert_eq!((first, second), (0, 1));
-        let pointers = store.pointers("main").await.unwrap();
+        let pointers = store.pointers("t:1").await.unwrap();
         assert_eq!(pointers.canonical_tail, 2);
         assert_eq!(pointers.first_user_index, Some(0));
         assert_eq!(pointers.last_checkpoint_index, None);
         store
             .append(
-                "main",
+                "t:1",
                 &PersistedMessage::checkpoint("sum", "model", "provider", 1, 2, 2).to_value(),
             )
             .await
             .unwrap();
-        let pointers = store.pointers("main").await.unwrap();
+        let pointers = store.pointers("t:1").await.unwrap();
         assert_eq!(pointers.last_checkpoint_index, Some(2));
         assert_eq!(pointers.first_user_index, Some(0));
     }
@@ -668,16 +668,16 @@ mod tests {
     async fn expected_index_mismatch_writes_nothing() {
         let (store, _dir) = temp_store();
         store
-            .append("main", &PersistedMessage::user("one").to_value())
+            .append("t:1", &PersistedMessage::user("one").to_value())
             .await
             .unwrap();
         assert!(
             store
-                .append_at_index("main", &PersistedMessage::user("nope").to_value(), 0)
+                .append_at_index("t:1", &PersistedMessage::user("nope").to_value(), 0)
                 .await
                 .is_err()
         );
-        assert_eq!(store.read("main").await.unwrap().len(), 1);
+        assert_eq!(store.read("t:1").await.unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -694,11 +694,11 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            store.append_at_index("main", &value, index).await.unwrap();
+            store.append_at_index("t:1", &value, index).await.unwrap();
         }
         let mut rows = Vec::new();
         store
-            .with_active_records("main", |event| {
+            .with_active_records("t:1", |event| {
                 if let ActiveEvent::Row { payload, .. } = event {
                     rows.push(
                         payload["content"]
@@ -721,12 +721,12 @@ mod tests {
     async fn disclosures_follow_the_journal_boundary_and_survive_checkpoint() {
         let (store, _dir) = temp_store();
         store
-            .append("main", &PersistedMessage::user("keep").to_value())
+            .append("t:1", &PersistedMessage::user("keep").to_value())
             .await
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({
                     "role": "assistant",
                     "content": "call",
@@ -737,19 +737,19 @@ mod tests {
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &PersistedMessage::checkpoint("sum", "model", "provider", 1, 1, 1).to_value(),
             )
             .await
             .unwrap();
         assert!(
             store
-                .visible_tool_names("main")
+                .visible_tool_names("t:1")
                 .await
                 .unwrap()
                 .contains("read_file")
         );
-        store.fork_history("main", "child", None).await.unwrap();
+        store.fork_history("t:1", "child", None).await.unwrap();
         assert!(
             store
                 .visible_tool_names("child")
@@ -758,12 +758,12 @@ mod tests {
                 .contains("read_file")
         );
         store
-            .append("main", &PersistedMessage::user("cut").to_value())
+            .append("t:1", &PersistedMessage::user("cut").to_value())
             .await
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({
                     "role": "assistant",
                     "content": "later",
@@ -773,13 +773,13 @@ mod tests {
             .await
             .unwrap();
         store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(3))
+            .truncate_from_user_message("t:1", UserMessageTarget::MessageIndex(3))
             .await
             .unwrap();
-        let visible = store.visible_tool_names("main").await.unwrap();
+        let visible = store.visible_tool_names("t:1").await.unwrap();
         assert!(visible.contains("read_file"));
         assert!(!visible.contains("other_tool"));
-        let pointers = store.pointers("main").await.unwrap();
+        let pointers = store.pointers("t:1").await.unwrap();
         assert_eq!(pointers.canonical_tail, 3);
         assert_eq!(pointers.last_checkpoint_index, Some(2));
         assert_eq!(pointers.first_user_index, Some(0));
@@ -789,10 +789,10 @@ mod tests {
     async fn fork_boundary_past_the_parent_tail_writes_nothing() {
         let (store, _dir) = temp_store();
         store
-            .append("main", &PersistedMessage::user("one").to_value())
+            .append("t:1", &PersistedMessage::user("one").to_value())
             .await
             .unwrap();
-        let error = journal::copy_prefix(store.pool().await.unwrap(), "main", "child", 5)
+        let error = journal::copy_prefix(store.pool().await.unwrap(), "t:1", "child", 5)
             .await
             .unwrap_err();
         assert!(
@@ -813,7 +813,7 @@ mod tests {
     async fn failed_import_rolls_back_and_later_attach_works() {
         let (source, dir) = temp_store();
         source
-            .append("main", &PersistedMessage::user("from-archive").to_value())
+            .append("t:1", &PersistedMessage::user("from-archive").to_value())
             .await
             .unwrap();
         let good = dir.path().join("good.sqlite");
@@ -838,7 +838,7 @@ mod tests {
         .execute(&bad_pool)
         .await
         .unwrap();
-        sqlx::query("INSERT INTO session_journal (session_key, canonical_tail) VALUES ('main', 1)")
+        sqlx::query("INSERT INTO session_journal (session_key, canonical_tail) VALUES ('t:1', 1)")
             .execute(&bad_pool)
             .await
             .unwrap();
@@ -856,7 +856,7 @@ mod tests {
             .await
             .unwrap();
         assert!(warnings.is_empty());
-        let records = store.read("main").await.unwrap();
+        let records = store.read("t:1").await.unwrap();
         assert_eq!(records[0]["content"], "from-archive");
     }
 
@@ -864,31 +864,31 @@ mod tests {
     async fn truncate_targets_client_seq_and_rejects_a_non_user_or_missing_index() {
         let (store, _dir) = temp_store();
         store
-            .append("main", &json!({"role": "user", "content": "cut", "seq": 4}))
+            .append("t:1", &json!({"role": "user", "content": "cut", "seq": 4}))
             .await
             .unwrap();
         store
-            .append("main", &PersistedMessage::user("later").to_value())
+            .append("t:1", &PersistedMessage::user("later").to_value())
             .await
             .unwrap();
         let truncated = store
-            .truncate_from_user_message("main", UserMessageTarget::ClientSeq(4))
+            .truncate_from_user_message("t:1", UserMessageTarget::ClientSeq(4))
             .await
             .unwrap();
         assert_eq!(truncated.target_index, 0);
-        assert_eq!(store.pointers("main").await.unwrap().canonical_tail, 0);
+        assert_eq!(store.pointers("t:1").await.unwrap().canonical_tail, 0);
 
         store
-            .append("main", &json!({"role": "assistant", "content": "not-user"}))
+            .append("t:1", &json!({"role": "assistant", "content": "not-user"}))
             .await
             .unwrap();
         let role_error = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
+            .truncate_from_user_message("t:1", UserMessageTarget::MessageIndex(0))
             .await
             .unwrap_err();
         assert!(role_error.to_string().contains("not a user message"));
         let range_error = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(5))
+            .truncate_from_user_message("t:1", UserMessageTarget::MessageIndex(5))
             .await
             .unwrap_err();
         assert!(range_error.to_string().contains("exceeds message count"));
@@ -897,17 +897,17 @@ mod tests {
     #[tokio::test]
     async fn truncate_prunes_media_that_the_removed_tail_alone_referenced() {
         let (store, _dir) = temp_store();
-        let media = store.save_media("main", "pic.bin", b"data").await.unwrap();
+        let media = store.save_media("t:1", "pic.bin", b"data").await.unwrap();
         store
-            .append("main", &json!({"role": "user", "content": media}))
+            .append("t:1", &json!({"role": "user", "content": media}))
             .await
             .unwrap();
         let truncated = store
-            .truncate_from_user_message("main", UserMessageTarget::MessageIndex(0))
+            .truncate_from_user_message("t:1", UserMessageTarget::MessageIndex(0))
             .await
             .unwrap();
         assert_eq!(truncated.pruned_media_count, 1);
-        assert!(!store.media_path_for("main", "pic.bin").exists());
+        assert!(!store.media_path_for("t:1", "pic.bin").exists());
     }
 
     #[tokio::test]
@@ -970,21 +970,21 @@ mod tests {
         let (store, _dir) = temp_store();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({"role": "assistant", "content": "old", "segmentId": "seg-old"}),
             )
             .await
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({"role": "checkpoint", "summary": "s", "messagesSummarized": 1}),
             )
             .await
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({
                     "role": "provider_update",
                     "segmentId": "seg-old",
@@ -998,7 +998,7 @@ mod tests {
             .unwrap();
         let mut ids = std::collections::HashSet::new();
         store
-            .with_active_records("main", |event| {
+            .with_active_records("t:1", |event| {
                 if let ActiveEvent::Start { segment_ids, .. } = event {
                     ids = segment_ids;
                 }
@@ -1187,7 +1187,7 @@ mod tests {
         let (store, _dir) = temp_store();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({
                     "role": "assistant",
                     "content": "first",
@@ -1201,7 +1201,7 @@ mod tests {
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &json!({
                     "role": "assistant",
                     "content": "second",
@@ -1215,18 +1215,18 @@ mod tests {
             .unwrap();
         store
             .append(
-                "main",
+                "t:1",
                 &PersistedMessage::checkpoint("sum", "model", "provider", 7, 8, 2).to_value(),
             )
             .await
             .unwrap();
-        let totals = store.token_totals("main").await.unwrap();
+        let totals = store.token_totals("t:1").await.unwrap();
         assert_eq!(totals.input_tokens, 18);
         assert_eq!(totals.output_tokens, 11);
         assert_eq!(totals.cache_read_tokens, 4);
         assert_eq!(totals.cache_write_tokens, 5);
         assert_eq!(totals.last_assistant.unwrap()["content"], "second");
-        let payloads = store.assistant_payloads("main").await.unwrap();
+        let payloads = store.assistant_payloads("t:1").await.unwrap();
         assert_eq!(payloads.len(), 2);
         assert_eq!(payloads[0]["content"], "first");
         assert_eq!(payloads[1]["content"], "second");

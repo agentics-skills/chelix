@@ -1,4 +1,4 @@
-import { sendRpc } from "./helpers";
+import { missingSessionId, sendRpc } from "./helpers";
 import * as S from "./state";
 import { sessionStore } from "./stores/session-store";
 import { showToast } from "./toast";
@@ -89,7 +89,7 @@ function renderResultIfNeeded(
 		parsed = lifecycle.result;
 	}
 	renderToolCardResult(card, parsed as never, {
-		sessionKey: S.activeSessionKey || "main",
+		sessionKey: S.activeSessionKey || missingSessionId(),
 		screenshotMode,
 	});
 }

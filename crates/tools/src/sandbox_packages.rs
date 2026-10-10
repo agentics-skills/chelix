@@ -371,7 +371,8 @@ impl AgentTool for SandboxPackagesTool {
             .get("_sandbox_id")
             .or_else(|| params.get("_session_key"))
             .and_then(|v| v.as_str())
-            .unwrap_or("main");
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?;
 
         if router.enabled() {
             let id = router.sandbox_id_for(sandbox_key);
@@ -439,7 +440,7 @@ mod tests {
             "imagemagick".into(),
         ]);
 
-        let result = tool.execute(json!({})).await.unwrap();
+        let result = tool.execute(json!({"_session_key": "t:1"})).await.unwrap();
 
         assert_eq!(result["total"], 5);
 
@@ -469,7 +470,7 @@ mod tests {
             "python3-dev".into(),
         ]);
 
-        let result = tool.execute(json!({})).await.unwrap();
+        let result = tool.execute(json!({"_session_key": "t:1"})).await.unwrap();
 
         // Only curl should remain (libvips-tools is filtered by is_infrastructure_package
         // because it starts with "lib")
@@ -482,7 +483,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty_packages_yields_no_categories() {
         let tool = make_tool(vec![]);
-        let result = tool.execute(json!({})).await.unwrap();
+        let result = tool.execute(json!({"_session_key": "t:1"})).await.unwrap();
 
         assert_eq!(result["total"], 0);
         assert!(result["categories"].as_object().unwrap().is_empty());
@@ -496,7 +497,7 @@ mod tests {
             "another-tool".into(),
         ]);
 
-        let result = tool.execute(json!({})).await.unwrap();
+        let result = tool.execute(json!({"_session_key": "t:1"})).await.unwrap();
 
         assert_eq!(result["total"], 3);
         let cats = result["categories"].as_object().unwrap();

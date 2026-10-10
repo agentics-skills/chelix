@@ -12,7 +12,7 @@ fn resolve_session_channel_binding_classifies_special_sessions() {
     assert_eq!(cron.surface.as_deref(), Some("cron"));
     assert_eq!(cron.session_kind.as_deref(), Some("cron"));
 
-    let web = resolve_session_channel_binding("main", None)
+    let web = resolve_session_channel_binding("t:1", None)
         .unwrap_or_else(|error| panic!("web binding should resolve: {error}"));
     assert_eq!(web.surface.as_deref(), Some("web"));
     assert_eq!(web.session_kind.as_deref(), Some("web"));

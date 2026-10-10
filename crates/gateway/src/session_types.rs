@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn patch_params_accepts_canonical_payload() {
         let p: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "label": "My Chat",
             "model": "openai::gpt-5.2",
             "reasoningEffort": "high",
@@ -151,7 +151,7 @@ mod tests {
             "parentSessionKey": null,
         }))
         .unwrap();
-        assert_eq!(p.key, "main");
+        assert_eq!(p.key, "t:1");
         assert_eq!(p.label.as_deref(), Some("My Chat"));
         assert_eq!(
             p.model.as_ref().and_then(Option::as_deref),
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn patch_params_accepts_tool_permission_fields() {
         let p: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "toolPermissionMode": "moderated",
             "toolPermissionType": "manual",
         }))
@@ -188,21 +188,21 @@ mod tests {
     #[test]
     fn patch_params_tool_permission_only_requires_no_other_fields() {
         let mode_only: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "toolPermissionMode": "moderated",
         }))
         .unwrap();
         assert!(mode_only.is_tool_permission_only());
 
         let type_only: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "toolPermissionType": "manual",
         }))
         .unwrap();
         assert!(type_only.is_tool_permission_only());
 
         let with_archive: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "toolPermissionMode": "moderated",
             "archived": true,
         }))
@@ -210,7 +210,7 @@ mod tests {
         assert!(!with_archive.is_tool_permission_only());
 
         let label_only: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "label": "My Chat",
         }))
         .unwrap();
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn patch_params_label_only_requires_no_other_fields() {
         let label_only: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "label": "My Chat",
         }))
         .unwrap();
@@ -228,7 +228,7 @@ mod tests {
         assert!(!label_only.is_tool_permission_only());
 
         let with_archive: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "label": "My Chat",
             "archived": true,
         }))
@@ -236,7 +236,7 @@ mod tests {
         assert!(!with_archive.is_label_only());
 
         let with_null_model: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "label": "My Chat",
             "model": null,
         }))
@@ -245,7 +245,7 @@ mod tests {
         assert!(!with_null_model.is_label_only());
 
         let tool_only: PatchParams = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "toolPermissionMode": "moderated",
         }))
         .unwrap();
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn patch_params_rejects_unknown_tool_permission_mode() {
         let result: Result<PatchParams, _> = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "toolPermissionMode": "unknown",
         }));
         assert!(result.is_err());
@@ -265,7 +265,7 @@ mod tests {
     #[test]
     fn patch_params_rejects_additional_field() {
         let result: Result<PatchParams, _> = serde_json::from_value(json!({
-            "key": "main",
+            "key": "t:1",
             "additionalField": true,
         }));
         assert!(result.is_err());
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn history_actions_require_identity_and_generation() {
         let value = json!({
-            "key": "main",
+            "key": "t:1",
             "target": {"messageId": "segment:answer", "generation": "generation-1"},
         });
         let voice: VoiceGenerateParams = serde_json::from_value(value.clone()).unwrap();
@@ -287,11 +287,11 @@ mod tests {
     fn voice_generate_rejects_obsolete_targets() {
         for target in [
             json!({
-                "key": "main",
+                "key": "t:1",
                 "runId": "run-abc",
             }),
             json!({
-                "key": "main",
+                "key": "t:1",
                 "historyIndex": 7,
             }),
         ] {
@@ -302,16 +302,16 @@ mod tests {
     #[test]
     fn voice_generate_rejects_missing_target() {
         let result = serde_json::from_value::<VoiceGenerateParams>(json!({
-            "key": "main",
+            "key": "t:1",
         }));
         assert!(result.is_err());
     }
 
     #[test]
     fn parse_params_helper() {
-        let v = json!({"key": "main"});
+        let v = json!({"key": "t:1"});
         let p: PatchParams = parse_params(v).unwrap();
-        assert_eq!(p.key, "main");
+        assert_eq!(p.key, "t:1");
     }
 
     #[test]

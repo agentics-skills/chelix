@@ -4,16 +4,15 @@ import type { VNode } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { TextAreaField } from "../../components/forms/FormField";
 import { t } from "../../i18n";
-import { activeSessionKey } from "../../state";
 import { targetValue } from "../../typed-events";
 import {
 	decodeBase64Safe,
 	fetchVoiceProviders,
 	saveVoiceKey,
 	saveVoiceSettings,
+	testStt,
 	testTts,
 	toggleVoiceProvider,
-	transcribeAudio,
 	VOICE_COUNTERPART_IDS,
 } from "../../voice-utils";
 import { ErrorPanel, ensureWsConnected } from "../shared";
@@ -414,33 +413,9 @@ async function runTtsVoiceTest(providerId: string, text: string): Promise<VoiceT
 	}
 }
 
-async function failedTranscriptionResult(response: Response): Promise<VoiceTestResult> {
-	const body = await response.text();
-	console.error("[STT] upload failed: status=%d body=%s", response.status, body);
-	let message = "STT test failed";
-	try {
-		message = (JSON.parse(body) as { error?: string }).error || message;
-	} catch {
-		// The HTTP status remains actionable when the server response is not JSON.
-	}
-	return { text: null, error: `${message} (HTTP ${response.status})` };
-}
-
 async function transcriptionResult(providerId: string, audio: Blob): Promise<VoiceTestResult> {
 	try {
-		const response = await transcribeAudio(activeSessionKey, providerId, audio);
-		if (!response.ok) return failedTranscriptionResult(response);
-		const result = (await response.json()) as {
-			ok?: boolean;
-			transcription?: { text?: string };
-			transcriptionError?: string;
-			error?: string;
-		};
-		if (!(result.ok && typeof result.transcription?.text === "string")) {
-			return { text: null, error: result.transcriptionError || result.error || "STT test failed" };
-		}
-		const text = result.transcription.text.trim();
-		return { text: text || null, error: text ? null : "No speech detected" };
+		return await testStt(providerId, audio);
 	} catch (error) {
 		return { text: null, error: (error as Error).message || "STT test failed" };
 	}

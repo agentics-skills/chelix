@@ -1008,7 +1008,7 @@ pub(super) fn register(reg: &mut MethodRegistry) {
                 if !was_existing_session && !create {
                     return Err(ErrorShape::new(error_codes::NOT_FOUND, "session not found"));
                 }
-                if was_existing_session && create && key != "main" {
+                if was_existing_session && create {
                     return Err(ErrorShape::new(
                         error_codes::CONFLICT,
                         "session already exists",

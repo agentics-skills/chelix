@@ -1,7 +1,14 @@
 // ── Tool call card renderer ──────────────────────────────────
 
 import { renderCommand } from "./code-highlight";
-import { renderDocument, renderMapLinks, renderMapPointGroups, renderScreenshot, toolCallSummary } from "./helpers";
+import {
+	missingSessionId,
+	renderDocument,
+	renderMapLinks,
+	renderMapPointGroups,
+	renderScreenshot,
+	toolCallSummary,
+} from "./helpers";
 import type { ContextBudgetMetadata, ToolError, ToolResult } from "./types/ws-events";
 
 export type ToolCardStatus = "running" | "success" | "error" | "retry";
@@ -138,7 +145,7 @@ function resolveScreenshotSrc(screenshot: string, options: ToolResultRenderOptio
 	if (screenshot.startsWith("data:")) return screenshot;
 	if (options.screenshotMode === "media") {
 		const filename = screenshot.split("/").pop() || "";
-		const sessionKey = options.sessionKey || "main";
+		const sessionKey = options.sessionKey || missingSessionId();
 		return `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(filename)}`;
 	}
 	return `data:image/png;base64,${screenshot}`;
@@ -516,7 +523,7 @@ function renderToolDocument(content: HTMLElement, result: ToolResult, options: T
 	if (!result.document_ref) return false;
 	const storedName = result.document_ref.split("/").pop() || "";
 	const displayName = result.filename || storedName;
-	const sessionKey = options.sessionKey || "main";
+	const sessionKey = options.sessionKey || missingSessionId();
 	const mediaSrc = `/api/sessions/${encodeURIComponent(sessionKey)}/media/${encodeURIComponent(storedName)}`;
 	renderDocument(content, mediaSrc, displayName, result.mime_type, result.size_bytes);
 	return true;

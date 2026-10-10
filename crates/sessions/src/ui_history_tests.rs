@@ -143,38 +143,38 @@ async fn search_excludes_only_sessions_without_ui_snapshots() {
 async fn explicit_clear_discards_history_without_a_journal() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    sqlx::query("INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages) VALUES ('main', 'old', 0, 0, 1)")
+    sqlx::query("INSERT INTO ui_history_sessions (session_key, generation, revision, next_position, total_messages) VALUES ('t:1', 'old', 0, 0, 1)")
         .execute(store.ui_history.database.pool().await.unwrap())
         .await
         .unwrap();
     store
-        .save_media("main", "discard.ogg", b"OggS")
+        .save_media("t:1", "discard.ogg", b"OggS")
         .await
         .unwrap();
-    assert!(store.ui_history.session("main").await.is_err());
-    store.clear("main").await.unwrap();
-    assert!(store.read_media("main", "discard.ogg").await.is_err());
-    assert_eq!(store.ui_message_count("main").await.unwrap(), 0);
+    assert!(store.ui_history.session("t:1").await.is_err());
+    store.clear("t:1").await.unwrap();
+    assert!(store.read_media("t:1", "discard.ogg").await.is_err());
+    assert_eq!(store.ui_message_count("t:1").await.unwrap(), 0);
     store
-        .append_typed("main", &PersistedMessage::user("new conversation"))
+        .append_typed("t:1", &PersistedMessage::user("new conversation"))
         .await
         .unwrap();
-    assert_eq!(store.ui_message_count("main").await.unwrap(), 1);
+    assert_eq!(store.ui_message_count("t:1").await.unwrap(), 1);
 }
 
 #[tokio::test]
 async fn clear_shares_the_live_registry_and_rotates_its_generation() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    let session = store.ui_history.session("main").await.unwrap();
-    let discard = store.ui_history.session_for_clear("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
+    let discard = store.ui_history.session_for_clear("t:1").await.unwrap();
     assert!(Arc::ptr_eq(&session, &discard));
     let generation = session.subscribe().borrow().generation.clone();
-    store.clear("main").await.unwrap();
+    store.clear("t:1").await.unwrap();
     assert_ne!(session.subscribe().borrow().generation, generation);
     assert!(Arc::ptr_eq(
         &session,
-        &store.ui_history.session("main").await.unwrap()
+        &store.ui_history.session("t:1").await.unwrap()
     ));
 }
 
@@ -184,18 +184,18 @@ async fn failed_clear_persists_failure_instead_of_exposing_an_empty_history() {
     let store = SessionStore::new(directory.path().into());
     let tool_results = directory.path().join("tool-results");
     tokio::fs::create_dir_all(&tool_results).await.unwrap();
-    tokio::fs::write(tool_results.join("main"), b"not a directory")
+    tokio::fs::write(tool_results.join("t_1"), b"not a directory")
         .await
         .unwrap();
-    assert!(store.clear("main").await.is_err());
+    assert!(store.clear("t:1").await.is_err());
     let row = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT failure FROM ui_history_sessions WHERE session_key = 'main'",
+        "SELECT failure FROM ui_history_sessions WHERE session_key = 't:1'",
     )
     .fetch_one(store.ui_history.database.pool().await.unwrap())
     .await
     .unwrap();
     assert!(row.is_some());
-    assert!(store.ui_message_count("main").await.is_err());
+    assert!(store.ui_message_count("t:1").await.is_err());
 }
 
 #[tokio::test]
@@ -207,18 +207,18 @@ async fn user_batch_validation_is_atomic_and_duplicate_ids_are_rejected() {
     let duplicate_batch = vec![user.clone(), user.clone()];
     assert!(
         store
-            .append_batch_at_index("main", &duplicate_batch, 0)
+            .append_batch_at_index("t:1", &duplicate_batch, 0)
             .await
             .is_err()
     );
-    assert_eq!(store.ui_message_count("main").await.unwrap(), 0);
-    assert!(store.read("main").await.unwrap().is_empty());
-    store.append("main", &user).await.unwrap();
-    assert!(store.append("main", &user).await.is_err());
+    assert_eq!(store.ui_message_count("t:1").await.unwrap(), 0);
+    assert!(store.read("t:1").await.unwrap().is_empty());
+    store.append("t:1", &user).await.unwrap();
+    assert!(store.append("t:1", &user).await.is_err());
     assert!(
         store
             .append_at_index(
-                "main",
+                "t:1",
                 &PersistedMessage::user("wrong boundary").to_value(),
                 0
             )
@@ -226,24 +226,24 @@ async fn user_batch_validation_is_atomic_and_duplicate_ids_are_rejected() {
             .is_err()
     );
     store
-        .append("main", &PersistedMessage::user("next").to_value())
+        .append("t:1", &PersistedMessage::user("next").to_value())
         .await
         .unwrap();
     let page = store
         .ui_history
-        .page("main", UiHistoryRange::Latest, 10)
+        .page("t:1", UiHistoryRange::Latest, 10)
         .await
         .unwrap();
     assert_eq!(page.total_messages, 2);
     assert_eq!(page.history[0].id.0, format!("user:{id}"));
-    assert_eq!(store.read("main").await.unwrap().len(), 2);
+    assert_eq!(store.read("t:1").await.unwrap().len(), 2);
 }
 
 #[tokio::test]
 async fn live_provider_copy_precedes_journal_and_reloads_as_one_semantic_message() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    let session = store.ui_history.session("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
     let run = run(&session);
     let mut changes = session.subscribe();
     {
@@ -254,11 +254,11 @@ async fn live_provider_copy_precedes_journal_and_reloads_as_one_semantic_message
     }
     run.copy(update(2, " world")).unwrap();
     store
-        .append_typed("main", &update(1, "hello"))
+        .append_typed("t:1", &update(1, "hello"))
         .await
         .unwrap();
     store
-        .append_typed("main", &update(2, " world"))
+        .append_typed("t:1", &update(2, " world"))
         .await
         .unwrap();
     let page = session.page(UiHistoryRange::Latest, 1).await.unwrap();
@@ -275,17 +275,17 @@ async fn live_provider_copy_precedes_journal_and_reloads_as_one_semantic_message
         run_id: Some("run-1".into()),
     };
     run.copy(close.clone()).unwrap();
-    store.append_typed("main", &close).await.unwrap();
+    store.append_typed("t:1", &close).await.unwrap();
     let UiContent::Record(record) = &page.history[0].content else {
         panic!("assistant record required")
     };
-    store.append_typed("main", &record.message).await.unwrap();
+    store.append_typed("t:1", &record.message).await.unwrap();
     run.finish().await.unwrap();
     assert!(run.copy(update(3, "late")).is_err());
     let reloaded = SessionStore::new(directory.path().into());
     let page = reloaded
         .ui_history
-        .page("main", UiHistoryRange::Latest, 10)
+        .page("t:1", UiHistoryRange::Latest, 10)
         .await
         .unwrap();
     assert_eq!(page.history.len(), 1);
@@ -295,14 +295,14 @@ async fn live_provider_copy_precedes_journal_and_reloads_as_one_semantic_message
         page.history[0].public_value().unwrap()["content"],
         "hello world"
     );
-    assert_eq!(reloaded.read("main").await.unwrap().len(), 4);
+    assert_eq!(reloaded.read("t:1").await.unwrap().len(), 4);
 }
 
 #[tokio::test]
 async fn late_subscriber_and_search_receive_accumulated_uncommitted_tool_input() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    let session = store.ui_history.session("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
     let run = run(&session);
     run.copy(lifecycle(0, ToolLifecycleUpdate::Created {
         provider_index: Some(0),
@@ -322,9 +322,9 @@ async fn late_subscriber_and_search_receive_accumulated_uncommitted_tool_input()
     );
     assert_eq!(page.history[0].id, UiMessageId::tool("run-1", "call-1"));
     assert_eq!(page.total_messages, 1);
-    let hits = store.search(&["main".into()], "needle", 1).await.unwrap();
+    let hits = store.search(&["t:1".into()], "needle", 1).await.unwrap();
     assert_eq!(hits[0].message_id, page.history[0].id);
-    assert!(store.read("main").await.unwrap().is_empty());
+    assert!(store.read("t:1").await.unwrap().is_empty());
     assert!(run.finish().await.is_err());
     session.truncate(0).await.unwrap();
 }
@@ -333,7 +333,7 @@ async fn late_subscriber_and_search_receive_accumulated_uncommitted_tool_input()
 async fn receipt_cannot_commit_a_later_lifecycle_version_or_another_generation() {
     let directory = tempfile::tempdir().unwrap();
     let engine = UiHistoryEngine::new(directory.path().into());
-    let session = engine.session("main").await.unwrap();
+    let session = engine.session("t:1").await.unwrap();
     let run = run(&session);
     let created = lifecycle(0, ToolLifecycleUpdate::Created {
         provider_index: Some(0),
@@ -355,7 +355,7 @@ async fn receipt_cannot_commit_a_later_lifecycle_version_or_another_generation()
     session.truncate(0).await.unwrap();
     assert!(session.bind(&receipts[0], 1).is_err());
     assert!(run.copy(update(1, "obsolete")).is_err());
-    assert_eq!(engine.count("main").await.unwrap(), 0);
+    assert_eq!(engine.count("t:1").await.unwrap(), 0);
 }
 
 #[tokio::test]
@@ -364,11 +364,11 @@ async fn ranges_and_lag_recovery_use_positions_and_generation() {
     let store = SessionStore::new(directory.path().into());
     for index in 0..8 {
         store
-            .append_typed("main", &PersistedMessage::user(format!("message {index}")))
+            .append_typed("t:1", &PersistedMessage::user(format!("message {index}")))
             .await
             .unwrap();
     }
-    let session = store.ui_history.session("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
     let latest = session.page(UiHistoryRange::Latest, 3).await.unwrap();
     assert_eq!(latest.first_position, Some(5));
     assert!(latest.has_older);
@@ -420,7 +420,7 @@ async fn ranges_and_lag_recovery_use_positions_and_generation() {
     };
     let index = session.canonical_index(&target).await.unwrap();
     store
-        .truncate_from_user_message("main", UserMessageTarget::MessageIndex(index))
+        .truncate_from_user_message("t:1", UserMessageTarget::MessageIndex(index))
         .await
         .unwrap();
     assert!(session.canonical_index(&target).await.is_err());
@@ -434,7 +434,7 @@ async fn ranges_and_lag_recovery_use_positions_and_generation() {
     let retained = session.page(UiHistoryRange::Latest, 10).await.unwrap();
     assert_ne!(retained.generation, latest.generation);
     assert_eq!(retained.total_messages, 6);
-    assert_eq!(store.read("main").await.unwrap().len(), 6);
+    assert_eq!(store.read("t:1").await.unwrap().len(), 6);
 }
 
 #[tokio::test]
@@ -656,11 +656,11 @@ async fn dirty_presentation_removal_keeps_the_next_persisted_search_candidate() 
     let store = SessionStore::new(directory.path().into());
     for _ in 0..2 {
         store
-            .append_typed("main", &PersistedMessage::user("record"))
+            .append_typed("t:1", &PersistedMessage::user("record"))
             .await
             .unwrap();
     }
-    let session = store.ui_history.session("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
     let page = session.page(UiHistoryRange::Latest, 10).await.unwrap();
     for snapshot in &page.history {
         session
@@ -690,7 +690,7 @@ async fn dirty_presentation_removal_keeps_the_next_persisted_search_candidate() 
             .await
     });
     changes.changed().await.unwrap();
-    let hits = store.search(&["main".into()], "needle", 1).await.unwrap();
+    let hits = store.search(&["t:1".into()], "needle", 1).await.unwrap();
     assert_eq!(hits[0].message_id, page.history[1].id);
     drop(flush_guard);
     edit.await.unwrap().unwrap();
@@ -712,10 +712,10 @@ async fn assistant_debug_payload_stays_in_the_journal_across_snapshot_updates() 
             if matches!(&record.message, PersistedMessage::Assistant { llm_api_response: None, .. })));
     }
     assert_eq!(serde_json::to_value(&record).unwrap(), message);
-    store.append("main", &message).await.unwrap();
-    assert_eq!(store.read("main").await.unwrap(), vec![message.clone()]);
+    store.append("t:1", &message).await.unwrap();
+    assert_eq!(store.read("t:1").await.unwrap(), vec![message.clone()]);
     let stored: String = sqlx::query_scalar(
-        "SELECT snapshot_json FROM ui_history_snapshots WHERE session_key = 'main'",
+        "SELECT snapshot_json FROM ui_history_snapshots WHERE session_key = 't:1'",
     )
     .fetch_one(store.ui_history.database.pool().await.unwrap())
     .await
@@ -726,27 +726,27 @@ async fn assistant_debug_payload_stays_in_the_journal_across_snapshot_updates() 
     assert_eq!(stored["snapshot"]["inputTokens"], 100);
 
     store
-        .update_typed_at("main", 0, |mut message| {
+        .update_typed_at("t:1", 0, |mut message| {
             if let PersistedMessage::Assistant { audio, .. } = &mut message {
-                *audio = Some("media/main/voice.ogg".into());
+                *audio = Some("media/t_1/voice.ogg".into());
             }
             message
         })
         .await
         .unwrap();
     let mut expected = message;
-    expected["audio"] = json!("media/main/voice.ogg");
-    assert_eq!(store.read("main").await.unwrap(), vec![expected]);
+    expected["audio"] = json!("media/t_1/voice.ogg");
+    assert_eq!(store.read("t:1").await.unwrap(), vec![expected]);
     let reloaded = UiHistoryEngine::new(directory.path().into());
     let page = reloaded
-        .page("main", UiHistoryRange::Latest, 1)
+        .page("t:1", UiHistoryRange::Latest, 1)
         .await
         .unwrap();
     assert!(matches!(&page.history[0].content, UiContent::Record(record)
         if matches!(&record.message, PersistedMessage::Assistant { llm_api_response: None, .. })));
     let value = page.public_value().unwrap();
     assert_eq!(value["history"][0]["content"], "Complete answer");
-    assert_eq!(value["history"][0]["audio"], "media/main/voice.ogg");
+    assert_eq!(value["history"][0]["audio"], "media/t_1/voice.ogg");
     assert!(value["history"][0].get("llmApiResponse").is_none());
 }
 
@@ -755,17 +755,17 @@ async fn snapshot_serde_round_trip_preserves_envelope_and_record_metadata() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
     let client_id = uuid::Uuid::new_v4().to_string();
-    store.append("main", &json!({"role": "user", "content": "voice", "audio": "media/main/input.ogg", "clientMessageId": client_id})).await.unwrap();
+    store.append("t:1", &json!({"role": "user", "content": "voice", "audio": "media/t_1/input.ogg", "clientMessageId": client_id})).await.unwrap();
     let page = store
         .ui_history
-        .page("main", UiHistoryRange::Latest, 1)
+        .page("t:1", UiHistoryRange::Latest, 1)
         .await
         .unwrap();
     let value = page.history[0].public_value().unwrap();
     let round_trip: UiSnapshot = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(round_trip.public_value().unwrap(), value);
     store
-        .update_typed_at("main", 0, |mut message| {
+        .update_typed_at("t:1", 0, |mut message| {
             if let PersistedMessage::User { content, .. } = &mut message {
                 *content = crate::MessageContent::Text("transcribed".into());
             }
@@ -773,9 +773,9 @@ async fn snapshot_serde_round_trip_preserves_envelope_and_record_metadata() {
         })
         .await
         .unwrap();
-    let history = store.ui_history.history("main").await.unwrap();
+    let history = store.ui_history.history("t:1").await.unwrap();
     assert_eq!(history[0]["clientMessageId"], client_id);
-    assert_eq!(history[0]["audio"], "media/main/input.ogg");
+    assert_eq!(history[0]["audio"], "media/t_1/input.ogg");
     assert_eq!(history[0]["content"], "transcribed");
 }
 
@@ -783,55 +783,55 @@ async fn snapshot_serde_round_trip_preserves_envelope_and_record_metadata() {
 async fn finalization_refusal_survives_releasing_the_last_session_owner() {
     let directory = tempfile::tempdir().unwrap();
     let engine = UiHistoryEngine::new(directory.path().into());
-    let session = engine.session("main").await.unwrap();
+    let session = engine.session("t:1").await.unwrap();
     let run = run(&session);
     run.copy(update(1, "unfinished")).unwrap();
     let error = run.finish().await.unwrap_err().to_string();
     drop(run);
     drop(session);
     let retained: String =
-        sqlx::query_scalar("SELECT failure FROM ui_history_sessions WHERE session_key = 'main'")
+        sqlx::query_scalar("SELECT failure FROM ui_history_sessions WHERE session_key = 't:1'")
             .fetch_one(engine.database.pool().await.unwrap())
             .await
             .unwrap();
     assert_eq!(retained, error);
     let reloaded = UiHistoryEngine::new(directory.path().into());
-    assert_eq!(reloaded.count("main").await.unwrap_err().to_string(), error);
+    assert_eq!(reloaded.count("t:1").await.unwrap_err().to_string(), error);
 }
 
 #[tokio::test]
 async fn rejected_addressed_identity_mutations_leave_journal_and_snapshots_unchanged() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    store.append("main", &json!({"role": "user", "content": "question", "clientMessageId": uuid::Uuid::new_v4().to_string()})).await.unwrap();
-    let journal = store.read("main").await.unwrap();
+    store.append("t:1", &json!({"role": "user", "content": "question", "clientMessageId": uuid::Uuid::new_v4().to_string()})).await.unwrap();
+    let journal = store.read("t:1").await.unwrap();
     let page = store
         .ui_history
-        .page("main", UiHistoryRange::Latest, 10)
+        .page("t:1", UiHistoryRange::Latest, 10)
         .await
         .unwrap()
         .public_value()
         .unwrap();
     assert!(
         store
-            .update_typed_at("main", 0, |_| PersistedMessage::system("wrong role"))
+            .update_typed_at("t:1", 0, |_| PersistedMessage::system("wrong role"))
             .await
             .is_err()
     );
     assert!(
         store
-            .update_value_at("main", 0, |mut record| {
+            .update_value_at("t:1", 0, |mut record| {
                 record["clientMessageId"] = json!(uuid::Uuid::new_v4().to_string());
                 Ok(record)
             })
             .await
             .is_err()
     );
-    assert_eq!(store.read("main").await.unwrap(), journal);
+    assert_eq!(store.read("t:1").await.unwrap(), journal);
     assert_eq!(
         store
             .ui_history
-            .page("main", UiHistoryRange::Latest, 10)
+            .page("t:1", UiHistoryRange::Latest, 10)
             .await
             .unwrap()
             .public_value()
@@ -844,7 +844,7 @@ async fn rejected_addressed_identity_mutations_leave_journal_and_snapshots_uncha
 async fn persistence_failure_is_published_and_refuses_later_ingress() {
     let directory = tempfile::tempdir().unwrap();
     let engine = UiHistoryEngine::new(directory.path().into());
-    let session = engine.session("main").await.unwrap();
+    let session = engine.session("t:1").await.unwrap();
     let run = run(&session);
     sqlx::query("CREATE TRIGGER reject_ui_snapshot BEFORE INSERT ON ui_history_snapshots BEGIN SELECT RAISE(FAIL, 'write refused'); END")
         .execute(session.database.pool().await.unwrap()).await.unwrap();

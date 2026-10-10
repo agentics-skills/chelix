@@ -8,7 +8,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preac
 import * as gon from "../gon";
 import { parseAgentsListPayload, sendRpc } from "../helpers";
 import {
-	clearActiveSession,
 	clearSessionHistoryCache,
 	fetchSessions,
 	isArchivableSession,
@@ -16,6 +15,7 @@ import {
 	setSessionActiveRunId,
 	setSessionAgent,
 	setSessionReplying,
+	showUnselectedSession,
 	switchSession,
 } from "../sessions";
 import { requestSessionFork } from "../sessions/session-fork";
@@ -57,7 +57,6 @@ export interface SessionHeaderProps {
 	showShare?: boolean;
 	showFork?: boolean;
 	showStop?: boolean;
-	showClear?: boolean;
 	showDelete?: boolean;
 	showArchive?: boolean;
 	nameOwnLine?: boolean;
@@ -69,16 +68,6 @@ export interface SessionHeaderProps {
 }
 
 // ── Helpers ──────────────────────────────────────────────────
-
-function nextSessionKey(currentKey: string): string {
-	const allSessions = sessionStore.sessions.value;
-	const s = allSessions.find((x) => x.key === currentKey);
-	if (s?.parentSessionKey) return s.parentSessionKey;
-	const idx = allSessions.findIndex((x) => x.key === currentKey);
-	if (idx >= 0 && idx + 1 < allSessions.length) return allSessions[idx + 1].key;
-	if (idx > 0) return allSessions[idx - 1].key;
-	return "main";
-}
 
 function buildShareUrl(payload: SharePayload): string {
 	let url = `${window.location.origin}${payload.path}`;
@@ -103,7 +92,6 @@ async function copyShareUrl(url: string, visibility: string): Promise<void> {
 
 interface SessionDeleteContext {
 	currentKey: string;
-	nextKey: string;
 	canOptimisticallyDelete: boolean;
 }
 
@@ -121,8 +109,7 @@ function hasUncommittedChanges(error: string): boolean {
 }
 
 function applyDeletedSessionState(context: SessionDeleteContext): void {
-	removeSessionFromClientState(context.currentKey, { nextKey: context.nextKey });
-	switchSession(context.nextKey);
+	removeSessionFromClientState(context.currentKey, { navigateIfActive: true });
 }
 
 async function deleteSession(context: SessionDeleteContext, force = false): Promise<void> {
@@ -489,15 +476,11 @@ interface SessionActionsProps {
 	onFork: () => void;
 	onShare: () => void;
 	showDelete: boolean;
-	isMain: boolean;
 	onDelete: () => void;
 	showStop: boolean;
 	canStop: boolean;
 	stopping: boolean;
 	onStop: () => void;
-	showClear: boolean;
-	clearing: boolean;
-	onClear: () => void;
 }
 
 function SessionActions(props: SessionActionsProps): VNode {
@@ -525,11 +508,7 @@ function SessionActions(props: SessionActionsProps): VNode {
 				title="Share snapshot"
 				label="Share"
 			/>
-			<DeleteAction
-				show={props.showDelete && !props.isMain}
-				className={props.actionButtonClass}
-				onClick={props.onDelete}
-			/>
+			<DeleteAction show={props.showDelete} className={props.actionButtonClass} onClick={props.onDelete} />
 			<PendingAction
 				show={props.showStop && props.canStop}
 				className={props.actionButtonClass}
@@ -538,15 +517,6 @@ function SessionActions(props: SessionActionsProps): VNode {
 				pending={props.stopping}
 				idleLabel="Stop"
 				pendingLabel="Stopping\u2026"
-			/>
-			<PendingAction
-				show={props.showClear && props.isMain}
-				className={props.actionButtonClass}
-				onClick={props.onClear}
-				title="Clear session"
-				pending={props.clearing}
-				idleLabel="Clear"
-				pendingLabel="Clearing\u2026"
 			/>
 		</>
 	);
@@ -594,7 +564,6 @@ export function SessionHeader({
 	showShare = true,
 	showFork = true,
 	showStop = true,
-	showClear = true,
 	showDelete = true,
 	showArchive = true,
 	nameOwnLine = false,
@@ -612,7 +581,6 @@ export function SessionHeader({
 	const hydratedDefaultAgentId = initialDefaultAgentId(gonAgentsPayload);
 
 	const [renaming, setRenaming] = useState(false);
-	const [clearing, setClearing] = useState(false);
 	const [stopping, setStopping] = useState(false);
 	const [switchingAgent, setSwitchingAgent] = useState(false);
 	const [agentOptions, setAgentOptions] = useState<AgentOption[]>(hydratedAgentOptions);
@@ -627,9 +595,8 @@ export function SessionHeader({
 	const replying = session?.replying.value;
 	const activeRunId = session?.activeRunId.value || null;
 
-	const isMain = currentKey === "main";
 	const isCron = currentKey.startsWith("cron:");
-	const canRename = !(isMain || isCron);
+	const canRename = !isCron;
 	const canStop = !isCron && replying;
 	const canArchive = !!session && isArchivableSession(session.toMeta());
 	const showArchivedSessions = sessionStore.showArchivedSessions.value;
@@ -735,19 +702,10 @@ export function SessionHeader({
 		const messageCount = currentSession?.messageCount || 0;
 		const context: SessionDeleteContext = {
 			currentKey,
-			nextKey: nextSessionKey(currentKey),
 			canOptimisticallyDelete: !currentSession?.worktree_branch,
 		};
 		void confirmAndDeleteSession(context, shouldConfirmSessionDelete(messageCount, currentSession?.forkPoint));
 	}, [currentKey, onBeforeDelete, sessionDataVersion]);
-
-	const onClear = useCallback(() => {
-		if (clearing) return;
-		setClearing(true);
-		clearActiveSession().finally(() => {
-			setClearing(false);
-		});
-	}, [clearing]);
 
 	const onStop = useCallback(() => {
 		if (stopping) return;
@@ -815,9 +773,7 @@ export function SessionHeader({
 				session.archived = nextArchived;
 				session.dataVersion.value++;
 			}
-			if (nextArchived && !showArchivedSessions) {
-				switchSession("main");
-			}
+			if (nextArchived && !showArchivedSessions) showUnselectedSession();
 			fetchSessions();
 		});
 	}, [canArchive, currentKey, onBeforeArchive, session, showArchivedSessions]);
@@ -926,15 +882,11 @@ export function SessionHeader({
 			onFork={onFork}
 			onShare={onShare}
 			showDelete={showDelete}
-			isMain={isMain}
 			onDelete={onDelete}
 			showStop={showStop}
 			canStop={!!canStop}
 			stopping={stopping}
 			onStop={onStop}
-			showClear={showClear}
-			clearing={clearing}
-			onClear={onClear}
 		/>
 	);
 

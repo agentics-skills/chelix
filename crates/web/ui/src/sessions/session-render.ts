@@ -418,7 +418,8 @@ function refreshWelcomeAfterAgentChange(): void {
 }
 
 function selectWelcomeAgent(chip: HTMLButtonElement, agentId: string): void {
-	const key = sessionStore.activeSessionKey.value || S.activeSessionKey || "main";
+	const key = sessionStore.activeSessionKey.value || S.activeSessionKey;
+	if (!key) throw new Error("missing session id");
 	chip.disabled = true;
 	void setSessionAgent(key, agentId)
 		.then((response) => {

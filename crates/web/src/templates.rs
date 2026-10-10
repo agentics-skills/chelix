@@ -202,7 +202,11 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
         },
     };
     let mut recent = Vec::new();
-    for entry in entries.into_iter().take(limit) {
+    for entry in entries
+        .into_iter()
+        .filter(|entry| !(entry.key == "main" && entry.message_count == 0))
+        .take(limit)
+    {
         let active_channel = if let Some(ref binding_json) = entry.channel_binding {
             if let Ok(target) =
                 serde_json::from_str::<chelix_channels::ChannelReplyTarget>(binding_json)
@@ -1082,7 +1086,7 @@ mod tests {
         assert!(is_known_spa_route("/"));
         assert!(is_known_spa_route("/projects/123"));
         assert!(is_known_spa_route("/skills/example"));
-        assert!(is_known_spa_route("/chats/main"));
+        assert!(is_known_spa_route("/chats/chat"));
         assert!(is_known_spa_route("/settings/providers"));
         assert!(is_known_spa_route("/monitoring/charts"));
         assert!(is_known_spa_route("/skills/"));

@@ -266,7 +266,7 @@ export class Session {
 
 // ── Store signals ────────────────────────────────────────────
 export const sessions = signal<Session[]>([]);
-export const activeSessionKey = signal<string>("main");
+export const activeSessionKey = signal<string>("");
 export const switchInProgress = signal<boolean>(false);
 export const refreshInProgressKey = signal<string>("");
 /** Session list tab filter: "all" | "sessions" | "cron" */
@@ -281,9 +281,6 @@ export const activeSession = computed<Session | null>(() => {
 export function compareSessionOrder(left: Session | null, right: Session | null): number {
 	const leftKey = left?.key || "";
 	const rightKey = right?.key || "";
-	const leftMain = leftKey === "main";
-	const rightMain = rightKey === "main";
-	if (leftMain !== rightMain) return leftMain ? -1 : 1;
 
 	const updatedDiff = (Number(right?.updatedAt) || 0) - (Number(left?.updatedAt) || 0);
 	if (updatedDiff !== 0) return updatedDiff;
@@ -338,9 +335,9 @@ export function setListed(serverSessions: SessionMeta[], retainOmittedActive = t
 	const currentActiveSession = activeSession.value;
 	const listedSessions = mergeSessions(serverSessions);
 	if (
-		retainOmittedActive &&
 		currentActiveSession &&
-		!listedSessions.some((session) => session.key === currentActiveSession.key)
+		!listedSessions.some((session) => session.key === currentActiveSession.key) &&
+		retainOmittedActive
 	) {
 		sessions.value = insertSessionInOrder(listedSessions, currentActiveSession);
 		return;
@@ -371,10 +368,7 @@ export function remove(key: string): boolean {
 	const existing = getByKey(key);
 	if (!existing) return false;
 	sessions.value = sessions.value.filter((session) => session.key !== key);
-	if (activeSessionKey.value === key) {
-		const fallback = sessions.value.find((session) => session.key === "main")?.key || sessions.value[0]?.key || "main";
-		activeSessionKey.value = fallback;
-	}
+	if (activeSessionKey.value === key) activeSessionKey.value = "";
 	return true;
 }
 

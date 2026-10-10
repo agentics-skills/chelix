@@ -13,6 +13,7 @@ import {
 import {
 	clearActiveSession as clearActiveSessionImpl,
 	prepareNewSessionKey,
+	showUnselectedSession as showUnselectedSessionImpl,
 	switchSession as switchSessionImpl,
 } from "./sessions/session-switch";
 import * as S from "./state";
@@ -34,6 +35,7 @@ export const setSessionUnread = sessionList.setSessionUnread;
 export const refreshWelcomeCardIfNeeded = refreshWelcomeCardIfNeededImpl;
 export const updateChatSessionHeader = updateChatSessionHeaderImpl;
 export const clearActiveSession = clearActiveSessionImpl;
+export const showUnselectedSession = showUnselectedSessionImpl;
 export const switchSession = switchSessionImpl;
 
 export function newSession(): void {
@@ -50,15 +52,12 @@ const newSessionBtn = S.$("newSessionBtn") as HTMLElement;
 newSessionBtn.addEventListener("click", newSession);
 
 export function isArchivableSession(session: SessionMeta): boolean {
-	return (
-		session.key !== "main" &&
-		((session as SessionMeta & { activeChannel?: boolean }).activeChannel !== true || session.archived === true)
-	);
+	return (session as SessionMeta & { activeChannel?: boolean }).activeChannel !== true || session.archived === true;
 }
 
 function isClearableSession(session: SessionMeta): boolean {
 	const isChannelSessionKey = session.key.startsWith("telegram:") || session.key.startsWith("matrix:");
-	return session.key !== "main" && !session.key.startsWith("cron:") && !isChannelSessionKey && !session.channelBinding;
+	return !(session.key.startsWith("cron:") || isChannelSessionKey || session.channelBinding);
 }
 
 export function clearAllSessions(): Promise<{ ok: boolean; skipped?: boolean; cancelled?: boolean }> {
@@ -68,7 +67,7 @@ export function clearAllSessions(): Promise<{ ok: boolean; skipped?: boolean; ca
 		return Promise.resolve({ ok: true, skipped: true });
 	}
 	return confirmDialog(
-		`Delete ${count} session${count !== 1 ? "s" : ""}? Main, channel-bound, and cron sessions will be kept.`,
+		`Delete ${count} session${count !== 1 ? "s" : ""}? Channel-bound and cron sessions will be kept.`,
 	).then((yes) => {
 		if (!yes) return { ok: false, cancelled: true };
 		return sendRpc("sessions.clear_all", {}).then((res) => {
@@ -76,7 +75,7 @@ export function clearAllSessions(): Promise<{ ok: boolean; skipped?: boolean; ca
 			clearSessionHistory();
 			const active = sessionStore.getByKey(sessionStore.activeSessionKey.value);
 			if (active && isClearableSession(active as unknown as SessionMeta)) {
-				switchSession("main");
+				showUnselectedSession();
 			}
 			fetchSessions();
 			return res;

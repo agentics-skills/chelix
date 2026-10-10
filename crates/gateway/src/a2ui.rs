@@ -1325,7 +1325,7 @@ mod tests {
 
     fn key() -> InteractionKey {
         InteractionKey {
-            session_key: "main".into(),
+            session_key: "t:1".into(),
             run_id: "run-1".into(),
             tool_call_id: "call-1".into(),
         }
@@ -1335,7 +1335,7 @@ mod tests {
     fn validates_trusted_interaction() {
         let params = serde_json::json!({
             "messages": messages(),
-            "_session_key": "main",
+            "_session_key": "t:1",
         });
         let interaction = validate_render_params(&params)
             .unwrap_or_else(|error| panic!("valid interaction: {error}"));
@@ -1457,7 +1457,7 @@ mod tests {
             for url in [
                 serde_json::json!("https://cdn.example.com/asset.bin"),
                 serde_json::json!("data:image/png;base64,iVBORw0KGgo="),
-                serde_json::json!("/api/sessions/main/media/asset.bin"),
+                serde_json::json!("/api/sessions/t:1/media/asset.bin"),
                 serde_json::json!({ "path": "/asset" }),
             ] {
                 let params = media_params(component, url.clone());

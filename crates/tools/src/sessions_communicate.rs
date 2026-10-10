@@ -772,7 +772,7 @@ mod tests {
     #[tokio::test]
     async fn sessions_list_filters_and_limits() -> TestResult<()> {
         let metadata = Arc::new(SqliteSessionMetadata::new(test_pool().await?));
-        create_test_session(&metadata, "main", "Main").await?;
+        create_test_session(&metadata, "t:1", "Main").await?;
         create_test_session(&metadata, "session:alpha", "Alpha").await?;
         create_test_session(&metadata, "session:beta", "Beta").await?;
 

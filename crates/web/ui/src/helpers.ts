@@ -254,7 +254,11 @@ mdRenderer.html = ({ text }) => esc(text);
 const markedInstance = new Marked({ renderer: mdRenderer, breaks: true, gfm: true, async: false });
 const DEFAULT_RPC_IDLE_TIMEOUT_MS = 30_000;
 const PROGRESS_RPC_IDLE_TIMEOUT_MS = 120_000;
-const PROGRESS_AWARE_METHODS = new Set(["sessions.reset", "sessions.compact", "chat.compact"]);
+const PROGRESS_AWARE_METHODS = new Set(["sessions.reset", "sessions.compact", "chat.compact", "stt.transcribe"]);
+
+export function missingSessionId(): never {
+	throw new Error("missing session id");
+}
 
 function rpcIdleTimeoutMs(method: string, progressSeen: boolean): number {
 	if (progressSeen || PROGRESS_AWARE_METHODS.has(method)) return PROGRESS_RPC_IDLE_TIMEOUT_MS;

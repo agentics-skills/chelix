@@ -3,7 +3,7 @@
 import type { VNode } from "preact";
 import { eventListeners } from "../events";
 import { t } from "../i18n";
-import * as S from "../state";
+import { routes } from "../routes";
 import { connectWs, subscribeEvents } from "../ws-connect";
 
 // ── WebSocket bootstrap ─────────────────────────────────────
@@ -40,8 +40,7 @@ export function ErrorPanel({ message }: { message: string }): VNode {
 // ── Utility helpers ─────────────────────────────────────────
 
 export function preferredChatPath(): string {
-	const key = S.activeSessionKey || "main";
-	return `/chats/${key.replace(/:/g, "/")}`;
+	return routes.chats;
 }
 
 export function detectBrowserTimezone(): string {

@@ -12,7 +12,7 @@ use {
     chelix_agents::tool_registry::AgentTool,
     chelix_browser::{BrowserManager, BrowserRequest},
     chelix_config::schema::SandboxMode,
-    std::{borrow::Cow, collections::HashMap, sync::Arc},
+    std::{collections::HashMap, sync::Arc},
     tokio::sync::{OnceCell, RwLock},
     tracing::debug,
 };
@@ -42,7 +42,6 @@ pub struct BrowserTool {
 }
 
 impl BrowserTool {
-    const DEFAULT_SESSION_KEY: &'static str = "main";
     /// Maximum number of tracked browser sessions. When exceeded the oldest
     /// entry (by insertion order, approximated by picking an arbitrary key) is
     /// evicted to prevent unbounded memory growth from abandoned chats.
@@ -70,13 +69,6 @@ impl BrowserTool {
         browser_config.container_prefix = container_prefix.to_string();
         browser_config.apply_sandbox_container(sandbox);
         Some(Self::new(browser_config, sandbox.mode))
-    }
-
-    fn cache_key(session_key: Option<&str>) -> Cow<'static, str> {
-        match session_key {
-            Some(k) => Cow::Owned(k.to_string()),
-            None => Cow::Borrowed(Self::DEFAULT_SESSION_KEY),
-        }
     }
 
     /// Clear the tracked browser session for the current chat/session context
@@ -229,7 +221,12 @@ impl AgentTool for BrowserTool {
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let mut params = params;
 
-        let session_key = Self::cache_key(params.get("_session_key").and_then(|v| v.as_str()));
+        let session_key = params
+            .get("_session_key")
+            .and_then(|v| v.as_str())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
+            .to_string();
 
         // Inject saved session_id if LLM didn't provide one (or provided empty string)
         if let Some(obj) = params.as_object_mut() {

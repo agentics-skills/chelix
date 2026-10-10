@@ -87,7 +87,8 @@ impl AgentTool for ReadMediaTool {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let input = parse_input(params)?;
         let result = self.service.read_media(&session_key, input).await;
@@ -300,7 +301,7 @@ mod tests {
             .create_async()
             .await;
         let result = ReadMediaTool::new(client(server.url(), "test-token"))
-            .execute(json!({ "filePath": "/workspace/broken.pdf" }))
+            .execute(json!({ "filePath": "/workspace/broken.pdf", "_session_key": "session:test" }))
             .await;
         let error = match result {
             Ok(_) => panic!("expected tools service failure"),

@@ -6,7 +6,12 @@ async fn archive_patch_error_does_not_call_stop_session() {
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let pool = sqlite_pool().await;
     let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-    create_test_session(&metadata, "main", Some("Main")).await;
+    let binding = r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#.to_string();
+    create_test_session(&metadata, "telegram:bot1:123", Some("Telegram current")).await;
+    metadata
+        .set_channel_binding("telegram:bot1:123", Some(&binding))
+        .await
+        .unwrap();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = Arc::clone(&calls);
     let bus = chelix_call_bus::CallBus::new();
@@ -25,10 +30,10 @@ async fn archive_patch_error_does_not_call_stop_session() {
     bus.seal().unwrap();
     let svc = LiveSessionService::new(store, metadata).with_call_bus(bus);
     let error = svc
-        .patch(serde_json::json!({ "key": "main", "archived": true }))
+        .patch(serde_json::json!({ "key": "telegram:bot1:123", "archived": true }))
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("main"));
+    assert!(error.to_string().contains("cannot be archived"));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
@@ -75,13 +80,13 @@ async fn patch_archived_rejection_does_not_partially_mutate_session() {
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let pool = sqlite_pool().await;
     let metadata = Arc::new(SqliteSessionMetadata::new(pool));
-    create_test_session(&metadata, "main", Some("Main")).await;
+    create_test_session(&metadata, "t:1", Some("Main")).await;
 
     let svc = LiveSessionService::new(Arc::clone(&store), Arc::clone(&metadata));
 
     let error = svc
         .patch(serde_json::json!({
-            "key": "main",
+            "key": "t:1",
             "label": "Mutated?",
             "model": "gpt-5",
             "archived": true
@@ -95,7 +100,7 @@ async fn patch_archived_rejection_does_not_partially_mutate_session() {
             .contains("archive accepts only key and archived")
     );
 
-    let entry = metadata.get("main").await.unwrap().unwrap();
+    let entry = metadata.get("t:1").await.unwrap().unwrap();
     assert_eq!(entry.label.as_deref(), Some("Main"));
     assert_eq!(entry.model(), Some("example-patch::reasoning"));
     assert!(!entry.archived);
@@ -205,7 +210,12 @@ async fn archive_patch_error_does_not_stop_sandbox() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
     let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-    create_test_session(&metadata, "main", Some("Main")).await;
+    let binding = r#"{"channel_type":"telegram","account_id":"bot1","chat_id":"123"}"#.to_string();
+    create_test_session(&metadata, "telegram:bot1:123", Some("Telegram current")).await;
+    metadata
+        .set_channel_binding("telegram:bot1:123", Some(&binding))
+        .await
+        .unwrap();
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen = Arc::clone(&calls);
     let bus = sealed_archive_bus();
@@ -228,11 +238,11 @@ async fn archive_patch_error_does_not_stop_sandbox() {
         .with_call_bus(bus)
         .with_sandbox_router(router);
     let error = svc
-        .patch(serde_json::json!({ "key": "main", "archived": true }))
+        .patch(serde_json::json!({ "key": "telegram:bot1:123", "archived": true }))
         .await
         .unwrap_err();
     watch.finish().await;
-    assert!(error.to_string().contains("main"));
+    assert!(error.to_string().contains("cannot be archived"));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(backend.stops.load(Ordering::SeqCst), 0);
 }

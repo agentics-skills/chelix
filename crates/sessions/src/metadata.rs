@@ -171,12 +171,8 @@ fn now_ms() -> i64 {
 }
 
 fn compare_sidebar_order(lhs: &SessionEntry, rhs: &SessionEntry) -> Ordering {
-    let lhs_main = lhs.key == "main";
-    let rhs_main = rhs.key == "main";
-
-    rhs_main
-        .cmp(&lhs_main)
-        .then_with(|| rhs.updated_at.cmp(&lhs.updated_at))
+    rhs.updated_at
+        .cmp(&lhs.updated_at)
         .then_with(|| rhs.created_at.cmp(&lhs.created_at))
         .then_with(|| lhs.key.cmp(&rhs.key))
 }
@@ -702,9 +698,6 @@ impl SqliteSessionMetadata {
         transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         entry: &SessionEntry,
     ) -> Result<()> {
-        if entry.key == "main" {
-            return Err(Error::message("session 'main' cannot be archived"));
-        }
         let Some(binding_json) = entry.channel_binding.as_deref() else {
             return Ok(());
         };

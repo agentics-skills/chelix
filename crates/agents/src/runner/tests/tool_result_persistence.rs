@@ -508,7 +508,7 @@ async fn quick_result_bytes_overrides_runtime_limit_for_one_call() {
         Some(&on_lifecycle),
         None,
         None,
-        None,
+        test_tool_context(None),
         None,
         None,
         None,

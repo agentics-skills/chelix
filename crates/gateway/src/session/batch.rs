@@ -15,9 +15,6 @@ impl<'a> SessionBatch<'a> {
         let Some(key) = params.get("key").and_then(Value::as_str) else {
             return self.service.delete_impl(params).await;
         };
-        if key == "main" {
-            return self.service.delete_impl(params).await;
-        }
 
         let force = params
             .get("force")
@@ -25,9 +22,6 @@ impl<'a> SessionBatch<'a> {
             .unwrap_or(false);
         let order = self.keys_leaf_to_root(key).await?;
         for session_key in &order {
-            if session_key == "main" {
-                return Err("cannot delete the main session".into());
-            }
             let entry = self
                 .service
                 .metadata

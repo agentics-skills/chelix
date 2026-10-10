@@ -598,6 +598,9 @@ impl SessionService for LiveSessionService {
 
         let mut entries: Vec<Value> = Vec::with_capacity(all.len());
         for mut e in all {
+            if e.key == "main" && e.message_count == 0 {
+                continue;
+            }
             let agent_id = self.resolve_agent_id_for_entry(&e).await?;
             // Check if this session is the active one for its channel binding.
             let active_channel = is_current_channel_session(&self.metadata, &e).await?;

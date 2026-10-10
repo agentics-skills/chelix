@@ -65,7 +65,7 @@ pub enum PersistedMessage {
         content: MessageContent,
         #[serde(skip_serializing_if = "Option::is_none")]
         created_at: Option<u64>,
-        /// Relative media path for uploaded user audio (e.g. "media/main/voice-123.webm").
+        /// Relative media path for uploaded user audio (e.g. "media/session_test/voice-123.webm").
         #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<String>,
         /// Saved inbound documents attached to this user message.
@@ -140,7 +140,7 @@ pub enum PersistedMessage {
         /// Raw provider API payload captured during streaming for debugging.
         #[serde(rename = "llmApiResponse", skip_serializing_if = "Option::is_none")]
         llm_api_response: Option<serde_json::Value>,
-        /// Relative media path for TTS audio (e.g. "media/main/run_abc.ogg").
+        /// Relative media path for TTS audio (e.g. "media/session_test/run_abc.ogg").
         #[serde(skip_serializing_if = "Option::is_none")]
         audio: Option<String>,
         /// Sequence number matching the user message this responds to.
@@ -586,7 +586,7 @@ mod tests {
         let msg = PersistedMessage::User {
             content: MessageContent::Text("voice note".to_string()),
             created_at: Some(12345),
-            audio: Some("media/main/voice-123.webm".to_string()),
+            audio: Some("media/session_test/voice-123.webm".to_string()),
             documents: None,
             channel: None,
             seq: None,
@@ -595,7 +595,7 @@ mod tests {
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json["role"], "user");
         assert_eq!(json["content"], "voice note");
-        assert_eq!(json["audio"], "media/main/voice-123.webm");
+        assert_eq!(json["audio"], "media/session_test/voice-123.webm");
     }
 
     #[test]
@@ -609,8 +609,8 @@ mod tests {
                 stored_filename: "abc_report.pdf".to_string(),
                 mime_type: "application/pdf".to_string(),
                 size_bytes: Some(12_345),
-                media_ref: "media/main/abc_report.pdf".to_string(),
-                absolute_path: Some("/tmp/main/abc_report.pdf".to_string()),
+                media_ref: "media/session_test/abc_report.pdf".to_string(),
+                absolute_path: Some("/tmp/session_test/abc_report.pdf".to_string()),
             }]),
             channel: None,
             seq: None,
@@ -620,7 +620,7 @@ mod tests {
         assert_eq!(json["documents"][0]["display_name"], "report.pdf");
         assert_eq!(
             json["documents"][0]["media_ref"],
-            "media/main/abc_report.pdf"
+            "media/session_test/abc_report.pdf"
         );
         assert_eq!(json["documents"][0]["size_bytes"], 12_345);
     }
@@ -779,14 +779,14 @@ mod tests {
             "openai",
             80,
             20,
-            Some("media/main/run_abc.ogg".to_string()),
+            Some("media/session_test/run_abc.ogg".to_string()),
         );
         let json = original.to_value();
-        assert_eq!(json["audio"], "media/main/run_abc.ogg");
+        assert_eq!(json["audio"], "media/session_test/run_abc.ogg");
         let parsed: PersistedMessage = serde_json::from_value(json).unwrap();
         match parsed {
             PersistedMessage::Assistant { audio, .. } => {
-                assert_eq!(audio.as_deref(), Some("media/main/run_abc.ogg"));
+                assert_eq!(audio.as_deref(), Some("media/session_test/run_abc.ogg"));
             },
             _ => panic!("expected Assistant message"),
         }

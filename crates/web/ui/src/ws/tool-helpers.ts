@@ -3,6 +3,7 @@
 import { isA2uiTool, mountA2uiToolCard } from "../a2ui-renderer";
 import { chatInsertionTarget, smartScrollToBottom } from "../chat-ui";
 import { mountExecuteCommandToolBubble, unmountExecuteCommandToolBubble } from "../components/ExecuteCommandToolBubble";
+import { missingSessionId } from "../helpers";
 import { navigate } from "../router";
 import * as S from "../state";
 import { sessionStore } from "../stores/session-store";
@@ -49,7 +50,7 @@ function appendToolResult(
 	if (toolSession) toolSession.lastToolOutput.value = out;
 	S.setLastToolOutput(out);
 	renderToolCardResult(toolCard, result, {
-		sessionKey: eventSession || S.activeSessionKey || "main",
+		sessionKey: eventSession || S.activeSessionKey || missingSessionId(),
 		screenshotMode,
 	});
 }
@@ -87,7 +88,10 @@ function completeToolCard(
 			appendToolCardError(toolCard, presentation.error, presentation.rejected);
 		}
 	} else if (presentation.success) {
-		renderToolCardResult(toolCard, null, { sessionKey: eventSession || S.activeSessionKey || "main", screenshotMode });
+		renderToolCardResult(toolCard, null, {
+			sessionKey: eventSession || S.activeSessionKey || missingSessionId(),
+			screenshotMode,
+		});
 	} else {
 		renderToolCardError(toolCard, presentation.error || undefined, presentation.rejected);
 	}
