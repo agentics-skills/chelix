@@ -72,7 +72,6 @@ export default {
 	commit: "Commit:",
 	commitAge: "Commit age: {{days}} day{{s}}",
 	viewSource: "View source",
-	allowedTools: "Allowed tools: {{tools}}",
 
 	// ── Badges ──────────────────────────────────────────────
 	blocked: "blocked",

@@ -59,7 +59,10 @@ dependency installation or sandbox provisioning.
 
 Repository, folder, and portable-bundle installation remain available; these
 flows install the skill folder itself and preserve the trust and provenance
-lifecycle described above.
+lifecycle described above. An archive member whose file name is exactly
+`SKILL.md` aborts install and import when it is not UTF-8, is longer than
+262144 bytes, or is not a skill document.
+
 
 ## Emergency Kill Switch
 

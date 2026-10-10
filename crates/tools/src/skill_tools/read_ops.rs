@@ -33,6 +33,7 @@ const SIDECAR_SUBDIRS: &[&str] = chelix_skills::SIDECAR_SUBDIRS;
 /// filesystem MCP server to load `SKILL.md` by absolute path.
 pub struct ReadSkillTool {
     discoverer: Arc<dyn SkillDiscoverer>,
+    bus: Arc<chelix_call_bus::CallBus>,
     usage_store: Option<SkillUsageStore>,
     #[cfg(feature = "bundled-skills")]
     bundled_store: Option<Arc<chelix_skills::bundled::BundledSkillStore>>,
@@ -41,9 +42,10 @@ pub struct ReadSkillTool {
 impl ReadSkillTool {
     /// Construct a `ReadSkillTool` backed by the given discoverer.
     #[must_use]
-    pub fn new(discoverer: Arc<dyn SkillDiscoverer>) -> Self {
+    pub fn new(discoverer: Arc<dyn SkillDiscoverer>, bus: Arc<chelix_call_bus::CallBus>) -> Self {
         Self {
             discoverer,
+            bus,
             usage_store: None,
             #[cfg(feature = "bundled-skills")]
             bundled_store: None,
@@ -56,9 +58,11 @@ impl ReadSkillTool {
     pub fn with_bundled(
         discoverer: Arc<dyn SkillDiscoverer>,
         bundled_store: Arc<chelix_skills::bundled::BundledSkillStore>,
+        bus: Arc<chelix_call_bus::CallBus>,
     ) -> Self {
         Self {
             discoverer,
+            bus,
             usage_store: None,
             bundled_store: Some(bundled_store),
         }
@@ -73,11 +77,15 @@ impl ReadSkillTool {
 
     /// Convenience constructor that uses default filesystem paths.
     #[must_use]
-    pub fn with_default_paths() -> Self {
+    pub fn with_default_paths(bus: Arc<chelix_call_bus::CallBus>) -> Self {
         use chelix_skills::discover::FsSkillDiscoverer;
-        let discoverer = Arc::new(FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths()));
+        let discoverer = Arc::new(FsSkillDiscoverer::new(
+            FsSkillDiscoverer::default_paths(),
+            Arc::clone(&bus),
+        ));
         Self {
             discoverer,
+            bus,
             usage_store: None,
             #[cfg(feature = "bundled-skills")]
             bundled_store: None,
@@ -143,7 +151,7 @@ impl AgentTool for ReadSkillTool {
         if meta.source.as_ref() == Some(&SkillSource::Bundled)
             && let Some(ref store) = self.bundled_store
         {
-            return read_bundled(name, meta, store, file_path);
+            return read_bundled(name, meta, store, file_path).await;
         }
 
         if let Some(rel) = file_path {
@@ -162,7 +170,7 @@ impl AgentTool for ReadSkillTool {
             return read_sidecar(name, &meta.path, rel).await;
         }
 
-        let result = read_primary(name, meta).await?;
+        let result = read_primary(&self.bus, name, meta).await?;
 
         // Record activation (primary reads only, not sidecar reads).
         if let Some(ref store) = self.usage_store {
@@ -182,6 +190,7 @@ impl AgentTool for ReadSkillTool {
 /// sidecar files available in `references/`, `templates/`, `assets/`, and
 /// `scripts/`.
 async fn read_primary(
+    bus: &chelix_call_bus::CallBus,
     name: &str,
     meta: &chelix_skills::types::SkillMetadata,
 ) -> anyhow::Result<Value> {
@@ -194,53 +203,36 @@ async fn read_primary(
             .unwrap_or(false);
 
     let (loaded_meta, body, linked_files, effective_dir) = if plugin_as_file {
-        let file_meta = tokio::fs::metadata(&meta.path).await.map_err(|e| {
-            Error::message(format!(
-                "failed to stat plugin skill '{name}' at {}: {e}",
-                meta.path.display()
-            ))
-        })?;
-        if file_meta.len() > MAX_SKILL_BODY_BYTES as u64 {
-            return Err(Error::message(format!(
-                "plugin skill '{name}' body exceeds maximum size of \
-                 {MAX_SKILL_BODY_BYTES} bytes ({} bytes on disk)",
-                file_meta.len()
-            ))
-            .into());
-        }
-        let raw = tokio::fs::read_to_string(&meta.path).await.map_err(|e| {
-            Error::message(format!(
-                "failed to read plugin skill '{name}' at {}: {e}",
-                meta.path.display()
-            ))
-        })?;
-        let body = chelix_skills::parse::strip_optional_frontmatter(&raw).to_string();
+        let document = bus
+            .call(chelix_service_traits::ReadSkillFile {
+                path: meta.path.clone(),
+                max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
+                mode: chelix_service_traits::SkillFileRead::Detect,
+            })
+            .await
+            .map_err(|error| {
+                Error::message(format!("failed to read plugin skill '{name}': {error}"))
+            })?;
         let effective_dir = meta
             .path
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| meta.path.clone());
-        (meta.clone(), body, Vec::new(), effective_dir)
+        (document.metadata, document.body, Vec::new(), effective_dir)
     } else {
         let canonical_skill_dir = tokio::fs::canonicalize(&meta.path).await.map_err(|e| {
             Error::message(format!("skill directory not accessible for '{name}': {e}"))
         })?;
 
         let skill_md_path = canonical_skill_dir.join("SKILL.md");
-        if let Ok(m) = tokio::fs::metadata(&skill_md_path).await
-            && m.len() > MAX_SKILL_BODY_BYTES as u64
-        {
-            return Err(Error::message(format!(
-                "skill '{name}' SKILL.md exceeds maximum size of \
-                 {MAX_SKILL_BODY_BYTES} bytes ({} bytes on disk)",
-                m.len()
-            ))
-            .into());
-        }
-
-        let content = chelix_skills::registry::load_skill_from_path(&canonical_skill_dir)
+        let content = bus
+            .call(chelix_service_traits::ReadSkillFile {
+                path: skill_md_path,
+                max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
+                mode: chelix_service_traits::SkillFileRead::Detect,
+            })
             .await
-            .map_err(|e| Error::message(format!("failed to load skill '{name}': {e}")))?;
+            .map_err(|error| Error::message(format!("failed to load skill '{name}': {error}")))?;
         let linked = list_skill_sidecar_files(&canonical_skill_dir).await?;
         (content.metadata, content.body, linked, canonical_skill_dir)
     };
@@ -290,9 +282,6 @@ async fn read_primary(
     }
     if let Some(compatibility) = &loaded_meta.compatibility {
         response.insert("compatibility".into(), json!(compatibility));
-    }
-    if !loaded_meta.allowed_tools.is_empty() {
-        response.insert("allowed_tools".into(), json!(loaded_meta.allowed_tools));
     }
     if !linked_files.is_empty() {
         response.insert(
@@ -484,7 +473,7 @@ async fn collect_sidecar_entries(skill_dir: &Path) -> crate::Result<Vec<SidecarE
 
 /// Read a bundled skill from the embedded store (no filesystem I/O).
 #[cfg(feature = "bundled-skills")]
-fn read_bundled(
+async fn read_bundled(
     name: &str,
     meta: &chelix_skills::types::SkillMetadata,
     store: &chelix_skills::bundled::BundledSkillStore,
@@ -535,6 +524,7 @@ fn read_bundled(
 
     let body = store
         .read_skill(name)
+        .await
         .ok_or_else(|| Error::message(format!("bundled skill '{name}' body not readable")))?;
 
     let linked: Vec<Value> = store
@@ -587,9 +577,6 @@ pub(super) fn build_bundled_primary_response(
     }
     if let Some(origin) = &meta.origin {
         response.insert("origin".into(), json!(origin));
-    }
-    if !meta.allowed_tools.is_empty() {
-        response.insert("allowed_tools".into(), json!(meta.allowed_tools));
     }
     if !linked.is_empty() {
         let has_scripts = skill_dir.is_some()

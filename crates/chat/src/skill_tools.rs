@@ -27,6 +27,7 @@ struct AgentScopedSkillTool {
     policy: AgentSkillPolicy,
     config: Arc<ChelixConfig>,
     data_dir: PathBuf,
+    bus: Arc<chelix_call_bus::CallBus>,
 }
 
 impl AgentScopedSkillTool {
@@ -36,7 +37,7 @@ impl AgentScopedSkillTool {
         };
         if matches!(self.kind, SkillToolKind::Read) {
             let visible = filter_skills_for_agent(
-                discover_skills_if_enabled(&self.config).await,
+                discover_skills_if_enabled(&self.config, &self.bus).await,
                 &self.agent_id,
                 &self.policy,
             );
@@ -63,12 +64,21 @@ impl AgentScopedSkillTool {
             return Ok(());
         }
         let skill_dir = self.data_dir.join("skills").join(name);
-        let content = match tokio::fs::read_to_string(skill_dir.join("SKILL.md")).await {
-            Ok(content) => content,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        let skill = match self
+            .bus
+            .call(chelix_service_traits::ReadSkillFile {
+                path: skill_dir.join("SKILL.md"),
+                max_bytes: None,
+                mode: chelix_service_traits::SkillFileRead::Detect,
+            })
+            .await
+        {
+            Ok(skill) => skill.metadata,
+            Err(chelix_call_bus::CallError::Failed(
+                chelix_service_traits::SkillFileError::NotFound(_),
+            )) => return Ok(()),
             Err(error) => return Err(error.into()),
         };
-        let skill = chelix_skills::parse::parse_metadata(&content, &skill_dir)?;
         if chelix_skills::visible_to_agent(&self.agent_id, &skill, &self.policy) {
             return Ok(());
         }
@@ -148,6 +158,7 @@ pub(crate) fn install_agent_scoped_skill_tools(
     registry: &mut ToolRegistry,
     config: &ChelixConfig,
     agent_id: &str,
+    bus: &Arc<chelix_call_bus::CallBus>,
 ) -> anyhow::Result<()> {
     let config = Arc::new(config.clone());
     let policy = config
@@ -172,6 +183,7 @@ pub(crate) fn install_agent_scoped_skill_tools(
                 policy: policy.clone(),
                 config: Arc::clone(&config),
                 data_dir: chelix_config::data_dir(),
+                bus: Arc::clone(bus),
             }));
         }
     }
@@ -240,7 +252,7 @@ mod tests {
         std::fs::create_dir_all(&project)?;
         std::fs::write(
             project.join("SKILL.md"),
-            "---\nname: demo\ndeny: [agent1]\n---\nproject",
+            "---\nname: demo\ndenied_agents: [agent1]\n---\nproject",
         )?;
         let path = personal.join("SKILL.md");
         let context = ToolExecutionContext::for_session_with_agent(
@@ -248,6 +260,7 @@ mod tests {
             "agent1",
         );
         let config = Arc::new(ChelixConfig::default());
+        let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
         for (name, kind, hidden_error) in [
             (
                 "create_skill",
@@ -288,9 +301,10 @@ mod tests {
                 policy: AgentSkillPolicy::default(),
                 config: Arc::clone(&config),
                 data_dir: dir.path().to_path_buf(),
+                bus: Arc::clone(&bus),
             };
             assert_eq!(wrapper.parameters_schema(), schema);
-            let invalid = "---\nname: demo\nallow:\n---\nbody";
+            let invalid = "---\nname: demo\nallowed_agents: hello\n---\nbody";
             std::fs::write(&path, invalid)?;
             let error = wrapper
                 .execute_with_context(json!({ "name": "demo" }), &context)
@@ -300,7 +314,7 @@ mod tests {
             assert!(error.to_string().contains("frontmatter"));
             assert_eq!(std::fs::read_to_string(&path)?, invalid);
             assert_eq!(calls.load(Ordering::SeqCst), 0);
-            for declaration in ["deny: [agent1]", "allow: [agent2]"] {
+            for declaration in ["denied_agents: [agent1]", "allowed_agents: [agent2]"] {
                 std::fs::write(&path, format!("---\nname: demo\n{declaration}\n---\nbody"))?;
                 let error = wrapper
                     .execute_with_context(json!({ "name": "demo" }), &context)
@@ -317,7 +331,10 @@ mod tests {
                 assert_eq!(delegated["params"], params);
                 assert_eq!(delegated["sender"], "agent1");
             }
-            std::fs::write(&path, "---\nname: demo\nallow: [agent1]\n---\nbody")?;
+            std::fs::write(
+                &path,
+                "---\nname: demo\nallowed_agents: [agent1]\n---\nbody",
+            )?;
             let visible = wrapper
                 .execute_with_context(json!({ "name": "demo" }), &context)
                 .await?;
@@ -345,19 +362,22 @@ mod tests {
         std::fs::create_dir_all(&personal)?;
         std::fs::write(
             personal.join("SKILL.md"),
-            "---\nname: demo\nallow: [agent1]\n---\npersonal",
+            "---\nname: demo\nallowed_agents: [agent1]\n---\npersonal",
         )?;
         let path = project.join("SKILL.md");
-        std::fs::write(&path, "---\nname: demo\ndeny: [agent1]\n---\nproject")?;
+        std::fs::write(
+            &path,
+            "---\nname: demo\ndenied_agents: [agent1]\n---\nproject",
+        )?;
         let plugin = dir.path().join("installed-plugins/demo");
         std::fs::create_dir_all(plugin.join("commands"))?;
         std::fs::write(
             plugin.join("commands/review.md"),
-            "---\ndescription: Review\ndeny: [agent1]\n---\ncommand body",
+            "---\ndescription: Review\ndenied_agents: [agent1]\n---\ncommand body",
         )?;
         std::fs::write(
             plugin.join("SKILL.md"),
-            "---\nname: demo\ndeny: [agent1]\n---\nplugin body",
+            "---\nname: demo\ndenied_agents: [agent1]\n---\nplugin body",
         )?;
         let manifest = chelix_skills::types::SkillsManifest {
             version: 1,
@@ -392,11 +412,15 @@ mod tests {
             chelix_sessions::SessionKey::new("session:test"),
             "agent1",
         );
+        let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
         let discoverer = Arc::new(chelix_skills::discover::FsSkillDiscoverer::new(
             chelix_skills::discover::FsSkillDiscoverer::default_paths_for(dir.path()),
+            Arc::clone(&bus),
         ));
-        let inner: Arc<dyn AgentTool> =
-            Arc::new(chelix_tools::skill_tools::ReadSkillTool::new(discoverer));
+        let inner: Arc<dyn AgentTool> = Arc::new(chelix_tools::skill_tools::ReadSkillTool::new(
+            discoverer,
+            Arc::clone(&bus),
+        ));
         let schema = inner.parameters_schema();
         let mut config = ChelixConfig::default();
         config.agents.entries.insert(
@@ -409,9 +433,9 @@ mod tests {
         );
         let mut registry = ToolRegistry::new();
         registry.register(Box::new(
-            chelix_tools::skill_tools::ReadSkillTool::with_default_paths(),
+            chelix_tools::skill_tools::ReadSkillTool::with_default_paths(Arc::clone(&bus)),
         ));
-        install_agent_scoped_skill_tools(&mut registry, &config, "agent1")?;
+        install_agent_scoped_skill_tools(&mut registry, &config, "agent1", &bus)?;
         assert_eq!(registry.list_names(), ["read_skill"]);
         let installed = registry
             .get("read_skill")
@@ -440,7 +464,10 @@ mod tests {
             assert!(!hint.contains("Demo:pdf"));
             assert!(!hint.contains("claude-dir"));
         }
-        std::fs::write(&path, "---\nname: demo\nallow: [agent1]\n---\nproject")?;
+        std::fs::write(
+            &path,
+            "---\nname: demo\nallowed_agents: [agent1]\n---\nproject",
+        )?;
         let response = installed
             .execute_with_context(json!({ "name": "demo" }), &context)
             .await?;
@@ -449,7 +476,10 @@ mod tests {
             .await?;
         assert_eq!(response, original);
         assert_eq!(response["body"], "project");
-        std::fs::write(&path, "---\nname: demo\ndeny: [agent1]\n---\nproject")?;
+        std::fs::write(
+            &path,
+            "---\nname: demo\ndenied_agents: [agent1]\n---\nproject",
+        )?;
         assert!(
             installed
                 .execute_with_context(json!({ "name": "demo" }), &context)

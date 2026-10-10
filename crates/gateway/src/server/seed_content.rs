@@ -82,14 +82,10 @@ env = ["MY_API_KEY"]        # required environment variables
 ```
 "#;
 
-pub(crate) const EXAMPLE_SKILL_MD: &str = r#"---
-name: template-skill
-description: Starter skill template (safe to copy and edit)
-allow: []
-deny: []
----
+pub(crate) const TEMPLATE_SKILL_DESCRIPTION: &str =
+    "Starter skill template (safe to copy and edit)";
 
-# Template Skill
+pub(crate) const TEMPLATE_SKILL_BODY: &str = r#"# Template Skill
 
 Use this as a starting point for your own skills.
 

@@ -908,7 +908,15 @@ pub async fn prepare_gateway_core(
     // ── Hook discovery & registration ─────────────────────────────────────
     seed_default_workspace_markdown_files();
     warn_on_workspace_prompt_file_truncation(&config);
-    super::hooks::seed_example_skill();
+    let call_bus = chelix_call_bus::CallBus::new();
+    call_bus
+        .require::<chelix_service_traits::StopSession>()
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    chelix_skills::skill_file::bind_skill_files(&call_bus)
+        .map_err(|error| anyhow::anyhow!(error))?;
+    services.skills = Arc::new(crate::services::NoopSkillsService::new(Arc::clone(
+        &call_bus,
+    )));
     super::hooks::seed_example_hook();
     let persisted_disabled = crate::methods::load_disabled_hooks();
     let (hook_registry, discovered_hooks_info) =
@@ -921,10 +929,6 @@ pub async fn prepare_gateway_core(
     startup_mem_probe.checkpoint("memory_manager.initialized");
 
     // Wire live session service.
-    let call_bus = chelix_call_bus::CallBus::new();
-    call_bus
-        .require::<chelix_service_traits::StopSession>()
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     {
         let mut session_svc = LiveSessionService::from_router(
             Arc::clone(&session_store),

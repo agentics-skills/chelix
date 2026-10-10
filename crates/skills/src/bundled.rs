@@ -9,10 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{
-    parse,
-    types::{SkillMetadata, SkillSource},
-};
+use crate::types::{SkillMetadata, SkillSource};
 
 // ── Embedded assets ─────────────────────────────────────────────────────────
 
@@ -35,12 +32,13 @@ pub struct BundledSkillStore {
     /// Directory where bundled sidecar files (scripts, templates, etc.)
     /// are materialized on disk so they can be executed by the agent.
     materialize_dir: PathBuf,
+    bus: std::sync::Arc<chelix_call_bus::CallBus>,
 }
 
 impl BundledSkillStore {
     /// Create a new store, preferring the filesystem in dev mode.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(bus: std::sync::Arc<chelix_call_bus::CallBus>) -> Self {
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
         let materialize_dir = chelix_config::data_dir().join("bundled-skills");
         let source = if cargo_dir.is_dir() {
@@ -53,6 +51,7 @@ impl BundledSkillStore {
         Self {
             source,
             materialize_dir,
+            bus,
         }
     }
 
@@ -61,7 +60,10 @@ impl BundledSkillStore {
     /// Avoids calling [`data_dir()`](chelix_config::data_dir) so tests
     /// do not trigger side effects from the global config.
     #[must_use]
-    pub fn with_materialize_dir(materialize_dir: PathBuf) -> Self {
+    pub fn with_materialize_dir(
+        materialize_dir: PathBuf,
+        bus: std::sync::Arc<chelix_call_bus::CallBus>,
+    ) -> Self {
         let cargo_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/assets");
         let source = if cargo_dir.is_dir() {
             AssetSource::Filesystem(cargo_dir)
@@ -71,6 +73,7 @@ impl BundledSkillStore {
         Self {
             source,
             materialize_dir,
+            bus,
         }
     }
 
@@ -78,17 +81,17 @@ impl BundledSkillStore {
     ///
     /// Walks the assets directory two levels deep (`<category>/<skill>/SKILL.md`),
     /// parses frontmatter, and tags each with [`SkillSource::Bundled`].
-    pub fn discover(&self) -> Vec<SkillMetadata> {
+    pub async fn discover(&self) -> Vec<SkillMetadata> {
         match &self.source {
-            AssetSource::Filesystem(dir) => discover_from_fs(dir),
+            AssetSource::Filesystem(dir) => discover_from_fs(&self.bus, dir).await,
             AssetSource::Embedded => discover_from_embedded(),
         }
     }
 
     /// Read the full body of a bundled skill by name.
-    pub fn read_skill(&self, name: &str) -> Option<String> {
+    pub async fn read_skill(&self, name: &str) -> Option<String> {
         match &self.source {
-            AssetSource::Filesystem(dir) => read_skill_body_fs(dir, name),
+            AssetSource::Filesystem(dir) => read_skill_body_fs(&self.bus, dir, name).await,
             AssetSource::Embedded => read_skill_body_embedded(name),
         }
     }
@@ -180,23 +183,22 @@ impl BundledSkillStore {
     }
 }
 
-impl Default for BundledSkillStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // ── Filesystem (dev mode) ───────────────────────────────────────────────────
 
 /// Recursively walk the assets directory for SKILL.md files on the filesystem.
 /// Supports arbitrary nesting (e.g. `mlops/training/axolotl/SKILL.md`).
-fn discover_from_fs(assets_dir: &Path) -> Vec<SkillMetadata> {
+async fn discover_from_fs(bus: &chelix_call_bus::CallBus, assets_dir: &Path) -> Vec<SkillMetadata> {
     let mut skills = Vec::new();
-    discover_from_fs_recursive(assets_dir, assets_dir, &mut skills);
+    discover_from_fs_recursive(bus, assets_dir, assets_dir, &mut skills).await;
     skills
 }
 
-fn discover_from_fs_recursive(assets_root: &Path, dir: &Path, skills: &mut Vec<SkillMetadata>) {
+async fn discover_from_fs_recursive(
+    bus: &chelix_call_bus::CallBus,
+    assets_root: &Path,
+    dir: &Path,
+    skills: &mut Vec<SkillMetadata>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -207,11 +209,9 @@ fn discover_from_fs_recursive(assets_root: &Path, dir: &Path, skills: &mut Vec<S
         }
         let skill_md = path.join("SKILL.md");
         if skill_md.is_file() {
-            let Ok(content) = std::fs::read_to_string(&skill_md) else {
-                continue;
-            };
-            match parse::parse_metadata(&content, &path) {
-                Ok(mut meta) => {
+            match crate::skill_file::read_on(bus, &skill_md, None).await {
+                Ok(content) => {
+                    let mut meta = content.metadata;
                     meta.source = Some(SkillSource::Bundled);
                     meta.category = category_from_path(assets_root, &path);
                     skills.push(meta);
@@ -222,7 +222,7 @@ fn discover_from_fs_recursive(assets_root: &Path, dir: &Path, skills: &mut Vec<S
             }
         } else {
             // No SKILL.md here — recurse into subdirectories (category nesting).
-            discover_from_fs_recursive(assets_root, &path, skills);
+            Box::pin(discover_from_fs_recursive(bus, assets_root, &path, skills)).await;
         }
     }
 }
@@ -236,11 +236,16 @@ fn category_from_path(assets_root: &Path, skill_dir: &Path) -> Option<String> {
 }
 
 /// Read SKILL.md body from the filesystem.
-fn read_skill_body_fs(assets_dir: &Path, name: &str) -> Option<String> {
+async fn read_skill_body_fs(
+    bus: &chelix_call_bus::CallBus,
+    assets_dir: &Path,
+    name: &str,
+) -> Option<String> {
     let skill_dir = find_skill_dir_fs(assets_dir, name)?;
-    let content = std::fs::read_to_string(skill_dir.join("SKILL.md")).ok()?;
-    let skill = parse::parse_skill(&content, &skill_dir).ok()?;
-    Some(skill.body)
+    crate::skill_file::read_on(bus, &skill_dir.join("SKILL.md"), None)
+        .await
+        .ok()
+        .map(|skill| skill.body)
 }
 
 fn read_sidecar_fs(assets_dir: &Path, name: &str, rel_path: &str) -> Option<(Vec<u8>, bool)> {
@@ -332,8 +337,9 @@ fn discover_from_embedded_recursive(
             };
             let synthetic_path =
                 PathBuf::from("__bundled__").join(sub_dir.path().to_string_lossy().as_ref());
-            match parse::parse_metadata(content, &synthetic_path) {
-                Ok(mut meta) => {
+            match crate::skill_file::interpret(content, &synthetic_path.join("SKILL.md")) {
+                Ok(content) => {
+                    let mut meta = content.metadata;
                     meta.source = Some(SkillSource::Bundled);
                     // Extract category from first path component (e.g. "research/arxiv" → "research").
                     meta.category = sub_dir
@@ -366,7 +372,7 @@ fn read_skill_body_embedded(name: &str) -> Option<String> {
     let content = std::str::from_utf8(skill_md.contents()).ok()?;
     let synthetic_path =
         PathBuf::from("__bundled__").join(skill_dir.path().to_string_lossy().as_ref());
-    let skill = parse::parse_skill(content, &synthetic_path).ok()?;
+    let skill = crate::skill_file::interpret(content, &synthetic_path.join("SKILL.md")).ok()?;
     Some(skill.body)
 }
 
@@ -437,12 +443,12 @@ fn find_skill_dir_embedded_recursive(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::parse};
 
     const EXPECTED_BUNDLED_SKILLS: &[(&str, &str)] = &[("mcp-servers", "devops")];
 
     fn store() -> BundledSkillStore {
-        BundledSkillStore::new()
+        BundledSkillStore::new(crate::skill_file::open_skill_bus().unwrap())
     }
 
     fn assert_expected_skills(skills: &[SkillMetadata]) {
@@ -474,6 +480,7 @@ mod tests {
         BundledSkillStore {
             source: AssetSource::Filesystem(assets),
             materialize_dir: root.join("materialized"),
+            bus: crate::skill_file::open_skill_bus().unwrap(),
         }
     }
 
@@ -496,9 +503,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn filesystem_assets_match_expected_skills() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn filesystem_assets_match_expected_skills() {
+        let skills = store().discover().await;
         assert_expected_skills(&skills);
         for skill in &skills {
             assert_eq!(skill.source, Some(SkillSource::Bundled));
@@ -511,9 +518,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn no_duplicate_skill_names() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn no_duplicate_skill_names() {
+        let skills = store().discover().await;
         let mut seen = std::collections::HashSet::new();
         for skill in &skills {
             assert!(
@@ -524,18 +531,18 @@ mod tests {
         }
     }
 
-    #[test]
-    fn bundled_skills_do_not_include_mcporter() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn bundled_skills_do_not_include_mcporter() {
+        let skills = store().discover().await;
         assert!(
             skills.iter().all(|skill| skill.name != "mcporter"),
             "Chelix has native MCP tools; mcporter must not be bundled by default"
         );
     }
 
-    #[test]
-    fn all_names_pass_validation() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn all_names_pass_validation() {
+        let skills = store().discover().await;
         for skill in &skills {
             assert!(
                 parse::validate_name(&skill.name),
@@ -545,9 +552,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_bundled_skill_has_category() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn every_bundled_skill_has_category() {
+        let skills = store().discover().await;
         for skill in &skills {
             assert!(
                 skill.category.is_some(),
@@ -562,18 +569,18 @@ mod tests {
         }
     }
 
-    #[test]
-    fn bundled_categories_match_remaining_assets() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn bundled_categories_match_remaining_assets() {
+        let skills = store().discover().await;
         let cats: std::collections::HashSet<String> =
             skills.iter().filter_map(|s| s.category.clone()).collect();
         let expected = ["devops"].into_iter().map(String::from).collect();
         assert_eq!(cats, expected);
     }
 
-    #[test]
-    fn category_derived_from_top_level_directory() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn category_derived_from_top_level_directory() {
+        let skills = store().discover().await;
         for (name, category) in EXPECTED_BUNDLED_SKILLS {
             let skill = skills
                 .iter()
@@ -583,9 +590,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn all_bundled_skills_have_origin() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn all_bundled_skills_have_origin() {
+        let skills = store().discover().await;
         for skill in &skills {
             assert!(
                 skill.origin.is_some(),
@@ -595,9 +602,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn origin_sources_are_known() {
-        let skills = store().discover();
+    #[tokio::test]
+    async fn origin_sources_are_known() {
+        let skills = store().discover().await;
         let sources: std::collections::HashSet<String> = skills
             .iter()
             .filter_map(|s| s.origin.as_ref()?.source.clone())
@@ -605,12 +612,12 @@ mod tests {
         assert_eq!(sources, std::collections::HashSet::from(["chelix".into()]));
     }
 
-    #[test]
-    fn every_bundled_skill_body_is_readable() {
+    #[tokio::test]
+    async fn every_bundled_skill_body_is_readable() {
         let s = store();
-        let skills = s.discover();
+        let skills = s.discover().await;
         for skill in &skills {
-            let body = s.read_skill(&skill.name);
+            let body = s.read_skill(&skill.name).await;
             assert!(body.is_some(), "skill '{}' body not readable", skill.name);
             assert!(
                 !body.as_ref().is_none_or(String::is_empty),
@@ -620,9 +627,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn missing_skill_returns_none() {
-        assert!(store().read_skill("nonexistent-skill-xyz").is_none());
+    #[tokio::test]
+    async fn missing_skill_returns_none() {
+        assert!(store().read_skill("nonexistent-skill-xyz").await.is_none());
     }
 
     #[test]
@@ -691,10 +698,10 @@ mod tests {
         assert!(script.exists());
     }
 
-    #[test]
-    fn mcp_servers_is_chelix_native() {
+    #[tokio::test]
+    async fn mcp_servers_is_chelix_native() {
         let s = store();
-        let skills = store().discover();
+        let skills = store().discover().await;
         let mcp_servers = skills
             .iter()
             .find(|skill| skill.name == "mcp-servers")
@@ -707,7 +714,10 @@ mod tests {
                 .and_then(|origin| origin.source.as_deref()),
             Some("chelix")
         );
-        let body = s.read_skill("mcp-servers").expect("body should exist");
+        let body = s
+            .read_skill("mcp-servers")
+            .await
+            .expect("body should exist");
         assert!(body.contains("`mcp_add`"));
         assert!(!body.contains("mcporter"));
     }

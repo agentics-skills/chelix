@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 
@@ -6,7 +9,6 @@ use crate::{
     error::Result,
     formats::PluginFormat,
     manifest::ManifestStore,
-    parse,
     types::{SkillMetadata, SkillSource},
 };
 
@@ -21,11 +23,15 @@ pub trait SkillDiscoverer: Send + Sync {
 pub struct FsSkillDiscoverer {
     /// (path, source) pairs to scan, in priority order.
     search_paths: Vec<(PathBuf, SkillSource)>,
+    bus: Arc<chelix_call_bus::CallBus>,
 }
 
 impl FsSkillDiscoverer {
-    pub fn new(search_paths: Vec<(PathBuf, SkillSource)>) -> Self {
-        Self { search_paths }
+    pub fn new(
+        search_paths: Vec<(PathBuf, SkillSource)>,
+        bus: Arc<chelix_call_bus::CallBus>,
+    ) -> Self {
+        Self { search_paths, bus }
     }
 
     /// Build the default search paths for skill discovery.
@@ -66,15 +72,15 @@ impl SkillDiscoverer for FsSkillDiscoverer {
             match source {
                 // Project/Personal: scan one level deep (always enabled).
                 SkillSource::Project | SkillSource::Personal => {
-                    discover_flat(base_path, source, &mut skills);
+                    discover_flat(&self.bus, base_path, source, &mut skills).await;
                 },
                 // Registry: use manifest to filter by enabled state.
                 SkillSource::Registry => {
-                    discover_registry(base_path, &mut skills);
+                    discover_registry(&self.bus, base_path, &mut skills).await;
                 },
                 // Plugin: use plugins manifest to filter by enabled state.
                 SkillSource::Plugin => {
-                    discover_plugins(base_path, &mut skills);
+                    discover_plugins(&self.bus, base_path, &mut skills).await;
                 },
                 // Bundled skills are handled by CompositeSkillDiscoverer,
                 // not by filesystem path scanning.
@@ -87,9 +93,6 @@ impl SkillDiscoverer for FsSkillDiscoverer {
 }
 
 // ── Composite discoverer (fs + bundled) ─────────────────────────────────────
-
-#[cfg(feature = "bundled-skills")]
-use std::sync::Arc;
 
 /// Discoverer that merges filesystem-discovered skills with bundled skills.
 ///
@@ -120,7 +123,7 @@ impl SkillDiscoverer for CompositeSkillDiscoverer {
         let mut skills = self.inner.discover().await?;
         let mut seen: std::collections::HashSet<String> =
             skills.iter().map(|s| s.name.clone()).collect();
-        for bundled in self.bundled.discover() {
+        for bundled in self.bundled.discover().await {
             if seen.insert(bundled.name.clone()) {
                 skills.push(bundled);
             }
@@ -132,7 +135,12 @@ impl SkillDiscoverer for CompositeSkillDiscoverer {
 // ── Filesystem scanning helpers ─────────────────────────────────────────────
 
 /// Scan one level deep for SKILL.md dirs (project/personal sources).
-fn discover_flat(base_path: &Path, source: &SkillSource, skills: &mut Vec<SkillMetadata>) {
+async fn discover_flat(
+    bus: &chelix_call_bus::CallBus,
+    base_path: &Path,
+    source: &SkillSource,
+    skills: &mut Vec<SkillMetadata>,
+) {
     let entries = match std::fs::read_dir(base_path) {
         Ok(e) => e,
         Err(_) => return,
@@ -147,15 +155,9 @@ fn discover_flat(base_path: &Path, source: &SkillSource, skills: &mut Vec<SkillM
         if !skill_md.is_file() {
             continue;
         }
-        let content = match std::fs::read_to_string(&skill_md) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(?skill_md, %e, "failed to read SKILL.md");
-                continue;
-            },
-        };
-        match parse::parse_metadata(&content, &skill_dir) {
-            Ok(mut meta) => {
+        match crate::skill_file::read_on(bus, &skill_md, None).await {
+            Ok(content) => {
+                let mut meta = content.metadata;
                 meta.source = Some(source.clone());
                 tracing::debug!(
                     path = %skill_md.display(),
@@ -172,29 +174,44 @@ fn discover_flat(base_path: &Path, source: &SkillSource, skills: &mut Vec<SkillM
     }
 }
 
-fn discover_plugin_metadata(path: &Path, name: &str) -> Result<SkillMetadata> {
-    let (allow, deny) = if path.is_dir() && path.join("SKILL.md").is_file() {
-        let content = std::fs::read_to_string(path.join("SKILL.md"))?;
-        let metadata = parse::parse_metadata(&content, path)?;
-        (metadata.allow, metadata.deny)
+async fn discover_plugin_metadata(
+    bus: &chelix_call_bus::CallBus,
+    path: &Path,
+    name: &str,
+) -> Result<SkillMetadata> {
+    let document = if path.is_dir() && path.join("SKILL.md").is_file() {
+        Some(crate::skill_file::read_on(bus, &path.join("SKILL.md"), None).await?)
     } else if path.is_file() {
-        let content = std::fs::read_to_string(path)?;
-        parse::parse_access_lists(&content)?
+        Some(crate::skill_file::read_on(bus, path, None).await?)
     } else {
-        (Vec::new(), Vec::new())
+        None
     };
+    let (allowed_agents, denied_agents) = document
+        .as_ref()
+        .map(|document| {
+            (
+                document.metadata.allowed_agents.clone(),
+                document.metadata.denied_agents.clone(),
+            )
+        })
+        .unwrap_or_default();
     Ok(SkillMetadata {
         name: name.to_string(),
         path: path.to_path_buf(),
         source: Some(SkillSource::Plugin),
-        allow,
-        deny,
+        allowed_agents,
+        denied_agents,
         ..Default::default()
     })
 }
 
-fn push_plugin_metadata(path: &Path, name: &str, skills: &mut Vec<SkillMetadata>) {
-    match discover_plugin_metadata(path, name) {
+async fn push_plugin_metadata(
+    bus: &chelix_call_bus::CallBus,
+    path: &Path,
+    name: &str,
+    skills: &mut Vec<SkillMetadata>,
+) {
+    match discover_plugin_metadata(bus, path, name).await {
         Ok(metadata) => skills.push(metadata),
         Err(e) => {
             tracing::warn!(skill_dir = ?path, %e, "failed to parse SKILL.md");
@@ -203,7 +220,11 @@ fn push_plugin_metadata(path: &Path, name: &str, skills: &mut Vec<SkillMetadata>
 }
 
 /// Discover enabled plugin skills using the plugins manifest.
-fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
+async fn discover_plugins(
+    bus: &chelix_call_bus::CallBus,
+    install_dir: &Path,
+    skills: &mut Vec<SkillMetadata>,
+) {
     let manifest_path = chelix_config::data_dir().join("plugins-manifest.json");
     let store = ManifestStore::new(manifest_path);
     let manifest = match store.load() {
@@ -220,7 +241,7 @@ fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
                 continue;
             }
             let skill_dir = install_dir.join(&skill_state.relative_path);
-            push_plugin_metadata(&skill_dir, &skill_state.name, skills);
+            push_plugin_metadata(bus, &skill_dir, &skill_state.name, skills).await;
         }
     }
 }
@@ -231,7 +252,11 @@ fn discover_plugins(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
 /// - `PluginFormat::Skill` → parse `SKILL.md` from disk for full metadata
 /// - Other formats → read access metadata with the manifest name and
 ///   `SkillSource::Plugin` (prompt_gen uses the path as-is)
-fn discover_registry(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
+async fn discover_registry(
+    bus: &chelix_call_bus::CallBus,
+    install_dir: &Path,
+    skills: &mut Vec<SkillMetadata>,
+) {
     let manifest_path = match ManifestStore::default_path() {
         Ok(p) => p,
         Err(_) => return,
@@ -259,15 +284,9 @@ fn discover_registry(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
                         tracing::warn!(?skill_md, "manifest references missing SKILL.md");
                         continue;
                     }
-                    let content = match std::fs::read_to_string(&skill_md) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::warn!(?skill_md, %e, "failed to read SKILL.md");
-                            continue;
-                        },
-                    };
-                    match parse::parse_metadata(&content, &skill_dir) {
-                        Ok(mut meta) => {
+                    match crate::skill_file::read_on(bus, &skill_md, None).await {
+                        Ok(content) => {
+                            let mut meta = content.metadata;
                             meta.source = Some(SkillSource::Registry);
                             tracing::debug!(
                                 path = %skill_md.display(),
@@ -283,7 +302,7 @@ fn discover_registry(install_dir: &Path, skills: &mut Vec<SkillMetadata>) {
                     }
                 },
                 _ => {
-                    push_plugin_metadata(&skill_dir, &skill_state.name, skills);
+                    push_plugin_metadata(bus, &skill_dir, &skill_state.name, skills).await;
                 },
             }
         }
@@ -297,6 +316,10 @@ mod tests {
         super::*,
         crate::types::{RepoEntry, SkillState, SkillsManifest},
     };
+
+    fn bus() -> Arc<chelix_call_bus::CallBus> {
+        crate::skill_file::open_skill_bus().unwrap()
+    }
 
     #[test]
     fn default_paths_for_returns_expected_layout() {
@@ -340,7 +363,8 @@ mod tests {
         )
         .unwrap();
 
-        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir.clone(), SkillSource::Project)]);
+        let discoverer =
+            FsSkillDiscoverer::new(vec![(skills_dir.clone(), SkillSource::Project)], bus());
         let skills = discoverer.discover().await.unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
@@ -349,10 +373,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_discover_skips_missing_dirs() {
-        let discoverer = FsSkillDiscoverer::new(vec![(
-            PathBuf::from("/nonexistent/path"),
-            SkillSource::Personal,
-        )]);
+        let discoverer = FsSkillDiscoverer::new(
+            vec![(PathBuf::from("/nonexistent/path"), SkillSource::Personal)],
+            bus(),
+        );
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
     }
@@ -364,7 +388,7 @@ mod tests {
         std::fs::create_dir_all(skills_dir.join("not-a-skill")).unwrap();
         std::fs::write(skills_dir.join("not-a-skill/README.md"), "hello").unwrap();
 
-        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)]);
+        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], bus());
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
     }
@@ -374,9 +398,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("demo");
         std::fs::create_dir_all(&dir).unwrap();
-        let discoverer =
-            FsSkillDiscoverer::new(vec![(tmp.path().to_path_buf(), SkillSource::Personal)]);
-        for declaration in ["allow: hello", "allow:", "deny:", "deny: [2]"] {
+        let discoverer = FsSkillDiscoverer::new(
+            vec![(tmp.path().to_path_buf(), SkillSource::Personal)],
+            bus(),
+        );
+        for declaration in ["allowed_agents: hello", "denied_agents: [2]"] {
             std::fs::write(
                 dir.join("SKILL.md"),
                 format!("---\nname: demo\n{declaration}\n---\nbody"),
@@ -384,39 +410,58 @@ mod tests {
             .unwrap();
             assert!(discoverer.discover().await.unwrap().is_empty());
         }
+        for declaration in ["allowed_agents:", "denied_agents:"] {
+            std::fs::write(
+                dir.join("SKILL.md"),
+                format!("---\nname: demo\n{declaration}\n---\nbody"),
+            )
+            .unwrap();
+            assert_eq!(discoverer.discover().await.unwrap().len(), 1);
+        }
     }
 
-    #[test]
-    fn plugin_metadata_reads_access_lists_from_directory_and_commands() {
+    #[tokio::test]
+    async fn plugin_metadata_reads_access_lists_from_directory_and_commands() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("plugin");
         std::fs::create_dir_all(&dir).unwrap();
-        let stub = discover_plugin_metadata(&dir, "manifest-name").unwrap();
-        assert!(stub.allow.is_empty());
+        let stub = discover_plugin_metadata(&bus(), &dir, "manifest-name")
+            .await
+            .unwrap();
+        assert!(stub.allowed_agents.is_empty());
         std::fs::write(
             dir.join("SKILL.md"),
-            "---\nname: demo\ndeny: [agent1]\n---\nbody",
+            "---\nname: demo\ndenied_agents:\n- agent1\n---\nbody",
         )
         .unwrap();
-        let metadata = discover_plugin_metadata(&dir, "manifest-name").unwrap();
+        let metadata = discover_plugin_metadata(&bus(), &dir, "manifest-name")
+            .await
+            .unwrap();
         assert_eq!(metadata.name, "manifest-name");
-        assert_eq!(metadata.deny, ["agent1"]);
-        std::fs::write(dir.join("SKILL.md"), "---\nname: demo\ndeny:\n---\nbody").unwrap();
+        assert_eq!(metadata.denied_agents, ["agent1"]);
+        std::fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: demo\ndenied_agents:\n---\nbody",
+        )
+        .unwrap();
         let mut skills = Vec::new();
-        push_plugin_metadata(&dir, "manifest-name", &mut skills);
-        assert!(skills.is_empty());
+        push_plugin_metadata(&bus(), &dir, "manifest-name", &mut skills).await;
+        assert_eq!(skills.len(), 1);
+        assert!(skills[0].denied_agents.is_empty());
         let command = tmp.path().join("review.md");
-        for declaration in ["", "allow: []", "allow: [agent1]"] {
+        for declaration in ["", "allowed_agents: []", "allowed_agents:\n- agent1"] {
             std::fs::write(
                 &command,
                 format!("---\ndescription: Review\n{declaration}\n---\nbody"),
             )
             .unwrap();
-            let metadata = discover_plugin_metadata(&command, "Demo:review").unwrap();
+            let metadata = discover_plugin_metadata(&bus(), &command, "Demo:review")
+                .await
+                .unwrap();
             assert_eq!(metadata.name, "Demo:review");
             assert_eq!(
-                metadata.allow,
-                if declaration == "allow: [agent1]" {
+                metadata.allowed_agents,
+                if declaration.contains("agent1") {
                     vec!["agent1".to_string()]
                 } else {
                     Vec::new()
@@ -425,18 +470,20 @@ mod tests {
         }
         std::fs::write(&command, "# Review").unwrap();
         assert!(
-            discover_plugin_metadata(&command, "Demo:review")
+            discover_plugin_metadata(&bus(), &command, "Demo:review")
+                .await
                 .unwrap()
-                .allow
+                .allowed_agents
                 .is_empty()
         );
         std::fs::write(
             &command,
-            "---\ndescription: Review\nallow: hello\n---\nbody",
+            "---\ndescription: Review\nallowed_agents: hello\n---\nbody",
         )
         .unwrap();
-        push_plugin_metadata(&command, "Demo:review", &mut skills);
-        assert!(skills.is_empty());
+        let mut rejected = Vec::new();
+        push_plugin_metadata(&bus(), &command, "Demo:review", &mut rejected).await;
+        assert!(rejected.is_empty());
     }
 
     #[tokio::test]
@@ -446,7 +493,7 @@ mod tests {
         std::fs::create_dir_all(skills_dir.join("bad-skill")).unwrap();
         std::fs::write(skills_dir.join("bad-skill/SKILL.md"), "no frontmatter here").unwrap();
 
-        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)]);
+        let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], bus());
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
     }
@@ -512,16 +559,18 @@ mod tests {
         // Manually call the inner function with the right manifest.
         // Since discover_registry uses default_path, we test the flat path instead.
         discover_flat(
+            &bus(),
             &install_dir.join("repo/skills"),
             &SkillSource::Project,
             &mut skills,
-        );
+        )
+        .await;
         // Both skills found when using flat scan (no filtering).
         assert_eq!(skills.len(), 2);
     }
 
-    #[test]
-    fn test_discover_registry_mixed_formats() {
+    #[tokio::test]
+    async fn test_discover_registry_mixed_formats() {
         use crate::formats::PluginFormat;
 
         let tmp = tempfile::tempdir().unwrap();
@@ -593,8 +642,11 @@ mod tests {
                     PluginFormat::Skill => {
                         let skill_md = skill_dir.join("SKILL.md");
                         if skill_md.is_file() {
-                            let content = std::fs::read_to_string(&skill_md).unwrap();
-                            let mut meta = parse::parse_metadata(&content, &skill_dir).unwrap();
+                            let bus = bus();
+                            let mut meta = crate::skill_file::read_on(&bus, &skill_md, None)
+                                .await
+                                .unwrap()
+                                .metadata;
                             meta.source = Some(SkillSource::Registry);
                             skills.push(meta);
                         }

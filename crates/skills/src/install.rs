@@ -1,4 +1,7 @@
-use std::path::{Component, Path, PathBuf};
+use std::{
+    io::Read,
+    path::{Component, Path, PathBuf},
+};
 
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, histogram, skills as skills_metrics};
@@ -7,7 +10,6 @@ use crate::{
     error::{Error, Result},
     formats::{PluginFormat, PluginSkillEntry, detect_format, scan_with_adapter},
     manifest::ManifestStore,
-    parse,
     types::{RepoEntry, SkillMetadata, SkillState},
 };
 
@@ -16,7 +18,11 @@ use crate::{
 /// Downloads the repo to `install_dir/<owner>-<repo>/`, auto-detects its format
 /// (SKILL.md, Claude Code `.claude-plugin/`, etc.), scans for skills using the
 /// appropriate adapter, and records the repo + skills in the manifest.
-pub async fn install_skill(source: &str, install_dir: &Path) -> Result<Vec<SkillMetadata>> {
+pub async fn install_skill(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
+    source: &str,
+    install_dir: &Path,
+) -> Result<Vec<SkillMetadata>> {
     #[cfg(feature = "metrics")]
     let start = std::time::Instant::now();
 
@@ -45,13 +51,13 @@ pub async fn install_skill(source: &str, install_dir: &Path) -> Result<Vec<Skill
 
     #[cfg(feature = "metrics")]
     counter!("chelix_skills_git_clone_fallback_total").increment(1);
-    let commit_sha = install_via_http(&owner, &repo, &target).await?;
+    let commit_sha = install_via_http(bus, &owner, &repo, &target).await?;
 
     // Auto-detect repo format and scan accordingly.
     let format = detect_format(&target);
     let (skills_meta, skill_states) = match format {
-        PluginFormat::Skill => scan_repo_skills(&target, install_dir).await?,
-        _ => match scan_with_adapter(&target, format) {
+        PluginFormat::Skill => scan_repo_skills(bus, &target, install_dir).await?,
+        _ => match scan_with_adapter(bus, &target, format).await {
             Some(result) => {
                 let entries = result?;
                 let relative = target
@@ -139,7 +145,12 @@ pub async fn remove_repo(source: &str, install_dir: &Path) -> Result<()> {
 }
 
 /// Install by fetching a tarball from GitHub's API.
-async fn install_via_http(owner: &str, repo: &str, target: &Path) -> Result<Option<String>> {
+async fn install_via_http(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
+    owner: &str,
+    repo: &str,
+    target: &Path,
+) -> Result<Option<String>> {
     let url = format!("https://api.github.com/repos/{owner}/{repo}/tarball");
     let client = reqwest::Client::new();
     let commit_sha = fetch_latest_commit_sha(&client, owner, repo).await;
@@ -164,7 +175,8 @@ async fn install_via_http(owner: &str, repo: &str, target: &Path) -> Result<Opti
     let target_owned = target.to_path_buf();
     let owner_owned = owner.to_string();
     let repo_owned = repo.to_string();
-    tokio::task::spawn_blocking(move || {
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+    let unpack = tokio::task::spawn_blocking(move || {
         let canonical_target = std::fs::canonicalize(&target_owned)?;
         let decoder = flate2::read::GzDecoder::new(&bytes[..]);
         let mut archive = tar::Archive::new(decoder);
@@ -207,11 +219,41 @@ async fn install_via_http(owner: &str, repo: &str, target: &Path) -> Result<Opti
                 continue;
             }
 
-            entry.unpack(&dest)?;
+            if dest.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
+                let mut bytes = Vec::new();
+                let limit = chelix_service_traits::MAX_SKILL_FILE_BYTES;
+                Read::take(&mut entry, limit + 1).read_to_end(&mut bytes)?;
+                if bytes.len() as u64 > limit {
+                    return Err(Error::Install(format!(
+                        "SKILL.md exceeds {limit} bytes: {}",
+                        dest.display()
+                    )));
+                }
+                sender
+                    .blocking_send((dest, bytes))
+                    .map_err(|_| Error::Install("skill file receiver closed".into()))?;
+            } else {
+                entry.unpack(&dest)?;
+            }
         }
         Ok::<(), Error>(())
-    })
-    .await??;
+    });
+    let write_result = crate::skill_file::write_unpacked_skill_files(bus, &mut receiver).await;
+    drop(receiver);
+    let unpack_joined = unpack.await;
+    let failure = if let Err(message) = write_result {
+        Some(Error::Install(message))
+    } else {
+        match unpack_joined {
+            Err(error) => Some(Error::Install(error.to_string())),
+            Ok(Err(error)) => Some(error),
+            Ok(Ok(())) => None,
+        }
+    };
+    if let Some(error) = failure {
+        let _ = tokio::fs::remove_dir_all(&target).await;
+        return Err(error);
+    }
 
     tracing::info!(%owner, %repo, "installed skill repo via HTTP tarball");
     Ok(commit_sha)
@@ -268,14 +310,16 @@ fn sanitize_archive_path(path: &Path) -> Result<Option<PathBuf>> {
 /// Returns (Vec<SkillMetadata>, Vec<SkillState>) — metadata for callers and
 /// state entries for the manifest.
 pub async fn scan_repo_skills(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
     repo_dir: &Path,
     install_dir: &Path,
 ) -> Result<(Vec<SkillMetadata>, Vec<SkillState>)> {
     // Check root SKILL.md (single-skill repo).
     let root_skill_md = repo_dir.join("SKILL.md");
     if root_skill_md.is_file() {
-        let content = tokio::fs::read_to_string(&root_skill_md).await?;
-        let mut meta = parse::parse_metadata(&content, repo_dir)?;
+        let mut meta = crate::skill_file::read_on(bus, &root_skill_md, None)
+            .await?
+            .metadata;
         meta.source = Some(crate::types::SkillSource::Registry);
 
         let relative = repo_dir
@@ -326,33 +370,26 @@ pub async fn scan_repo_skills(
             }
             let skill_md = subdir.join("SKILL.md");
             if skill_md.is_file() {
-                let content = match tokio::fs::read_to_string(&skill_md).await {
-                    Ok(c) => c,
+                let mut meta = match crate::skill_file::read_on(bus, &skill_md, None).await {
+                    Ok(content) => content.metadata,
                     Err(e) => {
                         tracing::debug!(?skill_md, %e, "skipping unreadable SKILL.md");
                         continue;
                     },
                 };
-                match parse::parse_metadata(&content, &subdir) {
-                    Ok(mut meta) => {
-                        meta.source = Some(crate::types::SkillSource::Registry);
-                        let relative = subdir
-                            .strip_prefix(install_dir)
-                            .unwrap_or(&subdir)
-                            .to_string_lossy()
-                            .to_string();
-                        skill_states.push(SkillState {
-                            name: meta.name.clone(),
-                            relative_path: relative,
-                            trusted: false,
-                            enabled: false,
-                        });
-                        skills_meta.push(meta);
-                    },
-                    Err(e) => {
-                        tracing::debug!(?skill_md, %e, "skipping non-conforming SKILL.md");
-                    },
-                }
+                meta.source = Some(crate::types::SkillSource::Registry);
+                let relative = subdir
+                    .strip_prefix(install_dir)
+                    .unwrap_or(&subdir)
+                    .to_string_lossy()
+                    .to_string();
+                skill_states.push(SkillState {
+                    name: meta.name.clone(),
+                    relative_path: relative,
+                    trusted: false,
+                    enabled: false,
+                });
+                skills_meta.push(meta);
             } else {
                 dirs_to_scan.push(subdir);
             }
@@ -481,7 +518,13 @@ mod tests {
         )
         .unwrap();
 
-        let (meta, states) = scan_repo_skills(&repo_dir, install_dir).await.unwrap();
+        let (meta, states) = scan_repo_skills(
+            &crate::skill_file::open_skill_bus().unwrap(),
+            &repo_dir,
+            install_dir,
+        )
+        .await
+        .unwrap();
         assert_eq!(meta.len(), 1);
         assert_eq!(meta[0].name, "single");
         assert_eq!(states.len(), 1);
@@ -489,8 +532,8 @@ mod tests {
         assert_eq!(states[0].relative_path, "my-repo");
     }
 
-    #[test]
-    fn test_detect_format_routes_claude_code() {
+    #[tokio::test]
+    async fn test_detect_format_routes_claude_code() {
         use crate::formats::{PluginFormat, detect_format, scan_with_adapter};
 
         let tmp = tempfile::tempdir().unwrap();
@@ -514,7 +557,8 @@ mod tests {
         assert_eq!(format, PluginFormat::ClaudeCode);
 
         // scan_with_adapter should return Some for ClaudeCode
-        let result = scan_with_adapter(root, format);
+        let result =
+            scan_with_adapter(&crate::skill_file::open_skill_bus().unwrap(), root, format).await;
         assert!(result.is_some());
         let entries = result.unwrap().unwrap();
         assert_eq!(entries.len(), 1);
@@ -553,7 +597,13 @@ mod tests {
         )
         .unwrap();
 
-        let (meta, states) = scan_repo_skills(&repo_dir, install_dir).await.unwrap();
+        let (meta, states) = scan_repo_skills(
+            &crate::skill_file::open_skill_bus().unwrap(),
+            &repo_dir,
+            install_dir,
+        )
+        .await
+        .unwrap();
         assert_eq!(meta.len(), 2);
         assert_eq!(states.len(), 2);
         assert!(states.iter().all(|s| !s.enabled));
@@ -561,8 +611,8 @@ mod tests {
 
     /// Regression test for #880: marketplace repos must store per-skill
     /// relative paths, not the repo root for every entry.
-    #[test]
-    fn test_marketplace_skill_states_have_per_skill_relative_paths() {
+    #[tokio::test]
+    async fn test_marketplace_skill_states_have_per_skill_relative_paths() {
         use crate::formats::{PluginFormat, detect_format, scan_with_adapter};
 
         let tmp = tempfile::tempdir().unwrap();
@@ -603,7 +653,14 @@ mod tests {
         let format = detect_format(&target);
         assert_eq!(format, PluginFormat::ClaudeCode);
 
-        let entries = scan_with_adapter(&target, format).unwrap().unwrap();
+        let entries = scan_with_adapter(
+            &crate::skill_file::open_skill_bus().unwrap(),
+            &target,
+            format,
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert_eq!(entries.len(), 2);
 
         let relative = target
@@ -657,8 +714,8 @@ mod tests {
     /// Regression test: single-plugin .md file skills must store the path to
     /// the .md file (not its parent directory) so the Plugin-as-file branch
     /// in read_ops can detect and serve them.
-    #[test]
-    fn test_single_plugin_skill_states_point_to_md_file() {
+    #[tokio::test]
+    async fn test_single_plugin_skill_states_point_to_md_file() {
         use crate::formats::{PluginFormat, detect_format, scan_with_adapter};
 
         let tmp = tempfile::tempdir().unwrap();
@@ -682,7 +739,14 @@ mod tests {
         let format = detect_format(&target);
         assert_eq!(format, PluginFormat::ClaudeCode);
 
-        let entries = scan_with_adapter(&target, format).unwrap().unwrap();
+        let entries = scan_with_adapter(
+            &crate::skill_file::open_skill_bus().unwrap(),
+            &target,
+            format,
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert_eq!(entries.len(), 1);
 
         let relative = target

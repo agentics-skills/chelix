@@ -2648,6 +2648,9 @@ mod tests {
             project: chelix_service_traits::NoopProjectService,
             mcp: chelix_service_traits::NoopMcpService,
         });
+        let bus = chelix_call_bus::CallBus::new();
+        bus.require::<chelix_service_traits::StopSession>().unwrap();
+        chelix_skills::skill_file::bind_skill_files(&bus).unwrap();
         let chat = Arc::new(chelix_chat::LiveChatService::new(
             Arc::new(tokio::sync::RwLock::new(
                 chelix_providers::ProviderRegistry::empty(),
@@ -2659,11 +2662,10 @@ mod tests {
             config.clone(),
             test_agents_config(),
             chelix_config::ToolsConfigSource::snapshot(config.tools),
+            Arc::clone(&bus),
         ));
         let external =
             fake_external_agents(Arc::clone(&metadata), Arc::new(FakeAgentState::default()));
-        let bus = chelix_call_bus::CallBus::new();
-        bus.require::<chelix_service_traits::StopSession>().unwrap();
         crate::server::register_stop_session(&bus, Arc::clone(&chat), Arc::clone(&external))
             .unwrap();
         bus.seal().unwrap();
@@ -2962,6 +2964,9 @@ mod tests {
             project: chelix_service_traits::NoopProjectService,
             mcp: chelix_service_traits::NoopMcpService,
         });
+        let bus = chelix_call_bus::CallBus::new();
+        bus.require::<chelix_service_traits::StopSession>().unwrap();
+        chelix_skills::skill_file::bind_skill_files(&bus).unwrap();
         let local = Arc::new(chelix_chat::LiveChatService::new(
             Arc::new(tokio::sync::RwLock::new(
                 chelix_providers::ProviderRegistry::empty(),
@@ -2973,10 +2978,9 @@ mod tests {
             config.clone(),
             test_agents_config(),
             chelix_config::ToolsConfigSource::snapshot(config.tools),
+            Arc::clone(&bus),
         ));
         let gateway = test_gateway_state();
-        let bus = chelix_call_bus::CallBus::new();
-        bus.require::<chelix_service_traits::StopSession>().unwrap();
         crate::server::register_stop_session(&bus, Arc::clone(&local), Arc::clone(&external))
             .unwrap();
         bus.seal().unwrap();

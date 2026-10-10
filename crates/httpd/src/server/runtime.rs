@@ -913,8 +913,16 @@ pub async fn start_gateway(
 
     let (skill_count, repo_count) = {
         use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        let discoverer = FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths());
-        let sc = discoverer.discover().await.map(|s| s.len()).unwrap_or(0);
+        let sc = match state.call_bus.get() {
+            Some(bus) => {
+                let discoverer =
+                    FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(bus));
+                discoverer.discover().await.map(|s| s.len()).unwrap_or(0)
+            },
+            None => {
+                return Err(crate::Error::Config("call bus is not installed".into()));
+            },
+        };
         let rc = chelix_skills::manifest::ManifestStore::default_path()
             .ok()
             .map(|p| {

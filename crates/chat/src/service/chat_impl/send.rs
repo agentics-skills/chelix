@@ -629,7 +629,7 @@ impl LiveChatService {
         let session_agent_id = persona.agent_id.clone();
 
         // Discover enabled skills/plugins and apply the live per-agent policy.
-        let discovered_skills = discover_skills_if_enabled(&persona.config).await;
+        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
         let discovered_skills =
             filter_skills_for_agent(discovered_skills, &session_agent_id, &persona.agent.skills);
         info!(
@@ -935,6 +935,7 @@ impl LiveChatService {
         };
 
         let queued_prompts = Arc::clone(&self.queued_prompts);
+        let call_bus = Arc::clone(&self.call_bus);
         let memory_forget_provider_resolver = MemoryForgetProviderResolver::new(
             Arc::clone(&self.providers),
             Arc::clone(&self.session_metadata),
@@ -1059,6 +1060,7 @@ impl LiveChatService {
                             manager: Arc::clone(&tool_permissions),
                             metadata: Arc::clone(&session_metadata),
                         }),
+                        &call_bus,
                     )
                     .await
                 }

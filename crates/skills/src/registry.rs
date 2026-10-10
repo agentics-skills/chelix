@@ -1,11 +1,10 @@
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 
 use crate::{
     discover::SkillDiscoverer,
     error::{Error, Result},
-    parse,
     types::{SkillContent, SkillMetadata},
 };
 
@@ -28,35 +27,34 @@ pub trait SkillRegistry: Send + Sync {
 /// In-memory registry backed by a discoverer.
 pub struct InMemoryRegistry {
     skills: HashMap<String, SkillMetadata>,
+    bus: std::sync::Arc<chelix_call_bus::CallBus>,
 }
 
 impl InMemoryRegistry {
     /// Create a new empty registry.
-    pub fn new() -> Self {
+    pub fn new(bus: std::sync::Arc<chelix_call_bus::CallBus>) -> Self {
         Self {
             skills: HashMap::new(),
+            bus,
         }
     }
 
     /// Populate the registry from a discoverer.
-    pub async fn from_discoverer(discoverer: &dyn SkillDiscoverer) -> Result<Self> {
+    pub async fn from_discoverer(
+        discoverer: &dyn SkillDiscoverer,
+        bus: std::sync::Arc<chelix_call_bus::CallBus>,
+    ) -> Result<Self> {
         let discovered = discoverer.discover().await?;
         let mut skills = HashMap::new();
         for meta in discovered {
             skills.insert(meta.name.clone(), meta);
         }
-        Ok(Self { skills })
+        Ok(Self { skills, bus })
     }
 
     /// Add a skill directly (useful for testing).
     pub fn insert(&mut self, meta: SkillMetadata) {
         self.skills.insert(meta.name.clone(), meta);
-    }
-}
-
-impl Default for InMemoryRegistry {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -72,9 +70,7 @@ impl SkillRegistry for InMemoryRegistry {
             .get(name)
             .ok_or_else(|| Error::NotFound(format!("skill '{}' not found", name)))?;
 
-        let skill_md = meta.path.join("SKILL.md");
-        let content = tokio::fs::read_to_string(&skill_md).await?;
-        parse::parse_skill(&content, &meta.path)
+        crate::skill_file::read_on(&self.bus, &meta.path.join("SKILL.md"), None).await
     }
 
     async fn install_skill(&self, _source: &str) -> Result<SkillMetadata> {
@@ -110,13 +106,6 @@ impl SkillRegistry for InMemoryRegistry {
     }
 }
 
-/// Convenience: load a skill's full content given its path.
-pub async fn load_skill_from_path(skill_dir: &Path) -> Result<SkillContent> {
-    let skill_md = skill_dir.join("SKILL.md");
-    let content = tokio::fs::read_to_string(&skill_md).await?;
-    parse::parse_skill(&content, skill_dir)
-}
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -133,7 +122,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut reg = InMemoryRegistry::new();
+        let mut reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
         reg.insert(SkillMetadata {
             name: "my-skill".into(),
             description: "test".into(),
@@ -151,13 +140,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_nonexistent_skill() {
-        let reg = InMemoryRegistry::new();
+        let reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
         assert!(reg.load_skill("nope").await.is_err());
     }
 
     #[tokio::test]
     async fn test_remove_non_registry_skill_fails() {
-        let mut reg = InMemoryRegistry::new();
+        let mut reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
         reg.insert(SkillMetadata {
             name: "local".into(),
             path: PathBuf::from("/tmp/local"),

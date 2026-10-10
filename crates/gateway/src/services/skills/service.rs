@@ -4,11 +4,9 @@ use {
     std::{
         collections::HashSet,
         path::{Path, PathBuf},
+        sync::Arc,
     },
 };
-
-#[cfg(feature = "bundled-skills")]
-use std::sync::Arc;
 
 use super::skills_helpers::*;
 
@@ -17,7 +15,109 @@ use super::super::*;
 
 // ── Skills (Noop — complex impl that depends on gateway-specific crates) ────
 
-pub struct NoopSkillsService;
+pub struct UnwiredSkillsService;
+
+#[async_trait]
+impl SkillsService for UnwiredSkillsService {
+    async fn status(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn install(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn update(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn list(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn remove(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn repos_list(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn repos_list_full(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn repos_remove(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn repos_export(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn repos_import(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn repos_unquarantine(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn emergency_disable(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn skill_enable(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn skill_disable(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn skill_trust(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn skill_detail(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn security_status(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn security_scan(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn skill_save(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn bundled_categories(&self) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn bundled_toggle_category(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+
+    async fn recipe(&self, _params: Value) -> ServiceResult {
+        Err("skills service is not installed".into())
+    }
+}
+
+pub struct NoopSkillsService {
+    bus: Arc<chelix_call_bus::CallBus>,
+}
+
+impl NoopSkillsService {
+    #[must_use]
+    pub fn new(bus: Arc<chelix_call_bus::CallBus>) -> Self {
+        Self { bus }
+    }
+}
 
 #[async_trait]
 impl SkillsService for NoopSkillsService {
@@ -32,7 +132,7 @@ impl SkillsService for NoopSkillsService {
             .ok_or_else(|| "missing 'source' parameter (owner/repo format)".to_string())?;
         let install_dir =
             chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let skills = chelix_skills::install::install_skill(source, &install_dir)
+        let skills = chelix_skills::install::install_skill(&self.bus, source, &install_dir)
             .await
             .map_err(ServiceError::message)?;
         let installed: Vec<_> = skills
@@ -61,11 +161,14 @@ impl SkillsService for NoopSkillsService {
 
     async fn list(&self) -> ServiceResult {
         use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        let fs_discoverer = FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths());
+        let fs_discoverer =
+            FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(&self.bus));
 
         #[cfg(feature = "bundled-skills")]
         let skills = {
-            let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+            let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new(Arc::clone(
+                &self.bus,
+            )));
             let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
                 Box::new(fs_discoverer),
                 bundled,
@@ -82,15 +185,13 @@ impl SkillsService for NoopSkillsService {
             .map(|s| {
                 let protected = matches!(
                     s.source,
-                    Some(chelix_skills::types::SkillSource::Personal)
-                        | Some(chelix_skills::types::SkillSource::Project)
+                    Some(SkillSource::Personal) | Some(SkillSource::Project)
                 ) && is_protected_discovered_skill(&s.name);
                 serde_json::json!({
                     "name": s.name,
                     "description": s.description,
                     "category": s.category,
                     "license": s.license,
-                    "allowed_tools": s.allowed_tools,
                     "path": s.path.to_string_lossy(),
                     "source": s.source,
                     "protected": protected,
@@ -210,108 +311,89 @@ impl SkillsService for NoopSkillsService {
             store.save(&manifest).map_err(ServiceError::message)?;
         }
 
-        let repos: Vec<_> = manifest
-            .repos
-            .iter()
-            .map(|repo| {
-                let repo_dir = install_dir.join(&repo.repo_name);
-                // Re-detect format for repos that predate the formats module
-                let format = if repo.format == chelix_skills::formats::PluginFormat::Skill {
-                    chelix_skills::formats::detect_format(&repo_dir)
-                } else {
-                    repo.format
-                };
-
-                // For non-SKILL.md formats, scan with adapter to get enriched metadata.
-                let adapter_entries = match format {
-                    chelix_skills::formats::PluginFormat::Skill => None,
-                    _ => chelix_skills::formats::scan_with_adapter(&repo_dir, format)
-                        .and_then(|r| r.ok()),
-                };
-
-                // Deduplicate skills by name — test fixtures or re-scans can
-                // produce duplicate entries with different relative_path.
-                // Keep the first (usually the real) entry for each name.
-                let mut seen_names = HashSet::new();
-                let skills: Vec<_> = repo
-                    .skills
-                    .iter()
-                    .filter(|s| seen_names.insert(s.name.clone()))
-                    .map(|s| {
-                        // If we have adapter entries, match by name for enriched data.
-                        if let Some(ref entries) = adapter_entries {
-                            let entry = entries.iter().find(|e| e.metadata.name == s.name);
-                            serde_json::json!({
-                                "name": s.name,
-                                "description": entry.map(|e| e.metadata.description.as_str()).unwrap_or(""),
-                                "display_name": entry.and_then(|e| e.display_name.as_deref()),
-                                "relative_path": s.relative_path,
-                                "trusted": s.trusted,
-                                "enabled": s.enabled,
-                                "drifted": drifted_sources.contains(&repo.source),
-                            })
-                        } else {
-                            // SKILL.md format: parse from disk.
-                            let skill_dir = install_dir.join(&s.relative_path);
-                            let skill_md = skill_dir.join("SKILL.md");
-                            let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
-                            let (description, display_name) =
-                                if let Ok(content) = std::fs::read_to_string(&skill_md) {
-                                    if let Ok(meta) = chelix_skills::parse::parse_metadata(
-                                        &content, &skill_dir,
-                                    ) {
-                                        let desc = if meta.description.is_empty() {
-                                            meta_json
-                                                .as_ref()
-                                                .and_then(|m| m.display_name.clone())
-                                                .unwrap_or_default()
-                                        } else {
-                                            meta.description
-                                        };
-                                        let dn = meta_json
-                                            .as_ref()
-                                            .and_then(|m| m.display_name.clone());
-                                        (desc, dn)
-                                    } else {
-                                        let dn = meta_json
-                                            .as_ref()
-                                            .and_then(|m| m.display_name.clone());
-                                        (dn.clone().unwrap_or_default(), dn)
-                                    }
-                                } else {
-                                    let dn =
-                                        meta_json.as_ref().and_then(|m| m.display_name.clone());
-                                    (dn.clone().unwrap_or_default(), dn)
-                                };
-                            serde_json::json!({
-                                "name": s.name,
-                                "description": description,
-                                "display_name": display_name,
-                                "relative_path": s.relative_path,
-                                "trusted": s.trusted,
-                                "enabled": s.enabled,
-                                "drifted": drifted_sources.contains(&repo.source),
-                            })
-                        }
+        let mut repos = Vec::new();
+        for repo in &manifest.repos {
+            let repo_dir = install_dir.join(&repo.repo_name);
+            let format = if repo.format == chelix_skills::formats::PluginFormat::Skill {
+                chelix_skills::formats::detect_format(&repo_dir)
+            } else {
+                repo.format
+            };
+            let adapter_entries = match format {
+                chelix_skills::formats::PluginFormat::Skill => None,
+                _ => chelix_skills::formats::scan_with_adapter(&self.bus, &repo_dir, format)
+                    .await
+                    .and_then(|r| r.ok()),
+            };
+            let mut seen_names = HashSet::new();
+            let mut skills = Vec::new();
+            for skill in &repo.skills {
+                if !seen_names.insert(skill.name.clone()) {
+                    continue;
+                }
+                let item = if let Some(ref entries) = adapter_entries {
+                    let entry = entries.iter().find(|e| e.metadata.name == skill.name);
+                    serde_json::json!({
+                        "name": skill.name,
+                        "description": entry.map(|e| e.metadata.description.as_str()).unwrap_or(""),
+                        "display_name": entry.and_then(|e| e.display_name.as_deref()),
+                        "relative_path": skill.relative_path,
+                        "trusted": skill.trusted,
+                        "enabled": skill.enabled,
+                        "drifted": drifted_sources.contains(&repo.source),
                     })
-                    .collect();
-
-                serde_json::json!({
-                    "source": repo.source,
-                    "repo_name": repo.repo_name,
-                    "installed_at_ms": repo.installed_at_ms,
-                    "commit_sha": repo.commit_sha,
-                    "quarantined": repo.quarantined,
-                    "quarantine_reason": repo.quarantine_reason,
-                    "provenance": repo.provenance,
-                    "drifted": drifted_sources.contains(&repo.source),
-                    "format": format,
-                    "skills": skills,
-                })
-            })
-            .collect();
-
-        let mut repos = repos;
+                } else {
+                    let skill_dir = install_dir.join(&skill.relative_path);
+                    let skill_md = skill_dir.join("SKILL.md");
+                    let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
+                    let (description, display_name) = if let Ok(content) = self
+                        .bus
+                        .call(ReadSkillFile {
+                            path: skill_md.clone(),
+                            max_bytes: None,
+                            mode: SkillFileRead::Detect,
+                        })
+                        .await
+                    {
+                        let desc = if content.metadata.description.is_empty() {
+                            meta_json
+                                .as_ref()
+                                .and_then(|m| m.display_name.clone())
+                                .unwrap_or_default()
+                        } else {
+                            content.metadata.description
+                        };
+                        let dn = meta_json.as_ref().and_then(|m| m.display_name.clone());
+                        (desc, dn)
+                    } else {
+                        let dn = meta_json.as_ref().and_then(|m| m.display_name.clone());
+                        (dn.clone().unwrap_or_default(), dn)
+                    };
+                    serde_json::json!({
+                        "name": skill.name,
+                        "description": description,
+                        "display_name": display_name,
+                        "relative_path": skill.relative_path,
+                        "trusted": skill.trusted,
+                        "enabled": skill.enabled,
+                        "drifted": drifted_sources.contains(&repo.source),
+                    })
+                };
+                skills.push(item);
+            }
+            repos.push(serde_json::json!({
+                "source": repo.source,
+                "repo_name": repo.repo_name,
+                "installed_at_ms": repo.installed_at_ms,
+                "commit_sha": repo.commit_sha,
+                "quarantined": repo.quarantined,
+                "quarantine_reason": repo.quarantine_reason,
+                "provenance": repo.provenance,
+                "drifted": drifted_sources.contains(&repo.source),
+                "format": format,
+                "skills": skills,
+            }));
+        }
         if let Ok(entries) = std::fs::read_dir(&install_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -414,10 +496,13 @@ impl SkillsService for NoopSkillsService {
             .ok_or_else(|| "missing 'path' parameter".to_string())?;
         let install_dir =
             chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
-        let imported =
-            chelix_skills::portability::import_repo_bundle(Path::new(bundle_path), &install_dir)
-                .await
-                .map_err(ServiceError::message)?;
+        let imported = chelix_skills::portability::import_repo_bundle(
+            &self.bus,
+            Path::new(bundle_path),
+            &install_dir,
+        )
+        .await
+        .map_err(ServiceError::message)?;
 
         security_audit(
             "skills.repos.import",
@@ -497,7 +582,7 @@ impl SkillsService for NoopSkillsService {
     async fn skill_enable(&self, params: Value) -> ServiceResult {
         let source = params.get("source").and_then(|v| v.as_str()).unwrap_or("");
         if source == "bundled" {
-            return toggle_bundled_skill(&params, true);
+            return toggle_bundled_skill(&self.bus, &params, true).await;
         }
         toggle_skill(&params, true)
     }
@@ -511,7 +596,7 @@ impl SkillsService for NoopSkillsService {
         }
 
         if source == "bundled" {
-            return toggle_bundled_skill(&params, false);
+            return toggle_bundled_skill(&self.bus, &params, false).await;
         }
 
         toggle_skill(&params, false)
@@ -525,8 +610,8 @@ impl SkillsService for NoopSkillsService {
     async fn bundled_categories(&self) -> ServiceResult {
         #[cfg(feature = "bundled-skills")]
         {
-            let store = chelix_skills::bundled::BundledSkillStore::new();
-            let skills = store.discover();
+            let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(&self.bus));
+            let skills = store.discover().await;
             let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
             let disabled = &config.skills.disabled_bundled_categories;
 
@@ -602,13 +687,13 @@ impl SkillsService for NoopSkillsService {
 
         // Personal/project skills: look up directly by name in discovered paths.
         if source == "personal" || source == "project" {
-            return skill_detail_discovered(source, skill_name);
+            return skill_detail_discovered(&self.bus, source, skill_name).await;
         }
 
         // Bundled skills: read from the embedded store.
         #[cfg(feature = "bundled-skills")]
         if source == "bundled" {
-            return skill_detail_bundled(skill_name);
+            return skill_detail_bundled(&self.bus, skill_name).await;
         }
 
         let install_dir =
@@ -646,10 +731,15 @@ impl SkillsService for NoopSkillsService {
             chelix_skills::formats::PluginFormat::Skill => {
                 let skill_dir = install_dir.join(&skill_state.relative_path);
                 let skill_md = skill_dir.join("SKILL.md");
-                let raw = std::fs::read_to_string(&skill_md)
+                let content = self
+                    .bus
+                    .call(ReadSkillFile {
+                        path: skill_md.clone(),
+                        max_bytes: None,
+                        mode: SkillFileRead::Detect,
+                    })
+                    .await
                     .map_err(|e| format!("failed to read SKILL.md: {e}"))?;
-                let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
-                    .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
                 let meta_json = chelix_skills::parse::read_meta_json(&skill_dir);
                 let display_name = meta_json.as_ref().and_then(|m| m.display_name.clone());
                 let author = meta_json.as_ref().and_then(|m| m.owner.clone());
@@ -685,7 +775,7 @@ impl SkillsService for NoopSkillsService {
                     "license": content.metadata.license,
                     "license_url": license_url,
                     "compatibility": content.metadata.compatibility,
-                    "allowed_tools": content.metadata.allowed_tools,
+                    "file": skill_document_json(&content.metadata, &content.body),
                     "trusted": skill_state.trusted,
                     "enabled": skill_state.enabled,
                     "quarantined": repo.quarantined,
@@ -703,9 +793,11 @@ impl SkillsService for NoopSkillsService {
             },
             format => {
                 // Non-SKILL.md format: use adapter to scan for skill body + metadata.
-                let entries = chelix_skills::formats::scan_with_adapter(&repo_dir, format)
-                    .ok_or_else(|| format!("no adapter for format '{format}'"))?
-                    .map_err(|e| format!("scan error: {e}"))?;
+                let entries =
+                    chelix_skills::formats::scan_with_adapter(&self.bus, &repo_dir, format)
+                        .await
+                        .ok_or_else(|| format!("no adapter for format '{format}'"))?
+                        .map_err(|e| format!("scan error: {e}"))?;
                 let entry = entries
                     .into_iter()
                     .find(|e| e.metadata.name == skill_name)
@@ -718,6 +810,21 @@ impl SkillsService for NoopSkillsService {
                     }
                 });
                 let license_url = license_url_for_source(source, entry.metadata.license.as_deref());
+                let file_path = repo_dir.join(
+                    entry
+                        .source_file
+                        .as_deref()
+                        .ok_or_else(|| format!("skill '{skill_name}' has no source file"))?,
+                );
+                let file = self
+                    .bus
+                    .call(ReadSkillFile {
+                        path: file_path.clone(),
+                        max_bytes: None,
+                        mode: SkillFileRead::Catalog,
+                    })
+                    .await
+                    .map_err(|e| format!("failed to read skill file: {e}"))?;
                 Ok(serde_json::json!({
                     "name": entry.metadata.name,
                     "display_name": entry.display_name,
@@ -728,7 +835,7 @@ impl SkillsService for NoopSkillsService {
                     "license": entry.metadata.license,
                     "license_url": license_url,
                     "compatibility": entry.metadata.compatibility,
-                    "allowed_tools": entry.metadata.allowed_tools,
+                    "file": skill_document_json(&file.metadata, &file.body),
                     "trusted": skill_state.trusted,
                     "enabled": skill_state.enabled,
                     "quarantined": repo.quarantined,
@@ -739,8 +846,8 @@ impl SkillsService for NoopSkillsService {
                     "commit_url": commit_url,
                     "commit_age_days": commit_age_days,
                     "source_url": source_url,
-                    "body": entry.body,
-                    "body_html": markdown_to_html(&entry.body),
+                    "body": file.body,
+                    "body_html": markdown_to_html(&file.body),
                     "source": source,
                 }))
             },
@@ -760,15 +867,6 @@ impl SkillsService for NoopSkillsService {
             .get("body")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'body' parameter".to_string())?;
-        let allowed_tools: Vec<String> = params
-            .get("allowed_tools")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
 
         if !chelix_skills::parse::validate_name(name) {
             return Err(format!(
@@ -780,38 +878,17 @@ impl SkillsService for NoopSkillsService {
         let skills_dir = chelix_config::data_dir().join("skills");
         let skill_dir = skills_dir.join(name);
         let skill_md = skill_dir.join("SKILL.md");
-        match std::fs::read_to_string(&skill_md) {
-            Ok(current) => {
-                chelix_skills::parse::parse_metadata(&current, &skill_dir)
-                    .map_err(|e| ServiceError::message(e.to_string()))?;
-            },
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-            Err(error) => return Err(ServiceError::message(error.to_string())),
-        }
-
-        // Build SKILL.md content.
-        let description =
-            serde_json::to_string(description).map_err(|e| ServiceError::message(e.to_string()))?;
-        let mut content = format!("---\nname: {name}\ndescription: {description}\n");
-        if !allowed_tools.is_empty() {
-            content.push_str("allowed_tools:\n");
-            for tool in &allowed_tools {
-                let tool = serde_json::to_string(tool)
-                    .map_err(|e| ServiceError::message(e.to_string()))?;
-                content.push_str(&format!("  - {tool}\n"));
-            }
-        }
-        content.push_str("---\n\n");
-        content.push_str(body);
-        if !body.ends_with('\n') {
-            content.push('\n');
-        }
-
         std::fs::create_dir_all(&skill_dir)
             .map_err(|e| format!("failed to create skill directory: {e}"))?;
-        chelix_skills::publish_markdown(&skill_md, &content, None)
+        self.bus
+            .call(ReplaceSkillFile {
+                path: skill_md,
+                name: name.to_string(),
+                description: description.to_string(),
+                body: body.to_string(),
+            })
             .await
-            .map_err(|e| format!("failed to write SKILL.md: {e}"))?;
+            .map_err(|error| format!("failed to write SKILL.md: {error}"))?;
 
         // Determine if this was a create or update for the response.
         Ok(serde_json::json!({
@@ -905,38 +982,41 @@ mod tests {
         let config = ConfigDirGuard::new(dir.path().to_path_buf());
         chelix_config::set_data_dir(dir.path().to_path_buf());
         let _guard = SkillDataDirGuard { _config: config };
-        let service = NoopSkillsService;
+        let bus =
+            chelix_skills::skill_file::open_skill_bus().map_err(|error| anyhow::anyhow!(error))?;
+        let service = NoopSkillsService::new(Arc::clone(&bus));
         let params = serde_json::json!({
             "name": "demo",
             "description": "Use when: X\nNext step",
-            "body": "body",
-            "allowed_tools": ["Tool: action\nNext"]
+            "body": "body"
         });
         service.skill_save(params.clone()).await?;
         let path = dir.path().join("skills/demo/SKILL.md");
         let content = std::fs::read_to_string(&path)?;
-        assert!(content.contains("allow: []"));
-        assert!(content.contains("deny: []"));
-        let metadata =
-            chelix_skills::parse::parse_metadata(&content, &dir.path().join("skills/demo"))?;
-        assert_eq!(metadata.description, "Use when: X\nNext step");
-        assert_eq!(metadata.allowed_tools, ["Tool: action\nNext"]);
+        assert!(content.contains("allowed_agents:\n"));
+        assert!(content.contains("denied_agents:\n"));
+        let metadata = bus
+            .call(ReadSkillFile {
+                path: path.clone(),
+                max_bytes: None,
+                mode: SkillFileRead::Detect,
+            })
+            .await?;
+        assert_eq!(metadata.metadata.description, "Use when: X\nNext step");
         std::fs::write(
             &path,
-            "---\nname: demo\nallow: [agent1]\ndeny: []\n---\nold body",
+            "---\nname: demo\ndescription: old\nallowed_agents:\n- agent1\ndenied_agents:\n---\nold body",
         )?;
         service.skill_save(params.clone()).await?;
-        let saved = std::fs::read_to_string(&path)?;
-        assert_eq!(
-            chelix_skills::parse::parse_metadata(
-                &saved,
-                path.parent()
-                    .ok_or_else(|| anyhow::anyhow!("skill parent"))?
-            )?
-            .allow,
-            ["agent1"]
-        );
-        let invalid = "---\nname: demo\ndeny:\n---\nbody";
+        let saved = bus
+            .call(ReadSkillFile {
+                path: path.clone(),
+                max_bytes: None,
+                mode: SkillFileRead::Detect,
+            })
+            .await?;
+        assert_eq!(saved.metadata.allowed_agents, ["agent1"]);
+        let invalid = "---\nname: demo\nallowed_agents: hello\n---\nbody";
         std::fs::write(&path, invalid)?;
         let error = service
             .skill_save(params)
@@ -974,7 +1054,9 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
 
-        let service = NoopSkillsService;
+        let bus =
+            chelix_skills::skill_file::open_skill_bus().map_err(|error| anyhow::anyhow!(error))?;
+        let service = NoopSkillsService::new(Arc::clone(&bus));
         let result = service
             .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;
@@ -1003,7 +1085,9 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let _guard = ConfigDirGuard::new(dir.path().to_path_buf());
 
-        let service = NoopSkillsService;
+        let bus =
+            chelix_skills::skill_file::open_skill_bus().map_err(|error| anyhow::anyhow!(error))?;
+        let service = NoopSkillsService::new(Arc::clone(&bus));
         service
             .skill_disable(serde_json::json!({ "source": "bundled", "skill": "mcp-servers" }))
             .await?;

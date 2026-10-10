@@ -369,6 +369,8 @@ pub struct LiveChatService {
     pub(in crate::service) active_reply_medium: Arc<RwLock<HashMap<String, ReplyMedium>>>,
     /// Startup configuration snapshot for non-agent chat settings.
     pub(in crate::service) config: chelix_config::ChelixConfig,
+    /// Process bus used by skill discovery and agent-scoped skill tools.
+    pub(in crate::service) call_bus: Arc<chelix_call_bus::CallBus>,
     /// Live agent registry shared with agent CRUD and chat runs.
     pub(in crate::service) agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
     /// Source used to reload `[tools]` before each new agent run.
@@ -419,6 +421,7 @@ impl LiveChatService {
         config: chelix_config::ChelixConfig,
         agents_config: Arc<RwLock<chelix_config::AgentsConfig>>,
         tools_config_source: chelix_config::ToolsConfigSource,
+        call_bus: Arc<chelix_call_bus::CallBus>,
     ) -> Self {
         Self {
             providers,
@@ -439,6 +442,7 @@ impl LiveChatService {
             active_partial_assistant: Arc::new(RwLock::new(HashMap::new())),
             active_reply_medium: Arc::new(RwLock::new(HashMap::new())),
             config,
+            call_bus,
             agents_config,
             tools_config_source,
             session_gates: super::session_gate::SessionGateRegistry::new(),
@@ -747,7 +751,7 @@ impl LiveChatService {
             .resolve_project_context(session_key, context.connection_id())
             .await?;
 
-        let discovered_skills = discover_skills_if_enabled(&persona.config).await;
+        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
         let agent_id = persona.agent_id.clone();
         let discovered_skills =
             filter_skills_for_agent(discovered_skills, &agent_id, &persona.agent.skills);
@@ -783,6 +787,7 @@ impl LiveChatService {
                 &agent_id,
                 memory_setup,
                 visible_tools,
+                &self.call_bus,
             )
         }
         .map_err(|e| error::Error::message(e.to_string()))?;

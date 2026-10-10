@@ -476,12 +476,14 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         registry::{InMemoryRegistry, SkillRegistry},
     };
 
+    let bus = chelix_skills::skill_file::open_skill_bus().map_err(anyhow::Error::msg)?;
     let search_paths = FsSkillDiscoverer::default_paths();
-    let discoverer = FsSkillDiscoverer::new(search_paths);
+    let discoverer = FsSkillDiscoverer::new(search_paths, std::sync::Arc::clone(&bus));
 
     match action {
         SkillAction::List => {
-            let registry = InMemoryRegistry::from_discoverer(&discoverer).await?;
+            let registry =
+                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&bus)).await?;
             let skills = registry.list_skills().await?;
             if skills.is_empty() {
                 println!("No skills found.");
@@ -498,7 +500,7 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         },
         SkillAction::Add { source } => {
             let install_dir = install::default_install_dir()?;
-            let skills = install::install_skill(&source, &install_dir).await?;
+            let skills = install::install_skill(&bus, &source, &install_dir).await?;
             for meta in &skills {
                 println!("Installed skill '{}': {}", meta.name, meta.description);
             }
@@ -525,6 +527,7 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
         SkillAction::Import { path } => {
             let install_dir = install::default_install_dir()?;
             let imported = chelix_skills::portability::import_repo_bundle(
+                &bus,
                 std::path::Path::new(&path),
                 &install_dir,
             )
@@ -537,16 +540,14 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
             );
         },
         SkillAction::Info { name } => {
-            let registry = InMemoryRegistry::from_discoverer(&discoverer).await?;
+            let registry =
+                InMemoryRegistry::from_discoverer(&discoverer, std::sync::Arc::clone(&bus)).await?;
             let content = registry.load_skill(&name).await?;
             let meta = &content.metadata;
             println!("Name:        {}", meta.name);
             println!("Description: {}", meta.description);
             if let Some(ref license) = meta.license {
                 println!("License:     {license}");
-            }
-            if !meta.allowed_tools.is_empty() {
-                println!("Tools:       {}", meta.allowed_tools.join(", "));
             }
             println!("Path:        {}", meta.path.display());
             println!("Source:      {:?}", meta.source);

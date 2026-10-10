@@ -292,18 +292,22 @@ pub(crate) fn prompt_build_limits_from_config(
 /// injecting skills into the LLM context when the operator has disabled them.
 pub(crate) async fn discover_skills_if_enabled(
     config: &chelix_config::ChelixConfig,
+    bus: &Arc<chelix_call_bus::CallBus>,
 ) -> Vec<chelix_skills::types::SkillMetadata> {
     if !config.skills.enabled {
         return Vec::new();
     }
     let fs_discoverer = chelix_skills::discover::FsSkillDiscoverer::new(
         chelix_skills::discover::FsSkillDiscoverer::default_paths(),
+        Arc::clone(bus),
     );
 
     #[cfg(feature = "bundled-skills")]
     let skills = {
         use chelix_skills::discover::SkillDiscoverer;
-        let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+        let bundled = Arc::new(chelix_skills::bundled::BundledSkillStore::new(Arc::clone(
+            bus,
+        )));
         let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
             Box::new(fs_discoverer),
             bundled,
@@ -583,6 +587,7 @@ pub(crate) fn prepare_run_registry(
         crate::memory_tools::MemoryForgetProviderResolver,
     )>,
     visible_tools: std::collections::HashSet<String>,
+    call_bus: &Arc<chelix_call_bus::CallBus>,
 ) -> anyhow::Result<chelix_agents::tool_registry::ToolRegistry> {
     let mut registry = if tools_enabled {
         apply_runtime_tool_filters(base, config, skills, policy_context)
@@ -601,7 +606,12 @@ pub(crate) fn prepare_run_registry(
         );
     }
 
-    crate::skill_tools::install_agent_scoped_skill_tools(&mut registry, config, agent_id)?;
+    crate::skill_tools::install_agent_scoped_skill_tools(
+        &mut registry,
+        config,
+        agent_id,
+        call_bus,
+    )?;
 
     let max_tool_result_bytes =
         config
@@ -830,6 +840,8 @@ mod tests {
             "preloaded",
             None,
             std::collections::HashSet::from(["mcp__github__builtin_named_like_mcp".to_string()]),
+            &chelix_skills::skill_file::open_skill_bus()
+                .unwrap_or_else(|error| panic!("skill bus: {error}")),
         )
         .unwrap_or_else(|error| panic!("run registry preparation succeeds: {error}"));
 
@@ -850,13 +862,13 @@ mod tests {
             vec![
                 SkillMetadata {
                     name: "demo".into(),
-                    deny: vec!["agent1".into()],
+                    denied_agents: vec!["agent1".into()],
                     source: Some(SkillSource::Project),
                     ..Default::default()
                 },
                 SkillMetadata {
                     name: "demo".into(),
-                    allow: vec!["agent1".into()],
+                    allowed_agents: vec!["agent1".into()],
                     source: Some(SkillSource::Personal),
                     ..Default::default()
                 },

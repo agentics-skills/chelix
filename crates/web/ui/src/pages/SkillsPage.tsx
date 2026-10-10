@@ -23,6 +23,7 @@ import {
 	SkillSource,
 } from "../types/skill-source";
 import { ConfirmDialog, requestConfirm } from "../ui";
+import { type SkillFileDocument, SkillFileMetadata } from "./skills/SkillFileMetadata";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -49,8 +50,8 @@ interface SkillDetail extends SkillSummary {
 	commit_url?: string;
 	commit_age_days?: number;
 	compatibility?: string;
-	allowed_tools?: string[];
 	license?: string;
+	file: SkillFileDocument;
 	license_url?: string;
 	provenance?: { original_source?: string; original_commit_sha?: string; imported_from?: string };
 	quarantine_reason?: string;
@@ -527,6 +528,7 @@ function SkillDetailPanel({
 					>
 						SKILL.md source
 					</div>
+					<SkillFileMetadata file={d.file} />
 					<div
 						ref={bodyRef}
 						className="skill-body-md"
@@ -543,6 +545,7 @@ function SkillDetailPanel({
 						background: "var(--surface2)",
 					}}
 				>
+					<SkillFileMetadata file={d.file} />
 					<pre
 						style={{
 							whiteSpace: "pre-wrap",
@@ -555,7 +558,7 @@ function SkillDetailPanel({
 							overflowY: "auto",
 						}}
 					>
-						{d.body}
+						{d.file.body}
 					</pre>
 				</div>
 			)}

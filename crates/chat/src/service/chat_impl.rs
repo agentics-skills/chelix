@@ -82,7 +82,7 @@ mod skills_context_tests {
             vec![
                 SkillMetadata {
                     name: "demo".into(),
-                    deny: vec!["agent1".into()],
+                    denied_agents: vec!["agent1".into()],
                     source: Some(SkillSource::Project),
                     ..Default::default()
                 },
@@ -563,6 +563,7 @@ impl ChatService for LiveChatService {
                     manager: Arc::clone(&self.tool_permissions),
                     metadata: Arc::clone(&self.session_metadata),
                 }),
+                &self.call_bus,
             )
             .await
         };
@@ -963,6 +964,7 @@ impl ChatService for LiveChatService {
                 &list_agent_id,
                 memory_setup,
                 visible_tools,
+                &self.call_bus,
             )
             .map_err(|error| ServiceError::message(error.to_string()))?;
             let catalog = effective_registry
@@ -1038,7 +1040,7 @@ impl ChatService for LiveChatService {
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if tools_enabled {
             skills_context_entries(
-                discover_skills_if_enabled(&prompt_persona.config).await,
+                discover_skills_if_enabled(&prompt_persona.config, &self.call_bus).await,
                 &prompt_persona.agent_id,
                 &prompt_persona.agent.skills,
             )
@@ -1132,7 +1134,7 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&persona.config).await;
+        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
 
         let raw_prompt_agent_id = persona.agent_id.clone();
 
@@ -1177,6 +1179,7 @@ impl ChatService for LiveChatService {
                 &raw_prompt_agent_id,
                 memory_setup,
                 visible_tools,
+                &self.call_bus,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1294,7 +1297,7 @@ impl ChatService for LiveChatService {
             .map_err(ServiceError::message)?;
 
         // Discover skills (gated on `[skills] enabled` — see #655).
-        let discovered_skills = discover_skills_if_enabled(&persona.config).await;
+        let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
 
         // Build filtered tool registry.
         let full_ctx_agent_id = persona.agent_id.clone();
@@ -1336,6 +1339,7 @@ impl ChatService for LiveChatService {
                 &full_ctx_agent_id,
                 memory_setup,
                 visible_tools,
+                &self.call_bus,
             )
         }
         .map_err(|e| ServiceError::message(e.to_string()))?;
@@ -1955,6 +1959,8 @@ mod tests {
             config.clone(),
             agents_config,
             chelix_config::ToolsConfigSource::snapshot(config.tools),
+            chelix_skills::skill_file::open_skill_bus()
+                .unwrap_or_else(|error| panic!("skill bus: {error}")),
         );
         service.test_broadcasts = broadcasts;
         (

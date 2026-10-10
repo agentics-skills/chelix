@@ -5,7 +5,9 @@ version.workspace = true
 
 [dependencies]
 async-trait           = { workspace = true }
+chelix-call-bus       = { workspace = true }
 chelix-config         = { workspace = true }
+chelix-service-traits = { workspace = true }
 chelix-metrics        = { optional = true, workspace = true }
 flate2                = { workspace = true }
 include_dir           = { optional = true, workspace = true }

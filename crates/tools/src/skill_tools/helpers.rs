@@ -1,4 +1,4 @@
-//! Shared helpers: path validation, sidecar I/O, frontmatter parsing, audit.
+//! Shared helpers: path validation, sidecar I/O, audit.
 
 use std::{
     collections::HashSet,
@@ -12,65 +12,6 @@ use {
     crate::error::Error,
 };
 
-// ── Frontmatter helpers ─────────────────────────────────────
-
-/// Split a SKILL.md file into its frontmatter block (including delimiters and
-/// trailing newline) and the body. If there is no frontmatter, frontmatter_block
-/// is empty.
-pub(crate) fn split_frontmatter_body(raw: &str) -> (&str, &str) {
-    if !raw.starts_with("---") {
-        return ("", raw);
-    }
-    if let Some(end_idx) = raw[3..].find("\n---") {
-        let closing_end = 3 + end_idx + 1 + 3;
-        let after_closing = &raw[closing_end..];
-        let body_start = if after_closing.starts_with("\n\n") {
-            closing_end + 2
-        } else if after_closing.starts_with('\n') {
-            closing_end + 1
-        } else {
-            closing_end
-        };
-        (&raw[..body_start], &raw[body_start..])
-    } else {
-        ("", raw)
-    }
-}
-
-/// Replace the existing frontmatter description value.
-pub(crate) fn update_frontmatter_description(
-    frontmatter: &str,
-    new_desc: &str,
-) -> anyhow::Result<String> {
-    Ok(chelix_skills::parse::update_description(
-        frontmatter,
-        new_desc,
-    )?)
-}
-
-pub(super) fn build_skill_md(
-    name: &str,
-    description: &str,
-    body: &str,
-    allowed_tools: &[String],
-) -> anyhow::Result<String> {
-    let description = serde_json::to_string(description)?;
-    let mut frontmatter = format!("---\nname: {name}\ndescription: {description}\n");
-    if !allowed_tools.is_empty() {
-        frontmatter.push_str("allowed_tools:\n");
-        for tool in allowed_tools {
-            let tool = serde_json::to_string(tool)?;
-            frontmatter.push_str(&format!("  - {tool}\n"));
-        }
-    }
-    frontmatter.push_str("---\n\n");
-    frontmatter.push_str(body);
-    if !body.ends_with('\n') {
-        frontmatter.push('\n');
-    }
-    Ok(frontmatter)
-}
-
 #[async_trait::async_trait]
 pub(super) trait SkillWriteRecorder: Send + Sync {
     async fn record_write(&self, name: &str);
@@ -81,34 +22,6 @@ impl SkillWriteRecorder for chelix_skills::usage::SkillUsageStore {
     async fn record_write(&self, name: &str) {
         Self::record_write(self, name).await;
     }
-}
-
-// ── Skill I/O ───────────────────────────────────────────────
-
-pub(super) async fn validate_existing_skill_file(path: &Path) -> anyhow::Result<()> {
-    match tokio::fs::read_to_string(path).await {
-        Ok(content) => {
-            let skill_dir = path
-                .parent()
-                .ok_or_else(|| Error::message("invalid skill directory"))?;
-            chelix_skills::parse::parse_metadata(&content, skill_dir)?;
-            Ok(())
-        },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
-    }
-}
-
-pub(super) async fn write_skill(
-    skill_dir: &Path,
-    content: &str,
-    on_create: Option<&str>,
-) -> anyhow::Result<()> {
-    let skill_file = skill_dir.join("SKILL.md");
-    validate_existing_skill_file(&skill_file).await?;
-    tokio::fs::create_dir_all(skill_dir).await?;
-    chelix_skills::publish_markdown(&skill_file, content, on_create).await?;
-    Ok(())
 }
 
 // ── Sidecar validation and I/O ──────────────────────────────

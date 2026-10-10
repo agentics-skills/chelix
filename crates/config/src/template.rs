@@ -213,7 +213,7 @@ port = {port}                           # Port number (auto-generated for this i
 # [agents.main.skills]
 # allow = []
 # deny = ["gaming", "social-media"]
-# SKILL.md frontmatter allow / deny lists contain agent ids.
+# SKILL.md frontmatter denied_agents / allowed_agents lists contain agent ids.
 # ══════════════════════════════════════════════════════════════════════════════
 # SANDBOX
 # ══════════════════════════════════════════════════════════════════════════════

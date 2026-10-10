@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::formats::PluginFormat;
 
@@ -107,6 +105,29 @@ fn default_trusted() -> bool {
     true
 }
 
+pub use chelix_service_traits::{SkillContent, SkillMetadata, SkillOrigin, SkillSource};
+
+/// Agent list: a missing value, null, or `[]` is empty. Any other shape is an error.
+pub(crate) fn deserialize_agent_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+    match value {
+        serde_yaml::Value::Null => Ok(Vec::new()),
+        serde_yaml::Value::Sequence(items) => items
+            .into_iter()
+            .map(|item| match item {
+                serde_yaml::Value::String(id) => Ok(id),
+                _ => Err(de::Error::custom("agent id must be a string")),
+            })
+            .collect(),
+        _ => Err(de::Error::custom(
+            "agent list must be a sequence of strings",
+        )),
+    }
+}
+
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
@@ -120,126 +141,4 @@ mod tests {
         .unwrap();
         assert!(parsed.trusted);
     }
-}
-
-// ── Skill metadata ───────────────────────────────────────────────────────────
-
-/// Where a skill was discovered from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SkillSource {
-    /// Project-local: `<data_dir>/.chelix/skills/`
-    Project,
-    /// Personal: `<data_dir>/skills/`
-    Personal,
-    /// Bundled inside a plugin directory.
-    Plugin,
-    /// Installed from a registry (e.g. skills.sh).
-    Registry,
-    /// Embedded in the binary at compile time from `crates/skills/src/assets/`.
-    Bundled,
-}
-
-/// Lightweight metadata parsed from SKILL.md frontmatter.
-/// Loaded at startup for all discovered skills (cheap).
-///
-/// `Default::default()` leaves `name` as `""` (invalid per `validate_name`).
-/// Always initialise `name` explicitly, e.g.
-/// `SkillMetadata { name: "my-skill".into(), ..Default::default() }`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SkillMetadata {
-    /// Internal skill name — lowercase, hyphens allowed, 1-64 chars.
-    /// When frontmatter `name` is human-readable (e.g. "SEO (Audit + Writer)"),
-    /// this is populated from `slug` instead, and the original is stored in `display_name`.
-    pub name: String,
-    /// Optional slug from frontmatter; used as internal name when `name` fails validation.
-    #[serde(default)]
-    pub slug: Option<String>,
-    /// Human-readable display name, set when `name` was swapped with `slug`.
-    #[serde(default)]
-    pub display_name: Option<String>,
-    /// Short human-readable description.
-    #[serde(default)]
-    pub description: String,
-    /// Homepage URL.
-    #[serde(default)]
-    pub homepage: Option<String>,
-    /// SPDX license identifier.
-    #[serde(default)]
-    pub license: Option<String>,
-    /// Environment requirements (intended product, system packages, network access, etc.).
-    #[serde(default)]
-    pub compatibility: Option<String>,
-    /// Tools this skill is allowed to use.
-    ///
-    /// Accepts either a YAML sequence or a space-separated string
-    /// (Claude Code format: `"Bash(gh:*) Bash(git:*) Read"`).
-    #[serde(
-        default,
-        alias = "allowed-tools",
-        deserialize_with = "deserialize_string_or_seq"
-    )]
-    pub allowed_tools: Vec<String>,
-    /// Agent ids granted access in place of the agent's skill policy.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allow: Vec<String>,
-    /// Agent ids excluded from this skill.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub deny: Vec<String>,
-    /// Provenance of a bundled or imported skill (upstream repo, commit, date).
-    #[serde(default)]
-    pub origin: Option<SkillOrigin>,
-    /// Category for grouping in the UI (e.g. "research", "creative", "mlops").
-    /// Derived from the parent directory name for bundled skills.
-    #[serde(skip)]
-    pub category: Option<String>,
-    /// Filesystem path to the skill directory.
-    #[serde(skip)]
-    pub path: PathBuf,
-    /// Where this skill was discovered.
-    #[serde(skip)]
-    pub source: Option<SkillSource>,
-}
-
-// ── Skill origin ────────────────────────────────────────────────────────────
-
-/// Provenance information for a skill copied from an external source.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SkillOrigin {
-    /// Upstream project name.
-    #[serde(default)]
-    pub source: Option<String>,
-    /// URL of the upstream repository.
-    #[serde(default)]
-    pub url: Option<String>,
-    /// Commit SHA or version tag at which the skill was copied.
-    #[serde(default)]
-    pub version: Option<String>,
-}
-
-/// Deserialize a value that can be either a YAML sequence of strings or a
-/// single space-separated string (Claude Code format).
-fn deserialize_string_or_seq<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrSeq {
-        Seq(Vec<String>),
-        Str(String),
-    }
-
-    match StringOrSeq::deserialize(deserializer)? {
-        StringOrSeq::Seq(v) => Ok(v),
-        StringOrSeq::Str(s) => Ok(s.split_whitespace().map(String::from).collect()),
-    }
-}
-
-/// Full skill content: metadata + markdown body.
-/// Loaded on demand when a skill is read.
-#[derive(Debug, Clone)]
-pub struct SkillContent {
-    pub metadata: SkillMetadata,
-    pub body: String,
 }

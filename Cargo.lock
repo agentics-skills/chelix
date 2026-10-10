@@ -1241,6 +1241,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chelix-agents",
+ "chelix-call-bus",
  "chelix-channels",
  "chelix-common",
  "chelix-config",
@@ -2058,8 +2059,10 @@ name = "chelix-skills"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chelix-call-bus",
  "chelix-config",
  "chelix-metrics",
+ "chelix-service-traits",
  "flate2",
  "include_dir",
  "notify-debouncer-full",
@@ -2184,6 +2187,7 @@ dependencies = [
  "base64 0.22.1",
  "chelix-agents",
  "chelix-browser",
+ "chelix-call-bus",
  "chelix-common",
  "chelix-config",
  "chelix-cron",

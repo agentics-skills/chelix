@@ -98,8 +98,28 @@ pub(super) fn delete_discovered_skill(source_type: &str, params: &Value) -> Serv
     Ok(serde_json::json!({ "source": source_type, "skill": skill_name, "deleted": true }))
 }
 
+pub(super) fn skill_document_json(metadata: &SkillMetadata, body: &str) -> serde_json::Value {
+    serde_json::json!({
+        "name": metadata.name,
+        "slug": metadata.slug,
+        "display_name": metadata.display_name,
+        "description": metadata.description,
+        "homepage": metadata.homepage,
+        "license": metadata.license,
+        "compatibility": metadata.compatibility,
+        "origin": metadata.origin,
+        "allowed_agents": metadata.allowed_agents,
+        "denied_agents": metadata.denied_agents,
+        "body": body,
+    })
+}
+
 /// Load skill detail for a personal or project skill by name.
-pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> ServiceResult {
+pub(super) async fn skill_detail_discovered(
+    bus: &chelix_call_bus::CallBus,
+    source_type: &str,
+    skill_name: &str,
+) -> ServiceResult {
     // Build search paths for the requested source type.
     let search_dir = if source_type == "personal" {
         chelix_config::data_dir().join("skills")
@@ -108,12 +128,14 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
     };
 
     let skill_dir = search_dir.join(skill_name);
-    let skill_md = skill_dir.join("SKILL.md");
-    let raw = std::fs::read_to_string(&skill_md)
-        .map_err(|e| format!("failed to read SKILL.md for '{skill_name}': {e}"))?;
-
-    let content = chelix_skills::parse::parse_skill(&raw, &skill_dir)
-        .map_err(|e| format!("failed to parse SKILL.md: {e}"))?;
+    let content = bus
+        .call(ReadSkillFile {
+            path: skill_dir.join("SKILL.md"),
+            max_bytes: None,
+            mode: SkillFileRead::Detect,
+        })
+        .await
+        .map_err(|error| format!("failed to read SKILL.md for '{skill_name}': {error}"))?;
 
     Ok(serde_json::json!({
         "name": content.metadata.name,
@@ -121,7 +143,7 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
         "license": content.metadata.license,
         "license_url": license_url_for_source(source_type, content.metadata.license.as_deref()),
         "compatibility": content.metadata.compatibility,
-        "allowed_tools": content.metadata.allowed_tools,
+        "file": skill_document_json(&content.metadata, &content.body),
         "trusted": true,
         "enabled": true,
         "protected": is_protected_discovered_skill(skill_name),
@@ -134,9 +156,12 @@ pub(super) fn skill_detail_discovered(source_type: &str, skill_name: &str) -> Se
 
 /// Load skill detail for a bundled skill by name.
 #[cfg(feature = "bundled-skills")]
-pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
-    let store = chelix_skills::bundled::BundledSkillStore::new();
-    let skills = store.discover();
+pub(super) async fn skill_detail_bundled(
+    bus: &Arc<chelix_call_bus::CallBus>,
+    skill_name: &str,
+) -> ServiceResult {
+    let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(bus));
+    let skills = store.discover().await;
     let meta = skills
         .iter()
         .find(|s| s.name == skill_name)
@@ -144,6 +169,7 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
 
     let body = store
         .read_skill(skill_name)
+        .await
         .ok_or_else(|| format!("bundled skill '{skill_name}' body not readable"))?;
 
     let config = chelix_config::discover_and_load().map_err(ServiceError::message)?;
@@ -157,8 +183,8 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
         "category": meta.category,
         "license": meta.license,
         "compatibility": meta.compatibility,
-        "allowed_tools": meta.allowed_tools,
         "origin": meta.origin,
+        "file": skill_document_json(meta, &body),
         "trusted": true,
         "enabled": enabled,
         "protected": true,
@@ -171,7 +197,11 @@ pub(super) fn skill_detail_bundled(skill_name: &str) -> ServiceResult {
 /// Toggle a bundled skill by adding/removing its name from
 /// `disabled_bundled_skills` in config. Bundled skills are not tracked
 /// in the manifest, so `toggle_skill()` cannot handle them.
-pub(super) fn toggle_bundled_skill(params: &Value, enabled: bool) -> ServiceResult {
+pub(super) async fn toggle_bundled_skill(
+    bus: &Arc<chelix_call_bus::CallBus>,
+    params: &Value,
+    enabled: bool,
+) -> ServiceResult {
     let skill_name = params
         .get("skill")
         .and_then(|v| v.as_str())
@@ -180,8 +210,8 @@ pub(super) fn toggle_bundled_skill(params: &Value, enabled: bool) -> ServiceResu
     // Find the category for this bundled skill.
     #[cfg(feature = "bundled-skills")]
     {
-        let store = chelix_skills::bundled::BundledSkillStore::new();
-        let skills = store.discover();
+        let store = chelix_skills::bundled::BundledSkillStore::new(Arc::clone(bus));
+        let skills = store.discover().await;
         let skill = skills
             .iter()
             .find(|s| s.name == skill_name)
