@@ -62,7 +62,8 @@ impl AgentTool for OverwriteFileTool {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let request = parse_input(params)?;
         let result = self.service.overwrite_file(&session_key, request).await;
@@ -213,7 +214,8 @@ mod tests {
         let result = OverwriteFileTool::new(client(server.url(), "test-token"))
             .execute(json!({
                 "filePath": "/workspace/file.txt",
-                "content": "value"
+                "content": "value",
+                "_session_key": "session:test"
             }))
             .await;
         let error = match result {

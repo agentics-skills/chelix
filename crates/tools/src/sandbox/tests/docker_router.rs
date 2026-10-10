@@ -137,7 +137,7 @@ async fn test_sandbox_router_on_with_nonisolating_backend_fails_closed() {
     let router = SandboxRouter::with_backend(config, backend, test_owner_resolver()).unwrap();
 
     assert!(router.enabled());
-    assert!(router.resolve_env("main").await.is_err());
+    assert!(router.resolve_env("t:1").await.is_err());
 }
 
 #[test]
@@ -199,8 +199,8 @@ fn test_sandbox_router_sandbox_id_for() {
     let id = router.sandbox_id_for("session:abc");
     assert_eq!(id.key, "session-abc");
     // Plain alphanumeric keys pass through unchanged.
-    let id2 = router.sandbox_id_for("main");
-    assert_eq!(id2.key, "main");
+    let id2 = router.sandbox_id_for("chat");
+    assert_eq!(id2.key, "chat");
 }
 
 #[tokio::test]
@@ -942,10 +942,10 @@ async fn test_sandbox_router_events() {
         _ => panic!("unexpected event variant"),
     }
 
-    assert!(router.mark_preparing_once("main").await);
-    assert!(!router.mark_preparing_once("main").await);
-    router.clear_prepared_session("main").await;
-    assert!(router.mark_preparing_once("main").await);
+    assert!(router.mark_preparing_once("t:1").await);
+    assert!(!router.mark_preparing_once("t:1").await);
+    router.clear_prepared_session("t:1").await;
+    assert!(router.mark_preparing_once("t:1").await);
 }
 
 // ── Sandbox escape regression tests (issue #923) ───────────────────────────

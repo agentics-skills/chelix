@@ -115,7 +115,7 @@ mod tests {
             canonical_standalone_path("/setup-required/"),
             Some("/setup-required")
         );
-        assert_eq!(canonical_standalone_path("/chats/main/"), None);
+        assert_eq!(canonical_standalone_path("/chats/chat/"), None);
     }
 
     #[test]

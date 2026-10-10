@@ -258,7 +258,8 @@ pub async fn run_agent_loop_streaming_with_limits(
         .as_ref()
         .and_then(|ctx| ctx.get("_session_key"))
         .and_then(|v| v.as_str())
-        .unwrap_or("main")
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AgentRunError::Other(anyhow::anyhow!("missing session id")))?
         .to_string();
     let channel_for_hooks =
         channel_binding_from_internal_params(&session_key_for_hooks, tool_context.as_ref());

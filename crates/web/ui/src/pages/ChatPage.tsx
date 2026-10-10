@@ -18,6 +18,7 @@ import {
 } from "../chat-ui";
 import { copyToClipboard } from "../clipboard";
 import { unmountExecuteCommandToolBubbles } from "../components/ExecuteCommandToolBubble";
+import { SessionEmptyState } from "../components/SessionEmptyState";
 import { SessionHeader } from "../components/SessionHeader";
 import * as gon from "../gon";
 import { sendRpc } from "../helpers";
@@ -26,7 +27,7 @@ import { bindModelComboEvents, modelDisplayLabel, modelTitle } from "../models";
 import { bindProjectComboEvents } from "../project-combo";
 import { fetchProjects } from "../projects";
 import { bindReasoningToggle, unbindReasoningToggle } from "../reasoning-toggle";
-import { registerPrefix, sessionPath } from "../router";
+import { registerPrefix } from "../router";
 import { routes } from "../routes";
 import { updateSandboxUI } from "../sandbox";
 import { setSessionActiveRunId, setSessionReplying, switchSession } from "../sessions";
@@ -550,7 +551,6 @@ function mountSessionHeaderControls(): void {
 				showShare={false}
 				showFork={false}
 				showStop={false}
-				showClear={false}
 				showDelete={false}
 				showArchive={false}
 			/>,
@@ -564,7 +564,6 @@ function mountSessionHeaderControls(): void {
 				showName={false}
 				showFork={false}
 				showShare={false}
-				showClear={false}
 				showDelete={false}
 				showArchive={false}
 				showStop={false}
@@ -741,13 +740,6 @@ function syncModelComboLabel(): void {
 	}
 }
 
-function resolveInitialSessionKey(sessionKeyFromUrl: string | null): string {
-	if (sessionKeyFromUrl) return sessionKeyFromUrl;
-	const sk = S.activeSessionKey || "main";
-	history.replaceState(null, "", sessionPath(sk));
-	return sk;
-}
-
 function startInitialChatSession(sessionKey: string): void {
 	if (!S.connected) return;
 	(S.chatSendBtn as HTMLButtonElement).disabled = false;
@@ -788,10 +780,58 @@ const chatPageHTML =
 
 let chatScrollHandler: (() => void) | null = null;
 
+function teardownChat(): void {
+	teardownChatTerminal();
+	if (chatScrollHandler) {
+		S.chatMsgBox?.removeEventListener("scroll", chatScrollHandler);
+		chatScrollHandler = null;
+	}
+	S.chatMsgBox?.removeEventListener("copy", handleChatCopy);
+	teardownVoiceInput();
+	teardownMediaDrop();
+	unbindReasoningToggle();
+	slashHideMenu();
+	if (contextModalsKeydownHandler) {
+		document.removeEventListener("keydown", contextModalsKeydownHandler);
+		contextModalsKeydownHandler = null;
+	}
+	const m0 = S.$("sessionNameMount");
+	if (m0) render(null, m0);
+	const m1 = S.$("sessionHeaderToolbarMount");
+	if (m1) render(null, m1);
+	const m2 = S.$("sessionActionsMount");
+	if (m2) render(null, m2);
+	if (S.chatMsgBox) unmountExecuteCommandToolBubbles(S.chatMsgBox);
+	S.setChatMsgBox(null);
+	S.setChatInput(null);
+	S.setChatSendBtn(null);
+	S.setStreamEl(null);
+	S.setStreamText("");
+	S.setModelCombo(null);
+	S.setModelComboBtn(null);
+	S.setModelComboLabel(null);
+	S.setModelDropdown(null);
+	S.setModelSearchInput(null);
+	S.setModelDropdownList(null);
+	S.setSandboxLabel(null);
+	S.setProjectCombo(null);
+	S.setProjectComboBtn(null);
+	S.setProjectComboLabel(null);
+	S.setProjectDropdown(null);
+	S.setProjectDropdownList(null);
+}
+
 registerPrefix(
 	routes.chats,
 	function initChat(container: HTMLElement, sessionKeyFromUrl?: string | null) {
+		teardownChat();
+		render(null, container);
+		container.replaceChildren();
 		container.style.cssText = "position:relative";
+		if (!sessionKeyFromUrl) {
+			render(<SessionEmptyState />, container);
+			return;
+		}
 		// Safe: chatPageHTML is a static hardcoded template with no user input.
 		// This is a compile-time constant defined above -- no dynamic or user data.
 		container.innerHTML = chatPageHTML;
@@ -821,8 +861,7 @@ registerPrefix(
 		S.$("fullContextBtn")?.addEventListener("click", toggleFullContextPanel);
 
 		syncModelComboLabel();
-		const sessionKey = resolveInitialSessionKey(sessionKeyFromUrl ?? null);
-		startInitialChatSession(sessionKey);
+		startInitialChatSession(sessionKeyFromUrl);
 		bindChatComposer();
 		S.chatMsgBox?.addEventListener("copy", handleChatCopy);
 
@@ -837,44 +876,5 @@ registerPrefix(
 		initializeChatMediaDrop();
 		S.chatInput?.focus();
 	},
-	function teardownChat() {
-		teardownChatTerminal();
-		if (chatScrollHandler) {
-			S.chatMsgBox?.removeEventListener("scroll", chatScrollHandler);
-			chatScrollHandler = null;
-		}
-		S.chatMsgBox?.removeEventListener("copy", handleChatCopy);
-		teardownVoiceInput();
-		teardownMediaDrop();
-		unbindReasoningToggle();
-		slashHideMenu();
-		if (contextModalsKeydownHandler) {
-			document.removeEventListener("keydown", contextModalsKeydownHandler);
-			contextModalsKeydownHandler = null;
-		}
-		const m0 = S.$("sessionNameMount");
-		if (m0) render(null, m0);
-		const m1 = S.$("sessionHeaderToolbarMount");
-		if (m1) render(null, m1);
-		const m2 = S.$("sessionActionsMount");
-		if (m2) render(null, m2);
-		if (S.chatMsgBox) unmountExecuteCommandToolBubbles(S.chatMsgBox);
-		S.setChatMsgBox(null);
-		S.setChatInput(null);
-		S.setChatSendBtn(null);
-		S.setStreamEl(null);
-		S.setStreamText("");
-		S.setModelCombo(null);
-		S.setModelComboBtn(null);
-		S.setModelComboLabel(null);
-		S.setModelDropdown(null);
-		S.setModelSearchInput(null);
-		S.setModelDropdownList(null);
-		S.setSandboxLabel(null);
-		S.setProjectCombo(null);
-		S.setProjectComboBtn(null);
-		S.setProjectComboLabel(null);
-		S.setProjectDropdown(null);
-		S.setProjectDropdownList(null);
-	},
+	teardownChat,
 );

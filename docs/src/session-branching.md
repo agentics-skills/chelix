@@ -67,7 +67,7 @@ exclusive end position. Adjusted defaults report the applied reasons
 The `sessions.fork` RPC method is the underlying mechanism:
 
 ```json
-{ "key": "main", "forkPoint": 5, "label": "my-fork" }
+{ "key": "session:test", "forkPoint": 5, "label": "my-fork" }
 ```
 
 The RPC accepts either `forkPoint` or `target` containing `messageId` and
@@ -114,10 +114,7 @@ cache is content-hash based and is not treated as session-owned data.
 
 ## Navigation After Delete
 
-When you delete a forked session, the UI navigates back to its parent session.
-If the deleted session had no parent, the parent no longer exists, or the parent
-was part of the same cascaded deletion, it falls back to the next sibling or
-`main`.
+When you delete the open session, the UI shows that no session is selected.
 
 ## Archive in the UI
 
@@ -128,10 +125,10 @@ leaving them in the main sidebar list.
 - Archived sessions are hidden from the default sidebar list.
 - Enable **Show archived sessions** in the sidebar to reveal and restore them.
 
-Archive is available for any non-`main` session, including cron and
-channel-bound chats, except when the session is the current active session for
-its bound channel chat. That prevents hiding the live Telegram, or
-similar chat out from under the channel router.
+Archive is available for any session, including cron and channel-bound chats,
+except when the session is the current active session for its bound channel
+chat. That prevents hiding the live Telegram, or similar chat out from under
+the channel router.
 
 `sessions.patch` with `archived: true` accepts only `key` and `archived`. Any
 other field is rejected.

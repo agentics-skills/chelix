@@ -103,7 +103,8 @@ impl AgentTool for MultieditFileTool {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let request = parse_input(params)?;
         let result = self.service.multiedit_file(&session_key, request).await;
@@ -296,6 +297,7 @@ mod tests {
             .await;
         let result = MultieditFileTool::new(client(server.url(), "test-token"))
             .execute(json!({
+                "_session_key": "session:test",
                 "filePath": "/workspace/file.txt",
                 "edits": [
                     { "oldString": "old", "newString": "intermediate" },

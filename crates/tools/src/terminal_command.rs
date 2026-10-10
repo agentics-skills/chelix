@@ -326,7 +326,10 @@ impl AgentTool for ExecuteCommandTool {
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let params: ExecuteCommandParams = serde_json::from_value(without_null_params(params))?;
-        let session_key = params.session_key.as_deref().unwrap_or("main").to_string();
+        let session_key = params
+            .session_key
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?;
         let command = params.command.trim().to_string();
         let custom_cwd = params.custom_cwd.filter(|value| !value.is_empty());
         let terminal_id = params.terminal_id.filter(|value| !value.is_empty());
@@ -415,7 +418,10 @@ impl AgentTool for ReadTerminalOutputTool {
 
     async fn execute(&self, params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         let params: ReadTerminalOutputParams = serde_json::from_value(without_null_params(params))?;
-        let session_key = params.session_key.as_deref().unwrap_or("main").to_string();
+        let session_key = params
+            .session_key
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?;
         let request = ReadTerminalOutputRequest {
             session_key: session_key.clone(),
             terminal_id: params.terminal_id,
@@ -656,6 +662,7 @@ mod tests {
         let exit_one = tool
             .execute(serde_json::json!({
                 "command": "exit 1",
+                "_session_key": "session:test",
                 "_tool_call_id": "call-exit-one"
             }))
             .await
@@ -663,6 +670,7 @@ mod tests {
         let exit_two = tool
             .execute(serde_json::json!({
                 "command": "exit 2",
+                "_session_key": "session:test",
                 "_tool_call_id": "call-exit-two"
             }))
             .await
@@ -671,6 +679,7 @@ mod tests {
             .execute(serde_json::json!({
                 "command": "exit 1",
                 "background": true,
+                "_session_key": "session:test",
                 "_tool_call_id": "call-background-exit-one"
             }))
             .await
@@ -718,6 +727,7 @@ mod tests {
                 "customCwd": "",
                 "newTerminal": true,
                 "terminalId": "",
+                "_session_key": "session:test",
                 "_tool_call_id": "call-empty-routing"
             }))
             .await
@@ -751,6 +761,7 @@ mod tests {
                 "command": "pwd",
                 "customCwd": "/tmp",
                 "terminalId": "42",
+                "_session_key": "session:test",
                 "_tool_call_id": "call-routing-values"
             }))
             .await
@@ -783,6 +794,7 @@ mod tests {
                 "command": "pwd",
                 "newTerminal": true,
                 "terminalId": "42",
+                "_session_key": "session:test",
                 "_tool_call_id": "call-routing-conflict"
             }))
             .await

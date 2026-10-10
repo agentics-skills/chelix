@@ -107,19 +107,26 @@ export function testTtsWithPersona(text: string, personaId: string): Promise<unk
 	return sendRpc("tts.convert", { text, personaId });
 }
 
-/**
- * Upload an audio blob for STT transcription.
- * Returns raw fetch Response.
- */
-export function transcribeAudio(sessionKey: string, providerId: string, audioBlob: Blob): Promise<Response> {
-	return fetch(
-		`/api/sessions/${encodeURIComponent(sessionKey)}/upload?transcribe=true&provider=${encodeURIComponent(providerId)}`,
-		{
-			method: "POST",
-			headers: { "Content-Type": audioBlob.type || "audio/webm" },
-			body: audioBlob,
-		},
-	);
+const STT_TEST_BASE64_LIMIT = 500_000;
+
+function standardBase64(bytes: Uint8Array): string {
+	let binary = "";
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	return btoa(binary);
+}
+
+export async function testStt(providerId: string, audio: Blob): Promise<{ text: string | null; error: string | null }> {
+	if (Math.ceil((audio.size * 4) / 3) > STT_TEST_BASE64_LIMIT) {
+		return { text: null, error: "Recording is too long for the transcription test" };
+	}
+	const response = await sendRpc<{ text?: string }>("stt.transcribe", {
+		audio: standardBase64(new Uint8Array(await audio.arrayBuffer())),
+		format: "webm",
+		provider: providerId,
+	});
+	if (!response.ok) return { text: null, error: response.error?.message || "STT test failed" };
+	const text = response.payload?.text?.trim() ?? "";
+	return text ? { text, error: null } : { text: null, error: "No speech detected" };
 }
 
 // ── Voice Persona RPC wrappers ────────────────────────────────

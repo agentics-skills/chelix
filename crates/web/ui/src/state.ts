@@ -10,7 +10,7 @@ export let reqId = 0;
 export let connected = false;
 export let reconnectDelay = 1000;
 export const pending: Record<string, (value: RpcResponse) => void> = {};
-export let activeSessionKey: string = "main";
+export let activeSessionKey: string = "";
 export let activeProjectId: string = localStorage.getItem("chelix-project") || "";
 export let sessions: unknown[] = [];
 export let projects: unknown[] = [];

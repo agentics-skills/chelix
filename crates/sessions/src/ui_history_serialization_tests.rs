@@ -46,7 +46,7 @@ fn assistant_snapshot_serialization_preserves_metadata_and_canonical_record() {
         "providerItems": [{"id": "item-1", "position": 0, "payload": {"type": "message", "text": "Complete answer"}}],
         "segmentId": "segment-1",
         "llmApiResponse": [{"type": "response.output_text.delta", "delta": "Complete"}],
-        "audio": "media/main/voice.ogg",
+        "audio": "media/t_1/voice.ogg",
         "seq": 9,
         "run_id": "run-1",
         "clientMessageId": "00000000-0000-4000-8000-000000000001",

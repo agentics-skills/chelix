@@ -514,6 +514,7 @@ async function uploadTranscription(
 	blob: Blob,
 	providerInfo: SttProviderInfo | null,
 ): Promise<TranscriptionUploadResponse> {
+	if (!S.activeSessionKey) throw new Error("missing session id");
 	const abortController = new AbortController();
 	const timeout = setTimeout(() => abortController.abort(), 15000);
 	try {

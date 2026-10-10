@@ -269,6 +269,14 @@ pub(super) async fn finalize_prepared_gateway(
                                 "version": entry.version,
                             });
                         }
+                        if session_key == "main"
+                            && payload
+                                .pointer("/entry/messageCount")
+                                .and_then(serde_json::Value::as_u64)
+                                == Some(0)
+                        {
+                            continue;
+                        }
                         broadcast(&ws_state, "session", payload, BroadcastOpts {
                             drop_if_slow: true,
                             ..Default::default()

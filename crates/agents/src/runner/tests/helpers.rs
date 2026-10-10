@@ -33,6 +33,12 @@ pub(super) use {
 
 pub(super) use crate::tool_parsing::parse_tool_call_from_text;
 
+pub(super) fn test_tool_context(
+    tool_context: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    tool_context.or_else(|| Some(serde_json::json!({"_session_key": "t:1"})))
+}
+
 pub(super) const TEST_CONTEXT_WINDOW: u32 = 128_000;
 pub(super) const TEST_MAX_INPUT_TOKENS: u32 = 96_000;
 pub(super) const TEST_MAX_OUTPUT_TOKENS: u32 = 32_000;
@@ -66,7 +72,7 @@ pub(super) async fn run_agent_loop(
         None,
         None,
         history,
-        None,
+        test_tool_context(None),
         None,
         None,
         None,
@@ -97,7 +103,7 @@ pub(super) async fn run_agent_loop_with_tool_lifecycle(
         on_tool_lifecycle,
         None,
         history,
-        None,
+        test_tool_context(None),
         None,
         None,
         None,
@@ -140,7 +146,7 @@ pub(super) async fn run_agent_loop_with_context(
         None,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         None,
         hook_registry,
         sender_name,
@@ -174,7 +180,7 @@ pub(super) async fn run_agent_loop_with_context_and_tool_lifecycle(
         on_tool_lifecycle,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         None,
         hook_registry,
         sender_name,
@@ -209,7 +215,7 @@ pub(super) async fn run_agent_loop_with_context_and_limits(
         None,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         tool_choice,
         hook_registry,
         sender_name,
@@ -244,7 +250,7 @@ pub(super) async fn run_agent_loop_with_context_lifecycle_and_limits(
         on_tool_lifecycle,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         None,
         hook_registry,
         sender_name,
@@ -274,7 +280,7 @@ pub(super) async fn run_agent_loop_streaming(
         user_content,
         on_event,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         hook_registry,
         sender_name,
         steer_inbox,
@@ -308,7 +314,7 @@ pub(super) async fn run_agent_loop_streaming_with_tool_lifecycle(
         on_tool_lifecycle,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         None,
         hook_registry,
         sender_name,
@@ -345,7 +351,7 @@ pub(super) async fn run_agent_loop_streaming_with_lifecycle_and_limits(
         on_tool_lifecycle,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         None,
         hook_registry,
         sender_name,
@@ -381,7 +387,7 @@ pub(super) async fn run_agent_loop_streaming_with_limits(
         None,
         None,
         history,
-        tool_context,
+        test_tool_context(tool_context),
         None,
         hook_registry,
         sender_name,

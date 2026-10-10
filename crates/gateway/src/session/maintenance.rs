@@ -7,10 +7,6 @@ impl LiveSessionService {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing 'key' parameter".to_string())?;
 
-        if key == "main" {
-            return Err("cannot delete the main session".into());
-        }
-
         let force = params
             .get("force")
             .and_then(|v| v.as_bool())
@@ -422,9 +418,8 @@ impl LiveSessionService {
         let mut failures = Vec::new();
 
         for entry in &all {
-            // Keep main, channel-bound (telegram) and cron sessions.
-            if entry.key == "main"
-                || entry.channel_binding.is_some()
+            // Keep channel-bound and cron sessions.
+            if entry.channel_binding.is_some()
                 || entry.key.starts_with("telegram:")
                 || entry.key.starts_with("cron:")
             {

@@ -388,7 +388,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     )
     .unwrap();
     session_metadata
-        .create_llm_session("main", None, &model_reasoning, Some("main"))
+        .create_llm_session("t:1", None, &model_reasoning, Some("main"))
         .await
         .unwrap();
     let auth_config = chelix_config::AuthConfig::default();
@@ -1003,7 +1003,7 @@ async fn upload_endpoint_requires_auth() {
     // Unauthenticated POST should get 401.
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{addr}/api/sessions/main/upload"))
+        .post(format!("http://{addr}/api/sessions/t:1/upload"))
         .header("Content-Type", "audio/webm")
         .body(vec![0u8; 100])
         .send()
@@ -1015,7 +1015,7 @@ async fn upload_endpoint_requires_auth() {
     // is noop, but definitely not 401).
     let token = store.create_session().await.unwrap();
     let resp = client
-        .post(format!("http://{addr}/api/sessions/main/upload"))
+        .post(format!("http://{addr}/api/sessions/t:1/upload"))
         .header("Cookie", format!("chelix_session={token}"))
         .header("Content-Type", "audio/webm")
         .body(vec![0u8; 100])
@@ -1033,7 +1033,7 @@ async fn media_endpoint_requires_auth() {
     set_initial_test_password(&store).await;
 
     // Unauthenticated GET should get 401.
-    let resp = reqwest::get(format!("http://{addr}/api/sessions/main/media/test.png"))
+    let resp = reqwest::get(format!("http://{addr}/api/sessions/t:1/media/test.png"))
         .await
         .unwrap();
     assert_eq!(resp.status(), 401);
@@ -1042,7 +1042,7 @@ async fn media_endpoint_requires_auth() {
     let token = store.create_session().await.unwrap();
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/api/sessions/main/media/test.png"))
+        .get(format!("http://{addr}/api/sessions/t:1/media/test.png"))
         .header("Cookie", format!("chelix_session={token}"))
         .send()
         .await

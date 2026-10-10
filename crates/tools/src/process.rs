@@ -97,7 +97,8 @@ impl AgentTool for ProcessTool {
         let session_key = params
             .get("_session_key")
             .and_then(serde_json::Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let action: ProcessAction = serde_json::from_value(without_null_params(params))?;
         let action_label = match &action {

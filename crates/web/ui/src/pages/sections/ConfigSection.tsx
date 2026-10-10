@@ -427,7 +427,7 @@ function DeleteAllSessionsCard(): VNode {
 				Danger zone
 			</div>
 			<p className="text-xs text-[var(--muted)] leading-relaxed" style={{ margin: "0 0 10px" }}>
-				Permanently delete all chat sessions except the main session. This cannot be undone.
+				Permanently delete chat sessions except channel-bound and cron sessions. This cannot be undone.
 			</p>
 			<button
 				type="button"

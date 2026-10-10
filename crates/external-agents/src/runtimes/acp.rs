@@ -873,7 +873,7 @@ mod tests {
         let state = Arc::new(Mutex::new(AcpClientState::default()));
         let client = AcpClient::new(
             Arc::clone(&state),
-            Some("main".to_string()),
+            Some("t:1".to_string()),
             None,
             Arc::new(Mutex::new(tokio_util::sync::CancellationToken::new())),
         );
@@ -975,7 +975,7 @@ mod tests {
         let state = Arc::new(Mutex::new(AcpClientState::default()));
         let client = AcpClient::new(
             Arc::clone(&state),
-            Some("main".to_string()),
+            Some("t:1".to_string()),
             Some(Arc::new(AllowFirstPermissionHandler)),
             Arc::new(Mutex::new(tokio_util::sync::CancellationToken::new())),
         );
@@ -1021,7 +1021,7 @@ mod tests {
         let token = tokio_util::sync::CancellationToken::new();
         let client = AcpClient::new(
             Arc::new(Mutex::new(AcpClientState::default())),
-            Some("main".to_string()),
+            Some("t:1".to_string()),
             Some(Arc::new(WaitingPermissionHandler {
                 release: Arc::new(tokio::sync::Notify::new()),
             })),

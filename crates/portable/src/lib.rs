@@ -40,7 +40,7 @@ mod integration_tests {
         let sessions_dir = src_data.path().join("sessions");
         std::fs::create_dir_all(&sessions_dir).unwrap();
         std::fs::write(
-            sessions_dir.join("main.jsonl"),
+            sessions_dir.join("t_1.jsonl"),
             "{\"role\":\"user\",\"content\":\"hello\"}\n",
         )
         .unwrap();
@@ -96,7 +96,7 @@ mod integration_tests {
         assert!(dst_config.path().join("chelix.toml").exists());
         assert!(dst_data.path().join("SOUL.md").exists());
         assert!(dst_data.path().join("IDENTITY.md").exists());
-        assert!(!dst_data.path().join("sessions/main.jsonl").exists());
+        assert!(!dst_data.path().join("sessions/t_1.jsonl").exists());
 
         // Verify content.
         let toml = std::fs::read_to_string(dst_config.path().join("chelix.toml")).unwrap();

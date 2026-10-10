@@ -1336,7 +1336,7 @@ mod tests {
 
     #[test]
     fn push_notification_url_handles_key_without_colons() {
-        assert_eq!(push_notification_url("main"), "/chats/main");
+        assert_eq!(push_notification_url("chat"), "/chats/chat");
     }
 
     #[tokio::test]

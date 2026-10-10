@@ -16,7 +16,7 @@ import { renderSessionProjectSelect } from "./project-combo";
 import { fetchProjects, renderProjectSelect } from "./projects";
 import { initPWA } from "./pwa";
 import { initInstallBanner } from "./pwa-install";
-import { mount, navigate, registerPage, sessionPath } from "./router";
+import { mount, navigate, registerPage } from "./router";
 import { routes } from "./routes";
 import { updateSandboxUI } from "./sandbox";
 import {
@@ -95,14 +95,8 @@ type SessionEntry = SessionMeta;
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function preferredChatPath(): string {
-	const key = S.activeSessionKey || "main";
-	return sessionPath(key);
-}
-
-// Redirect root to the active/default chat session.
 registerPage("/", () => {
-	const path = preferredChatPath();
+	const path = routes.chats;
 	if (location.pathname !== path) {
 		history.replaceState(null, "", path);
 	}
@@ -680,7 +674,7 @@ function startApp(): void {
 
 	let path = location.pathname;
 	if (path === "/") {
-		path = preferredChatPath();
+		path = routes.chats;
 		history.replaceState(null, "", path);
 	}
 	mount(path);

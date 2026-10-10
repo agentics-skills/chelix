@@ -397,11 +397,11 @@ mod tests {
         let snapshot = serde_json::json!({"messages": []}).to_string();
 
         let first = store
-            .create_or_replace("main", ShareVisibility::Public, snapshot.clone(), 3)
+            .create_or_replace("t:1", ShareVisibility::Public, snapshot.clone(), 3)
             .await
             .unwrap();
         let second = store
-            .create_or_replace("main", ShareVisibility::Public, snapshot, 5)
+            .create_or_replace("t:1", ShareVisibility::Public, snapshot, 5)
             .await
             .unwrap();
 
@@ -420,7 +420,7 @@ mod tests {
         let snapshot = serde_json::json!({"messages": []}).to_string();
 
         let created = store
-            .create_or_replace("main", ShareVisibility::Private, snapshot, 2)
+            .create_or_replace("t:1", ShareVisibility::Private, snapshot, 2)
             .await
             .unwrap();
 
@@ -435,7 +435,7 @@ mod tests {
         let snapshot = serde_json::json!({"messages": []}).to_string();
 
         let created = store
-            .create_or_replace("main", ShareVisibility::Public, snapshot, 1)
+            .create_or_replace("t:1", ShareVisibility::Public, snapshot, 1)
             .await
             .unwrap();
 

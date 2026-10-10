@@ -2,7 +2,8 @@ import { chatAddMsg, resetChatView, setComposerStopButton, updateTokenBar } from
 import { sendRpc } from "../helpers";
 import { clearQueuedPromptsDock, replaceQueuedPromptsDock } from "../pages/chat/prompt-queue";
 import { updateSessionProjectSelect } from "../project-combo";
-import { sessionPath } from "../router";
+import { currentPrefix, navigate, sessionPath } from "../router";
+import { routes } from "../routes";
 import * as S from "../state";
 import { projectStore } from "../stores/project-store";
 import { clearSessionHistory, getSessionHistory } from "../stores/session-history-cache";
@@ -17,7 +18,7 @@ import type { SessionMeta } from "../types/session";
 import type { QueuedPromptsStatus } from "../types/ws-events";
 import { invalidateHistorySubscription, subscribeSessionHistory } from "./history-subscription";
 import { clearPendingSends } from "./pending-send";
-import { takeSearchNavigation } from "./search-navigation";
+import { setSearchNavigation, takeSearchNavigation } from "./search-navigation";
 import {
 	restoreSessionModelSettings as restoreSessionModelSettingsImpl,
 	setSessionAgent as setSessionAgentImpl,
@@ -110,6 +111,7 @@ function validateSearchGeneration(context: SearchContext | null | undefined, gen
 }
 
 const requestedCreations = new Set<string>();
+let pendingSwitchProject: { key: string; projectId: string } | null = null;
 
 export function prepareNewSessionKey(): string {
 	const key = `session:${crypto.randomUUID()}`;
@@ -117,16 +119,37 @@ export function prepareNewSessionKey(): string {
 	return key;
 }
 
+export function showUnselectedSession(): void {
+	clearPendingSends();
+	invalidateHistorySubscription();
+	clearSessionHistory();
+	sessionStore.setActive("");
+	S.setActiveSessionKey("");
+	const path = routes.chats;
+	const onChats = currentPrefix === path || location.pathname === path || location.pathname.startsWith(`${path}/`);
+	if (!onChats) return;
+	if (location.pathname !== path) navigate(path);
+}
+
 function redirectMissingSession(key: string, response: RpcResponse): boolean {
-	if (response.ok || response.error?.code !== "NOT_FOUND" || key === "main") return false;
+	if (response.ok || response.error?.code !== "NOT_FOUND") return false;
 	sessionStore.remove(key);
 	S.setSessions((S.sessions as SessionMeta[]).filter((session) => session.key !== key));
-	switchSession("main");
+	showUnselectedSession();
 	return true;
 }
 
 export function switchSession(key: string, searchContext?: SearchContext | null, projectId?: string): void {
-	const create = requestedCreations.delete(key) || key === "main";
+	if (!S.chatMsgBox) {
+		if (searchContext) setSearchNavigation(key, searchContext);
+		if (projectId) pendingSwitchProject = { key, projectId };
+		navigate(sessionPath(key));
+		return;
+	}
+	const create = requestedCreations.delete(key);
+	const switchedProjectId =
+		projectId ?? (pendingSwitchProject?.key === key ? pendingSwitchProject.projectId : undefined);
+	if (pendingSwitchProject?.key === key) pendingSwitchProject = null;
 	clearPendingSends();
 	searchContext ||= takeSearchNavigation(key);
 	const request = ++switchRequest;
@@ -143,13 +166,13 @@ export function switchSession(key: string, searchContext?: SearchContext | null,
 			key,
 			create,
 			include_history: false,
-			...(projectId ? { project_id: projectId } : {}),
+			...(switchedProjectId ? { project_id: switchedProjectId } : {}),
 		});
 		if (request !== switchRequest) return;
 		if (redirectMissingSession(key, response)) return;
 		if (!(response.ok && response.payload?.entry)) throw new Error(response.error?.message || "Failed to load session");
 		const payload = response.payload;
-		applySwitchMetadata(key, payload, projectId);
+		applySwitchMetadata(key, payload, switchedProjectId);
 		const page = await subscribeSessionHistory(key, searchContext?.messageId);
 		if (request !== switchRequest || !page) return;
 		validateSearchGeneration(searchContext, page.generation);

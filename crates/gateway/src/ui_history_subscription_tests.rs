@@ -24,7 +24,7 @@ fn state() -> Arc<GatewayState> {
 
 fn request(range: UiHistoryRange, limit: usize) -> HistorySubscriptionRequest {
     HistorySubscriptionRequest {
-        key: "main".into(),
+        key: "t:1".into(),
         subscription_id: "subscription-1".into(),
         sequence: 1,
         range,
@@ -47,7 +47,7 @@ async fn receive(receiver: &mut mpsc::Receiver<String>) -> Value {
 async fn late_baseline_and_slow_queue_preserve_the_complete_tool_input() {
     let directory = tempfile::tempdir().unwrap();
     let store = SessionStore::new(directory.path().into());
-    let session = store.ui_history.session("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
     let run = session
         .begin_run(UiRunMetadata {
             run_id: "run-1".into(),
@@ -116,7 +116,7 @@ async fn late_baseline_and_slow_queue_preserve_the_complete_tool_input() {
     );
     assert_eq!(page["history"][0]["stage"], "input_streaming");
     assert_eq!(page["totalMessages"], 1);
-    assert!(store.read("main").await.unwrap().is_empty());
+    assert!(store.read("t:1").await.unwrap().is_empty());
     delivery.abort();
     assert!(delivery.await.unwrap_err().is_cancelled());
     session.truncate(0).await.unwrap();
@@ -128,11 +128,11 @@ async fn lag_recovers_the_selected_window_and_clear_replaces_its_generation() {
     let store = SessionStore::new(directory.path().into());
     for index in 0..8 {
         store
-            .append_typed("main", &PersistedMessage::user(format!("message {index}")))
+            .append_typed("t:1", &PersistedMessage::user(format!("message {index}")))
             .await
             .unwrap();
     }
-    let session = store.ui_history.session("main").await.unwrap();
+    let session = store.ui_history.session("t:1").await.unwrap();
     let changes = session.subscribe();
     let range = UiHistoryRange::Window {
         start: 1,
@@ -142,7 +142,7 @@ async fn lag_recovers_the_selected_window_and_clear_replaces_its_generation() {
     let generation = page.generation.clone();
     for index in 8..11 {
         store
-            .append_typed("main", &PersistedMessage::user(format!("new tail {index}")))
+            .append_typed("t:1", &PersistedMessage::user(format!("new tail {index}")))
             .await
             .unwrap();
     }
@@ -164,7 +164,7 @@ async fn lag_recovers_the_selected_window_and_clear_replaces_its_generation() {
     assert_eq!(payload["snapshot"]["firstPosition"], 1);
     assert_eq!(payload["snapshot"]["lastPosition"], 2);
     assert_eq!(payload["snapshot"]["totalMessages"], 11);
-    store.clear("main").await.unwrap();
+    store.clear("t:1").await.unwrap();
     let payload = receive(&mut receiver).await;
     assert_ne!(payload["snapshot"]["generation"], json!(generation));
     assert_eq!(payload["snapshot"]["history"], json!([]));

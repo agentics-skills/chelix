@@ -126,7 +126,7 @@ fn session_append_fixture(new_record_bytes: usize) -> SessionAppendFixture {
             let messages = (start..start + 1_000)
                 .map(|record| serde_json::json!({"role": "user", "content": "fixture", "record": record}))
                 .collect::<Vec<_>>();
-            store.append_batch_at_index("main", &messages, start).await.unwrap();
+            store.append_batch_at_index("t:1", &messages, start).await.unwrap();
         }
     });
     SessionAppendFixture {
@@ -150,7 +150,7 @@ fn warm_session_indexed_append(bencher: divan::Bencher, new_record_bytes: usize)
         .bench_local_values(|fixture| {
             divan::black_box(
                 session_append_runtime()
-                    .block_on(fixture.store.append_with_index("main", &fixture.message))
+                    .block_on(fixture.store.append_with_index("t:1", &fixture.message))
                     .unwrap(),
             )
         });

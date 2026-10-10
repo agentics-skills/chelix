@@ -136,7 +136,7 @@ Each channel can have different permission levels:
 ### Channel Isolation
 
 Channels run in isolated sessions by default. A malicious message from one
-channel cannot affect another channel's session or the main UI session.
+channel cannot affect another channel's session.
 
 ## Cron Job Security
 

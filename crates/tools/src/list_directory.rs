@@ -60,7 +60,8 @@ impl AgentTool for ListDirectoryTool {
         let session_key = params
             .get("_session_key")
             .and_then(Value::as_str)
-            .unwrap_or("main")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("missing session id"))?
             .to_string();
         let input: ListDirectoryInput =
             serde_json::from_value(params).context("invalid list_directory parameters")?;
@@ -144,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn execute_rejects_missing_path() {
         let error = match ListDirectoryTool::new(client("http://127.0.0.1:1".into(), "unused"))
-            .execute(json!({}))
+            .execute(json!({"_session_key": "session:test"}))
             .await
         {
             Ok(value) => panic!("missing path must fail, got {value:?}"),
@@ -170,7 +171,7 @@ mod tests {
             .create_async()
             .await;
         let error = match ListDirectoryTool::new(client(server.url(), "test-token"))
-            .execute(json!({ "path": "/workspace" }))
+            .execute(json!({ "path": "/workspace", "_session_key": "session:test" }))
             .await
         {
             Ok(value) => panic!("service failure must propagate, got {value:?}"),

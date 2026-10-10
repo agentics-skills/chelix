@@ -1217,7 +1217,7 @@ impl ChatService for ExternalAgentChatService {
     }
 
     async fn clear(&self, params: Value) -> ServiceResult {
-        let session_key = resolve_session_key(&params, &self.state).await;
+        let session_key = resolve_session_key(&params, &self.state).await?;
         self.external_agents.shutdown_binding(&session_key).await;
         self.inner.clear(params).await
     }
@@ -1321,14 +1321,15 @@ fn external_channel_value(context: &ChatExecutionContext) -> Result<Option<Value
         .transpose()
 }
 
-async fn resolve_session_key(params: &Value, state: &GatewayState) -> String {
+async fn resolve_session_key(params: &Value, state: &GatewayState) -> Result<String, ServiceError> {
     if let Some(key) = params
         .get("_session_key")
         .or_else(|| params.get("sessionKey"))
         .or_else(|| params.get("session_key"))
         .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
     {
-        return key.to_string();
+        return Ok(key.to_string());
     }
     let conn_id = params.get("_conn_id").and_then(|value| value.as_str());
     if let Some(conn_id) = conn_id
@@ -1340,9 +1341,9 @@ async fn resolve_session_key(params: &Value, state: &GatewayState) -> String {
             .get(conn_id)
             .cloned()
     {
-        return key;
+        return Ok(key);
     }
-    "main".to_string()
+    Err(ServiceError::message("missing session id"))
 }
 
 fn context_from_history(history: &[Value]) -> ContextSnapshot {
@@ -1831,7 +1832,7 @@ mod tests {
     }
 
     fn test_chat_context() -> ChatExecutionContext {
-        ChatExecutionContext::internal(chelix_sessions::SessionKey::new("main"))
+        ChatExecutionContext::internal(chelix_sessions::SessionKey::new("t:1"))
     }
 
     async fn test_chat_service(
@@ -1856,35 +1857,35 @@ mod tests {
         let service = fake_external_agents(Arc::clone(&metadata), agent_state);
 
         let bound = service
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         assert_eq!(bound["kind"], "codex");
 
         let status = service
-            .status(serde_json::json!({ "sessionKey": "main" }))
+            .status(serde_json::json!({ "sessionKey": "t:1" }))
             .await
             .expect("status");
         assert_eq!(status["bound"], true);
         assert_eq!(status["kind"], "codex");
         let external_entry = metadata
-            .get("main")
+            .get("t:1")
             .await
             .expect("load external-only entry")
             .expect("external-only entry exists");
 
         service
-            .unbind(serde_json::json!({ "sessionKey": "main" }))
+            .unbind(serde_json::json!({ "sessionKey": "t:1" }))
             .await
             .expect("unbind external agent");
         let status = service
-            .status(serde_json::json!({ "sessionKey": "main" }))
+            .status(serde_json::json!({ "sessionKey": "t:1" }))
             .await
             .expect("status after unbind");
         assert_eq!(status["bound"], false);
         assert!(status["kind"].is_null());
         let llm_entry = metadata
-            .get("main")
+            .get("t:1")
             .await
             .expect("load LLM entry")
             .expect("LLM entry exists after unbind");
@@ -1928,10 +1929,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main").await;
+        create_test_session(&metadata, "t:1").await;
         metadata
             .bind_external(
-                "main",
+                "t:1",
                 None,
                 &chelix_sessions::metadata::ExternalSessionIdentity::new(
                     AgentTransportKind::Codex,
@@ -1972,7 +1973,7 @@ mod tests {
     #[test]
     fn acp_permission_selection_prefers_matching_decision_kind() {
         let request = AcpPermissionRequest {
-            chelix_session_key: Some("main".to_string()),
+            chelix_session_key: Some("t:1".to_string()),
             acp_session_id: "acp-1".to_string(),
             tool_call: "run tool".to_string(),
             options: vec![
@@ -2004,7 +2005,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main").await;
+        create_test_session(&metadata, "t:1").await;
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         let inner = Arc::new(SyncTrackingChatService::default());
@@ -2019,13 +2020,13 @@ mod tests {
         );
 
         assert_eq!(
-            chat.wait_for_session_gate("main")
+            chat.wait_for_session_gate("t:1")
                 .await
                 .expect("wait_for_session_gate delegates to inner chat"),
             Some(SessionTerminal::Completed)
         );
         assert_eq!(
-            chat.session_terminal("main")
+            chat.session_terminal("t:1")
                 .await
                 .expect("session_terminal delegates to inner chat"),
             Some(SessionTerminal::Cancelled)
@@ -2044,7 +2045,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main").await;
+        create_test_session(&metadata, "t:1").await;
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         let inner = Arc::new(SyncTrackingChatService::default());
@@ -2059,12 +2060,12 @@ mod tests {
         );
 
         let pending = chat
-            .tool_permission_pending("main")
+            .tool_permission_pending("t:1")
             .await
             .expect("tool_permission_pending delegates to inner chat");
         let resolved = chat
             .tool_permission_resolve(serde_json::json!({
-                "sessionKey": "main",
+                "sessionKey": "t:1",
                 "toolCallId": "call-1",
                 "phase": "before_execution",
                 "decision": "approve",
@@ -2088,7 +2089,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main").await;
+        create_test_session(&metadata, "t:1").await;
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         let inner = Arc::new(SyncTrackingChatService::default());
@@ -2125,7 +2126,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let inner = Arc::new(SyncTrackingChatService::default());
@@ -2170,7 +2171,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let inner = Arc::new(SyncTrackingChatService::default());
@@ -2210,7 +2211,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = ExternalAgentChatService::new(
@@ -2241,7 +2242,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2266,13 +2267,13 @@ mod tests {
                 .unwrap_or_else(|error| error.into_inner()),
             vec!["one".to_string(), "two".to_string()]
         );
-        let history = session_store.read("main").await.expect("read history");
+        let history = session_store.read("t:1").await.expect("read history");
         assert_eq!(history.len(), 4);
         assert_eq!(history[1]["content"], "reply to one");
         assert_eq!(history[3]["provider"], "external-agent");
         assert_eq!(
             metadata
-                .get("main")
+                .get("t:1")
                 .await
                 .unwrap()
                 .and_then(|entry| entry.external_session_id().map(str::to_string)),
@@ -2286,12 +2287,12 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
 
         let first = external_agents
-            .session_for_binding("main", AgentTransportKind::Codex)
+            .session_for_binding("t:1", AgentTransportKind::Codex)
             .await
             .expect("first live session");
         drop(first);
@@ -2303,7 +2304,7 @@ mod tests {
         }
 
         let second = external_agents
-            .session_for_binding("main", AgentTransportKind::Codex)
+            .session_for_binding("t:1", AgentTransportKind::Codex)
             .await
             .expect("second live session");
         drop(second);
@@ -2320,7 +2321,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2354,7 +2355,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2385,7 +2386,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2401,7 +2402,7 @@ mod tests {
             .expect_err("partial stream error should fail chat send");
 
         assert_eq!(error.to_string(), "fake partial failure");
-        let history = session_store.read("main").await.expect("read history");
+        let history = session_store.read("t:1").await.expect("read history");
         assert_eq!(history.len(), 2);
         assert_eq!(history[0]["role"], "user");
         assert_eq!(history[1]["role"], "assistant");
@@ -2416,7 +2417,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2430,7 +2431,7 @@ mod tests {
             .await
             .expect("send with usage");
 
-        let history = session_store.read("main").await.expect("read history");
+        let history = session_store.read("t:1").await.expect("read history");
         assert_eq!(history[1]["inputTokens"], 7);
         assert_eq!(history[1]["outputTokens"], 11);
     }
@@ -2443,7 +2444,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), agent_state);
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2457,7 +2458,7 @@ mod tests {
             .await
             .expect("send thinking-first");
 
-        let history = session_store.read("main").await.expect("read history");
+        let history = session_store.read("t:1").await.expect("read history");
         let items = history[1]["providerItems"]
             .as_array()
             .expect("assistant message carries canonical items");
@@ -2483,7 +2484,7 @@ mod tests {
         let agent_state = Arc::new(FakeAgentState::default());
         let external_agents = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external_agents
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .expect("bind external agent");
         let chat = test_chat_service(
@@ -2497,7 +2498,7 @@ mod tests {
             .expect("send starts live session");
 
         external_agents
-            .unbind(serde_json::json!({ "sessionKey": "main" }))
+            .unbind(serde_json::json!({ "sessionKey": "t:1" }))
             .await
             .expect("unbind external agent");
 
@@ -2637,7 +2638,7 @@ mod tests {
             .unwrap();
         chelix_sessions::run_migrations(&pool).await.unwrap();
         let metadata = Arc::new(SqliteSessionMetadata::new(pool.clone()));
-        create_test_session(&metadata, "main").await;
+        create_test_session(&metadata, "t:1").await;
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let queued = Arc::new(chelix_sessions::QueuedPrompts::new(pool));
@@ -2722,34 +2723,29 @@ mod tests {
         fixture
             .queued
             .enqueue(
-                chelix_sessions::SessionKey::new("main"),
+                chelix_sessions::SessionKey::new("t:1"),
                 queued_text("later"),
             )
             .await
             .unwrap();
         let token = fixture
             .external
-            .try_begin_external_turn("main", "run-1")
+            .try_begin_external_turn("t:1", "run-1")
             .await
             .unwrap();
-        finish_when_cancelled(
-            Arc::clone(&fixture.external),
-            "main",
-            "run-1",
-            token.clone(),
-        );
+        finish_when_cancelled(Arc::clone(&fixture.external), "t:1", "run-1", token.clone());
         let with_run = fixture
             .abort
-            .abort(serde_json::json!({"sessionKey": "main", "runId": "run-1"}))
+            .abort(serde_json::json!({"sessionKey": "t:1", "runId": "run-1"}))
             .await
             .unwrap();
         assert_eq!(with_run["aborted"], true);
-        assert_eq!(with_run["sessionKey"], "main");
+        assert_eq!(with_run["sessionKey"], "t:1");
         assert!(token.is_cancelled());
         assert!(
             fixture
                 .chat
-                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .queued_prompts_status(chelix_sessions::SessionKey::new("t:1"))
                 .await
                 .unwrap()
                 .prompts
@@ -2759,25 +2755,20 @@ mod tests {
         fixture
             .queued
             .enqueue(
-                chelix_sessions::SessionKey::new("main"),
+                chelix_sessions::SessionKey::new("t:1"),
                 queued_text("again"),
             )
             .await
             .unwrap();
         let token = fixture
             .external
-            .try_begin_external_turn("main", "run-2")
+            .try_begin_external_turn("t:1", "run-2")
             .await
             .unwrap();
-        finish_when_cancelled(
-            Arc::clone(&fixture.external),
-            "main",
-            "run-2",
-            token.clone(),
-        );
+        finish_when_cancelled(Arc::clone(&fixture.external), "t:1", "run-2", token.clone());
         let session_only = fixture
             .abort
-            .abort(serde_json::json!({"sessionKey": "main"}))
+            .abort(serde_json::json!({"sessionKey": "t:1"}))
             .await
             .unwrap();
         assert_eq!(session_only["aborted"], with_run["aborted"]);
@@ -2785,7 +2776,7 @@ mod tests {
         assert!(
             fixture
                 .chat
-                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .queued_prompts_status(chelix_sessions::SessionKey::new("t:1"))
                 .await
                 .unwrap()
                 .prompts
@@ -2798,15 +2789,12 @@ mod tests {
         let fixture = stop_fixture().await;
         fixture
             .queued
-            .enqueue(
-                chelix_sessions::SessionKey::new("main"),
-                queued_text("keep"),
-            )
+            .enqueue(chelix_sessions::SessionKey::new("t:1"), queued_text("keep"))
             .await
             .unwrap();
         let token = fixture
             .external
-            .try_begin_external_turn("main", "external-run")
+            .try_begin_external_turn("t:1", "external-run")
             .await
             .unwrap();
         let response = fixture
@@ -2817,12 +2805,12 @@ mod tests {
         assert_eq!(response["aborted"], false);
         assert_eq!(response["runId"], "missing-run");
         assert!(response["sessionKey"].is_null());
-        assert_ne!(response["sessionKey"], "main");
+        assert_ne!(response["sessionKey"], "t:1");
         assert!(!token.is_cancelled());
         assert_eq!(
             fixture
                 .chat
-                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .queued_prompts_status(chelix_sessions::SessionKey::new("t:1"))
                 .await
                 .unwrap()
                 .prompts
@@ -2836,20 +2824,17 @@ mod tests {
         let fixture = stop_fixture().await;
         fixture
             .queued
-            .enqueue(
-                chelix_sessions::SessionKey::new("main"),
-                queued_text("keep"),
-            )
+            .enqueue(chelix_sessions::SessionKey::new("t:1"), queued_text("keep"))
             .await
             .unwrap();
         let token = fixture
             .external
-            .try_begin_external_turn("main", "current")
+            .try_begin_external_turn("t:1", "current")
             .await
             .unwrap();
         let response = fixture
             .abort
-            .abort(serde_json::json!({"sessionKey": "main", "runId": "stale"}))
+            .abort(serde_json::json!({"sessionKey": "t:1", "runId": "stale"}))
             .await
             .unwrap();
         assert_eq!(response["aborted"], false);
@@ -2858,7 +2843,7 @@ mod tests {
         assert_eq!(
             fixture
                 .chat
-                .queued_prompts_status(chelix_sessions::SessionKey::new("main"))
+                .queued_prompts_status(chelix_sessions::SessionKey::new("t:1"))
                 .await
                 .unwrap()
                 .prompts
@@ -2872,7 +2857,7 @@ mod tests {
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
         let external = fake_external_agents(metadata, Arc::new(FakeAgentState::default()));
         external
-            .try_begin_external_turn("main", "run-1")
+            .try_begin_external_turn("t:1", "run-1")
             .await
             .unwrap();
         let done = {
@@ -2880,7 +2865,7 @@ mod tests {
                 .external_runs
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            let turn = runs.get("main").unwrap();
+            let turn = runs.get("t:1").unwrap();
             assert!(turn.done.borrow().is_none());
             turn.done.subscribe()
         };
@@ -2893,8 +2878,8 @@ mod tests {
                 .external_runs
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            assert!(runs.contains_key("main"));
-            assert!(runs.get("main").unwrap().done.borrow().is_none());
+            assert!(runs.contains_key("t:1"));
+            assert!(runs.get("t:1").unwrap().done.borrow().is_none());
             held_tx.send(()).unwrap();
             release_rx.recv().unwrap();
             drop(runs);
@@ -2904,7 +2889,7 @@ mod tests {
         let dropper = std::thread::spawn(move || {
             let guard = ExternalTurnGuard {
                 agents: external_for_drop,
-                session_key: "main".to_string(),
+                session_key: "t:1".to_string(),
                 run_id: "run-1".to_string(),
                 active: true,
                 entered: Some(entered_tx),
@@ -2932,7 +2917,7 @@ mod tests {
                 .external_runs
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
-                .get("main")
+                .get("t:1")
                 .is_none()
         );
         assert!(matches!(done.borrow().as_ref(), Some(Err(_))));
@@ -2943,11 +2928,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let session_store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
         let metadata = Arc::new(SqliteSessionMetadata::new(sqlite_pool().await));
-        create_test_session(&metadata, "main").await;
+        create_test_session(&metadata, "t:1").await;
         let agent_state = Arc::new(FakeAgentState::default());
         let external = fake_external_agents(Arc::clone(&metadata), Arc::clone(&agent_state));
         external
-            .bind(serde_json::json!({ "sessionKey": "main", "kind": "codex" }))
+            .bind(serde_json::json!({ "sessionKey": "t:1", "kind": "codex" }))
             .await
             .unwrap();
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -3006,7 +2991,7 @@ mod tests {
         let aborting = Arc::clone(&chat);
         let abort = tokio::spawn(async move {
             aborting
-                .abort(serde_json::json!({"sessionKey": "main"}))
+                .abort(serde_json::json!({"sessionKey": "t:1"}))
                 .await
         });
         tokio::time::timeout(std::time::Duration::from_secs(2), cancel_seen)
@@ -3020,15 +3005,15 @@ mod tests {
             .unwrap()
             .unwrap_or_else(|error| panic!("abort: {error}"));
         assert_eq!(response["aborted"], true);
-        let history = session_store.read("main").await.unwrap();
+        let history = session_store.read("t:1").await.unwrap();
         assert!(history.len() >= 2);
         gateway
             .services
             .session_mutations
-            .try_acquire_turn("main")
+            .try_acquire_turn("t:1")
             .await
             .unwrap_or_else(|error| panic!("permit was not released: {error}"));
-        assert!(external.current_external_run("main").await.is_none());
+        assert!(external.current_external_run("t:1").await.is_none());
         let _ = send
             .await
             .unwrap()

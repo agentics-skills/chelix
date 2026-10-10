@@ -17,7 +17,7 @@ async fn resolve_env_returns_host_when_sandbox_is_off() {
     let router =
         SandboxRouter::with_backend(config, routed_backend, test_owner_resolver()).unwrap();
 
-    let env = router.resolve_env("main").await;
+    let env = router.resolve_env("t:1").await;
 
     assert!(matches!(env, Ok(ExecEnv::Host)));
     assert_eq!(backend.ensure_ready_calls.load(Ordering::SeqCst), 0);
@@ -60,7 +60,7 @@ async fn resolve_env_fails_closed_for_nonisolated_backend() {
     let router =
         SandboxRouter::with_backend(config, Arc::new(NoSandbox), test_owner_resolver()).unwrap();
 
-    let error = match router.resolve_env("main").await {
+    let error = match router.resolve_env("t:1").await {
         Err(error) => error,
         Ok(_) => panic!("direct host backend must fail closed while sandbox mode is on"),
     };
@@ -85,7 +85,7 @@ async fn resolve_env_fails_closed_when_backend_is_unavailable() {
     )
     .unwrap();
 
-    let error = match router.resolve_env("main").await {
+    let error = match router.resolve_env("t:1").await {
         Err(error) => error,
         Ok(_) => panic!("unavailable backend must fail closed"),
     };
@@ -105,7 +105,7 @@ async fn resolve_env_uses_one_global_policy_for_every_session() {
     let router = SandboxRouter::with_backend(config, backend, test_owner_resolver()).unwrap();
 
     assert!(matches!(
-        router.resolve_env("main").await,
+        router.resolve_env("t:1").await,
         Ok(ExecEnv::Sandbox { .. })
     ));
     assert!(matches!(

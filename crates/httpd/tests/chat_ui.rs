@@ -405,7 +405,7 @@ async fn gateway_startup_with_llm_wiring_does_not_block() {
     let result = chat
         .send(
             ChatSendRequest::text("hello"),
-            ChatExecutionContext::internal(SessionKey::new("main")),
+            ChatExecutionContext::internal(SessionKey::new("t:1")),
         )
         .await;
     match result {
