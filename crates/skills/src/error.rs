@@ -23,6 +23,8 @@ pub enum Error {
     Install(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("skill file already exists: {0}")]
+    AlreadyExists(String),
     #[error("{0}")]
     Validation(String),
     #[error("{0}")]

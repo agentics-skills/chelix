@@ -547,11 +547,19 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
                 chelix_skills::types::SkillSource::Project,
             ),
         ];
-        let fs_discoverer = FsSkillDiscoverer::new(search_paths);
+        let Some(bus) = state.gateway.call_bus.get() else {
+            return IntoResponse::into_response((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "call bus is not installed",
+            ));
+        };
+        let fs_discoverer = FsSkillDiscoverer::new(search_paths, std::sync::Arc::clone(bus));
 
         #[cfg(feature = "bundled-skills")]
         let discovered = {
-            let bundled = std::sync::Arc::new(chelix_skills::bundled::BundledSkillStore::new());
+            let bundled = std::sync::Arc::new(chelix_skills::bundled::BundledSkillStore::new(
+                std::sync::Arc::clone(bus),
+            ));
             let composite = chelix_skills::discover::CompositeSkillDiscoverer::new(
                 Box::new(fs_discoverer),
                 bundled,

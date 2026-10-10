@@ -22,13 +22,13 @@ When `skills.enable_agent_sidecar_files = true`, a fifth tool becomes available:
 
 Skills created this way are personal and stored in the configured data
 directory's `skills/` folder. A contextual `create_skill` writes
-`allow: [<agent_id>]` and `deny: []`, making the new skill visible only to its creator.
-A call without agent context and a new `skills.skill.save` write `allow: []` and
-`deny: []`, so each agent's skill policy applies.
+`allowed_agents` with that agent id and an empty `denied_agents`, making the new skill visible only to its creator.
+A call without agent context and a new `skills.skill.save` write both keys empty,
+so each agent's skill policy applies.
 
-`update_skill`, `patch_skill`, `write_skill_files`, and `skills.skill.save`
+`update_skill`, `patch_skill`, and an existing `skills.skill.save`
 preserve existing access lists and write both keys, including empty lists.
-An omitted access key is written as an empty list.
+An omitted access key is written as an empty list. `write_skill_files` does not rewrite `SKILL.md`.
 
 For hidden personal targets, `create_skill` and `delete_skill` return
 `skill '{name}' not found`. `update_skill`, `patch_skill`, and `write_skill_files`
@@ -40,9 +40,8 @@ See [Agent skills](agents.md#mcp-and-skills) for visibility precedence.
 The skill watcher (`crates/skills/src/watcher.rs`) monitors skill directories
 for filesystem changes using debounced notifications. When a `SKILL.md` file is
 created, modified, or deleted, the watcher emits a `skills.changed` event via
-the WebSocket event bus so the UI can refresh. `write_skill_files` writes the
-supplementary files and then publishes `SKILL.md`; the watcher monitors that
-publication.
+the WebSocket event bus so the UI can refresh. `write_skill_files` writes only
+the supplementary files.
 
 ```admonish tip
 The watcher uses debouncing to avoid firing multiple events for rapid

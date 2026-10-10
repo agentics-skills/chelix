@@ -16,6 +16,7 @@ async-trait           = { workspace = true }
 base64                = { workspace = true }
 chelix-agents         = { workspace = true }
 chelix-browser        = { workspace = true }
+chelix-call-bus       = { workspace = true }
 chelix-common         = { workspace = true }
 chelix-config         = { workspace = true }
 chelix-cron           = { workspace = true }

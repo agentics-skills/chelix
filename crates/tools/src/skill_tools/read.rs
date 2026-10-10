@@ -15,12 +15,17 @@ fn seed_personal_skill(root: &Path, name: &str, body: &str) -> PathBuf {
     skill_dir
 }
 
+fn skill_bus() -> Arc<chelix_call_bus::CallBus> {
+    chelix_skills::skill_file::open_skill_bus().unwrap()
+}
+
 /// Build a `ReadSkillTool` whose discoverer only sees the personal skills
 /// directory at `<root>/skills`.
 fn read_tool_for(root: &Path) -> ReadSkillTool {
     let paths = vec![(root.join("skills"), SkillSource::Personal)];
-    let discoverer = Arc::new(FsSkillDiscoverer::new(paths));
-    ReadSkillTool::new(discoverer)
+    let bus = skill_bus();
+    let discoverer = Arc::new(FsSkillDiscoverer::new(paths, Arc::clone(&bus)));
+    ReadSkillTool::new(discoverer, bus)
 }
 
 #[tokio::test]
@@ -224,7 +229,7 @@ async fn test_read_skill_rejects_skill_md_via_sidecar_path() {
 #[tokio::test]
 async fn test_read_skill_name_with_matching_metadata_tool_is_present() {
     // Sanity check on AgentTool shape.
-    let tool = ReadSkillTool::with_default_paths();
+    let tool = ReadSkillTool::with_default_paths(skill_bus());
     assert_eq!(tool.name(), "read_skill");
     let schema = tool.parameters_schema();
     assert_eq!(schema["type"], "object");
@@ -432,7 +437,7 @@ async fn test_read_skill_surfaces_frontmatter_metadata_fields() {
     seed_personal_skill_full(
         tmp.path(),
         "metadata-demo",
-        "license: MIT\nhomepage: https://example.com/demo\ncompatibility: requires claude-sonnet\nallowed_tools:\n  - read_file\n  - Bash(git:*)\n",
+        "license: MIT\nhomepage: https://example.com/demo\ncompatibility: requires claude-sonnet\n",
         "# Full-metadata demo\n",
     );
     let tool = read_tool_for(tmp.path());
@@ -443,14 +448,6 @@ async fn test_read_skill_surfaces_frontmatter_metadata_fields() {
     assert_eq!(result["license"], "MIT");
     assert_eq!(result["homepage"], "https://example.com/demo");
     assert_eq!(result["compatibility"], "requires claude-sonnet");
-    let tools: Vec<&str> = result["allowed_tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_str().unwrap())
-        .collect();
-    assert!(tools.contains(&"read_file"));
-    assert!(tools.contains(&"Bash(git:*)"));
 }
 
 #[tokio::test]
@@ -463,7 +460,6 @@ async fn test_read_skill_omits_empty_metadata_fields() {
     assert!(result.get("license").is_none());
     assert!(result.get("homepage").is_none());
     assert!(result.get("compatibility").is_none());
-    assert!(result.get("allowed_tools").is_none());
 }
 
 #[tokio::test]
@@ -742,11 +738,15 @@ async fn test_read_skill_multi_source_resolves_by_name() {
     // Seed a personal-scoped skill with a different name.
     seed_personal_skill(tmp.path(), "personal-only", "# From personal\n");
 
-    let discoverer = Arc::new(FsSkillDiscoverer::new(vec![
-        (project_dir, SkillSource::Project),
-        (tmp.path().join("skills"), SkillSource::Personal),
-    ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let bus = skill_bus();
+    let discoverer = Arc::new(FsSkillDiscoverer::new(
+        vec![
+            (project_dir, SkillSource::Project),
+            (tmp.path().join("skills"), SkillSource::Personal),
+        ],
+        Arc::clone(&bus),
+    ));
+    let tool = ReadSkillTool::new(discoverer, bus);
 
     let a = tool.execute(json!({ "name": "shared" })).await.unwrap();
     assert_eq!(a["source"], "project");
@@ -898,7 +898,7 @@ async fn test_read_skill_plugin_as_file_rejects_sidecar_request() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let tool = ReadSkillTool::new(discoverer, skill_bus());
 
     let result = tool
         .execute(json!({
@@ -952,7 +952,7 @@ async fn test_read_skill_plugin_md_strips_frontmatter_from_body() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let tool = ReadSkillTool::new(discoverer, skill_bus());
 
     let result = tool
         .execute(json!({ "name": "demo-plugin" }))
@@ -985,7 +985,7 @@ async fn test_read_skill_plugin_md_without_frontmatter_is_returned_verbatim() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let tool = ReadSkillTool::new(discoverer, skill_bus());
     let result = tool
         .execute(json!({ "name": "plain-plugin" }))
         .await
@@ -1037,7 +1037,7 @@ async fn test_read_skill_plugin_md_rejects_oversized_body() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let tool = ReadSkillTool::new(discoverer, skill_bus());
     let result = tool.execute(json!({ "name": "huge-plugin" })).await;
     let err = result.expect_err("oversized plugin body must be rejected");
     assert!(
@@ -1077,10 +1077,10 @@ async fn test_read_skill_primary_follows_symlinked_skill_directory() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let tool = ReadSkillTool::new(discoverer, skill_bus());
 
     let result = tool.execute(json!({ "name": "demo" })).await.unwrap();
-    assert_eq!(result["body"], "# demo body");
+    assert_eq!(result["body"], "# demo body\n");
 }
 
 #[cfg(unix)]
@@ -1122,7 +1122,7 @@ async fn test_read_skill_sidecar_follows_symlinked_skill_directory() {
             ..Default::default()
         },
     ]));
-    let tool = ReadSkillTool::new(discoverer);
+    let tool = ReadSkillTool::new(discoverer, skill_bus());
 
     let result = tool
         .execute(json!({
@@ -1177,10 +1177,12 @@ async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
     use chelix_skills::bundled::BundledSkillStore;
 
     let tmp = tempfile::tempdir().unwrap();
+    let bus = skill_bus();
     let store = Arc::new(BundledSkillStore::with_materialize_dir(
         tmp.path().to_path_buf(),
+        Arc::clone(&bus),
     ));
-    let skills = store.discover();
+    let skills = store.discover().await;
 
     // Find a skill without sidecars.
     let no_sidecars = skills
@@ -1191,7 +1193,7 @@ async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
     let name = no_sidecars.name.clone();
 
     let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![no_sidecars]));
-    let tool = ReadSkillTool::with_bundled(discoverer, store);
+    let tool = ReadSkillTool::with_bundled(discoverer, store, bus);
 
     let result = tool.execute(json!({ "name": name })).await.unwrap();
     assert!(

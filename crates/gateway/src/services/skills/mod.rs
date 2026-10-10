@@ -1,4 +1,4 @@
 mod service;
 mod skills_helpers;
 
-pub use service::NoopSkillsService;
+pub use service::{NoopSkillsService, UnwiredSkillsService};

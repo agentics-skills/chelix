@@ -61,12 +61,13 @@ pub async fn export_repo_bundle(
 }
 
 pub async fn import_repo_bundle(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
     bundle_path: &Path,
     install_dir: &Path,
 ) -> Result<ImportedRepoBundle> {
     let manifest_path = ManifestStore::default_path()?;
     let store = ManifestStore::new(manifest_path);
-    import_repo_bundle_with_store(bundle_path, install_dir, &store).await
+    import_repo_bundle_with_store(bus, bundle_path, install_dir, &store).await
 }
 
 pub async fn export_repo_bundle_with_store(
@@ -109,6 +110,7 @@ pub async fn export_repo_bundle_with_store(
 }
 
 pub async fn import_repo_bundle_with_store(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
     bundle_path: &Path,
     install_dir: &Path,
     store: &ManifestStore,
@@ -132,11 +134,31 @@ pub async fn import_repo_bundle_with_store(
     {
         let bundle_path = bundle_path.clone();
         let repo_dir = repo_dir.clone();
-        tokio::task::spawn_blocking(move || extract_bundle_archive(&bundle_path, &repo_dir))
-            .await??;
+        let unpack_dir = repo_dir.clone();
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+        let unpack = tokio::task::spawn_blocking(move || {
+            extract_bundle_archive(&bundle_path, &unpack_dir, sender)
+        });
+        let write_result = crate::skill_file::write_unpacked_skill_files(bus, &mut receiver).await;
+        drop(receiver);
+        let unpack_joined = unpack.await;
+        let failure = if let Err(message) = write_result {
+            Some(Error::Bundle(message))
+        } else {
+            match unpack_joined {
+                Err(error) => Some(Error::Bundle(error.to_string())),
+                Ok(Err(error)) => Some(error),
+                Ok(Ok(())) => None,
+            }
+        };
+        if let Some(error) = failure {
+            let _ = tokio::fs::remove_dir_all(&repo_dir).await;
+            return Err(error);
+        }
     }
 
-    let (format, skills_meta, skill_states) = scan_imported_repo(&repo_dir, install_dir).await?;
+    let (format, skills_meta, skill_states) =
+        scan_imported_repo(bus, &repo_dir, install_dir).await?;
     if skills_meta.is_empty() {
         let _ = tokio::fs::remove_dir_all(&repo_dir).await;
         return Err(Error::Bundle(format!(
@@ -180,13 +202,14 @@ pub async fn import_repo_bundle_with_store(
 }
 
 async fn scan_imported_repo(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
     repo_dir: &Path,
     install_dir: &Path,
 ) -> Result<(PluginFormat, Vec<SkillMetadata>, Vec<SkillState>)> {
     let format = detect_format(repo_dir);
     let (skills_meta, skill_states) = match format {
-        PluginFormat::Skill => scan_repo_skills(repo_dir, install_dir).await?,
-        _ => match scan_with_adapter(repo_dir, format) {
+        PluginFormat::Skill => scan_repo_skills(bus, repo_dir, install_dir).await?,
+        _ => match scan_with_adapter(bus, repo_dir, format).await {
             Some(result) => {
                 let entries = result?;
                 let relative = repo_dir
@@ -299,7 +322,11 @@ fn read_bundle_manifest(bundle_path: &Path) -> Result<PortableRepoBundle> {
     )))
 }
 
-fn extract_bundle_archive(bundle_path: &Path, target_dir: &Path) -> Result<()> {
+fn extract_bundle_archive(
+    bundle_path: &Path,
+    target_dir: &Path,
+    sender: tokio::sync::mpsc::Sender<(PathBuf, Vec<u8>)>,
+) -> Result<()> {
     std::fs::create_dir_all(target_dir)?;
     let canonical_target = std::fs::canonicalize(target_dir)?;
 
@@ -350,7 +377,22 @@ fn extract_bundle_archive(bundle_path: &Path, target_dir: &Path) -> Result<()> {
             }
         }
 
-        entry.unpack(&dest)?;
+        if dest.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
+            let mut bytes = Vec::new();
+            let limit = chelix_service_traits::MAX_SKILL_FILE_BYTES;
+            Read::take(&mut entry, limit + 1).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > limit {
+                return Err(Error::Bundle(format!(
+                    "SKILL.md exceeds {limit} bytes: {}",
+                    dest.display()
+                )));
+            }
+            sender
+                .blocking_send((dest, bytes))
+                .map_err(|_| Error::Bundle("skill file receiver closed".into()))?;
+        } else {
+            entry.unpack(&dest)?;
+        }
     }
 
     Ok(())
@@ -504,6 +546,7 @@ mod tests {
         let imported_install_dir = tmp.path().join("imported-skills");
         let imported_store = ManifestStore::new(tmp.path().join("imported-manifest.json"));
         let imported = import_repo_bundle_with_store(
+            &crate::skill_file::open_skill_bus().unwrap(),
             &exported.bundle_path,
             &imported_install_dir,
             &imported_store,
@@ -532,5 +575,38 @@ mod tests {
                 .map(|provenance| provenance.original_source.as_str()),
             Some("owner/demo")
         );
+
+        let bad_repo = install_dir.join("bad-repo");
+        std::fs::create_dir_all(&bad_repo).unwrap();
+        std::fs::write(
+            bad_repo.join("SKILL.md"),
+            "---\nname: \"Bad Name\"\ndescription: test\n---\nbody\n",
+        )
+        .unwrap();
+        manifest.add_repo(RepoEntry {
+            source: "owner/bad".into(),
+            repo_name: "bad-repo".into(),
+            installed_at_ms: 1,
+            commit_sha: None,
+            format: PluginFormat::Skill,
+            quarantined: false,
+            quarantine_reason: None,
+            provenance: None,
+            skills: vec![],
+        });
+        store.save(&manifest).unwrap();
+        let bad_export =
+            export_repo_bundle_with_store("owner/bad", &install_dir, Some(&export_dir), &store)
+                .await
+                .unwrap();
+        let bad_import = import_repo_bundle_with_store(
+            &crate::skill_file::open_skill_bus().unwrap(),
+            &bad_export.bundle_path,
+            &imported_install_dir,
+            &imported_store,
+        )
+        .await;
+        assert!(bad_import.is_err());
+        assert!(!imported_install_dir.join("bad-repo").exists());
     }
 }

@@ -16,16 +16,14 @@ pub mod prompt_gen;
 pub mod recipes;
 pub mod registry;
 pub mod safety;
+pub mod skill_file;
 pub mod types;
 pub mod usage;
 
 #[cfg(feature = "bundled-skills")]
 pub mod bundled;
 
-pub use {
-    access::{publish_markdown, visible_to_agent},
-    error::Error,
-};
+pub use {access::visible_to_agent, error::Error};
 
 /// Canonical list of sidecar subdirectories a skill directory may contain,
 /// matching the agentskills.io standard. Both the prompt generator

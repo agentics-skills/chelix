@@ -285,9 +285,9 @@ all MCP servers visible.
 | `allow` | array | `[]`    | Select skill names or categories; an empty list admits all names/categories. |
 | `deny`  | array | `[]`    | Remove matching names or categories; an empty list keeps the selection.      |
 
-`SKILL.md` frontmatter `allow` and `deny` contain exact agent ids. A matching
-skill `deny` hides the skill first. A nonempty skill `allow` replaces the agent
-policy and selects its listed ids. With an empty skill `allow`, the agent's
+`SKILL.md` frontmatter `denied_agents` and `allowed_agents` contain exact agent ids. A matching
+skill `denied_agents` hides the skill first. A nonempty skill `allowed_agents` replaces the agent
+policy and selects its listed ids. With an empty skill `allowed_agents`, the agent's
 `skills.allow` selects names/categories, then `skills.deny` removes matches.
 The first discovered entry for each name is selected before these rules apply.
 

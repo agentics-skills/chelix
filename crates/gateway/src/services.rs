@@ -8,7 +8,10 @@
 mod skills;
 
 // Re-export all trait definitions and simple noops from service-traits.
-pub use {chelix_service_traits::*, skills::NoopSkillsService};
+pub use {
+    chelix_service_traits::*,
+    skills::{NoopSkillsService, UnwiredSkillsService},
+};
 
 use {
     async_trait::async_trait,

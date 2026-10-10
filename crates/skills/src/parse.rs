@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use {serde::Deserialize, serde_yaml::Value};
+use serde::Deserialize;
 
 use crate::error::{Error, Result};
 
-use crate::types::{SkillContent, SkillMetadata};
+use crate::types::SkillMetadata;
 
 /// Validate a skill name: lowercase ASCII, hyphens, 1-64 chars.
 pub fn validate_name(name: &str) -> bool {
@@ -21,44 +21,30 @@ pub fn validate_name(name: &str) -> bool {
         && !name.contains("::")
 }
 
-/// When `name` fails validation, try to use `slug` (from frontmatter or `_meta.json`)
-/// as the internal name, storing the original `name` as `display_name`.
-fn resolve_name_or_slug(meta: &mut SkillMetadata, skill_dir: &Path) -> Result<()> {
+/// When `name` fails validation, use frontmatter `slug` as the internal name
+/// and store the original `name` as `display_name`.
+pub(crate) fn resolve_name_or_slug(meta: &mut SkillMetadata) -> Result<()> {
     if validate_name(&meta.name) {
         return Ok(());
     }
 
-    // Try slug from frontmatter first.
-    let slug = meta.slug.clone().or_else(|| {
-        // Fall back to slug from _meta.json.
-        read_meta_json(skill_dir).and_then(|m| m.slug)
-    });
-
-    match slug {
-        Some(ref s) if validate_name(s) => {
+    match meta.slug.clone() {
+        Some(ref slug) if validate_name(slug) => {
             tracing::debug!(
                 name = %meta.name,
-                slug = %s,
+                slug = %slug,
                 "skill name invalid, using slug as internal name"
             );
             meta.display_name = Some(std::mem::take(&mut meta.name));
-            meta.name = s.clone();
-            // slug is intentionally left populated so callers can inspect what was in the frontmatter.
+            meta.name = slug.clone();
             Ok(())
         },
-        Some(ref s) => {
-            let source = if meta.slug.is_some() {
-                "frontmatter"
-            } else {
-                "_meta.json"
-            };
-            Err(Error::Validation(format!(
-                "skill name '{}' is invalid and slug '{}' (from {}) is also invalid: \
-                 must be 1-64 lowercase alphanumeric, hyphen, or colon chars \
-                 (e.g. 'my-skill' or 'ns:skill')",
-                meta.name, s, source
-            )))
-        },
+        Some(ref slug) => Err(Error::Validation(format!(
+            "skill name '{}' is invalid and slug '{slug}' (from frontmatter) is also invalid: \
+             must be 1-64 lowercase alphanumeric, hyphen, or colon chars \
+             (e.g. 'my-skill' or 'ns:skill')",
+            meta.name
+        ))),
         None => Err(Error::Validation(format!(
             "skill name '{}' is invalid and no slug provided: \
              must be 1-64 lowercase alphanumeric, hyphen, or colon chars \
@@ -67,35 +53,6 @@ fn resolve_name_or_slug(meta: &mut SkillMetadata, skill_dir: &Path) -> Result<()
             meta.name
         ))),
     }
-}
-
-/// Parse a SKILL.md file into metadata only (frontmatter).
-pub fn parse_metadata(content: &str, skill_dir: &Path) -> Result<SkillMetadata> {
-    let (frontmatter, _body) = split_frontmatter(content)?;
-    parse_frontmatter_value(&frontmatter)?;
-    let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
-        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
-
-    resolve_name_or_slug(&mut meta, skill_dir)?;
-
-    meta.path = skill_dir.to_path_buf();
-    Ok(meta)
-}
-
-/// Parse a SKILL.md file into full content (metadata + body).
-pub fn parse_skill(content: &str, skill_dir: &Path) -> Result<SkillContent> {
-    let (frontmatter, body) = split_frontmatter(content)?;
-    parse_frontmatter_value(&frontmatter)?;
-    let mut meta: SkillMetadata = serde_yaml::from_str(&frontmatter)
-        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
-
-    resolve_name_or_slug(&mut meta, skill_dir)?;
-
-    meta.path = skill_dir.to_path_buf();
-    Ok(SkillContent {
-        metadata: meta,
-        body: body.to_string(),
-    })
 }
 
 // ── _meta.json support (openclaw) ───────────────────────────────────────────
@@ -128,12 +85,6 @@ pub fn read_meta_json(skill_dir: &Path) -> Option<SkillMetaJson> {
     serde_json::from_str(&content).ok()
 }
 
-/// Split SKILL.md content at `---` delimiters into (frontmatter, body).
-fn split_frontmatter(content: &str) -> Result<(String, String)> {
-    let (frontmatter, body) = split_frontmatter_raw(content)?;
-    Ok((frontmatter.trim().to_string(), body.trim().to_string()))
-}
-
 pub(crate) fn split_frontmatter_raw(content: &str) -> Result<(&str, &str)> {
     let after_open = content.trim_start().strip_prefix("---").ok_or_else(|| {
         Error::Parse("SKILL.md must start with YAML frontmatter delimited by ---".into())
@@ -144,178 +95,11 @@ pub(crate) fn split_frontmatter_raw(content: &str) -> Result<(&str, &str)> {
     Ok((&after_open[..close_pos], &after_open[close_pos + 4..]))
 }
 
-pub(crate) fn parse_frontmatter_value(frontmatter: &str) -> Result<Value> {
-    let value: Value = serde_yaml::from_str(frontmatter)
-        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
-    access_lists_from_value(&value)?;
-    Ok(value)
-}
-
-fn preserve_string_values(value: &mut Value, metadata: &Value) {
-    match (value, metadata) {
-        (value, Value::String(string)) => *value = Value::String(string.clone()),
-        (Value::Mapping(value), Value::Mapping(metadata)) => {
-            for (key, typed) in metadata {
-                if let Some(original) = value.get_mut(key) {
-                    preserve_string_values(original, typed);
-                }
-            }
-        },
-        (Value::Sequence(value), Value::Sequence(metadata)) => {
-            for (original, typed) in value.iter_mut().zip(metadata) {
-                preserve_string_values(original, typed);
-            }
-        },
-        _ => {},
-    }
-}
-
-pub(crate) fn metadata_frontmatter_value(frontmatter: &str) -> Result<Value> {
-    let mut value = parse_frontmatter_value(frontmatter)?;
-    let metadata: SkillMetadata = serde_yaml::from_str(frontmatter)
-        .map_err(|e| Error::Parse(format!("invalid SKILL.md frontmatter: {e}")))?;
-    let typed = serde_yaml::to_value(metadata)?;
-    preserve_string_values(&mut value, &typed);
-    if let Some(original) = value.get_mut("allowed-tools")
-        && let Some(tools) = typed.get("allowed_tools")
-    {
-        preserve_string_values(original, tools);
-    }
-    Ok(value)
-}
-
-/// Replace an existing frontmatter description and preserve the body bytes.
-pub fn update_description(content: &str, description: &str) -> Result<String> {
-    let (frontmatter, body) = split_frontmatter_raw(content)?;
-    let mut value = metadata_frontmatter_value(frontmatter)?;
-    let mapping = value
-        .as_mapping_mut()
-        .ok_or_else(|| Error::Parse("invalid SKILL.md frontmatter: expected a mapping".into()))?;
-    let Some(current) = mapping.get_mut("description") else {
-        return Ok(content.to_string());
-    };
-    *current = Value::String(description.to_string());
-    Ok(format!("---\n{}---{body}", serde_yaml::to_string(&value)?))
-}
-
-fn access_lists_from_value(value: &Value) -> Result<(Vec<String>, Vec<String>)> {
-    let read_list = |key: &str| -> Result<Vec<String>> {
-        match value.get(key) {
-            None => Ok(Vec::new()),
-            Some(Value::Sequence(items)) => items
-                .iter()
-                .map(|item| match item {
-                    Value::String(id) => Ok(id.clone()),
-                    _ => Err(Error::Parse(format!(
-                        "invalid SKILL.md frontmatter: '{key}' must be a sequence of strings"
-                    ))),
-                })
-                .collect(),
-            Some(_) => Err(Error::Parse(format!(
-                "invalid SKILL.md frontmatter: '{key}' must be a sequence of strings"
-            ))),
-        }
-    };
-    Ok((read_list("allow")?, read_list("deny")?))
-}
-
-/// Parse agent access lists from an optional frontmatter block.
-pub fn parse_access_lists(content: &str) -> Result<(Vec<String>, Vec<String>)> {
-    if !content.trim_start().starts_with("---") {
-        return Ok((Vec::new(), Vec::new()));
-    }
-    let (frontmatter, _) = split_frontmatter_raw(content)?;
-    let value = parse_frontmatter_value(frontmatter)?;
-    access_lists_from_value(&value)
-}
-
-/// Tolerant variant of [`split_frontmatter`]: returns only the body after an
-/// optional YAML frontmatter block. If the content doesn't start with a
-/// `---` fence or the closing `---` is missing, returns the original content
-/// unchanged.
-///
-/// Unlike `parse_skill`, this helper never errors and never validates the
-/// frontmatter's schema — it's intended for consumers that just want a clean
-/// markdown body without a full schema check (e.g. reading plugin-backed
-/// skills whose frontmatter may follow a non-SKILL.md convention).
-#[must_use]
-pub fn strip_optional_frontmatter(content: &str) -> &str {
-    let trimmed_start = content.trim_start();
-    let Some(after_open) = trimmed_start.strip_prefix("---") else {
-        return content;
-    };
-    let Some(close_pos) = after_open.find("\n---") else {
-        return content;
-    };
-    // Advance past "\n---" and any trailing newline so the caller sees
-    // clean markdown starting at the first real content line.
-    let rest = &after_open[close_pos + 4..];
-    rest.trim_start_matches(['\r', '\n'])
-}
-
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn access_lists_require_sequences_of_strings() {
-        let dir = Path::new("demo");
-        let bare = "---\nname: demo\ndescription: test\n---\nbody";
-        let meta = parse_metadata(bare, dir).unwrap();
-        assert!(meta.allow.is_empty());
-        assert!(meta.deny.is_empty());
-        for key in ["allow", "deny"] {
-            for value in ["", "hello", "null", "[agent1, 2]", "{}"] {
-                let content = format!("---\nname: demo\n{key}: {value}\n---\nbody");
-                assert!(parse_metadata(&content, dir).is_err(), "{content}");
-                assert!(parse_skill(&content, dir).is_err(), "{content}");
-                assert!(parse_access_lists(&content).is_err(), "{content}");
-            }
-        }
-        let command = "---\ndescription: Review\nallow: [agent1]\ndeny: []\n---\nbody";
-        assert_eq!(
-            parse_access_lists(command).unwrap(),
-            (vec!["agent1".into()], Vec::new())
-        );
-        assert_eq!(
-            parse_access_lists("# Review").unwrap(),
-            (Vec::new(), Vec::new())
-        );
-    }
-
     use rstest::rstest;
-
-    #[test]
-    fn strip_optional_frontmatter_removes_yaml_block() {
-        let input = "---\nname: foo\ndescription: bar\n---\n\n# Body\n\nHello.\n";
-        assert_eq!(strip_optional_frontmatter(input), "# Body\n\nHello.\n");
-    }
-
-    #[test]
-    fn strip_optional_frontmatter_passes_through_plain_markdown() {
-        let input = "# No frontmatter here\n\nJust body.\n";
-        assert_eq!(strip_optional_frontmatter(input), input);
-    }
-
-    #[test]
-    fn strip_optional_frontmatter_passes_through_unterminated_fence() {
-        // Missing closing fence — don't eat the body silently, return as-is.
-        let input = "---\nname: broken\nno closing fence here\n\n# Body that survives\n";
-        assert_eq!(strip_optional_frontmatter(input), input);
-    }
-
-    #[test]
-    fn strip_optional_frontmatter_handles_leading_whitespace() {
-        let input = "\n\n---\nname: foo\n---\n# Body\n";
-        assert_eq!(strip_optional_frontmatter(input), "# Body\n");
-    }
-
-    #[test]
-    fn strip_optional_frontmatter_handles_empty_body() {
-        let input = "---\nname: foo\n---\n";
-        assert_eq!(strip_optional_frontmatter(input), "");
-    }
 
     #[rstest]
     #[case("my-skill", true)]
@@ -339,268 +123,5 @@ mod tests {
     #[test]
     fn test_validate_name_too_long() {
         assert!(!validate_name(&"a".repeat(65)));
-    }
-
-    #[test]
-    fn test_parse_metadata() {
-        let content = r#"---
-name: my-skill
-description: A test skill
-license: MIT
-allowed_tools:
-  - execute_command
-  - read
----
-
-# My Skill
-
-Instructions here.
-"#;
-        let meta = parse_metadata(content, Path::new("/tmp/my-skill")).unwrap();
-        assert_eq!(meta.name, "my-skill");
-        assert_eq!(meta.description, "A test skill");
-        assert_eq!(meta.license, Some("MIT".into()));
-        assert_eq!(meta.allowed_tools, vec!["execute_command", "read"]);
-        assert_eq!(meta.path, Path::new("/tmp/my-skill"));
-    }
-
-    #[test]
-    fn test_parse_skill_full() {
-        let content = r#"---
-name: commit
-description: Create git commits
----
-
-When asked to commit, run `git add` then `git commit`.
-"#;
-        let skill = parse_skill(content, Path::new("/skills/commit")).unwrap();
-        assert_eq!(skill.metadata.name, "commit");
-        assert!(skill.body.contains("git add"));
-    }
-
-    #[test]
-    fn test_invalid_name_no_slug_rejected() {
-        let tmp = tempfile::tempdir().unwrap();
-        let content = "---\nname: Bad-Name\n---\nbody\n";
-        let err = parse_metadata(content, tmp.path()).unwrap_err();
-        assert!(
-            err.to_string().contains("no slug provided"),
-            "error should mention missing slug: {err}"
-        );
-    }
-
-    #[test]
-    fn test_invalid_name_with_valid_slug_uses_slug() {
-        let tmp = tempfile::tempdir().unwrap();
-        let content = r#"---
-name: "SEO (Site Audit + Content Writer + Competitor Analysis)"
-slug: seo
-description: SEO tools
----
-
-Body.
-"#;
-        let meta = parse_metadata(content, tmp.path()).unwrap();
-        assert_eq!(meta.name, "seo");
-        assert_eq!(
-            meta.display_name.as_deref(),
-            Some("SEO (Site Audit + Content Writer + Competitor Analysis)")
-        );
-        assert_eq!(meta.description, "SEO tools");
-    }
-
-    #[test]
-    fn test_invalid_name_with_invalid_slug_rejected() {
-        let tmp = tempfile::tempdir().unwrap();
-        let content = "---\nname: Bad Name\nslug: Also Bad\n---\nbody\n";
-        let err = parse_metadata(content, tmp.path()).unwrap_err();
-        assert!(
-            err.to_string().contains("also invalid"),
-            "error should mention both are invalid: {err}"
-        );
-    }
-
-    #[test]
-    fn test_valid_name_ignores_slug() {
-        let content = "---\nname: my-skill\nslug: other\ndescription: test\n---\nbody\n";
-        let meta = parse_metadata(content, Path::new("/tmp/my-skill")).unwrap();
-        assert_eq!(meta.name, "my-skill");
-        assert!(meta.display_name.is_none());
-        assert_eq!(meta.slug, Some("other".into()));
-    }
-
-    #[test]
-    fn test_parse_skill_slug_fallback() {
-        let tmp = tempfile::tempdir().unwrap();
-        let content = r#"---
-name: "My Fancy Skill (v2)"
-slug: fancy-skill
-description: A fancy skill
----
-
-Do fancy things.
-"#;
-        let skill = parse_skill(content, tmp.path()).unwrap();
-        assert_eq!(skill.metadata.name, "fancy-skill");
-        assert_eq!(
-            skill.metadata.display_name.as_deref(),
-            Some("My Fancy Skill (v2)")
-        );
-        assert!(skill.body.contains("fancy things"));
-    }
-
-    #[test]
-    fn test_slug_fallback_from_meta_json() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skill_dir = tmp.path().join("seo");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-
-        // Write a _meta.json with slug
-        std::fs::write(
-            skill_dir.join("_meta.json"),
-            r#"{"slug": "seo", "displayName": "SEO Tools", "owner": "test"}"#,
-        )
-        .unwrap();
-
-        let content = r#"---
-name: "SEO (Audit + Writer)"
-description: SEO toolkit
----
-
-Body.
-"#;
-        let meta = parse_metadata(content, &skill_dir).unwrap();
-        assert_eq!(meta.name, "seo");
-        assert_eq!(meta.display_name.as_deref(), Some("SEO (Audit + Writer)"));
-        // Slug came from _meta.json, not frontmatter, so meta.slug stays None.
-        assert!(
-            meta.slug.is_none(),
-            "slug comes from _meta.json, not frontmatter, so meta.slug should remain None"
-        );
-    }
-
-    #[test]
-    fn test_missing_frontmatter() {
-        let content = "# No frontmatter\nJust markdown.";
-        assert!(parse_metadata(content, Path::new("/tmp")).is_err());
-    }
-
-    #[test]
-    fn test_missing_closing_delimiter() {
-        let content = "---\nname: test\nno closing\n";
-        assert!(parse_metadata(content, Path::new("/tmp")).is_err());
-    }
-
-    #[test]
-    fn test_top_level_requires_is_accepted_as_compatibility_metadata() {
-        let content = r#"---
-name: songsee
-description: Generate spectrograms
-requires:
-  bins: [songsee]
-  install:
-    - kind: brew
-      formula: songsee
-      os: [darwin]
----
-
-Instructions.
-"#;
-        let metadata = parse_metadata(content, Path::new("/tmp/songsee")).unwrap();
-        assert_eq!(metadata.name, "songsee");
-        assert_eq!(metadata.description, "Generate spectrograms");
-    }
-
-    #[test]
-    fn test_openclaw_environment_metadata_is_accepted() {
-        let content = r#"---
-name: himalaya
-description: CLI email client
-metadata:
-  openclaw:
-    requires:
-      bins: [himalaya]
-    install:
-      - kind: brew
-        formula: himalaya
-        bins: [himalaya]
-        label: "Install Himalaya (brew)"
----
-
-Instructions.
-"#;
-        let metadata = parse_metadata(content, Path::new("/tmp/himalaya")).unwrap();
-        assert_eq!(metadata.name, "himalaya");
-        assert_eq!(metadata.description, "CLI email client");
-    }
-
-    #[test]
-    fn test_dockerfile_is_accepted_as_compatibility_metadata() {
-        let content = r#"---
-name: docker-skill
-description: Needs a custom image
-dockerfile: Dockerfile
----
-
-Body.
-"#;
-        let metadata = parse_metadata(content, Path::new("/tmp/docker-skill")).unwrap();
-        assert_eq!(metadata.name, "docker-skill");
-        assert_eq!(metadata.description, "Needs a custom image");
-    }
-
-    #[test]
-    fn test_clawdbot_environment_metadata_is_accepted() {
-        // Real openclaw format: metadata is single-line JSON with "clawdbot" key
-        let content = r#"---
-name: beeper
-description: Search and browse local Beeper chat history
-metadata: {"clawdbot":{"requires":{"bins":["beeper-cli"]},"install":[{"id":"go","kind":"go","pkg":"github.com/krausefx/beeper-cli/cmd/beeper-cli","bins":["beeper-cli"],"label":"Install beeper-cli (go install)"}]}}
----
-
-Instructions.
-"#;
-        let metadata = parse_metadata(content, Path::new("/tmp/beeper")).unwrap();
-        assert_eq!(metadata.name, "beeper");
-        assert_eq!(
-            metadata.description,
-            "Search and browse local Beeper chat history"
-        );
-    }
-
-    #[test]
-    fn test_compatibility_field() {
-        let content = r#"---
-name: docker-skill
-description: Runs containers
-compatibility: Requires docker and network access
----
-
-Body.
-"#;
-        let meta = parse_metadata(content, Path::new("/tmp/docker-skill")).unwrap();
-        assert_eq!(
-            meta.compatibility.as_deref(),
-            Some("Requires docker and network access")
-        );
-    }
-
-    #[test]
-    fn test_allowed_tools_hyphenated() {
-        let content = "---\nname: git-skill\ndescription: Git helper\nallowed-tools:\n  - Bash(git:*)\n  - read_file\n---\nBody.\n";
-        let meta = parse_metadata(content, Path::new("/tmp/git-skill")).unwrap();
-        assert_eq!(meta.allowed_tools, vec!["Bash(git:*)", "read_file"]);
-    }
-
-    #[test]
-    fn test_allowed_tools_space_separated_string() {
-        let content = "---\nname: check-pr\ndescription: Check a PR\nallowed-tools: \"Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(p4:*)\"\n---\nBody.\n";
-        let meta = parse_metadata(content, Path::new("/tmp/check-pr")).unwrap();
-        assert_eq!(meta.allowed_tools, vec![
-            "Bash(gh:*)",
-            "Bash(glab:*)",
-            "Bash(git:*)",
-            "Bash(p4:*)"
-        ]);
     }
 }

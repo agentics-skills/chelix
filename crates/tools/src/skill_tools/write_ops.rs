@@ -1,6 +1,6 @@
 //! Write and patch skill files: sidecar writes and surgical find/replace.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use {
     async_trait::async_trait,
@@ -15,10 +15,7 @@ use chelix_metrics::{counter, labels, skills as skills_metrics};
 use {
     super::{
         MAX_SIDECAR_FILES_PER_CALL,
-        helpers::{
-            audit_sidecar_file_write, split_frontmatter_body, update_frontmatter_description,
-            validate_existing_skill_file, validate_sidecar_files, write_sidecar_files,
-        },
+        helpers::{audit_sidecar_file_write, validate_sidecar_files, write_sidecar_files},
     },
     crate::error::Error,
 };
@@ -28,11 +25,12 @@ use {
 /// Tool that writes supplementary text files inside an existing personal skill.
 pub struct WriteSkillFilesTool {
     data_dir: PathBuf,
+    bus: Arc<chelix_call_bus::CallBus>,
 }
 
 impl WriteSkillFilesTool {
-    pub fn new(data_dir: PathBuf) -> Self {
-        Self { data_dir }
+    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
+        Self { data_dir, bus }
     }
 
     fn skills_dir(&self) -> PathBuf {
@@ -112,10 +110,15 @@ impl AgentTool for WriteSkillFilesTool {
         }
 
         let skill_md_path = skill_dir.join("SKILL.md");
-        let content = tokio::fs::read_to_string(&skill_md_path).await?;
-        chelix_skills::parse::parse_metadata(&content, &skill_dir)?;
+        self.bus
+            .call(chelix_service_traits::ReadSkillFile {
+                path: skill_md_path,
+                max_bytes: None,
+                mode: chelix_service_traits::SkillFileRead::Detect,
+            })
+            .await
+            .map_err(|error| anyhow::anyhow!(error))?;
         write_sidecar_files(&skill_dir, &validated).await?;
-        chelix_skills::publish_markdown(&skill_md_path, &content, None).await?;
         audit_sidecar_file_write(&self.data_dir, name, &validated);
 
         Ok(json!({
@@ -139,13 +142,15 @@ const MAX_PATCHES_PER_CALL: usize = 10;
 /// hallucination risk and token cost.
 pub struct PatchSkillTool {
     data_dir: PathBuf,
+    bus: Arc<chelix_call_bus::CallBus>,
     usage_store: Option<SkillUsageStore>,
 }
 
 impl PatchSkillTool {
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(data_dir: PathBuf, bus: Arc<chelix_call_bus::CallBus>) -> Self {
         Self {
             data_dir,
+            bus,
             usage_store: None,
         }
     }
@@ -246,15 +251,7 @@ impl AgentTool for PatchSkillTool {
         }
 
         let skill_md_path = skill_dir.join("SKILL.md");
-        validate_existing_skill_file(&skill_md_path).await?;
-        let raw = tokio::fs::read_to_string(&skill_md_path)
-            .await
-            .map_err(|e| Error::message(format!("failed to read skill '{name}': {e}")))?;
-
-        let (frontmatter_block, body) = split_frontmatter_body(&raw);
-
-        let mut patched_body = body.to_string();
-        let mut applied = 0usize;
+        let mut replacements = Vec::with_capacity(patches.len());
         for (i, patch) in patches.iter().enumerate() {
             let find = patch
                 .get("find")
@@ -264,35 +261,19 @@ impl AgentTool for PatchSkillTool {
                 .get("replace")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::message(format!("patch[{i}]: missing 'replace'")))?;
-
-            if find.is_empty() {
-                return Err(Error::message(format!("patch[{i}]: 'find' must not be empty")).into());
-            }
-            if !patched_body.contains(find) {
-                return Err(Error::message(format!(
-                    "patch[{i}]: string not found in skill body: {find:?}"
-                ))
-                .into());
-            }
-
-            patched_body = patched_body.replacen(find, replace, 1);
-            applied += 1;
+            replacements.push((find.to_string(), replace.to_string()));
         }
-
-        let final_content = if let Some(desc) = new_description {
-            let updated_fm = update_frontmatter_description(frontmatter_block, desc)?;
-            format!("{updated_fm}{patched_body}")
-        } else {
-            format!("{frontmatter_block}{patched_body}")
-        };
-
-        let final_content = if final_content.ends_with('\n') {
-            final_content
-        } else {
-            format!("{final_content}\n")
-        };
-
-        chelix_skills::publish_markdown(&skill_md_path, &final_content, None).await?;
+        let patched = self
+            .bus
+            .call(chelix_service_traits::PatchSkillFile {
+                path: skill_md_path,
+                patches: replacements.clone(),
+                description: new_description.map(str::to_string),
+            })
+            .await
+            .map_err(|error| anyhow::anyhow!(error))?;
+        let applied = replacements.len();
+        let patched_body = patched.body;
 
         let hits = chelix_skills::safety::scan_skill_body(name, &patched_body);
         let warning = if !hits.is_empty() {

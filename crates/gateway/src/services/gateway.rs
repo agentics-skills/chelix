@@ -146,7 +146,7 @@ impl GatewayServices {
             chat: Arc::new(NoopChatService),
             tts: Arc::new(NoopTtsService),
             stt: Arc::new(NoopSttService),
-            skills: Arc::new(NoopSkillsService),
+            skills: Arc::new(UnwiredSkillsService),
             mcp: Arc::new(NoopMcpService),
             browser: Arc::new(NoopBrowserService),
             usage: Arc::new(NoopUsageService),

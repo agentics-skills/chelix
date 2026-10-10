@@ -60,12 +60,10 @@ pub struct PluginSkillEntry {
 // ── Format adapter trait ────────────────────────────────────────────────────
 
 /// A format adapter normalizes a non-SKILL.md repo into skill entries.
+#[async_trait::async_trait]
 pub trait FormatAdapter: Send + Sync {
-    /// Check whether the given repo directory matches this format.
-    fn detect(&self, repo_dir: &Path) -> bool;
-
     /// Scan the repo and return enriched entries for each skill found.
-    fn scan_skills(&self, repo_dir: &Path) -> Result<Vec<PluginSkillEntry>>;
+    async fn scan_skills(&self, repo_dir: &Path) -> Result<Vec<PluginSkillEntry>>;
 }
 
 // ── Claude Code adapter ─────────────────────────────────────────────────────
@@ -118,7 +116,16 @@ impl PluginAuthor {
 }
 
 /// Adapter for Claude Code plugin repos.
-pub struct ClaudeCodeAdapter;
+pub struct ClaudeCodeAdapter {
+    bus: std::sync::Arc<chelix_call_bus::CallBus>,
+}
+
+impl ClaudeCodeAdapter {
+    #[must_use]
+    pub fn new(bus: std::sync::Arc<chelix_call_bus::CallBus>) -> Self {
+        Self { bus }
+    }
+}
 
 impl ClaudeCodeAdapter {
     fn slug_to_display_name(slug: &str) -> String {
@@ -157,7 +164,7 @@ impl ClaudeCodeAdapter {
         }
     }
 
-    fn scan_marketplace_manifest(
+    async fn scan_marketplace_manifest(
         &self,
         repo_dir: &Path,
         seen_names: &mut HashSet<String>,
@@ -191,7 +198,7 @@ impl ClaudeCodeAdapter {
                     continue;
                 };
 
-                let (skill_dir, skill_md) = if skill_base
+                let (_skill_dir, skill_md) = if skill_base
                     .file_name()
                     .and_then(|s| s.to_str())
                     .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
@@ -211,15 +218,15 @@ impl ClaudeCodeAdapter {
                     continue;
                 }
 
-                let raw = match std::fs::read_to_string(&skill_md) {
-                    Ok(content) => content,
-                    Err(e) => {
-                        tracing::warn!(path = %skill_md.display(), %e, "failed to read marketplace SKILL.md");
-                        continue;
-                    },
-                };
-
-                let content = match crate::parse::parse_skill(&raw, &skill_dir) {
+                let content = match self
+                    .bus
+                    .call(chelix_service_traits::ReadSkillFile {
+                        path: skill_md.clone(),
+                        max_bytes: None,
+                        mode: chelix_service_traits::SkillFileRead::SkillDocument,
+                    })
+                    .await
+                {
                     Ok(content) => content,
                     Err(e) => {
                         tracing::warn!(path = %skill_md.display(), %e, "failed to parse marketplace SKILL.md");
@@ -266,7 +273,7 @@ impl ClaudeCodeAdapter {
     /// Scan a single plugin directory (one that has `.claude-plugin/plugin.json`).
     /// `repo_root` is the top-level repo directory; `source_file` paths are
     /// computed relative to it so that GitHub URLs work for marketplace repos.
-    fn scan_single_plugin(
+    async fn scan_single_plugin(
         &self,
         plugin_dir: &Path,
         repo_root: &Path,
@@ -303,8 +310,16 @@ impl ClaudeCodeAdapter {
                     None => continue,
                 };
 
-                let body = match std::fs::read_to_string(&path) {
-                    Ok(c) => c,
+                let body = match self
+                    .bus
+                    .call(chelix_service_traits::ReadSkillFile {
+                        path: path.clone(),
+                        max_bytes: None,
+                        mode: chelix_service_traits::SkillFileRead::Catalog,
+                    })
+                    .await
+                {
+                    Ok(content) => content.body,
                     Err(e) => {
                         tracing::warn!(?path, %e, "failed to read plugin skill file");
                         continue;
@@ -362,23 +377,18 @@ impl ClaudeCodeAdapter {
     }
 }
 
+#[async_trait::async_trait]
 impl FormatAdapter for ClaudeCodeAdapter {
-    fn detect(&self, repo_dir: &Path) -> bool {
-        // Single plugin: .claude-plugin/plugin.json at root
-        // Marketplace repo: .claude-plugin/marketplace.json at root
-        repo_dir.join(".claude-plugin/plugin.json").is_file()
-            || repo_dir.join(".claude-plugin/marketplace.json").is_file()
-    }
-
-    fn scan_skills(&self, repo_dir: &Path) -> Result<Vec<PluginSkillEntry>> {
+    async fn scan_skills(&self, repo_dir: &Path) -> Result<Vec<PluginSkillEntry>> {
         // Single plugin case
         if repo_dir.join(".claude-plugin/plugin.json").is_file() {
-            return self.scan_single_plugin(repo_dir, repo_dir);
+            return self.scan_single_plugin(repo_dir, repo_dir).await;
         }
 
         let mut seen_names = HashSet::new();
         let mut results = if repo_dir.join(".claude-plugin/marketplace.json").is_file() {
-            self.scan_marketplace_manifest(repo_dir, &mut seen_names)?
+            self.scan_marketplace_manifest(repo_dir, &mut seen_names)
+                .await?
         } else {
             Vec::new()
         };
@@ -401,7 +411,7 @@ impl FormatAdapter for ClaudeCodeAdapter {
                 if !path.join(".claude-plugin/plugin.json").is_file() {
                     continue;
                 }
-                match self.scan_single_plugin(&path, repo_dir) {
+                match self.scan_single_plugin(&path, repo_dir).await {
                     Ok(skills) => {
                         for skill in skills {
                             if !seen_names.insert(skill.metadata.name.clone()) {
@@ -423,17 +433,15 @@ impl FormatAdapter for ClaudeCodeAdapter {
 
 // ── Format detection ────────────────────────────────────────────────────────
 
-/// All known format adapters, in detection priority order.
-fn adapters() -> Vec<(PluginFormat, Box<dyn FormatAdapter>)> {
-    vec![(PluginFormat::ClaudeCode, Box::new(ClaudeCodeAdapter))]
+fn claude_code_detect(repo_dir: &Path) -> bool {
+    repo_dir.join(".claude-plugin/plugin.json").is_file()
+        || repo_dir.join(".claude-plugin/marketplace.json").is_file()
 }
 
 /// Detect the format of a repository.
 pub fn detect_format(repo_dir: &Path) -> PluginFormat {
-    for (format, adapter) in adapters() {
-        if adapter.detect(repo_dir) {
-            return format;
-        }
+    if claude_code_detect(repo_dir) {
+        return PluginFormat::ClaudeCode;
     }
 
     // Check for native SKILL.md.
@@ -446,13 +454,18 @@ pub fn detect_format(repo_dir: &Path) -> PluginFormat {
 
 /// Scan a repo using the detected format adapter.
 /// Returns `None` for `Skill` format (caller should use existing SKILL.md scanning).
-pub fn scan_with_adapter(
+pub async fn scan_with_adapter(
+    bus: &std::sync::Arc<chelix_call_bus::CallBus>,
     repo_dir: &Path,
     format: PluginFormat,
 ) -> Option<Result<Vec<PluginSkillEntry>>> {
     match format {
         PluginFormat::Skill => None, // handled by existing scan_repo_skills
-        PluginFormat::ClaudeCode => Some(ClaudeCodeAdapter.scan_skills(repo_dir)),
+        PluginFormat::ClaudeCode => Some(
+            ClaudeCodeAdapter::new(std::sync::Arc::clone(bus))
+                .scan_skills(repo_dir)
+                .await,
+        ),
         PluginFormat::Generic => None,
     }
 }
@@ -525,8 +538,8 @@ mod tests {
         assert_eq!(detect_format(tmp.path()), PluginFormat::Generic);
     }
 
-    #[test]
-    fn test_claude_code_adapter_scan() {
+    #[tokio::test]
+    async fn test_claude_code_adapter_scan() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
@@ -552,10 +565,9 @@ mod tests {
         )
         .unwrap();
 
-        let adapter = ClaudeCodeAdapter;
-        assert!(adapter.detect(root));
+        let adapter = ClaudeCodeAdapter::new(crate::skill_file::open_skill_bus().unwrap());
 
-        let results = adapter.scan_skills(root).unwrap();
+        let results = adapter.scan_skills(root).await.unwrap();
         assert_eq!(results.len(), 2);
 
         let names: Vec<&str> = results.iter().map(|e| e.metadata.name.as_str()).collect();
@@ -590,8 +602,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_claude_code_adapter_empty_dirs() {
+    #[tokio::test]
+    async fn test_claude_code_adapter_empty_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
@@ -602,13 +614,13 @@ mod tests {
         )
         .unwrap();
 
-        let adapter = ClaudeCodeAdapter;
-        let results = adapter.scan_skills(root).unwrap();
+        let adapter = ClaudeCodeAdapter::new(crate::skill_file::open_skill_bus().unwrap());
+        let results = adapter.scan_skills(root).await.unwrap();
         assert!(results.is_empty());
     }
 
-    #[test]
-    fn test_claude_code_adapter_skips_non_md() {
+    #[tokio::test]
+    async fn test_claude_code_adapter_skips_non_md() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
@@ -623,8 +635,8 @@ mod tests {
         std::fs::write(root.join("agents/readme.txt"), "not a skill").unwrap();
         std::fs::write(root.join("agents/real.md"), "A real skill agent.").unwrap();
 
-        let adapter = ClaudeCodeAdapter;
-        let results = adapter.scan_skills(root).unwrap();
+        let adapter = ClaudeCodeAdapter::new(crate::skill_file::open_skill_bus().unwrap());
+        let results = adapter.scan_skills(root).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].metadata.name, "test-plugin:real");
     }
@@ -642,8 +654,8 @@ mod tests {
         assert_eq!(detect_format(tmp.path()), PluginFormat::ClaudeCode);
     }
 
-    #[test]
-    fn test_claude_code_marketplace_scan() {
+    #[tokio::test]
+    async fn test_claude_code_marketplace_scan() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
@@ -682,10 +694,9 @@ mod tests {
         std::fs::create_dir_all(&p3).unwrap();
         std::fs::write(p3.join("README.md"), "no plugin").unwrap();
 
-        let adapter = ClaudeCodeAdapter;
-        assert!(adapter.detect(root));
+        let adapter = ClaudeCodeAdapter::new(crate::skill_file::open_skill_bus().unwrap());
 
-        let results = adapter.scan_skills(root).unwrap();
+        let results = adapter.scan_skills(root).await.unwrap();
         assert_eq!(results.len(), 2);
 
         let names: Vec<&str> = results.iter().map(|e| e.metadata.name.as_str()).collect();
@@ -712,8 +723,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_claude_code_marketplace_scan_skills_array() {
+    #[tokio::test]
+    async fn test_claude_code_marketplace_scan_skills_array() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
@@ -760,10 +771,9 @@ Read and write PDF documents.
         )
         .unwrap();
 
-        let adapter = ClaudeCodeAdapter;
-        assert!(adapter.detect(root));
+        let adapter = ClaudeCodeAdapter::new(crate::skill_file::open_skill_bus().unwrap());
 
-        let results = adapter.scan_skills(root).unwrap();
+        let results = adapter.scan_skills(root).await.unwrap();
         assert_eq!(results.len(), 2);
 
         let xlsx = results
@@ -786,14 +796,22 @@ Read and write PDF documents.
         assert!(pdf.body.contains("PDF"));
     }
 
-    #[test]
-    fn test_scan_with_adapter_skill_returns_none() {
+    #[tokio::test]
+    async fn test_scan_with_adapter_skill_returns_none() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(scan_with_adapter(tmp.path(), PluginFormat::Skill).is_none());
+        assert!(
+            scan_with_adapter(
+                &crate::skill_file::open_skill_bus().unwrap(),
+                tmp.path(),
+                PluginFormat::Skill,
+            )
+            .await
+            .is_none()
+        );
     }
 
-    #[test]
-    fn test_scan_with_adapter_claude_code() {
+    #[tokio::test]
+    async fn test_scan_with_adapter_claude_code() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
 
@@ -806,7 +824,12 @@ Read and write PDF documents.
         std::fs::create_dir_all(root.join("skills")).unwrap();
         std::fs::write(root.join("skills/do-thing.md"), "Do the thing.").unwrap();
 
-        let result = scan_with_adapter(root, PluginFormat::ClaudeCode);
+        let result = scan_with_adapter(
+            &crate::skill_file::open_skill_bus().unwrap(),
+            root,
+            PluginFormat::ClaudeCode,
+        )
+        .await;
         assert!(result.is_some());
         let skills = result.unwrap().unwrap();
         assert_eq!(skills.len(), 1);
