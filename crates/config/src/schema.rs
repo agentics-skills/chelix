@@ -253,7 +253,6 @@ pub struct ChelixConfig {
     pub user: UserProfile,
     pub hooks: Option<HooksConfig>,
     pub memory: MemoryEmbeddingConfig,
-    pub heartbeat: HeartbeatConfig,
     pub voice: VoiceConfig,
     pub phone: PhoneConfig,
     pub cron: CronConfig,

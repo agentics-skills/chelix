@@ -164,14 +164,6 @@ export function buildCommands(): Command[] {
 			action: settingsNav("webhooks"),
 		},
 		{
-			id: "set-heartbeat",
-			label: "Heartbeat",
-			group: "settings",
-			icon: "icon-heart",
-			keywords: ["pulse", "health"],
-			action: settingsNav("heartbeat"),
-		},
-		{
 			id: "set-security",
 			label: "Authentication",
 			group: "settings",

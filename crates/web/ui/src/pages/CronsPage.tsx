@@ -1,16 +1,15 @@
 // ── Crons page (Preact + Signals) ──────────────────────────
 
 import { signal, useSignal } from "@preact/signals";
-import type { TargetedSubmitEvent, VNode } from "preact";
+import type { VNode } from "preact";
 import { render } from "preact";
 import { useEffect } from "preact/hooks";
 import { fetchChannelStatus } from "../channel-utils";
 import * as gon from "../gon";
-import { refresh as refreshGon } from "../gon";
 import { sendRpc } from "../helpers";
 import { updateNavCount } from "../nav-counts";
 import { models as modelsSig } from "../stores/model-store";
-import type { ConfigModelOverride, CronJob, CronPayload, CronSchedule } from "../types/gon";
+import type { CronJob, CronPayload, CronSchedule } from "../types/gon";
 import { ComboSelect, ConfirmDialog, Modal, ModelSelect, requestConfirm } from "../ui";
 
 // ── Types ────────────────────────────────────────────────────
@@ -20,23 +19,6 @@ interface CronStatusInfo {
 	jobCount: number;
 	enabledCount: number;
 	nextRunAtMs?: number;
-}
-
-interface HeartbeatConfig {
-	enabled?: boolean;
-	every?: string;
-	model_override?: ConfigModelOverride;
-	prompt?: string;
-	ack_max_chars?: number;
-	deliver?: boolean;
-	channel?: string;
-	to?: string;
-	active_hours?: { start?: string; end?: string; timezone?: string };
-}
-
-interface HeartbeatStatusInfo {
-	promptSource?: string;
-	job?: CronJob;
 }
 
 interface CronRun {
@@ -69,51 +51,13 @@ if (initialCrons.length) updateNavCount("crons", initialCrons.filter((j) => j.en
 const runsHistory = signal<RunsHistory | null>(null);
 const showModal = signal(false);
 const editingJob = signal<CronJob | null>(null);
-const activeSection = signal<"jobs" | "heartbeat">("jobs");
 let _cronsContainer: HTMLElement | null = null;
-
-// Heartbeat state
-const heartbeatStatus = signal<HeartbeatStatusInfo | null>(null);
-const heartbeatRuns = signal<CronRun[] | null>((gon.get("heartbeat_runs") as CronRun[] | null) || []);
-const heartbeatSaving = signal(false);
-const heartbeatRunning = signal(false);
-const heartbeatConfig = signal<HeartbeatConfig>((gon.get("heartbeat_config") as HeartbeatConfig | null) || {});
 const channelAccounts = signal<ChannelAccount[]>([]);
-const heartbeatModel = signal((gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.model || "");
-const heartbeatReasoningEffort = signal(
-	(gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.reasoning_effort || "",
-);
-const heartbeatError = signal("");
 function loadChannelAccounts(): void {
 	fetchChannelStatus().then((res: unknown) => {
 		const r = res as { ok?: boolean; payload?: { channels?: ChannelAccount[] } } | null;
 		if (r?.ok) channelAccounts.value = (r.payload?.channels || []).filter((c) => c.status === "connected");
 	});
-}
-function loadHeartbeatStatus(): void {
-	sendRpc("heartbeat.status", {}).then((res) => {
-		if (res?.ok) heartbeatStatus.value = res.payload as HeartbeatStatusInfo;
-	});
-}
-function findHeartbeatJob(): CronJob | null {
-	return cronJobs.value.find((j) => j.name === "__heartbeat__") || (heartbeatStatus.value?.job as CronJob) || null;
-}
-function loadHeartbeatRuns(): void {
-	if (!findHeartbeatJob()) {
-		heartbeatRuns.value = heartbeatRuns.value || [];
-		return;
-	}
-	heartbeatRuns.value = null;
-	sendRpc("heartbeat.runs", { limit: 10 }).then((res) => {
-		heartbeatRuns.value = res?.ok ? (res.payload as CronRun[]) || [] : [];
-	});
-}
-function heartbeatRunBlockedReason(cfg: HeartbeatConfig, promptSource: string, job: CronJob | null): string | null {
-	if (cfg.enabled === false) return "Heartbeat is disabled. Enable it to allow manual runs.";
-	if (promptSource === "default")
-		return "Heartbeat is inactive because no prompt is configured. Add a custom prompt or write actionable content in HEARTBEAT.md.";
-	if (!job) return "Heartbeat has no active cron job yet. Save the heartbeat settings to recreate it.";
-	return null;
 }
 function loadStatus(): void {
 	sendRpc("cron.status", {}).then((res) => {
@@ -155,59 +99,6 @@ function TokenBadge({ run }: { run: CronRun }): VNode | null {
 	return <span className="text-xs text-[var(--muted)] font-mono">{parts.join(" / ")}</span>;
 }
 
-function HeartbeatRunsList({ runs }: { runs: CronRun[] | null }): VNode {
-	if (runs === null) return <div className="text-xs text-[var(--muted)]">Loading&hellip;</div>;
-	if (runs.length === 0) return <div className="text-xs text-[var(--muted)]">No runs yet.</div>;
-	return (
-		<div className="flex flex-col">
-			{runs.map((run) => (
-				<div
-					key={run.startedAtMs}
-					className="flex items-center gap-3 py-2 border-b border-[var(--border)]"
-					style={{ minHeight: "36px" }}
-				>
-					<span className={`status-dot ${run.status === "ok" ? "connected" : ""}`} />
-					<span className={`cron-badge ${run.status}`}>{run.status}</span>
-					<span className="text-xs text-[var(--muted)] font-mono">{run.durationMs}ms</span>
-					<TokenBadge run={run} />
-					{run.error && <span className="text-xs text-[var(--error)] truncate">{run.error}</span>}
-					<span className="flex-1" />
-					<span className="text-xs text-[var(--muted)]">
-						<time data-epoch-ms={run.startedAtMs}>{new Date(run.startedAtMs).toISOString()}</time>
-					</span>
-				</div>
-			))}
-		</div>
-	);
-}
-
-function HeartbeatJobStatus({ job }: { job: CronJob | null }): VNode | null {
-	if (!job) return null;
-	const statusDotClass = job.enabled ? "connected" : "";
-	return (
-		<div className="info-bar" style={{ marginTop: "16px", marginBottom: "16px" }}>
-			<span className="info-field">
-				<span className={`status-dot ${statusDotClass}`} />
-				<span className="info-label">{job.enabled ? "Enabled" : "Disabled"}</span>
-			</span>
-			{job.state?.lastStatus && (
-				<span className="info-field">
-					<span className="info-label">Last:</span>
-					<span className={`cron-badge ${job.state.lastStatus}`}>{job.state.lastStatus}</span>
-				</span>
-			)}
-			{job.state?.nextRunAtMs && (
-				<span className="info-field">
-					<span className="info-label">Next:</span>
-					<span className="info-value">
-						<time data-epoch-ms={job.state.nextRunAtMs}>{new Date(job.state.nextRunAtMs).toLocaleString()}</time>
-					</span>
-				</span>
-			)}
-		</div>
-	);
-}
-
 function modelOverrideSelectionError(modelId: string, reasoningEffort: string): string | null {
 	if (!(modelId || reasoningEffort)) return null;
 	if (!modelId) return "Select a model or clear the reasoning effort.";
@@ -230,338 +121,6 @@ function cronTimezoneHelpText(): string {
 	return systemTimezone
 		? `Leave blank to use UTC. Enter ${systemTimezone} to use your local timezone.`
 		: "Leave blank to use UTC. Enter a timezone like Europe/Paris to use your local timezone.";
-}
-
-function collectHeartbeatForm(form: Element): HeartbeatConfig {
-	return {
-		enabled: (form.querySelector("[data-hb=enabled]") as HTMLInputElement).checked,
-		every: (form.querySelector("[data-hb=every]") as HTMLInputElement).value.trim() || "30m",
-		model_override:
-			heartbeatModel.value && heartbeatReasoningEffort.value
-				? {
-						model: heartbeatModel.value,
-						reasoning_effort: heartbeatReasoningEffort.value,
-					}
-				: undefined,
-		prompt: (form.querySelector("[data-hb=prompt]") as HTMLTextAreaElement).value.trim() || undefined,
-		ack_max_chars: parseInt((form.querySelector("[data-hb=ackMax]") as HTMLInputElement).value, 10) || 300,
-		deliver: (form.querySelector("[data-hb=deliver]") as HTMLInputElement).checked,
-		channel: (form.querySelector("[data-hb=channel]") as HTMLInputElement).value.trim() || undefined,
-		to: (form.querySelector("[data-hb=to]") as HTMLInputElement).value.trim() || undefined,
-		active_hours: {
-			start: (form.querySelector("[data-hb=ahStart]") as HTMLInputElement).value.trim() || "08:00",
-			end: (form.querySelector("[data-hb=ahEnd]") as HTMLInputElement).value.trim() || "24:00",
-			timezone: (form.querySelector("[data-hb=ahTz]") as HTMLSelectElement).value.trim() || "local",
-		},
-	};
-}
-
-function heartbeatPromptSourceText(promptSource: string): string {
-	if (promptSource === "config") return "config custom prompt";
-	if (promptSource === "heartbeat_md") return "HEARTBEAT.md";
-	return "none (heartbeat inactive)";
-}
-
-function heartbeatActiveHoursEnd(configuredEnd: string | undefined): string {
-	if (!configuredEnd || configuredEnd === "24:00") return "23:59";
-	return configuredEnd;
-}
-
-function HeartbeatSection(): VNode {
-	const cfg = heartbeatConfig.value;
-	const saving = heartbeatSaving.value;
-	const promptSource = heartbeatStatus.value?.promptSource || "default";
-	const job = findHeartbeatJob();
-	const runBlockedReason = heartbeatRunBlockedReason(cfg, promptSource, job);
-	const heartbeatEffortOptions = reasoningEffortOptions(heartbeatModel.value);
-
-	function onSave(e: TargetedSubmitEvent<HTMLFormElement>): void {
-		e.preventDefault();
-		const modelError = modelOverrideSelectionError(heartbeatModel.value, heartbeatReasoningEffort.value);
-		if (modelError) {
-			heartbeatError.value = modelError;
-			return;
-		}
-		const updated = collectHeartbeatForm(e.currentTarget);
-		heartbeatError.value = "";
-		heartbeatSaving.value = true;
-		sendRpc("heartbeat.update", updated).then((res) => {
-			heartbeatSaving.value = false;
-			if (!res?.ok) {
-				heartbeatError.value = res?.error?.message || "Failed to save heartbeat settings.";
-				return;
-			}
-			heartbeatConfig.value = updated;
-			heartbeatModel.value = updated.model_override?.model || "";
-			heartbeatReasoningEffort.value = updated.model_override?.reasoning_effort || "";
-			refreshGon();
-			loadHeartbeatStatus();
-			loadJobs();
-			loadStatus();
-		});
-	}
-
-	function onRunNow(): void {
-		if (runBlockedReason) return;
-		heartbeatRunning.value = true;
-		sendRpc("heartbeat.run", {}).then(() => {
-			heartbeatRunning.value = false;
-			loadHeartbeatStatus();
-			loadHeartbeatRuns();
-			loadJobs();
-			loadStatus();
-		});
-	}
-
-	function onToggleEnabled(e: Event): void {
-		const newEnabled = (e.target as HTMLInputElement).checked;
-		const updated = { ...cfg, enabled: newEnabled };
-		sendRpc("heartbeat.update", updated).then((res) => {
-			if (res?.ok) {
-				heartbeatConfig.value = updated;
-				refreshGon();
-				loadHeartbeatStatus();
-				loadJobs();
-				loadStatus();
-			}
-		});
-	}
-
-	const running = heartbeatRunning.value;
-	const runNowDisabled = running || !!runBlockedReason;
-	const promptSourceText = heartbeatPromptSourceText(promptSource);
-
-	return (
-		<form className="heartbeat-form" onSubmit={onSave}>
-			<div className="flex items-center justify-between mb-2">
-				<div className="flex items-center gap-3">
-					<h2 className="text-lg font-medium text-[var(--text-strong)]">Heartbeat</h2>
-					<label className="cron-toggle">
-						<input data-hb="enabled" type="checkbox" checked={cfg.enabled !== false} onChange={onToggleEnabled} />
-						<span className="cron-slider" />
-					</label>
-					<span className="text-xs text-[var(--muted)]">Enable</span>
-				</div>
-				<button
-					type="button"
-					className="provider-btn provider-btn-secondary"
-					onClick={onRunNow}
-					disabled={runNowDisabled}
-					title={runBlockedReason || undefined}
-				>
-					{running ? "Running\u2026" : "Run Now"}
-				</button>
-			</div>
-			<p className="text-sm text-[var(--muted)] mb-4">
-				Periodic AI check-in that monitors your environment and reports status.
-			</p>
-			{heartbeatError.value && <div className="text-xs text-[var(--error)] mb-4">{heartbeatError.value}</div>}
-			{runBlockedReason && (
-				<div className="alert-info-text mb-4">
-					<span className="alert-label-info">Heartbeat inactive:</span> {runBlockedReason}
-				</div>
-			)}
-			<HeartbeatJobStatus job={job} />
-
-			{/* Schedule */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Schedule</h3>
-				<div className="settings-columns">
-					<div>
-						<label>
-							<span className="block text-xs text-[var(--muted)] mb-1">Interval</span>
-							<input data-hb="every" className="provider-key-input" placeholder="30m" value={cfg.every || "30m"} />
-						</label>
-					</div>
-					<div>
-						<span className="block text-xs text-[var(--muted)] mb-1">Model</span>
-						<ModelSelect
-							ariaLabel="Model"
-							models={modelsSig.value}
-							value={heartbeatModel.value}
-							onChange={(v: string) => {
-								if (v !== heartbeatModel.value) heartbeatReasoningEffort.value = "";
-								heartbeatModel.value = v;
-								heartbeatError.value = "";
-							}}
-							placeholder="(use agent model)"
-						/>
-					</div>
-					{heartbeatModel.value && (
-						<div>
-							<span className="block text-xs text-[var(--muted)] mb-1">Reasoning Effort</span>
-							<ComboSelect
-								ariaLabel="Heartbeat Reasoning Effort"
-								options={heartbeatEffortOptions}
-								value={heartbeatReasoningEffort.value}
-								onChange={(value: string) => {
-									heartbeatReasoningEffort.value = value;
-									heartbeatError.value = "";
-								}}
-								placeholder="Select reasoning effort"
-							/>
-						</div>
-					)}
-				</div>
-			</div>
-
-			{/* Prompt */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Prompt</h3>
-				<label>
-					<span className="block text-xs text-[var(--muted)] mb-1">Custom Prompt (optional)</span>
-					<textarea
-						data-hb="prompt"
-						className="provider-key-input textarea-sm"
-						placeholder="Leave blank to use default heartbeat prompt"
-					>
-						{cfg.prompt || ""}
-					</textarea>
-				</label>
-				<p className="text-xs text-[var(--muted)] mt-2">
-					Leave this empty to use <code>HEARTBEAT.md</code> in your workspace root. If that file exists but is
-					empty/comments-only, heartbeat LLM runs are skipped to save tokens.
-				</p>
-				<p className="text-xs text-[var(--muted)] mt-1">
-					Effective prompt source: <span className="text-[var(--text)]">{promptSourceText}</span>
-				</p>
-				<div className="settings-columns mt-3">
-					<div>
-						<label>
-							<span className="block text-xs text-[var(--muted)] mb-1">Max Response Characters</span>
-							<input
-								data-hb="ackMax"
-								className="provider-key-input"
-								type="number"
-								min="50"
-								value={cfg.ack_max_chars || 300}
-							/>
-						</label>
-					</div>
-				</div>
-			</div>
-
-			{/* Delivery */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Delivery</h3>
-				<p className="text-xs text-[var(--muted)] mb-3">Send heartbeat replies to a channel/chat destination.</p>
-				<div className="flex items-center gap-3 mb-3">
-					<label className="cron-toggle">
-						<input data-hb="deliver" type="checkbox" checked={cfg.deliver === true} />
-						<span className="cron-slider" />
-					</label>
-					<span className="text-sm text-[var(--text)]">Deliver to channel</span>
-				</div>
-				<div className="settings-columns">
-					<div>
-						<label>
-							<span className="block text-xs text-[var(--muted)] mb-1">Channel Account</span>
-							<input data-hb="channel" className="provider-key-input" placeholder="my-bot" value={cfg.channel || ""} />
-						</label>
-					</div>
-					<div>
-						<label>
-							<span className="block text-xs text-[var(--muted)] mb-1">Chat ID</span>
-							<input data-hb="to" className="provider-key-input" placeholder="123456789" value={cfg.to || ""} />
-						</label>
-					</div>
-				</div>
-				<p className="text-xs text-[var(--muted)] mt-2">
-					Required when delivery is enabled. Account is your configured channel account id, chat ID is the destination
-					recipient/group id.
-				</p>
-			</div>
-
-			{/* Active Hours */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Active Hours</h3>
-				<p className="text-xs text-[var(--muted)] mb-3">Only run heartbeat during these hours.</p>
-				<div className="settings-columns">
-					<div>
-						<label>
-							<span className="block text-xs text-[var(--muted)] mb-1">Start</span>
-							<input
-								data-hb="ahStart"
-								type="time"
-								className="provider-key-input"
-								value={cfg.active_hours?.start || "08:00"}
-							/>
-						</label>
-					</div>
-					<div>
-						<label>
-							<span className="block text-xs text-[var(--muted)] mb-1">End</span>
-							<input
-								data-hb="ahEnd"
-								type="time"
-								className="provider-key-input"
-								value={heartbeatActiveHoursEnd(cfg.active_hours?.end)}
-							/>
-						</label>
-					</div>
-				</div>
-				<div className="mt-3">
-					<label>
-						<span className="block text-xs text-[var(--muted)] mb-1">Timezone</span>
-						<select data-hb="ahTz" className="provider-key-input">
-							<option value="local" selected={!cfg.active_hours?.timezone || cfg.active_hours?.timezone === "local"}>
-								Local ({systemTimezone})
-							</option>
-							<option value="UTC" selected={cfg.active_hours?.timezone === "UTC"}>
-								UTC
-							</option>
-							<option value="America/New_York" selected={cfg.active_hours?.timezone === "America/New_York"}>
-								America/New_York (EST/EDT)
-							</option>
-							<option value="America/Chicago" selected={cfg.active_hours?.timezone === "America/Chicago"}>
-								America/Chicago (CST/CDT)
-							</option>
-							<option value="America/Denver" selected={cfg.active_hours?.timezone === "America/Denver"}>
-								America/Denver (MST/MDT)
-							</option>
-							<option value="America/Los_Angeles" selected={cfg.active_hours?.timezone === "America/Los_Angeles"}>
-								America/Los_Angeles (PST/PDT)
-							</option>
-							<option value="Europe/London" selected={cfg.active_hours?.timezone === "Europe/London"}>
-								Europe/London (GMT/BST)
-							</option>
-							<option value="Europe/Paris" selected={cfg.active_hours?.timezone === "Europe/Paris"}>
-								Europe/Paris (CET/CEST)
-							</option>
-							<option value="Europe/Berlin" selected={cfg.active_hours?.timezone === "Europe/Berlin"}>
-								Europe/Berlin (CET/CEST)
-							</option>
-							<option value="Asia/Tokyo" selected={cfg.active_hours?.timezone === "Asia/Tokyo"}>
-								Asia/Tokyo (JST)
-							</option>
-							<option value="Asia/Shanghai" selected={cfg.active_hours?.timezone === "Asia/Shanghai"}>
-								Asia/Shanghai (CST)
-							</option>
-							<option value="Asia/Singapore" selected={cfg.active_hours?.timezone === "Asia/Singapore"}>
-								Asia/Singapore (SGT)
-							</option>
-							<option value="Australia/Sydney" selected={cfg.active_hours?.timezone === "Australia/Sydney"}>
-								Australia/Sydney (AEST/AEDT)
-							</option>
-						</select>
-					</label>
-				</div>
-			</div>
-
-			{/* Recent Runs */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-3">Recent Runs</h3>
-				<HeartbeatRunsList runs={heartbeatRuns.value} />
-			</div>
-
-			{/* Save */}
-			<div style={{ marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-				<button type="submit" className="provider-btn" disabled={saving}>
-					{saving ? "Saving\u2026" : "Save"}
-				</button>
-			</div>
-		</form>
-	);
 }
 
 // ── Cron Jobs ────────────────────────────────────────────────
@@ -664,7 +223,7 @@ function CronJobRow({ job }: { job: CronJob }): VNode {
 }
 
 function CronJobTable(): VNode {
-	const jobs = cronJobs.value.filter((j) => !j.system);
+	const jobs = cronJobs.value;
 	if (jobs.length === 0) return <div className="text-sm text-[var(--muted)]">No cron jobs configured.</div>;
 	return (
 		<table className="cron-table">
@@ -1210,18 +769,6 @@ function CronModal(): VNode {
 
 // ── Section panels ───────────────────────────────────────────
 
-function HeartbeatPanel(): VNode {
-	useEffect(() => {
-		loadHeartbeatStatus();
-		loadHeartbeatRuns();
-	}, []);
-	return (
-		<div className="p-6">
-			<HeartbeatSection />
-		</div>
-	);
-}
-
 function CronJobsPanel(): VNode {
 	useEffect(() => {
 		loadStatus();
@@ -1255,33 +802,22 @@ function CronJobsPanel(): VNode {
 function CronsPage(): VNode {
 	return (
 		<div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-			{activeSection.value === "jobs" && <CronJobsPanel />}
-			{activeSection.value === "heartbeat" && <HeartbeatPanel />}
+			<CronJobsPanel />
 			<CronModal />
 			<ConfirmDialog />
 		</div>
 	);
 }
 
-export function initCrons(container: HTMLElement, param?: string | null): void {
+export function initCrons(container: HTMLElement): void {
 	_cronsContainer = container;
 	container.style.cssText = "padding:0;overflow:hidden;";
 	cronJobs.value = (gon.get("crons") as CronJob[] | null) || [];
 	cronStatus.value = gon.get("cron_status") as CronStatusInfo | null;
-	heartbeatConfig.value = (gon.get("heartbeat_config") as HeartbeatConfig | null) || {};
 	runsHistory.value = null;
 	showModal.value = false;
 	editingJob.value = null;
-	heartbeatStatus.value = null;
-	heartbeatRuns.value = (gon.get("heartbeat_runs") as CronRun[] | null) || [];
 	channelAccounts.value = [];
-	heartbeatModel.value = (gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.model || "";
-	heartbeatReasoningEffort.value =
-		(gon.get("heartbeat_config") as HeartbeatConfig | null)?.model_override?.reasoning_effort || "";
-	heartbeatError.value = "";
-	activeSection.value = param === "heartbeat" ? "heartbeat" : "jobs";
-	loadHeartbeatRuns();
-	loadHeartbeatStatus();
 	render(<CronsPage />, container);
 }
 

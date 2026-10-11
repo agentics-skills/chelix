@@ -547,54 +547,17 @@ pub async fn prepare_gateway_core(
         });
     });
 
-    let events_queue = chelix_cron::system_events::SystemEventsQueue::new();
-
     let agent_state = Arc::clone(&deferred_state);
-    let agent_events_queue = Arc::clone(&events_queue);
     let global_auto_prune_containers = config.cron.auto_prune_cron_containers;
     let on_agent_turn: chelix_cron::service::AgentTurnFn = Arc::new(move |req| {
         let st = Arc::clone(&agent_state);
-        let eq = Arc::clone(&agent_events_queue);
         Box::pin(async move {
             let state = st
                 .get()
                 .ok_or_else(|| chelix_cron::Error::message("gateway not ready"))?;
 
-            let is_heartbeat_turn = matches!(
-                &req.session_target,
-                chelix_cron::types::SessionTarget::Named(name) if name == "heartbeat"
-            );
-            let has_pending_events = is_heartbeat_turn && !eq.is_empty().await;
-            if is_heartbeat_turn && !has_pending_events {
-                let hb_cfg = state.inner.read().await.heartbeat_config.clone();
-                let has_prompt_override = hb_cfg
-                    .prompt
-                    .as_deref()
-                    .is_some_and(|p| !p.trim().is_empty());
-                let heartbeat_path = chelix_config::heartbeat_path();
-                let heartbeat_file_exists = heartbeat_path.exists();
-                let heartbeat_md = chelix_config::load_heartbeat_md();
-                if heartbeat_file_exists && heartbeat_md.is_none() && !has_prompt_override {
-                    tracing::info!(
-                        path = %heartbeat_path.display(),
-                        "skipping heartbeat LLM turn: HEARTBEAT.md is empty"
-                    );
-                    return Ok(chelix_cron::service::AgentTurnResult {
-                        output: chelix_cron::heartbeat::HEARTBEAT_OK.to_string(),
-                        input_tokens: None,
-                        output_tokens: None,
-                        session_key: None,
-                    });
-                }
-            }
-
             let chat = state.chat();
-            let session_key = match &req.session_target {
-                chelix_cron::types::SessionTarget::Named(name) => {
-                    format!("cron:{name}")
-                },
-                _ => format!("cron:{}", uuid::Uuid::new_v4()),
-            };
+            let session_key = format!("cron:{}", uuid::Uuid::new_v4());
             let session_id = SessionKey::new(session_key.clone());
             crate::session::ensure_internal_chat_session(
                 &state.services,
@@ -605,38 +568,15 @@ pub async fn prepare_gateway_core(
             .await
             .map_err(|error| chelix_cron::Error::message(error.to_string()))?;
 
-            if matches!(
-                req.session_target,
-                chelix_cron::types::SessionTarget::Named(_)
-            ) {
-                let _ = chat
-                    .clear(serde_json::json!({ "_session_key": session_key }))
-                    .await;
-            }
-
-            let prompt_text = if is_heartbeat_turn {
-                let events = eq.drain().await;
-                if events.is_empty() {
-                    req.message.clone()
-                } else {
-                    tracing::info!(
-                        event_count = events.len(),
-                        "enriching heartbeat prompt with system events"
-                    );
-                    chelix_cron::heartbeat::build_event_enriched_prompt(&events, &req.message)
-                }
-            } else {
-                req.message.clone()
-            };
-
-            let prompt_text = if req.deliver && !is_heartbeat_turn {
+            let prompt_text = if req.deliver {
                 format!(
                     "Your response will be delivered to an external chat channel. \
                      Keep it concise and prefer plain text with minimal formatting.\n\n\
-                     {prompt_text}"
+                     {}",
+                    req.message
                 )
             } else {
-                prompt_text
+                req.message.clone()
             };
 
             let request = ChatSendSyncRequest {
@@ -674,20 +614,8 @@ pub async fn prepare_gateway_core(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let delivery_text = if is_heartbeat_turn {
-                let hb_cfg = state.inner.read().await.heartbeat_config.clone();
-                chelix_cron::heartbeat::strip_heartbeat_token(
-                    &text,
-                    chelix_cron::heartbeat::StripMode::Trim,
-                    hb_cfg.ack_max_chars,
-                )
-                .text
-            } else {
-                text.clone()
-            };
 
-            maybe_deliver_cron_output(state.services.channel_outbound_arc(), &req, &delivery_text)
-                .await;
+            maybe_deliver_cron_output(state.services.channel_outbound_arc(), &req, &text).await;
 
             Ok(chelix_cron::service::AgentTurnResult {
                 output: text,
@@ -731,30 +659,13 @@ pub async fn prepare_gateway_core(
         window_ms: config.cron.rate_limit_window_secs * 1000,
     };
 
-    let default_cooldown_ms = chelix_cron::service::DEFAULT_WAKE_COOLDOWN_MS;
-    let wake_cooldown_ms =
-        match chelix_cron::parse::parse_duration_ms(&config.heartbeat.wake_cooldown) {
-            Ok(ms) => ms,
-            Err(e) => {
-                tracing::warn!(
-                    raw = %config.heartbeat.wake_cooldown,
-                    error = %e,
-                    fallback_ms = default_cooldown_ms,
-                    "invalid [heartbeat].wake_cooldown, using default"
-                );
-                default_cooldown_ms
-            },
-        };
-
     let cron_store_for_pruning = Arc::clone(&cron_store);
-    let cron_service = chelix_cron::service::CronService::with_events_queue(
+    let cron_service = chelix_cron::service::CronService::with_config(
         cron_store,
         on_system_event,
         on_agent_turn,
         Some(on_cron_notify),
         rate_limit_config,
-        wake_cooldown_ms,
-        events_queue,
     );
 
     let live_cron = Arc::new(crate::cron::LiveCronService::new(Arc::clone(&cron_service)));
@@ -847,10 +758,6 @@ pub async fn prepare_gateway_core(
 
                 let mut cleaned = 0u64;
                 for key in &session_keys {
-                    let suffix = key.strip_prefix("cron:").unwrap_or(key.as_str());
-                    if uuid::Uuid::parse_str(suffix).is_err() {
-                        continue;
-                    }
                     if let Err(e) = prune_session_store.clear(key).await {
                         tracing::debug!(key, error = %e, "cron prune: failed to clear session");
                     }

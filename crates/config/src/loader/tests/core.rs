@@ -785,18 +785,6 @@ fn load_agents_md_reads_trimmed_content() {
 }
 
 #[test]
-fn load_heartbeat_md_reads_trimmed_content() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    std::fs::write(dir.path().join("HEARTBEAT.md"), "\n# Heartbeat\n- ping\n").unwrap();
-    assert_eq!(load_heartbeat_md().as_deref(), Some("# Heartbeat\n- ping"));
-
-    clear_data_dir();
-}
-
-#[test]
 fn load_memory_md_reads_trimmed_content() {
     let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().expect("tempdir");
@@ -890,18 +878,6 @@ fn workspace_markdown_ignores_leading_html_comments() {
         load_tools_md().as_deref(),
         Some("Use read-only tools first.")
     );
-
-    clear_data_dir();
-}
-
-#[test]
-fn workspace_markdown_comment_only_is_treated_as_empty() {
-    let _guard = DATA_DIR_TEST_LOCK.lock().unwrap();
-    let dir = tempfile::tempdir().expect("tempdir");
-    set_data_dir(dir.path().to_path_buf());
-
-    std::fs::write(dir.path().join("HEARTBEAT.md"), "<!-- guidance -->").unwrap();
-    assert_eq!(load_heartbeat_md(), None);
 
     clear_data_dir();
 }

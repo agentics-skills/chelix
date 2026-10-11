@@ -155,14 +155,6 @@ dimensions = 3
 [metrics]
 enabled = true
 
-[heartbeat]
-enabled = true
-every = "30m"
-
-[heartbeat.active_hours]
-start = "08:00"
-end = "24:00"
-
 [cron]
 rate_limit_max = 10
 "#;

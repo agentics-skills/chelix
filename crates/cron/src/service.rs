@@ -19,10 +19,7 @@ use {
 #[cfg(feature = "metrics")]
 use chelix_metrics::{counter, cron as cron_metrics, gauge, histogram};
 
-use crate::{
-    Error, Result, schedule::compute_next_run, store::CronStore, system_events::SystemEventsQueue,
-    types::*,
-};
+use crate::{Error, Result, schedule::compute_next_run, store::CronStore, types::*};
 
 /// Result of an agent turn, including optional token usage.
 #[derive(Debug, Clone)]
@@ -114,7 +111,6 @@ pub struct AgentTurnRequest {
     pub deliver: bool,
     pub channel: Option<String>,
     pub to: Option<String>,
-    pub session_target: SessionTarget,
     pub auto_prune_container: Option<bool>,
 }
 
@@ -129,30 +125,10 @@ pub struct CronService {
     on_agent_turn: AgentTurnFn,
     on_notify: Option<NotifyFn>,
     rate_limiter: Mutex<RateLimiter>,
-    events_queue: Arc<SystemEventsQueue>,
-    /// Minimum ms between command-triggered heartbeat wakes. Zero disables cooldown.
-    wake_cooldown_ms: u64,
 }
 
 /// Max time a job can be in "running" state before we consider it stuck (2 hours).
 const STUCK_THRESHOLD_MS: u64 = 2 * 60 * 60 * 1000;
-
-/// Minimum cooldown between command-triggered heartbeat wake calls.
-///
-/// Prevents command-completion callbacks from re-waking the heartbeat
-/// in a tight loop when the agent uses `execute_command` during a heartbeat turn.
-/// The wake is skipped if the heartbeat last completed less than this
-/// duration ago. This is a safety net — the scheduled interval still
-/// applies for normal periodic firing.
-///
-/// This cooldown only applies to command-triggered wakes ([`WAKE_REASON_COMMAND_EVENT`]).
-/// CronWakeMode::Now wakes ([`WAKE_REASON_CRON_EVENT`]) are never suppressed.
-pub const DEFAULT_WAKE_COOLDOWN_MS: u64 = 5 * 60 * 1000;
-
-/// Wake reason: command-completion callback.
-pub const WAKE_REASON_COMMAND_EVENT: &str = "command-event";
-/// Wake reason: cron job with [`CronWakeMode::Now`](crate::types::CronWakeMode::Now) finished.
-pub const WAKE_REASON_CRON_EVENT: &str = "cron-event";
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -173,7 +149,6 @@ impl CronService {
             on_agent_turn,
             None,
             RateLimitConfig::default(),
-            DEFAULT_WAKE_COOLDOWN_MS,
         )
     }
 
@@ -190,7 +165,6 @@ impl CronService {
             on_agent_turn,
             Some(on_notify),
             RateLimitConfig::default(),
-            DEFAULT_WAKE_COOLDOWN_MS,
         )
     }
 
@@ -201,31 +175,6 @@ impl CronService {
         on_agent_turn: AgentTurnFn,
         on_notify: Option<NotifyFn>,
         rate_limit_config: RateLimitConfig,
-        wake_cooldown_ms: u64,
-    ) -> Arc<Self> {
-        Self::with_events_queue(
-            store,
-            on_system_event,
-            on_agent_turn,
-            on_notify,
-            rate_limit_config,
-            wake_cooldown_ms,
-            SystemEventsQueue::new(),
-        )
-    }
-
-    /// Create a new cron service with a pre-created events queue.
-    ///
-    /// Use this when the queue must be shared with closures created before
-    /// the service (e.g. the `on_agent_turn` callback).
-    pub fn with_events_queue(
-        store: Arc<dyn CronStore>,
-        on_system_event: SystemEventFn,
-        on_agent_turn: AgentTurnFn,
-        on_notify: Option<NotifyFn>,
-        rate_limit_config: RateLimitConfig,
-        wake_cooldown_ms: u64,
-        events_queue: Arc<SystemEventsQueue>,
     ) -> Arc<Self> {
         Arc::new(Self {
             store,
@@ -237,57 +186,7 @@ impl CronService {
             on_agent_turn,
             on_notify,
             rate_limiter: Mutex::new(RateLimiter::new(rate_limit_config)),
-            events_queue,
-            wake_cooldown_ms,
         })
-    }
-
-    /// Access the shared events queue for enqueueing system events.
-    pub fn events_queue(&self) -> &Arc<SystemEventsQueue> {
-        &self.events_queue
-    }
-
-    /// Wake the heartbeat by setting its next run to now.
-    ///
-    /// Multiple wake calls coalesce naturally: they all set `next_run_at_ms = now`
-    /// idempotently, and `running_at_ms` prevents the heartbeat from firing twice.
-    ///
-    /// When called with reason [`WAKE_REASON_COMMAND_EVENT`], a cooldown guard applies: if the
-    /// heartbeat last completed less than `wake_cooldown_ms` ago, the wake is skipped.
-    /// This prevents command-completion callbacks from creating a re-fire loop.
-    /// Other reasons (e.g. [`WAKE_REASON_CRON_EVENT`]) are never suppressed.
-    pub async fn wake(&self, reason: &str) {
-        let now = now_ms();
-        let mut jobs = self.jobs.write().await;
-        if let Some(job) = jobs.iter_mut().find(|j| j.id == "__heartbeat__")
-            && job.enabled
-            && job.state.running_at_ms.is_none()
-        {
-            // Enforce cooldown for command-triggered wakes only. This prevents
-            // command-completion callbacks from creating a re-fire loop when the
-            // heartbeat agent uses `execute_command` during its turn. CronWakeMode::Now wakes
-            // are never suppressed.
-            if reason == WAKE_REASON_COMMAND_EVENT
-                && self.wake_cooldown_ms > 0
-                && let Some(last_run) = job.state.last_run_at_ms
-            {
-                let elapsed = now.saturating_sub(last_run);
-                if elapsed < self.wake_cooldown_ms {
-                    debug!(
-                        reason,
-                        elapsed_ms = elapsed,
-                        cooldown_ms = self.wake_cooldown_ms,
-                        "skipping heartbeat wake — within cooldown"
-                    );
-                    return;
-                }
-            }
-
-            debug!(reason, "waking heartbeat");
-            job.state.next_run_at_ms = Some(now);
-        }
-        drop(jobs);
-        self.wake_notify.notify_one();
     }
 
     /// Emit a notification if a callback is registered.
@@ -335,16 +234,11 @@ impl CronService {
 
     /// Add a new job.
     pub async fn add(&self, create: CronJobCreate) -> Result<CronJob> {
-        // Check rate limit (skip for system jobs like heartbeat).
-        if !create.system {
-            self.rate_limiter.lock().await.check()?;
-        }
+        self.rate_limiter.lock().await.check()?;
 
         let now = now_ms();
         let mut job = CronJob {
-            id: create
-                .id
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            id: uuid::Uuid::new_v4().to_string(),
             name: create.name,
             enabled: create.enabled,
             delete_after_run: create.delete_after_run,
@@ -353,8 +247,6 @@ impl CronService {
             session_target: create.session_target,
             state: CronJobState::default(),
             auto_prune_container: create.auto_prune_container,
-            wake_mode: create.wake_mode,
-            system: create.system,
             created_at_ms: now,
             updated_at_ms: now,
         };
@@ -409,9 +301,6 @@ impl CronService {
         }
         if let Some(auto_prune_container) = patch.auto_prune_container {
             job.auto_prune_container = auto_prune_container;
-        }
-        if let Some(wake_mode) = patch.wake_mode {
-            job.wake_mode = wake_mode;
         }
 
         job.updated_at_ms = now;
@@ -488,24 +377,18 @@ impl CronService {
     }
 
     /// Get scheduler status.
-    /// Counts exclude system jobs (e.g. heartbeat) to match what the UI shows.
     pub async fn status(&self) -> CronStatus {
         let jobs = self.jobs.read().await;
         let running = *self.running.read().await;
-        // Exclude system jobs from counts (they're hidden in the UI).
-        let user_jobs: Vec<_> = jobs.iter().filter(|j| !j.system).collect();
-        let enabled_count = user_jobs.iter().filter(|j| j.enabled).count();
-        let next_run_at_ms = user_jobs
-            .iter()
-            .filter_map(|j| j.state.next_run_at_ms)
-            .min();
+        let enabled_count = jobs.iter().filter(|j| j.enabled).count();
+        let next_run_at_ms = jobs.iter().filter_map(|j| j.state.next_run_at_ms).min();
 
         #[cfg(feature = "metrics")]
-        gauge!(cron_metrics::JOBS_SCHEDULED).set(user_jobs.len() as f64);
+        gauge!(cron_metrics::JOBS_SCHEDULED).set(jobs.len() as f64);
 
         CronStatus {
             running,
-            job_count: user_jobs.len(),
+            job_count: jobs.len(),
             enabled_count,
             next_run_at_ms,
         }
@@ -611,7 +494,6 @@ impl CronService {
                     deliver: payload.deliver,
                     channel: payload.channel.clone(),
                     to: payload.to.clone(),
-                    session_target: job.session_target.clone(),
                     auto_prune_container: job.auto_prune_container,
                 };
                 (self.on_agent_turn)(req).await
@@ -710,11 +592,6 @@ impl CronService {
             }
         }
 
-        // Wake heartbeat immediately if this job requested it.
-        if job.wake_mode == CronWakeMode::Now && job.id != "__heartbeat__" {
-            self.wake(WAKE_REASON_CRON_EVENT).await;
-        }
-
         info!(
             id = %job.id,
             status = ?status,
@@ -765,9 +642,9 @@ fn validate_job_spec(job: &CronJob) -> Result<()> {
                 "sessionTarget=main requires payload kind=systemEvent",
             ));
         },
-        (SessionTarget::Isolated | SessionTarget::Named(_), CronPayload::SystemEvent(_)) => {
+        (SessionTarget::Isolated, CronPayload::SystemEvent(_)) => {
             return Err(Error::message(
-                "sessionTarget=isolated/named requires payload kind=agentTurn",
+                "sessionTarget=isolated requires payload kind=agentTurn",
             ));
         },
         _ => {},

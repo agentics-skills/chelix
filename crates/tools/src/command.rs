@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::PathBuf, sync::Arc, time::Duration};
+use std::{borrow::Cow, path::PathBuf, time::Duration};
 
 use {
     async_trait::async_trait,
@@ -9,18 +9,6 @@ use {
 };
 
 use crate::{Result, error::Error};
-
-/// Event describing a completed command invocation.
-#[derive(Debug, Clone)]
-pub struct CommandCompletionEvent {
-    pub command: String,
-    pub exit_code: i32,
-    pub stdout_preview: String,
-    pub stderr_preview: String,
-}
-
-/// Callback fired after command completion.
-pub type CommandCompletionFn = Arc<dyn Fn(CommandCompletionEvent) + Send + Sync>;
 
 /// Provider of environment variables to inject at command execution boundaries.
 /// Values are wrapped in `Secret` to prevent accidental logging.

@@ -4,53 +4,6 @@ export default {
 	// ── Sidebar ─────────────────────────────────────────────
 	sidebar: {
 		cronJobs: "Cron Jobs",
-		heartbeat: "Heartbeat",
-	},
-
-	// ── Heartbeat section ───────────────────────────────────
-	heartbeat: {
-		title: "Heartbeat",
-		enable: "Enable",
-		runNow: "Run Now",
-		running: "Running\u2026",
-		description: "Periodic AI check-in that monitors your environment and reports status.",
-		inactiveLabel: "Heartbeat inactive:",
-		blockedDisabled: "Heartbeat is disabled. Enable it to allow manual runs.",
-		blockedNoPrompt:
-			"Heartbeat is inactive because no prompt is configured. Add a custom prompt or write actionable content in HEARTBEAT.md.",
-		blockedNoJob: "Heartbeat has no active cron job yet. Save the heartbeat settings to recreate it.",
-		lastLabel: "Last:",
-		nextLabel: "Next:",
-		// Schedule
-		scheduleTitle: "Schedule",
-		intervalLabel: "Interval",
-		modelLabel: "Model",
-		modelDefaultPlaceholder: "(default: {{model}})",
-		modelServerDefault: "(server default)",
-		// Prompt
-		promptTitle: "Prompt",
-		customPromptLabel: "Custom Prompt (optional)",
-		customPromptPlaceholder: "Leave blank to use default heartbeat prompt",
-		customPromptHint:
-			"Leave this empty to use HEARTBEAT.md in your workspace root. If that file exists but is empty/comments-only, heartbeat LLM runs are skipped to save tokens.",
-		promptSourceLabel: "Effective prompt source:",
-		promptSourceConfig: "config custom prompt",
-		promptSourceMd: "HEARTBEAT.md",
-		promptSourceDefault: "none (heartbeat inactive)",
-		maxResponseCharsLabel: "Max Response Characters",
-		// Active Hours
-		activeHoursTitle: "Active Hours",
-		activeHoursDescription: "Only run heartbeat during these hours.",
-		startLabel: "Start",
-		endLabel: "End",
-		timezoneLabel: "Timezone",
-		timezoneLocal: "Local ({{tz}})",
-		// Recent Runs
-		recentRunsTitle: "Recent Runs",
-		noRunsYet: "No runs yet.",
-		// Token display
-		tokenIn: "{{count}} in",
-		tokenOut: "{{count}} out",
 	},
 
 	// ── Cron Jobs section ───────────────────────────────────

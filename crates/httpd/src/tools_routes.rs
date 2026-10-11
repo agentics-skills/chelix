@@ -550,15 +550,6 @@ fn validate_config(config: &chelix_config::ChelixConfig) -> Vec<String> {
         warnings.push("TLS is disabled. Connections will use unencrypted HTTP.".to_string());
     }
 
-    // Check heartbeat active hours
-    if config.heartbeat.enabled
-        && config.heartbeat.active_hours.start == config.heartbeat.active_hours.end
-    {
-        warnings.push(
-            "Heartbeat active_hours start and end are the same. Heartbeat may not run.".to_string(),
-        );
-    }
-
     warnings
 }
 

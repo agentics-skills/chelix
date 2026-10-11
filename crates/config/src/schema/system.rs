@@ -1,6 +1,5 @@
 use {
     super::*,
-    chelix_common::ConfigModelOverride,
     secrecy::Secret,
     serde::{Deserialize, Serialize},
 };
@@ -124,77 +123,6 @@ impl ServerConfig {
     pub fn resolve_external_url(env_val: Option<&str>, config_val: Option<&str>) -> Option<String> {
         let raw = env_val.or(config_val)?;
         Some(raw.trim_end_matches('/').to_string())
-    }
-}
-
-/// Heartbeat configuration — periodic health-check agent turn.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct HeartbeatConfig {
-    /// Whether the heartbeat is enabled. Defaults to true.
-    pub enabled: bool,
-    /// Interval between heartbeats (e.g. "30m", "1h"). Defaults to "30m".
-    pub every: String,
-    /// Complete canonical model/reasoning override for heartbeat turns.
-    pub model_override: Option<ConfigModelOverride>,
-    /// Agent ID override for heartbeat turns.
-    pub agent_id: Option<String>,
-    /// Custom prompt override. If empty, the built-in default is used.
-    pub prompt: Option<String>,
-    /// Max characters for an acknowledgment reply before truncation. Defaults to 300.
-    pub ack_max_chars: usize,
-    /// Active hours window — heartbeats only run during this window.
-    pub active_hours: ActiveHoursConfig,
-    /// Whether heartbeat replies should be delivered to a channel account.
-    #[serde(default)]
-    pub deliver: bool,
-    /// Channel account identifier for heartbeat delivery (e.g. a Telegram bot account id).
-    pub channel: Option<String>,
-    /// Destination chat/recipient id for heartbeat delivery.
-    pub to: Option<String>,
-    /// Minimum duration between command-triggered heartbeat wakes (e.g. "5m", "0").
-    /// Prevents command-completion callbacks from re-waking the heartbeat in a tight loop.
-    /// Defaults to "5m". Set to "0" to disable.
-    pub wake_cooldown: String,
-}
-
-impl Default for HeartbeatConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            every: "30m".into(),
-            model_override: None,
-            agent_id: None,
-            prompt: None,
-            ack_max_chars: 300,
-            active_hours: ActiveHoursConfig::default(),
-            deliver: false,
-            channel: None,
-            to: None,
-            wake_cooldown: "5m".into(),
-        }
-    }
-}
-
-/// Active hours window for heartbeats.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ActiveHoursConfig {
-    /// Start time in HH:MM format. Defaults to "08:00".
-    pub start: String,
-    /// End time in HH:MM format. Defaults to "24:00" (midnight = always on until end of day).
-    pub end: String,
-    /// IANA timezone (e.g. "Europe/Paris") or "local". Defaults to "local".
-    pub timezone: String,
-}
-
-impl Default for ActiveHoursConfig {
-    fn default() -> Self {
-        Self {
-            start: "08:00".into(),
-            end: "24:00".into(),
-            timezone: "local".into(),
-        }
     }
 }
 

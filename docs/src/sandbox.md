@@ -175,7 +175,7 @@ The values are case-sensitive. Other spellings and legacy values are rejected.
 With `"On"`, gateway startup requires a filesystem-isolated runtime. With
 `"Off"`, execution runs directly on the host and no sandbox runtime is created.
 
-There are no agent, session, heartbeat, project, chat, cron, skill, or browser
+There are no agent, session, project, chat, cron, skill, or browser
 sandbox overrides.
 
 The Sandboxes settings page displays this value as a read-only `On`/`Off`

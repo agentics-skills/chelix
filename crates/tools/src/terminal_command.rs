@@ -15,7 +15,7 @@ use {
 use crate::{
     Result,
     approval::{ApprovalDecision, ApprovalManager},
-    command::{CommandCompletionEvent, CommandCompletionFn, EnvVarProvider, redact_secret_values},
+    command::{EnvVarProvider, redact_secret_values},
     error::Error,
     params::without_null_params,
     tools_service::ManagedToolsService,
@@ -62,7 +62,6 @@ pub struct ExecuteCommandTool {
     approval_manager: Option<Arc<ApprovalManager>>,
     broadcaster: Option<Arc<dyn crate::approval::ApprovalBroadcaster>>,
     env_provider: Option<Arc<dyn EnvVarProvider>>,
-    completion_callback: Option<CommandCompletionFn>,
 }
 
 impl ExecuteCommandTool {
@@ -75,7 +74,6 @@ impl ExecuteCommandTool {
             approval_manager: None,
             broadcaster: None,
             env_provider: None,
-            completion_callback: None,
         }
     }
 
@@ -105,12 +103,6 @@ impl ExecuteCommandTool {
     #[must_use]
     pub fn with_env_provider(mut self, provider: Arc<dyn EnvVarProvider>) -> Self {
         self.env_provider = Some(provider);
-        self
-    }
-
-    #[must_use]
-    pub fn with_completion_callback(mut self, callback: CommandCompletionFn) -> Self {
-        self.completion_callback = Some(callback);
         self
     }
 
@@ -210,20 +202,6 @@ impl ExecuteCommandTool {
                 })
             })
             .collect()
-    }
-
-    fn fire_completion(&self, command: &str, response: &ExecuteCommandResponse) {
-        if !response.completed {
-            return;
-        }
-        if let Some(callback) = self.completion_callback.as_ref() {
-            callback(CommandCompletionEvent {
-                command: command.to_string(),
-                exit_code: response.exit_code.unwrap_or(-1),
-                stdout_preview: response.output.chars().take(200).collect(),
-                stderr_preview: String::new(),
-            });
-        }
     }
 
     fn effective_timeout_millis(&self, requested_timeout: Option<u64>) -> Result<u64> {
@@ -344,7 +322,7 @@ impl AgentTool for ExecuteCommandTool {
         let request = ExecuteCommandRequest {
             session_key: session_key.clone(),
             tool_call_id: params.tool_call_id,
-            command: command.clone(),
+            command,
             custom_cwd,
             new_terminal: params.new_terminal,
             background: params.background,
@@ -354,7 +332,6 @@ impl AgentTool for ExecuteCommandTool {
         };
         info!(session = session_key, "execute_command tool invoked");
         let response = self.service.execute_command(&session_key, request).await?;
-        self.fire_completion(&command, &response);
         let mut result = serde_json::to_value(&response)?;
         if response.completed && response.exit_code == Some(1) {
             result["error"] = serde_json::Value::String(format_execute_status(&response));

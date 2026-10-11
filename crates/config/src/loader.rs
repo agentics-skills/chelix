@@ -212,11 +212,6 @@ pub fn guidelines_path() -> PathBuf {
     data_dir().join("docs/chelix/GUIDELINES.md")
 }
 
-/// Path to workspace heartbeat markdown.
-pub fn heartbeat_path() -> PathBuf {
-    data_dir().join("HEARTBEAT.md")
-}
-
 /// Path to the workspace `MEMORY.md` file.
 pub fn memory_path() -> PathBuf {
     data_dir().join("MEMORY.md")

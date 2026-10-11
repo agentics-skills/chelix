@@ -61,7 +61,7 @@ service.
 The global `sandbox.mode` controls every command execution path. With `"On"`,
 Chelix starts only when it can select a filesystem-isolated Apple Container,
 Podman, or Docker runtime. With `"Off"`, commands execute directly on the
-host. There are no agent, session, heartbeat, project, chat, cron, skill, or
+host. There are no agent, session, project, chat, cron, skill, or
 browser sandbox overrides.
 
 Filesystem isolation protects your host system from:
@@ -153,8 +153,7 @@ rate_limit_max = 10           # max jobs per window
 rate_limit_window_secs = 60   # window duration (1 minute)
 ```
 
-This limits job creation to 10 per minute by default. System jobs (like
-heartbeat) bypass this limit.
+This limits job creation to 10 per minute by default.
 
 ### Job Notifications
 

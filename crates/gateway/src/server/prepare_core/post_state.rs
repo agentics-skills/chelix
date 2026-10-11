@@ -525,7 +525,6 @@ pub(super) async fn complete_startup(
 
     {
         let mut inner = state.inner.write().await;
-        inner.heartbeat_config = config.heartbeat.clone();
         inner.channels_offered = config.channels.offered.clone();
     }
 
@@ -547,22 +546,6 @@ pub(super) async fn complete_startup(
                 sandbox_api_key: sandbox_api_key.map(Secret::new),
             });
         tools_service.set_env_provider(Arc::clone(&env_provider))?;
-        let events_queue = cron_service.events_queue().clone();
-        let cron_for_command_events = Arc::clone(&cron_service);
-        let command_completion_callback: chelix_tools::command::CommandCompletionFn =
-            Arc::new(move |event| {
-                let summary = format!("Command `{}` exited {}", event.command, event.exit_code);
-                let events_queue = Arc::clone(&events_queue);
-                let cron_for_command_events = Arc::clone(&cron_for_command_events);
-                tokio::spawn(async move {
-                    events_queue
-                        .enqueue(summary, chelix_cron::WAKE_REASON_COMMAND_EVENT.into())
-                        .await;
-                    cron_for_command_events
-                        .wake(chelix_cron::WAKE_REASON_COMMAND_EVENT)
-                        .await;
-                });
-            });
 
         let cron_tool = chelix_tools::cron_tool::CronTool::new(Arc::clone(&cron_service));
 
@@ -588,8 +571,7 @@ pub(super) async fn complete_startup(
                         .map(std::time::Duration::from_secs),
                 )
                 .with_approval(Arc::clone(&approval_manager), Arc::clone(&broadcaster))
-                .with_env_provider(Arc::clone(&env_provider))
-                .with_completion_callback(command_completion_callback);
+                .with_env_provider(Arc::clone(&env_provider));
 
         tool_registry.register(Box::new(execute_command_tool));
         tool_registry.register(Box::new(

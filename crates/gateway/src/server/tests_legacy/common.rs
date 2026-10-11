@@ -73,7 +73,6 @@ pub(crate) fn cron_delivery_request() -> chelix_cron::service::AgentTurnRequest 
         deliver: true,
         channel: Some("bot-main".to_string()),
         to: Some("123456".to_string()),
-        session_target: chelix_cron::types::SessionTarget::Isolated,
         auto_prune_container: None,
     }
 }

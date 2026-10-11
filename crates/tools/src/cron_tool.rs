@@ -274,33 +274,6 @@ fn normalize_payload_value(payload: &mut Value) -> Result<()> {
     Ok(())
 }
 
-fn normalize_wake_mode(raw: &str) -> Option<&'static str> {
-    let normalized = raw.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "now" | "immediate" | "immediately" => Some("now"),
-        "nextheartbeat" | "next_heartbeat" | "next-heartbeat" | "next" | "default" => {
-            Some("nextHeartbeat")
-        },
-        _ => None,
-    }
-}
-
-fn normalize_wake_mode_field(obj: &mut Map<String, Value>) -> Result<()> {
-    take_alias(obj, "wakeMode", &["wake_mode"]);
-    if let Some(val) = obj.get_mut("wakeMode") {
-        let raw = val
-            .as_str()
-            .ok_or_else(|| Error::message("wakeMode must be a string"))?;
-        let norm = normalize_wake_mode(raw).ok_or_else(|| {
-            Error::message(format!(
-                "invalid wakeMode `{raw}` (expected `now` or `nextHeartbeat`)"
-            ))
-        })?;
-        *val = Value::String(norm.to_string());
-    }
-    Ok(())
-}
-
 fn normalize_session_target_field(obj: &mut Map<String, Value>) {
     take_alias(obj, "sessionTarget", &["session_target", "target"]);
 }
@@ -324,7 +297,6 @@ fn normalize_job_value(job: &Value) -> Result<Value> {
         .as_object_mut()
         .ok_or_else(|| Error::message("job must be an object"))?;
     normalize_session_target_field(obj);
-    normalize_wake_mode_field(obj)?;
 
     let schedule = obj
         .get_mut("schedule")
@@ -346,7 +318,6 @@ fn normalize_patch_value(patch: &Value) -> Result<Value> {
         .as_object_mut()
         .ok_or_else(|| Error::message("patch must be an object"))?;
     normalize_session_target_field(obj);
-    normalize_wake_mode_field(obj)?;
 
     if let Some(schedule) = obj.get_mut("schedule") {
         normalize_schedule_value(schedule)?;
@@ -476,8 +447,7 @@ impl AgentTool for CronTool {
                         },
                         "sessionTarget": { "type": "string", "enum": ["main", "isolated"], "default": "isolated" },
                         "deleteAfterRun": { "type": "boolean", "default": false },
-                        "enabled": { "type": "boolean", "default": true },
-                        "wakeMode": { "type": "string", "enum": ["now", "nextHeartbeat"], "default": "nextHeartbeat", "description": "Whether to trigger an immediate heartbeat after this job fires" }
+                        "enabled": { "type": "boolean", "default": true }
                     },
                     "required": ["name", "schedule", "payload"]
                 },

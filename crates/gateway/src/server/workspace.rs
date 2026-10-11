@@ -1,15 +1,12 @@
 use std::path::PathBuf;
 
-use super::seed_content::{
-    DEFAULT_BOOT_MD, DEFAULT_HEARTBEAT_MD, DEFAULT_TOOLS_MD, DEFAULT_WORKSPACE_AGENTS_MD,
-};
+use super::seed_content::{DEFAULT_BOOT_MD, DEFAULT_TOOLS_MD, DEFAULT_WORKSPACE_AGENTS_MD};
 
 pub(crate) fn seed_default_workspace_markdown_files() {
     let data_dir = chelix_config::data_dir();
     seed_file_if_missing(data_dir.join("BOOT.md"), DEFAULT_BOOT_MD);
     seed_file_if_missing(data_dir.join("AGENTS.md"), DEFAULT_WORKSPACE_AGENTS_MD);
     seed_file_if_missing(data_dir.join("TOOLS.md"), DEFAULT_TOOLS_MD);
-    seed_file_if_missing(data_dir.join("HEARTBEAT.md"), DEFAULT_HEARTBEAT_MD);
 }
 
 pub(crate) fn warn_on_workspace_prompt_file_truncation(config: &chelix_config::ChelixConfig) {

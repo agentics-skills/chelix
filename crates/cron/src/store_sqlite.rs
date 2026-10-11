@@ -209,8 +209,6 @@ mod tests {
             session_target: SessionTarget::Main,
             state: CronJobState::default(),
             auto_prune_container: None,
-            wake_mode: CronWakeMode::default(),
-            system: false,
             created_at_ms: 1000,
             updated_at_ms: 1000,
         }

@@ -1292,10 +1292,6 @@
   -webkit-mask-image: url("../icons/masks/mask-c29a75ad443b68da.svg");
   mask-image: url("../icons/masks/mask-c29a75ad443b68da.svg");
 }
-.settings-nav-item[data-section="heartbeat"]::before {
-  -webkit-mask-image: url("../icons/masks/mask-d5a45eb7a122c9aa.svg");
-  mask-image: url("../icons/masks/mask-d5a45eb7a122c9aa.svg");
-}
 .settings-nav-item[data-section="security"]::before {
   -webkit-mask-image: url("../icons/masks/mask-882cc0c8c4c9754a.svg");
   mask-image: url("../icons/masks/mask-882cc0c8c4c9754a.svg");
@@ -1630,50 +1626,6 @@
   font-size: 0.82rem;
   font-weight: 500;
   flex-shrink: 0;
-}
-
-/* ── Status bar ── */
-
-.info-bar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 24px;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  font-size: 0.75rem;
-}
-
-.info-bar .info-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.info-bar .info-label {
-  color: var(--muted);
-}
-
-.info-bar .info-value {
-  color: var(--text);
-}
-
-.info-bar .info-value-strong {
-  color: var(--text-strong);
-  font-weight: 500;
-}
-
-.info-bar .info-value-mono {
-  color: var(--text);
-  font-family: var(--font-mono);
-}
-
-.info-bar .info-version {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--muted);
 }
 
 /* ── Microphone Button ── */

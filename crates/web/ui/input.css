@@ -2468,10 +2468,6 @@
   }
 
   /* Other icons */
-  .icon-heart {
-    -webkit-mask-image: url("./icons/masks/mask-d5a45eb7a122c9aa.svg");
-    mask-image: url("./icons/masks/mask-d5a45eb7a122c9aa.svg");
-  }
   .icon-activity {
     -webkit-mask-image: url("./icons/masks/mask-c61ce67f4ead354d.svg");
     mask-image: url("./icons/masks/mask-c61ce67f4ead354d.svg");
