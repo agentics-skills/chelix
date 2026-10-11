@@ -248,14 +248,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let active_hours = || {
-        Struct(HashMap::from([
-            ("start", Leaf),
-            ("end", Leaf),
-            ("timezone", Leaf),
-        ]))
-    };
-
     let agent = || {
         Struct(HashMap::from([
             ("name", Leaf),
@@ -454,25 +446,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
                 ("search_merge_strategy", Leaf),
                 ("enable_prefetch", Leaf),
                 ("prefetch_limit", Leaf),
-            ])),
-        ),
-        (
-            "heartbeat",
-            Struct(HashMap::from([
-                ("enabled", Leaf),
-                ("every", Leaf),
-                (
-                    "model_override",
-                    Struct(HashMap::from([("model", Leaf), ("reasoning_effort", Leaf)])),
-                ),
-                ("agent_id", Leaf),
-                ("prompt", Leaf),
-                ("ack_max_chars", Leaf),
-                ("active_hours", active_hours()),
-                ("deliver", Leaf),
-                ("channel", Leaf),
-                ("to", Leaf),
-                ("wake_cooldown", Leaf),
             ])),
         ),
         (

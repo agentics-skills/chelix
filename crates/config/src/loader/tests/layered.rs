@@ -396,7 +396,7 @@ fn upgrade_adds_new_defaults_automatically() {
     // Defaults should be inherited even though user didn't specify them.
     assert_eq!(config.tools.agent_timeout_secs, 600);
     assert!(config.agents.entries.is_empty());
-    assert!(config.heartbeat.enabled);
+    assert_eq!(config.cron.rate_limit_max, 10);
 
     clear_config_dir();
 }

@@ -160,7 +160,7 @@ The runtime context is populated at request time in `chat.rs` by detecting:
 - Host name, OS, architecture, shell
 - Active LLM provider and model
 - Session key
-- Runtime surface and session kind (`web`, `channel`, `cron`, `heartbeat`)
+- Runtime surface and session kind (`web`, `channel`, `cron`)
 - Channel binding metadata (`channel_type`, `channel_account`,
   `channel_chat_id`, `channel_chat_type`) when available
 - Sudo availability

@@ -129,8 +129,6 @@ main outbound patterns:
   rules, allowlists, and model routing
 - **Cron job delivery** for background jobs that should post their final output
   to a channel
-- **Heartbeat delivery** for periodic heartbeat acknowledgements sent to a
-  chosen chat
 
 Example `send_message` tool call:
 

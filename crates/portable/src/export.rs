@@ -81,7 +81,6 @@ pub async fn export_archive<W: Write>(
         "TOOLS.md",
         "MEMORY.md",
         "AGENTS.md",
-        "HEARTBEAT.md",
     ];
     for name in workspace_files {
         add_workspace_file(&mut builder, data_dir, name, &prefix, &mut inventory)?;

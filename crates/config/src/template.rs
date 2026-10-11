@@ -413,26 +413,6 @@ terminal_size = "115x58"             # 115 chars x 58
 # session_retention_days = 7
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HEARTBEAT
-# ══════════════════════════════════════════════════════════════════════════════
-
-# [heartbeat]
-# enabled = true                    # Enable periodic heartbeats
-# every = "30m"                     # Interval (e.g., "30m", "1h", "6h")
-# ack_max_chars = 300               # Max characters for acknowledgment reply
-# deliver = false                   # Deliver heartbeat replies to a channel
-# wake_cooldown = "5m"              # Min duration between command-triggered heartbeat wakes (0 to disable)
-
-# [heartbeat.model_override]
-# model = "example::gpt-5.2"
-# reasoning_effort = "medium"
-
-# [heartbeat.active_hours]
-# start = "08:00"
-# end = "24:00"
-# timezone = "local"                # "local" or IANA name like "Europe/Paris"
-
-# ══════════════════════════════════════════════════════════════════════════════
 # VOICE
 # ══════════════════════════════════════════════════════════════════════════════
 

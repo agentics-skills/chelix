@@ -101,38 +101,6 @@ export interface ModelOverride {
 	reasoningEffort: string;
 }
 
-/** Complete model/reasoning pair in snake_case configuration objects. */
-export interface ConfigModelOverride {
-	model: string;
-	reasoning_effort: string;
-}
-
-// ── Heartbeat ───────────────────────────────────────────────
-
-/** Active hours window for heartbeat scheduling. */
-export interface ActiveHoursConfig {
-	start: string;
-	end: string;
-	timezone: string;
-}
-
-/**
- * Heartbeat configuration.
- * Mirrors `HeartbeatConfig` in `crates/config/src/schema/system.rs`.
- * Serialised with default serde (snake_case field names).
- */
-export interface HeartbeatConfig {
-	enabled: boolean;
-	every: string;
-	model_override?: ConfigModelOverride;
-	prompt?: string;
-	ack_max_chars: number;
-	active_hours: ActiveHoursConfig;
-	deliver: boolean;
-	channel?: string;
-	to?: string;
-}
-
 // ── Cron types ──────────────────────────────────────────────
 
 /**
@@ -159,13 +127,10 @@ export type CronPayload =
 	  };
 
 /** Where the job executes. */
-export type SessionTarget = "main" | "isolated" | string;
+export type SessionTarget = "main" | "isolated";
 
 /** Outcome of a single job run. */
 export type RunStatus = "ok" | "error" | "skipped";
-
-/** Whether to wake the heartbeat after a cron job completes. */
-export type CronWakeMode = "now" | "nextHeartbeat";
 
 /** Mutable runtime state of a cron job. */
 export interface CronJobState {
@@ -188,24 +153,8 @@ export interface CronJob {
 	sessionTarget: SessionTarget;
 	state: CronJobState;
 	autoPruneContainer?: boolean;
-	wakeMode: CronWakeMode;
-	system: boolean;
 	createdAtMs: number;
 	updatedAtMs: number;
-}
-
-/** Record of a completed cron run. */
-export interface CronRunRecord {
-	jobId: string;
-	startedAtMs: number;
-	finishedAtMs: number;
-	status: RunStatus;
-	error?: string;
-	durationMs: number;
-	output?: string;
-	inputTokens?: number;
-	outputTokens?: number;
-	sessionKey?: string;
 }
 
 /** Summary status of the cron system. */
@@ -237,8 +186,6 @@ export interface GonData {
 	counts: NavCounts;
 	crons: CronJob[];
 	cron_status: CronStatus;
-	heartbeat_config: HeartbeatConfig;
-	heartbeat_runs: CronRunRecord[];
 	voice_enabled: boolean;
 	stt_enabled: boolean;
 	tts_enabled: boolean;

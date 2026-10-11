@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn session_key_supports_channel_location_rejects_non_channel_prefixes() {
         assert!(!session_key_supports_channel_location("web:session:123"));
-        assert!(!session_key_supports_channel_location("cron:heartbeat"));
+        assert!(!session_key_supports_channel_location("cron:nightly"));
         assert!(!session_key_supports_channel_location("nocolon"));
     }
 

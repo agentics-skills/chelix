@@ -597,14 +597,6 @@ pub fn resolve_session_channel_binding(
     session_key: &str,
     binding_json: Option<&str>,
 ) -> std::result::Result<ChannelBinding, serde_json::Error> {
-    if session_key == "cron:heartbeat" {
-        return Ok(ChannelBinding {
-            surface: Some("heartbeat".to_string()),
-            session_kind: Some("cron".to_string()),
-            ..Default::default()
-        });
-    }
-
     if session_key.starts_with("cron:") {
         return Ok(ChannelBinding {
             surface: Some("cron".to_string()),

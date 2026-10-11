@@ -60,8 +60,6 @@ pub(crate) struct GonData {
     counts: NavCounts,
     crons: Vec<chelix_cron::types::CronJob>,
     cron_status: chelix_cron::types::CronStatus,
-    heartbeat_config: chelix_config::schema::HeartbeatConfig,
-    heartbeat_runs: Vec<chelix_cron::types::CronRunRecord>,
     voice_enabled: bool,
     stt_enabled: bool,
     tts_enabled: bool,
@@ -357,11 +355,7 @@ pub(crate) async fn build_nav_counts(gw: &GatewayState) -> NavCounts {
         .and_then(|v| {
             v.as_array().map(|arr| {
                 arr.iter()
-                    .filter(|j| {
-                        let enabled = j.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
-                        let system = j.get("system").and_then(|s| s.as_bool()).unwrap_or(false);
-                        enabled && !system
-                    })
+                    .filter(|j| j.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false))
                     .count()
             })
         })
@@ -401,11 +395,10 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
     // Read all fields from gw.inner in a SINGLE lock acquisition to avoid
     // deadlocks with concurrent write-lock requests (tokio's fair RwLock
     // blocks new reads when a write is queued).
-    let (hooks_count, heartbeat_config, cached_channels_offered, update) = {
+    let (hooks_count, cached_channels_offered, update) = {
         let inner = gw.inner.read().await;
         (
             inner.discovered_hooks.len(),
-            inner.heartbeat_config.clone(),
             inner.channels_offered.clone(),
             inner.update.clone(),
         )
@@ -451,19 +444,6 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
         .filter_map(|s| s.parse::<chelix_channels::ChannelType>().ok())
         .map(|ct| ct.descriptor())
         .collect();
-
-    let heartbeat_runs: Vec<chelix_cron::types::CronRunRecord> = gw
-        .services
-        .cron
-        .runs(serde_json::json!({ "id": "__heartbeat__", "limit": 10 }))
-        .await
-        .ok()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
-    tracing::debug!(
-        elapsed_ms = gon_start.elapsed().as_millis(),
-        "gon: heartbeat_runs"
-    );
 
     let sandbox = SandboxGonInfo {
         mode: *gw.sandbox_router.mode(),
@@ -552,8 +532,6 @@ pub(crate) async fn build_gon_data(gw: &GatewayState) -> crate::Result<GonData> 
         counts,
         crons,
         cron_status,
-        heartbeat_config,
-        heartbeat_runs,
         voice_enabled: cfg!(feature = "voice"),
         stt_enabled: cfg!(feature = "voice") && gw.config.voice.stt.enabled,
         tts_enabled: cfg!(feature = "voice") && gw.config.voice.tts.enabled,

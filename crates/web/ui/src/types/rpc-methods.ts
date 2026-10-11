@@ -61,12 +61,6 @@ export interface RpcMethodMap {
 	"external_agents.status": unknown;
 	"external_agents.unbind": unknown;
 
-	// ── Heartbeat ───────────────────────────────────────────────
-	"heartbeat.run": unknown;
-	"heartbeat.runs": unknown;
-	"heartbeat.status": unknown;
-	"heartbeat.update": unknown;
-
 	// ── Hooks ───────────────────────────────────────────────────
 	"hooks.list": unknown;
 	"hooks.reload": unknown;

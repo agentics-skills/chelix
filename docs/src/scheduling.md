@@ -4,100 +4,6 @@ Chelix includes a built-in cron system that lets the agent schedule and manage
 recurring tasks. Jobs can fire agent turns, send system events, or trigger other
 actions on a flexible schedule.
 
-## Heartbeat
-
-The **heartbeat** is a special system cron job (`__heartbeat__`) that runs
-periodically (default: every 30 minutes). It gives the agent an opportunity to
-check reminders, run deferred tasks, and react to events that occurred while the
-user was away.
-
-The heartbeat prompt is assembled from `HEARTBEAT.md` in the workspace data
-directory. If the file is empty and no pending events exist, the heartbeat turn
-is skipped to save tokens.
-
-Heartbeat replies can also be delivered to a configured channel destination via
-`[heartbeat] deliver`, `channel`, and `to` in `chelix.toml`, or from the web UI
-under **Settings -> Heartbeat**.
-
-A heartbeat model override is configured as one complete pair:
-
-```toml
-[heartbeat.model_override]
-model = "openai::gpt-5.2"
-reasoning_effort = "medium"
-```
-
-The model must be the exact canonical ID returned by `models.list`, and the
-reasoning effort must be a non-empty value supported by that model.
-
-## Event-Driven Heartbeat Wake
-
-Normally the heartbeat fires on its regular schedule. The **wake** system lets
-other parts of Chelix trigger an immediate heartbeat when something noteworthy
-happens, so the agent can react in near real-time.
-
-### Wake Mode
-
-Every cron job has a `wakeMode` field that controls whether it triggers an
-immediate heartbeat after execution:
-
-| Value                       | Behaviour                                                            |
-| --------------------------- | -------------------------------------------------------------------- |
-| `"nextHeartbeat"` (default) | No extra wake — events are picked up on the next scheduled heartbeat |
-| `"now"`                     | Immediately reschedules the heartbeat to run as soon as possible     |
-
-Set `wakeMode` when creating or updating a job through the `cron` tool:
-
-```json
-{
-  "action": "add",
-  "job": {
-    "name": "check-deploy",
-    "schedule": { "kind": "every", "every_ms": 300000 },
-    "payload": { "kind": "agentTurn", "message": "Check deploy status" },
-    "wakeMode": "now"
-  }
-}
-```
-
-Aliases are accepted: `"immediate"`, `"immediately"` map to `"now"`; `"next"`,
-`"default"`, `"next_heartbeat"`, `"next-heartbeat"` map to `"nextHeartbeat"`.
-
-### System Events Queue
-
-Chelix maintains an in-memory bounded queue of **system events** — short text
-summaries of things that happened (command completions, cron triggers, etc.).
-When the heartbeat fires, any pending events are drained from the queue and
-prepended to the heartbeat prompt so the agent sees what occurred.
-
-The queue holds up to 20 events. Consecutive duplicate events are deduplicated.
-Events that arrive after the buffer is full are silently dropped (oldest events
-are preserved).
-
-### Command Completion Events
-
-When a background command finishes (via the `execute_command` tool), Chelix
-automatically enqueues a summary event with the command name, exit code, and a
-short preview of stdout/stderr. If the heartbeat is idle, it is woken
-immediately so the agent can react to the result.
-
-Command-triggered wakes have a cooldown guard so a heartbeat turn that runs
-`execute_command` does not immediately re-wake itself in a loop. Configure it
-with `[heartbeat].wake_cooldown` in `chelix.toml`:
-
-```toml
-[heartbeat]
-wake_cooldown = "5m" # default; set "0" to disable
-```
-
-The value uses Chelix duration syntax such as `"30s"`, `"10m"`, or `"1h"`. The
-cooldown applies only to command-completion wakes. Cron jobs with
-`wakeMode = "now"` still wake the heartbeat immediately.
-
-This means the agent learns about completed background tasks without polling — a
-long-running build or deployment that finishes while the user is away will
-surface in the next heartbeat turn.
-
 ## Schedule Types
 
 Jobs support several schedule kinds:
@@ -115,7 +21,7 @@ The agent manages jobs through the built-in `cron` tool. Available actions:
 - **`add`** — Create a new job
 - **`list`** — List all jobs
 - **`run`** — Trigger a job immediately
-- **`update`** — Patch an existing job (name, schedule, enabled, wakeMode, etc.)
+- **`update`** — Patch an existing job (name, schedule, enabled, etc.)
 - **`remove`** — Delete a job
 - **`runs`** — View recent execution history for a job
 
@@ -188,7 +94,6 @@ Each job specifies where its agent turn runs:
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `"main"`          | Inject a `systemEvent` into the main session. Use this for reminders that should continue the main conversation.       |
 | `"isolated"`      | Run an `agentTurn` in a throwaway cron session. Use this for background jobs and channel delivery.                     |
-| `named("<name>")` | Internal/persistent cron session used by system jobs such as heartbeat. Not user-configurable through the `cron` tool. |
 
 ## Security
 

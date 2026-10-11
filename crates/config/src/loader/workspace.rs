@@ -163,11 +163,6 @@ pub fn load_guidelines_md_for_agent(agent_id: &str) -> Option<String> {
     load_workspace_markdown(agent_path).or_else(load_guidelines_md)
 }
 
-/// Load HEARTBEAT.md from the workspace root (`data_dir`) if present and non-empty.
-pub fn load_heartbeat_md() -> Option<String> {
-    load_workspace_markdown(heartbeat_path())
-}
-
 /// Load MEMORY.md from the workspace root (`data_dir`) if present and non-empty.
 pub fn load_memory_md() -> Option<String> {
     load_workspace_markdown(memory_path())

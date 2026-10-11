@@ -97,12 +97,6 @@ const sections: SectionItem[] = [
 		icon: <span className="icon icon-webhooks" />,
 		page: true,
 	},
-	{
-		id: "heartbeat",
-		label: "Heartbeat",
-		icon: <span className="icon icon-heart" />,
-		page: true,
-	},
 	{ group: "Security" },
 	{
 		id: "security",
@@ -260,11 +254,7 @@ interface PageSectionHandler {
 
 const pageSectionHandlers: Record<string, PageSectionHandler> = {
 	crons: {
-		init: (container: HTMLElement) => initCrons(container, null),
-		teardown: teardownCrons,
-	},
-	heartbeat: {
-		init: (container: HTMLElement) => initCrons(container, "heartbeat"),
+		init: (container: HTMLElement) => initCrons(container),
 		teardown: teardownCrons,
 	},
 	webhooks: { init: initWebhooks, teardown: teardownWebhooks },

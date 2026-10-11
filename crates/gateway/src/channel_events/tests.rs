@@ -170,7 +170,7 @@ fn session_entry(
 fn attachable_session_filter_skips_archived_and_cron_sessions() {
     let archived = session_entry("1", "session:archived", None, 0, true);
     let cron = SessionEntry {
-        key: "cron:heartbeat".into(),
+        key: "cron:nightly".into(),
         archived: false,
         ..archived.clone()
     };

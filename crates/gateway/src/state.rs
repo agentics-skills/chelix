@@ -288,8 +288,6 @@ pub struct GatewayInner {
     pub pending_location_requests: HashMap<String, PendingLocationRequest>,
     /// Pending server → client RPC requests awaiting client responses (v4).
     pub pending_client_requests: HashMap<String, PendingClientRequest>,
-    /// Heartbeat configuration (for gon data and RPC methods).
-    pub heartbeat_config: chelix_config::schema::HeartbeatConfig,
     /// Pending channel reply targets: when a channel message triggers a chat
     /// send, we queue the reply target so the "final" response can be routed
     /// back to the originating channel.
@@ -349,7 +347,6 @@ impl GatewayInner {
         Self {
             pending_location_requests: HashMap::new(),
             pending_client_requests: HashMap::new(),
-            heartbeat_config: chelix_config::schema::HeartbeatConfig::default(),
             channel_reply_queue: HashMap::new(),
             tts_session_overrides: HashMap::new(),
             tts_channel_overrides: HashMap::new(),

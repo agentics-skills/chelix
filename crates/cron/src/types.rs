@@ -5,17 +5,6 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-/// Whether to wake the heartbeat after a cron job completes.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum CronWakeMode {
-    /// Trigger an immediate heartbeat after this job fires.
-    Now,
-    /// Wait for the next scheduled heartbeat tick (default).
-    #[default]
-    NextHeartbeat,
-}
-
 /// How a job is scheduled.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -83,8 +72,6 @@ pub enum SessionTarget {
     /// Run in an isolated, throwaway session.
     #[default]
     Isolated,
-    /// Run in a named session that persists across runs (e.g. "heartbeat").
-    Named(String),
 }
 
 /// Outcome of a single job run.
@@ -134,13 +121,6 @@ pub struct CronJob {
     /// This controls lifecycle only; routing always follows global sandbox mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_prune_container: Option<bool>,
-    /// Whether to wake the heartbeat after this job completes.
-    #[serde(default)]
-    pub wake_mode: CronWakeMode,
-    /// Whether this is a system-managed job (e.g. heartbeat). System jobs are
-    /// hidden from the normal jobs table in the UI.
-    #[serde(default)]
-    pub system: bool,
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
 }
@@ -171,10 +151,6 @@ pub struct CronRunRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CronJobCreate {
-    /// Optional ID for the job. If not provided, a UUID will be generated.
-    /// Use a fixed ID for system jobs to preserve run history across restarts.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
     pub name: String,
     pub schedule: CronSchedule,
     pub payload: CronPayload,
@@ -184,12 +160,8 @@ pub struct CronJobCreate {
     pub delete_after_run: bool,
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default)]
-    pub system: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_prune_container: Option<bool>,
-    #[serde(default)]
-    pub wake_mode: CronWakeMode,
 }
 
 fn default_true() -> bool {
@@ -218,8 +190,6 @@ pub struct CronJobPatch {
         skip_serializing_if = "Option::is_none"
     )]
     pub auto_prune_container: Option<Option<bool>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wake_mode: Option<CronWakeMode>,
 }
 
 fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -346,8 +316,6 @@ mod tests {
             session_target: SessionTarget::Main,
             state: CronJobState::default(),
             auto_prune_container: None,
-            wake_mode: CronWakeMode::default(),
-            system: false,
             created_at_ms: 1000,
             updated_at_ms: 1000,
         };
@@ -444,7 +412,6 @@ mod tests {
             "payload": { "kind": "systemEvent", "text": "hi" }
         }"#;
         let create: CronJobCreate = serde_json::from_str(json).unwrap();
-        assert!(create.id.is_none());
         assert!(create.enabled);
         assert!(!create.delete_after_run);
         assert_eq!(create.session_target, SessionTarget::Isolated);
@@ -475,8 +442,6 @@ mod tests {
             session_target: SessionTarget::Isolated,
             state: CronJobState::default(),
             auto_prune_container: Some(true),
-            wake_mode: CronWakeMode::default(),
-            system: false,
             created_at_ms: 1000,
             updated_at_ms: 1000,
         };
@@ -497,64 +462,5 @@ mod tests {
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["running"], true);
         assert_eq!(v["jobCount"], 5);
-    }
-
-    #[test]
-    fn test_wake_mode_serde_roundtrip() {
-        let now = CronWakeMode::Now;
-        let json = serde_json::to_string(&now).unwrap();
-        assert_eq!(json, "\"now\"");
-        let back: CronWakeMode = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, CronWakeMode::Now);
-
-        let next = CronWakeMode::NextHeartbeat;
-        let json = serde_json::to_string(&next).unwrap();
-        assert_eq!(json, "\"nextHeartbeat\"");
-        let back: CronWakeMode = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, CronWakeMode::NextHeartbeat);
-    }
-
-    #[test]
-    fn test_wake_mode_default() {
-        assert_eq!(CronWakeMode::default(), CronWakeMode::NextHeartbeat);
-    }
-
-    #[test]
-    fn test_wake_mode_backward_compat_missing_field() {
-        // Old jobs without wakeMode should deserialize with default.
-        let json = r#"{
-            "id": "abc",
-            "name": "test",
-            "enabled": true,
-            "deleteAfterRun": false,
-            "schedule": { "kind": "at", "at_ms": 1000 },
-            "payload": { "kind": "systemEvent", "text": "hi" },
-            "sessionTarget": "main",
-            "state": {},
-            "system": false,
-            "createdAtMs": 1000,
-            "updatedAtMs": 1000
-        }"#;
-        let job: CronJob = serde_json::from_str(json).unwrap();
-        assert_eq!(job.wake_mode, CronWakeMode::NextHeartbeat);
-    }
-
-    #[test]
-    fn test_cronjob_create_with_wake_mode() {
-        let json = r#"{
-            "name": "test",
-            "schedule": { "kind": "at", "at_ms": 1000 },
-            "payload": { "kind": "systemEvent", "text": "hi" },
-            "wakeMode": "now"
-        }"#;
-        let create: CronJobCreate = serde_json::from_str(json).unwrap();
-        assert_eq!(create.wake_mode, CronWakeMode::Now);
-    }
-
-    #[test]
-    fn test_cronjob_patch_with_wake_mode() {
-        let json = r#"{ "wakeMode": "now" }"#;
-        let patch: CronJobPatch = serde_json::from_str(json).unwrap();
-        assert_eq!(patch.wake_mode, Some(CronWakeMode::Now));
     }
 }
