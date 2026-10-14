@@ -973,7 +973,7 @@
   font-family: var(--font-mono);
 }
 
-.skills-category-pill {
+.skills-agent-pill {
   padding: 3px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -985,18 +985,18 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.skills-category-pill:hover {
+.skills-agent-pill:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.skills-category-pill.active {
+.skills-agent-pill.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
 }
 
-.skills-category-badge {
+.skills-agent-tag {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 6px;

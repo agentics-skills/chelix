@@ -543,10 +543,10 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
                 skills.push(serde_json::json!({
                     "name": s.name,
                     "description": s.description,
-                    "category": s.category,
                     "source": s.source,
                     "enabled": enabled,
                     "protected": protected,
+                    "allowed_agents": s.allowed_agents,
                 }));
             }
         }

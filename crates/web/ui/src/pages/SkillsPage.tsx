@@ -21,20 +21,23 @@ import {
 	SkillSource,
 } from "../types/skill-source";
 import { ConfirmDialog, requestConfirm } from "../ui";
+import { SkillAgentFilters, SkillAgentTags } from "./skills/SkillAgents";
 import { type SkillFileDocument, SkillFileMetadata } from "./skills/SkillFileMetadata";
 
 // ── Types ────────────────────────────────────────────────────
 
-interface SkillSummary {
+interface SkillCore {
 	name: string;
 	description?: string;
-	category?: string;
 	source?: string;
 	enabled?: boolean;
 	protected?: boolean;
 	display_name?: string;
 }
-interface SkillDetail extends SkillSummary {
+interface SkillSummary extends SkillCore {
+	allowed_agents: string[];
+}
+interface SkillDetail extends SkillCore {
 	body?: string;
 	body_html?: string;
 	compatibility?: string;
@@ -328,28 +331,37 @@ function EnabledSkillsTable(): VNode | null {
 	const activeDetail = useSignal<SkillDetail | null>(null);
 	const detailLoading = useSignal(false);
 	const pending = useSignal<string | null>(null);
-	const activeCategory = useSignal<string | null>(null);
+	const activeAgent = useSignal<string | null>(null);
 	const searchQuery = useSignal("");
+	useEffect(() => {
+		const current = activeAgent.value;
+		if (current !== null && !enabledSkills.value.some((sk) => sk.allowed_agents.includes(current))) {
+			activeAgent.value = null;
+		}
+	}, [enabledSkills.value]);
 	if (!s?.length) return null;
 
-	// Build sorted category list from skills
-	const categories = computed(() => {
-		const cats = new Set<string>();
-		for (const sk of enabledSkills.value) {
-			cats.add(sk.category || "other");
-		}
-		return Array.from(cats).sort();
-	});
-
-	// Filter skills by search query and active category
+	const agent = activeAgent.value;
+	const selectedAgent = agent !== null && s.some((sk) => sk.allowed_agents.includes(agent)) ? agent : null;
 	const filtered = s.filter((sk) => {
-		if (activeCategory.value && (sk.category || "other") !== activeCategory.value) return false;
+		if (selectedAgent !== null && !sk.allowed_agents.includes(selectedAgent)) return false;
 		if (searchQuery.value) {
 			const q = searchQuery.value.toLowerCase();
 			return sk.name.toLowerCase().includes(q) || (sk.description || "").toLowerCase().includes(q);
 		}
 		return true;
 	});
+	function showAll(): void {
+		activeAgent.value = null;
+		searchQuery.value = "";
+	}
+	function selectAgent(id: string): void {
+		activeAgent.value = id;
+	}
+	function clearAgent(): void {
+		activeAgent.value = null;
+	}
+	const allActive = selectedAgent === null && searchQuery.value === "";
 
 	function isDisc(sk: SkillSummary): boolean {
 		return isDiscoveredSource(sk.source);
@@ -458,7 +470,7 @@ function EnabledSkillsTable(): VNode | null {
 						}}
 					>
 						{skill.name}
-						{skill.category && !activeCategory.value && <span className="skills-category-badge">{skill.category}</span>}
+						<SkillAgentTags agents={skill.allowed_agents} />
 					</td>
 					<td style={{ padding: "8px 12px" }}>{skill.description || "\u2014"}</td>
 					<td style={{ padding: "8px 12px" }}>
@@ -491,34 +503,14 @@ function EnabledSkillsTable(): VNode | null {
 					style={{ maxWidth: "240px", fontSize: ".78rem", padding: "4px 8px" }}
 				/>
 			</div>
-			{categories.value.length > 1 && (
-				<div className="flex flex-wrap gap-1.5 mb-3">
-					<button
-						type="button"
-						className={`skills-category-pill ${activeCategory.value === null ? "active" : ""}`}
-						onClick={() => {
-							activeCategory.value = null;
-						}}
-					>
-						All ({s.length})
-					</button>
-					{categories.value.map((cat) => {
-						const count = s.filter((sk) => (sk.category || "other") === cat).length;
-						return (
-							<button
-								type="button"
-								key={cat}
-								className={`skills-category-pill ${activeCategory.value === cat ? "active" : ""}`}
-								onClick={() => {
-									activeCategory.value = activeCategory.value === cat ? null : cat;
-								}}
-							>
-								{cat} ({count})
-							</button>
-						);
-					})}
-				</div>
-			)}
+			<SkillAgentFilters
+				skills={s}
+				activeAgent={selectedAgent}
+				allActive={allActive}
+				onShowAll={showAll}
+				onSelectAgent={selectAgent}
+				onClearAgent={clearAgent}
+			/>
 			<div className="skills-table-wrap">
 				<table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".82rem" }}>
 					<thead>
