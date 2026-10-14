@@ -20,7 +20,6 @@ impl helpers::SkillWriteRecorder for CheckingWriteRecorder {
             .call(chelix_service_traits::ReadSkillFile {
                 path: dir.join("SKILL.md"),
                 max_bytes: None,
-                mode: chelix_service_traits::SkillFileRead::Detect,
             })
             .await
             .unwrap();
@@ -744,7 +743,6 @@ async fn test_patch_skill_updates_description_after_multiline_publication() {
         .call(chelix_service_traits::ReadSkillFile {
             path: path.clone(),
             max_bytes: None,
-            mode: chelix_service_traits::SkillFileRead::Detect,
         })
         .await
         .unwrap();
@@ -754,7 +752,6 @@ async fn test_patch_skill_updates_description_after_multiline_publication() {
         .call(chelix_service_traits::ReadSkillFile {
             path: path.clone(),
             max_bytes: None,
-            mode: chelix_service_traits::SkillFileRead::Detect,
         })
         .await
         .unwrap();

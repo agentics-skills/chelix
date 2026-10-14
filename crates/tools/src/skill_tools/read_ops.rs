@@ -155,18 +155,6 @@ impl AgentTool for ReadSkillTool {
         }
 
         if let Some(rel) = file_path {
-            if meta.source.as_ref() == Some(&SkillSource::Plugin)
-                && tokio::fs::metadata(&meta.path)
-                    .await
-                    .map(|m| m.is_file())
-                    .unwrap_or(false)
-            {
-                return Err(Error::message(format!(
-                    "plugin skill '{name}' is a single .md file and has no \
-                     sidecar directory; omit file_path to read the body"
-                ))
-                .into());
-            }
             return read_sidecar(name, &meta.path, rel).await;
         }
 
@@ -186,56 +174,29 @@ impl AgentTool for ReadSkillTool {
 
 // ── read_primary ────────────────────────────────────────────
 
-/// Read the main SKILL.md body (or the plugin's `.md` file) plus the list of
-/// sidecar files available in `references/`, `templates/`, `assets/`, and
-/// `scripts/`.
+/// Read the main SKILL.md body plus the list of sidecar files available in
+/// `references/`, `templates/`, `assets/`, and `scripts/`.
 async fn read_primary(
     bus: &chelix_call_bus::CallBus,
     name: &str,
     meta: &chelix_skills::types::SkillMetadata,
 ) -> anyhow::Result<Value> {
-    let is_plugin = meta.source.as_ref() == Some(&SkillSource::Plugin);
+    let canonical_skill_dir = tokio::fs::canonicalize(&meta.path)
+        .await
+        .map_err(|e| Error::message(format!("skill directory not accessible for '{name}': {e}")))?;
 
-    let plugin_as_file = is_plugin
-        && tokio::fs::metadata(&meta.path)
-            .await
-            .map(|m| m.is_file())
-            .unwrap_or(false);
-
-    let (loaded_meta, body, linked_files, effective_dir) = if plugin_as_file {
-        let document = bus
-            .call(chelix_service_traits::ReadSkillFile {
-                path: meta.path.clone(),
-                max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
-                mode: chelix_service_traits::SkillFileRead::Detect,
-            })
-            .await
-            .map_err(|error| {
-                Error::message(format!("failed to read plugin skill '{name}': {error}"))
-            })?;
-        let effective_dir = meta
-            .path
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| meta.path.clone());
-        (document.metadata, document.body, Vec::new(), effective_dir)
-    } else {
-        let canonical_skill_dir = tokio::fs::canonicalize(&meta.path).await.map_err(|e| {
-            Error::message(format!("skill directory not accessible for '{name}': {e}"))
-        })?;
-
-        let skill_md_path = canonical_skill_dir.join("SKILL.md");
-        let content = bus
-            .call(chelix_service_traits::ReadSkillFile {
-                path: skill_md_path,
-                max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
-                mode: chelix_service_traits::SkillFileRead::Detect,
-            })
-            .await
-            .map_err(|error| Error::message(format!("failed to load skill '{name}': {error}")))?;
-        let linked = list_skill_sidecar_files(&canonical_skill_dir).await?;
-        (content.metadata, content.body, linked, canonical_skill_dir)
-    };
+    let skill_md_path = canonical_skill_dir.join("SKILL.md");
+    let content = bus
+        .call(chelix_service_traits::ReadSkillFile {
+            path: skill_md_path,
+            max_bytes: Some(MAX_SKILL_BODY_BYTES as u64),
+        })
+        .await
+        .map_err(|error| Error::message(format!("failed to load skill '{name}': {error}")))?;
+    let linked_files = list_skill_sidecar_files(&canonical_skill_dir).await?;
+    let loaded_meta = content.metadata;
+    let body = content.body;
+    let effective_dir = canonical_skill_dir;
 
     let hits = chelix_skills::safety::scan_skill_body(name, &body);
     if !hits.is_empty() {
@@ -249,8 +210,6 @@ async fn read_primary(
     let source_label = match meta.source.as_ref() {
         Some(SkillSource::Project) => "project",
         Some(SkillSource::Personal) => "personal",
-        Some(SkillSource::Plugin) => "plugin",
-        Some(SkillSource::Registry) => "registry",
         Some(SkillSource::Bundled) => "bundled",
         None => "unknown",
     };

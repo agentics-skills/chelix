@@ -341,7 +341,6 @@ pub async fn prepare_gateway_core(
         .await
         .expect("failed to run vault migrations");
 
-    chelix_skills::migration::migrate_plugins_to_skills(&data_dir).await;
     startup_mem_probe.checkpoint("sqlite.migrations.complete");
 
     #[cfg(feature = "vault")]

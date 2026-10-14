@@ -809,9 +809,9 @@ pub async fn start_gateway(
         // Note: /certs/ca.pem route is already registered by prepare_gateway.
     }
 
-    let (skill_count, repo_count) = {
+    let skill_count = {
         use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
-        let sc = match state.call_bus.get() {
+        match state.call_bus.get() {
             Some(bus) => {
                 let discoverer =
                     FsSkillDiscoverer::new(FsSkillDiscoverer::default_paths(), Arc::clone(bus));
@@ -820,15 +820,7 @@ pub async fn start_gateway(
             None => {
                 return Err(crate::Error::Config("call bus is not installed".into()));
             },
-        };
-        let rc = chelix_skills::manifest::ManifestStore::default_path()
-            .ok()
-            .map(|p| {
-                let store = chelix_skills::manifest::ManifestStore::new(p);
-                store.load().map(|m| m.repos.len()).unwrap_or(0)
-            })
-            .unwrap_or(0);
-        (sc, rc)
+        }
     };
 
     let scheme = if tls_active {
@@ -873,16 +865,7 @@ pub async fn start_gateway(
         startup_bind_line(addr),
         format!("{} methods registered", banner.method_count),
         format!("llm: {}", banner.provider_summary),
-        format!(
-            "skills: {} enabled, {} repo{}",
-            skill_count,
-            repo_count,
-            if repo_count == 1 {
-                ""
-            } else {
-                "s"
-            }
-        ),
+        format!("skills: {skill_count} enabled"),
         format!(
             "mcp: {} configured{}",
             banner.mcp_configured_count,

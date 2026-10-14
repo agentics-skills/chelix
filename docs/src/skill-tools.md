@@ -5,6 +5,8 @@ tools, enabling the system to extend its own capabilities during a conversation.
 
 ## Overview
 
+A skill contains untrusted instructions that the agent follows. Read the `SKILL.md` and any scripts it references before use.
+
 Four agent tools manage personal skills by default:
 
 | Tool           | Description                                                   |

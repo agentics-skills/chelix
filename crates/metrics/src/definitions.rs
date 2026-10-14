@@ -169,12 +169,6 @@ pub mod plugins {
     pub const EXECUTION_DURATION_SECONDS: &str = "chelix_plugin_execution_duration_seconds";
     /// Plugin errors
     pub const ERRORS_TOTAL: &str = "chelix_plugin_errors_total";
-    /// Plugin installation attempts
-    pub const INSTALLATION_ATTEMPTS_TOTAL: &str = "chelix_plugin_installation_attempts_total";
-    /// Plugin installation duration in seconds
-    pub const INSTALLATION_DURATION_SECONDS: &str = "chelix_plugin_installation_duration_seconds";
-    /// Plugin installation errors
-    pub const INSTALLATION_ERRORS_TOTAL: &str = "chelix_plugin_installation_errors_total";
     /// Hook executions by type
     pub const HOOK_EXECUTIONS_TOTAL: &str = "chelix_plugin_hook_executions_total";
     /// Hook execution duration in seconds
@@ -182,10 +176,6 @@ pub mod plugins {
         "chelix_plugin_hook_execution_duration_seconds";
     /// Hook execution errors
     pub const HOOK_ERRORS_TOTAL: &str = "chelix_plugin_hook_errors_total";
-    /// Git clone attempts
-    pub const GIT_CLONE_ATTEMPTS_TOTAL: &str = "chelix_plugin_git_clone_attempts_total";
-    /// Git clone fallbacks to HTTP
-    pub const GIT_CLONE_FALLBACK_TOTAL: &str = "chelix_plugin_git_clone_fallback_total";
 }
 
 /// Cron job metrics
@@ -436,12 +426,6 @@ pub mod skills {
     pub const PARSE_OPERATIONS_TOTAL: &str = "chelix_skills_parse_operations_total";
     /// Parse errors by type
     pub const PARSE_ERRORS_TOTAL: &str = "chelix_skills_parse_errors_total";
-    /// Installation attempts
-    pub const INSTALLATION_ATTEMPTS_TOTAL: &str = "chelix_skills_installation_attempts_total";
-    /// Installation duration in seconds
-    pub const INSTALLATION_DURATION_SECONDS: &str = "chelix_skills_installation_duration_seconds";
-    /// Installation errors
-    pub const INSTALLATION_ERRORS_TOTAL: &str = "chelix_skills_installation_errors_total";
     /// Prompt generation operations
     pub const PROMPT_GENERATION_TOTAL: &str = "chelix_skills_prompt_generation_total";
     /// Prompt generation duration

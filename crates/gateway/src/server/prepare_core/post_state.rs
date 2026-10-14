@@ -921,7 +921,7 @@ pub(super) async fn complete_startup(
     {
         let watcher_state = Arc::clone(&state);
         tokio::spawn(async move {
-            let (mut watcher, mut rx) = match start_skill_hot_reload_watcher().await {
+            let (watcher, mut rx) = match start_skill_hot_reload_watcher().await {
                 Ok(started) => started,
                 Err(error) => {
                     tracing::warn!("skills: failed to start file watcher: {error}");
@@ -930,9 +930,9 @@ pub(super) async fn complete_startup(
             };
 
             loop {
-                let Some(event) = rx.recv().await else {
+                if rx.recv().await.is_none() {
                     break;
-                };
+                }
                 broadcast(
                     &watcher_state,
                     "skills.changed",
@@ -940,21 +940,6 @@ pub(super) async fn complete_startup(
                     BroadcastOpts::default(),
                 )
                 .await;
-
-                if matches!(
-                    event,
-                    chelix_skills::watcher::SkillWatchEvent::ManifestChanged
-                ) {
-                    match start_skill_hot_reload_watcher().await {
-                        Ok((new_watcher, new_rx)) => {
-                            watcher = new_watcher;
-                            rx = new_rx;
-                        },
-                        Err(error) => {
-                            tracing::warn!("skills: failed to refresh file watcher: {error}");
-                        },
-                    }
-                }
             }
 
             drop(watcher);

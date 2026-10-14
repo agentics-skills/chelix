@@ -69,7 +69,6 @@ impl AgentScopedSkillTool {
             .call(chelix_service_traits::ReadSkillFile {
                 path: skill_dir.join("SKILL.md"),
                 max_bytes: None,
-                mode: chelix_service_traits::SkillFileRead::Detect,
             })
             .await
         {
@@ -369,45 +368,12 @@ mod tests {
             &path,
             "---\nname: demo\ndenied_agents: [agent1]\n---\nproject",
         )?;
-        let plugin = dir.path().join("installed-plugins/demo");
-        std::fs::create_dir_all(plugin.join("commands"))?;
+        let hidden = dir.path().join(".chelix/skills/hidden-local");
+        std::fs::create_dir_all(&hidden)?;
         std::fs::write(
-            plugin.join("commands/review.md"),
-            "---\ndescription: Review\ndenied_agents: [agent1]\n---\ncommand body",
+            hidden.join("SKILL.md"),
+            "---\nname: hidden-local\ndenied_agents: [agent1]\n---\nhidden",
         )?;
-        std::fs::write(
-            plugin.join("SKILL.md"),
-            "---\nname: demo\ndenied_agents: [agent1]\n---\nplugin body",
-        )?;
-        let manifest = chelix_skills::types::SkillsManifest {
-            version: 1,
-            repos: vec![chelix_skills::types::RepoEntry {
-                source: "demo/plugin".into(),
-                repo_name: "demo".into(),
-                installed_at_ms: 0,
-                commit_sha: None,
-                format: chelix_skills::formats::PluginFormat::ClaudeCode,
-                quarantined: false,
-                quarantine_reason: None,
-                provenance: None,
-                skills: vec![
-                    chelix_skills::types::SkillState {
-                        name: "Demo:pdf".into(),
-                        relative_path: "demo/commands/review.md".into(),
-                        trusted: true,
-                        enabled: true,
-                    },
-                    chelix_skills::types::SkillState {
-                        name: "claude-dir".into(),
-                        relative_path: "demo".into(),
-                        trusted: true,
-                        enabled: true,
-                    },
-                ],
-            }],
-        };
-        chelix_skills::manifest::ManifestStore::new(dir.path().join("plugins-manifest.json"))
-            .save(&manifest)?;
         let context = ToolExecutionContext::for_session_with_agent(
             chelix_sessions::SessionKey::new("session:test"),
             "agent1",
@@ -447,7 +413,7 @@ mod tests {
             .err()
             .ok_or_else(|| anyhow::anyhow!("missing name"))?;
         assert_eq!(missing.to_string(), "missing 'name'");
-        for name in ["demo", "", "Demo:pdf"] {
+        for name in ["demo", "", "hidden-local"] {
             let error = installed
                 .execute_with_context(json!({ "name": name }), &context)
                 .await
@@ -461,8 +427,7 @@ mod tests {
                 .split_once("not found (")
                 .ok_or_else(|| anyhow::anyhow!("hint"))?
                 .1;
-            assert!(!hint.contains("Demo:pdf"));
-            assert!(!hint.contains("claude-dir"));
+            assert!(!hint.contains("hidden-local"));
         }
         std::fs::write(
             &path,

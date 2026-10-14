@@ -24,7 +24,6 @@ export enum WsEventName {
 	McpStatus = "mcp.status",
 	HooksStatus = "hooks.status",
 	MetricsUpdate = "metrics.update",
-	SkillsInstallProgress = "skills.install.progress",
 	PushSubscriptions = "push.subscriptions",
 }
 
@@ -381,6 +380,5 @@ export interface WsEventPayloadMap {
 	[WsEventName.McpStatus]: Record<string, unknown>;
 	[WsEventName.HooksStatus]: Record<string, unknown>;
 	[WsEventName.MetricsUpdate]: Record<string, unknown>;
-	[WsEventName.SkillsInstallProgress]: Record<string, unknown>;
 	[WsEventName.PushSubscriptions]: Record<string, unknown>;
 }

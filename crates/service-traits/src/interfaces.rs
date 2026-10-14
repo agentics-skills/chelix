@@ -699,28 +699,13 @@ impl McpService for NoopMcpService {
 
 #[async_trait]
 pub trait SkillsService: Send + Sync {
-    async fn status(&self) -> ServiceResult;
-    async fn install(&self, params: Value) -> ServiceResult;
-    async fn update(&self, params: Value) -> ServiceResult;
     async fn list(&self) -> ServiceResult;
-    async fn remove(&self, params: Value) -> ServiceResult;
-    async fn repos_list(&self) -> ServiceResult;
-    async fn repos_list_full(&self) -> ServiceResult;
-    async fn repos_remove(&self, params: Value) -> ServiceResult;
-    async fn repos_export(&self, params: Value) -> ServiceResult;
-    async fn repos_import(&self, params: Value) -> ServiceResult;
-    async fn repos_unquarantine(&self, params: Value) -> ServiceResult;
-    async fn emergency_disable(&self) -> ServiceResult;
     async fn skill_enable(&self, params: Value) -> ServiceResult;
     async fn skill_disable(&self, params: Value) -> ServiceResult;
-    async fn skill_trust(&self, params: Value) -> ServiceResult;
     async fn skill_detail(&self, params: Value) -> ServiceResult;
-    async fn security_status(&self) -> ServiceResult;
-    async fn security_scan(&self) -> ServiceResult;
     async fn skill_save(&self, params: Value) -> ServiceResult;
     async fn bundled_categories(&self) -> ServiceResult;
     async fn bundled_toggle_category(&self, params: Value) -> ServiceResult;
-    async fn recipe(&self, params: Value) -> ServiceResult;
 }
 
 #[async_trait]

@@ -322,22 +322,14 @@ pub(crate) async fn build_nav_counts(gw: &GatewayState) -> NavCounts {
         })
         .unwrap_or(0);
 
-    let skills = tokio::task::spawn_blocking(|| {
-        let path = chelix_skills::manifest::ManifestStore::default_path().ok()?;
-        let store = chelix_skills::manifest::ManifestStore::new(path);
-        let m = store.load().ok()?;
-        Some(
-            m.repos
-                .iter()
-                .flat_map(|r| &r.skills)
-                .filter(|s| s.enabled)
-                .count(),
-        )
-    })
-    .await
-    .ok()
-    .flatten()
-    .unwrap_or(0);
+    let skills = gw
+        .services
+        .skills
+        .list()
+        .await
+        .ok()
+        .and_then(|value| value.as_array().map(|items| items.len()))
+        .unwrap_or(0);
 
     let mcp = mcp
         .ok()

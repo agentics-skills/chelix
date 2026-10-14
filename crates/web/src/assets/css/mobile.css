@@ -615,12 +615,7 @@ html {
     gap: 8px;
   }
 
-  .skills-install-box {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .skills-install-input {
+  .skills-search-input {
     max-width: 100%;
   }
 }

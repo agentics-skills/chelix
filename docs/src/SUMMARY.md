@@ -63,7 +63,6 @@
 - [Authentication](authentication.md)
 - [Encryption at Rest (Vault)](vault.md)
 - [Security Architecture](security.md)
-- [Third-Party Skills Security](skills-security.md)
 - [Release Verification](release-verification.md)
 
 ---

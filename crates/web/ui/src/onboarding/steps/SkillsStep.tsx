@@ -1,38 +1,10 @@
-// ── Skills step (bundled categories, repositories) ────────────
-//
-// Tabbed onboarding step letting users:
-// 1. Toggle bundled skill categories
-// 2. Install featured or custom GitHub skill repos
+// Onboarding step for enabling bundled skill categories.
 
-import { useSignal } from "@preact/signals";
 import type { VNode } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { TabBar } from "../../components/forms/Tabs";
+import { useEffect, useState } from "preact/hooks";
 import { sendRpc } from "../../helpers";
 import { t } from "../../i18n";
-import { showToast } from "../../toast";
 import { type BundledCategory, CATEGORY_META, categoryLabel } from "../../types/skill-source";
-
-// ── Types ────────────────────────────────────────────────────
-
-interface FeaturedRepo {
-	repo: string;
-	desc: string;
-	hasRecipe?: boolean;
-}
-
-interface RepoSummary {
-	source: string;
-	skill_count: number;
-	enabled_count: number;
-}
-
-const FEATURED: FeaturedRepo[] = [
-	{ repo: "anthropics/skills", desc: "Official Anthropic agent skills" },
-	{ repo: "vercel-labs/agent-skills", desc: "Vercel agent skills collection" },
-	{ repo: "vercel-labs/skills", desc: "Vercel skills toolkit" },
-	{ repo: "garrytan/gbrain", desc: "Knowledge graph with hybrid search for agent memory", hasRecipe: true },
-];
 
 // ── Categories tab ───────────────────────────────────────────
 
@@ -164,150 +136,13 @@ function CategoriesTab(): VNode {
 	);
 }
 
-// ── Repositories tab ─────────────────────────────────────────
-
-function RepositoriesTab(): VNode {
-	const installedRepos = useSignal<RepoSummary[]>([]);
-	const installingRepo = useSignal<string | null>(null);
-	const inputRef = useRef<HTMLInputElement>(null);
-
-	useEffect(() => {
-		fetchRepos();
-	}, []);
-
-	function fetchRepos(): void {
-		fetch("/api/skills")
-			.then((r) => r.json())
-			.then((data) => {
-				if (data.repos) installedRepos.value = data.repos;
-			})
-			.catch(console.error);
-	}
-
-	function isInstalled(source: string): boolean {
-		return installedRepos.value.some((r) => r.source === source);
-	}
-
-	async function installRepo(source: string): Promise<void> {
-		installingRepo.value = source;
-		const res = await sendRpc("skills.install", { source });
-		installingRepo.value = null;
-		if (res?.ok) {
-			showToast(`Installed ${source}`, "success");
-			fetchRepos();
-		} else {
-			showToast(`Failed: ${res?.error?.message || "unknown"}`, "error");
-		}
-	}
-
-	function installCustom(): void {
-		const v = inputRef.current?.value.trim();
-		if (!v) return;
-		installRepo(v).then(() => {
-			if (inputRef.current) inputRef.current.value = "";
-		});
-	}
-
-	function orgAvatarUrl(source: string): string {
-		const org = source.split("/")[0];
-		return `https://github.com/${org}.png?size=48`;
-	}
-
-	return (
-		<div className="flex flex-col gap-4">
-			<div className="skills-install-box">
-				<input
-					ref={inputRef}
-					type="text"
-					placeholder="owner/repo or full URL (e.g. anthropics/skills)"
-					className="skills-install-input"
-					onKeyDown={(e) => {
-						if ((e as KeyboardEvent).key === "Enter") installCustom();
-					}}
-				/>
-				<button type="button" className="provider-btn" onClick={installCustom} disabled={installingRepo.value !== null}>
-					{installingRepo.value !== null ? "Installing\u2026" : "Install"}
-				</button>
-			</div>
-
-			<div>
-				<h3 className="text-sm font-medium text-[var(--text-strong)] mb-2">Featured Repositories</h3>
-				<div className="skills-featured-grid">
-					{FEATURED.map((f) => {
-						const installed = isInstalled(f.repo);
-						const busy = installingRepo.value === f.repo;
-						return (
-							<div key={f.repo} className="skills-featured-card">
-								<img
-									src={orgAvatarUrl(f.repo)}
-									alt=""
-									style={{ width: "24px", height: "24px", borderRadius: "var(--radius-sm)", flexShrink: 0 }}
-								/>
-								<div style={{ flex: 1, minWidth: 0 }}>
-									<a
-										href={`https://github.com/${f.repo}`}
-										target="_blank"
-										rel="noopener noreferrer"
-										style={{
-											fontFamily: "var(--font-mono)",
-											fontSize: ".82rem",
-											fontWeight: 500,
-											color: "var(--text-strong)",
-											textDecoration: "none",
-										}}
-									>
-										{f.repo}
-									</a>
-									<div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{f.desc}</div>
-								</div>
-								<button
-									type="button"
-									onClick={() => {
-										if (!(installed || busy)) installRepo(f.repo).catch(console.error);
-									}}
-									disabled={installed || busy}
-									style={{
-										background: "var(--surface2)",
-										border: "1px solid var(--border)",
-										color: installed ? "var(--success, #22c55e)" : "var(--text)",
-										borderRadius: "var(--radius-sm)",
-										fontSize: ".72rem",
-										padding: "4px 10px",
-										cursor: installed ? "default" : "pointer",
-										whiteSpace: "nowrap",
-										opacity: installed ? 0.8 : 1,
-									}}
-								>
-									{installed ? "Installed" : busy ? "Installing\u2026" : "Install"}
-								</button>
-							</div>
-						);
-					})}
-				</div>
-			</div>
-		</div>
-	);
-}
-
-// ── Main SkillsStep ──────────────────────────────────────────
-
-const TABS = [
-	{ id: "categories", label: "Categories" },
-	{ id: "repositories", label: "Repositories" },
-];
-
 export function SkillsStep({ onNext, onBack }: { onNext: () => void; onBack?: (() => void) | null }): VNode {
-	const [activeTab, setActiveTab] = useState("categories");
-
 	return (
 		<div className="flex flex-col gap-4">
 			<h2 className="text-lg font-medium text-[var(--text-strong)]">{t("onboarding:skills.title")}</h2>
 			<p className="text-xs text-[var(--muted)] leading-relaxed">{t("onboarding:skills.description")}</p>
 
-			<TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
-
-			{activeTab === "categories" && <CategoriesTab />}
-			{activeTab === "repositories" && <RepositoriesTab />}
+			<CategoriesTab />
 
 			<div className="flex flex-wrap items-center gap-3 mt-1">
 				{onBack && (

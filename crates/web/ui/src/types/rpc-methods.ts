@@ -126,26 +126,10 @@ export interface RpcMethodMap {
 	"sessions.voice.generate": { audio?: string; ttsProvider?: string };
 
 	// ── Skills ──────────────────────────────────────────────────
-	"skills.emergency_disable": unknown;
-	"skills.install": unknown;
-	"skills.repos.export": unknown;
-	"skills.repos.import": unknown;
-	"skills.repos.remove": unknown;
-	"skills.repos.unquarantine": unknown;
 	"skills.skill.detail": unknown;
 	"skills.skill.disable": unknown;
 	"skills.bundled.categories": unknown;
 	"skills.bundled.toggle_category": unknown;
-	"skills.recipe": {
-		found: boolean;
-		recipe?: {
-			source: string;
-			title: string;
-			instructions: string;
-			mcp_servers: unknown[];
-			skills_to_enable: string[];
-		};
-	};
 
 	// ── STT (Speech-to-Text) ────────────────────────────────────
 	"stt.status": unknown;

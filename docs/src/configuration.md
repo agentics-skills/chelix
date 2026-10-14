@@ -175,7 +175,7 @@ refresh, or clear a saved host-key pin. Keys, targets, default-target selection,
 and pins are persisted in Chelix storage rather than `chelix.toml`.
 
 `Settings -> Tools` shows the effective tool inventory for the active session
-and model, including tool-calling support, MCP server state, skills/plugins, and
+and model, including tool-calling support, MCP server state, skills, and
 the execution runtime. It is session-aware by design: switching the model changes what appears there.
 
 ## Sandbox Configuration

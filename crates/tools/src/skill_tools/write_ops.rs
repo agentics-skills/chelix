@@ -114,7 +114,6 @@ impl AgentTool for WriteSkillFilesTool {
             .call(chelix_service_traits::ReadSkillFile {
                 path: skill_md_path,
                 max_bytes: None,
-                mode: chelix_service_traits::SkillFileRead::Detect,
             })
             .await
             .map_err(|error| anyhow::anyhow!(error))?;
