@@ -4,47 +4,15 @@ export default {
 	// ── Page header ─────────────────────────────────────────
 	title: "Skills",
 	refresh: "Refresh",
-	emergencyDisable: "Emergency Disable",
-	description:
-		"SKILL.md-based skills discovered from project, personal, and installed paths. Imported bundles stay quarantined until explicitly cleared.",
+	description: "SKILL.md-based skills discovered from project, personal, and bundled paths.",
 	howToWriteSkill: "How to write a skill?",
-
-	// ── Emergency disable ───────────────────────────────────
-	emergencyDisableConfirm: "Disable all third-party skills now?",
-	disableAll: "Disable All",
-	emergencyDisableFailed: "Emergency disable failed: {{error}}",
-	disabledCount: "Disabled {{count}} skills",
 
 	// ── Connection ──────────────────────────────────────────
 	notConnected: "Not connected to gateway.",
-
-	// ── Install ─────────────────────────────────────────────
-	installPlaceholder: "owner/repo or full URL (e.g. anthropics/skills)",
-	install: "Install",
-	installing: "Installing\u2026",
-	installingSource: "Installing {{source}}...",
-	installMayTakeWhile: "This may take a while (download + scan).",
-	installedSuccess: "Installed {{source}} ({{count}} skill{{s}})",
 	failedGeneric: "Failed: {{error}}",
 
 	// ── Loading ─────────────────────────────────────────────
 	loadingSkills: "Loading skills\u2026",
-
-	// ── Featured section ────────────────────────────────────
-	featuredTitle: "Featured Repositories",
-
-	// ── Repos section ───────────────────────────────────────
-	reposTitle: "Installed Repositories",
-	noRepos: "No repositories installed.",
-	enabledCount: "{{enabled}}/{{total}} enabled",
-	sha: "sha {{sha}}",
-	sourceChanged: "source changed",
-	orphanedOnDisk: "orphaned on disk",
-	remove: "Remove",
-	removing: "Removing...",
-	searchSkillsIn: "Search skills in {{source}}\u2026",
-	orphanedRepoHint: "Orphaned repo: reinstall to restore metadata",
-	noMatchingSkills: "No matching skills.",
 
 	// ── Enabled skills table ────────────────────────────────
 	enabledTitle: "Enabled Skills",
@@ -61,40 +29,11 @@ export default {
 	// ── Skill detail panel ──────────────────────────────────
 	protected: "Protected",
 	protectedCannotDelete: "Skill {{name}} is protected and cannot be deleted from UI",
-	trustAndEnable: "Trust & Enable",
-	trustSkillConfirm: 'Trust skill "{{name}}" from {{source}}?',
-	trustFailed: "Trust failed: {{error}}",
 	failedToLoad: "Failed to load: {{error}}",
 	skillMdSource: "SKILL.md source",
 
-	// ── Metadata ────────────────────────────────────────────
-	author: "Author: {{name}}",
-	commit: "Commit:",
-	commitAge: "Commit age: {{days}} day{{s}}",
-	viewSource: "View source",
-
 	// ── Badges ──────────────────────────────────────────────
-	blocked: "blocked",
-	eligible: "eligible",
-	noDeps: "no deps declared",
-	untrusted: "untrusted",
 	enabled: "enabled",
-
-	// ── Missing deps ────────────────────────────────────────
-	missing: "Missing: {{deps}}",
-	installVia: "Install via {{kind}}",
-	installDepConfirm:
-		"Install dependency for {{name}}?\n\n{{preview}}\n\nOnly continue if you trust this skill and its source.",
-	installedDep: "Installed dependency for {{name}}",
-	installFailed: "Install failed: {{error}}",
-
-	// ── Commit warning ──────────────────────────────────────
-	recentCommitWarning: "Recent commit warning:",
-	recentCommitMessage:
-		"This skill was updated {{days}} day{{s}} ago. Treat recent updates as high risk and review diffs before trusting/enabling.",
-
-	// ── Drift warning ───────────────────────────────────────
-	driftWarning: "Source changed since last trust; review updates before enabling again.",
 
 	// ── Security warning ────────────────────────────────────
 	securityTitle: "\u26a0\ufe0f Skills can direct command execution \u2014 treat every skill as untrusted",
@@ -110,14 +49,8 @@ export default {
 	securitySandbox:
 		'Global sandbox mode "On" runs command execution in a filesystem-isolated runtime. Mode "Off" executes commands directly on the host.',
 	dismiss: "Dismiss",
-	disableAllThirdParty: "Disable all third-party skills",
 
 	// ── Bundled categories ──────────────────────────────────
 	bundledTitle: "Bundled Skill Categories",
 	bundledDescription: "Toggle categories of built-in skills. Disabled categories are excluded from the agent context.",
-
-	// ── Featured skill descriptions ─────────────────────────
-	featuredAnthropic: "Official Anthropic agent skills",
-	featuredVercelAgent: "Vercel agent skills collection",
-	featuredVercelSkills: "Vercel skills toolkit",
 };

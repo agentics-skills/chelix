@@ -628,7 +628,7 @@ impl LiveChatService {
             .map_err(ServiceError::message)?;
         let session_agent_id = persona.agent_id.clone();
 
-        // Discover enabled skills/plugins and apply the live per-agent policy.
+        // Discover enabled skills and apply the live per-agent policy.
         let discovered_skills = discover_skills_if_enabled(&persona.config, &self.call_bus).await;
         let discovered_skills =
             filter_skills_for_agent(discovered_skills, &session_agent_id, &persona.agent.skills);

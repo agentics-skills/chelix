@@ -237,7 +237,7 @@ share that owner container.
 
 Every isolated backend mounts Chelix's `data_dir()` read-write at the identical
 absolute guest path. This mandatory mount keeps databases, sessions, memory,
-logs, installed skill folders, and skill-owned scripts or binaries visible to
+logs, skill folders, and skill-owned scripts or binaries visible to
 both the host process and sandbox runtime.
 
 Additional mounts are declarative:

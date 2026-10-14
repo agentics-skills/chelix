@@ -200,29 +200,6 @@ enum SessionAction {
 enum SkillAction {
     /// List all discovered skills.
     List,
-    /// Install a skill from a GitHub repository (owner/repo format).
-    Add {
-        /// Source in owner/repo format (e.g. vercel-labs/agent-skills).
-        source: String,
-    },
-    /// Remove an installed repo and all its skills.
-    Remove {
-        /// Source in owner/repo format.
-        source: String,
-    },
-    /// Export an installed repo as a portable bundle.
-    Export {
-        /// Source in owner/repo format.
-        source: String,
-        /// Output file or directory. Defaults to ~/.chelix/skill-exports/.
-        #[arg(long)]
-        output: Option<String>,
-    },
-    /// Import a portable skill bundle into the local registry in quarantine.
-    Import {
-        /// Path to a .tar.gz bundle created by `chelix skills export`.
-        path: String,
-    },
     /// Show details about a skill.
     Info {
         /// Skill name.
@@ -472,7 +449,6 @@ async fn main() -> anyhow::Result<()> {
 async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
     use chelix_skills::{
         discover::FsSkillDiscoverer,
-        install,
         registry::{InMemoryRegistry, SkillRegistry},
     };
 
@@ -497,47 +473,6 @@ async fn handle_skills(action: SkillAction) -> anyhow::Result<()> {
                     println!("  {} — {} [{}]", skill.name, skill.description, source);
                 }
             }
-        },
-        SkillAction::Add { source } => {
-            let install_dir = install::default_install_dir()?;
-            let skills = install::install_skill(&bus, &source, &install_dir).await?;
-            for meta in &skills {
-                println!("Installed skill '{}': {}", meta.name, meta.description);
-            }
-        },
-        SkillAction::Remove { source } => {
-            let install_dir = install::default_install_dir()?;
-            install::remove_repo(&source, &install_dir).await?;
-            println!("Removed repo '{source}' and all its skills.");
-        },
-        SkillAction::Export { source, output } => {
-            let install_dir = install::default_install_dir()?;
-            let exported = chelix_skills::portability::export_repo_bundle(
-                &source,
-                &install_dir,
-                output.as_deref().map(std::path::Path::new),
-            )
-            .await?;
-            println!(
-                "Exported repo '{}' to {}",
-                exported.repo.source,
-                exported.bundle_path.display()
-            );
-        },
-        SkillAction::Import { path } => {
-            let install_dir = install::default_install_dir()?;
-            let imported = chelix_skills::portability::import_repo_bundle(
-                &bus,
-                std::path::Path::new(&path),
-                &install_dir,
-            )
-            .await?;
-            println!(
-                "Imported repo '{}' as '{}' ({} skills, quarantined)",
-                imported.source,
-                imported.repo_name,
-                imported.skills.len()
-            );
         },
         SkillAction::Info { name } => {
             let registry =

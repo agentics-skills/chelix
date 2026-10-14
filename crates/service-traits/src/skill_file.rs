@@ -31,10 +31,6 @@ pub enum SkillSource {
     Project,
     /// Personal: `<data_dir>/skills/`
     Personal,
-    /// Bundled inside a plugin directory.
-    Plugin,
-    /// Installed from a registry.
-    Registry,
     /// Embedded in the binary.
     Bundled,
 }
@@ -89,22 +85,10 @@ pub struct SkillContent {
     pub body: String,
 }
 
-/// How a skill file read interprets the path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillFileRead {
-    /// Exact `SKILL.md` is a skill document. Any other name is a loose document.
-    Detect,
-    /// Parse the file as a skill document regardless of its name.
-    SkillDocument,
-    /// Like `Detect`, except a non-`SKILL.md` file with invalid YAML returns the original text.
-    Catalog,
-}
-
 /// Read one skill file through the process queue.
 pub struct ReadSkillFile {
     pub path: PathBuf,
     pub max_bytes: Option<u64>,
-    pub mode: SkillFileRead,
 }
 
 /// Create a skill file. An existing file is left unchanged.
@@ -131,12 +115,6 @@ pub struct PatchSkillFile {
     pub description: Option<String>,
 }
 
-/// Create a skill file from a complete markdown document.
-pub struct WriteNewSkillFile {
-    pub path: PathBuf,
-    pub content: String,
-}
-
 impl Procedure for ReadSkillFile {
     type Error = SkillFileError;
     type Output = SkillContent;
@@ -153,11 +131,6 @@ impl Procedure for ReplaceSkillFile {
 }
 
 impl Procedure for PatchSkillFile {
-    type Error = SkillFileError;
-    type Output = SkillContent;
-}
-
-impl Procedure for WriteNewSkillFile {
     type Error = SkillFileError;
     type Output = SkillContent;
 }

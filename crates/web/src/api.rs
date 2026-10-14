@@ -1,7 +1,5 @@
 //! Web-UI API handlers (bootstrap, skills, images, containers, media, logs).
 
-use std::{collections::HashMap, path::PathBuf};
-
 use {
     axum::{
         Json,
@@ -489,50 +487,12 @@ pub async fn api_hooks_handler(State(state): State<AppState>) -> impl IntoRespon
 
 // ── Skills ───────────────────────────────────────────────────────────────────
 
-fn enabled_from_manifest<E>(path_result: Result<PathBuf, E>) -> Vec<serde_json::Value>
-where
-    E: std::fmt::Display,
-{
-    let Ok(path) = path_result else {
-        return Vec::new();
-    };
-    let store = chelix_skills::manifest::ManifestStore::new(path);
-    store
-        .load()
-        .map(|m| {
-            m.repos
-                .iter()
-                .flat_map(|repo| {
-                    let source = repo.source.clone();
-                    repo.skills.iter().filter(|s| s.enabled).map(move |s| {
-                        serde_json::json!({
-                            "name": s.name,
-                            "source": source,
-                            "enabled": true,
-                        })
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let repos = state
-        .gateway
-        .services
-        .skills
-        .repos_list()
-        .await
-        .ok()
-        .and_then(|v| v.as_array().cloned())
-        .unwrap_or_default();
-
     let config = match load_config_for_api() {
         Ok(config) => config,
         Err(response) => return *response,
     };
-    let mut skills = enabled_from_manifest(chelix_skills::manifest::ManifestStore::default_path());
+    let mut skills = Vec::new();
 
     {
         use chelix_skills::discover::{FsSkillDiscoverer, SkillDiscoverer};
@@ -592,68 +552,7 @@ pub async fn api_skills_handler(State(state): State<AppState>) -> impl IntoRespo
         }
     }
 
-    Json(serde_json::json!({ "skills": skills, "repos": repos })).into_response()
-}
-
-async fn api_search_handler(
-    repos: Vec<serde_json::Value>,
-    source: &str,
-    query: &str,
-) -> Json<serde_json::Value> {
-    let query = query.to_lowercase();
-    let skills: Vec<serde_json::Value> = repos
-        .into_iter()
-        .find(|repo| {
-            repo.get("source")
-                .and_then(|s| s.as_str())
-                .map(|s| s == source)
-                .unwrap_or(false)
-        })
-        .and_then(|repo| repo.get("skills").and_then(|s| s.as_array()).cloned())
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|skill| {
-            if query.is_empty() {
-                return true;
-            }
-            let name = skill
-                .get("name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let display = skill
-                .get("display_name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let desc = skill
-                .get("description")
-                .and_then(|n| n.as_str())
-                .unwrap_or("")
-                .to_lowercase();
-            name.contains(&query) || display.contains(&query) || desc.contains(&query)
-        })
-        .collect();
-
-    Json(serde_json::json!({ "skills": skills }))
-}
-
-pub async fn api_skills_search_handler(
-    Query(params): Query<HashMap<String, String>>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    let source = params.get("source").cloned().unwrap_or_default();
-    let query = params.get("q").cloned().unwrap_or_default();
-    let repos = state
-        .gateway
-        .services
-        .skills
-        .repos_list_full()
-        .await
-        .ok()
-        .and_then(|v| v.as_array().cloned())
-        .unwrap_or_default();
-    api_search_handler(repos, &source, &query).await
+    Json(serde_json::json!({ "skills": skills })).into_response()
 }
 
 // ── Images ───────────────────────────────────────────────────────────────────

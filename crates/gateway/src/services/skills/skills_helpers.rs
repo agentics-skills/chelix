@@ -1,60 +1,7 @@
-use {
-    serde_json::Value,
-    std::{collections::HashSet, path::Path},
-};
+use serde_json::Value;
 
 // Pull in ServiceResult, ServiceError, security_audit, etc. from services module
 use super::super::*;
-
-pub(super) fn local_repo_head_sha(repo_dir: &Path) -> Option<String> {
-    let repo = gix::open(repo_dir).ok()?;
-    let obj = repo.rev_parse_single("HEAD").ok()?;
-    Some(obj.detach().to_hex().to_string())
-}
-
-pub(super) fn detect_and_mark_repo_drift(
-    manifest: &mut chelix_skills::types::SkillsManifest,
-    install_dir: &Path,
-) -> (bool, HashSet<String>) {
-    let mut changed = false;
-    let mut drifted = HashSet::new();
-
-    for repo in &mut manifest.repos {
-        let Some(expected_sha) = repo.commit_sha.clone() else {
-            continue;
-        };
-
-        let repo_dir = install_dir.join(&repo.repo_name);
-        let Some(current_sha) = local_repo_head_sha(&repo_dir) else {
-            continue;
-        };
-
-        if current_sha != expected_sha {
-            tracing::warn!(
-                source = %repo.source,
-                expected_sha = %expected_sha,
-                current_sha = %current_sha,
-                "detect_and_mark_repo_drift: drift detected, resetting all skills"
-            );
-            drifted.insert(repo.source.clone());
-            repo.commit_sha = Some(current_sha);
-            for skill in &mut repo.skills {
-                skill.trusted = false;
-                skill.enabled = false;
-            }
-            security_audit(
-                "skills.source_drift_detected",
-                serde_json::json!({
-                    "source": repo.source,
-                    "new_commit_sha": repo.commit_sha,
-                }),
-            );
-            changed = true;
-        }
-    }
-
-    (changed, drifted)
-}
 
 /// Delete a personal or project skill directory to disable it.
 pub(super) fn delete_discovered_skill(source_type: &str, params: &Value) -> ServiceResult {
@@ -132,7 +79,6 @@ pub(super) async fn skill_detail_discovered(
         .call(ReadSkillFile {
             path: skill_dir.join("SKILL.md"),
             max_bytes: None,
-            mode: SkillFileRead::Detect,
         })
         .await
         .map_err(|error| format!("failed to read SKILL.md for '{skill_name}': {error}"))?;
@@ -141,10 +87,8 @@ pub(super) async fn skill_detail_discovered(
         "name": content.metadata.name,
         "description": content.metadata.description,
         "license": content.metadata.license,
-        "license_url": license_url_for_source(source_type, content.metadata.license.as_deref()),
         "compatibility": content.metadata.compatibility,
         "file": skill_document_json(&content.metadata, &content.body),
-        "trusted": true,
         "enabled": true,
         "protected": is_protected_discovered_skill(skill_name),
         "body": content.body,
@@ -185,7 +129,6 @@ pub(super) async fn skill_detail_bundled(
         "compatibility": meta.compatibility,
         "origin": meta.origin,
         "file": skill_document_json(meta, &body),
-        "trusted": true,
         "enabled": enabled,
         "protected": true,
         "body": body,
@@ -194,9 +137,8 @@ pub(super) async fn skill_detail_bundled(
     }))
 }
 
-/// Toggle a bundled skill by adding/removing its name from
-/// `disabled_bundled_skills` in config. Bundled skills are not tracked
-/// in the manifest, so `toggle_skill()` cannot handle them.
+/// Toggle a bundled skill by adding or removing its name from
+/// `disabled_bundled_skills`.
 pub(super) async fn toggle_bundled_skill(
     bus: &Arc<chelix_call_bus::CallBus>,
     params: &Value,
@@ -264,122 +206,4 @@ pub(super) async fn toggle_bundled_skill(
         let _ = (skill_name, enabled);
         Err("bundled skills are not available in this build".into())
     }
-}
-
-pub(super) fn toggle_skill(params: &Value, enabled: bool) -> ServiceResult {
-    let source = params
-        .get("source")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing 'source' parameter".to_string())?;
-    let skill_name = params
-        .get("skill")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing 'skill' parameter".to_string())?;
-
-    let manifest_path =
-        chelix_skills::manifest::ManifestStore::default_path().map_err(ServiceError::message)?;
-    let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
-    let mut manifest = store.load().map_err(ServiceError::message)?;
-
-    let install_dir =
-        chelix_skills::install::default_install_dir().map_err(ServiceError::message)?;
-    let (drift_changed, drifted_sources) = detect_and_mark_repo_drift(&mut manifest, &install_dir);
-    if drift_changed {
-        store.save(&manifest).map_err(ServiceError::message)?;
-    }
-
-    let mut auto_trusted = false;
-    if enabled {
-        let quarantined = manifest
-            .find_repo(source)
-            .map(|repo| repo.quarantined)
-            .ok_or_else(|| format!("repo '{source}' not found"))?;
-        if quarantined {
-            return Err(format!(
-                "repo '{source}' is quarantined. Review it and run skills.repos.unquarantine before enabling"
-            )
-            .into());
-        }
-
-        if drifted_sources.contains(source) {
-            return Err(format!(
-                "skill '{skill_name}' source changed since it was last trusted. Review and run skills.skill.trust before enabling"
-            )
-            .into());
-        }
-
-        let trusted = manifest
-            .find_repo(source)
-            .and_then(|r| r.skills.iter().find(|s| s.name == skill_name))
-            .map(|s| s.trusted)
-            .ok_or_else(|| format!("skill '{skill_name}' not found in repo '{source}'"))?;
-        if !trusted {
-            if !manifest.set_skill_trusted(source, skill_name, true) {
-                return Err(format!("skill '{skill_name}' not found in repo '{source}'").into());
-            }
-            auto_trusted = true;
-        }
-    }
-
-    if !manifest.set_skill_enabled(source, skill_name, enabled) {
-        return Err(format!("skill '{skill_name}' not found in repo '{source}'").into());
-    }
-    store.save(&manifest).map_err(ServiceError::message)?;
-
-    if auto_trusted {
-        security_audit(
-            "skills.skill.trust",
-            serde_json::json!({
-                "source": source,
-                "skill": skill_name,
-                "trusted": true,
-                "auto": true,
-            }),
-        );
-    }
-    security_audit(
-        "skills.skill.toggle",
-        serde_json::json!({
-            "source": source,
-            "skill": skill_name,
-            "enabled": enabled,
-        }),
-    );
-
-    Ok(serde_json::json!({ "source": source, "skill": skill_name, "enabled": enabled }))
-}
-
-pub(super) fn set_skill_trusted(params: &Value, trusted: bool) -> ServiceResult {
-    let source = params
-        .get("source")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing 'source' parameter".to_string())?;
-    let skill_name = params
-        .get("skill")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing 'skill' parameter".to_string())?;
-
-    let manifest_path =
-        chelix_skills::manifest::ManifestStore::default_path().map_err(ServiceError::message)?;
-    let store = chelix_skills::manifest::ManifestStore::new(manifest_path);
-    let mut manifest = store.load().map_err(ServiceError::message)?;
-
-    if !manifest.set_skill_trusted(source, skill_name, trusted) {
-        return Err(format!("skill '{skill_name}' not found in repo '{source}'").into());
-    }
-
-    if !trusted {
-        let _ = manifest.set_skill_enabled(source, skill_name, false);
-    }
-
-    store.save(&manifest).map_err(ServiceError::message)?;
-    security_audit(
-        "skills.skill.trust",
-        serde_json::json!({
-            "source": source,
-            "skill": skill_name,
-            "trusted": trusted,
-        }),
-    );
-    Ok(serde_json::json!({ "source": source, "skill": skill_name, "trusted": trusted }))
 }

@@ -121,7 +121,6 @@ const connectOpts: ConnectOptions = {
 				"push.subscriptions",
 				"channel",
 				"metrics.update",
-				"skills.install.progress",
 				"mcp.status",
 			]),
 		);

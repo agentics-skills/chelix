@@ -3,10 +3,7 @@
 //! Watches skill search paths for SKILL.md create/modify/delete events and sends
 //! notifications through a channel so the gateway can broadcast `skills.changed`.
 
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use {
     notify_debouncer_full::{
@@ -16,20 +13,13 @@ use {
     tracing::{debug, warn},
 };
 
-use crate::{
-    discover::FsSkillDiscoverer,
-    error::Result,
-    manifest::ManifestStore,
-    types::{SkillSource, SkillsManifest},
-};
+use crate::{discover::FsSkillDiscoverer, error::Result, types::SkillSource};
 
 /// Events emitted by the skill watcher.
 #[derive(Debug, Clone)]
 pub enum SkillWatchEvent {
-    /// An enabled skill's `SKILL.md` changed.
+    /// A local skill's `SKILL.md` changed.
     SkillChanged,
-    /// The skills manifest changed, which may require rebuilding the watch set.
-    ManifestChanged,
 }
 
 /// A filesystem path plus the recursion mode to use when watching it.
@@ -54,25 +44,7 @@ fn insert_watch_spec(
         .or_insert(recursive_mode);
 }
 
-fn installed_skill_watch_path(data_dir: &Path, relative_path: &str) -> PathBuf {
-    let primary = data_dir.join("installed-skills").join(relative_path);
-    if primary.exists() {
-        return primary;
-    }
-
-    let legacy = data_dir.join("installed-plugins").join(relative_path);
-    if legacy.exists() {
-        return legacy;
-    }
-
-    primary
-}
-
-pub(crate) fn build_watch_specs(
-    data_dir: &Path,
-    search_paths: &[(PathBuf, SkillSource)],
-    manifest: &SkillsManifest,
-) -> Vec<WatchSpec> {
+pub(crate) fn build_watch_specs(search_paths: &[(PathBuf, SkillSource)]) -> Vec<WatchSpec> {
     let mut specs = BTreeMap::<PathBuf, RecursiveMode>::new();
 
     for (path, source) in search_paths {
@@ -80,25 +52,7 @@ pub(crate) fn build_watch_specs(
             SkillSource::Project | SkillSource::Personal => {
                 insert_watch_spec(&mut specs, path.clone(), RecursiveMode::Recursive);
             },
-            // Registry, Plugin, and Bundled skills are not watched for changes.
-            SkillSource::Registry | SkillSource::Plugin | SkillSource::Bundled => {},
-        }
-    }
-
-    insert_watch_spec(
-        &mut specs,
-        data_dir.to_path_buf(),
-        RecursiveMode::NonRecursive,
-    );
-
-    for repo in &manifest.repos {
-        for skill in &repo.skills {
-            if !skill.enabled || !skill.trusted {
-                continue;
-            }
-
-            let watch_path = installed_skill_watch_path(data_dir, &skill.relative_path);
-            insert_watch_spec(&mut specs, watch_path, RecursiveMode::Recursive);
+            SkillSource::Bundled => {},
         }
     }
 
@@ -112,11 +66,8 @@ pub(crate) fn build_watch_specs(
 }
 
 pub fn default_watch_specs() -> Result<Vec<WatchSpec>> {
-    let data_dir = chelix_config::data_dir();
     let search_paths = FsSkillDiscoverer::default_paths();
-    let manifest_path = ManifestStore::default_path()?;
-    let manifest = ManifestStore::new(manifest_path).load().unwrap_or_default();
-    Ok(build_watch_specs(&data_dir, &search_paths, &manifest))
+    Ok(build_watch_specs(&search_paths))
 }
 
 /// Watches skill directories for SKILL.md changes with debouncing.
@@ -139,11 +90,10 @@ impl SkillWatcher {
             move |result: DebounceEventResult| match result {
                 Ok(events) => {
                     let mut skill_changed = false;
-                    let mut manifest_changed = false;
                     for event in events {
                         for path in &event.paths {
                             let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                            if filename != "SKILL.md" && filename != "skills-manifest.json" {
+                            if filename != "SKILL.md" {
                                 continue;
                             }
 
@@ -153,19 +103,13 @@ impl SkillWatcher {
                                 | EventKind::Modify(_)
                                 | EventKind::Remove(_) => {
                                     debug!(path = %path.display(), "skill watcher event");
-                                    if filename == "skills-manifest.json" {
-                                        manifest_changed = true;
-                                    } else {
-                                        skill_changed = true;
-                                    }
+                                    skill_changed = true;
                                 },
                                 _ => {},
                             }
                         }
                     }
-                    if manifest_changed {
-                        let _ = tx.send(SkillWatchEvent::ManifestChanged);
-                    } else if skill_changed {
+                    if skill_changed {
                         let _ = tx.send(SkillWatchEvent::SkillChanged);
                     }
                 },
@@ -199,10 +143,9 @@ impl SkillWatcher {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::types::{RepoEntry, SkillState},
-    };
+    use std::path::Path;
+
+    use super::*;
 
     fn has_spec(specs: &[WatchSpec], path: &Path, recursive_mode: RecursiveMode) -> bool {
         specs
@@ -211,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn build_watch_specs_limits_registry_watch_roots_to_enabled_skills() {
+    fn build_watch_specs_watches_project_and_personal_recursively() {
         let tmp = tempfile::tempdir().unwrap();
         let data_dir = tmp.path();
         let project_dir = data_dir.join(".chelix/skills");
@@ -219,56 +162,12 @@ mod tests {
         let search_paths = vec![
             (project_dir.clone(), SkillSource::Project),
             (personal_dir.clone(), SkillSource::Personal),
-            (data_dir.join("installed-skills"), SkillSource::Registry),
-            (data_dir.join("installed-plugins"), SkillSource::Plugin),
         ];
-        let manifest = SkillsManifest {
-            version: 1,
-            repos: vec![RepoEntry {
-                source: "owner/repo".into(),
-                repo_name: "repo".into(),
-                installed_at_ms: 0,
-                commit_sha: None,
-                format: Default::default(),
-                quarantined: false,
-                quarantine_reason: None,
-                provenance: None,
-                skills: vec![
-                    SkillState {
-                        name: "enabled".into(),
-                        relative_path: "repo/skills/enabled".into(),
-                        trusted: true,
-                        enabled: true,
-                    },
-                    SkillState {
-                        name: "disabled".into(),
-                        relative_path: "repo/skills/disabled".into(),
-                        trusted: true,
-                        enabled: false,
-                    },
-                ],
-            }],
-        };
 
-        let specs = build_watch_specs(data_dir, &search_paths, &manifest);
+        let specs = build_watch_specs(&search_paths);
 
+        assert_eq!(specs.len(), 2);
         assert!(has_spec(&specs, &project_dir, RecursiveMode::Recursive));
         assert!(has_spec(&specs, &personal_dir, RecursiveMode::Recursive));
-        assert!(has_spec(&specs, data_dir, RecursiveMode::NonRecursive));
-        assert!(has_spec(
-            &specs,
-            &data_dir.join("installed-skills/repo/skills/enabled"),
-            RecursiveMode::Recursive
-        ));
-        assert!(!has_spec(
-            &specs,
-            &data_dir.join("installed-skills"),
-            RecursiveMode::Recursive
-        ));
-        assert!(!has_spec(
-            &specs,
-            &data_dir.join("installed-skills/repo/skills/disabled"),
-            RecursiveMode::Recursive
-        ));
     }
 }

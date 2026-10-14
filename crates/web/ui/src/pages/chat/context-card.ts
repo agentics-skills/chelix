@@ -190,7 +190,7 @@ export function renderContextToolsSection(card: HTMLElement, data: ChatContextPa
 
 export function renderContextSkillsSection(card: HTMLElement, data: ChatContextPayload): void {
 	const skills = data.skills || [];
-	const sec = ctxSection("Skills & Plugins");
+	const sec = ctxSection("Skills");
 	if (data.supportsTools === false) {
 		sec.appendChild(ctxEl("div", "ctx-disabled", "Skills disabled \u2014 configured tool mode is off"));
 	} else if (skills.length > 0) {
@@ -198,16 +198,15 @@ export function renderContextSkillsSection(card: HTMLElement, data: ChatContextP
 		skills.forEach((s) => {
 			const tag = ctxEl("span", "ctx-tag");
 			const dot = ctxEl("span", "ctx-tag-dot");
-			const isPlugin = s.source === "plugin";
-			dot.style.background = isPlugin ? "var(--accent)" : "var(--success, #4a9)";
+			dot.style.background = "var(--success, #4a9)";
 			tag.appendChild(dot);
 			tag.appendChild(document.createTextNode(s.name));
-			tag.title = (isPlugin ? "[Plugin] " : "[Skill] ") + (s.description || "");
+			tag.title = `[Skill] ${s.description || ""}`;
 			wrap.appendChild(tag);
 		});
 		sec.appendChild(wrap);
 	} else {
-		sec.appendChild(ctxEl("div", "ctx-empty", "No skills or plugins enabled"));
+		sec.appendChild(ctxEl("div", "ctx-empty", "No skills enabled"));
 	}
 	card.appendChild(sec);
 }

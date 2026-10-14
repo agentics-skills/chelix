@@ -186,6 +186,5 @@ is resolved in this order:
    or categories, then `skills.deny` removes matching skills.
 
 Discovery keeps the first entry of each name before applying visibility:
-project `.chelix/skills`, personal `skills`, `installed-skills`,
-`installed-plugins`, then bundled skills. A hidden first entry keeps its name
+project `.chelix/skills`, personal `skills`, then bundled skills. A hidden first entry keeps its name
 hidden across the available-skills prompt, `chat.context`, and `read_skill`.

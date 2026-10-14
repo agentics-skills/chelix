@@ -1,4 +1,4 @@
-//! Skills system: discovery, parsing, registry, and installation.
+//! Skills system: discovery, parsing, and registry.
 //!
 //! Skills are directories containing a `SKILL.md` file with YAML frontmatter
 //! and markdown instructions, following the Agent Skills open standard.
@@ -6,14 +6,8 @@
 pub mod access;
 pub mod discover;
 pub mod error;
-pub mod formats;
-pub mod install;
-pub mod manifest;
-pub mod migration;
 pub mod parse;
-pub mod portability;
 pub mod prompt_gen;
-pub mod recipes;
 pub mod registry;
 pub mod safety;
 pub mod skill_file;

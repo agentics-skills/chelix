@@ -878,47 +878,6 @@ async fn test_read_skill_hot_discovers_newly_added_skill() {
 }
 
 #[tokio::test]
-async fn test_read_skill_plugin_as_file_rejects_sidecar_request() {
-    // Plugin-backed single-.md skills have no sidecar directory at all.
-    // A `file_path` argument must be rejected with a clear error rather
-    // than producing an opaque I/O failure from joining a relative
-    // path to a `.md` file.
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_dir = tmp.path().join("plugin-root");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    let plugin_md = plugin_dir.join("demo.md");
-    std::fs::write(&plugin_md, "# Plugin body\n").unwrap();
-
-    let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        chelix_skills::types::SkillMetadata {
-            name: "demo".into(),
-            description: "stub".into(),
-            path: plugin_md,
-            source: Some(SkillSource::Plugin),
-            ..Default::default()
-        },
-    ]));
-    let tool = ReadSkillTool::new(discoverer, skill_bus());
-
-    let result = tool
-        .execute(json!({
-            "name": "demo",
-            "file_path": "references/api.md"
-        }))
-        .await;
-    let err = result.expect_err("sidecar read on plugin-as-file must error");
-    let msg = format!("{err}");
-    assert!(
-        msg.contains("no sidecar directory"),
-        "error must explain the plugin-file shape: {msg}"
-    );
-    assert!(
-        msg.contains("omit file_path"),
-        "error must hint at the fix: {msg}"
-    );
-}
-
-#[tokio::test]
 async fn test_read_skill_uses_shared_sidecar_subdirs_constant() {
     // Parity guard: the read-side walker must reference the exact
     // same `SIDECAR_SUBDIRS` list the skills crate exports. This
@@ -928,77 +887,8 @@ async fn test_read_skill_uses_shared_sidecar_subdirs_constant() {
 }
 
 #[tokio::test]
-async fn test_read_skill_plugin_md_strips_frontmatter_from_body() {
-    // Plugin-backed skills are single .md files rather than a SKILL.md
-    // inside a directory. They may still begin with a YAML frontmatter
-    // block (Claude Code's plugin SKILL.md format); the read path must
-    // strip it so the model doesn't see `---\nname:` noise in `body`.
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_dir = tmp.path().join("plugin-root");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    let plugin_md = plugin_dir.join("demo-plugin.md");
-    std::fs::write(
-        &plugin_md,
-        "---\nname: demo-plugin\ndescription: ignored\n---\n\n# Plugin body\n\nHello.\n",
-    )
-    .unwrap();
-
-    let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        chelix_skills::types::SkillMetadata {
-            name: "demo-plugin".into(),
-            description: "stub description".into(),
-            path: plugin_md.clone(),
-            source: Some(SkillSource::Plugin),
-            ..Default::default()
-        },
-    ]));
-    let tool = ReadSkillTool::new(discoverer, skill_bus());
-
-    let result = tool
-        .execute(json!({ "name": "demo-plugin" }))
-        .await
-        .unwrap();
-    let body = result["body"].as_str().unwrap();
-    assert!(
-        !body.contains("---"),
-        "plugin body must not contain the YAML frontmatter fence: {body:?}"
-    );
-    assert!(!body.contains("name: demo-plugin"));
-    assert!(body.contains("# Plugin body"));
-    assert!(body.contains("Hello."));
-}
-
-#[tokio::test]
-async fn test_read_skill_plugin_md_without_frontmatter_is_returned_verbatim() {
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_dir = tmp.path().join("plugin-root");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    let plugin_md = plugin_dir.join("plain-plugin.md");
-    std::fs::write(&plugin_md, "# Plain plugin body\n\nNo frontmatter.\n").unwrap();
-
-    let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        chelix_skills::types::SkillMetadata {
-            name: "plain-plugin".into(),
-            description: "no frontmatter".into(),
-            path: plugin_md,
-            source: Some(SkillSource::Plugin),
-            ..Default::default()
-        },
-    ]));
-    let tool = ReadSkillTool::new(discoverer, skill_bus());
-    let result = tool
-        .execute(json!({ "name": "plain-plugin" }))
-        .await
-        .unwrap();
-    assert_eq!(
-        result["body"].as_str().unwrap(),
-        "# Plain plugin body\n\nNo frontmatter.\n"
-    );
-}
-
-#[tokio::test]
 async fn test_read_skill_rejects_oversized_skill_md_body() {
-    // Directory-backed: a SKILL.md larger than MAX_SKILL_BODY_BYTES must
+    // A SKILL.md larger than MAX_SKILL_BODY_BYTES must
     // be rejected before the full file is buffered into memory.
     let tmp = tempfile::tempdir().unwrap();
     let skill_dir = tmp.path().join("skills/huge");
@@ -1013,33 +903,6 @@ async fn test_read_skill_rejects_oversized_skill_md_body() {
     let tool = read_tool_for(tmp.path());
     let result = tool.execute(json!({ "name": "huge" })).await;
     let err = result.expect_err("oversized SKILL.md must be rejected");
-    assert!(
-        format!("{err}").contains("exceeds maximum size"),
-        "error must mention size: {err}"
-    );
-}
-
-#[tokio::test]
-async fn test_read_skill_plugin_md_rejects_oversized_body() {
-    // Plugin-backed: the single .md file must also be bounded.
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_dir = tmp.path().join("plugin-root");
-    std::fs::create_dir_all(&plugin_dir).unwrap();
-    let plugin_md = plugin_dir.join("huge-plugin.md");
-    std::fs::write(&plugin_md, "x".repeat(MAX_SKILL_BODY_BYTES + 1)).unwrap();
-
-    let discoverer: Arc<dyn SkillDiscoverer> = Arc::new(StaticDiscoverer::new(vec![
-        chelix_skills::types::SkillMetadata {
-            name: "huge-plugin".into(),
-            description: "big".into(),
-            path: plugin_md,
-            source: Some(SkillSource::Plugin),
-            ..Default::default()
-        },
-    ]));
-    let tool = ReadSkillTool::new(discoverer, skill_bus());
-    let result = tool.execute(json!({ "name": "huge-plugin" })).await;
-    let err = result.expect_err("oversized plugin body must be rejected");
     assert!(
         format!("{err}").contains("exceeds maximum size"),
         "error must mention size: {err}"
@@ -1202,9 +1065,7 @@ async fn test_read_bundled_skill_without_scripts_omits_skill_dir() {
     );
 }
 
-/// Test-only `SkillDiscoverer` that returns a fixed snapshot. Lets the
-/// plugin/symlink tests construct scenarios that don't match the
-/// `FsSkillDiscoverer`'s directory-walking assumptions.
+/// Test-only `SkillDiscoverer` that returns a fixed snapshot.
 struct StaticDiscoverer {
     skills: Vec<chelix_skills::types::SkillMetadata>,
 }

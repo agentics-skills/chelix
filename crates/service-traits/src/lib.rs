@@ -21,8 +21,7 @@ pub use crate::{
     session_mutations::{SessionBusyReason, SessionMutationCoordinator, SessionTurnPermit},
     skill_file::{
         CreateSkillFile, MAX_SKILL_FILE_BYTES, PatchSkillFile, ReadSkillFile, ReplaceSkillFile,
-        SkillContent, SkillFileError, SkillFileRead, SkillMetadata, SkillOrigin, SkillSource,
-        WriteNewSkillFile,
+        SkillContent, SkillFileError, SkillMetadata, SkillOrigin, SkillSource,
     },
     stop_session::{StopSession, StopSessionOutcome},
 };

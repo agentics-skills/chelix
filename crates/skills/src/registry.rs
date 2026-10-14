@@ -8,7 +8,7 @@ use crate::{
     types::{SkillContent, SkillMetadata},
 };
 
-/// Registry for managing discovered and installed skills.
+/// Registry for discovered skills.
 #[async_trait]
 pub trait SkillRegistry: Send + Sync {
     /// List metadata for all available skills.
@@ -16,12 +16,6 @@ pub trait SkillRegistry: Send + Sync {
 
     /// Load the full content of a skill by name.
     async fn load_skill(&self, name: &str) -> Result<SkillContent>;
-
-    /// Install a skill from a source (e.g. git URL).
-    async fn install_skill(&self, source: &str) -> Result<SkillMetadata>;
-
-    /// Remove an installed skill by name.
-    async fn remove_skill(&self, name: &str) -> Result<()>;
 }
 
 /// In-memory registry backed by a discoverer.
@@ -72,44 +66,12 @@ impl SkillRegistry for InMemoryRegistry {
 
         crate::skill_file::read_on(&self.bus, &meta.path.join("SKILL.md"), None).await
     }
-
-    async fn install_skill(&self, _source: &str) -> Result<SkillMetadata> {
-        Err(Error::Install(
-            "install not supported on in-memory registry; use install::install_skill".into(),
-        ))
-    }
-
-    async fn remove_skill(&self, name: &str) -> Result<()> {
-        let meta = self
-            .skills
-            .get(name)
-            .ok_or_else(|| Error::NotFound(format!("skill '{}' not found", name)))?;
-
-        let path = &meta.path;
-        if !path.exists() {
-            return Err(Error::NotFound(format!(
-                "skill directory does not exist: {}",
-                path.display()
-            )));
-        }
-
-        // Only allow removing registry-installed skills
-        if meta.source != Some(crate::types::SkillSource::Registry) {
-            return Err(Error::Validation(format!(
-                "can only remove registry-installed skills, '{}' is {:?}",
-                name, meta.source
-            )));
-        }
-
-        tokio::fs::remove_dir_all(path).await?;
-        Ok(())
-    }
 }
 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::SkillSource, std::path::PathBuf};
+    use {super::*, crate::types::SkillSource};
 
     #[tokio::test]
     async fn test_in_memory_registry_list_and_load() {
@@ -142,17 +104,5 @@ mod tests {
     async fn test_load_nonexistent_skill() {
         let reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
         assert!(reg.load_skill("nope").await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_remove_non_registry_skill_fails() {
-        let mut reg = InMemoryRegistry::new(crate::skill_file::open_skill_bus().unwrap());
-        reg.insert(SkillMetadata {
-            name: "local".into(),
-            path: PathBuf::from("/tmp/local"),
-            source: Some(SkillSource::Project),
-            ..Default::default()
-        });
-        assert!(reg.remove_skill("local").await.is_err());
     }
 }

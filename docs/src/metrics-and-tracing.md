@@ -303,15 +303,6 @@ This allows you to:
 | `chelix_oauth_token_refresh_total`          | Counter | —      | Token refreshes        |
 | `chelix_oauth_token_refresh_failures_total` | Counter | —      | Refresh failures       |
 
-### Skills Metrics
-
-| Metric                                        | Type      | Labels | Description               |
-| --------------------------------------------- | --------- | ------ | ------------------------- |
-| `chelix_skills_installation_attempts_total`   | Counter   | —      | Installation attempts     |
-| `chelix_skills_installation_duration_seconds` | Histogram | —      | Installation time         |
-| `chelix_skills_git_clone_total`               | Counter   | —      | Successful git clones     |
-| `chelix_skills_git_clone_fallback_total`      | Counter   | —      | Fallbacks to HTTP tarball |
-
 ## Tracing Integration
 
 The `chelix-metrics` crate includes optional tracing integration via the

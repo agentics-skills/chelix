@@ -81,7 +81,6 @@ fn build_skills_block(skills: &[SkillMetadata], format: Format) -> String {
     let mut out = String::from("<available_skills>\n");
     for skill in skills {
         let source = match skill.source.as_ref() {
-            Some(SkillSource::Plugin) => "plugin",
             Some(SkillSource::Bundled) => "bundled",
             _ => "skill",
         };
@@ -226,20 +225,6 @@ mod tests {
             !prompt.contains("\" path=\""),
             "prompt should not include a path= attribute on the <skill> element: {prompt}"
         );
-    }
-
-    #[test]
-    fn test_plugin_source_is_labelled_as_plugin() {
-        let skills = vec![SkillMetadata {
-            name: "plugin-helper".into(),
-            description: "Helper plugin".into(),
-            path: PathBuf::from("/opt/plugins/helper.md"),
-            source: Some(SkillSource::Plugin),
-            ..Default::default()
-        }];
-        let prompt = generate_skills_prompt(&skills);
-        assert!(prompt.contains("source=\"plugin\""));
-        assert!(!prompt.contains("/opt/plugins"));
     }
 
     #[test]

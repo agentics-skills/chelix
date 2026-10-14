@@ -16,7 +16,6 @@ use {
     chelix_call_bus::CallBus,
     chelix_service_traits::{
         CreateSkillFile, PatchSkillFile, ReadSkillFile, ReplaceSkillFile, SkillFileError,
-        SkillFileRead, WriteNewSkillFile,
     },
 };
 
@@ -70,29 +69,20 @@ pub struct SkillFields {
 }
 
 /// Read a skill file and return the interpreted document.
-pub async fn read(
-    files: &SkillFiles,
-    path: &Path,
-    max_bytes: Option<u64>,
-    mode: SkillFileRead,
-) -> Result<SkillContent> {
+pub async fn read(files: &SkillFiles, path: &Path, max_bytes: Option<u64>) -> Result<SkillContent> {
     let path = path.to_path_buf();
     with_file(files, move || {
         let bytes = read_capped(&path, max_bytes)?;
         let text = std::str::from_utf8(&bytes)
             .map_err(|_| Error::Parse("skill file is not valid UTF-8".into()))?;
-        interpret_mode(text, &path, mode)
+        interpret(text, &path)
     })
     .await
 }
 
 /// Interpret skill markdown already loaded by the caller.
 pub fn interpret(content: &str, path: &Path) -> Result<SkillContent> {
-    interpret_mode(content, path, SkillFileRead::Detect)
-}
-
-fn interpret_mode(content: &str, path: &Path, mode: SkillFileRead) -> Result<SkillContent> {
-    Ok(load(content, path, mode)?.content)
+    Ok(load(content, path)?.content)
 }
 
 /// Create a skill file. An existing file is left unchanged.
@@ -124,28 +114,6 @@ pub async fn create(
     .await
 }
 
-/// Write a new skill document. An existing file is left unchanged.
-pub async fn write_new(files: &SkillFiles, path: &Path, content: String) -> Result<SkillContent> {
-    let path = path.to_path_buf();
-    with_file(files, move || match File::open(&path) {
-        Ok(_) => Err(Error::AlreadyExists(path.display().to_string())),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            let loaded = load(&content, &path, SkillFileRead::Detect)?;
-            let rendered = render(
-                &loaded.preamble,
-                &loaded.raw,
-                loaded.origin_text.as_deref(),
-                &loaded.tail,
-                &loaded.content.body,
-            )?;
-            write_file(&path, &rendered)?;
-            interpret(&rendered, &path)
-        },
-        Err(error) => Err(error.into()),
-    })
-    .await
-}
-
 /// Replace name, description, and body. Missing files are created with empty agent lists.
 pub async fn replace(files: &SkillFiles, path: &Path, fields: SkillFields) -> Result<SkillContent> {
     let path = path.to_path_buf();
@@ -154,7 +122,7 @@ pub async fn replace(files: &SkillFiles, path: &Path, fields: SkillFields) -> Re
             Ok(bytes) => {
                 let text = std::str::from_utf8(&bytes)
                     .map_err(|_| Error::Parse("skill file is not valid UTF-8".into()))?;
-                Some(load(text, &path, SkillFileRead::Detect)?)
+                Some(load(text, &path)?)
             },
             Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error),
@@ -210,7 +178,7 @@ pub async fn patch(
         };
         let text = std::str::from_utf8(&bytes)
             .map_err(|_| Error::Parse("skill file is not valid UTF-8".into()))?;
-        let loaded = load(text, &path, SkillFileRead::Detect)?;
+        let loaded = load(text, &path)?;
         let mut body = loaded.content.body;
         for (index, (find, replace_with)) in patches.iter().enumerate() {
             if find.is_empty() {
@@ -310,46 +278,22 @@ struct Loaded {
     raw: RawKnown,
 }
 
-fn load(content: &str, path: &Path, mode: SkillFileRead) -> Result<Loaded> {
-    let skill_md = match mode {
-        SkillFileRead::SkillDocument => true,
-        SkillFileRead::Detect | SkillFileRead::Catalog => is_skill_md(path),
-    };
-    let metadata_path = if skill_md {
-        path.parent().unwrap_or(path).to_path_buf()
-    } else {
-        path.to_path_buf()
-    };
+fn load(content: &str, path: &Path) -> Result<Loaded> {
+    let metadata_path = path.parent().unwrap_or(path).to_path_buf();
     if !content.trim_start().starts_with("---") {
-        if skill_md {
-            return Err(Error::Parse(
-                "SKILL.md must start with YAML frontmatter delimited by ---".into(),
-            ));
-        }
-        return Ok(loose_document(content, metadata_path));
+        return Err(Error::Parse(
+            "SKILL.md must start with YAML frontmatter delimited by ---".into(),
+        ));
     }
-    let (frontmatter, raw_body) = match split_frontmatter_raw(content) {
-        Ok(parts) => parts,
-        Err(_) if !skill_md => return Ok(loose_document(content, metadata_path)),
-        Err(error) => return Err(error),
-    };
+    let (frontmatter, raw_body) = split_frontmatter_raw(content)?;
     let body = raw_body
         .strip_prefix("\r\n")
         .or_else(|| raw_body.strip_prefix('\n'))
         .unwrap_or(raw_body)
         .to_string();
     let frontmatter = strip_one_leading_newline(frontmatter);
-    let raw_meta: RawMeta = match serde_yaml::from_str(frontmatter) {
-        Ok(meta) => meta,
-        Err(_) if matches!(mode, SkillFileRead::Catalog) && !skill_md => {
-            return Ok(loose_document(content, metadata_path));
-        },
-        Err(error) => {
-            return Err(Error::Parse(format!(
-                "invalid SKILL.md frontmatter: {error}"
-            )));
-        },
-    };
+    let raw_meta: RawMeta = serde_yaml::from_str(frontmatter)
+        .map_err(|error| Error::Parse(format!("invalid SKILL.md frontmatter: {error}")))?;
     let (preamble, tail, origin_text) = split_preserved(frontmatter);
     let raw = RawKnown {
         name: raw_meta.name.clone(),
@@ -376,9 +320,7 @@ fn load(content: &str, path: &Path, mode: SkillFileRead) -> Result<Loaded> {
         path: metadata_path,
         ..SkillMetadata::default()
     };
-    if skill_md {
-        resolve_name_or_slug(&mut metadata)?;
-    }
+    resolve_name_or_slug(&mut metadata)?;
     Ok(Loaded {
         content: SkillContent { metadata, body },
         preamble,
@@ -386,28 +328,6 @@ fn load(content: &str, path: &Path, mode: SkillFileRead) -> Result<Loaded> {
         origin_text,
         raw,
     })
-}
-
-fn loose_document(content: &str, path: std::path::PathBuf) -> Loaded {
-    Loaded {
-        content: SkillContent {
-            metadata: SkillMetadata {
-                path,
-                ..SkillMetadata::default()
-            },
-            body: content.to_string(),
-        },
-        preamble: String::new(),
-        tail: String::new(),
-        origin_text: None,
-        raw: RawKnown::default(),
-    }
-}
-
-fn is_skill_md(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name == "SKILL.md")
 }
 
 fn strip_one_leading_newline(text: &str) -> &str {
@@ -659,7 +579,7 @@ pub fn register_skill_files(
     bus.register(move |request: ReadSkillFile| {
         let files = Arc::clone(&read_files);
         async move {
-            read(&files, &request.path, request.max_bytes, request.mode)
+            read(&files, &request.path, request.max_bytes)
                 .await
                 .map_err(bus_error)
         }
@@ -709,15 +629,6 @@ pub fn register_skill_files(
             .map_err(bus_error)
         }
     })?;
-    let write_files = Arc::clone(files);
-    bus.register(move |request: WriteNewSkillFile| {
-        let files = Arc::clone(&write_files);
-        async move {
-            write_new(&files, &request.path, request.content)
-                .await
-                .map_err(bus_error)
-        }
-    })?;
     Ok(())
 }
 
@@ -731,24 +642,8 @@ pub fn bind_skill_files(bus: &CallBus) -> std::result::Result<(), String> {
         .map_err(|error| error.to_string())?;
     bus.require::<PatchSkillFile>()
         .map_err(|error| error.to_string())?;
-    bus.require::<WriteNewSkillFile>()
-        .map_err(|error| error.to_string())?;
     let files = SkillFiles::new()?;
     register_skill_files(bus, &files).map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-pub(crate) async fn write_unpacked_skill_files(
-    bus: &CallBus,
-    receiver: &mut tokio::sync::mpsc::Receiver<(std::path::PathBuf, Vec<u8>)>,
-) -> std::result::Result<(), String> {
-    while let Some((path, bytes)) = receiver.recv().await {
-        let content = String::from_utf8(bytes)
-            .map_err(|_| format!("SKILL.md is not UTF-8: {}", path.display()))?;
-        bus.call(WriteNewSkillFile { path, content })
-            .await
-            .map_err(|error| error.to_string())?;
-    }
     Ok(())
 }
 
@@ -768,7 +663,6 @@ pub(crate) async fn read_on(
     bus.call(ReadSkillFile {
         path: path.to_path_buf(),
         max_bytes,
-        mode: SkillFileRead::Detect,
     })
     .await
     .map_err(from_call)
@@ -798,7 +692,7 @@ mod tests {
         assert!(created.contains("denied_agents:\n"));
         assert!(created.contains("allowed_agents:\n- agent1\n"));
         assert!(created.ends_with("---\nhello\n"));
-        let read_back = read(&files, &path, None, SkillFileRead::Detect).await?;
+        let read_back = read(&files, &path, None).await?;
         assert_eq!(read_back.body, "hello\n");
         assert_eq!(read_back.metadata.allowed_agents, ["agent1"]);
         std::fs::write(
@@ -817,15 +711,9 @@ mod tests {
         assert!(updated.contains("# needs docker\n"));
         assert!(updated.contains("# note\n"));
         assert!(updated.contains("custom: 1\n"));
+        assert_eq!(read(&files, &path, None).await?.body, "hello\n");
         assert_eq!(
-            read(&files, &path, None, SkillFileRead::Detect).await?.body,
-            "hello\n"
-        );
-        assert_eq!(
-            read(&files, &path, None, SkillFileRead::Detect)
-                .await?
-                .metadata
-                .allowed_agents,
+            read(&files, &path, None).await?.metadata.allowed_agents,
             Vec::<String>::new()
         );
         Ok(())
@@ -863,24 +751,6 @@ mod tests {
         } else {
             Err(Error::Validation(error.to_string()))
         }
-    }
-
-    #[test]
-    fn interpret_returns_unclosed_non_skill_markdown_as_text() -> Result<()> {
-        let content = "---\ndescription: Review\nno closing fence\n";
-        let parsed = interpret(content, Path::new("review.md"))?;
-        assert_eq!(parsed.body, content);
-        Ok(())
-    }
-
-    #[test]
-    fn interpret_returns_invalid_yaml_non_skill_markdown_as_catalog_text() -> Result<()> {
-        let content = "---\ndescription: Context: The user\n---\nbody\n";
-        let path = Path::new("code-reviewer.md");
-        assert!(interpret_mode(content, path, SkillFileRead::Detect).is_err());
-        let parsed = interpret_mode(content, path, SkillFileRead::Catalog)?;
-        assert_eq!(parsed.body, content);
-        Ok(())
     }
 
     #[test]

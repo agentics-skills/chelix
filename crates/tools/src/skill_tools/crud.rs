@@ -339,7 +339,6 @@ impl AgentTool for DeleteSkillTool {
             .call(chelix_service_traits::ReadSkillFile {
                 path: skill_dir.join("SKILL.md"),
                 max_bytes: None,
-                mode: chelix_service_traits::SkillFileRead::Detect,
             })
             .await
         {

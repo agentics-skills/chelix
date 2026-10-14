@@ -1036,7 +1036,7 @@ impl ChatService for LiveChatService {
             "image": effective_image,
             "containerName": container_name,
         });
-        // Discover enabled skills/plugins (only if the configured mode enables tools and
+        // Discover enabled skills (only if the configured mode enables tools and
         // `[skills] enabled` is true — see #655).
         let skills_list: Vec<Value> = if tools_enabled {
             skills_context_entries(

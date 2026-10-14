@@ -56,7 +56,6 @@ chelix-whatsapp         = { optional = true, workspace = true }
 chrono                  = { features = ["serde"], optional = true, workspace = true }
 flate2                  = { workspace = true }
 futures                 = { workspace = true }
-gix                     = { workspace = true }
 hostname                = { workspace = true }
 mdns-sd                 = { optional = true, workspace = true }
 p256                    = { features = ["ecdsa"], optional = true, workspace = true }

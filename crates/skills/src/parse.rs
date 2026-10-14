@@ -1,7 +1,3 @@
-use std::path::Path;
-
-use serde::Deserialize;
-
 use crate::error::{Error, Result};
 
 use crate::types::SkillMetadata;
@@ -55,36 +51,6 @@ pub(crate) fn resolve_name_or_slug(meta: &mut SkillMetadata) -> Result<()> {
     }
 }
 
-// ── _meta.json support (openclaw) ───────────────────────────────────────────
-
-/// Metadata from an openclaw `_meta.json` file (sibling to SKILL.md).
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct SkillMetaJson {
-    #[serde(default)]
-    pub owner: Option<String>,
-    #[serde(default)]
-    pub slug: Option<String>,
-    #[serde(default, rename = "displayName")]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub latest: Option<SkillMetaVersion>,
-}
-
-/// Version info from `_meta.json`.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct SkillMetaVersion {
-    #[serde(default)]
-    pub version: Option<String>,
-}
-
-/// Try to read and parse `_meta.json` from a skill directory.
-/// Returns `None` if the file doesn't exist or can't be parsed.
-pub fn read_meta_json(skill_dir: &Path) -> Option<SkillMetaJson> {
-    let path = skill_dir.join("_meta.json");
-    let content = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&content).ok()
-}
-
 pub(crate) fn split_frontmatter_raw(content: &str) -> Result<(&str, &str)> {
     let after_open = content.trim_start().strip_prefix("---").ok_or_else(|| {
         Error::Parse("SKILL.md must start with YAML frontmatter delimited by ---".into())
@@ -105,8 +71,8 @@ mod tests {
     #[case("my-skill", true)]
     #[case("a", true)]
     #[case("skill123", true)]
-    #[case("plugin:skill", true)]
-    #[case("pr-review-toolkit:code-reviewer", true)]
+    #[case("ns:skill", true)]
+    #[case("toolkit:code-reviewer", true)]
     #[case("", false)]
     #[case("-bad", false)]
     #[case("bad-", false)]

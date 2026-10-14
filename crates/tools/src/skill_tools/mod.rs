@@ -20,7 +20,7 @@ const MAX_SIDECAR_FILES_PER_SUBDIR: usize = 8;
 const MAX_SIDECAR_FILE_BYTES: usize = 128 * 1024;
 const MAX_SIDECAR_TOTAL_BYTES: usize = 512 * 1024;
 
-/// Cap on the size of a single skill body (SKILL.md or a plugin's `.md` file).
+/// Cap on the size of a single skill body (SKILL.md).
 const MAX_SKILL_BODY_BYTES: usize = chelix_service_traits::MAX_SKILL_FILE_BYTES as usize;
 
 #[cfg(test)]

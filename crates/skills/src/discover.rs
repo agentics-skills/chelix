@@ -7,8 +7,6 @@ use async_trait::async_trait;
 
 use crate::{
     error::Result,
-    formats::PluginFormat,
-    manifest::ManifestStore,
     types::{SkillMetadata, SkillSource},
 };
 
@@ -53,8 +51,6 @@ impl FsSkillDiscoverer {
         vec![
             (data_dir.join(".chelix/skills"), SkillSource::Project),
             (data_dir.join("skills"), SkillSource::Personal),
-            (data_dir.join("installed-skills"), SkillSource::Registry),
-            (data_dir.join("installed-plugins"), SkillSource::Plugin),
         ]
     }
 }
@@ -73,14 +69,6 @@ impl SkillDiscoverer for FsSkillDiscoverer {
                 // Project/Personal: scan one level deep (always enabled).
                 SkillSource::Project | SkillSource::Personal => {
                     discover_flat(&self.bus, base_path, source, &mut skills).await;
-                },
-                // Registry: use manifest to filter by enabled state.
-                SkillSource::Registry => {
-                    discover_registry(&self.bus, base_path, &mut skills).await;
-                },
-                // Plugin: use plugins manifest to filter by enabled state.
-                SkillSource::Plugin => {
-                    discover_plugins(&self.bus, base_path, &mut skills).await;
                 },
                 // Bundled skills are handled by CompositeSkillDiscoverer,
                 // not by filesystem path scanning.
@@ -174,148 +162,10 @@ async fn discover_flat(
     }
 }
 
-async fn discover_plugin_metadata(
-    bus: &chelix_call_bus::CallBus,
-    path: &Path,
-    name: &str,
-) -> Result<SkillMetadata> {
-    let document = if path.is_dir() && path.join("SKILL.md").is_file() {
-        Some(crate::skill_file::read_on(bus, &path.join("SKILL.md"), None).await?)
-    } else if path.is_file() {
-        Some(crate::skill_file::read_on(bus, path, None).await?)
-    } else {
-        None
-    };
-    let (allowed_agents, denied_agents) = document
-        .as_ref()
-        .map(|document| {
-            (
-                document.metadata.allowed_agents.clone(),
-                document.metadata.denied_agents.clone(),
-            )
-        })
-        .unwrap_or_default();
-    Ok(SkillMetadata {
-        name: name.to_string(),
-        path: path.to_path_buf(),
-        source: Some(SkillSource::Plugin),
-        allowed_agents,
-        denied_agents,
-        ..Default::default()
-    })
-}
-
-async fn push_plugin_metadata(
-    bus: &chelix_call_bus::CallBus,
-    path: &Path,
-    name: &str,
-    skills: &mut Vec<SkillMetadata>,
-) {
-    match discover_plugin_metadata(bus, path, name).await {
-        Ok(metadata) => skills.push(metadata),
-        Err(e) => {
-            tracing::warn!(skill_dir = ?path, %e, "failed to parse SKILL.md");
-        },
-    }
-}
-
-/// Discover enabled plugin skills using the plugins manifest.
-async fn discover_plugins(
-    bus: &chelix_call_bus::CallBus,
-    install_dir: &Path,
-    skills: &mut Vec<SkillMetadata>,
-) {
-    let manifest_path = chelix_config::data_dir().join("plugins-manifest.json");
-    let store = ManifestStore::new(manifest_path);
-    let manifest = match store.load() {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::warn!(%e, "failed to load plugins manifest");
-            return;
-        },
-    };
-
-    for repo in &manifest.repos {
-        for skill_state in &repo.skills {
-            if !skill_state.enabled || !skill_state.trusted {
-                continue;
-            }
-            let skill_dir = install_dir.join(&skill_state.relative_path);
-            push_plugin_metadata(bus, &skill_dir, &skill_state.name, skills).await;
-        }
-    }
-}
-
-/// Discover registry skills using the manifest for enabled filtering.
-///
-/// Handles both formats:
-/// - `PluginFormat::Skill` → parse `SKILL.md` from disk for full metadata
-/// - Other formats → read access metadata with the manifest name and
-///   `SkillSource::Plugin` (prompt_gen uses the path as-is)
-async fn discover_registry(
-    bus: &chelix_call_bus::CallBus,
-    install_dir: &Path,
-    skills: &mut Vec<SkillMetadata>,
-) {
-    let manifest_path = match ManifestStore::default_path() {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let store = ManifestStore::new(manifest_path);
-    let manifest = match store.load() {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::warn!(%e, "failed to load skills manifest");
-            return;
-        },
-    };
-
-    for repo in &manifest.repos {
-        for skill_state in &repo.skills {
-            if !skill_state.enabled || !skill_state.trusted {
-                continue;
-            }
-            let skill_dir = install_dir.join(&skill_state.relative_path);
-
-            match repo.format {
-                PluginFormat::Skill => {
-                    let skill_md = skill_dir.join("SKILL.md");
-                    if !skill_md.is_file() {
-                        tracing::warn!(?skill_md, "manifest references missing SKILL.md");
-                        continue;
-                    }
-                    match crate::skill_file::read_on(bus, &skill_md, None).await {
-                        Ok(content) => {
-                            let mut meta = content.metadata;
-                            meta.source = Some(SkillSource::Registry);
-                            tracing::debug!(
-                                path = %skill_md.display(),
-                                source = "registry",
-                                name = %meta.name,
-                                "loaded SKILL.md"
-                            );
-                            skills.push(meta);
-                        },
-                        Err(e) => {
-                            tracing::debug!(?skill_dir, %e, "skipping non-conforming SKILL.md");
-                        },
-                    }
-                },
-                _ => {
-                    push_plugin_metadata(bus, &skill_dir, &skill_state.name, skills).await;
-                },
-            }
-        }
-    }
-}
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::types::{RepoEntry, SkillState, SkillsManifest},
-    };
+    use super::*;
 
     fn bus() -> Arc<chelix_call_bus::CallBus> {
         crate::skill_file::open_skill_bus().unwrap()
@@ -330,15 +180,11 @@ mod tests {
         // disagreeing about which directories contain skills.
         let data_dir = PathBuf::from("/tmp/data");
         let paths = FsSkillDiscoverer::default_paths_for(&data_dir);
-        assert_eq!(paths.len(), 4);
+        assert_eq!(paths.len(), 2);
         assert_eq!(paths[0].0, PathBuf::from("/tmp/data/.chelix/skills"));
         assert_eq!(paths[0].1, SkillSource::Project);
         assert_eq!(paths[1].0, PathBuf::from("/tmp/data/skills"));
         assert_eq!(paths[1].1, SkillSource::Personal);
-        assert_eq!(paths[2].0, PathBuf::from("/tmp/data/installed-skills"));
-        assert_eq!(paths[2].1, SkillSource::Registry);
-        assert_eq!(paths[3].0, PathBuf::from("/tmp/data/installed-plugins"));
-        assert_eq!(paths[3].1, SkillSource::Plugin);
     }
 
     #[test]
@@ -421,72 +267,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plugin_metadata_reads_access_lists_from_directory_and_commands() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("plugin");
-        std::fs::create_dir_all(&dir).unwrap();
-        let stub = discover_plugin_metadata(&bus(), &dir, "manifest-name")
-            .await
-            .unwrap();
-        assert!(stub.allowed_agents.is_empty());
-        std::fs::write(
-            dir.join("SKILL.md"),
-            "---\nname: demo\ndenied_agents:\n- agent1\n---\nbody",
-        )
-        .unwrap();
-        let metadata = discover_plugin_metadata(&bus(), &dir, "manifest-name")
-            .await
-            .unwrap();
-        assert_eq!(metadata.name, "manifest-name");
-        assert_eq!(metadata.denied_agents, ["agent1"]);
-        std::fs::write(
-            dir.join("SKILL.md"),
-            "---\nname: demo\ndenied_agents:\n---\nbody",
-        )
-        .unwrap();
-        let mut skills = Vec::new();
-        push_plugin_metadata(&bus(), &dir, "manifest-name", &mut skills).await;
-        assert_eq!(skills.len(), 1);
-        assert!(skills[0].denied_agents.is_empty());
-        let command = tmp.path().join("review.md");
-        for declaration in ["", "allowed_agents: []", "allowed_agents:\n- agent1"] {
-            std::fs::write(
-                &command,
-                format!("---\ndescription: Review\n{declaration}\n---\nbody"),
-            )
-            .unwrap();
-            let metadata = discover_plugin_metadata(&bus(), &command, "Demo:review")
-                .await
-                .unwrap();
-            assert_eq!(metadata.name, "Demo:review");
-            assert_eq!(
-                metadata.allowed_agents,
-                if declaration.contains("agent1") {
-                    vec!["agent1".to_string()]
-                } else {
-                    Vec::new()
-                }
-            );
-        }
-        std::fs::write(&command, "# Review").unwrap();
-        assert!(
-            discover_plugin_metadata(&bus(), &command, "Demo:review")
-                .await
-                .unwrap()
-                .allowed_agents
-                .is_empty()
-        );
-        std::fs::write(
-            &command,
-            "---\ndescription: Review\nallowed_agents: hello\n---\nbody",
-        )
-        .unwrap();
-        let mut rejected = Vec::new();
-        push_plugin_metadata(&bus(), &command, "Demo:review", &mut rejected).await;
-        assert!(rejected.is_empty());
-    }
-
-    #[tokio::test]
     async fn test_discover_skips_invalid_frontmatter() {
         let tmp = tempfile::tempdir().unwrap();
         let skills_dir = tmp.path().join("skills");
@@ -496,186 +276,5 @@ mod tests {
         let discoverer = FsSkillDiscoverer::new(vec![(skills_dir, SkillSource::Project)], bus());
         let skills = discoverer.discover().await.unwrap();
         assert!(skills.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_discover_registry_filters_disabled() {
-        // This test exercises the manifest-based registry discovery.
-        // We need a manifest file and matching skill dirs.
-        let tmp = tempfile::tempdir().unwrap();
-        let install_dir = tmp.path().join("installed-skills");
-        let manifest_path = tmp.path().join("manifest.json");
-
-        // Create repo with two skills on disk.
-        std::fs::create_dir_all(install_dir.join("repo/skills/a")).unwrap();
-        std::fs::create_dir_all(install_dir.join("repo/skills/b")).unwrap();
-        std::fs::write(
-            install_dir.join("repo/skills/a/SKILL.md"),
-            "---\nname: a\ndescription: skill a\n---\nbody\n",
-        )
-        .unwrap();
-        std::fs::write(
-            install_dir.join("repo/skills/b/SKILL.md"),
-            "---\nname: b\ndescription: skill b\n---\nbody\n",
-        )
-        .unwrap();
-
-        // Create manifest with 'a' enabled and 'b' disabled.
-        let manifest = SkillsManifest {
-            version: 1,
-            repos: vec![RepoEntry {
-                source: "owner/repo".into(),
-                repo_name: "repo".into(),
-                installed_at_ms: 0,
-                commit_sha: None,
-                format: PluginFormat::Skill,
-                quarantined: false,
-                quarantine_reason: None,
-                provenance: None,
-                skills: vec![
-                    SkillState {
-                        name: "a".into(),
-                        relative_path: "repo/skills/a".into(),
-                        trusted: true,
-                        enabled: true,
-                    },
-                    SkillState {
-                        name: "b".into(),
-                        relative_path: "repo/skills/b".into(),
-                        trusted: false,
-                        enabled: false,
-                    },
-                ],
-            }],
-        };
-        let store = ManifestStore::new(manifest_path.clone());
-        store.save(&manifest).unwrap();
-
-        // We can't easily test discover_registry with a custom manifest path
-        // since it uses ManifestStore::default_path(). Instead, test the function
-        // directly.
-        let mut skills = Vec::new();
-
-        // Manually call the inner function with the right manifest.
-        // Since discover_registry uses default_path, we test the flat path instead.
-        discover_flat(
-            &bus(),
-            &install_dir.join("repo/skills"),
-            &SkillSource::Project,
-            &mut skills,
-        )
-        .await;
-        // Both skills found when using flat scan (no filtering).
-        assert_eq!(skills.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_discover_registry_mixed_formats() {
-        use crate::formats::PluginFormat;
-
-        let tmp = tempfile::tempdir().unwrap();
-        let install_dir = tmp.path();
-
-        // SKILL.md repo on disk
-        std::fs::create_dir_all(install_dir.join("skill-repo/SKILL.md").parent().unwrap()).unwrap();
-        std::fs::write(
-            install_dir.join("skill-repo/SKILL.md"),
-            "---\nname: my-skill\ndescription: a native skill\n---\nbody\n",
-        )
-        .unwrap();
-
-        // Claude Code repo on disk (no SKILL.md)
-        std::fs::create_dir_all(install_dir.join("plugin-repo")).unwrap();
-
-        // Build manifest with both formats
-        let manifest = SkillsManifest {
-            version: 1,
-            repos: vec![
-                RepoEntry {
-                    source: "owner/skill-repo".into(),
-                    repo_name: "skill-repo".into(),
-                    installed_at_ms: 0,
-                    commit_sha: None,
-                    format: PluginFormat::Skill,
-                    quarantined: false,
-                    quarantine_reason: None,
-                    provenance: None,
-                    skills: vec![SkillState {
-                        name: "my-skill".into(),
-                        relative_path: "skill-repo".into(),
-                        trusted: true,
-                        enabled: true,
-                    }],
-                },
-                RepoEntry {
-                    source: "owner/plugin-repo".into(),
-                    repo_name: "plugin-repo".into(),
-                    installed_at_ms: 0,
-                    commit_sha: None,
-                    format: PluginFormat::ClaudeCode,
-                    quarantined: false,
-                    quarantine_reason: None,
-                    provenance: None,
-                    skills: vec![SkillState {
-                        name: "test-plugin:helper".into(),
-                        relative_path: "plugin-repo".into(),
-                        trusted: true,
-                        enabled: true,
-                    }],
-                },
-            ],
-        };
-        let manifest_path = tmp.path().join("skills-manifest.json");
-        let store = ManifestStore::new(manifest_path);
-        store.save(&manifest).unwrap();
-
-        // Can't call discover_registry directly (uses default_path), so
-        // simulate the logic inline.
-        let mut skills = Vec::new();
-        for repo in &manifest.repos {
-            for skill_state in &repo.skills {
-                if !skill_state.enabled || !skill_state.trusted {
-                    continue;
-                }
-                let skill_dir = install_dir.join(&skill_state.relative_path);
-                match repo.format {
-                    PluginFormat::Skill => {
-                        let skill_md = skill_dir.join("SKILL.md");
-                        if skill_md.is_file() {
-                            let bus = bus();
-                            let mut meta = crate::skill_file::read_on(&bus, &skill_md, None)
-                                .await
-                                .unwrap()
-                                .metadata;
-                            meta.source = Some(SkillSource::Registry);
-                            skills.push(meta);
-                        }
-                    },
-                    _ => {
-                        skills.push(SkillMetadata {
-                            name: skill_state.name.clone(),
-                            path: skill_dir,
-                            source: Some(SkillSource::Plugin),
-                            ..Default::default()
-                        });
-                    },
-                }
-            }
-        }
-
-        assert_eq!(skills.len(), 2);
-
-        // SKILL.md repo gets full metadata with Registry source
-        let skill = skills.iter().find(|s| s.name == "my-skill").unwrap();
-        assert_eq!(skill.source, Some(SkillSource::Registry));
-        assert_eq!(skill.description, "a native skill");
-
-        // Claude Code repo gets stub metadata with Plugin source
-        let plugin = skills
-            .iter()
-            .find(|s| s.name == "test-plugin:helper")
-            .unwrap();
-        assert_eq!(plugin.source, Some(SkillSource::Plugin));
-        assert!(plugin.description.is_empty());
     }
 }
