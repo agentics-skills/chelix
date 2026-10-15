@@ -178,6 +178,16 @@ html {
   .session-actions {
     opacity: 1;
   }
+
+  #sessionsPanel:not(.open) ~ #pageContent .session-empty-label {
+    display: none;
+  }
+
+  #sessionsPanel:not(.open) ~ #pageContent .session-empty-sessions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
 }
 
 @media (min-width: 768px) {
@@ -196,6 +206,10 @@ html {
   .sessions-overlay {
     display: none;
   }
+}
+
+.session-empty-sessions {
+  display: none;
 }
 
 /* ── Header Mobile Adjustments ── */
