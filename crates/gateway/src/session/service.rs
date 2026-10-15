@@ -400,17 +400,18 @@ impl LiveSessionService {
     pub(super) async fn patch_one(&self, params: Value) -> ServiceResult {
         let p: PatchParams = parse_params(params)?;
         let key = p.key.clone();
-        let _mutation_permit = if p.is_tool_permission_only() || p.is_label_only() {
-            None
-        } else {
-            let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
-            Some(
-                mutation_reservation
-                    .acquire()
-                    .await
-                    .map_err(ServiceError::message)?,
-            )
-        };
+        let _mutation_permit =
+            if p.is_tool_permission_only() || p.is_label_only() || p.is_unarchive_only() {
+                None
+            } else {
+                let mutation_reservation = self.session_mutations.reserve_mutation(&key).await;
+                Some(
+                    mutation_reservation
+                        .acquire()
+                        .await
+                        .map_err(ServiceError::message)?,
+                )
+            };
 
         let entry = self
             .metadata
