@@ -9,6 +9,7 @@ import { projectStore } from "../stores/project-store";
 import { clearSessionHistory, getSessionHistory } from "../stores/session-history-cache";
 import { insertSessionInOrder, type Session, sessionStore } from "../stores/session-store";
 import {
+	forgetDenyFeedbackDraft,
 	type PendingToolPermission,
 	rememberPendingToolPermissions,
 	syncToolPermissionToolbar,
@@ -123,6 +124,7 @@ export function showUnselectedSession(): void {
 	clearPendingSends();
 	invalidateHistorySubscription();
 	clearSessionHistory();
+	forgetDenyFeedbackDraft();
 	sessionStore.setActive("");
 	S.setActiveSessionKey("");
 	const path = routes.chats;
@@ -155,6 +157,7 @@ export function switchSession(key: string, searchContext?: SearchContext | null,
 	const request = ++switchRequest;
 	invalidateHistorySubscription();
 	clearSessionHistory();
+	if (key !== S.activeSessionKey) forgetDenyFeedbackDraft();
 	sessionStore.setActive(key);
 	S.setActiveSessionKey(key);
 	history.replaceState(null, "", sessionPath(key));

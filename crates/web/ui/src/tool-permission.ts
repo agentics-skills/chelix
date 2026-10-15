@@ -29,6 +29,7 @@ const pendingByTool = new Map<string, PendingToolPermission>();
 const lastLifecycleByTool = new Map<string, StoredToolLifecycle>();
 let denyModal: HTMLElement | null = null;
 let denyFeedback: HTMLTextAreaElement | null = null;
+let denyFeedbackDraft: string | undefined;
 let denySend: HTMLButtonElement | null = null;
 let denyTarget: PendingToolPermission | null = null;
 
@@ -193,6 +194,7 @@ function ensureDenyModal(): void {
 	denyFeedback = textarea;
 	denySend = send;
 	textarea.addEventListener("input", () => {
+		denyFeedbackDraft = textarea.value.length > 0 ? textarea.value : undefined;
 		send.disabled = textarea.value.trim().length === 0;
 	});
 	cancel.addEventListener("click", closeDenyModal);
@@ -201,10 +203,14 @@ function ensureDenyModal(): void {
 	});
 	send.addEventListener("click", () => {
 		const target = denyTarget;
-		const text = textarea.value.trim();
+		const sentRaw = textarea.value;
+		const text = sentRaw.trim();
 		if (!(target && text)) return;
 		void resolvePermission(target, "deny", text)
-			.then(closeDenyModal)
+			.then(() => {
+				if (denyFeedbackDraft === sentRaw) denyFeedbackDraft = undefined;
+				closeDenyModal();
+			})
 			.catch((error: unknown) => {
 				showToast(error instanceof Error ? error.message : "Permission resolve failed", "error");
 			});
@@ -213,16 +219,27 @@ function ensureDenyModal(): void {
 
 function openDenyModal(pending: PendingToolPermission): void {
 	ensureDenyModal();
+	const feedback = denyFeedback;
+	const send = denySend;
+	const modal = denyModal;
+	if (!(feedback && send && modal)) throw new Error("Deny tool call dialog is not mounted");
 	denyTarget = pending;
-	if (denyFeedback) denyFeedback.value = "";
-	if (denySend) denySend.disabled = true;
-	denyModal?.classList.remove("hidden");
-	denyFeedback?.focus();
+	const restored = denyFeedbackDraft ?? "";
+	feedback.value = restored;
+	send.disabled = restored.trim().length === 0;
+	modal.classList.remove("hidden");
+	feedback.focus();
 }
 
 function closeDenyModal(): void {
+	if (denyFeedback) denyFeedback.value = "";
 	denyModal?.classList.add("hidden");
 	denyTarget = null;
+}
+
+export function forgetDenyFeedbackDraft(): void {
+	denyFeedbackDraft = undefined;
+	closeDenyModal();
 }
 
 export function rememberPendingToolPermissions(items: PendingToolPermission[] | undefined): void {
