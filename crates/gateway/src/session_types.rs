@@ -76,6 +76,20 @@ impl PatchParams {
             && self.tool_permission_mode.is_none()
             && self.tool_permission_type.is_none()
     }
+
+    /// Unarchive metadata is independent of the active turn.
+    #[must_use]
+    pub(crate) fn is_unarchive_only(&self) -> bool {
+        self.archived == Some(false)
+            && self.label.is_none()
+            && self.model.is_none()
+            && self.reasoning_effort.is_none()
+            && self.project_id.is_none()
+            && self.worktree_branch.is_none()
+            && self.parent_session_key.is_none()
+            && self.tool_permission_mode.is_none()
+            && self.tool_permission_type.is_none()
+    }
 }
 
 /// Deserialize a field as `Some(inner)` when present (even if null),

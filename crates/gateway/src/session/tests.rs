@@ -1671,7 +1671,7 @@ reasoning_supported_efforts = ["off"]
     }
 
     #[tokio::test]
-    async fn patch_label_only_completes_during_active_turn() {
+    async fn patch_label_archive_unarchive_completes_during_active_turn() {
         const KEY: &str = "session:rename-during-turn";
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(SessionStore::new(dir.path().to_path_buf()));
@@ -1709,6 +1709,16 @@ reasoning_supported_efforts = ["off"]
         .unwrap();
         assert_eq!(archived["archived"], true);
         assert!(metadata.get(KEY).await.unwrap().unwrap().archived);
+
+        let unarchived = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            svc.patch(serde_json::json!({ "key": KEY, "archived": false })),
+        )
+        .await
+        .expect("unarchive patch must not wait for the active turn")
+        .unwrap();
+        assert_eq!(unarchived["archived"], false);
+        assert!(!metadata.get(KEY).await.unwrap().unwrap().archived);
         drop(turn);
     }
 

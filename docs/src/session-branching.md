@@ -153,7 +153,9 @@ When the archived session owns its sandbox (`sandbox_owner_key` is absent or
 equal to the session key), the single-session archive starts a background
 `docker stop`, `podman stop`, or Apple Container `stop`.
 
-Unarchiving a parent does not change its descendants.
+`sessions.patch` with `key` and `archived: false` and no other fields sets
+that session's archived metadata immediately while a chat turn holds the
+session. Unarchiving a parent does not change its descendants.
 
 ```admonish info title="Independence"
 After creation, later changes to one session's history and fields do not
