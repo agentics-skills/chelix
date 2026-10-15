@@ -169,7 +169,7 @@ The mobile interface adapts for smaller screens:
 - **Navigation drawer**: The sidebar becomes a slide-out drawer on mobile
 - **Sessions panel**: Displayed as a bottom sheet that can be swiped
 - **Empty chat**: A chat page with no selected session shows "No session selected". Below 768px, while the sessions panel is closed, that text is replaced by a Sessions button that opens the sessions panel.
-- **Touch targets**: Minimum 44px touch targets for accessibility
+- **Touch targets**: Minimum 44px touch targets for accessibility, except the compact header buttons, chat toolbar, chat composer, message actions, model and project selectors, and tool-call card buttons.
 - **Safe areas**: Proper insets for devices with notches or home indicators
 
 ### Responsive Breakpoints

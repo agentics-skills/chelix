@@ -723,6 +723,11 @@ html {
     min-height: 0;
   }
 
+  .tool-call-permission-btn,
+  .tool-call-toggle {
+    min-height: 0;
+  }
+
   .chat-composer-textarea {
     min-height: 30px;
     font-size: 16px;

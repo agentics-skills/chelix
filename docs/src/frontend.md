@@ -212,7 +212,13 @@ At widths up to 767px the dialog occupies a full-width bottom sheet, like the
 session Terminal window. SEND calls `tool.permission.resolve` with decision
 `deny` and feedback equal to the field value after trimming the ends. That trim
 keeps internal line breaks. SEND stays disabled while the trim is empty. CANCEL
-and a backdrop click close the dialog without a decision. The card shows the
+and a backdrop click close the dialog without a decision. The raw field value is
+kept in one UI variable until that same value is sent successfully or the active
+session key changes. A field length of 0 leaves that variable unset. Opening the
+dialog again with the same active session key copies the saved value back into
+the field. Changing the active session key, including leaving no session
+selected, drops the variable and closes the dialog. A failed SEND leaves the
+open dialog, the field text, and the variable. The card shows the
 denial text with those line breaks.
 
 Execution progress is backend-authored. `src/ws/tool-helpers.ts` uses the
