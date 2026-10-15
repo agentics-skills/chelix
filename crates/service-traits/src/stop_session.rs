@@ -26,3 +26,13 @@ impl Procedure for StopSession {
     type Error = ServiceError;
     type Output = StopSessionOutcome;
 }
+
+/// Shut down the live external-agent process bound to one session.
+pub struct ShutdownExternalBinding {
+    pub key: SessionKey,
+}
+
+impl Procedure for ShutdownExternalBinding {
+    type Error = ServiceError;
+    type Output = ();
+}

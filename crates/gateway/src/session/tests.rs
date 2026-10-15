@@ -2175,10 +2175,13 @@ reasoning_supported_efforts = ["off"]
 
         async fn cleanup(
             &self,
-            id: &chelix_tools::sandbox::SandboxId,
+            _id: &chelix_tools::sandbox::SandboxId,
         ) -> chelix_tools::error::Result<()> {
-            self.cleanup_keys.lock().unwrap().push(id.key.clone());
             Ok(())
+        }
+
+        async fn remove_discarded(&self, id: &chelix_tools::sandbox::SandboxId) {
+            self.cleanup_keys.lock().unwrap().push(id.key.clone());
         }
 
         async fn stop(&self, _id: &chelix_tools::sandbox::SandboxId) {
@@ -2209,14 +2212,21 @@ reasoning_supported_efforts = ["off"]
         store: Arc<SessionStore>,
         metadata: Arc<SqliteSessionMetadata>,
         backend: Arc<RecordingSandbox>,
-    ) -> LiveSessionService {
+    ) -> (
+        LiveSessionService,
+        Arc<chelix_tools::sandbox::router::StopWatch>,
+    ) {
         let router = SandboxRouter::with_backend(
             chelix_tools::sandbox::SandboxConfig::default(),
             backend,
             Some(Arc::new(FailingSandboxOwnerResolver)),
         )
         .unwrap();
-        LiveSessionService::new(store, metadata).with_sandbox_router(Arc::new(router))
+        let watch = router.watch_background_stops();
+        (
+            LiveSessionService::new(store, metadata).with_sandbox_router(Arc::new(router)),
+            watch,
+        )
     }
 
     #[tokio::test]
@@ -2228,7 +2238,7 @@ reasoning_supported_efforts = ["off"]
         create_test_session(&metadata, "session:owner", Some("Owner")).await;
 
         let backend = Arc::new(RecordingSandbox::new());
-        let svc = session_service_with_recording_sandbox(
+        let (svc, watch) = session_service_with_recording_sandbox(
             Arc::clone(&store),
             Arc::clone(&metadata),
             Arc::clone(&backend),
@@ -2237,6 +2247,7 @@ reasoning_supported_efforts = ["off"]
         svc.delete(serde_json::json!({ "key": "session:owner" }))
             .await
             .unwrap();
+        watch.finish().await;
 
         assert!(metadata.get("session:owner").await.unwrap().is_none());
         assert_eq!(backend.cleanup_keys(), vec!["session-owner".to_string()]);
@@ -2260,7 +2271,7 @@ reasoning_supported_efforts = ["off"]
             .unwrap();
 
         let backend = Arc::new(RecordingSandbox::new());
-        let svc = session_service_with_recording_sandbox(
+        let (svc, watch) = session_service_with_recording_sandbox(
             Arc::clone(&store),
             Arc::clone(&metadata),
             Arc::clone(&backend),
@@ -2269,6 +2280,7 @@ reasoning_supported_efforts = ["off"]
         svc.delete(serde_json::json!({ "key": "session:child" }))
             .await
             .unwrap();
+        watch.finish().await;
 
         assert!(metadata.get("session:child").await.unwrap().is_none());
         assert!(metadata.get("session:parent").await.unwrap().is_some());
@@ -2293,7 +2305,7 @@ reasoning_supported_efforts = ["off"]
             .unwrap();
 
         let backend = Arc::new(RecordingSandbox::new());
-        let svc = session_service_with_recording_sandbox(
+        let (svc, watch) = session_service_with_recording_sandbox(
             Arc::clone(&store),
             Arc::clone(&metadata),
             Arc::clone(&backend),
@@ -2302,6 +2314,7 @@ reasoning_supported_efforts = ["off"]
         svc.delete(serde_json::json!({ "key": "session:parent" }))
             .await
             .unwrap();
+        watch.finish().await;
 
         assert!(metadata.get("session:parent").await.unwrap().is_none());
         assert!(metadata.get("session:child").await.unwrap().is_none());

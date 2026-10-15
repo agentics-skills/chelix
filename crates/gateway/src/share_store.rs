@@ -298,6 +298,14 @@ impl ShareStore {
         rows.into_iter().map(SessionShare::try_from).collect()
     }
 
+    pub async fn delete_for_session(&self, session_key: &str) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM session_shares WHERE session_key = ?")
+            .bind(session_key)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
     pub async fn revoke(&self, id: &str) -> Result<bool> {
         let now = now_ms() as i64;
         let result = sqlx::query(

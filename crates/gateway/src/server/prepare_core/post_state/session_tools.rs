@@ -178,15 +178,33 @@ fn build_delete_session(
         move |req: chelix_tools::sessions_manage::DeleteSessionRequest| {
             let state = Arc::clone(&state);
             Box::pin(async move {
-                state
-                    .services
-                    .session
-                    .delete(serde_json::json!({
-                        "key": req.key,
-                        "force": req.force,
-                    }))
-                    .await
-                    .map_err(|error| chelix_tools::Error::message(error.to_string()))
+                let key = req.key;
+                let force = req.force;
+                let handle = tokio::spawn(async move {
+                    let result = state
+                        .services
+                        .session
+                        .delete(serde_json::json!({
+                            "key": key,
+                            "force": force,
+                        }))
+                        .await;
+                    if let Err(error) = &result {
+                        tracing::error!(%error, "session delete failed");
+                    }
+                    result
+                });
+                match handle.await {
+                    Ok(result) => {
+                        result.map_err(|error| chelix_tools::Error::message(error.to_string()))
+                    },
+                    Err(join_error) => {
+                        tracing::error!(%join_error, "session delete task panicked");
+                        Err(chelix_tools::Error::message(format!(
+                            "session delete task panicked: {join_error}"
+                        )))
+                    },
+                }
             })
         },
     )

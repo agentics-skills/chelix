@@ -121,8 +121,14 @@ async function deleteSession(context: SessionDeleteContext, force = false): Prom
 	);
 	const error = sessionDeleteError(response);
 	if (!response?.ok && hasUncommittedChanges(error)) {
+		if (error.includes(`session '${context.currentKey}': worktree has uncommitted changes`)) {
+			showToast(error, "error");
+			fetchSessions();
+			if (await confirmDialog("Worktree has uncommitted changes. Force delete?")) await deleteSession(context, true);
+			return;
+		}
+		showToast(error, "error");
 		fetchSessions();
-		if (await confirmDialog("Worktree has uncommitted changes. Force delete?")) await deleteSession(context, true);
 		return;
 	}
 	if (!response?.ok) {

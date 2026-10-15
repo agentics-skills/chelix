@@ -701,4 +701,17 @@ impl Sandbox for AppleContainerSandbox {
             .await;
         self.tools_endpoints.write().await.remove(&name);
     }
+
+    async fn remove_discarded(&self, id: &SandboxId) {
+        let name = self.container_name(id);
+        self.tools_endpoints.write().await.remove(&name);
+        unmark_zombie(&name);
+        let _ = tokio::process::Command::new("container")
+            .args(["rm", "--force", name.as_str()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
+    }
 }

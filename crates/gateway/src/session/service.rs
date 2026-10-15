@@ -516,6 +516,8 @@ fn sealed_test_call_bus() -> Arc<chelix_call_bus::CallBus> {
             run_id: None,
         })
     });
+    let _ = bus
+        .register(|_request: chelix_service_traits::ShutdownExternalBinding| async move { Ok(()) });
     let _ = bus.seal();
     bus
 }

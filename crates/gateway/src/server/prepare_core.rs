@@ -726,67 +726,6 @@ pub async fn prepare_gateway_core(
     // Start daily retention checks for archived session sandboxes.
     sandbox::spawn_sandbox_background_tasks(&sandbox_router, &session_metadata)?;
 
-    // Periodic cron session retention pruning.
-    if let Some(retention_days) = config.cron.session_retention_days
-        && retention_days > 0
-    {
-        let prune_store = Arc::clone(&cron_store_for_pruning);
-        let prune_session_store = Arc::clone(&session_store);
-        let prune_session_metadata = Arc::clone(&session_metadata);
-        let prune_sandbox = Arc::clone(&sandbox_router);
-        tokio::spawn(async move {
-            let interval = std::time::Duration::from_secs(60 * 60);
-            loop {
-                tokio::time::sleep(interval).await;
-                let retention_ms = time::Duration::days(retention_days as i64)
-                    .whole_milliseconds()
-                    .unsigned_abs() as u64;
-                let cutoff_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                let before_ms = cutoff_ms.saturating_sub(retention_ms);
-
-                let session_keys = match prune_store.list_session_keys_before(before_ms).await {
-                    Ok(keys) => keys,
-                    Err(e) => {
-                        tracing::debug!(error = %e, "cron session pruning: failed to list session keys");
-                        continue;
-                    },
-                };
-
-                let mut cleaned = 0u64;
-                for key in &session_keys {
-                    if let Err(e) = prune_session_store.clear(key).await {
-                        tracing::debug!(key, error = %e, "cron prune: failed to clear session");
-                    }
-                    if let Err(e) = prune_sandbox.cleanup_session(key).await {
-                        tracing::debug!(key, error = %e, "cron prune: sandbox cleanup failed");
-                    }
-                    match prune_session_metadata.remove(key).await {
-                        Ok(_) => cleaned += 1,
-                        Err(error) => {
-                            tracing::error!(key, %error, "cron prune: metadata removal failed");
-                        },
-                    }
-                }
-
-                match prune_store.prune_runs_before(before_ms).await {
-                    Ok(0) => {},
-                    Ok(n) => tracing::info!(
-                        pruned_runs = n,
-                        pruned_sessions = cleaned,
-                        retention_days,
-                        "cron retention: pruned old runs and sessions"
-                    ),
-                    Err(e) => {
-                        tracing::debug!(error = %e, "cron retention: failed to prune runs")
-                    },
-                }
-            }
-        });
-    }
-
     // ── Channel initialization ───────────────────────────────────────────
     let channel_result = init_channels::init_channels(
         services,
@@ -817,6 +756,9 @@ pub async fn prepare_gateway_core(
     let call_bus = chelix_call_bus::CallBus::new();
     call_bus
         .require::<chelix_service_traits::StopSession>()
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    call_bus
+        .require::<chelix_service_traits::ShutdownExternalBinding>()
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     chelix_skills::skill_file::bind_skill_files(&call_bus)
         .map_err(|error| anyhow::anyhow!(error))?;
@@ -856,6 +798,69 @@ pub async fn prepare_gateway_core(
             session_svc = session_svc.with_hooks(Arc::clone(hooks));
         }
         services.session = Arc::new(session_svc);
+    }
+    if let Some(retention_days) = config.cron.session_retention_days
+        && retention_days > 0
+    {
+        let prune_store = Arc::clone(&cron_store_for_pruning);
+        let prune_session_metadata = Arc::clone(&session_metadata);
+        let prune_sessions = Arc::clone(&services.session);
+        tokio::spawn(async move {
+            let interval = std::time::Duration::from_secs(60 * 60);
+            loop {
+                tokio::time::sleep(interval).await;
+                let retention_ms = time::Duration::days(retention_days as i64)
+                    .whole_milliseconds()
+                    .unsigned_abs() as u64;
+                let cutoff_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+                let before_ms = cutoff_ms.saturating_sub(retention_ms);
+
+                let session_keys = match prune_store.list_session_keys_before(before_ms).await {
+                    Ok(keys) => keys,
+                    Err(error) => {
+                        tracing::debug!(%error, "cron session pruning: failed to list session keys");
+                        continue;
+                    },
+                };
+
+                let mut cleaned = 0u64;
+                for key in &session_keys {
+                    match prune_session_metadata.get(key).await {
+                        Ok(None) => cleaned += 1,
+                        Err(error) => {
+                            tracing::error!(key, %error, "cron prune: failed to read session");
+                        },
+                        Ok(Some(_)) => {
+                            match prune_sessions
+                                .delete(serde_json::json!({ "key": key, "force": true }))
+                                .await
+                            {
+                                Ok(_) => cleaned += 1,
+                                Err(error) => {
+                                    tracing::error!(key, %error, "cron prune: failed to delete session");
+                                },
+                            }
+                        },
+                    }
+                }
+
+                match prune_store.prune_runs_before(before_ms).await {
+                    Ok(0) => {},
+                    Ok(n) => tracing::info!(
+                        pruned_runs = n,
+                        pruned_sessions = cleaned,
+                        retention_days,
+                        "cron retention: pruned old runs and sessions"
+                    ),
+                    Err(error) => {
+                        tracing::debug!(%error, "cron retention: failed to prune runs")
+                    },
+                }
+            }
+        });
     }
     if let Ok(chelix_config::AgentsConfigState::Configured { .. }) = config.agents.resolve_state() {
         crate::session::ensure_internal_chat_session(

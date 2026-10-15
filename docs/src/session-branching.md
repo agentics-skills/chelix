@@ -101,16 +101,22 @@ Fork relationships are stored directly on the `sessions` table:
 These fields drive the tree rendering in the sidebar. Sessions with a parent
 appear indented under it; deeply nested forks indent further.
 
-```admonish warning title="Deleting a parent"
-Deleting a parent session deletes every descendant linked by
-`parent_session_key`. That includes forks, sessions created with
-`sessions_create`, and sub-agent sessions. Descendants are removed before the
-parent. Active channel mappings for each deleted session are cleared.
-```
+```admonish warning title="Deleting a session"
+`sessions.delete` takes one recursive SQL snapshot in one transaction of the
+requested session and every descendant linked by `parent_session_key`. It
+deletes each session in that snapshot, deeper sessions before the requested
+one. An error for one session is kept, the other snapshotted sessions are
+still deleted, and the response is the collected errors. Share rows of a
+deleted session are deleted.
 
-Session deletion also removes session-specific memory export Markdown files and
-their indexed chunks/embedding blobs from memory search. The global embedding
-cache is content-hash based and is not treated as session-owned data.
+For one session, an uncommitted worktree is checked before `StopSession`.
+That error, a `StopSession` error, and an error while stopping the live
+external-agent process all return before the `sessions` row and its
+`channel_sessions` rows are deleted. After those steps the deletion removes
+the worktree, media, tool results, and history. When `sandbox.mode` is `On`
+and the session owns its sandbox, container removal starts in the background.
+Session state and the prompt queue are deleted after that.
+```
 
 ## Navigation After Delete
 

@@ -150,12 +150,12 @@ pub struct SandboxRouter {
     /// Owner keys that have already completed sandbox initialization.
     /// Used to avoid repeating first-run preparation banners on every command.
     prepared_sessions: RwLock<HashSet<String>>,
-    /// Set only by tests that need to join background stops. Ordinary routers leave this empty.
+    /// Set only by tests that need to join background sandbox tasks. Ordinary routers leave this empty.
     #[cfg(feature = "test-util")]
     stop_watch: std::sync::Mutex<Option<Arc<StopWatch>>>,
 }
 
-/// Collects background stop tasks for one router instance.
+/// Collects background sandbox tasks for one router instance.
 #[cfg(feature = "test-util")]
 pub struct StopWatch {
     tasks: std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>,
@@ -163,7 +163,7 @@ pub struct StopWatch {
 
 #[cfg(feature = "test-util")]
 impl StopWatch {
-    /// Wait until every stop task captured by this watch has finished.
+    /// Wait until every background sandbox task captured by this watch has finished.
     pub async fn finish(&self) {
         let tasks =
             std::mem::take(&mut *self.tasks.lock().unwrap_or_else(|error| error.into_inner()));
@@ -237,7 +237,7 @@ impl SandboxRouter {
         })
     }
 
-    /// Record later background stops on this router. Other routers keep dropping those tasks.
+    /// Record later background sandbox tasks on this router. Other routers keep dropping those tasks.
     #[cfg(feature = "test-util")]
     pub fn watch_background_stops(&self) -> Arc<StopWatch> {
         let watch = Arc::new(StopWatch {
@@ -372,13 +372,7 @@ impl SandboxRouter {
         Ok(())
     }
 
-    /// Stop an owner container in the background.
-    pub fn stop_owned_sandbox_background(&self, owner_key: &str) {
-        let backend = Arc::clone(&self.backend);
-        let id = self.sandbox_id_for(owner_key);
-        let handle = tokio::spawn(async move {
-            backend.stop(&id).await;
-        });
+    fn track_background_sandbox_task(&self, handle: tokio::task::JoinHandle<()>) {
         #[cfg(feature = "test-util")]
         {
             let slot = self
@@ -395,6 +389,30 @@ impl SandboxRouter {
             }
         }
         drop(handle);
+    }
+
+    /// Remove an owner container in the background.
+    ///
+    /// The await covers the prepared-session marker and task registration.
+    /// The container command runs on the spawned task.
+    pub async fn remove_owned_sandbox_background(&self, owner_key: &str) {
+        self.clear_prepared_session(owner_key).await;
+        let backend = Arc::clone(&self.backend);
+        let id = self.sandbox_id_for(owner_key);
+        let handle = tokio::spawn(async move {
+            backend.remove_discarded(&id).await;
+        });
+        self.track_background_sandbox_task(handle);
+    }
+
+    /// Stop an owner container in the background.
+    pub fn stop_owned_sandbox_background(&self, owner_key: &str) {
+        let backend = Arc::clone(&self.backend);
+        let id = self.sandbox_id_for(owner_key);
+        let handle = tokio::spawn(async move {
+            backend.stop(&id).await;
+        });
+        self.track_background_sandbox_task(handle);
     }
 
     /// Prepare the sandbox for command execution.

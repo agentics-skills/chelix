@@ -23,7 +23,7 @@ pub use crate::{
         CreateSkillFile, MAX_SKILL_FILE_BYTES, PatchSkillFile, ReadSkillFile, ReplaceSkillFile,
         SkillContent, SkillFileError, SkillMetadata, SkillOrigin, SkillSource,
     },
-    stop_session::{StopSession, StopSessionOutcome},
+    stop_session::{ShutdownExternalBinding, StopSession, StopSessionOutcome},
 };
 
 #[cfg(test)]

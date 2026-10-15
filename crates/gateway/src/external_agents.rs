@@ -353,7 +353,7 @@ impl GatewayExternalAgentService {
         }
     }
 
-    pub(crate) async fn shutdown_binding(&self, session_key: &str) {
+    pub(crate) async fn shutdown_binding(&self, session_key: &str) -> Result<(), String> {
         let sessions = {
             let mut live_sessions = self.live_sessions.lock().await;
             let keys = live_sessions
@@ -365,11 +365,17 @@ impl GatewayExternalAgentService {
                 .filter_map(|key| live_sessions.remove(&key).map(|entry| entry.session))
                 .collect::<Vec<_>>()
         };
+        let mut errors = Vec::new();
         for session in sessions {
             let mut session = session.lock().await;
             if let Err(error) = session.shutdown().await {
-                warn!(%error, session_key, "failed to shut down external agent session");
+                errors.push(error.to_string());
             }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
         }
     }
 
@@ -489,22 +495,23 @@ impl SessionService for ExternalAgentSessionService {
     }
 
     async fn reset(&self, params: Value) -> ServiceResult {
-        if let Some(session_key) = session_key_param(&params) {
-            self.external_agents.shutdown_binding(&session_key).await;
+        if let Some(session_key) = session_key_param(&params)
+            && let Err(error) = self.external_agents.shutdown_binding(&session_key).await
+        {
+            warn!(%error, session_key, "failed to shut down external agent session");
         }
         self.inner.reset(params).await
     }
 
     async fn delete(&self, params: Value) -> ServiceResult {
-        if let Some(session_key) = session_key_param(&params) {
-            self.external_agents.shutdown_binding(&session_key).await;
-        }
         self.inner.delete(params).await
     }
 
     async fn truncate_tail(&self, params: Value) -> ServiceResult {
-        if let Some(session_key) = session_key_param(&params) {
-            self.external_agents.shutdown_binding(&session_key).await;
+        if let Some(session_key) = session_key_param(&params)
+            && let Err(error) = self.external_agents.shutdown_binding(&session_key).await
+        {
+            warn!(%error, session_key, "failed to shut down external agent session");
         }
         self.inner.truncate_tail(params).await
     }
@@ -530,15 +537,6 @@ impl SessionService for ExternalAgentSessionService {
     }
 
     async fn clear_all(&self) -> ServiceResult {
-        for entry in self
-            .external_agents
-            .session_metadata
-            .list()
-            .await
-            .map_err(ServiceError::message)?
-        {
-            self.external_agents.shutdown_binding(&entry.key).await;
-        }
         self.inner.clear_all().await
     }
 
@@ -575,7 +573,9 @@ impl ExternalAgentService for GatewayExternalAgentService {
         if !self.registry.has_kind(kind) {
             return Err(format!("external agent kind is not registered: {kind}").into());
         }
-        self.shutdown_binding(session_key).await;
+        if let Err(error) = self.shutdown_binding(session_key).await {
+            warn!(%error, session_key, "failed to shut down external agent session");
+        }
         self.session_metadata
             .bind_external(
                 session_key,
@@ -624,7 +624,9 @@ impl ExternalAgentService for GatewayExternalAgentService {
                 )));
             },
         }
-        self.shutdown_binding(session_key).await;
+        if let Err(error) = self.shutdown_binding(session_key).await {
+            warn!(%error, session_key, "failed to shut down external agent session");
+        }
         Ok(serde_json::json!({ "ok": true, "sessionKey": session_key }))
     }
 
@@ -649,7 +651,9 @@ impl ExternalAgentService for GatewayExternalAgentService {
     }
 
     async fn shutdown_session(&self, session_key: &str) {
-        self.shutdown_binding(session_key).await;
+        if let Err(error) = self.shutdown_binding(session_key).await {
+            warn!(%error, session_key, "failed to shut down external agent session");
+        }
     }
 }
 
@@ -1038,7 +1042,9 @@ impl ExternalAgentChatService {
         }.await;
         let mut result = result;
         if let Err(error) = &result {
-            self.external_agents.shutdown_binding(&session_key).await;
+            if let Err(shutdown_error) = self.external_agents.shutdown_binding(&session_key).await {
+                warn!(%shutdown_error, session_key, "failed to shut down external agent session");
+            }
             let raw = error.to_string();
             let retained = ui_run.recorded_error(&raw).and_then(|existing| {
                 if existing.is_none() {
@@ -1218,7 +1224,9 @@ impl ChatService for ExternalAgentChatService {
 
     async fn clear(&self, params: Value) -> ServiceResult {
         let session_key = resolve_session_key(&params, &self.state).await?;
-        self.external_agents.shutdown_binding(&session_key).await;
+        if let Err(error) = self.external_agents.shutdown_binding(&session_key).await {
+            warn!(%error, session_key, "failed to shut down external agent session");
+        }
         self.inner.clear(params).await
     }
 

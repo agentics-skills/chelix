@@ -228,10 +228,11 @@ remains until the retention period expires. The period is
 measured from the owner session's existing metadata `updated_at`, which changes
 on archive and other metadata edits. The gateway starts the first scan in the
 background at startup and repeats it every 24 hours. It removes only containers
-matching existing archived owner sessions. Deleting an owner session removes
-its Docker/Podman container with one `rm -fv` command. Apple Container checks
-existence with `list --all`, then issues one `rm --force`. Delegated children
-share that owner container.
+matching existing archived owner sessions. Deleting a session whose
+`sandbox_owner_key` is absent or equal to its own key, while `sandbox.mode` is
+`On`, starts a background `docker rm -fv`, `podman rm -fv`, or Apple Container
+`rm --force`. Its output and status are discarded. A session whose `sandbox_owner_key` names another key does not start
+that command. Delegated children share that owner container.
 
 ## Shared data directory
 

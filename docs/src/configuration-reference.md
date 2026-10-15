@@ -376,8 +376,10 @@ the configured period has elapsed from the owner's existing metadata
 `updated_at`, updated on archive and other metadata edits.
 The first scan runs in the background at gateway startup, then every 24 hours;
 only containers matching existing archived owner sessions are eligible.
-Deleting an owner session issues one `rm -fv` for Docker/Podman. Apple Container
-checks existence with `list --all`, then issues one `rm --force`.
+Deleting a session whose `sandbox_owner_key` is absent or equal to its own key,
+while `sandbox.mode` is `On`, starts a background `docker rm -fv`, `podman rm -fv`,
+or Apple Container `rm --force`. Its output and status are discarded. A session whose `sandbox_owner_key` names another key
+does not start that command.
 
 Session containers persist across stops and are reused with `start`.
 Docker/Podman session sandboxes use explicit `--restart=no`. After a runtime
