@@ -11,7 +11,7 @@ crates/web/
 │   ├── src/                     # Application source
 │   │   ├── app.tsx              # Main entry point
 │   │   ├── tool-lifecycle.ts    # Tool invocation reducer and wire guards
-│   │   ├── tool-permission.ts   # Session auto/moderated toolbar and tool-card gates
+│   │   ├── tool-permission.ts   # Session auto/moderated toolbar, tool-card gates, deny-feedback dialog
 │   │   ├── a2ui-renderer.ts     # Official A2UI Lit chat renderer
 │   │   ├── login-app.tsx        # Login page entry
 │   │   ├── onboarding-app.tsx   # Onboarding wizard entry
@@ -203,6 +203,17 @@ cards:
 - terminal stages render success, rejection, failure, or cancellation; lifecycle
   results remain strings on the wire and are JSON-decoded only when structured
   presentation needs object fields.
+
+`src/tool-permission.ts` puts approve, deny, and skip on the active invocation
+card while a moderated/manual permission is pending. Deny opens the Deny tool
+call dialog. The feedback field fills the height between the title and the
+CANCEL/SEND row and shows its scrollbar when the text is taller than that area.
+At widths up to 767px the dialog occupies a full-width bottom sheet, like the
+session Terminal window. SEND calls `tool.permission.resolve` with decision
+`deny` and feedback equal to the field value after trimming the ends. That trim
+keeps internal line breaks. SEND stays disabled while the trim is empty. CANCEL
+and a backdrop click close the dialog without a decision. The card shows the
+denial text with those line breaks.
 
 Execution progress is backend-authored. `src/ws/tool-helpers.ts` uses the
 snapshot's lifecycle stage for tool rendering and terminal attachment.

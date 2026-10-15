@@ -393,6 +393,7 @@
 .command-error-detail {
   color: var(--error);
   font-size: 0.78rem;
+  white-space: pre-wrap;
 }
 
 .skill-hint {
