@@ -208,6 +208,7 @@ pub(crate) fn register_stop_session(
     chat: Arc<LiveChatService>,
     external: Arc<GatewayExternalAgentService>,
 ) -> anyhow::Result<()> {
+    let external_for_shutdown = Arc::clone(&external);
     call_bus
         .register(move |request: chelix_service_traits::StopSession| {
             let chat = Arc::clone(&chat);
@@ -262,6 +263,19 @@ pub(crate) fn register_stop_session(
                 }
             }
         })
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    call_bus
+        .register(
+            move |request: chelix_service_traits::ShutdownExternalBinding| {
+                let external = Arc::clone(&external_for_shutdown);
+                async move {
+                    external
+                        .shutdown_binding(request.key.as_str())
+                        .await
+                        .map_err(chelix_service_traits::ServiceError::message)
+                }
+            },
+        )
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 

@@ -50,6 +50,8 @@ pub(super) async fn rpc_handler(
         session_key,
     } = request;
     let request_id = id.unwrap_or_else(|| "http-rpc".to_string());
+    let response_request_id = request_id.clone();
+    let response_method = method.clone();
     if let Err(error) = validate_rpc_http_session_key(session_key.as_ref()) {
         return Json(ResponseFrame::err(&request_id, error));
     }
@@ -69,22 +71,38 @@ pub(super) async fn rpc_handler(
             ]
         });
 
-    let response = state
-        .methods
-        .dispatch(chelix_gateway::methods::MethodContext {
-            request_id,
-            method,
-            params,
-            client_conn_id: "http-rpc".to_string(),
-            transport: chelix_gateway::methods::MethodTransport::StatelessHttp {
-                session_id: session_key,
-            },
-            client_role: chelix_protocol::roles::OPERATOR.to_string(),
-            client_scopes: scopes,
-            state: Arc::clone(&state.gateway),
-            channel: None,
-        })
-        .await;
+    let methods = Arc::clone(&state.methods);
+    let gateway = Arc::clone(&state.gateway);
+    let handle = tokio::spawn(async move {
+        methods
+            .dispatch(chelix_gateway::methods::MethodContext {
+                request_id,
+                method,
+                params,
+                client_conn_id: "http-rpc".to_string(),
+                transport: chelix_gateway::methods::MethodTransport::StatelessHttp {
+                    session_id: session_key,
+                },
+                client_role: chelix_protocol::roles::OPERATOR.to_string(),
+                client_scopes: scopes,
+                state: gateway,
+                channel: None,
+            })
+            .await
+    });
+    let response = match handle.await {
+        Ok(response) => response,
+        Err(join_error) => {
+            tracing::error!(%join_error, method = %response_method, "http rpc task panicked");
+            ResponseFrame::err(
+                &response_request_id,
+                ErrorShape::new(
+                    error_codes::INTERNAL,
+                    format!("method '{response_method}' task panicked: {join_error}"),
+                ),
+            )
+        },
+    };
 
     Json(response)
 }

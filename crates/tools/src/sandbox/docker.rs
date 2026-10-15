@@ -1044,6 +1044,20 @@ impl Sandbox for DockerSandbox {
         self.tools_endpoints.lock().await.remove(&name);
     }
 
+    async fn remove_discarded(&self, id: &SandboxId) {
+        let name = self.container_name(id);
+        self.provisioned.lock().await.remove(&name);
+        self.startup_gates.lock().await.remove(&name);
+        self.tools_endpoints.lock().await.remove(&name);
+        let _ = tokio::process::Command::new(self.cli)
+            .args(["rm", "-fv", name.as_str()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
+    }
+
     async fn cleanup(&self, id: &SandboxId) -> Result<()> {
         let name = self.container_name(id);
         force_remove_container(self.cli, &name).await?;

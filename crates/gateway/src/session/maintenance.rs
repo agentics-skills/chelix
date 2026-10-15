@@ -1,27 +1,27 @@
 use super::*;
 
 impl LiveSessionService {
-    pub(super) async fn delete_impl(&self, params: Value) -> ServiceResult {
-        let key = params
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "missing 'key' parameter".to_string())?;
-
-        let force = params
-            .get("force")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let reservation = self.session_mutations.reserve_mutation(key).await;
-        let mutation_permit = reservation.acquire().await.map_err(ServiceError::message)?;
-
+    pub(super) async fn delete_one(&self, key: &str, force: bool) -> ServiceResult {
         let entry = self
             .metadata
             .get(key)
             .await
             .map_err(ServiceError::message)?
-            .ok_or_else(|| ServiceError::message(format!("session '{key}' not found")))?;
+            .ok_or_else(|| ServiceError::message("not found"))?;
         self.preflight_session_delete(&entry, force).await?;
+        self.call_bus
+            .call(chelix_service_traits::StopSession::Session {
+                key: SessionKey::new(key),
+                run_id: None,
+            })
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
+        self.call_bus
+            .call(chelix_service_traits::ShutdownExternalBinding {
+                key: SessionKey::new(key),
+            })
+            .await
+            .map_err(|error| ServiceError::message(error.to_string()))?;
 
         let removed = self
             .metadata
@@ -29,21 +29,17 @@ impl LiveSessionService {
             .await
             .map_err(ServiceError::message)?;
         let Some(removed) = removed else {
-            return Err(ServiceError::message(format!("session '{key}' not found")));
+            return Err(ServiceError::message("not found"));
         };
 
         let mut cleanup_errors = Vec::new();
         self.cleanup_deleted_session(&removed, &mut cleanup_errors)
             .await;
-        drop(mutation_permit);
 
         if cleanup_errors.is_empty() {
             Ok(serde_json::json!({ "ok": true }))
         } else {
-            Err(ServiceError::message(format!(
-                "session metadata deletion committed, but lifecycle cleanup was incomplete: {}",
-                cleanup_errors.join("; ")
-            )))
+            Err(ServiceError::message(cleanup_errors.join("; ")))
         }
     }
 
@@ -171,39 +167,47 @@ impl LiveSessionService {
                         )
                         .await
                     {
-                        errors.push(format!("session '{key}' worktree teardown: {error}"));
+                        errors.push(format!("worktree teardown: {error}"));
                     }
                     if let Err(error) =
                         chelix_projects::WorktreeManager::cleanup(project_dir, key).await
                     {
-                        errors.push(format!("session '{key}' worktree cleanup: {error}"));
+                        errors.push(format!("worktree cleanup: {error}"));
                     }
                 },
                 Ok(None) => {},
                 Err(error) => {
-                    errors.push(format!("session '{key}' project lookup: {error}"));
+                    errors.push(format!("project lookup: {error}"));
                 },
             }
         }
 
         if let Err(error) = self.store.clear(key).await {
-            errors.push(format!("session '{key}' history cleanup: {error}"));
+            errors.push(format!("history cleanup: {error}"));
         }
-        let owner_key = entry.sandbox_owner_key.as_deref().unwrap_or(key);
-        if key == owner_key
-            && let Err(error) = self.sandbox_router.cleanup_owner_sandbox(owner_key).await
-        {
-            errors.push(format!("session '{key}' sandbox cleanup: {error}"));
+        let owns_sandbox = entry
+            .sandbox_owner_key
+            .as_deref()
+            .is_none_or(|owner| owner == key);
+        if owns_sandbox && *self.sandbox_router.mode() == chelix_tools::sandbox::SandboxMode::On {
+            self.sandbox_router
+                .remove_owned_sandbox_background(key)
+                .await;
         }
         if let Some(state_store) = self.state_store.as_ref()
             && let Err(error) = state_store.delete_session(key).await
         {
-            errors.push(format!("session '{key}' state cleanup: {error}"));
+            errors.push(format!("state cleanup: {error}"));
+        }
+        if let Some(share_store) = self.share_store.as_ref()
+            && let Err(error) = share_store.delete_for_session(key).await
+        {
+            errors.push(format!("share delete: {error}"));
         }
         if let Some(queued_prompts) = self.queued_prompts.as_ref()
             && let Err(error) = queued_prompts.clear(SessionKey::new(key.clone())).await
         {
-            errors.push(format!("session '{key}' prompt queue cleanup: {error}"));
+            errors.push(format!("prompt queue cleanup: {error}"));
         }
         if let Some(hooks) = self.hook_registry.as_ref() {
             let payload = chelix_common::hooks::HookPayload::SessionEnd {
@@ -439,7 +443,7 @@ impl LiveSessionService {
             let params = serde_json::json!({ "key": entry.key, "force": true });
             if let Err(error) = self.delete(params).await {
                 warn!(session = %entry.key, %error, "clear_all: failed to delete session");
-                failures.push(format!("session '{}': {error}", entry.key));
+                failures.push(error.to_string());
                 continue;
             }
             deleted += 1;

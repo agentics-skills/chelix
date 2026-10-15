@@ -536,10 +536,11 @@ remains until the configured period has elapsed from the owner's
 existing session metadata `updated_at`. Archive and other metadata edits update
 that timestamp. The gateway launches the first reconciliation scan
 in the background at startup, then repeats it every 24 hours. Only containers
-matching existing archived owner sessions are eligible. Deleting an owner
-session issues one `rm -fv` for Docker/Podman. Apple Container checks existence
-with `list --all`, then issues one `rm --force`. Delegated children use that
-same container.
+matching existing archived owner sessions are eligible. Deleting a session whose
+`sandbox_owner_key` is absent or equal to its own key, while `sandbox.mode` is
+`On`, starts a background `docker rm -fv`, `podman rm -fv`, or Apple Container
+`rm --force`. Its output and status are discarded. A session whose `sandbox_owner_key` names another key does not start
+that command. Delegated children use that same container.
 
 ## Deterministic image identity
 

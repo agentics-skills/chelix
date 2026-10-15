@@ -375,6 +375,9 @@ pub trait Sandbox: Send + Sync {
     /// Stop one sandbox container.
     async fn stop(&self, _id: &SandboxId) {}
 
+    /// Remove one sandbox container without reporting the command status.
+    async fn remove_discarded(&self, _id: &SandboxId) {}
+
     /// Whether this backend provides actual isolation.
     /// Returns `false` for `NoSandbox` (pass-through to host).
     fn is_real(&self) -> bool {
