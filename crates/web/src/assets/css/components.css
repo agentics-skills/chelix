@@ -748,6 +748,53 @@
   background: var(--accent-subtle);
 }
 
+/* ── Deny tool call modal ── */
+
+.tool-permission-deny-modal {
+  width: min(760px, 94vw);
+  max-width: 94vw;
+  height: min(560px, 78vh);
+}
+
+.tool-permission-deny-header {
+  padding: 8px 10px;
+}
+
+.tool-permission-deny-body {
+  min-height: 0;
+  flex: 1;
+  padding: 8px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.tool-permission-deny-input {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
+.tool-permission-deny-input:focus {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+.tool-permission-deny-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* ── Channels Page ── */
 
 .channel-form {

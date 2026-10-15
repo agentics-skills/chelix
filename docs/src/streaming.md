@@ -196,7 +196,9 @@ When a session is in `moderated` / `manual` mode, the executor waits for an
 operator decision after `waiting_for_execution` and after `result_ready`.
 Those waits are ephemeral in-memory events (`tool.permission.requested` /
 `tool.permission.resolved`) and are not persisted as lifecycle stages. Skip and
-deny complete the invocation as a normal failed `completed` result.
+deny complete the invocation as a normal failed `completed` result. Deny is
+accepted only when feedback is non-empty after trim. The completed error text
+is `Tool execution was declined by the user. Feedback: ` followed by the feedback, including the feedback's line breaks.
 
 Persisted lifecycle records use `role: "tool_lifecycle"` and retain `runId`,
 per-call `sequence`, `emittedAtMs`, and received `contextBudget`. The semantic

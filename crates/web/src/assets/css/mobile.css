@@ -665,6 +665,26 @@ html {
   }
 }
 
+@media (max-width: 767px) {
+  .tool-permission-deny-modal {
+    height: 94vh;
+  }
+
+  .tool-permission-deny-header {
+    padding: 4px 6px;
+  }
+
+  .tool-permission-deny-body {
+    padding: 2px;
+    gap: 4px;
+  }
+
+  .tool-permission-deny-input {
+    font-size: 16px;
+    padding: 6px 8px;
+  }
+}
+
 /* ── Touch-Friendly Buttons ── */
 
 @media (max-width: 767px) {
