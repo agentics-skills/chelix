@@ -9,7 +9,7 @@ mod credential_env;
 mod session_tools;
 mod sub_agent_tools;
 
-use credential_env::{CredentialEnvVarProvider, ensure_sandbox_api_key};
+use credential_env::CredentialEnvVarProvider;
 
 use {
     chelix_providers::ProviderRegistry,
@@ -545,19 +545,10 @@ pub(super) async fn complete_startup(
     {
         let broadcaster: Arc<dyn chelix_tools::approval::ApprovalBroadcaster> =
             Arc::new(GatewayApprovalBroadcaster::new(Arc::clone(&state)));
-        let scheme = if tls_enabled_for_gateway {
-            "https"
-        } else {
-            "http"
-        };
-        let sandbox_gateway_url = Some(format!("{scheme}://host.docker.internal:{port}"));
-        let sandbox_api_key = ensure_sandbox_api_key(&credential_store).await;
 
         let env_provider: Arc<dyn chelix_tools::command::EnvVarProvider> =
             Arc::new(CredentialEnvVarProvider {
                 store: Arc::clone(&credential_store),
-                gateway_url: sandbox_gateway_url,
-                sandbox_api_key: sandbox_api_key.map(Secret::new),
             });
         tools_service.set_env_provider(Arc::clone(&env_provider))?;
 

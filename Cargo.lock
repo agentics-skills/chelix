@@ -1392,21 +1392,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chelix-ctl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "uuid",
-]
-
-[[package]]
 name = "chelix-duckduckgo"
 version = "0.1.0"
 dependencies = [
