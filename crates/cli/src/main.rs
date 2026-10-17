@@ -29,11 +29,9 @@ mod browser_commands;
 mod config_commands;
 mod data_commands;
 mod db_commands;
-mod doctor_commands;
 mod hooks_commands;
 mod memory_commands;
 mod sandbox_commands;
-mod service_commands;
 mod voicecall_commands;
 
 // Not called from Rust code. The dependency exists to unify the `vendored`
@@ -116,8 +114,6 @@ enum Commands {
     Models,
     /// Interactive onboarding wizard.
     Onboard,
-    /// Config validation and migration.
-    Doctor,
     /// Authentication management for OAuth providers.
     Auth {
         #[command(subcommand)]
@@ -158,11 +154,6 @@ enum Commands {
         #[command(subcommand)]
         action: memory_commands::MemoryAction,
     },
-    /// Install or manage chelix as an OS service.
-    Service {
-        #[command(subcommand)]
-        action: service_commands::ServiceAction,
-    },
     /// Voice call management (initiate, status, end).
     VoiceCall {
         #[command(subcommand)]
@@ -176,7 +167,6 @@ enum Commands {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReadOnlyDiagnostic {
     ConfigCheck { verbose: bool },
-    Doctor,
 }
 
 fn read_only_diagnostic(command: Option<&Commands>) -> Option<ReadOnlyDiagnostic> {
@@ -184,7 +174,6 @@ fn read_only_diagnostic(command: Option<&Commands>) -> Option<ReadOnlyDiagnostic
         Some(Commands::Config {
             action: config_commands::ConfigAction::Check { verbose },
         }) => Some(ReadOnlyDiagnostic::ConfigCheck { verbose: *verbose }),
-        Some(Commands::Doctor) => Some(ReadOnlyDiagnostic::Doctor),
         _ => None,
     }
 }
@@ -385,7 +374,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(diagnostic) = read_only_diagnostic(cli.command.as_ref()) {
         return match diagnostic {
             ReadOnlyDiagnostic::ConfigCheck { verbose } => config_commands::check(verbose),
-            ReadOnlyDiagnostic::Doctor => doctor_commands::handle_doctor().await,
         };
     }
 
@@ -431,10 +419,8 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Data { action }) => data_commands::handle_data(action).await,
         Some(Commands::Db { action }) => db_commands::handle_db(action).await,
         Some(Commands::Memory { action }) => memory_commands::handle_memory(action).await,
-        Some(Commands::Service { action }) => service_commands::handle_service(action),
         Some(Commands::Skills { action }) => handle_skills(action).await,
         Some(Commands::Config { action }) => config_commands::handle_config(action).await,
-        Some(Commands::Doctor) => doctor_commands::handle_doctor().await,
         Some(Commands::Hooks { action }) => hooks_commands::handle_hooks(action).await,
         Some(Commands::VoiceCall { action }) => voicecall_commands::handle_voicecall(action).await,
         #[cfg(feature = "tls")]
@@ -512,10 +498,6 @@ mod tests {
 
     #[test]
     fn read_only_diagnostics_bypass_strict_startup_initialization() {
-        assert_eq!(
-            read_only_diagnostic(Some(&Commands::Doctor)),
-            Some(ReadOnlyDiagnostic::Doctor)
-        );
         assert_eq!(
             read_only_diagnostic(Some(&Commands::Config {
                 action: ConfigAction::Check { verbose: true },

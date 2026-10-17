@@ -380,8 +380,8 @@ enabled = true
 cert_path = "~/.config/chelix/cert.pem"
 key_path = "~/.config/chelix/key.pem"
 # If custom paths are not set and auto_generate is true, Chelix generates a
-# local CA and server certificate for localhost/private-network names. Public
-# VPS IP access should set public_ip; public domains should use a reverse proxy
+# local CA and server certificate for localhost/private-network names. Direct
+# public IP access should set public_ip; public domains should use a reverse proxy
 # or custom CA-issued certificates.
 # public_ip = "203.0.113.10"
 

@@ -47,7 +47,6 @@
 - [Webhooks](webhooks.md)
 - [Skill Self-Extension](skill-tools.md)
 - [Mobile PWA](mobile-pwa.md)
-- [Service Management](service.md)
 
 ---
 
@@ -71,7 +70,6 @@
 
 - [Docker](docker.md)
 - [Cloud Deploy](cloud-deploy.md)
-- [VPS Deployment](deploy-vps.md)
 
 ---
 

@@ -55,7 +55,7 @@ After trusting the CA, restart your browser. The warning will not appear again
 This local CA only solves certificate trust for names included in the generated
 server certificate, such as `localhost`, `chelix.localhost`, the container or
 host name, and sometimes an inferred non-loopback bind IP. It does not make a
-certificate valid for an arbitrary public VPS IP address or hosting-provider
+certificate valid for an arbitrary public IP address or hosting-provider
 domain. Browsers still reject those targets with a certificate name mismatch if
 they are not present in the certificate SAN list. IP-address URLs require an IP
 SAN. For direct `https://<public-ip>:13131` access, set `tls.public_ip` to that
