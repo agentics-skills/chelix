@@ -5,12 +5,6 @@ export function makeTelegramIcon(): HTMLSpanElement {
 	return el;
 }
 
-export function makeMatrixIcon(): HTMLSpanElement {
-	const el = document.createElement("span");
-	el.className = "icon icon-matrix";
-	return el;
-}
-
 export function makeCronIcon(): HTMLSpanElement {
 	const el = document.createElement("span");
 	el.className = "icon icon-cron";

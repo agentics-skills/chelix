@@ -539,8 +539,8 @@ Docker `cp` into that rootfs fails explicitly. See
 
 | Key              | Type                       | Default                                                                                | Description                                                                                                                                                                    |
 | ---------------- | -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `offered`        | array of string            | `["telegram", "whatsapp", "matrix", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
-| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `matrix`, `signal`, `telephony`. Channel types are validated against this set. |
+| `offered`        | array of string            | `["telegram", "whatsapp", "signal"]` | Which channel types are offered in the web UI (onboarding + channels page).                                                                                                    |
+| `<channel_type>` | map of `serde_json::Value` | `{}`                                                                          | Account configs keyed by account name. Known types: `telegram`, `whatsapp`, `signal`, `telephony`. Channel types are validated against this set. |
 
 Each channel account (`channels.<channel_type>.<account_name>`) is an arbitrary
 JSON object that may contain provider-specific keys plus a `tools` sub-block

@@ -1373,39 +1373,4 @@ mod tests {
         assert_eq!(media.mime_type, "image/png");
         assert_eq!(media.url, "data:image/png;base64,cG5n");
     }
-
-    #[tokio::test]
-    async fn generated_image_payload_dispatches_to_matrix_as_media() {
-        let outbound = Arc::new(RecordingOutbound::default());
-        let targets = vec![ChannelReplyTarget {
-            channel_type: ChannelType::Matrix,
-            account_id: "matrix-main".into(),
-            chat_id: "!room:example.org".into(),
-            message_id: Some("$event".into()),
-            thread_id: None,
-        }];
-
-        dispatch_screenshot_to_targets(
-            outbound.clone(),
-            targets,
-            "data:image/webp;base64,d2VicA==",
-            Some("Generated image: logo"),
-        )
-        .await;
-
-        let sent = outbound
-            .sent_media
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].account_id, "matrix-main");
-        assert_eq!(sent[0].to, "!room:example.org");
-        assert_eq!(sent[0].reply_to.as_deref(), Some("$event"));
-        assert_eq!(sent[0].payload.text, "Generated image: logo");
-        let Some(media) = sent[0].payload.media.as_ref() else {
-            panic!("media payload");
-        };
-        assert_eq!(media.mime_type, "image/webp");
-        assert_eq!(media.url, "data:image/webp;base64,d2VicA==");
-    }
 }

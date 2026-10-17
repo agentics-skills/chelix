@@ -28,7 +28,6 @@ export interface RpcMethodMap {
 	// ── Channels ────────────────────────────────────────────────
 	"channels.add": unknown;
 	"channels.remove": unknown;
-	"channels.retry_ownership": unknown;
 	"channels.status": unknown;
 	"channels.update": unknown;
 

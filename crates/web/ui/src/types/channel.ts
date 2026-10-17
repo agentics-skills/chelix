@@ -6,7 +6,7 @@
  * Channel type identifier.
  * Serialised as lowercase via `#[serde(rename_all = "lowercase")]`.
  */
-export type ChannelType = "telegram" | "whatsapp" | "matrix" | "signal" | "telephony";
+export type ChannelType = "telegram" | "whatsapp" | "signal" | "telephony";
 
 /**
  * Runtime constants for `ChannelType` values.
@@ -15,7 +15,6 @@ export type ChannelType = "telegram" | "whatsapp" | "matrix" | "signal" | "telep
 export const ChannelType = {
 	Telegram: "telegram" as const,
 	WhatsApp: "whatsapp" as const,
-	Matrix: "matrix" as const,
 	Signal: "signal" as const,
 	Telephony: "telephony" as const,
 } satisfies Record<string, ChannelType>;

@@ -29,7 +29,6 @@
 - [Voice](voice.md)
 - [Channels](channels.md)
   - [Telegram](telegram.md)
-  - [Matrix](matrix.md)
   - [WhatsApp](whatsapp.md)
   - [Signal](signal.md)
   - [Telephony (Phone Calls)](channels/telephony.md)

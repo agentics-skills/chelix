@@ -25,7 +25,6 @@ default-members = [
   "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
-  "crates/matrix",
   "crates/mcp",
   "crates/mcp-agent-bridge",
   "crates/media",
@@ -82,7 +81,6 @@ members = [
   "crates/home-assistant",
   "crates/httpd",
   "crates/linkup",
-  "crates/matrix",
   "crates/mcp",
   "crates/media",
   "crates/memory",
@@ -116,11 +114,6 @@ members = [
 resolver = "2"
 
 [patch.crates-io]
-# Widen libsqlite3-sys pin (0.30.1 → >=0.30.1,<0.36.0) so sqlx-sqlite 0.8.6
-# can coexist with matrix-sdk-sqlite's rusqlite 0.37 (libsqlite3-sys 0.35).
-# Remove once sqlx ≥ 0.9 ships stable.
-sqlx-core   = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c7962c6450faf31591c4e0782c23" }
-sqlx-sqlite = { git = "https://github.com/moltis-org/sqlx", rev = "33747ad2e2d0c7962c6450faf31591c4e0782c23" }
 # Track https://github.com/GnomedDev/proc-macro-error-2/issues/13 and remove this
 # patch once the issue is closed and its future-incompatibility fix is released.
 proc-macro-error2 = { git = "https://github.com/GnomedDev/proc-macro-error-2", rev = "53ff94b61c678593158db1a3d50269c6f0de0db7" }
@@ -191,7 +184,6 @@ gix               = "0.83"
 hex               = "0.4"
 hmac              = "0.12"
 jsonschema        = { default-features = false, version = "0.49" }
-matrix-sdk        = { default-features = false, features = ["e2e-encryption", "markdown", "native-tls", "sqlite"], version = "0.16" }
 mockito           = "1.7"
 serde_yaml        = "0.9"
 tokio-tungstenite = "0.26"
@@ -320,7 +312,6 @@ chelix-google           = { path = "crates/google" }
 chelix-home-assistant   = { path = "crates/home-assistant" }
 chelix-httpd            = { default-features = false, path = "crates/httpd" }
 chelix-linkup           = { path = "crates/linkup" }
-chelix-matrix           = { path = "crates/matrix" }
 chelix-mcp              = { path = "crates/mcp" }
 chelix-mcp-agent-bridge = { path = "crates/mcp-agent-bridge" }
 chelix-media            = { path = "crates/media" }

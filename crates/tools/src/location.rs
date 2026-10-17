@@ -632,33 +632,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn channel_location_success_for_matrix_session() {
-        let tool = LocationTool::new(Arc::new(MockRequester {
-            cached: None,
-            response: LocationResult {
-                location: None,
-                error: None,
-            },
-            channel_response: Some(LocationResult {
-                location: Some(BrowserLocation {
-                    latitude: 38.7223,
-                    longitude: -9.1393,
-                    accuracy: 0.0,
-                }),
-                error: None,
-            }),
-        }));
-
-        let result = tool
-            .execute(serde_json::json!({ "_session_key": "matrix:bot1:!room:matrix.org" }))
-            .await
-            .unwrap();
-        assert_eq!(result["latitude"], 38.7223);
-        assert_eq!(result["longitude"], -9.1393);
-        assert_eq!(result["source"], "channel");
-    }
-
-    #[tokio::test]
     async fn channel_location_not_supported_for_non_channel_session() {
         let tool = LocationTool::new(Arc::new(MockRequester {
             cached: None,
@@ -686,7 +659,7 @@ mod tests {
 
     #[test]
     fn session_key_supports_channel_location_accepts_channel_like_prefixes() {
-        assert!(session_key_supports_channel_location("matrix:bot:room"));
+        assert!(session_key_supports_channel_location("signal:bot:room"));
         assert!(session_key_supports_channel_location("telegram:bot:chat"));
     }
 

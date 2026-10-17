@@ -9,7 +9,6 @@ capabilities that control what features are available.
 | Channel         | Inbound Mode                 | Public URL Required | Key Capabilities                                                                                                                         |
 | --------------- | ---------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Telegram        | Polling                      | No                  | Streaming, voice ingest, reactions, OTP, location                                                                                        |
-| Matrix          | Gateway (sync loop)          | No                  | Streaming, voice ingest, interactive polls, threads, reactions, OTP, location, encrypted chats, device verification, ownership bootstrap |
 | WhatsApp        | Gateway (WebSocket)          | No                  | Streaming, voice ingest, OTP, pairing, location                                                                                          |
 | Signal          | Gateway (signal-cli SSE)     | No                  | OTP, DMs, groups, outbound text                                                                                                          |
 
@@ -23,8 +22,7 @@ or open port is needed. Used by Telegram.
 ### Gateway / WebSocket
 
 The bot opens a persistent outbound WebSocket connection to the platform and
-receives events in real time, or uses a persistent sync loop over outbound HTTP.
-No public URL needed. Used by Matrix, and WhatsApp.
+receives events in real time. No public URL needed. Used by WhatsApp.
 
 ### Webhook
 
@@ -73,12 +71,6 @@ internal `channels` table in `data_dir()/chelix.db`. They are not currently
 wrapped by the Chelix vault, so treat local access to that database as access to
 the configured channel credentials.
 
-Some channel integrations also have platform-specific limits. For Matrix,
-encrypted chats require password auth. Access-token auth is only suitable for
-plain Matrix traffic because Chelix cannot import an existing device's private
-E2EE keys from an access token alone. See [Matrix](./matrix.md) for the full
-setup, ownership, verification, and troubleshooting flow.
-
 `chelix.toml` and the web UI are both loaded at startup. If the same
 `(channel_type, account_id)` exists in both, the `chelix.toml` entry wins.
 
@@ -90,11 +82,6 @@ token = "123456:ABC-DEF..."
 dm_policy = "allowlist"
 allowlist = ["alice", "bob"]
 
-[channels.matrix.my_matrix_bot]
-homeserver = "https://matrix.example.com"
-access_token = "syt_..."
-user_id = "@bot:example.com"
-
 [channels.whatsapp.my_wa]
 dm_policy = "open"
 
@@ -104,19 +91,10 @@ http_url = "http://127.0.0.1:8080"
 ```
 
 For detailed configuration, see the per-channel pages: [Telegram](telegram.md),
-[Matrix](matrix.md),
 [WhatsApp](whatsapp.md), [Signal](signal.md).
 
 You can also use the web UI's **Channels** tab for guided setup with each
 platform. Web-added channels do not get written back into `chelix.toml`.
-
-For Matrix specifically, the web UI now supports the full normal setup flow:
-
-- password auth is the default because it unlocks encrypted chats
-- dedicated bot accounts default to `chelix_owned` so Chelix can bootstrap
-  cross-signing and recovery
-- older Matrix accounts that need one external approval expose that approval
-  flow in the channel card instead of failing silently
 
 ## Proactive Outbound Messaging
 
@@ -200,8 +178,7 @@ Controls who can interact with the bot in group chats / channels.
 | `"allowlist"` | Only groups on the allowlist are allowed |
 | `"disabled"`  | Group messages are silently ignored      |
 
-The group allowlist field name varies by channel: `group_allowlist` (Telegram,
-WhatsApp), `room_allowlist` (Matrix).
+The group allowlist field is `group_allowlist` (Telegram, WhatsApp).
 
 ### Mention Mode
 
@@ -226,7 +203,7 @@ All allowlist fields across all channels share the same matching behavior:
 
 ### OTP Self-Approval
 
-Channels that support OTP (Telegram, Matrix, WhatsApp) allow
+Channels that support OTP (Telegram, WhatsApp) allow
 non-allowlisted users to self-approve by entering a 6-digit code. The code
 appears in the web UI under **Channels > Senders**. See each channel's page for
 details.

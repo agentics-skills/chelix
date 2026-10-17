@@ -74,16 +74,15 @@ function prettyConfigJson(value: unknown): string {
 interface AllowlistInputProps {
 	value: string[];
 	onChange: (items: string[]) => void;
-	preserveAt?: boolean;
 	placeholder?: string;
 	ariaLabel?: string;
 }
 
-export function AllowlistInput({ value, onChange, preserveAt, placeholder, ariaLabel }: AllowlistInputProps): VNode {
+export function AllowlistInput({ value, onChange, placeholder, ariaLabel }: AllowlistInputProps): VNode {
 	const input = useSignal("");
 
 	function addTag(raw: string): void {
-		const tag = preserveAt ? raw.trim() : raw.trim().replace(/^@/, "");
+		const tag = raw.trim().replace(/^@/, "");
 		if (tag && !value.includes(tag)) onChange([...value, tag]);
 		input.value = "";
 	}

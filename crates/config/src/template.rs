@@ -486,10 +486,10 @@ terminal_size = "115x58"             # 115 chars x 58
 # not in this file. Keep channel config here only for manual TOML management.
 
 # [channels]
-# offered = ["telegram", "whatsapp", "matrix", "signal"]
+# offered = ["telegram", "whatsapp", "signal"]
 
 # See the docs for full channel configuration examples
-# (WhatsApp, Telegram, Matrix, Signal).
+# (WhatsApp, Telegram, Signal).
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HOOKS

@@ -37,7 +37,7 @@ impl AgentTool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a proactive message to any configured channel account/chat (Telegram, Matrix, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
+        "Send a proactive message to any configured channel account/chat (Telegram, WhatsApp). Use this for alerts, reminders, and scheduled outreach."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -59,7 +59,7 @@ impl AgentTool for SendMessageTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["telegram", "matrix", "whatsapp"],
+                    "enum": ["telegram", "whatsapp"],
                     "description": "Optional channel type hint when account ids may overlap across channel types."
                 },
                 "reply_to": {
@@ -229,7 +229,6 @@ impl AgentTool for UpdateChannelSettingsTool {
                     "enum": [
                         "telegram",
                         "whatsapp",
-                        "matrix",
                         "signal",
                         "telephony"
                     ],
@@ -793,10 +792,6 @@ mod tests {
             Ok(self.update_result.clone())
         }
 
-        async fn retry_ownership(&self, _params: Value) -> ServiceResult {
-            Ok(json!({}))
-        }
-
         async fn senders_list(&self, _params: Value) -> ServiceResult {
             Ok(json!({}))
         }
@@ -929,10 +924,6 @@ mod tests {
             }
 
             async fn update(&self, _: Value) -> ServiceResult {
-                Ok(json!({}))
-            }
-
-            async fn retry_ownership(&self, _: Value) -> ServiceResult {
                 Ok(json!({}))
             }
 
@@ -1284,8 +1275,8 @@ mod tests {
     async fn update_channel_settings_rejects_stream_mode_for_unsupported_channel() {
         let service = Arc::new(RecordingChannelService::new());
         let store = Arc::new(MemoryChannelStore::new(vec![stored_channel(
-            "mx-main",
-            "matrix",
+            "sig-main",
+            "signal",
             json!({}),
         )]));
         let tool = UpdateChannelSettingsTool::new(
@@ -1295,23 +1286,23 @@ mod tests {
 
         let err = tool
             .execute(json!({
-                "account_id": "mx-main",
+                "account_id": "sig-main",
                 "settings": {
                     "stream_mode": "off"
                 }
             }))
             .await
-            .expect_err("matrix should reject stream mode settings");
+            .expect_err("signal should reject stream mode settings");
 
         assert_eq!(
             err.to_string(),
-            "'stream_mode' is not supported for channel type 'matrix'"
+            "'stream_mode' is not supported for channel type 'signal'"
         );
         assert!(service.updated.lock().await.is_none());
     }
 
     #[tokio::test]
-    async fn send_message_tool_schema_lists_matrix_and_telegram() {
+    async fn send_message_tool_schema_lists_telegram_and_whatsapp() {
         let tool = SendMessageTool::new(Arc::new(RecordingChannelService::new()));
         let schema = tool.parameters_schema();
         let channel_types = schema["properties"]["type"]["enum"]
@@ -1319,6 +1310,6 @@ mod tests {
             .expect("channel type enum");
 
         assert!(channel_types.iter().any(|value| value == "telegram"));
-        assert!(channel_types.iter().any(|value| value == "matrix"));
+        assert!(channel_types.iter().any(|value| value == "whatsapp"));
     }
 }

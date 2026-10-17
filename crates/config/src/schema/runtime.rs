@@ -215,7 +215,7 @@ pub struct McpOAuthOverrideEntry {
 ///
 /// Kept in `chelix-config` (not `chelix-channels`) so the config crate stays
 /// independent of the channels crate while still validating channel names.
-pub const KNOWN_CHANNEL_TYPES: &[&str] = &["telegram", "whatsapp", "matrix", "signal", "telephony"];
+pub const KNOWN_CHANNEL_TYPES: &[&str] = &["telegram", "whatsapp", "signal", "telephony"];
 
 /// Per-chat-type tool policy for a channel account.
 ///
@@ -258,7 +258,7 @@ pub struct ChannelToolPolicyOverride {
 #[serde(default)]
 pub struct ChannelsConfig {
     /// Which channel types are offered in the web UI (onboarding + channels page).
-    /// Defaults to `["telegram", "whatsapp", "matrix", "signal"]`.
+    /// Defaults to `["telegram", "whatsapp", "signal"]`.
     #[serde(
         default = "default_channels_offered",
         skip_serializing_if = "Vec::is_empty"
@@ -276,29 +276,20 @@ pub struct ChannelsConfig {
     /// Telephony (phone call) accounts, keyed by account ID.
     #[serde(default)]
     pub telephony: HashMap<String, serde_json::Value>,
-    /// Known channel types stored outside the named fields, including Matrix.
-    #[serde(flatten, default)]
-    pub extra: HashMap<String, HashMap<String, serde_json::Value>>,
 }
 
 impl ChannelsConfig {
     /// Paths and names of channel types outside the supported set.
     pub(crate) fn invalid_channel_types(&self) -> Vec<(String, String)> {
         let mut invalid: Vec<_> = self
-            .all_channel_configs()
-            .into_iter()
-            .filter(|(channel_type, _)| !KNOWN_CHANNEL_TYPES.contains(channel_type))
-            .map(|(channel_type, _)| (format!("channels.{channel_type}"), channel_type.to_string()))
+            .offered
+            .iter()
+            .enumerate()
+            .filter(|(_, channel_type)| !KNOWN_CHANNEL_TYPES.contains(&channel_type.as_str()))
+            .map(|(index, channel_type)| {
+                (format!("channels.offered[{index}]"), channel_type.clone())
+            })
             .collect();
-        invalid.extend(
-            self.offered
-                .iter()
-                .enumerate()
-                .filter(|(_, channel_type)| !KNOWN_CHANNEL_TYPES.contains(&channel_type.as_str()))
-                .map(|(index, channel_type)| {
-                    (format!("channels.offered[{index}]"), channel_type.clone())
-                }),
-        );
         invalid.sort();
         invalid
     }
@@ -316,14 +307,9 @@ impl ChannelsConfig {
         ]
     }
 
-    /// Iterate all channel configs (named + extra) as `(channel_type, accounts)` pairs.
+    /// Iterate named channel configs as `(channel_type, accounts)` pairs.
     pub fn all_channel_configs(&self) -> Vec<(&str, &HashMap<String, serde_json::Value>)> {
-        let mut v: Vec<(&str, &HashMap<String, serde_json::Value>)> =
-            self.named_fields().into_iter().collect();
-        for (ct, accounts) in &self.extra {
-            v.push((ct.as_str(), accounts));
-        }
-        v
+        self.named_fields().into_iter().collect()
     }
 
     /// Extract the `tools` sub-object for a specific channel account.
@@ -347,12 +333,7 @@ impl ChannelsConfig {
 }
 
 fn default_channels_offered() -> Vec<String> {
-    vec![
-        "telegram".into(),
-        "whatsapp".into(),
-        "matrix".into(),
-        "signal".into(),
-    ]
+    vec!["telegram".into(), "whatsapp".into(), "signal".into()]
 }
 
 impl Default for ChannelsConfig {
@@ -363,7 +344,6 @@ impl Default for ChannelsConfig {
             whatsapp: HashMap::new(),
             signal: HashMap::new(),
             telephony: HashMap::new(),
-            extra: HashMap::new(),
         }
     }
 }

@@ -53,7 +53,6 @@ webauthn-rs      = { features = ["danger-allow-state-serialisation"], workspace 
 
 [features]
 default = [
-  "matrix",
   "mdns",
   "metrics",
   "prometheus",
@@ -65,7 +64,6 @@ default = [
   "voice",
   "web-ui",
 ]
-matrix = ["chelix-gateway/matrix"]
 mdns = ["chelix-gateway/mdns", "dep:hostname"]
 metrics = ["chelix-gateway/metrics", "dep:chelix-metrics"]
 prometheus = ["chelix-gateway/prometheus", "metrics"]

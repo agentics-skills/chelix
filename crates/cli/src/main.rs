@@ -198,12 +198,7 @@ enum SkillAction {
 
 fn default_telemetry_filter(log_level: &str) -> EnvFilter {
     let mut filter = EnvFilter::new(log_level);
-    for directive in [
-        "chromiumoxide=off",
-        "matrix_sdk=warn",
-        "matrix_sdk_base=warn",
-        "matrix_sdk_crypto=error",
-    ] {
+    for directive in ["chromiumoxide=off"] {
         if let Ok(directive) = directive.parse() {
             filter = filter.add_directive(directive);
         }
@@ -491,9 +486,6 @@ mod tests {
         let filter = default_telemetry_filter("info").to_string();
         assert!(filter.contains("info"));
         assert!(filter.contains("chromiumoxide=off"));
-        assert!(filter.contains("matrix_sdk=warn"));
-        assert!(filter.contains("matrix_sdk_base=warn"));
-        assert!(filter.contains("matrix_sdk_crypto=error"));
     }
 
     #[test]
