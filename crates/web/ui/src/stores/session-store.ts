@@ -28,8 +28,6 @@ interface NormalizedSessionMeta {
 	parentSessionKey: string;
 	forkPoint: number | null;
 	agentId: string;
-	externalAgentKind: string | null;
-	externalSessionId: string | null;
 	toolPermissionMode: "auto" | "moderated";
 	toolPermissionType: "manual";
 	archived: boolean | undefined;
@@ -47,10 +45,6 @@ function numberValue(value: number | undefined): number {
 
 function nullableValue<T>(value: T | null | undefined): T | null {
 	return value ?? null;
-}
-
-function firstNonEmptyString(values: Array<string | null | undefined>): string | null {
-	return values.find(Boolean) || null;
 }
 
 function normalizeSessionMeta(
@@ -75,8 +69,6 @@ function normalizeSessionMeta(
 		parentSessionKey: stringValue(serverData.parentSessionKey),
 		forkPoint: nullableValue(serverData.forkPoint),
 		agentId: stringValue(serverData.agent_id),
-		externalAgentKind: firstNonEmptyString([serverData.external_agent_kind, serverData.externalAgentKind]),
-		externalSessionId: firstNonEmptyString([serverData.externalSessionId]),
 		toolPermissionMode:
 			serverData.toolPermissionMode === "moderated"
 				? "moderated"
@@ -116,8 +108,6 @@ export class Session {
 	parentSessionKey: string;
 	forkPoint: number | null;
 	agent_id: string;
-	external_agent_kind: string | null;
-	externalSessionId: string | null;
 	toolPermissionMode: "auto" | "moderated";
 	toolPermissionType: "manual";
 	archived: boolean | undefined;
@@ -156,8 +146,6 @@ export class Session {
 		this.parentSessionKey = normalized.parentSessionKey;
 		this.forkPoint = normalized.forkPoint;
 		this.agent_id = normalized.agentId;
-		this.external_agent_kind = normalized.externalAgentKind;
-		this.externalSessionId = normalized.externalSessionId;
 		this.toolPermissionMode = normalized.toolPermissionMode;
 		this.toolPermissionType = normalized.toolPermissionType;
 		this.archived = normalized.archived;
@@ -207,8 +195,6 @@ export class Session {
 		this.parentSessionKey = normalized.parentSessionKey;
 		this.forkPoint = normalized.forkPoint;
 		this.agent_id = normalized.agentId;
-		this.external_agent_kind = normalized.externalAgentKind;
-		this.externalSessionId = normalized.externalSessionId;
 		this.toolPermissionMode = normalized.toolPermissionMode;
 		this.toolPermissionType = normalized.toolPermissionType;
 		this.archived = normalized.archived;
@@ -255,8 +241,6 @@ export class Session {
 			preview: this.preview,
 			archived: this.archived,
 			agent_id: this.agent_id,
-			external_agent_kind: this.external_agent_kind,
-			externalSessionId: this.externalSessionId,
 			toolPermissionMode: this.toolPermissionMode,
 			toolPermissionType: this.toolPermissionType,
 			version: this.version,

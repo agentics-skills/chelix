@@ -237,10 +237,8 @@ async fn build_recent_sessions_snapshot(gw: &GatewayState, limit: usize) -> Vec<
             .map(|text| truncate_preview(text, SESSION_PREVIEW_MAX_CHARS));
         let agent_id = entry.agent_id.clone();
         let agent_id_camel = agent_id.clone();
-        let model = entry.model().map(str::to_string);
-        let reasoning_effort = entry
-            .reasoning_effort()
-            .map(|effort| effort.as_str().to_string());
+        let model = entry.model().to_string();
+        let reasoning_effort = entry.reasoning_effort().as_str().to_string();
 
         recent.push(serde_json::json!({
             "id": entry.id,

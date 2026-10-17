@@ -200,14 +200,9 @@ pub(in crate::channel_events) async fn handle_agent(
         .await
         .map_err(ChannelError::unavailable)?;
         session_metadata
-            .assign_llm_agent(session_key, chosen_id, &model_reasoning)
+            .assign_agent(session_key, chosen_id, &model_reasoning)
             .await
             .map_err(|error| ChannelError::external("setting session agent", error))?;
-        state
-            .services
-            .external_agent
-            .shutdown_session(session_key)
-            .await;
 
         let emoji = chosen.emoji.clone().unwrap_or_default();
         if emoji.is_empty() {
@@ -238,7 +233,7 @@ pub(in crate::channel_events) async fn handle_model(
         .get(session_key)
         .await
         .map_err(ChannelError::unavailable)?
-        .and_then(|entry| entry.model_reasoning().cloned());
+        .map(|entry| entry.model_reasoning().clone());
     let current_model = current_model_reasoning
         .as_ref()
         .map(|model_reasoning| model_reasoning.model_id().to_string());

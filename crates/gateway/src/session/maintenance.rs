@@ -16,12 +16,6 @@ impl LiveSessionService {
             })
             .await
             .map_err(|error| ServiceError::message(error.to_string()))?;
-        self.call_bus
-            .call(chelix_service_traits::ShutdownExternalBinding {
-                key: SessionKey::new(key),
-            })
-            .await
-            .map_err(|error| ServiceError::message(error.to_string()))?;
 
         let removed = self
             .metadata
@@ -269,11 +263,7 @@ impl LiveSessionService {
             .map_err(ServiceError::message)?
             .ok_or_else(|| ServiceError::message(format!("session '{parent_key}' not found")))?;
         let parent_agent = self.resolve_agent_id_for_entry(&parent).await?;
-        let model_reasoning = parent.model_reasoning().cloned().ok_or_else(|| {
-            ServiceError::message(format!(
-                "session '{parent_key}' has no LLM model/reasoning pair"
-            ))
-        })?;
+        let model_reasoning = parent.model_reasoning().clone();
 
         let new_key = format!("session:{}", uuid::Uuid::new_v4());
         let fork = self
@@ -283,7 +273,7 @@ impl LiveSessionService {
             .map_err(ServiceError::message)?;
 
         self.metadata
-            .create_llm_session(
+            .create_session(
                 &new_key,
                 label.as_deref(),
                 &model_reasoning,

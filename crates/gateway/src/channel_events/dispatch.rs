@@ -88,18 +88,7 @@ pub(in crate::channel_events) async fn dispatch_to_chat(
             .collect();
 
         if prepared.created {
-            let Some(model_reasoning) = prepared.entry.model_reasoning() else {
-                if let Some(done_tx) = typing_done {
-                    let _ = done_tx.send(());
-                }
-                report_channel_error(
-                    state,
-                    &reply_to,
-                    &"new channel session has no model/reasoning pair",
-                )
-                .await;
-                return;
-            };
+            let model_reasoning = prepared.entry.model_reasoning();
             let message = format!(
                 "Using {}. Use /model to change.",
                 model_reasoning.model_id()

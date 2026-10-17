@@ -34,13 +34,6 @@ interface AgentOption {
 	[key: string]: unknown;
 }
 
-interface ExternalAgentInfo {
-	kind: string;
-	name: string;
-	installed: boolean;
-	version?: string | null;
-}
-
 interface SelectOption {
 	value: string;
 	label: string;
@@ -158,10 +151,6 @@ function initialDefaultAgentId(payload: ReturnType<typeof parseAgentsListPayload
 	return typeof payload?.defaultId === "string" ? payload.defaultId : "";
 }
 
-function currentExternalAgent(agents: ExternalAgentInfo[], kind: string): ExternalAgentInfo | null {
-	return kind ? agents.find((agent) => agent.kind === kind) || null : null;
-}
-
 function sessionDisplayName(
 	label: string | null | undefined,
 	sessionKey: string | undefined,
@@ -186,26 +175,6 @@ function agentSelectOptions(
 	const hasCurrentAgent = agents.some((agent) => agent.id === currentAgentId);
 	if (hasCurrentAgent || !currentAgentId || !(switchingAgent || agentOptionsLoaded)) return options;
 	return [{ value: currentAgentId, label: switchingAgent ? "Switching\u2026" : `agent:${currentAgentId}` }, ...options];
-}
-
-function externalAgentSelectOptions(agents: ExternalAgentInfo[]): SelectOption[] {
-	return [
-		{ value: "", label: "Chelix agent" },
-		...agents.map((agent) => ({
-			value: agent.kind,
-			label: `${agent.name}${agent.installed ? "" : " (unavailable)"}`,
-		})),
-	];
-}
-
-function externalAgentStatus(
-	kind: string,
-	agent: ExternalAgentInfo | null,
-	externalSessionId: string | null | undefined,
-): string {
-	if (!kind) return "";
-	if (agent?.installed === false) return "External agent unavailable";
-	return externalSessionId ? `External session ${externalSessionId}` : "External agent bound";
 }
 
 function sessionNameStyle(canRename: boolean, nameOwnLine: boolean): Record<string, string> {
@@ -313,39 +282,6 @@ function AgentPicker(props: AgentPickerProps): VNode | null {
 	);
 }
 
-interface ExternalAgentPickerProps {
-	show: boolean;
-	options: SelectOption[];
-	value: string;
-	status: string;
-	disabled: boolean;
-	onChange: (value: string) => void;
-}
-
-function ExternalAgentPicker(props: ExternalAgentPickerProps): VNode | null {
-	if (!props.show) return null;
-	return (
-		<div className="flex items-center gap-1.5">
-			<ComboSelect
-				options={props.options}
-				value={props.value}
-				onChange={props.onChange}
-				placeholder="External agent"
-				searchable={false}
-				allowEmpty={false}
-				fullWidth={false}
-				disabled={props.disabled}
-				floating
-			/>
-			{props.status && (
-				<span className="text-xs text-[var(--text-muted)]" title={props.status}>
-					{props.status}
-				</span>
-			)}
-		</div>
-	);
-}
-
 interface SessionSelectorsProps {
 	showSelectors: boolean;
 	isCron: boolean;
@@ -355,12 +291,6 @@ interface SessionSelectorsProps {
 	defaultAgentId: string;
 	switchingAgent: boolean;
 	onAgentChange: (value: string) => void;
-	externalAgents: ExternalAgentInfo[];
-	currentExternalAgentKind: string;
-	currentExternalAgent: ExternalAgentInfo | null;
-	externalSessionId: string | null | undefined;
-	switchingExternalAgent: boolean;
-	onExternalAgentChange: (value: string) => void;
 }
 
 function SessionSelectors(props: SessionSelectorsProps): VNode {
@@ -373,32 +303,18 @@ function SessionSelectors(props: SessionSelectorsProps): VNode {
 		props.agentOptionsLoaded,
 	);
 	return (
-		<>
-			<AgentPicker
-				show={
-					props.showSelectors &&
-					!props.isCron &&
-					props.agentOptionsLoaded &&
-					(props.agents.length > 1 || !hasCurrentAgent)
-				}
-				options={options}
-				value={props.currentAgentId}
-				disabled={props.switchingAgent || options.length === 0}
-				onChange={props.onAgentChange}
-			/>
-			<ExternalAgentPicker
-				show={props.showSelectors && !props.isCron && props.externalAgents.length > 0}
-				options={externalAgentSelectOptions(props.externalAgents)}
-				value={props.currentExternalAgentKind}
-				status={externalAgentStatus(
-					props.currentExternalAgentKind,
-					props.currentExternalAgent,
-					props.externalSessionId,
-				)}
-				disabled={props.switchingExternalAgent}
-				onChange={props.onExternalAgentChange}
-			/>
-		</>
+		<AgentPicker
+			show={
+				props.showSelectors &&
+				!props.isCron &&
+				props.agentOptionsLoaded &&
+				(props.agents.length > 1 || !hasCurrentAgent)
+			}
+			options={options}
+			value={props.currentAgentId}
+			disabled={props.switchingAgent || options.length === 0}
+			onChange={props.onAgentChange}
+		/>
 	);
 }
 
@@ -534,7 +450,6 @@ interface SessionHeaderViewProps {
 	nameControl: VNode | null;
 	renameActions: VNode | null;
 	agentPicker: VNode | null;
-	externalAgentPicker: VNode | null;
 	actions: VNode;
 }
 
@@ -542,7 +457,6 @@ function SessionHeaderView(props: SessionHeaderViewProps): VNode {
 	const controls = (
 		<>
 			{props.agentPicker}
-			{props.externalAgentPicker}
 			{!props.nameOwnLine && props.nameControl}
 			{!props.nameOwnLine && props.renameActions}
 			{props.actions}
@@ -592,8 +506,6 @@ export function SessionHeader({
 	const [agentOptions, setAgentOptions] = useState<AgentOption[]>(hydratedAgentOptions);
 	const [defaultAgentId, setDefaultAgentId] = useState(hydratedDefaultAgentId);
 	const [agentOptionsLoaded, setAgentOptionsLoaded] = useState(hydratedAgentOptions.length > 0);
-	const [externalAgentOptions, setExternalAgentOptions] = useState<ExternalAgentInfo[]>([]);
-	const [switchingExternalAgent, setSwitchingExternalAgent] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const fullName = session?.label || session?.key || currentKey;
@@ -607,8 +519,6 @@ export function SessionHeader({
 	const canArchive = !!session && isArchivableSession(session.toMeta());
 	const showArchivedSessions = sessionStore.showArchivedSessions.value;
 	const currentAgentId = session?.agent_id || defaultAgentId;
-	const currentExternalAgentKind = session?.external_agent_kind || "";
-	const selectedExternalAgent = currentExternalAgent(externalAgentOptions, currentExternalAgentKind);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -622,17 +532,6 @@ export function SessionHeader({
 			setDefaultAgentId(parsed.defaultId);
 			setAgentOptions(parsed.agents as AgentOption[]);
 			setAgentOptionsLoaded(true);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [currentKey]);
-
-	useEffect(() => {
-		let cancelled = false;
-		sendRpc<ExternalAgentInfo[]>("external_agents.list", {}).then((res) => {
-			if (cancelled || !res?.ok) return;
-			setExternalAgentOptions(Array.isArray(res.payload) ? res.payload : []);
 		});
 		return () => {
 			cancelled = true;
@@ -805,32 +704,6 @@ export function SessionHeader({
 		[currentAgentId, currentKey, switchingAgent],
 	);
 
-	const onExternalAgentChange = useCallback(
-		(nextKind: string) => {
-			if (switchingExternalAgent || nextKind === currentExternalAgentKind) return;
-			setSwitchingExternalAgent(true);
-			const request = nextKind
-				? sendRpc("external_agents.bind", { sessionKey: currentKey, kind: nextKind })
-				: sendRpc("external_agents.unbind", { sessionKey: currentKey });
-			request
-				.then((res) => {
-					if (!res?.ok) {
-						showToast((res?.error as { message?: string })?.message || "Failed to update external agent", "error");
-						return;
-					}
-					if (session) {
-						session.external_agent_kind = nextKind || null;
-						session.dataVersion.value++;
-					}
-					fetchSessions();
-				})
-				.finally(() => {
-					setSwitchingExternalAgent(false);
-				});
-		},
-		[currentExternalAgentKind, currentKey, session, switchingExternalAgent],
-	);
-
 	const nameControl = (
 		<SessionNameControl
 			show={showName}
@@ -867,12 +740,6 @@ export function SessionHeader({
 			defaultAgentId={defaultAgentId}
 			switchingAgent={switchingAgent}
 			onAgentChange={onAgentChange}
-			externalAgents={externalAgentOptions}
-			currentExternalAgentKind={currentExternalAgentKind}
-			currentExternalAgent={selectedExternalAgent}
-			externalSessionId={session?.externalSessionId}
-			switchingExternalAgent={switchingExternalAgent}
-			onExternalAgentChange={onExternalAgentChange}
 		/>
 	);
 	const actions = (
@@ -903,7 +770,6 @@ export function SessionHeader({
 			nameControl={nameControl}
 			renameActions={renameActions}
 			agentPicker={selectors}
-			externalAgentPicker={null}
 			actions={actions}
 		/>
 	);

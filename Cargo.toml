@@ -18,7 +18,6 @@ default-members = [
   "crates/cron",
   "crates/duckduckgo",
   "crates/exa",
-  "crates/external-agents",
   "crates/felo",
   "crates/gateway",
   "crates/github",
@@ -76,7 +75,6 @@ members = [
   "crates/cron",
   "crates/duckduckgo",
   "crates/exa",
-  "crates/external-agents",
   "crates/felo",
   "crates/gateway",
   "crates/github",
@@ -149,8 +147,7 @@ version      = "0.1.0"
 # APNS
 a2 = { default-features = false, features = ["ring"], version = "0.10" }
 # Async runtime
-agent-client-protocol = "0.10.2"
-tokio                 = { features = ["full"], version = "1" }
+tokio = { features = ["full"], version = "1" }
 # HTTP/WS server
 askama     = "0.15"
 axum       = { features = ["ws"], version = "0.8" }
@@ -316,7 +313,6 @@ chelix-context7         = { path = "crates/context7" }
 chelix-cron             = { path = "crates/cron" }
 chelix-duckduckgo       = { path = "crates/duckduckgo" }
 chelix-exa              = { path = "crates/exa" }
-chelix-external-agents  = { path = "crates/external-agents" }
 chelix-felo             = { path = "crates/felo" }
 chelix-gateway          = { default-features = false, path = "crates/gateway" }
 chelix-github           = { path = "crates/github" }

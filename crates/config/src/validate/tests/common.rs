@@ -1,36 +1,6 @@
 use super::*;
 
 #[test]
-fn levenshtein_identical() {
-    assert_eq!(levenshtein("hello", "hello"), 0);
-}
-
-#[test]
-fn levenshtein_empty() {
-    assert_eq!(levenshtein("", "abc"), 3);
-    assert_eq!(levenshtein("abc", ""), 3);
-    assert_eq!(levenshtein("", ""), 0);
-}
-
-#[test]
-fn levenshtein_single_edit() {
-    assert_eq!(levenshtein("server", "sever"), 1); // deletion
-    assert_eq!(levenshtein("bind", "bnd"), 1); // deletion
-    assert_eq!(levenshtein("port", "prt"), 1); // deletion
-}
-
-#[test]
-fn levenshtein_substitution() {
-    assert_eq!(levenshtein("cat", "car"), 1);
-    assert_eq!(levenshtein("openai", "opnai"), 1);
-}
-
-#[test]
-fn levenshtein_insertion() {
-    assert_eq!(levenshtein("serer", "server"), 1);
-}
-
-#[test]
 fn unknown_top_level_key_with_suggestion() {
     let result = validate_toml_str("sever = 42\n");
     let unknown = result
@@ -246,20 +216,6 @@ fn collect_missing_keys(
         },
         _ => {},
     }
-}
-
-#[test]
-fn suggest_finds_close_match() {
-    let candidates = &["server", "providers", "auth", "tls"];
-    assert_eq!(suggest("sever", candidates, 3), Some("server"));
-    assert_eq!(suggest("servar", candidates, 3), Some("server"));
-    assert_eq!(suggest("provders", candidates, 3), Some("providers"));
-}
-
-#[test]
-fn suggest_returns_none_for_distant() {
-    let candidates = &["server", "providers", "auth", "tls"];
-    assert_eq!(suggest("xxxxxxxxx", candidates, 3), None);
 }
 
 #[test]

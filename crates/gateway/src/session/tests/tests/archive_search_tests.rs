@@ -102,7 +102,7 @@ async fn patch_archived_rejection_does_not_partially_mutate_session() {
 
     let entry = metadata.get("t:1").await.unwrap().unwrap();
     assert_eq!(entry.label.as_deref(), Some("Main"));
-    assert_eq!(entry.model(), Some("example-patch::reasoning"));
+    assert_eq!(entry.model(), "example-patch::reasoning");
     assert!(!entry.archived);
 }
 

@@ -5,7 +5,6 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-pub use crate::backing::{ExternalAgentKind, ExternalSessionIdentity, SessionBacking};
 use crate::{Error, Result};
 
 /// System-prompt persona selected for a session.
@@ -43,7 +42,7 @@ pub struct SessionEntry {
     pub id: String,
     pub key: String,
     pub label: Option<String>,
-    pub backing: SessionBacking,
+    pub model_reasoning: ResolvedModelReasoning,
     pub created_at: u64,
     pub updated_at: u64,
     pub message_count: u32,
@@ -65,40 +64,29 @@ pub struct SessionEntry {
 
 impl SessionEntry {
     #[must_use]
-    pub fn model_reasoning(&self) -> Option<&ResolvedModelReasoning> {
-        self.backing.model_reasoning()
+    pub const fn model_reasoning(&self) -> &ResolvedModelReasoning {
+        &self.model_reasoning
     }
 
     #[must_use]
-    pub fn model(&self) -> Option<&str> {
-        self.backing.model_id()
+    pub fn model(&self) -> &str {
+        self.model_reasoning.model_id()
     }
 
     #[must_use]
-    pub fn reasoning_effort(&self) -> Option<&ReasoningEffort> {
-        self.backing.reasoning_effort()
-    }
-
-    #[must_use]
-    pub fn external_agent_kind(&self) -> Option<ExternalAgentKind> {
-        self.backing.external_agent_kind()
-    }
-
-    #[must_use]
-    pub fn external_session_id(&self) -> Option<&str> {
-        self.backing.external_session_id()
+    pub const fn reasoning_effort(&self) -> &ReasoningEffort {
+        self.model_reasoning.reasoning_effort()
     }
 }
 
-/// Result of atomically creating an LLM session when it is absent.
+/// Result of atomically creating a session when it is absent.
 #[derive(Debug, Clone)]
-pub enum EnsureLlmSessionOutcome {
+pub enum EnsureSessionOutcome {
     Created(SessionEntry),
-    ExistingLlm(SessionEntry),
-    ExistingExternal(SessionEntry),
+    Existing(SessionEntry),
 }
 
-impl EnsureLlmSessionOutcome {
+impl EnsureSessionOutcome {
     #[must_use]
     pub const fn created(&self) -> bool {
         matches!(self, Self::Created(_))
@@ -107,34 +95,14 @@ impl EnsureLlmSessionOutcome {
     #[must_use]
     pub const fn entry(&self) -> &SessionEntry {
         match self {
-            Self::Created(entry) | Self::ExistingLlm(entry) | Self::ExistingExternal(entry) => {
-                entry
-            },
+            Self::Created(entry) | Self::Existing(entry) => entry,
         }
     }
 
     #[must_use]
     pub fn into_entry(self) -> SessionEntry {
         match self {
-            Self::Created(entry) | Self::ExistingLlm(entry) | Self::ExistingExternal(entry) => {
-                entry
-            },
-        }
-    }
-}
-
-/// Result of atomically promoting an external-only session to LLM + external.
-#[derive(Debug, Clone)]
-pub enum PromoteExternalToLlmOutcome {
-    Promoted(SessionEntry),
-    ExistingLlm(SessionEntry),
-}
-
-impl PromoteExternalToLlmOutcome {
-    #[must_use]
-    pub fn into_entry(self) -> SessionEntry {
-        match self {
-            Self::Promoted(entry) | Self::ExistingLlm(entry) => entry,
+            Self::Created(entry) | Self::Existing(entry) => entry,
         }
     }
 }
@@ -227,8 +195,6 @@ struct SessionRow {
     prompt_profile: PromptProfile,
     tool_permission_mode: ToolPermissionMode,
     tool_permission_type: ToolPermissionType,
-    external_agent_kind: Option<String>,
-    external_session_id: Option<String>,
     version: i64,
 }
 
@@ -236,16 +202,20 @@ impl TryFrom<SessionRow> for SessionEntry {
     type Error = Error;
 
     fn try_from(row: SessionRow) -> Result<Self> {
+        let model = row
+            .model
+            .ok_or_else(|| Error::message("persisted session has no model"))?;
+        let reasoning_effort = row
+            .reasoning_effort
+            .ok_or_else(|| Error::message("persisted session has no reasoning effort"))?;
+        let model_reasoning =
+            ResolvedModelReasoning::try_new(model, ReasoningEffort::from(reasoning_effort))
+                .map_err(|error| Error::message(error.to_string()))?;
         Ok(Self {
             key: row.key,
             id: row.id,
             label: row.label,
-            backing: SessionBacking::try_from_persisted(
-                row.model,
-                row.reasoning_effort,
-                row.external_agent_kind,
-                row.external_session_id,
-            )?,
+            model_reasoning,
             created_at: row.created_at as u64,
             updated_at: row.updated_at as u64,
             message_count: row.message_count as u32,
@@ -334,24 +304,13 @@ impl SqliteSessionMetadata {
                 prompt_profile          TEXT NOT NULL DEFAULT 'chat',
                 tool_permission_mode    TEXT NOT NULL DEFAULT 'auto',
                 tool_permission_type    TEXT NOT NULL DEFAULT 'manual',
-                external_agent_kind     TEXT,
-                external_session_id     TEXT,
                 version                 INTEGER NOT NULL DEFAULT 0,
                 CHECK (
-                    (model IS NULL AND reasoning_effort IS NULL)
-                    OR (
-                        model IS NOT NULL
-                        AND model <> ''
-                        AND reasoning_effort IS NOT NULL
-                        AND reasoning_effort <> ''
-                    )
-                ),
-                CHECK (model IS NOT NULL OR external_agent_kind IS NOT NULL),
-                CHECK (
-                    external_agent_kind IS NULL
-                    OR external_agent_kind IN ('claude-code', 'opencode', 'codex', 'pi-agent', 'acp')
-                ),
-                CHECK (external_session_id IS NULL OR external_agent_kind IS NOT NULL)
+                    model IS NOT NULL
+                    AND model <> ''
+                    AND reasoning_effort IS NOT NULL
+                    AND reasoning_effort <> ''
+                )
             )"#,
         )
         .execute(pool)
@@ -407,7 +366,7 @@ impl SqliteSessionMetadata {
         self.get(key).await
     }
 
-    pub async fn create_llm_session(
+    pub async fn create_session(
         &self,
         key: &str,
         label: Option<&str>,
@@ -442,13 +401,13 @@ impl SqliteSessionMetadata {
         Ok(entry)
     }
 
-    pub async fn ensure_llm_session(
+    pub async fn ensure_session(
         &self,
         key: &str,
         label: Option<&str>,
         model_reasoning: &ResolvedModelReasoning,
         agent_id: Option<&str>,
-    ) -> Result<EnsureLlmSessionOutcome> {
+    ) -> Result<EnsureSessionOutcome> {
         let now = now_ms();
         let id = uuid::Uuid::new_v4().to_string();
         let mut transaction = self.pool.begin().await?;
@@ -473,11 +432,9 @@ impl SqliteSessionMetadata {
             .await?
             .ok_or_else(|| Error::message(format!("session '{key}' disappeared during ensure")))?;
         let outcome = if created {
-            EnsureLlmSessionOutcome::Created(entry)
-        } else if entry.model_reasoning().is_some() {
-            EnsureLlmSessionOutcome::ExistingLlm(entry)
+            EnsureSessionOutcome::Created(entry)
         } else {
-            EnsureLlmSessionOutcome::ExistingExternal(entry)
+            EnsureSessionOutcome::Existing(entry)
         };
         transaction.commit().await?;
         if created {
@@ -550,8 +507,6 @@ impl SqliteSessionMetadata {
                    agent_id = excluded.agent_id,
                    model = excluded.model,
                    reasoning_effort = excluded.reasoning_effort,
-                   external_agent_kind = NULL,
-                   external_session_id = NULL,
                    updated_at = excluded.updated_at,
                    version = sessions.version + 1"#,
         )
@@ -604,42 +559,6 @@ impl SqliteSessionMetadata {
         let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
             .await?
             .ok_or_else(|| Error::message(format!("session '{key}' disappeared during assign")))?;
-        transaction.commit().await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(entry)
-    }
-
-    pub async fn assign_llm_agent(
-        &self,
-        key: &str,
-        agent_id: &str,
-        model_reasoning: &ResolvedModelReasoning,
-    ) -> Result<SessionEntry> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let result = sqlx::query(
-            r#"UPDATE sessions
-               SET agent_id = ?, model = ?, reasoning_effort = ?, external_agent_kind = NULL,
-                   external_session_id = NULL, updated_at = ?, version = version + 1
-               WHERE key = ?"#,
-        )
-        .bind(agent_id)
-        .bind(model_reasoning.model_id())
-        .bind(model_reasoning.reasoning_effort().as_str())
-        .bind(now)
-        .bind(key)
-        .execute(&mut *transaction)
-        .await?;
-        require_existing_row(key, result.rows_affected())?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| {
-                Error::message(format!(
-                    "session '{key}' disappeared during LLM agent assignment"
-                ))
-            })?;
         transaction.commit().await?;
         self.emit(crate::session_events::SessionEvent::Patched {
             session_key: key.to_string(),
@@ -878,272 +797,6 @@ impl SqliteSessionMetadata {
             session_key: key.to_string(),
         });
         Ok(entry)
-    }
-
-    pub async fn promote_external_to_llm(
-        &self,
-        key: &str,
-        model_reasoning: &ResolvedModelReasoning,
-        agent_id: &str,
-    ) -> Result<PromoteExternalToLlmOutcome> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
-        if entry.model_reasoning().is_some() {
-            transaction.commit().await?;
-            return Ok(PromoteExternalToLlmOutcome::ExistingLlm(entry));
-        }
-
-        let result = sqlx::query(
-            r#"UPDATE sessions
-               SET model = ?, reasoning_effort = ?, agent_id = ?, updated_at = ?,
-                   version = version + 1
-               WHERE key = ? AND model IS NULL AND reasoning_effort IS NULL"#,
-        )
-        .bind(model_reasoning.model_id())
-        .bind(model_reasoning.reasoning_effort().as_str())
-        .bind(agent_id)
-        .bind(now)
-        .bind(key)
-        .execute(&mut *transaction)
-        .await?;
-        require_existing_row(key, result.rows_affected())?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| {
-                Error::message(format!("session '{key}' disappeared during promotion"))
-            })?;
-        transaction.commit().await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(PromoteExternalToLlmOutcome::Promoted(entry))
-    }
-
-    pub async fn replace_external_with_llm(
-        &self,
-        key: &str,
-        expected_version: u64,
-        agent_id: &str,
-        model_reasoning: &ResolvedModelReasoning,
-    ) -> Result<SessionEntry> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
-        if entry.version != expected_version
-            || !matches!(entry.backing, SessionBacking::External { .. })
-        {
-            return Err(Error::message(format!(
-                "session '{key}' external-only transition conflict"
-            )));
-        }
-        let result = sqlx::query(
-            r#"UPDATE sessions
-               SET agent_id = ?, model = ?, reasoning_effort = ?, external_agent_kind = NULL,
-                   external_session_id = NULL, updated_at = ?, version = version + 1
-               WHERE key = ? AND version = ? AND model IS NULL AND reasoning_effort IS NULL"#,
-        )
-        .bind(agent_id)
-        .bind(model_reasoning.model_id())
-        .bind(model_reasoning.reasoning_effort().as_str())
-        .bind(now)
-        .bind(key)
-        .bind(expected_version as i64)
-        .execute(&mut *transaction)
-        .await?;
-        require_existing_row(key, result.rows_affected())?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| {
-                Error::message(format!("session '{key}' disappeared during transition"))
-            })?;
-        transaction.commit().await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(entry)
-    }
-
-    pub async fn bind_external(
-        &self,
-        key: &str,
-        label: Option<&str>,
-        identity: &ExternalSessionIdentity,
-    ) -> Result<SessionEntry> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let existed = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .is_some();
-        if existed {
-            sqlx::query(
-                r#"UPDATE sessions
-                   SET external_agent_kind = ?, external_session_id = ?, updated_at = ?, version = version + 1
-                   WHERE key = ?"#,
-            )
-            .bind(identity.kind().as_str())
-            .bind(identity.external_session_id())
-            .bind(now)
-            .bind(key)
-            .execute(&mut *transaction)
-            .await?;
-        } else {
-            let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query(
-                r#"INSERT INTO sessions (
-                       key, id, label, created_at, updated_at, external_agent_kind,
-                       external_session_id, version
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)"#,
-            )
-            .bind(key)
-            .bind(id)
-            .bind(label)
-            .bind(now)
-            .bind(now)
-            .bind(identity.kind().as_str())
-            .bind(identity.external_session_id())
-            .execute(&mut *transaction)
-            .await?;
-        }
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during bind")))?;
-        transaction.commit().await?;
-        self.emit(if existed {
-            crate::session_events::SessionEvent::Patched {
-                session_key: key.to_string(),
-            }
-        } else {
-            crate::session_events::SessionEvent::Created {
-                session_key: key.to_string(),
-            }
-        });
-        Ok(entry)
-    }
-
-    pub async fn update_external_session_id(
-        &self,
-        key: &str,
-        external_session_id: Option<&str>,
-    ) -> Result<SessionEntry> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
-        if entry.external_agent_kind().is_none() {
-            return Err(Error::message(format!(
-                "session '{key}' has no external binding"
-            )));
-        }
-        sqlx::query(
-            r#"UPDATE sessions
-               SET external_session_id = ?, updated_at = ?, version = version + 1
-               WHERE key = ?"#,
-        )
-        .bind(external_session_id)
-        .bind(now)
-        .bind(key)
-        .execute(&mut *transaction)
-        .await?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during update")))?;
-        transaction.commit().await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(entry)
-    }
-
-    pub async fn unbind_llm_external(
-        &self,
-        key: &str,
-        expected_version: u64,
-    ) -> Result<SessionEntry> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
-        if entry.version != expected_version
-            || !matches!(entry.backing, SessionBacking::LlmExternal { .. })
-        {
-            return Err(Error::message(format!(
-                "session '{key}' LLM external unbind conflict"
-            )));
-        }
-        let result = sqlx::query(
-            r#"UPDATE sessions
-               SET external_agent_kind = NULL, external_session_id = NULL,
-                   updated_at = ?, version = version + 1
-               WHERE key = ? AND version = ? AND model IS NOT NULL
-                   AND reasoning_effort IS NOT NULL"#,
-        )
-        .bind(now)
-        .bind(key)
-        .bind(expected_version as i64)
-        .execute(&mut *transaction)
-        .await?;
-        require_existing_row(key, result.rows_affected())?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' disappeared during unbind")))?;
-        transaction.commit().await?;
-        self.emit(crate::session_events::SessionEvent::Patched {
-            session_key: key.to_string(),
-        });
-        Ok(entry)
-    }
-
-    pub async fn unbind_external(&self, key: &str) -> Result<Option<SessionEntry>> {
-        let now = now_ms();
-        let mut transaction = self.pool.begin().await?;
-        let entry = Self::fetch_entry_in_transaction(&mut transaction, key)
-            .await?
-            .ok_or_else(|| Error::message(format!("session '{key}' not found")))?;
-        let result = match entry.backing {
-            SessionBacking::LlmExternal { .. } => {
-                sqlx::query(
-                    r#"UPDATE sessions
-                       SET external_agent_kind = NULL, external_session_id = NULL,
-                           updated_at = ?, version = version + 1
-                       WHERE key = ?"#,
-                )
-                .bind(now)
-                .bind(key)
-                .execute(&mut *transaction)
-                .await?;
-                Self::fetch_entry_in_transaction(&mut transaction, key).await?
-            },
-            SessionBacking::External { .. } => {
-                sqlx::query("DELETE FROM sessions WHERE key = ?")
-                    .bind(key)
-                    .execute(&mut *transaction)
-                    .await?;
-                None
-            },
-            SessionBacking::Llm { .. } => {
-                return Err(Error::message(format!(
-                    "session '{key}' has no external binding"
-                )));
-            },
-        };
-        transaction.commit().await?;
-        self.emit(if result.is_some() {
-            crate::session_events::SessionEvent::Patched {
-                session_key: key.to_string(),
-            }
-        } else {
-            crate::session_events::SessionEvent::Deleted {
-                session_key: key.to_string(),
-            }
-        });
-        Ok(result)
     }
 
     pub async fn touch(&self, key: &str, message_count: u32) -> Result<()> {

@@ -388,7 +388,7 @@ async fn start_localhost_server_with_vault_and_session_store() -> (
     )
     .unwrap();
     session_metadata
-        .create_llm_session("t:1", None, &model_reasoning, Some("main"))
+        .create_session("t:1", None, &model_reasoning, Some("main"))
         .await
         .unwrap();
     let auth_config = chelix_config::AuthConfig::default();

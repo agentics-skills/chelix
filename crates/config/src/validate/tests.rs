@@ -1,7 +1,7 @@
 use super::{
-    ChelixConfig, Severity, levenshtein,
+    ChelixConfig, Severity,
     schema_map::{KnownKeys, build_schema_map},
-    suggest, validate_toml_str,
+    validate_toml_str,
 };
 
 #[path = "tests/agents.rs"]

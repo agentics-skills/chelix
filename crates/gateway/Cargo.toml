@@ -23,7 +23,6 @@ chelix-context7         = { optional = true, workspace = true }
 chelix-cron             = { workspace = true }
 chelix-duckduckgo       = { optional = true, workspace = true }
 chelix-exa              = { optional = true, workspace = true }
-chelix-external-agents  = { workspace = true }
 chelix-felo             = { optional = true, workspace = true }
 chelix-github           = { optional = true, workspace = true }
 chelix-google           = { optional = true, workspace = true }
@@ -158,17 +157,13 @@ signal = ["dep:chelix-signal"]
 telegram = ["chelix-chat/telegram", "dep:chelix-telegram"]
 telephony = ["dep:chelix-telephony"]
 tls = []
-vault = [
-  "chelix-auth/vault",
-  "chelix-secret-store/vault",
-  "dep:chelix-vault",
-]
+vault = ["chelix-auth/vault", "chelix-secret-store/vault", "dep:chelix-vault"]
 voice = ["dep:chelix-voice"]
 web-ui = ["chelix-chat/web-ui"]
 whatsapp = ["chelix-whatsapp/metrics", "dep:chelix-whatsapp", "dep:qrcode"]
 
 [dev-dependencies]
-chelix-tools = { workspace = true, features = ["test-util"] }
+chelix-tools = { features = ["test-util"], workspace = true }
 serial_test  = { workspace = true }
 tokio-stream = { workspace = true }
 

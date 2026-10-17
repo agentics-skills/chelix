@@ -170,53 +170,6 @@ pub fn validate_toml_str(toml_str: &str) -> ValidationResult {
     }
 }
 
-fn levenshtein(a: &str, b: &str) -> usize {
-    let a_bytes = a.as_bytes();
-    let b_bytes = b.as_bytes();
-    let n = a_bytes.len();
-    let m = b_bytes.len();
-    if n == 0 {
-        return m;
-    }
-    if m == 0 {
-        return n;
-    }
-
-    let mut prev: Vec<usize> = (0..=m).collect();
-    let mut curr = vec![0; m + 1];
-    for (i, &ac) in a_bytes.iter().enumerate() {
-        curr[0] = i + 1;
-        for (j, &bc) in b_bytes.iter().enumerate() {
-            let cost = if ac == bc {
-                0
-            } else {
-                1
-            };
-            let del = prev[j + 1] + 1;
-            let ins = curr[j] + 1;
-            let sub = prev[j] + cost;
-            curr[j + 1] = del.min(ins).min(sub);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-    prev[m]
-}
-
-fn suggest<'a>(needle: &str, candidates: &[&'a str], max_distance: usize) -> Option<&'a str> {
-    let mut best: Option<(&'a str, usize)> = None;
-    for &candidate in candidates {
-        let dist = levenshtein(needle, candidate);
-        if dist <= max_distance {
-            match best {
-                Some((_, best_dist)) if dist < best_dist => best = Some((candidate, dist)),
-                None => best = Some((candidate, dist)),
-                _ => {},
-            }
-        }
-    }
-    best.map(|(candidate, _)| candidate)
-}
-
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[cfg(test)]
 #[path = "validate/tests.rs"]

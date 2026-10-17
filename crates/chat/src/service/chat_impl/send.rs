@@ -130,12 +130,7 @@ impl LiveChatService {
                         session_id.as_str()
                     ))
                 })?;
-            let pair = entry.model_reasoning().ok_or_else(|| {
-                ServiceError::message(format!(
-                    "session '{}' has no model/reasoning pair",
-                    session_id.as_str()
-                ))
-            })?;
+            let pair = entry.model_reasoning();
             (pair.model_id().to_string(), pair.reasoning_effort().clone())
         };
         let model = {
@@ -178,17 +173,10 @@ impl LiveChatService {
                 .as_deref()
                 .is_none_or(|value| value.trim().is_empty())
         {
-            if entry.model_reasoning().is_none() {
-                self.session_metadata
-                    .promote_external_to_llm(session_key, model_reasoning, agent_id)
-                    .await
-                    .map_err(ServiceError::message)?;
-            } else {
-                self.session_metadata
-                    .assign_agent(session_key, agent_id, model_reasoning)
-                    .await
-                    .map_err(ServiceError::message)?;
-            }
+            self.session_metadata
+                .assign_agent(session_key, agent_id, model_reasoning)
+                .await
+                .map_err(ServiceError::message)?;
             return Ok(());
         }
         if persist_request_override {
@@ -649,12 +637,6 @@ impl LiveChatService {
         let resolved_reasoning_effort =
             Some(model_reasoning.reasoning_effort().as_str().to_string());
         session_entry = Some(match session_entry {
-            Some(entry) if entry.model_reasoning().is_none() => self
-                .session_metadata
-                .promote_external_to_llm(&session_key, &model_reasoning, &session_agent_id)
-                .await
-                .map_err(ServiceError::message)?
-                .into_entry(),
             Some(entry)
                 if context.agent_id.is_some()
                     && entry
@@ -668,8 +650,8 @@ impl LiveChatService {
                     .map_err(ServiceError::message)?
             },
             Some(entry)
-                if entry.model() != Some(model_reasoning.model_id())
-                    || entry.reasoning_effort() != Some(model_reasoning.reasoning_effort()) =>
+                if entry.model() != model_reasoning.model_id()
+                    || entry.reasoning_effort() != model_reasoning.reasoning_effort() =>
             {
                 self.session_metadata
                     .set_model_reasoning(&session_key, &model_reasoning)
@@ -679,7 +661,7 @@ impl LiveChatService {
             Some(entry) => entry,
             None => match self
                 .session_metadata
-                .ensure_llm_session(
+                .ensure_session(
                     &session_key,
                     None,
                     &model_reasoning,
@@ -688,8 +670,8 @@ impl LiveChatService {
                 .await
                 .map_err(ServiceError::message)?
             {
-                chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry) => entry,
-                chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+                chelix_sessions::metadata::EnsureSessionOutcome::Created(entry) => entry,
+                chelix_sessions::metadata::EnsureSessionOutcome::Existing(entry) => {
                     if entry
                         .agent_id
                         .as_deref()
@@ -697,12 +679,7 @@ impl LiveChatService {
                     {
                         entry
                     } else {
-                        let persisted_model_reasoning =
-                            entry.model_reasoning().cloned().ok_or_else(|| {
-                                ServiceError::message(format!(
-                                    "session '{session_key}' has no model/reasoning pair"
-                                ))
-                            })?;
+                        let persisted_model_reasoning = entry.model_reasoning().clone();
                         self.session_metadata
                             .assign_agent(
                                 &session_key,
@@ -713,12 +690,6 @@ impl LiveChatService {
                             .map_err(ServiceError::message)?
                     }
                 },
-                chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(_) => self
-                    .session_metadata
-                    .promote_external_to_llm(&session_key, &model_reasoning, &session_agent_id)
-                    .await
-                    .map_err(ServiceError::message)?
-                    .into_entry(),
             },
         });
         let ui_message_count = self

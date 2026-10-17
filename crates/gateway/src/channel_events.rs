@@ -288,14 +288,13 @@ async fn prepare_channel_session(
             existing_sessions.len() + 1
         );
         let outcome = metadata
-            .ensure_llm_session(session_key, Some(&label), &model_reasoning, Some(&agent_id))
+            .ensure_session(session_key, Some(&label), &model_reasoning, Some(&agent_id))
             .await
             .map_err(ChannelError::unavailable)?;
         let created = outcome.created();
         let entry = match outcome {
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry)
-            | chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(entry) => entry,
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
+            chelix_sessions::metadata::EnsureSessionOutcome::Created(entry) => entry,
+            chelix_sessions::metadata::EnsureSessionOutcome::Existing(entry) => {
                 if entry
                     .agent_id
                     .as_deref()
@@ -303,14 +302,8 @@ async fn prepare_channel_session(
                 {
                     entry
                 } else {
-                    let persisted_model_reasoning =
-                        entry.model_reasoning().cloned().ok_or_else(|| {
-                            ChannelError::unavailable(format!(
-                                "session '{session_key}' has no model/reasoning pair"
-                            ))
-                        })?;
                     metadata
-                        .assign_agent(session_key, &agent_id, &persisted_model_reasoning)
+                        .assign_agent(session_key, &agent_id, entry.model_reasoning())
                         .await
                         .map_err(ChannelError::unavailable)?
                 }

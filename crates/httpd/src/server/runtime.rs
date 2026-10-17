@@ -249,7 +249,7 @@ pub(super) async fn finalize_prepared_gateway(
                                 "key": entry.key,
                                 "label": entry.label,
                                 "model": entry.model(),
-                                "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
+                                "reasoningEffort": entry.reasoning_effort().as_str(),
                                 "createdAt": entry.created_at,
                                 "updatedAt": entry.updated_at,
                                 "messageCount": entry.message_count,

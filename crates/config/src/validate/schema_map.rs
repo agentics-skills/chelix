@@ -60,17 +60,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
         ]))
     };
 
-    let external_agent_entry = || {
-        Struct(HashMap::from([
-            ("binary", Leaf),
-            ("args", Array(Box::new(Leaf))),
-            ("env", Map(Box::new(Leaf))),
-            ("working_dir", Leaf),
-            ("timeout_secs", Leaf),
-            ("use_tmux", Leaf),
-        ]))
-    };
-
     let resource_limits = || {
         Struct(HashMap::from([
             ("memory_limit", Leaf),
@@ -326,13 +315,6 @@ pub(crate) fn build_schema_map() -> KnownKeys {
             value: Box::new(agent()),
             fields: HashMap::from([("default", Leaf)]),
         }),
-        (
-            "external_agents",
-            Struct(HashMap::from([
-                ("enabled", Leaf),
-                ("agents", Map(Box::new(external_agent_entry()))),
-            ])),
-        ),
         ("tools", tools()),
         ("sandbox", sandbox()),
         (

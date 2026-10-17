@@ -339,7 +339,7 @@ impl AgentTool for SessionsListTool {
                     "key": entry.key,
                     "label": entry.label,
                     "model": entry.model(),
-                    "reasoningEffort": entry.reasoning_effort().map(|effort| effort.as_str()),
+                    "reasoningEffort": entry.reasoning_effort().as_str(),
                     "messageCount": entry.message_count,
                     "createdAt": entry.created_at,
                     "updatedAt": entry.updated_at,
@@ -450,7 +450,7 @@ impl AgentTool for SessionsSearchTool {
             results.push(serde_json::json!({
                 "key": hit.session_key,
                 "label": entry.and_then(|value| value.label.clone()),
-                "model": entry.and_then(|value| value.model().map(str::to_string)),
+                "model": entry.map(|value| value.model().to_string()),
                 "projectId": entry.and_then(|value| value.project_id.clone()),
                 "agentId": entry.and_then(|value| value.agent_id.clone()),
                 "createdAt": entry.map(|value| value.created_at),
@@ -764,7 +764,7 @@ mod tests {
             chelix_common::ReasoningEffort::from("off"),
         )?;
         metadata
-            .create_llm_session(key, Some(label), &model_reasoning, Some("main"))
+            .create_session(key, Some(label), &model_reasoning, Some("main"))
             .await?;
         Ok(())
     }

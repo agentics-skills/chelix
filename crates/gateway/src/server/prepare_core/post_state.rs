@@ -25,9 +25,6 @@ use crate::{
     auth,
     broadcast::{BroadcastOpts, broadcast},
     chat::{LiveChatService, LiveModelService},
-    external_agents::{
-        ExternalAgentChatService, ExternalAgentSessionService, GatewayExternalAgentService,
-    },
     methods::MethodRegistry,
     services::GatewayServices,
     state::{DiscoveredHookInfo, GatewayState},
@@ -202,80 +199,25 @@ async fn build_webauthn_registry(
     }
 }
 
-#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
-pub(crate) fn register_stop_session(
+fn register_stop_session(
     call_bus: &chelix_call_bus::CallBus,
     chat: Arc<LiveChatService>,
-    external: Arc<GatewayExternalAgentService>,
 ) -> anyhow::Result<()> {
-    let external_for_shutdown = Arc::clone(&external);
     call_bus
         .register(move |request: chelix_service_traits::StopSession| {
             let chat = Arc::clone(&chat);
-            let external = Arc::clone(&external);
             async move {
                 match request {
                     chelix_service_traits::StopSession::Run { run_id } => {
                         chat.stop_run(run_id).await
                     },
                     chelix_service_traits::StopSession::Session { key, run_id } => {
-                        let claim = external
-                            .claim_external(key.as_str(), run_id.as_deref())
-                            .await;
-                        let external_matches = matches!(
-                            claim,
-                            crate::external_agents::ExternalClaim::Captured { .. }
-                        );
-                        let mut outcome = chat
-                            .stop_current_session(key.as_str(), run_id.as_deref(), external_matches)
-                            .await?;
-                        if let crate::external_agents::ExternalClaim::Captured {
-                            run_id: external_run,
-                            token,
-                            mut done,
-                            ..
-                        } = claim
-                        {
-                            let external_cancelled = if token.is_cancelled() {
-                                false
-                            } else {
-                                token.cancel();
-                                true
-                            };
-                            loop {
-                                if let Some(result) = done.borrow().clone() {
-                                    result.map_err(chelix_service_traits::ServiceError::message)?;
-                                    break;
-                                }
-                                if done.changed().await.is_err() {
-                                    break;
-                                }
-                            }
-                            if outcome.run_id.is_none() {
-                                outcome.run_id = Some(external_run);
-                                outcome.cancelled = external_cancelled;
-                            } else if external_cancelled {
-                                outcome.cancelled = true;
-                            }
-                        }
-                        Ok(outcome)
+                        chat.stop_current_session(key.as_str(), run_id.as_deref())
+                            .await
                     },
                 }
             }
         })
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    call_bus
-        .register(
-            move |request: chelix_service_traits::ShutdownExternalBinding| {
-                let external = Arc::clone(&external_for_shutdown);
-                async move {
-                    external
-                        .shutdown_binding(request.key.as_str())
-                        .await
-                        .map_err(chelix_service_traits::ServiceError::message)
-                }
-            },
-        )
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
@@ -385,20 +327,6 @@ pub(super) async fn complete_startup(
         services.telephony_plugin = Some(Arc::clone(&telephony_webhook_plugin));
     }
 
-    let external_agent_service = Arc::new(GatewayExternalAgentService::new(
-        config.external_agents.clone(),
-        Arc::clone(&session_metadata),
-        Arc::clone(&approval_manager),
-        Arc::clone(&agents_config),
-        Arc::clone(&services.model),
-    ));
-    let session_service = Arc::clone(&services.session);
-    services = services.with_session(Arc::new(ExternalAgentSessionService::new(
-        session_service,
-        Arc::clone(&external_agent_service),
-    )));
-    services = services.with_external_agent(external_agent_service.clone());
-
     let state = GatewayState::with_options(
         resolved_auth,
         services,
@@ -464,7 +392,7 @@ pub(super) async fn complete_startup(
                 let chat_state = Arc::clone(&worker_state_ref);
                 Box::pin(async move {
                     let session_id = SessionKey::new(req.session_key.clone());
-                    crate::session::ensure_internal_chat_session(
+                    crate::session::ensure_chat_session(
                         &chat_state.services,
                         &session_id,
                         req.agent_id.as_deref(),
@@ -893,24 +821,12 @@ pub(super) async fn complete_startup(
         }
 
         let live_chat = Arc::new(chat_service);
-        let chat_with_external_agents = Arc::new(ExternalAgentChatService::new(
-            Arc::clone(&live_chat) as Arc<dyn crate::services::ChatService>,
-            Arc::clone(&external_agent_service),
-            Arc::clone(&state),
-            Arc::clone(&session_store),
-            Arc::clone(&session_metadata),
-            Arc::clone(&call_bus),
-        ));
-        register_stop_session(
-            &call_bus,
-            Arc::clone(&live_chat),
-            Arc::clone(&external_agent_service),
-        )?;
+        register_stop_session(&call_bus, Arc::clone(&live_chat))?;
         call_bus
             .seal()
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         crate::server::hooks::seed_example_skill(&call_bus).await?;
-        state.set_chat(chat_with_external_agents);
+        state.set_chat(Arc::clone(&live_chat) as Arc<dyn crate::services::ChatService>);
 
         live_mcp
             .set_tool_registry(Arc::clone(&shared_tool_registry))

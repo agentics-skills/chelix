@@ -328,7 +328,7 @@ mod tests {
         state.inner.write().await.llm_providers = Some(Arc::new(RwLock::new(registry)));
 
         session_metadata
-            .create_llm_session("session:test", None, &title_pair(), Some("main"))
+            .create_session("session:test", None, &title_pair(), Some("main"))
             .await
             .unwrap();
         session_store
@@ -449,7 +449,7 @@ mod tests {
         .await;
         let metadata = state.services.session_metadata.as_ref().unwrap();
         metadata
-            .create_llm_session(
+            .create_session(
                 "session:short",
                 Some("Existing Label"),
                 &title_pair(),

@@ -413,7 +413,7 @@ mod tests {
             chelix_common::ReasoningEffort::from("off"),
         )?;
         metadata
-            .create_llm_session(key, Some(label), &model_reasoning, Some("main"))
+            .create_session(key, Some(label), &model_reasoning, Some("main"))
             .await?;
         Ok(())
     }

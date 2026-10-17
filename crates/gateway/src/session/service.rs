@@ -323,7 +323,6 @@ impl LiveSessionService {
         &self,
         entry: chelix_sessions::metadata::SessionEntry,
         agent_id: &str,
-        model_reasoning: &chelix_common::ResolvedModelReasoning,
     ) -> Result<chelix_sessions::metadata::SessionEntry, ServiceError> {
         if entry
             .agent_id
@@ -333,12 +332,8 @@ impl LiveSessionService {
             self.resolve_agent_id_for_entry(&entry).await?;
             return Ok(entry);
         }
-        let persisted_model_reasoning = entry
-            .model_reasoning()
-            .cloned()
-            .unwrap_or_else(|| model_reasoning.clone());
         self.metadata
-            .assign_agent(&entry.key, agent_id, &persisted_model_reasoning)
+            .assign_agent(&entry.key, agent_id, entry.model_reasoning())
             .await
             .map_err(ServiceError::message)
     }
@@ -375,24 +370,13 @@ impl LiveSessionService {
         let model_reasoning = self.resolved_agent_pair(&agent_id).await?;
         let outcome = self
             .metadata
-            .ensure_llm_session(key, None, &model_reasoning, Some(&agent_id))
+            .ensure_session(key, None, &model_reasoning, Some(&agent_id))
             .await
             .map_err(ServiceError::message)?;
         match outcome {
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::Created(entry) => Ok(entry),
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingLlm(entry) => {
-                self.ensure_agent_backed_entry(entry, &agent_id, &model_reasoning)
-                    .await
-            },
-            chelix_sessions::metadata::EnsureLlmSessionOutcome::ExistingExternal(_) => {
-                let promoted = self
-                    .metadata
-                    .promote_external_to_llm(key, &model_reasoning, &agent_id)
-                    .await
-                    .map_err(ServiceError::message)?
-                    .into_entry();
-                self.ensure_agent_backed_entry(promoted, &agent_id, &model_reasoning)
-                    .await
+            chelix_sessions::metadata::EnsureSessionOutcome::Created(entry) => Ok(entry),
+            chelix_sessions::metadata::EnsureSessionOutcome::Existing(entry) => {
+                self.ensure_agent_backed_entry(entry, &agent_id).await
             },
         }
     }
@@ -434,11 +418,12 @@ impl LiveSessionService {
                 ));
             }
             let model = match p.model.as_ref() {
-                Some(model) => model.as_deref(),
-                None => entry.model(),
-            }
-            .ok_or_else(|| ServiceError::message("model is required"))?
-            .to_string();
+                Some(Some(model)) => model.clone(),
+                Some(None) => {
+                    return Err(ServiceError::message("model is required"));
+                },
+                None => entry.model().to_string(),
+            };
             let reasoning_effort = p.reasoning_effort.as_ref().and_then(Option::as_ref);
             Some(
                 self.model_service
@@ -517,17 +502,13 @@ fn sealed_test_call_bus() -> Arc<chelix_call_bus::CallBus> {
             run_id: None,
         })
     });
-    let _ = bus
-        .register(|_request: chelix_service_traits::ShutdownExternalBinding| async move { Ok(()) });
     let _ = bus.seal();
     bus
 }
 
 fn session_patch_response(entry: &chelix_sessions::metadata::SessionEntry) -> Value {
-    let model = entry.model().map(str::to_string);
-    let reasoning_effort = entry
-        .reasoning_effort()
-        .map(|effort| effort.as_str().to_string());
+    let model = entry.model().to_string();
+    let reasoning_effort = entry.reasoning_effort().as_str().to_string();
     serde_json::json!({
         "id": entry.id,
         "key": entry.key,
@@ -651,12 +632,8 @@ impl SessionService for LiveSessionService {
                 .as_deref()
                 .map(|p| truncate_preview(p, SESSION_PREVIEW_MAX_CHARS));
 
-            let model = e.model().map(str::to_string);
-            let reasoning_effort = e
-                .reasoning_effort()
-                .map(|effort| effort.as_str().to_string());
-            let external_agent_kind = e.external_agent_kind().map(|kind| kind.as_str());
-            let external_session_id = e.external_session_id().map(str::to_string);
+            let model = e.model().to_string();
+            let reasoning_effort = e.reasoning_effort().as_str().to_string();
             entries.push(serde_json::json!({
                 "id": e.id,
                 "key": e.key,
@@ -679,9 +656,6 @@ impl SessionService for LiveSessionService {
                 "agentId": agent_id,
                 "toolPermissionMode": e.tool_permission_mode,
                 "toolPermissionType": e.tool_permission_type,
-                "external_agent_kind": external_agent_kind,
-                "externalAgentKind": external_agent_kind,
-                "externalSessionId": external_session_id,
                 "version": e.version,
             }));
         }
@@ -750,12 +724,8 @@ impl SessionService for LiveSessionService {
                 }
             }
 
-            let model = entry.model().map(str::to_string);
-            let reasoning_effort = entry
-                .reasoning_effort()
-                .map(|effort| effort.as_str().to_string());
-            let external_agent_kind = entry.external_agent_kind().map(|kind| kind.as_str());
-            let external_session_id = entry.external_session_id().map(str::to_string);
+            let model = entry.model().to_string();
+            let reasoning_effort = entry.reasoning_effort().as_str().to_string();
             return Ok(serde_json::json!({
                 "entry": {
                     "id": entry.id,
@@ -775,9 +745,6 @@ impl SessionService for LiveSessionService {
                     "agentId": entry.agent_id,
                     "toolPermissionMode": entry.tool_permission_mode,
                     "toolPermissionType": entry.tool_permission_type,
-                    "external_agent_kind": external_agent_kind,
-                    "externalAgentKind": external_agent_kind,
-                    "externalSessionId": external_session_id,
                     "version": entry.version,
                 },
                 "snapshot": null,
@@ -828,10 +795,8 @@ impl SessionService for LiveSessionService {
             }
         }
 
-        let model = entry.model().map(str::to_string);
-        let reasoning_effort = entry
-            .reasoning_effort()
-            .map(|effort| effort.as_str().to_string());
+        let model = entry.model().to_string();
+        let reasoning_effort = entry.reasoning_effort().as_str().to_string();
         Ok(serde_json::json!({
             "entry": {
                 "id": entry.id,
