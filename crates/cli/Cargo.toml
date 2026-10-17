@@ -31,14 +31,12 @@ clap               = { workspace = true }
 dotenvy            = { workspace = true }
 openssl            = { workspace = true }
 reqwest            = { workspace = true }
-secrecy            = { workspace = true }
 serde_json         = { workspace = true }
 sqlx               = { workspace = true }
 time               = { workspace = true }
 tokio              = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
-which              = { workspace = true }
 
 [target.'cfg(all(not(target_os = "windows"), not(all(target_os = "linux", target_arch = "aarch64"))))'.dependencies]
 tikv-jemallocator = { optional = true, workspace = true }
